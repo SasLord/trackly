@@ -235,17 +235,152 @@
 
 ## Traceability
 
-Будет заполнено `gsd-roadmapper` при создании ROADMAP.md.
+Заполнено `gsd-roadmapper` при создании ROADMAP.md (2026-05-24).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (заполняется roadmapper'ом) | | |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Pending |
+| FOUND-06 | Phase 1 | Pending |
+| FOUND-07 | Phase 1 | Pending |
+| FOUND-08 | Phase 1 | Pending |
+| FOUND-09 | Phase 1 | Pending |
+| FOUND-10 | Phase 1 | Pending |
+| FOUND-11 | Phase 1 | Pending |
+| FOUND-12 | Phase 1 | Pending |
+| DEV-01 | Phase 2 | Pending |
+| DEV-02 | Phase 2 | Pending |
+| DEV-03 | Phase 2 | Pending |
+| DEV-04 | Phase 2 | Pending |
+| DEV-05 | Phase 2 | Pending |
+| DEV-06 | Phase 2 | Pending |
+| DEV-07 | Phase 2 | Pending |
+| DEV-08 | Phase 2 | Pending |
+| DEV-09 | Phase 2 | Pending |
+| DEV-10 | Phase 2 | Pending |
+| DEV-11 | Phase 2 | Pending |
+| DEV-12 | Phase 2 | Pending |
+| DEV-13 | Phase 2 | Pending |
+| DEV-14 | Phase 3 | Pending |
+| DEV-15 | Phase 3 | Pending |
+| ACT-01 | Phase 3 | Pending |
+| ACT-02 | Phase 3 | Pending |
+| ACT-03 | Phase 3 | Pending |
+| ACT-04 | Phase 3 | Pending |
+| ACT-05 | Phase 3 | Pending |
+| ACT-06 | Phase 3 | Pending |
+| ACT-07 | Phase 3 | Pending |
+| ACT-08 | Phase 3 | Pending |
+| ACT-09 | Phase 3 | Pending |
+| ACT-10 | Phase 3 | Pending |
+| ACT-11 | Phase 3 | Pending |
+| ACT-12 | Phase 3 | Pending |
+| ACT-13 | Phase 3 | Pending |
+| ACT-14 | Phase 3 | Pending |
+| CART-01 | Phase 4 | Pending |
+| CART-02 | Phase 4 | Pending |
+| CART-03 | Phase 4 | Pending |
+| CART-04 | Phase 4 | Pending |
+| CART-05 | Phase 4 | Pending |
+| CART-06 | Phase 4 | Pending |
+| CART-07 | Phase 4 | Pending |
+| CART-08 | Phase 4 | Pending |
+| CART-09 | Phase 4 | Pending |
+| CART-10 | Phase 4 | Pending |
+| CART-11 | Phase 4 | Pending |
+| CART-12 | Phase 4 | Pending |
+| PRN-01 | Phase 6 | Pending |
+| PRN-02 | Phase 6 | Pending |
+| PRN-03 | Phase 6 | Pending |
+| PRN-04 | Phase 6 | Pending |
+| PRN-05 | Phase 6 | Pending |
+| PRN-06 | Phase 6 | Pending |
+| PRN-07 | Phase 6 | Pending |
+| PRN-08 | Phase 6 | Pending |
+| REQ-01 | Phase 6 | Pending |
+| REQ-02 | Phase 6 | Pending |
+| REQ-03 | Phase 6 | Pending |
+| REQ-04 | Phase 6 | Pending |
+| REQ-05 | Phase 6 | Pending |
+| REQ-06 | Phase 8 | Pending |
+| REQ-07 | Phase 6 | Pending |
+| RPT-01 | Phase 7 | Pending |
+| RPT-02 | Phase 7 | Pending |
+| RPT-03 | Phase 7 | Pending |
+| RPT-04 | Phase 7 | Pending |
+| RPT-05 | Phase 7 | Pending |
+| RPT-06 | Phase 7 | Pending |
+| RPT-07 | Phase 7 | Pending |
+| RPT-08 | Phase 7 | Pending |
+| USR-01 | Phase 5 | Pending |
+| USR-02 | Phase 5 | Pending |
+| USR-03 | Phase 5 | Pending |
+| USR-04 | Phase 5 | Pending |
+| USR-05 | Phase 5 | Pending |
+| USR-06 | Phase 5 | Pending |
+| USR-07 | Phase 5 | Pending |
+| USR-08 | Phase 8 | Pending |
+| USR-09 | Phase 8 | Pending |
+| USR-10 | Phase 8 | Pending |
+| USR-11 | Phase 8 | Pending |
+| USR-12 | Phase 8 | Pending |
+| DASH-01 | Phase 7 | Pending |
+| DASH-02 | Phase 7 | Pending |
+| DASH-03 | Phase 7 | Pending |
+| DASH-04 | Phase 7 | Pending |
+| DASH-05 | Phase 7 | Pending |
+| SET-01 | Phase 7 | Pending |
+| SET-02 | Phase 7 | Pending |
+| SET-03 | Phase 7 | Pending |
+| SET-04 | Phase 7 | Pending |
+| SET-05 | Phase 7 | Pending |
+| SET-06 | Phase 7 | Pending |
+| SET-07 | Phase 7 | Pending |
+| SET-08 | Phase 5 | Pending |
+| SET-09 | Phase 7 | Pending |
+| SET-10 | Phase 8 | Pending |
+| UI-01 | Phase 2 | Pending |
+| UI-02 | Phase 2 | Pending |
+| UI-03 | Phase 2 | Pending |
+| UI-04 | Phase 2 | Pending |
+| UI-05 | Phase 2 | Pending |
+| UI-06 | Phase 2 | Pending |
+| SRV-01 | Phase 5 | Pending |
+| SRV-02 | Phase 5 | Pending |
+| SRV-03 | Phase 5 | Pending |
+| SRV-04 | Phase 5 | Pending |
+| SRV-05 | Phase 5 | Pending |
+| BLD-01 | Phase 1 | Pending |
+| BLD-02 | Phase 8 | Pending |
+| BLD-03 | Phase 8 | Pending |
+| BLD-04 | Phase 8 | Pending |
+| BLD-05 | Phase 8 | Pending |
+| BLD-06 | Phase 1 | Pending |
+
+**Per-phase counts:**
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| Phase 1 | FOUND-01..12, BLD-01, BLD-06 | 14 |
+| Phase 2 | DEV-01..13, UI-01..06 | 19 |
+| Phase 3 | DEV-14, DEV-15, ACT-01..14 | 16 |
+| Phase 4 | CART-01..12 | 12 |
+| Phase 5 | USR-01..07, SRV-01..05, SET-08 | 13 |
+| Phase 6 | PRN-01..08, REQ-01..05, REQ-07 | 14 |
+| Phase 7 | RPT-01..08, DASH-01..05, SET-01..07, SET-09 | 22 |
+| Phase 8 | USR-08..12, REQ-06, SET-10, BLD-02..05 | 10 |
+| **Total** | | **120** |
 
 **Coverage:**
-- v1 requirements: 100+ всего (пересчитается roadmapper'ом)
-- v2 requirements: вынесены за пределы текущего roadmap
-- Mapped to phases: 0 (pending roadmap)
+- v1 requirements: 120 (полное покрытие)
+- v2 requirements: вынесены за пределы текущего roadmap (MAP, NTF, PNT, WIN7, I18N, ADV)
+- Mapped to phases: 120/120 ✓
+- Orphans: 0
+- Duplicates: 0
 
 ---
 *Requirements defined: 2026-05-24*
-*Last updated: 2026-05-24 after initial definition*
+*Last updated: 2026-05-24 — Traceability заполнена gsd-roadmapper после создания ROADMAP.md*
