@@ -8,7 +8,9 @@
 //! `clock_impl.rs`.
 
 pub mod config;
+pub mod db;
 pub mod paths;
+pub mod test_support;
 
 pub use config::AppConfig;
 pub use paths::Paths;

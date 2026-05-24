@@ -27,6 +27,4 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }
 async-trait = { workspace = true }
-
-[dev-dependencies]
 tempfile = { workspace = true }
