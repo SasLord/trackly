@@ -1,0 +1,27 @@
+name: cargo-deny
+
+on:
+  schedule:
+    # Daily at 06:00 UTC — catches new RustSec advisories overnight.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  deny:
+    name: cargo deny check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (1.88)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.88'
+
+      - name: cargo deny check
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
