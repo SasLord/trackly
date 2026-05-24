@@ -1,8 +1,10 @@
-//! `db` — SQLite connection lifecycle, PRAGMA discipline, refinery migrations.
-//!
-//! Plan 03 ships `pragmas` (writer/reader PRAGMA helpers) and `migrations`
-//! (refinery embed + runner). Plan 04 will add `pools` (read pool) and
-//! `writer_worker` (single-writer mpsc task) here.
+//! `db` — SQLite connection lifecycle, PRAGMA discipline, single-writer worker,
+//! reader pool, refinery migrations.
 
 pub mod migrations;
+pub mod pools;
 pub mod pragmas;
+pub mod writer_worker;
+
+pub use pools::{ReaderHandle, ReaderPool};
+pub use writer_worker::{WriterHandle, DEFAULT_WRITER_CAPACITY};

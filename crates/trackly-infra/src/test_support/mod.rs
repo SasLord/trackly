@@ -5,6 +5,8 @@
 //! `#[cfg(test)]`-gated items in the library crate; they need plain
 //! `pub` items. This module is the canonical fixture API.
 
+pub mod test_app_ctx;
 pub mod test_db;
 
+pub use test_app_ctx::test_writer_and_readers;
 pub use test_db::test_db;

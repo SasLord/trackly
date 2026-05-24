@@ -16,6 +16,22 @@ use trackly_core::error::AppError;
 
 embed_migrations!("../../migrations");
 
+/// Максимальный `user_version`, который знает текущий бинарь — посчитан
+/// в рантайме из embedded списка миграций. Используется в Plan 04
+/// `AppCtx::build` для probe-read downgrade-протекции.
+///
+/// Реализовано как `fn` (не `const`), потому что refinery API не предоставляет
+/// `const fn`-доступ к версиям миграций.
+pub fn max_known_version() -> u32 {
+    let max_i32: i32 = migrations::runner()
+        .get_migrations()
+        .iter()
+        .map(|m| m.version())
+        .max()
+        .unwrap_or(0);
+    u32::try_from(max_i32).expect("migration version must be non-negative")
+}
+
 /// Outcome of a `run` invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MigrationReport {
@@ -76,6 +92,11 @@ mod tests {
         let report = run(&mut conn).expect("run migrations");
         assert_eq!(report.schema_version, 12, "expected schema_version 12");
         assert_eq!(report.applied_count, 12, "expected 12 migrations applied");
+    }
+
+    #[test]
+    fn max_known_version_returns_twelve() {
+        assert_eq!(max_known_version(), 12);
     }
 
     #[test]
