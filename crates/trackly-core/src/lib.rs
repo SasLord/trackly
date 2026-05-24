@@ -6,5 +6,10 @@
 //! axum, hyper, tower, reqwest, or sqlx — this invariant is enforced by
 //! `tests/no_io_deps.rs`.
 //!
-//! Real modules (`domain`, `error`, `primitives`, `ports`) land in Plan 04.
+//! Plan 02 bootstraps `error` (minimal `AppError` enum with `Internal` +
+//! `Validation` only); Plan 04 extends `error` and adds `domain`, `primitives`,
+//! `ports`.
 #![forbid(unsafe_code)]
+
+pub mod error;
+
