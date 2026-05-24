@@ -6,9 +6,13 @@
 //! axum, hyper, tower, reqwest, or sqlx — this invariant is enforced by
 //! `tests/no_io_deps.rs`.
 //!
-//! Plan 02 bootstraps `error` (minimal `AppError` enum with `Internal` +
-//! `Validation` only); Plan 04 extends `error` and adds `domain`, `primitives`,
-//! `ports`.
+//! Plan 02 bootstraps `error` (minimal `AppError`); Plan 04 extends `error`
+//! to the full 9-variant D-AppError-01 enum and adds `primitives`
+//! (`Secret<T>`, `Clock` trait).
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod primitives;
+
+pub use error::AppError;
+pub use primitives::{Clock, Secret};

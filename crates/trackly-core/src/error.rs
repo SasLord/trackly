@@ -1,28 +1,64 @@
-//! `AppError` — типизированная ошибка приложения.
+//! `AppError` — типизированная ошибка приложения (D-AppError-01).
 //!
-//! Plan 02 bootstrap: только два варианта (`Internal`, `Validation`) — достаточно
-//! чтобы `trackly_infra::paths` и `trackly_infra::config` могли возвращать типизированные
-//! ошибки. Plan 04 расширит enum до полного D-AppError-01 списка
-//! (`NotFound`, `Conflict`, `OptimisticLockMismatch`, `WriteQueueBusy`,
-//! `DatabaseFromNewerVersion`, `Unauthorized`, `Forbidden`, …) и добавит
-//! единый JSON Serialize + axum `IntoResponse`.
+//! Plan 04: полный набор из 9 вариантов с единым JSON-shape:
+//! `{code: "SCREAMING_SNAKE", message: String, details: Value}`.
+//!
+//! Конверсии `From<rusqlite::Error>`, `From<refinery::Error>`,
+//! `From<tokio::sync::mpsc::error::SendTimeoutError<T>>` и
+//! `From<tokio::sync::oneshot::error::RecvError>` живут в `trackly-infra`
+//! (`error_conversions.rs`) — `trackly-core` не имеет I/O-зависимостей.
+//!
+//! `axum::IntoResponse` для AppError — Plan 05 (`trackly-app/error_axum.rs`).
+//! `specta::Type` derive для tauri-specta — Plan 05.
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
+use serde_json::{json, Value};
 
 /// Главный тип ошибки приложения. См. D-AppError-01.
-///
-/// На Plan 02 здесь только два варианта — достаточно, чтобы paths.rs и
-/// config.rs возвращали типизированные ошибки. Plan 04 добавит остальные
-/// варианты и реализацию `IntoResponse`.
-#[derive(Debug, thiserror::Error, Serialize)]
-#[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    /// Внутренняя ошибка приложения (I/O, current_exe, неожиданное состояние).
-    #[error("internal: {source_chain}")]
-    Internal {
-        /// Цепочка причин (обычно отформатированный `anyhow::Error`).
-        source_chain: String,
+    /// Сущность не найдена.
+    #[error("{entity} {id} not found")]
+    NotFound {
+        /// Имя сущности (`"device"`, `"act"`, …).
+        entity: &'static str,
+        /// Идентификатор.
+        id: i64,
     },
+
+    /// Конфликт (например, нарушение unique constraint).
+    #[error("conflict: {reason}")]
+    Conflict {
+        /// Причина конфликта (человекочитаемая).
+        reason: String,
+    },
+
+    /// Оптимистическая блокировка: версия в БД не совпадает с ожидаемой.
+    #[error("optimistic lock mismatch on {entity} {id}: expected v{expected}, found v{actual}")]
+    OptimisticLockMismatch {
+        /// Имя сущности.
+        entity: &'static str,
+        /// Идентификатор.
+        id: i64,
+        /// Версия, которую ожидал клиент.
+        expected: i64,
+        /// Версия, которая фактически в БД.
+        actual: i64,
+    },
+
+    /// Очередь записей переполнена (mpsc send_timeout сработал).
+    #[error("write queue busy (5s timeout)")]
+    WriteQueueBusy,
+
+    /// Файл БД создан более новой версией бинаря, чем текущая.
+    #[error("database from newer version: binary={binary}, file={file}")]
+    DatabaseFromNewerVersion {
+        /// `user_version`, который знает текущий бинарь.
+        binary: u32,
+        /// `user_version`, фактически записанный в файле.
+        file: u32,
+    },
+
     /// Валидация входных данных (TOML, путь, поле формы).
     #[error("validation [{field}]: {message}")]
     Validation {
@@ -31,4 +67,227 @@ pub enum AppError {
         /// Сообщение, пригодное к показу администратору.
         message: String,
     },
+
+    /// Запрос без аутентификации.
+    #[error("unauthorized")]
+    Unauthorized,
+
+    /// Аутентификация есть, но прав не хватает.
+    #[error("forbidden")]
+    Forbidden,
+
+    /// Внутренняя ошибка (I/O, рантайм, неожиданное состояние).
+    #[error("internal: {source_chain}")]
+    Internal {
+        /// Цепочка причин (обычно отформатированный source error).
+        source_chain: String,
+    },
+}
+
+impl AppError {
+    /// Стабильный SCREAMING_SNAKE_CASE код для фронтенда.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NotFound { .. } => "NOT_FOUND",
+            Self::Conflict { .. } => "CONFLICT",
+            Self::OptimisticLockMismatch { .. } => "OPTIMISTIC_LOCK_MISMATCH",
+            Self::WriteQueueBusy => "WRITE_QUEUE_BUSY",
+            Self::DatabaseFromNewerVersion { .. } => "DATABASE_FROM_NEWER_VERSION",
+            Self::Validation { .. } => "VALIDATION",
+            Self::Unauthorized => "UNAUTHORIZED",
+            Self::Forbidden => "FORBIDDEN",
+            Self::Internal { .. } => "INTERNAL",
+        }
+    }
+
+    /// Варианто-специфичные поля для JSON-shape `details`.
+    fn details_value(&self) -> Value {
+        match self {
+            Self::NotFound { entity, id } => json!({ "entity": entity, "id": id }),
+            Self::Conflict { reason } => json!({ "reason": reason }),
+            Self::OptimisticLockMismatch {
+                entity,
+                id,
+                expected,
+                actual,
+            } => json!({
+                "entity": entity,
+                "id": id,
+                "expected": expected,
+                "actual": actual,
+            }),
+            Self::WriteQueueBusy => json!({}),
+            Self::DatabaseFromNewerVersion { binary, file } => {
+                json!({ "binary": binary, "file": file })
+            }
+            Self::Validation { field, message } => {
+                json!({ "field": field, "message": message })
+            }
+            Self::Unauthorized => json!({}),
+            Self::Forbidden => json!({}),
+            Self::Internal { source_chain } => json!({ "source_chain": source_chain }),
+        }
+    }
+}
+
+impl Serialize for AppError {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut s = ser.serialize_struct("AppError", 3)?;
+        s.serialize_field("code", self.code())?;
+        s.serialize_field("message", &self.to_string())?;
+        s.serialize_field("details", &self.details_value())?;
+        s.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn ser(e: &AppError) -> Value {
+        serde_json::from_str(&serde_json::to_string(e).expect("serialize")).expect("parse")
+    }
+
+    #[test]
+    fn code_for_all_variants() {
+        assert_eq!(
+            AppError::NotFound {
+                entity: "device",
+                id: 1
+            }
+            .code(),
+            "NOT_FOUND"
+        );
+        assert_eq!(
+            AppError::Conflict {
+                reason: "dup".into()
+            }
+            .code(),
+            "CONFLICT"
+        );
+        assert_eq!(
+            AppError::OptimisticLockMismatch {
+                entity: "device",
+                id: 42,
+                expected: 1,
+                actual: 2,
+            }
+            .code(),
+            "OPTIMISTIC_LOCK_MISMATCH"
+        );
+        assert_eq!(AppError::WriteQueueBusy.code(), "WRITE_QUEUE_BUSY");
+        assert_eq!(
+            AppError::DatabaseFromNewerVersion {
+                binary: 12,
+                file: 99
+            }
+            .code(),
+            "DATABASE_FROM_NEWER_VERSION"
+        );
+        assert_eq!(
+            AppError::Validation {
+                field: "f".into(),
+                message: "m".into()
+            }
+            .code(),
+            "VALIDATION"
+        );
+        assert_eq!(AppError::Unauthorized.code(), "UNAUTHORIZED");
+        assert_eq!(AppError::Forbidden.code(), "FORBIDDEN");
+        assert_eq!(
+            AppError::Internal {
+                source_chain: "x".into()
+            }
+            .code(),
+            "INTERNAL"
+        );
+    }
+
+    #[test]
+    fn serialize_shape_has_code_message_details() {
+        let v = ser(&AppError::NotFound {
+            entity: "device",
+            id: 42,
+        });
+        assert_eq!(v["code"], "NOT_FOUND");
+        assert_eq!(v["message"], "device 42 not found");
+        assert_eq!(v["details"]["entity"], "device");
+        assert_eq!(v["details"]["id"], 42);
+    }
+
+    #[test]
+    fn serialize_optimistic_lock_mismatch_details() {
+        let v = ser(&AppError::OptimisticLockMismatch {
+            entity: "act",
+            id: 7,
+            expected: 1,
+            actual: 2,
+        });
+        assert_eq!(v["code"], "OPTIMISTIC_LOCK_MISMATCH");
+        assert_eq!(v["details"]["entity"], "act");
+        assert_eq!(v["details"]["id"], 7);
+        assert_eq!(v["details"]["expected"], 1);
+        assert_eq!(v["details"]["actual"], 2);
+    }
+
+    #[test]
+    fn serialize_write_queue_busy_empty_details() {
+        let v = ser(&AppError::WriteQueueBusy);
+        assert_eq!(v["code"], "WRITE_QUEUE_BUSY");
+        assert!(v["details"].is_object());
+        assert_eq!(v["details"].as_object().expect("obj").len(), 0);
+    }
+
+    #[test]
+    fn serialize_database_from_newer_version_details() {
+        let v = ser(&AppError::DatabaseFromNewerVersion {
+            binary: 12,
+            file: 999,
+        });
+        assert_eq!(v["code"], "DATABASE_FROM_NEWER_VERSION");
+        assert_eq!(v["details"]["binary"], 12);
+        assert_eq!(v["details"]["file"], 999);
+    }
+
+    #[test]
+    fn serialize_validation_details() {
+        let v = ser(&AppError::Validation {
+            field: "host".into(),
+            message: "empty".into(),
+        });
+        assert_eq!(v["code"], "VALIDATION");
+        assert_eq!(v["details"]["field"], "host");
+        assert_eq!(v["details"]["message"], "empty");
+    }
+
+    #[test]
+    fn serialize_unauthorized_forbidden_empty_details() {
+        let u = ser(&AppError::Unauthorized);
+        assert_eq!(u["code"], "UNAUTHORIZED");
+        assert_eq!(u["details"].as_object().expect("obj").len(), 0);
+
+        let f = ser(&AppError::Forbidden);
+        assert_eq!(f["code"], "FORBIDDEN");
+        assert_eq!(f["details"].as_object().expect("obj").len(), 0);
+    }
+
+    #[test]
+    fn serialize_internal_details() {
+        let v = ser(&AppError::Internal {
+            source_chain: "oops".into(),
+        });
+        assert_eq!(v["code"], "INTERNAL");
+        assert_eq!(v["details"]["source_chain"], "oops");
+    }
+
+    #[test]
+    fn serialize_conflict_details() {
+        let v = ser(&AppError::Conflict {
+            reason: "unique violation".into(),
+        });
+        assert_eq!(v["code"], "CONFLICT");
+        assert_eq!(v["details"]["reason"], "unique violation");
+    }
 }

@@ -22,3 +22,6 @@ time = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+static_assertions = "1"
