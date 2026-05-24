@@ -11,9 +11,19 @@
 //! - `shutdown` — Ctrl-C → CancellationToken.cancel().
 //! - `error_axum` — stub for Plan 05 HTTP error mapping.
 //!
-//! Plan 05 will add: `logging`, `dto`, `tauri_cmds`, `specta_export`.
+//! Plan 05 adds:
+//! - `logging` — `tracing-subscriber` + `tracing-appender` daily rotation.
+//! - `dto` — DTOs (Phase 1: `HealthDto`).
+//! - `tauri_cmds` — `#[tauri::command]`-функции (Phase 1: `health`).
+//! - `http` — axum роуты (Phase 1: `GET /api/v1/health`).
+//! - `specta_export` — `tauri_specta::Builder` для генерации `ui/src/bindings.ts`.
 
 pub mod context;
+pub mod dto;
 pub mod error_axum;
+pub mod http;
+pub mod logging;
 pub mod shutdown;
+pub mod specta_export;
+pub mod tauri_cmds;
 pub mod webview_env;

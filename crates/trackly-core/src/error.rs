@@ -9,12 +9,27 @@
 //! (`error_conversions.rs`) — `trackly-core` не имеет I/O-зависимостей.
 //!
 //! `axum::IntoResponse` для AppError — Plan 05 (`trackly-app/error_axum.rs`).
-//! `specta::Type` derive для tauri-specta — Plan 05.
+//!
+//! `specta::Type` для tauri-specta — Plan 05. Реализовано как **manual impl**
+//! (не derive), потому что:
+//!
+//! - Сериализация уже ручная (manual `impl Serialize` выше), и shape `{code,
+//!   message, details}` НЕ соответствует тому, что специальный derive выдал бы
+//!   для tagged enum с 9 вариантами и разнотипными payload'ами.
+//! - `details` — это `serde_json::Value` (произвольная форма), что
+//!   `specta::Type` derive не умеет вывести из enum-варианта.
+//!
+//! Manual impl даёт type `{code: string, message: string, details: any}` —
+//! ровно та форма, которую видит фронтенд в bindings.ts.
 
 use serde::{Serialize, Serializer};
 use serde_json::{json, Value};
 
 /// Главный тип ошибки приложения. См. D-AppError-01.
+///
+/// `specta::Type` реализован **вручную** ниже (а не derive) — у нас уже manual
+/// `impl Serialize` с формой `{code: string, message: string, details: any}`,
+/// и frontend bindings должны отражать ровно её, а не Rust-enum tagged shape.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     /// Сущность не найдена.
@@ -138,6 +153,40 @@ impl Serialize for AppError {
         s.serialize_field("message", &self.to_string())?;
         s.serialize_field("details", &self.details_value())?;
         s.end()
+    }
+}
+
+/// Sibling marker-структура: ровно та форма, которую `AppError::serialize`
+/// выдаёт на проводе. Используется для генерации `bindings.ts` через
+/// `specta::Type` derive, чтобы frontend-тип `AppError` соответствовал
+/// runtime JSON. См. `impl specta::Type for AppError` ниже — он делегирует
+/// `AppErrorRepr::inline` / `AppErrorRepr::reference`.
+///
+/// Поле `details` объявлено как `serde_json::Value` (= specta `any`) —
+/// варианто-специфичные shapes (`{entity, id}`, `{reason}`, ...) задокументированы
+/// в коде, но не выражаются в bindings (фронт получает discriminated union
+/// через поле `code`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename = "AppError")]
+pub struct AppErrorRepr {
+    pub code: String,
+    pub message: String,
+    pub details: serde_json::Value,
+}
+
+impl specta::Type for AppError {
+    fn inline(
+        type_map: &mut specta::TypeCollection,
+        generics: specta::Generics,
+    ) -> specta::datatype::DataType {
+        <AppErrorRepr as specta::Type>::inline(type_map, generics)
+    }
+
+    fn reference(
+        type_map: &mut specta::TypeCollection,
+        generics: &[specta::datatype::DataType],
+    ) -> specta::datatype::reference::Reference {
+        <AppErrorRepr as specta::Type>::reference(type_map, generics)
     }
 }
 

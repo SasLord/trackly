@@ -22,6 +22,9 @@ trackly-infra = { path = "../trackly-infra" }
 tauri = { workspace = true }
 tauri-specta = { workspace = true }
 specta = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
 tauri-plugin-single-instance = "2"
 tokio = { workspace = true }
 tokio-util = { workspace = true }

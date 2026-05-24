@@ -1,0 +1,80 @@
+//! `GET /api/v1/health` axum handler. Делегирует `build_health` (общий с
+//! Tauri command в `tauri_cmds/health.rs`), что обеспечивает байт-идентичный
+//! JSON на проводе между двумя транспортами (Phase 1 success criterion #5).
+
+use axum::{extract::State, routing::get, Json, Router};
+
+use crate::context::AppCtx;
+use crate::dto::HealthDto;
+use crate::tauri_cmds::health::build_health;
+
+/// axum handler `GET /api/v1/health`. Возвращает `Json<HealthDto>`
+/// (`AppError` Phase 1 не возвращает — health не делает I/O; в Phase 5
+/// можно вернуть 503 если probe-БД упадёт).
+pub async fn get_health(State(ctx): State<AppCtx>) -> Json<HealthDto> {
+    Json(build_health(&ctx).await)
+}
+
+/// Сборщик роутера. `AppCtx` подключается через `.with_state(ctx)` на
+/// callsite (так удобнее тестам делать свой ctx).
+pub fn router() -> Router<AppCtx> {
+    Router::new().route("/api/v1/health", get(get_health))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+    use tokio_util::sync::CancellationToken;
+    use tower::ServiceExt;
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    /// Минимальный AppCtx (тот же паттерн, что в `tauri_cmds::health::tests`).
+    async fn minimal_ctx() -> (AppCtx, TempDir) {
+        let (writer, readers, dir) = test_writer_and_readers();
+        let paths = trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf())
+            .expect("resolve paths");
+        let config = trackly_infra::AppConfig::default();
+        let (_nb, log_guard) = tracing_appender::non_blocking(std::io::sink());
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        let ctx = AppCtx {
+            writer,
+            readers,
+            paths: Arc::new(paths),
+            config: Arc::new(config),
+            clock,
+            shutdown: CancellationToken::new(),
+            log_guard: Arc::new(log_guard),
+            schema_version: 12,
+        };
+        (ctx, dir)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn get_health_returns_200_and_health_dto() {
+        let (ctx, _guard) = minimal_ctx().await;
+        let app = router().with_state(ctx);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), 200);
+        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let dto: HealthDto = serde_json::from_slice(&bytes).expect("deserialize");
+        assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
+        assert!(dto.db_ready);
+        assert_eq!(dto.schema_version, 12);
+    }
+}
