@@ -165,9 +165,7 @@ mod tests {
 
         // Job-2: ляжет в очередь (capacity=1 — место есть).
         let w2 = writer.clone();
-        let queued = tokio::spawn(async move {
-            w2.execute(|_c| Ok::<(), AppError>(())).await
-        });
+        let queued = tokio::spawn(async move { w2.execute(|_c| Ok::<(), AppError>(())).await });
 
         // Дать time, чтобы job-2 успел сесть в канал.
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -203,10 +201,7 @@ mod tests {
         let res = h.await.expect("join");
         match res {
             Err(AppError::Internal { source_chain }) => {
-                assert!(
-                    source_chain.contains("writer worker"),
-                    "got {source_chain}"
-                );
+                assert!(source_chain.contains("writer worker"), "got {source_chain}");
             }
             other => panic!("expected Internal, got {other:?}"),
         }

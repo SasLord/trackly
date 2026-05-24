@@ -74,7 +74,9 @@ mod tests {
 
     #[test]
     fn debug_inside_vec_hides_all_values() {
-        let v: Vec<Secret<String>> = (0..5).map(|_| Secret::new(String::from("hunter2"))).collect();
+        let v: Vec<Secret<String>> = (0..5)
+            .map(|_| Secret::new(String::from("hunter2")))
+            .collect();
         let dbg = format!("{v:?}");
         assert!(!dbg.contains("hunter2"));
         assert_eq!(dbg.matches("***").count(), 5);

@@ -23,7 +23,9 @@ fn debug_does_not_leak_string_value() {
 
 #[test]
 fn debug_inside_vec_hides_every_value() {
-    let v: Vec<Secret<String>> = (0..5).map(|_| Secret::new(String::from("hunter2"))).collect();
+    let v: Vec<Secret<String>> = (0..5)
+        .map(|_| Secret::new(String::from("hunter2")))
+        .collect();
     let dbg = format!("{v:?}");
     assert!(!dbg.contains("hunter2"));
     assert_eq!(dbg.matches("***").count(), 5);

@@ -1,17 +1,19 @@
 //! trackly-app — composition root library surface.
 //!
-//! This crate hosts both the `trackly` binary (Tauri shell + AppCtx + axum
-//! wiring in Phase 5) and a `lib` target so integration tests
-//! (`tests/export_bindings.rs`, `tests/concurrent_writes.rs`,
-//! `tests/downgrade_protection.rs`, `tests/health_smoke.rs` — created in
-//! later plans) can import `trackly_app::*`.
+//! Hosts the `trackly` binary (Tauri shell + AppCtx wiring; Phase 5 adds axum)
+//! and a `lib` target so integration tests (`tests/concurrent_writes.rs`,
+//! `tests/downgrade_protection.rs`, future `tests/health_smoke.rs`, etc.)
+//! can import `trackly_app::*`.
 //!
-//! Plan 02 lands `webview_env` (and an empty `context` stub placeholder for
-//! Plan 04 to fill). Plans 04/05 add `shutdown`, `logging`, `dto`,
-//! `error_axum`, `tauri_cmds`, `specta_export`.
+//! Plan 04 adds:
+//! - `context` — `AppCtx { writer, readers, paths, config, clock, shutdown,
+//!   log_guard, schema_version }` + `AppCtx::build(...).await`.
+//! - `shutdown` — Ctrl-C → CancellationToken.cancel().
+//! - `error_axum` — stub for Plan 05 HTTP error mapping.
+//!
+//! Plan 05 will add: `logging`, `dto`, `tauri_cmds`, `specta_export`.
 
+pub mod context;
+pub mod error_axum;
+pub mod shutdown;
 pub mod webview_env;
-
-/// Composition-root context. Plan 04 fills this with `AppCtx { writer_tx,
-/// reader_pool, paths, config, clock, shutdown }`.
-pub mod context {}

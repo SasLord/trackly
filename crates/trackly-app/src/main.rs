@@ -1,20 +1,17 @@
-//! `trackly` binary — Phase 1 ordered lifecycle (Plan 02).
+//! `trackly` binary — Phase 1 full ordered lifecycle (Plan 04).
 //!
 //! Ordering invariant (RESEARCH §Code Example 1 + Pitfall #1):
-//!
 //! 1. `Paths::resolve()` — root all I/O on `current_exe()?.parent()?`.
-//! 2. `set_webview2_data_folder()` — set `WEBVIEW2_USER_DATA_FOLDER`
-//!    BEFORE any tokio runtime / thread spawn / tauri::Builder call.
+//! 2. `set_webview2_data_folder()` — MUST be before any tokio runtime / thread spawn / tauri::Builder.
 //! 3. Parse `--self-test` flag.
 //! 4. `AppConfig::load_or_default()` — read `trackly.config.toml` or use defaults.
-//! 5. (Plan 05) tracing subscriber + tracing-appender.
-//! 6. (Plans 03/04) writer connection + PRAGMAs + refinery migrations
-//!    + reader pool + AppCtx.
-//! 7. If `--self-test`: print diagnostic lines, exit 0.
-//! 8. Else (Plan 04+): tauri::Builder::run / axum::serve.
-//!
-//! Plan 02 owns steps 1-4 + 11-12 (placeholder for 12 until Plan 04/05).
+//! 5. (Placeholder) tracing-appender NON-blocking + WorkerGuard — Plan 05 replaces with real subscriber.
+//! 6. Build tokio multi-thread runtime; `block_on` async lifecycle:
+//!    - 6a/b/c. `AppCtx::build` — probe-read user_version → writer open → migrations → writer worker → reader pool.
+//! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
+//! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
+use trackly_app::context::AppCtx;
 use trackly_app::webview_env;
 use trackly_infra::{AppConfig, Paths};
 
@@ -22,53 +19,72 @@ fn main() -> anyhow::Result<()> {
     // Step 1: resolve all paths from current_exe().
     let paths = Paths::resolve()?;
 
-    // Step 2: set WEBVIEW2_USER_DATA_FOLDER — MUST be before any tokio /
-    // thread spawn / tauri call. Pitfall #1, FOUND-05.
+    // Step 2: set WEBVIEW2_USER_DATA_FOLDER — MUST be before any tokio / thread / tauri.
     webview_env::set_webview2_data_folder(paths.webview_data_dir())?;
 
     // Step 3: parse --self-test flag.
     let self_test = std::env::args().any(|a| a == "--self-test");
 
-    // Step 4: load config (or use defaults).
+    // Step 4: load config (or defaults).
     let config = AppConfig::load_or_default(paths.config_file())?;
 
-    // (Step 5: tracing — Plan 05.)
-    // (Steps 6-10: writer / migrations / reader pool / AppCtx — Plans 03/04.)
+    // Step 5: tracing-appender placeholder. Plan 05 replaces with real subscriber.
+    // For Phase 1 we just need a `WorkerGuard` to thread through `AppCtx::build`.
+    let (non_blocking, log_guard) = tracing_appender::non_blocking(std::io::stderr());
+    // Sink non_blocking so Drop happens with the rest of locals at function exit;
+    // Plan 05 will wire this as `tracing_subscriber::fmt::layer().with_writer(non_blocking)`.
+    let _ = non_blocking;
 
-    // Step 11: self-test path — print diagnostics and exit.
-    if self_test {
-        eprintln!("trackly --self-test (Plan 02 placeholder)");
-        eprintln!("paths resolved: exe_dir={}", paths.exe_dir().display());
-        eprintln!("  db_path           = {}", paths.db_path().display());
-        eprintln!("  config_file       = {}", paths.config_file().display());
-        eprintln!(
-            "  webview_data_dir  = {}",
-            paths.webview_data_dir().display()
-        );
-        eprintln!("  logs_dir          = {}", paths.logs_dir().display());
-        eprintln!("  is_portable       = {}", paths.is_portable());
-        eprintln!(
-            "config loaded: server.enabled={}, server.host={}, server.port={}",
-            config.server.enabled, config.server.host, config.server.port
-        );
-        eprintln!(
-            "  logging.level     = {}, format = {}",
-            config.logging.level, config.logging.format
-        );
-        eprintln!("  organization.timezone = {}", config.organization.timezone);
-        eprintln!(
-            "Plan 02 placeholder — Plans 03/04 wire DB/migrations/AppCtx; \
-             Plan 05/Phase 2 wires Tauri Builder."
-        );
-        return Ok(());
-    }
+    // Step 6: build a multi-thread tokio runtime and run AppCtx::build.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move {
+        let ctx = AppCtx::build(paths, config, log_guard).await?;
 
-    // Step 12: normal mode — UI not yet wired. Plan 04 will splice AppCtx and
-    // tracing init; Plan 05/Phase 2 will replace this with tauri::Builder::run.
-    eprintln!(
-        "trackly Phase 1 Plan 02: UI not yet wired (paths={}, config loaded). \
-         Run with --self-test for diagnostics.",
-        paths.exe_dir().display()
-    );
+        if self_test {
+            // Step 7: self-test branch — print diagnostics + exit.
+            eprintln!(
+                "self-test OK: schema_version={}, portable={}",
+                ctx.schema_version,
+                ctx.paths.is_portable()
+            );
+            eprintln!("  exe_dir          = {}", ctx.paths.exe_dir().display());
+            eprintln!("  db_path          = {}", ctx.paths.db_path().display());
+            eprintln!("  config_file      = {}", ctx.paths.config_file().display());
+            eprintln!(
+                "  webview_data_dir = {}",
+                ctx.paths.webview_data_dir().display()
+            );
+            eprintln!("  logs_dir         = {}", ctx.paths.logs_dir().display());
+            eprintln!(
+                "  server.enabled={}, server.host={}, server.port={}",
+                ctx.config.server.enabled, ctx.config.server.host, ctx.config.server.port
+            );
+            eprintln!(
+                "  logging.level={}, format={}, retention_days={}",
+                ctx.config.logging.level,
+                ctx.config.logging.format,
+                ctx.config.logging.retention_days
+            );
+            eprintln!(
+                "  organization.timezone={}",
+                ctx.config.organization.timezone
+            );
+            // Cancel shutdown token (Phase 5+ background tasks will observe this).
+            ctx.shutdown.cancel();
+            // ctx drops here → WriterHandle drops → mpsc::Sender drops → worker exits.
+            return Ok::<(), anyhow::Error>(());
+        }
+
+        // Step 8: normal branch — UI not yet wired in Phase 1.
+        eprintln!(
+            "Phase 1 — UI not yet wired. Use `trackly --self-test`. (schema_version={})",
+            ctx.schema_version
+        );
+        ctx.shutdown.cancel();
+        Ok::<(), anyhow::Error>(())
+    })?;
+
     Ok(())
 }

@@ -4200,8 +4200,10 @@ name = "trackly-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "specta",
  "specta-typescript",
  "tauri",

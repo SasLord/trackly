@@ -57,12 +57,9 @@ mod tests {
         // Write through writer.
         writer
             .execute(|c| {
-                c.execute(
-                    "INSERT INTO device_types (name) VALUES ('TestType')",
-                    [],
-                )
-                .map(|_| ())
-                .map_err(crate::error_conversions::map_rusqlite)
+                c.execute("INSERT INTO device_types (name) VALUES ('TestType')", [])
+                    .map(|_| ())
+                    .map_err(crate::error_conversions::map_rusqlite)
             })
             .await
             .expect("write");

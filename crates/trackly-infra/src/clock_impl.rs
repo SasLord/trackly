@@ -32,7 +32,10 @@ mod tests {
         let direct = OffsetDateTime::now_utc();
         let through_trait = clock.now();
         let delta = (through_trait - direct).whole_seconds().abs();
-        assert!(delta <= 1, "SystemClock.now() drifted from now_utc(): {delta}s");
+        assert!(
+            delta <= 1,
+            "SystemClock.now() drifted from now_utc(): {delta}s"
+        );
     }
 
     #[test]
