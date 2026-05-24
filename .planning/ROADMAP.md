@@ -32,7 +32,7 @@ Trackly — портативное приложение для учёта тех
   3. `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `pnpm svelte-check`, `pnpm lint` зелёные на каждый push в main и в PR; clippy-список `disallowed-methods` блокирует `dirs::*_dir()`, `app.path().app_data_dir()`, `chrono::Local::now()`.
   4. Открытие БД с `PRAGMA user_version`, большим текущего, завершается понятной ошибкой и НЕ повреждает файл (тест восстановления из бэкапа в CI).
   5. `tauri-specta v2` генерирует `bindings.ts` из общих DTO; один и тот же тип используется как для Tauri-invoke, так и для HTTP-транспорта (smoke-тест в `cargo test`).
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 ### Phase 2: Устройства и базовый UI
 **Goal:** Поставить end-to-end вертикальный срез по разделу «Устройства» — CRUD, автокомплиты, поиск, CSV, плюс навигационный каркас приложения с темой и русскоязычным UI.
@@ -138,7 +138,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Фундамент | 2/6 | In Progress|  |
+| 1. Фундамент | 3/6 | In Progress|  |
 | 2. Устройства и базовый UI | 0/TBD | Not started | - |
 | 3. Акты приёма-передачи и первая PDF-печать | 0/TBD | Not started | - |
 | 4. Картриджи | 0/TBD | Not started | - |
