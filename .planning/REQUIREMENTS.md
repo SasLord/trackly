@@ -9,7 +9,7 @@
 
 Фундамент: схема БД, миграции, портативный режим, паттерн single-writer, базовая конфигурация. Обоснование сосредоточить это в Phase 1 — в SUMMARY.md (резолвинг конфликтов между ресёрчерами).
 
-- [ ] **FOUND-01**: Workspace из 3 крейтов (`trackly-core`, `trackly-infra`, `trackly-app`) с чёткими границами (core не имеет I/O-зависимостей)
+- [x] **FOUND-01**: Workspace из 3 крейтов (`trackly-core`, `trackly-infra`, `trackly-app`) с чёткими границами (core не имеет I/O-зависимостей)
 - [ ] **FOUND-02**: SQLite в WAL-режиме с разделёнными пулами: write pool = 1 connection через выделенную задачу `spawn_blocking`, read pool = 3-4 connections
 - [ ] **FOUND-03**: Refinery-миграции (forward-only), встроенные в бинарник, с `PRAGMA user_version` для контроля версии схемы
 - [ ] **FOUND-04**: Портативный режим: БД и конфиг рядом с исполняемым файлом, маркер-файл `portable.txt`, явный запрет на `app_data_dir()` / `dirs::*_dir()`
@@ -17,7 +17,7 @@
 - [ ] **FOUND-06**: Newtype `Secret<T>` для всех секретов (пароли, AD-пароли, community strings) с кастомным `Debug` → `***`
 - [ ] **FOUND-07**: Все timestamps в БД хранятся в UTC; форматирование в локали — через `chrono-tz` на UI-слое
 - [ ] **FOUND-08**: Базовая схема включает таблицы: `device_types`, `device_statuses`, `cartridge_states`, `cartridge_statuses` — как seeded таблицы (НЕ enum в Rust), допускающие расширение без миграции
-- [ ] **FOUND-09**: На каждой пользовательской сущности (`device`, `cartridge`, `act`, `request`, `user`): колонки `created_at`, `updated_at`, `deleted_at` (soft delete), `version` (optimistic lock)
+- [x] **FOUND-09**: На каждой пользовательской сущности (`device`, `cartridge`, `act`, `request`, `user`): колонки `created_at`, `updated_at`, `deleted_at` (soft delete), `version` (optimistic lock)
 - [ ] **FOUND-10**: Таблица `audit_log` с записью всех мутаций (entity, entity_id, op, user_id, payload_json, created_at)
 - [ ] **FOUND-11**: ProcMon/процесс-аудит тест в CI: после полного цикла приложения убедиться, что НЕТ записей в `%APPDATA%`, `%LOCALAPPDATA%`, `~/.config`, `~/Library/Application Support`
 - [ ] **FOUND-12**: `tauri-specta` v2 для генерации TypeScript-типов из Rust DTO; единые типы для Tauri-invoke и HTTP-транспорта
@@ -165,7 +165,7 @@
 
 ### Build & Release (BLD)
 
-- [ ] **BLD-01**: GitHub Actions CI на каждый push в main и в PR: `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `pnpm svelte-check`, `pnpm lint`
+- [x] **BLD-01**: GitHub Actions CI на каждый push в main и в PR: `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `pnpm svelte-check`, `pnpm lint`
 - [ ] **BLD-02**: GitHub Actions Release: при push-тега `v*.*.*` собирать релизы для Windows 64-bit (NSIS installer + portable ZIP), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb)
 - [ ] **BLD-03**: Артефакты релиза включают checksums (SHA256) и подписи (по возможности)
 - [ ] **BLD-04**: Сборка portable варианта без updater, с включённым маркером `portable.txt`
@@ -239,7 +239,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
 | FOUND-04 | Phase 1 | Pending |
@@ -247,7 +247,7 @@
 | FOUND-06 | Phase 1 | Pending |
 | FOUND-07 | Phase 1 | Pending |
 | FOUND-08 | Phase 1 | Pending |
-| FOUND-09 | Phase 1 | Pending |
+| FOUND-09 | Phase 1 | Complete |
 | FOUND-10 | Phase 1 | Pending |
 | FOUND-11 | Phase 1 | Pending |
 | FOUND-12 | Phase 1 | Pending |
@@ -353,7 +353,7 @@
 | SRV-03 | Phase 5 | Pending |
 | SRV-04 | Phase 5 | Pending |
 | SRV-05 | Phase 5 | Pending |
-| BLD-01 | Phase 1 | Pending |
+| BLD-01 | Phase 1 | Complete |
 | BLD-02 | Phase 8 | Pending |
 | BLD-03 | Phase 8 | Pending |
 | BLD-04 | Phase 8 | Pending |
