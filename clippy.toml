@@ -1,0 +1,14 @@
+disallowed-methods = [
+  { path = "dirs::data_dir", reason = "portable mode: use trackly_infra::paths" },
+  { path = "dirs::data_local_dir", reason = "portable mode: use trackly_infra::paths" },
+  { path = "dirs::config_dir", reason = "portable mode: use trackly_infra::paths" },
+  { path = "dirs::cache_dir", reason = "portable mode: use trackly_infra::paths" },
+  { path = "dirs::home_dir", reason = "portable mode: use trackly_infra::paths" },
+  { path = "tauri::Manager::path", reason = "use trackly_infra::paths, not tauri's path resolver" },
+  { path = "chrono::Local::now", reason = "UTC only; use time::OffsetDateTime::now_utc" },
+  { path = "chrono::offset::Local::now", reason = "UTC only" },
+  { path = "std::fs::copy", reason = "for DB backup use rusqlite::backup::Backup; otherwise OK in tests" },
+]
+disallowed-types = [
+  { path = "chrono::DateTime<chrono::Local>", reason = "UTC only" },
+]

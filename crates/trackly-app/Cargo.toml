@@ -1,0 +1,18 @@
+[package]
+name = "trackly-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "trackly"
+path = "src/main.rs"
+
+[dependencies]
