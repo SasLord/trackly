@@ -153,8 +153,7 @@ foo = "bar"
 "#;
     let path = write_fixture(&dir, body);
 
-    let cfg =
-        AppConfig::load_or_default(&path).expect("unknown keys must not block parsing");
+    let cfg = AppConfig::load_or_default(&path).expect("unknown keys must not block parsing");
     assert!(!cfg.server.enabled);
     assert_eq!(cfg.server.host, "127.0.0.1");
 }

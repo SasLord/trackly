@@ -34,7 +34,10 @@ fn test_1_resolve_with_portable_sentinel_marks_portable() {
         dir.path().join("data/webview").as_path()
     );
     assert_eq!(paths.logs_dir(), dir.path().join("logs").as_path());
-    assert!(paths.is_portable(), "portable.txt sentinel must mark portable");
+    assert!(
+        paths.is_portable(),
+        "portable.txt sentinel must mark portable"
+    );
 }
 
 #[test]
@@ -88,7 +91,11 @@ fn test_4_resolve_rejects_unc_path_on_windows() {
 fn test_5_resolve_accepts_cyrillic_path() {
     // Pitfall #3: Cyrillic / non-ASCII paths must round-trip correctly.
     let dir = sandbox();
-    let cyrillic = dir.path().join("Документы").join("Учёт").join("Trackly_test");
+    let cyrillic = dir
+        .path()
+        .join("Документы")
+        .join("Учёт")
+        .join("Trackly_test");
     fs::create_dir_all(&cyrillic).expect("create cyrillic dir");
 
     let paths = Paths::resolve_for_exe_dir(cyrillic.clone())

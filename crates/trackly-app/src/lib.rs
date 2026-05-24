@@ -6,5 +6,12 @@
 //! `tests/downgrade_protection.rs`, `tests/health_smoke.rs` — created in
 //! later plans) can import `trackly_app::*`.
 //!
-//! Real modules (`context`, `shutdown`, `logging`, `webview_env`, `dto`,
-//! `error_axum`, `tauri_cmds`, `specta_export`) land in Plans 02, 04, 05.
+//! Plan 02 lands `webview_env` (and an empty `context` stub placeholder for
+//! Plan 04 to fill). Plans 04/05 add `shutdown`, `logging`, `dto`,
+//! `error_axum`, `tauri_cmds`, `specta_export`.
+
+pub mod webview_env;
+
+/// Composition-root context. Plan 04 fills this with `AppCtx { writer_tx,
+/// reader_pool, paths, config, clock, shutdown }`.
+pub mod context {}

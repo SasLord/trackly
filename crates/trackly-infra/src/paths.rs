@@ -42,10 +42,7 @@ impl Paths {
         let exe_dir = exe
             .parent()
             .ok_or_else(|| AppError::Internal {
-                source_chain: format!(
-                    "current_exe has no parent dir (got {})",
-                    exe.display()
-                ),
+                source_chain: format!("current_exe has no parent dir (got {})", exe.display()),
             })?
             .to_path_buf();
         Self::resolve_for_exe_dir(exe_dir)
