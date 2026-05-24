@@ -1,5 +1,5 @@
 {
-  "model_profile": "quality",
+  "model_profile": "adaptive",
   "commit_docs": true,
   "parallelization": false,
   "search_gitignored": false,
@@ -24,8 +24,8 @@
     "ai_integration_phase": true,
     "tdd_mode": false,
     "human_verify_mode": "end-of-phase",
-    "auto_advance": false,
-    "_auto_chain_active": false,
+    "auto_advance": true,
+    "_auto_chain_active": true,
     "node_repair": true,
     "node_repair_budget": 2,
     "ui_phase": true,
@@ -48,7 +48,9 @@
     "post_planning_gaps": true,
     "security_enforcement": true,
     "security_asvs_level": 1,
-    "security_block_on": "high"
+    "security_block_on": "high",
+    "use_worktrees": false,
+    "ui_review": true
   },
   "hooks": {
     "context_warnings": true,
@@ -85,5 +87,11 @@
   "features": {},
   "resolve_model_ids": "omit",
   "mode": "yolo",
-  "granularity": "standard"
+  "granularity": "standard",
+  "intel": {
+    "enabled": false
+  },
+  "graphify": {
+    "enabled": false
+  }
 }
