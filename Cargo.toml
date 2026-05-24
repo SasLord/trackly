@@ -9,7 +9,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
@@ -28,9 +28,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "fs", "net", "time"] }
-tokio_util = { version = "0.7", features = ["rt"] }
-rusqlite = { version = "0.39", features = ["bundled", "serde_json", "backup"] }
-refinery = { version = "0.8", features = ["rusqlite"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+rusqlite = { version = "0.38", features = ["bundled", "serde_json", "backup"] }
+refinery = { version = "0.9", features = ["rusqlite-bundled"] }
 toml = "0.8"
 tempfile = "3"
 zeroize = { version = "1", features = ["derive"] }

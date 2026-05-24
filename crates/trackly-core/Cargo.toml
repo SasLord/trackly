@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Pure domain layer for Trackly. No I/O. No tokio. No rusqlite. No tauri."
 
 [lints]
 workspace = true
@@ -11,4 +12,13 @@ workspace = true
 [lib]
 path = "src/lib.rs"
 
+# trackly-core is pure-domain. The following crates are FORBIDDEN here and the
+# `tests/no_io_deps.rs` integration test enforces this at every CI run:
+#   tokio, rusqlite, tauri, axum, hyper, tower, reqwest, sqlx, libsqlite3-sys
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+async-trait = { workspace = true }

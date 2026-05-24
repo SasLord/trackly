@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Windows-only CI helper that wraps Sysinternals ProcMon around `trackly --self-test` and asserts no writes leak outside the portable sandbox."
 
 [lints]
 workspace = true
@@ -12,4 +13,10 @@ workspace = true
 name = "procmon-check"
 path = "src/main.rs"
 
-[dependencies]
+# Real ProcMon orchestration deps land in Plan 06. Target-gated to keep the
+# crate cross-platform-buildable: on non-Windows hosts the dependency set is
+# empty and `main.rs` short-circuits with a "Windows-only" message.
+[target.'cfg(windows)'.dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

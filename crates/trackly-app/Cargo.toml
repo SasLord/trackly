@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Composition root for Trackly: Tauri 2 shell + axum HTTP (Phase 5) + AppCtx wiring."
 
 [lints]
 workspace = true
@@ -16,3 +17,27 @@ name = "trackly"
 path = "src/main.rs"
 
 [dependencies]
+trackly-core = { path = "../trackly-core" }
+trackly-infra = { path = "../trackly-infra" }
+tauri = { workspace = true }
+tauri-specta = { workspace = true }
+specta = { workspace = true }
+tauri-plugin-single-instance = "2"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+anyhow = { workspace = true }
+time = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dev-dependencies]
+specta-typescript = { workspace = true }
+tempfile = { workspace = true }
+anyhow = { workspace = true }
