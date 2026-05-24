@@ -1,11 +1,14 @@
 //! Tests for `trackly_infra::paths::Paths`. See PLAN 01-02 Task 1 §behavior.
 
 use std::fs;
-use std::path::PathBuf;
 
 use tempfile::TempDir;
-use trackly_core::error::AppError;
 use trackly_infra::Paths;
+
+#[cfg(windows)]
+use std::path::PathBuf;
+#[cfg(windows)]
+use trackly_core::error::AppError;
 
 /// Helper: create a sandbox dir that we'll pass to `Paths::resolve_for_exe_dir`.
 fn sandbox() -> TempDir {
@@ -98,7 +101,8 @@ fn test_5_resolve_accepts_cyrillic_path() {
     );
     // Use Path-level comparison rather than to_string_lossy round-trip
     // (Pitfall #3: to_string_lossy can normalize silently on some platforms).
+    let expected = cyrillic.join("data").join("webview");
     let webview_components: Vec<_> = paths.webview_data_dir().components().collect();
-    let expected_components: Vec<_> = cyrillic.join("data/webview").components().collect();
+    let expected_components: Vec<_> = expected.components().collect();
     assert_eq!(webview_components, expected_components);
 }

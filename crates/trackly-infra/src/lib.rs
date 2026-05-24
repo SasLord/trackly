@@ -4,5 +4,9 @@
 //! parsing), `db/*` (PRAGMAs, reader pool, single-writer worker, refinery
 //! migrations), `clock_impl.rs` (`SystemClock`), and `test_support/` helpers.
 //!
-//! Real modules land in Plans 02 (paths/config), 03 (migrations + pools),
-//! and 04 (writer worker / `Clock` impl).
+//! Plan 02 lands `paths` and `config`; Plans 03/04 add `db/*` and
+//! `clock_impl.rs`.
+
+pub mod paths;
+
+pub use paths::Paths;
