@@ -12,14 +12,14 @@
 - [x] **FOUND-01**: Workspace из 3 крейтов (`trackly-core`, `trackly-infra`, `trackly-app`) с чёткими границами (core не имеет I/O-зависимостей)
 - [ ] **FOUND-02**: SQLite в WAL-режиме с разделёнными пулами: write pool = 1 connection через выделенную задачу `spawn_blocking`, read pool = 3-4 connections
 - [ ] **FOUND-03**: Refinery-миграции (forward-only), встроенные в бинарник, с `PRAGMA user_version` для контроля версии схемы
-- [ ] **FOUND-04**: Портативный режим: БД и конфиг рядом с исполняемым файлом, маркер-файл `portable.txt`, явный запрет на `app_data_dir()` / `dirs::*_dir()`
-- [ ] **FOUND-05**: `WEBVIEW2_USER_DATA_FOLDER` принудительно устанавливается до создания `tauri::Builder` (иначе WebView2 пишет в `%LOCALAPPDATA%`)
+- [x] **FOUND-04**: Портативный режим: БД и конфиг рядом с исполняемым файлом, маркер-файл `portable.txt`, явный запрет на `app_data_dir()` / `dirs::*_dir()`
+- [x] **FOUND-05**: `WEBVIEW2_USER_DATA_FOLDER` принудительно устанавливается до создания `tauri::Builder` (иначе WebView2 пишет в `%LOCALAPPDATA%`)
 - [ ] **FOUND-06**: Newtype `Secret<T>` для всех секретов (пароли, AD-пароли, community strings) с кастомным `Debug` → `***`
 - [ ] **FOUND-07**: Все timestamps в БД хранятся в UTC; форматирование в локали — через `chrono-tz` на UI-слое
 - [ ] **FOUND-08**: Базовая схема включает таблицы: `device_types`, `device_statuses`, `cartridge_states`, `cartridge_statuses` — как seeded таблицы (НЕ enum в Rust), допускающие расширение без миграции
 - [x] **FOUND-09**: На каждой пользовательской сущности (`device`, `cartridge`, `act`, `request`, `user`): колонки `created_at`, `updated_at`, `deleted_at` (soft delete), `version` (optimistic lock)
 - [ ] **FOUND-10**: Таблица `audit_log` с записью всех мутаций (entity, entity_id, op, user_id, payload_json, created_at)
-- [ ] **FOUND-11**: ProcMon/процесс-аудит тест в CI: после полного цикла приложения убедиться, что НЕТ записей в `%APPDATA%`, `%LOCALAPPDATA%`, `~/.config`, `~/Library/Application Support`
+- [x] **FOUND-11**: ProcMon/процесс-аудит тест в CI: после полного цикла приложения убедиться, что НЕТ записей в `%APPDATA%`, `%LOCALAPPDATA%`, `~/.config`, `~/Library/Application Support`
 - [ ] **FOUND-12**: `tauri-specta` v2 для генерации TypeScript-типов из Rust DTO; единые типы для Tauri-invoke и HTTP-транспорта
 
 ### Devices (DEV)
@@ -242,14 +242,14 @@
 | FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| FOUND-05 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Complete |
+| FOUND-05 | Phase 1 | Complete |
 | FOUND-06 | Phase 1 | Pending |
 | FOUND-07 | Phase 1 | Pending |
 | FOUND-08 | Phase 1 | Pending |
 | FOUND-09 | Phase 1 | Complete |
 | FOUND-10 | Phase 1 | Pending |
-| FOUND-11 | Phase 1 | Pending |
+| FOUND-11 | Phase 1 | Complete |
 | FOUND-12 | Phase 1 | Pending |
 | DEV-01 | Phase 2 | Pending |
 | DEV-02 | Phase 2 | Pending |
