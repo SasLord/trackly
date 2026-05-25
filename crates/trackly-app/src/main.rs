@@ -43,7 +43,47 @@ fn main() -> anyhow::Result<()> {
         let ctx = AppCtx::build(paths, config, log_guard).await?;
 
         if self_test {
-            // Step 7: self-test branch — print diagnostics + exit.
+            // Step 7: self-test branch — exercise the writer worker + reader pool so
+            // Plan 06's ProcMon-check captures every realistic file-access pattern
+            // (WAL append, reader query, log rotation). After Plan 06 lands, this is
+            // the canonical fixture for proving zero APPDATA leakage.
+            ctx.writer
+                .execute(|c| {
+                    c.execute(
+                        "CREATE TABLE IF NOT EXISTS __self_test (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL)",
+                        [],
+                    )
+                    .map_err(|e| trackly_core::error::AppError::Internal {
+                        source_chain: format!("self-test CREATE TABLE: {e}"),
+                    })?;
+                    c.execute("INSERT INTO __self_test (ts) VALUES (?1)", [42_i64])
+                        .map(|_| ())
+                        .map_err(|e| trackly_core::error::AppError::Internal {
+                            source_chain: format!("self-test INSERT: {e}"),
+                        })
+                })
+                .await?;
+
+            let count: i64 = {
+                let readers = ctx.readers.clone();
+                tokio::task::spawn_blocking(move || {
+                    let conn = readers.acquire();
+                    conn.query_row("SELECT COUNT(*) FROM __self_test", [], |r| r.get(0))
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join: {e}"))?
+                .map_err(|e| anyhow::anyhow!("self-test SELECT COUNT: {e}"))?
+            };
+            assert!(
+                count >= 1,
+                "self-test write did not become visible to reader (count={count})"
+            );
+
+            tracing::info!(
+                schema_version = ctx.schema_version,
+                count,
+                "self-test OK"
+            );
             eprintln!(
                 "self-test OK: schema_version={}, portable={}",
                 ctx.schema_version,
