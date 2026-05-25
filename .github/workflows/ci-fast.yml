@@ -60,8 +60,16 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # --test-threads=1 serializes tests within each test binary. Several
+      # tests build a tokio multi_thread runtime + tracing-appender non_blocking
+      # background thread + WriterHandle spawn_blocking; running multiple such
+      # tests in parallel saturates worker threads on the 4-CPU ubuntu runner
+      # and deadlocks `build_health` / axum-oneshot tests (observed 30+ min
+      # hang on first ci-full ubuntu run after merge; not reproducible locally
+      # on macOS dev box). Cross-binary parallelism is still in effect; only
+      # tests within the same binary are serialized.
       - name: cargo test
-        run: cargo test --workspace --no-fail-fast
+        run: cargo test --workspace --no-fail-fast -- --test-threads=1
 
       - name: pnpm install (frozen lockfile)
         working-directory: ui

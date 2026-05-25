@@ -71,8 +71,11 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # See ci-fast.yml for rationale — --test-threads=1 prevents intra-binary
+      # parallelism that deadlocks on tokio-multi_thread + spawn_blocking
+      # contention on the 4-CPU ubuntu runner.
       - name: cargo test
-        run: cargo test --workspace --no-fail-fast
+        run: cargo test --workspace --no-fail-fast -- --test-threads=1
 
       - name: cargo build --release -p trackly-app
         run: cargo build --release -p trackly-app
