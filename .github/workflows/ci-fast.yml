@@ -60,3 +60,15 @@ jobs:
       - name: pnpm lint
         working-directory: ui
         run: pnpm lint
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## ci-fast"
+            echo ""
+            echo "ci-fast covers compile / lint / test on ubuntu-latest only (push to any branch)."
+            echo "ci-full runs the full matrix (ubuntu / macos / windows) on PR + push to main,"
+            echo "including the ProcMon portable-mode check on windows-latest."
+          } >> "$GITHUB_STEP_SUMMARY"

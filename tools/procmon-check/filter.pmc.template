@@ -1,0 +1,37 @@
+# procmon-check filter (conceptual template)
+#
+# Placeholder — programmatic filtering via the CSV-level post-filter in
+# `csv_check.rs` is currently the authoritative gate. ProcMon's `.pmc`
+# configuration file is a binary container (the GUI saves it via
+# File → Save Filter), so we ship this plain-text template as a
+# documentation artifact rather than a real `.pmc` file.
+#
+# If a future maintainer wants ProcMon to do the filtering server-side
+# (performance — reduces .pml size on long traces), generate a real
+# `.pmc` via ProcMon UI and place it here, then update `procmon.rs` to
+# pass `/LoadConfig <this file>` to the capture invocation.
+#
+# Conceptual filter the post-filter currently enforces:
+#
+#   INCLUDE
+#     Process Name == trackly.exe
+#     Operation == WriteFile
+#       OR Operation == CreateFile
+#       OR Operation == SetEndOfFileInformationFile
+#       OR Operation == WriteFileGather
+#       OR Operation == SetAllocationInformationFile
+#       OR Operation == SetBasicInformationFile
+#
+#   EXCLUDE (overrides include)
+#     <none — all matching rows are evaluated by csv_check.rs>
+#
+# Forbidden path fragments (case-insensitive, slash-insensitive — applied
+# in csv_check::normalize):
+#   - \AppData\Local\
+#   - \AppData\Roaming\
+#   - \AppData\LocalLow\
+#   - \ProgramData\
+#
+# Allowed prefixes (case-insensitive, slash-insensitive):
+#   - <sandbox path>  (e.g. %TEMP%\trackly_procmon_<uuid>\Документы\Учёт\Trackly\)
+#   - %TEMP%          (sandbox lives here; transient temp files are accepted)
