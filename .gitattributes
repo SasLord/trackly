@@ -1,0 +1,29 @@
+# Force LF line endings for all text files on checkout, regardless of platform.
+#
+# Why: prettier defaults to `endOfLine: lf` (per ui/.prettierrc.json — no
+# override). On Windows CI runners git has core.autocrlf=true by default and
+# converts text files to CRLF on checkout, causing `pnpm lint` (prettier
+# --check) to fail with 10+ formatting warnings. Linux + macOS runners keep
+# LF and pass. Forcing LF here normalizes behavior across all three
+# platforms.
+* text=auto eol=lf
+
+# Binary formats — do NOT normalize line endings.
+*.ico   binary
+*.icns  binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.tgz   binary
+
+# SQLite files emitted by tests / runtime — binary, but normally gitignored
+# (kept here as belt-and-suspenders in case anything slips through .gitignore).
+*.db        binary
+*.db-wal    binary
+*.db-shm    binary
