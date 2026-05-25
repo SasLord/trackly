@@ -5,7 +5,8 @@
 //! 2. `set_webview2_data_folder()` — MUST be before any tokio runtime / thread spawn / tauri::Builder.
 //! 3. Parse `--self-test` flag.
 //! 4. `AppConfig::load_or_default()` — read `trackly.config.toml` or use defaults.
-//! 5. (Placeholder) tracing-appender NON-blocking + WorkerGuard — Plan 05 replaces with real subscriber.
+//! 5. `trackly_app::logging::init(&paths, &config)` — tracing-subscriber + tracing-appender daily rotation;
+//!    возвращает `WorkerGuard`, который дальше живёт внутри AppCtx (Pitfall #6).
 //! 6. Build tokio multi-thread runtime; `block_on` async lifecycle:
 //!    - 6a/b/c. `AppCtx::build` — probe-read user_version → writer open → migrations → writer worker → reader pool.
 //! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
@@ -28,12 +29,11 @@ fn main() -> anyhow::Result<()> {
     // Step 4: load config (or defaults).
     let config = AppConfig::load_or_default(paths.config_file())?;
 
-    // Step 5: tracing-appender placeholder. Plan 05 replaces with real subscriber.
-    // For Phase 1 we just need a `WorkerGuard` to thread through `AppCtx::build`.
-    let (non_blocking, log_guard) = tracing_appender::non_blocking(std::io::stderr());
-    // Sink non_blocking so Drop happens with the rest of locals at function exit;
-    // Plan 05 will wire this as `tracing_subscriber::fmt::layer().with_writer(non_blocking)`.
-    let _ = non_blocking;
+    // Step 5: tracing-subscriber + tracing-appender (D-Logging-01). Файлы
+    // ложатся в `<exe_dir>/logs/trackly.log.<YYYY-MM-DD>` (portable-mode
+    // invariant). Возвращённый WorkerGuard живёт внутри AppCtx; пока он
+    // не drop'нется, background-thread аппендера не остановится.
+    let log_guard = trackly_app::logging::init(&paths, &config)?;
 
     // Step 6: build a multi-thread tokio runtime and run AppCtx::build.
     let rt = tokio::runtime::Builder::new_multi_thread()
