@@ -9,6 +9,15 @@
 //! Защищает от export-drift (T-05-02 в threat model плана 05): если
 //! `HealthDto` поменяется, а frontend ещё ждёт старую форму, `svelte-check`
 //! в `pnpm prebuild` отловит mismatch.
+//!
+//! **Skipped on Windows** — `specta-typescript = "0.0.9"` triggers
+//! `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) at test-binary load on
+//! `windows-latest` runner. Upgrade path is blocked: `tauri-specta` newer
+//! than `=2.0.0-rc.21` (which pins `specta-typescript = ^0.0.9` exactly)
+//! requires `specta = rc.24+`, which in turn requires nightly-only
+//! `debug_closure_helpers` + `const_type_id`. Coverage retained on Linux
+//! + macOS — see `.planning/phases/01-foundation/deferred-items.md`.
+#![cfg(not(target_os = "windows"))]
 
 use std::path::PathBuf;
 
