@@ -45,34 +45,44 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
     (ctx, dir)
 }
 
+/// 30-second hard timeout — guards against the Linux-CI deadlock pattern
+/// (axum `oneshot` × tokio multi_thread runtime × `WriterHandle` drop) that
+/// hangs ci-fast indefinitely. Test passes in ~50 ms when healthy; if the
+/// 30 s budget is exceeded, the test fails with a clear timeout error
+/// instead of stalling the whole workflow. Windows + macOS unaffected
+/// (consistently pass in <1 s).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn health_dto_round_trips_identical_through_both_transports() -> anyhow::Result<()> {
-    let (ctx, _guard) = minimal_ctx();
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _guard) = minimal_ctx();
 
-    // Path 1: Tauri-command (через общий build_health helper — то же
-    // самое, что вызывает `#[tauri::command] async fn health`).
-    let from_tauri = build_health(&ctx).await;
+        // Path 1: Tauri-command (через общий build_health helper — то же
+        // самое, что вызывает `#[tauri::command] async fn health`).
+        let from_tauri = build_health(&ctx).await;
 
-    // Path 2: axum handler через in-process oneshot. axum::Router с
-    // GET /api/v1/health смонтирован на `ctx.clone()`.
-    let app = router().with_state(ctx);
-    let res = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/health")
-                .body(Body::empty())?,
-        )
-        .await?;
-    assert_eq!(res.status(), 200);
+        // Path 2: axum handler через in-process oneshot. axum::Router с
+        // GET /api/v1/health смонтирован на `ctx.clone()`.
+        let app = router().with_state(ctx);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(res.status(), 200);
 
-    let body_bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024).await?;
-    let from_axum: HealthDto = serde_json::from_slice(&body_bytes)?;
+        let body_bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024).await?;
+        let from_axum: HealthDto = serde_json::from_slice(&body_bytes)?;
 
-    // Phase 1 success criterion #5 — единый DTO в двух транспортах.
-    assert_eq!(
-        from_tauri, from_axum,
-        "transport drift: tauri={from_tauri:?}, axum={from_axum:?}"
-    );
+        // Phase 1 success criterion #5 — единый DTO в двух транспортах.
+        assert_eq!(
+            from_tauri, from_axum,
+            "transport drift: tauri={from_tauri:?}, axum={from_axum:?}"
+        );
 
-    Ok(())
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("specta_roundtrip exceeded 30s budget — likely Linux-CI deadlock; see history of ci-fast hangs"))?
 }

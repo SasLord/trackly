@@ -55,26 +55,33 @@ mod tests {
         (ctx, dir)
     }
 
+    /// 30 s hard timeout — same rationale as `tests/specta_roundtrip.rs`.
+    /// Guards against the Linux-CI deadlock that previously stalled
+    /// `cargo test --workspace` for 30+ minutes.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn get_health_returns_200_and_health_dto() {
-        let (ctx, _guard) = minimal_ctx().await;
-        let app = router().with_state(ctx);
-        let res = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/v1/health")
-                    .body(Body::empty())
-                    .expect("build request"),
-            )
-            .await
-            .expect("oneshot");
-        assert_eq!(res.status(), 200);
-        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
-            .await
-            .expect("read body");
-        let dto: HealthDto = serde_json::from_slice(&bytes).expect("deserialize");
-        assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
-        assert!(dto.db_ready);
-        assert_eq!(dto.schema_version, 12);
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let (ctx, _guard) = minimal_ctx().await;
+            let app = router().with_state(ctx);
+            let res = app
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/v1/health")
+                        .body(Body::empty())
+                        .expect("build request"),
+                )
+                .await
+                .expect("oneshot");
+            assert_eq!(res.status(), 200);
+            let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+                .await
+                .expect("read body");
+            let dto: HealthDto = serde_json::from_slice(&bytes).expect("deserialize");
+            assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
+            assert!(dto.db_ready);
+            assert_eq!(dto.schema_version, 12);
+        })
+        .await
+        .expect("get_health exceeded 30 s budget — Linux-CI deadlock pattern");
     }
 }

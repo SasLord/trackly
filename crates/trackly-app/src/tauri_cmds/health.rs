@@ -71,12 +71,17 @@ mod tests {
         (ctx, dir)
     }
 
+    /// 30 s hard timeout — same rationale as `tests/specta_roundtrip.rs`.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn build_health_returns_expected_fields() {
-        let (ctx, _guard) = minimal_ctx().await;
-        let dto = build_health(&ctx).await;
-        assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
-        assert!(dto.db_ready);
-        assert_eq!(dto.schema_version, 12);
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let (ctx, _guard) = minimal_ctx().await;
+            let dto = build_health(&ctx).await;
+            assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
+            assert!(dto.db_ready);
+            assert_eq!(dto.schema_version, 12);
+        })
+        .await
+        .expect("build_health exceeded 30 s budget — Linux-CI deadlock pattern");
     }
 }
