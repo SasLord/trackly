@@ -32,10 +32,36 @@ const WRITE_OPERATIONS: &[&str] = &[
 
 /// Walk the ProcMon CSV and bail if any `trackly.exe` write lands outside
 /// the sandbox. Returns Ok(()) on a clean run.
+///
+/// **8.3 short-name caveat:** the sandbox is created under `%TEMP%` which
+/// `std::env::temp_dir()` may return in either 8.3 short form
+/// (`C:\Users\RUNNER~1\AppData\Local\Temp\...`) or long form
+/// (`C:\Users\runneradmin\AppData\Local\Temp\...`). ProcMon's CSV output
+/// uses Windows' canonical long form. A naive `starts_with(sandbox_path)`
+/// match therefore fails for legitimate writes (`RUNNER~1` ≠ `runneradmin`
+/// as strings), causing the fallthrough to mark them as `\AppData\Local\`
+/// leaks. We match on the unique sandbox UUID component
+/// (`trackly_procmon_<uuid>`) instead — that component is identical in both
+/// the 8.3 short form and the long form. This was the real cause of 34
+/// false-positive offenses in the first Windows CI run after merge.
 pub fn assert_no_forbidden_writes(csv_path: &Path, sandbox: &Path) -> Result<()> {
     let sandbox_norm = normalize(&sandbox.to_string_lossy());
     let temp_norm = std::env::var_os("TEMP")
         .map(|t| normalize(&t.to_string_lossy()))
+        .unwrap_or_default();
+    // Extract the `trackly_procmon_<uuid>` component as a path-form-invariant
+    // marker (see doc comment above). If the sandbox path doesn't contain
+    // such a component, fall back to empty (legacy behavior).
+    let sandbox_uuid_marker = sandbox
+        .components()
+        .find_map(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            if s.starts_with("trackly_procmon_") {
+                Some(normalize(&s))
+            } else {
+                None
+            }
+        })
         .unwrap_or_default();
 
     let mut rdr = csv::ReaderBuilder::new()
@@ -79,7 +105,14 @@ pub fn assert_no_forbidden_writes(csv_path: &Path, sandbox: &Path) -> Result<()>
         inspected += 1;
         let path_norm = normalize(path);
 
-        // Allow: writes inside the sandbox.
+        // Allow: writes inside the sandbox — path-form-invariant match on
+        // the unique `trackly_procmon_<uuid>` component (handles 8.3 vs
+        // long-name discrepancy between sandbox setup and ProcMon CSV).
+        if !sandbox_uuid_marker.is_empty() && path_norm.contains(&sandbox_uuid_marker) {
+            continue;
+        }
+        // Allow: writes inside the sandbox (full prefix match — fallback for
+        // cases where the path has been canonicalized identically).
         if !sandbox_norm.is_empty() && path_norm.starts_with(&sandbox_norm) {
             continue;
         }
@@ -178,5 +211,46 @@ mod tests {
             msg.contains("appdata"),
             "lowercase/slashes must still be caught: {msg}"
         );
+    }
+
+    #[test]
+    fn sandbox_under_appdata_temp_with_8_3_short_name_passes() {
+        // Regression test for the 34-false-positive bug seen on the first
+        // ci-full windows-latest run after merge: std::env::temp_dir() returns
+        // the 8.3 short form (`RUNNER~1`) but ProcMon CSV emits the long
+        // form (`runneradmin`). The string-prefix sandbox check fails, and
+        // legitimate writes inside the sandbox get flagged as `\AppData\Local\`
+        // leaks. The fix: match on the unique `trackly_procmon_<uuid>` marker.
+        let uuid = "a2c7ee6a-5ea8-4430-9b69-bc8ac524eeb7";
+        let sandbox_8_3 = format!(
+            "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\trackly_procmon_{uuid}\\Документы\\Учёт\\Trackly"
+        );
+        let path_long = format!(
+            "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\trackly_procmon_{uuid}\\Документы\\Учёт\\Trackly\\trackly.db"
+        );
+        let csv_body = format!(
+            "Time of Day,Process Name,PID,Operation,Path,Result,Detail\n\
+             10:00,trackly.exe,123,WriteFile,{path_long},SUCCESS,\n"
+        );
+        let csv = write_csv(&csv_body);
+        assert_no_forbidden_writes(csv.path(), Path::new(&sandbox_8_3))
+            .expect("8.3 / long-form sandbox mismatch must NOT flag legit sandbox write");
+    }
+
+    #[test]
+    fn real_appdata_leak_outside_sandbox_uuid_still_caught() {
+        // Verifies the UUID-marker fix doesn't open a hole: writes to a path
+        // that contains `\AppData\Local\` but has NO matching sandbox UUID
+        // must still be flagged.
+        let sandbox_uuid = "trackly_procmon_a2c7ee6a";
+        let sandbox = format!("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\{sandbox_uuid}");
+        let csv = write_csv(
+            "Time of Day,Process Name,PID,Operation,Path,Result,Detail\n\
+             10:00,trackly.exe,123,WriteFile,C:\\Users\\runneradmin\\AppData\\Local\\trackly\\evil.dat,SUCCESS,\n",
+        );
+        let err = assert_no_forbidden_writes(csv.path(), Path::new(&sandbox))
+            .expect_err("real APPDATA leak must still be caught");
+        let msg = format!("{err}");
+        assert!(msg.contains("evil.dat"), "msg must name offender: {msg}");
     }
 }
