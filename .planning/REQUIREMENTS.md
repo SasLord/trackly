@@ -20,7 +20,7 @@
 - [x] **FOUND-09**: На каждой пользовательской сущности (`device`, `cartridge`, `act`, `request`, `user`): колонки `created_at`, `updated_at`, `deleted_at` (soft delete), `version` (optimistic lock)
 - [x] **FOUND-10**: Таблица `audit_log` с записью всех мутаций (entity, entity_id, op, user_id, payload_json, created_at)
 - [x] **FOUND-11**: ProcMon/процесс-аудит тест в CI: после полного цикла приложения убедиться, что НЕТ записей в `%APPDATA%`, `%LOCALAPPDATA%`, `~/.config`, `~/Library/Application Support`
-- [ ] **FOUND-12**: `tauri-specta` v2 для генерации TypeScript-типов из Rust DTO; единые типы для Tauri-invoke и HTTP-транспорта
+- [x] **FOUND-12**: `tauri-specta` v2 для генерации TypeScript-типов из Rust DTO; единые типы для Tauri-invoke и HTTP-транспорта
 
 ### Devices (DEV)
 
