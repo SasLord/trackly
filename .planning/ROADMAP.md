@@ -10,7 +10,7 @@ Trackly — портативное приложение для учёта тех
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Фундамент** — Workspace, схема БД, миграции, портативность, single-writer pattern, аудит, CI с ProcMon-тестом
+- [x] **Phase 1: Фундамент** — Workspace, схема БД, миграции, портативность, single-writer pattern, аудит, CI с ProcMon-тестом (completed 2026-05-25)
 - [ ] **Phase 2: Устройства и базовый UI** — Полный CRUD устройств с автокомплитом, поиском, CSV-импортом/экспортом и навигационным каркасом приложения
 - [ ] **Phase 3: Акты приёма-передачи и первая PDF-печать** — Акты, возвраты с под-нумерацией, архив, krilla-PDF с кириллицей, шаблоны документа приёма
 - [ ] **Phase 4: Картриджи** — Модели и экземпляры картриджей, lifecycle, контекстные действия, баннер низкого остатка
@@ -32,7 +32,7 @@ Trackly — портативное приложение для учёта тех
   3. `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `pnpm svelte-check`, `pnpm lint` зелёные на каждый push в main и в PR; clippy-список `disallowed-methods` блокирует `dirs::*_dir()`, `app.path().app_data_dir()`, `chrono::Local::now()`.
   4. Открытие БД с `PRAGMA user_version`, большим текущего, завершается понятной ошибкой и НЕ повреждает файл (тест восстановления из бэкапа в CI).
   5. `tauri-specta v2` генерирует `bindings.ts` из общих DTO; один и тот же тип используется как для Tauri-invoke, так и для HTTP-транспорта (smoke-тест в `cargo test`).
-**Plans:** 4/6 plans executed
+**Plans:** 6/6 plans complete
 
 ### Phase 2: Устройства и базовый UI
 **Goal:** Поставить end-to-end вертикальный срез по разделу «Устройства» — CRUD, автокомплиты, поиск, CSV, плюс навигационный каркас приложения с темой и русскоязычным UI.
@@ -138,7 +138,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Фундамент | 4/6 | In Progress|  |
+| 1. Фундамент | 6/6 | Complete   | 2026-05-25 |
 | 2. Устройства и базовый UI | 0/TBD | Not started | - |
 | 3. Акты приёма-передачи и первая PDF-печать | 0/TBD | Not started | - |
 | 4. Картриджи | 0/TBD | Not started | - |

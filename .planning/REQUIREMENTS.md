@@ -170,7 +170,7 @@
 - [ ] **BLD-03**: Артефакты релиза включают checksums (SHA256) и подписи (по возможности)
 - [ ] **BLD-04**: Сборка portable варианта без updater, с включённым маркером `portable.txt`
 - [ ] **BLD-05**: Документация по запуску (README на русском) с инструкциями для каждой ОС
-- [ ] **BLD-06**: ProcMon тест из FOUND-11 интегрирован в CI matrix (Windows runner)
+- [x] **BLD-06**: ProcMon тест из FOUND-11 интегрирован в CI matrix (Windows runner)
 
 ## v2 Requirements
 
@@ -358,7 +358,7 @@
 | BLD-03 | Phase 8 | Pending |
 | BLD-04 | Phase 8 | Pending |
 | BLD-05 | Phase 8 | Pending |
-| BLD-06 | Phase 1 | Pending |
+| BLD-06 | Phase 1 | Complete |
 
 **Per-phase counts:**
 
