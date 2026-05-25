@@ -159,7 +159,7 @@ pub fn run_capture(
         .status()
         .context("export procmon PML to CSV")?;
     if !export_status.success() {
-        bail!("procmon /SaveAs failed: {:?}", export_status);
+        bail!("procmon /SaveAs failed: {export_status:?}");
     }
     if !csv.exists() {
         bail!("procmon CSV not produced at {}", csv.display());

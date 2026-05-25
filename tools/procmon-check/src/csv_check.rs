@@ -72,7 +72,7 @@ pub fn assert_no_forbidden_writes(csv_path: &Path, sandbox: &Path) -> Result<()>
             continue;
         }
         let op = rec.get(op_col).unwrap_or("");
-        if !WRITE_OPERATIONS.iter().any(|w| op == *w) {
+        if !WRITE_OPERATIONS.contains(&op) {
             continue;
         }
         let path = rec.get(path_col).unwrap_or("");

@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("usage: procmon-check <path-to-trackly.exe>"))?,
     );
     if !trackly_exe.exists() {
-        anyhow::bail!("trackly.exe not found at {:?}", trackly_exe);
+        anyhow::bail!("trackly.exe not found at {trackly_exe:?}");
     }
 
     // Step 1: cyrillic sandbox at %TEMP%\trackly_procmon_<uuid>\Документы\Учёт\Trackly\
