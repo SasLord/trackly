@@ -161,21 +161,37 @@ completed: "2026-05-26"
 - **Verification:** `pnpm svelte-check` 0 errors, `pnpm lint` clean
 - **Committed in:** f1de8b1 (Task 3 commit)
 
+**3. [Post-checkpoint Fix] Removed DEVICE_TYPES, hardcoded type_id=1, added type_id filter**
+- **Found during:** Task 4 human-verify checkpoint
+- **Issue:** 9-entry `DEVICE_TYPES` JS array used ids 1–9, but V001 migration only seeds type_id 1 and 2. Selecting any type with id ∉ {1,2} triggered `FOREIGN KEY constraint failed` on device create. Also: "Тип" was misidentified as a user-facing field; per design, type_id is an internal entity-class discriminator set by the UI section.
+- **Fix:**
+  - Removed `DEVICE_TYPES` constant and the "Тип" `<Select>` block from `DeviceFormModal.svelte`
+  - Hardcoded `type_id: 1` in create payload (V001 seed "Устройство")
+  - Set `type_id: null` in edit/patch payload (type never changes on edit)
+  - Removed `typeId` state variable and `typeId !== ''` from `canSubmit` guard
+  - Set `type_id: 1` in the default filter in `DevicesPage.svelte` (/devices shows only Устройства)
+  - Added integration test `list_with_type_id_filter` covering filter isolation between type=1 and type=2
+  - Updated ROADMAP Phase 2 success criterion #1 (removed "Тип" from required fields)
+- **Files modified:** DeviceFormModal.svelte, DevicesPage.svelte, devices_crud.rs, ROADMAP.md, 02-03-SUMMARY.md
+- **Verification:** cargo test 10/10 green, pnpm svelte-check 0/0, pnpm build green
+
 ---
 
-**Total deviations:** 2 auto-fixed (2 bugs)
-**Impact on plan:** Both fixes required for TypeScript compilation. No scope creep.
+**Total deviations:** 3 (2 auto-fixed bugs + 1 post-checkpoint design correction)
+**Impact on plan:** All required for correctness. No scope creep.
 
 ## Known Stubs
 
 | Stub | File | Reason |
 |------|------|--------|
-| Hardcoded DEVICE_TYPES array (9 entries) | DeviceFormModal.svelte | Plan 04 wires Tauri lookup command for device types from DB |
 | Hardcoded STATUSES array (4 entries) | DeviceFormModal.svelte | Plan 04 wires status lookup |
 | Hardcoded TYPE_LABELS / STATUS_LABELS maps | DeviceListRow.svelte | Plan 04 lookups replace |
 | location field as freetext Input (not location_id FK) | DeviceFormModal.svelte | Plan 04 provides location autocomplete; location_id=null sent to backend |
 
-These stubs render correctly in the UI (form works, list shows labels) but use hardcoded data instead of DB-driven lookups. Users can create devices with the correct status and type via dropdown, but adding new types/statuses requires a Plan 04 update.
+Note: The original 9-entry `DEVICE_TYPES` list was removed in post-checkpoint fix (see Deviations below).
+"Тип" is NOT a user-facing field — it is an internal entity-class discriminator. The /devices section
+always uses type_id=1 ("Устройство"), hardcoded at create time. The /printers section (Phase 6)
+will hardcode type_id=2 ("Принтер"). The list endpoint filters by type_id=1 for /devices.
 
 ## Issues Encountered
 
