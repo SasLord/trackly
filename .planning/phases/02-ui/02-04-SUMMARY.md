@@ -210,3 +210,81 @@ No new threat surface introduced. All new endpoints follow the same AppCtx injec
 - ae3e384 exists: `pnpm build` clean (0 errors, 1 benign Svelte warning for state_referenced_locally)
 - 8 bulk_create tests pass: `cargo test -p trackly-app --test devices_bulk_create` → 8/8 ok
 - `pnpm svelte-check` → 0 errors, 1 warning (DeviceFilters localSearch initial-capture — benign)
+
+---
+
+## Post-checkpoint Fixes (2026-05-26)
+
+Five defects found during manual smoke were applied as atomic commits after the initial checkpoint.
+
+### Fix 1 — Autocomplete принимает ctx_status_id + Расположение с context (commit 32dc75c)
+
+**Дефект:** Поле `Расположение` не фильтровало подсказки по выбранному Статусу.
+
+**Изменения backend:**
+- `DeviceRepository::autocomplete()` получил новый параметр `ctx_status_id: Option<i64>`
+- SQL WHERE динамически добавляет `AND status_id = ?` когда ctx_status_id задан
+- `ctx_name` и `ctx_status_id` комбинируются через AND — оба могут быть активны одновременно
+- `DeviceService::autocomplete()`, `build_devices_autocomplete()`, HTTP `AutocompletePayload` прокидывают новый параметр
+- Tauri command принимает `Option<i32>` (Specta запрещает i64 в публичных командах — `BigIntForbidden`), конвертирует в i64 внутри
+
+**Изменения frontend:**
+- `DeviceAutocompleteField.svelte`: добавлен prop `contextStatusId?: number | null`; $effect перезапускается при его изменении
+- Заголовок дропдауна: если оба контекста заданы → «Ранее использовалось с «{name}» в статусе #{id}:»; если только status → «Ранее использовалось в статусе #{id}:»
+- `ui/src/lib/api/devices.ts`: `autocomplete()` принимает `ctxStatusId?: number | null`
+- `DeviceFormModal.svelte`: поле Расположение → `contextStatusId={parseInt(statusId, 10) || null}`
+
+**Новые тесты:**
+- `autocomplete_location_filtered_by_status`: status_id=1 → только «Склад A», status_id=2 → только «Офис 305», без фильтра → оба
+- `autocomplete_location_combines_with_name`: ctx_name AND ctx_status_id → AND-семантика
+
+**Все 9 тестов autocomplete зелёные.**
+
+### Fix 2 — Порядок полей формы (коммит включён в 32dc75c)
+
+**Дефект:** Статус шёл после Расположения — contextStatusId не был активен когда пользователь добирался до Расположения.
+
+**Новый порядок:** Наименование → Статус → Расположение → Модель → Инв.№ → Серийный № → Состояние → Комплектация → Технические характеристики → Количество
+
+**Файл:** `ui/src/features/devices/DeviceFormModal.svelte`
+
+### Fix 3 — Группировка по Наименованию (включает устройства с inv/serial) (commit d88e8d8)
+
+**Дефект:** `list_grouped` фильтровал устройства с `inventory_number` или `serial_number` — они исчезали из grouped view.
+
+**Изменение:** Удалён WHERE-фильтр `AND (inventory_number IS NULL OR inventory_number = '') AND (serial_number IS NULL OR serial_number = '')` из SQL запроса `list_grouped`. Группировочный ключ не изменился.
+
+**Тесты:**
+- `grouping_keeps_unique_separate` заменён на `grouping_groups_devices_with_same_name_even_if_inventory_set` — 3 устройства «Ноутбук Lenovo X1» с разными inventory_no → 1 группа count=3
+- Добавлен `grouping_singleton_included` — одиночное устройство с inventory_no → группа count=1
+
+**Все 8 тестов groups зелёные.**
+
+### Fix 4 — Grouped view показывает синглтоны (commit 9c5a86f)
+
+**Дефект:** В grouped режиме `DeviceList.svelte` рендерил только `DeviceGroupRow` — устройства с count=1 пропадали из вида.
+
+**Изменение:** Логика рендеринга:
+- `group.count > 1` → `DeviceGroupRow` (chevron + count badge)
+- `group.count == 1` → `DeviceListRow` (обычная строка, без chevron, без «1 шт.»)
+
+**Файл:** `ui/src/features/devices/DeviceList.svelte`
+
+### Fix 5 — Визуальные фиксы DeviceGroupRow (commit a5f2e9e)
+
+**Дефекты:** top-aligned ячейки, truncation имени, пустые колонки Инв.№ / Серийный / Модель.
+
+**Изменения:**
+- Базовый `.cell` сохранил `vertical-align: middle` (уже был в исходном коде), убраны конкурирующие стили `.cell-expand` с `display: flex` (который нарушал вертикальное выравнивание как `<td>`)
+- `<td colspan="4">` объединяет Наименование + Инв.№ + Серийный + Модель; chevron и текст имени внутри этой ячейки
+- Убраны `text-overflow: ellipsis`, `max-width: 0`, `overflow: hidden` — truncation устранён
+- Count badge перенесён в колонку Действий (ячейки: colspan=4 + Расположение + Статус + Действия = 7, сходится с thead)
+
+**Файл:** `ui/src/features/devices/DeviceGroupRow.svelte`
+
+### Итоговая верификация post-checkpoint
+
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты прошли (9 autocomplete + 8 grouping + все остальные)
+- `pnpm svelte-check --threshold error` — 0 ошибок
+- `pnpm build` — зелёный (0 ошибок, 1 существующее предупреждение state_referenced_locally в DeviceFilters)
