@@ -173,9 +173,16 @@ pub async fn devices_autocomplete(
     field: String,
     prefix: String,
     ctx_name: Option<String>,
-    ctx_status_id: Option<i64>,
+    ctx_status_id: Option<i32>,
 ) -> Result<Vec<String>, AppError> {
-    build_devices_autocomplete(state.inner(), field, prefix, ctx_name, ctx_status_id).await
+    build_devices_autocomplete(
+        state.inner(),
+        field,
+        prefix,
+        ctx_name,
+        ctx_status_id.map(|id| id as i64),
+    )
+    .await
 }
 
 #[tauri::command]

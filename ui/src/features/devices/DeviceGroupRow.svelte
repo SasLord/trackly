@@ -71,7 +71,9 @@
 </script>
 
 <tr class="group-row" onclick={toggleExpand}>
-  <td class="cell cell-expand">
+  <!-- colspan="4" merges Наименование + Инв.№ + Серийный № + Модель columns.
+       Chevron is inline, followed by the group name — no truncation needed. -->
+  <td class="cell cell-name-wide" colspan="4">
     <button
       type="button"
       class="chevron-btn"
@@ -85,17 +87,14 @@
     </button>
     {group.repr.name}
   </td>
-  <td class="cell cell-numeric">—</td>
-  <!-- Серийный № column shows count badge -->
-  <td class="cell cell-numeric group-count">
-    <span class="count-pill">{group.count} шт.</span>
-  </td>
-  <td class="cell">{group.repr.model ?? '—'}</td>
   <td class="cell">{group.repr.location_id ?? '—'}</td>
   <td class="cell cell-status">
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>
-  <td class="cell cell-actions"></td>
+  <!-- Actions column: count badge for multi-device groups -->
+  <td class="cell cell-actions cell-count">
+    <span class="count-pill">{group.count} шт.</span>
+  </td>
 </tr>
 
 {#if expanded}
@@ -127,23 +126,13 @@
     color: var(--color-text-primary);
     vertical-align: middle;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  // Name cell spans Наименование + Инв.№ + Серийный + Модель — no truncation.
+  // Using flex inside the td via a wrapper pattern: chevron + name text inline.
+  .cell-name-wide {
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 0;
-  }
-
-  .cell-expand {
-    width: 25%;
-    max-width: 200px;
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-  }
-
-  .cell-numeric {
-    width: 140px;
-    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-medium);
   }
 
   .cell-status {
@@ -152,6 +141,12 @@
 
   .cell-actions {
     width: 40px;
+    text-align: center;
+    overflow: visible;
+  }
+
+  .cell-count {
+    white-space: nowrap;
   }
 
   .chevron-btn {
