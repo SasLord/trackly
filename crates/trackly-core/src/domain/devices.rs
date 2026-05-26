@@ -10,6 +10,8 @@
 //! NO serde::Serialize/Deserialize or specta::Type derives here — those live
 //! in the DTO layer in trackly-app. Only `#[derive(Debug, Clone, PartialEq, Eq)]`.
 
+use crate::error::AppError;
+
 /// Data needed to create a new device record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceNew {
@@ -98,4 +100,62 @@ pub struct DeviceGroupRow {
     pub ids: Vec<i64>,
     /// Total count in this group.
     pub count: i64,
+}
+
+/// Whitelisted fields for autocomplete queries (D-AutocompleteEndpoint-01, T-02-04-02).
+///
+/// This enum prevents SQL injection through the `field` parameter — only
+/// columns in this list are permitted; the SQL column name is derived from
+/// the enum value, never from user input directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutocompleteField {
+    /// `name` column
+    Name,
+    /// `model` column
+    Model,
+    /// `notes` column (specs in DTO)
+    Specs,
+    /// `complectation` column (kit in DTO)
+    Kit,
+    /// `condition` column (state in DTO)
+    State,
+    /// Autocomplete returns distinct `location_id` values (Phase 2: numeric IDs).
+    /// Phase 7 will add a JOIN to return location names instead.
+    Location,
+}
+
+impl AutocompleteField {
+    /// Parse from a user-supplied string. Returns `AppError::Validation` for unknown values.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Result<Self, AppError> {
+        match s {
+            "name" => Ok(Self::Name),
+            "model" => Ok(Self::Model),
+            "specs" => Ok(Self::Specs),
+            "kit" => Ok(Self::Kit),
+            "state" => Ok(Self::State),
+            "location" => Ok(Self::Location),
+            other => Err(AppError::Validation {
+                field: "field".to_string(),
+                message: format!(
+                    "Неподдерживаемое поле автодополнения: «{other}». \
+                     Поддерживаемые поля: name, model, specs, kit, state, location."
+                ),
+            }),
+        }
+    }
+
+    /// Returns the SQL column name corresponding to this field.
+    ///
+    /// Column names come **only** from this match — user input is never interpolated.
+    pub fn sql_column(self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::Model => "model",
+            Self::Specs => "notes",
+            Self::Kit => "complectation",
+            Self::State => "condition",
+            Self::Location => "location_id",
+        }
+    }
 }

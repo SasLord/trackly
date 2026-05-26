@@ -8,7 +8,7 @@
 //! Implementations land in Plan 03 (CRUD) and Plan 04 (search/autocomplete/grouping).
 
 use crate::domain::devices::{
-    DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
+    AutocompleteField, DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
 };
 use crate::error::AppError;
 
@@ -58,20 +58,21 @@ pub trait DeviceRepository {
         now_utc: i64,
     ) -> Result<(), AppError>;
 
-    /// Full-text search using FTS5. Returns matching device rows.
+    /// Full-text search using FTS5. Returns (matching rows, total count).
     fn search_fts(
         &self,
         conn: &Self::Conn,
         fts_query: &str,
         page: &Pagination,
-    ) -> Result<Vec<DeviceRow>, AppError>;
+    ) -> Result<(Vec<DeviceRow>, u64), AppError>;
 
     /// Per-field autocomplete: DISTINCT values of `field` matching `prefix`.
     /// `ctx_name`: if provided, restricts to devices with that `name` (D-AutocompleteEndpoint-01).
+    /// `field` is a whitelisted enum — prevents SQL injection (T-02-04-02).
     fn autocomplete(
         &self,
         conn: &Self::Conn,
-        field: &str,
+        field: AutocompleteField,
         prefix: &str,
         ctx_name: Option<&str>,
     ) -> Result<Vec<String>, AppError>;
@@ -83,4 +84,11 @@ pub trait DeviceRepository {
         filter: &DeviceFilter,
         page: &Pagination,
     ) -> Result<Vec<DeviceGroupRow>, AppError>;
+
+    /// Count active (non-deleted) devices per status_id.
+    /// Returns Vec<(status_id, count)>.
+    fn count_by_status(&self, conn: &Self::Conn) -> Result<Vec<(i64, u64)>, AppError>;
+
+    /// Fetch multiple devices by ID list (DEV-11 expand). Cap: 1000 IDs.
+    fn list_by_ids(&self, conn: &Self::Conn, ids: &[i64]) -> Result<Vec<DeviceRow>, AppError>;
 }

@@ -14,7 +14,7 @@
 
 use rusqlite::{Connection, OptionalExtension};
 use trackly_core::domain::devices::{
-    DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
+    AutocompleteField, DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::devices::DeviceRepository;
@@ -58,6 +58,24 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
 /// Нормализует пустые строки в NULL (Pitfall #12: пустая строка ≠ отсутствие).
 fn normalize_str(s: Option<&str>) -> Option<&str> {
     s.and_then(|v| if v.trim().is_empty() { None } else { Some(v) })
+}
+
+/// Sanitize user input for FTS5 MATCH queries (T-02-04-01).
+///
+/// - Splits on whitespace
+/// - Escapes internal `"` as `""`
+/// - Strips null bytes
+/// - Wraps each token in double-quotes and appends `*` for prefix search
+///
+/// Example: `"AND OR"` → `"\"AND\"*" "\"OR\"*"` (FTS5 treats quoted tokens as literals)
+fn build_fts_query(user_input: &str) -> String {
+    user_input
+        .split_whitespace()
+        .map(|t| t.replace('\0', "").replace('"', "\"\""))
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{t}\"*"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Вспомогательные методы для использования внутри rusqlite-транзакций.
@@ -435,29 +453,277 @@ impl DeviceRepository for SqliteDeviceRepository {
 
     fn search_fts(
         &self,
-        _conn: &Self::Conn,
-        _fts_query: &str,
-        _page: &Pagination,
-    ) -> Result<Vec<DeviceRow>, AppError> {
-        todo!("Plan 04: search/autocomplete/grouping implementation")
+        conn: &Self::Conn,
+        fts_query: &str,
+        page: &Pagination,
+    ) -> Result<(Vec<DeviceRow>, u64), AppError> {
+        // Build sanitized FTS5 MATCH query (T-02-04-01).
+        let match_expr = build_fts_query(fts_query);
+
+        // Empty query after sanitization → return empty result set.
+        if match_expr.is_empty() {
+            return Ok((Vec::new(), 0));
+        }
+
+        let limit = page.limit.min(200) as i64;
+        let offset = page.offset as i64;
+
+        // Total count for pagination UI.
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM devices d
+                 JOIN devices_fts ON d.id = devices_fts.rowid
+                 WHERE devices_fts MATCH ?1
+                   AND d.deleted_at_utc IS NULL",
+                rusqlite::params![match_expr],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number,
+                        d.model, d.condition, d.complectation, d.location_id, d.status_id,
+                        d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc
+                 FROM devices d
+                 JOIN devices_fts ON d.id = devices_fts.rowid
+                 WHERE devices_fts MATCH ?1
+                   AND d.deleted_at_utc IS NULL
+                 ORDER BY rank
+                 LIMIT {limit} OFFSET {offset}"
+            ))
+            .map_err(map_rusqlite)?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![match_expr], from_row)
+            .map_err(map_rusqlite)?;
+
+        let mut devices = Vec::new();
+        for row in rows {
+            devices.push(row.map_err(map_rusqlite)?);
+        }
+
+        Ok((devices, total as u64))
     }
 
     fn autocomplete(
         &self,
-        _conn: &Self::Conn,
-        _field: &str,
-        _prefix: &str,
-        _ctx_name: Option<&str>,
+        conn: &Self::Conn,
+        field: AutocompleteField,
+        prefix: &str,
+        ctx_name: Option<&str>,
     ) -> Result<Vec<String>, AppError> {
-        todo!("Plan 04: search/autocomplete/grouping implementation")
+        // Column name comes ONLY from the whitelisted enum — never from user input (T-02-04-02).
+        let col = field.sql_column();
+
+        let like_pattern = format!("{prefix}%");
+
+        let sql = if let Some(_ctx) = ctx_name {
+            // Contextual: restrict to devices with matching name (DEV-09).
+            format!(
+                "SELECT DISTINCT {col} FROM devices
+                 WHERE deleted_at_utc IS NULL
+                   AND {col} IS NOT NULL
+                   AND {col} != ''
+                   AND {col} LIKE ?1
+                   AND name = ?2
+                 ORDER BY {col}
+                 LIMIT 30"
+            )
+        } else {
+            format!(
+                "SELECT DISTINCT {col} FROM devices
+                 WHERE deleted_at_utc IS NULL
+                   AND {col} IS NOT NULL
+                   AND {col} != ''
+                   AND {col} LIKE ?1
+                 ORDER BY {col}
+                 LIMIT 30"
+            )
+        };
+
+        let mut results = Vec::new();
+
+        if let Some(ctx) = ctx_name {
+            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(rusqlite::params![like_pattern, ctx], |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                results.push(row.map_err(map_rusqlite)?);
+            }
+        } else {
+            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(rusqlite::params![like_pattern], |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                results.push(row.map_err(map_rusqlite)?);
+            }
+        }
+
+        Ok(results)
     }
 
     fn list_grouped(
         &self,
-        _conn: &Self::Conn,
-        _filter: &DeviceFilter,
-        _page: &Pagination,
+        conn: &Self::Conn,
+        filter: &DeviceFilter,
+        page: &Pagination,
     ) -> Result<Vec<DeviceGroupRow>, AppError> {
-        todo!("Plan 04: search/autocomplete/grouping implementation")
+        let status_id = filter.status_id;
+        let limit = page.limit.min(200) as i64;
+        let offset = page.offset as i64;
+
+        // Group non-unique devices (those without inventory_number AND serial_number).
+        // Pitfall #12: empty string treated same as NULL (Pitfall #12).
+        // The WHERE clause normalizes both NULL and '' as absent.
+        //
+        // Representative row: MIN(id) for deterministic ordering.
+        // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                   MIN(id)                     AS repr_id,
+                   COUNT(*)                    AS cnt,
+                   GROUP_CONCAT(id)            AS id_list,
+                   type_id, name, model, notes, complectation, condition, location_id, status_id,
+                   version, created_at_utc, updated_at_utc
+                 FROM devices
+                 WHERE deleted_at_utc IS NULL
+                   AND (inventory_number IS NULL OR inventory_number = '')
+                   AND (serial_number   IS NULL OR serial_number   = '')
+                   AND (?1 IS NULL OR status_id = ?1)
+                 GROUP BY type_id, name, model, notes, complectation, condition, location_id, status_id
+                 ORDER BY name
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(map_rusqlite)?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![status_id, limit, offset], |row| {
+                let repr_id: i64 = row.get(0)?;
+                let count: i64 = row.get(1)?;
+                let id_list: String = row.get(2)?;
+                let type_id: i64 = row.get(3)?;
+                let name: String = row.get(4)?;
+                let model: Option<String> = row.get(5)?;
+                let specs: Option<String> = row.get(6)?;    // notes
+                let kit: Option<String> = row.get(7)?;       // complectation
+                let state: Option<String> = row.get(8)?;     // condition
+                let location_id: Option<i64> = row.get(9)?;
+                let status_id: i64 = row.get(10)?;
+                let version: i64 = row.get(11)?;
+                let created_at_utc: i64 = row.get(12)?;
+                let updated_at_utc: i64 = row.get(13)?;
+
+                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc))
+            })
+            .map_err(map_rusqlite)?;
+
+        let mut groups = Vec::new();
+        for row_result in rows {
+            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc) =
+                row_result.map_err(map_rusqlite)?;
+
+            // Parse GROUP_CONCAT result (T-02-04-06: parse failure → AppError::Internal).
+            let ids: Result<Vec<i64>, _> = id_list
+                .split(',')
+                .map(|s| s.trim().parse::<i64>())
+                .collect();
+            let ids = ids.map_err(|_e| AppError::Internal {
+                source_chain: format!("GROUP_CONCAT parsing failed for group id_list: {id_list}"),
+            })?;
+
+            let repr = DeviceRow {
+                id: repr_id,
+                type_id,
+                name,
+                inventory_no: None,
+                serial_no: None,
+                model,
+                specs,
+                kit,
+                state,
+                location_id,
+                status_id,
+                version,
+                created_at_utc,
+                updated_at_utc,
+                deleted_at_utc: None,
+            };
+
+            groups.push(DeviceGroupRow { repr, ids, count });
+        }
+
+        Ok(groups)
+    }
+
+    fn count_by_status(&self, conn: &Self::Conn) -> Result<Vec<(i64, u64)>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT status_id, COUNT(*) AS cnt
+                 FROM devices
+                 WHERE deleted_at_utc IS NULL
+                 GROUP BY status_id",
+            )
+            .map_err(map_rusqlite)?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let status_id: i64 = row.get(0)?;
+                let count: i64 = row.get(1)?;
+                Ok((status_id, count))
+            })
+            .map_err(map_rusqlite)?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            let (status_id, count) = row.map_err(map_rusqlite)?;
+            result.push((status_id, count as u64));
+        }
+
+        Ok(result)
+    }
+
+    fn list_by_ids(&self, conn: &Self::Conn, ids: &[i64]) -> Result<Vec<DeviceRow>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        if ids.len() > 1000 {
+            return Err(AppError::Validation {
+                field: "ids".to_string(),
+                message: "Нельзя запросить более 1000 устройств за один раз".to_string(),
+            });
+        }
+
+        // Build parameterized IN clause (safe for bounded ids.len()).
+        let placeholders = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let sql = format!(
+            "{SELECT_DEVICES} WHERE id IN ({placeholders}) AND deleted_at_utc IS NULL ORDER BY id"
+        );
+
+        let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+
+        // Build params dynamically.
+        use rusqlite::types::ToSql;
+        let params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+
+        let rows = stmt
+            .query_map(params.as_slice(), from_row)
+            .map_err(map_rusqlite)?;
+
+        let mut devices = Vec::new();
+        for row in rows {
+            devices.push(row.map_err(map_rusqlite)?);
+        }
+
+        Ok(devices)
     }
 }

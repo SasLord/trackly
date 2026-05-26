@@ -1,0 +1,254 @@
+//! Интеграционные тесты группировки не-уникальных устройств (Plan 04, Task 1).
+//!
+//! Тесты покрывают:
+//! - Сжатие одинаковых устройств в группу с count
+//! - Уникальные устройства (с inventory/serial) НЕ попадают в группированный список
+//! - empty-string нормализация (Pitfall #12)
+//! - Фильтр по статусу внутри групп
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use trackly_app::dto::device::{DeviceFilter, DeviceNew, Pagination};
+use trackly_app::services::DeviceService;
+use trackly_core::primitives::clock::Clock;
+use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::test_support::test_writer_and_readers;
+
+fn make_service() -> (DeviceService, tempfile::TempDir) {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let svc = DeviceService::new(writer, readers, clock);
+    (svc, dir)
+}
+
+fn non_unique_device(name: &str, status_id: i64) -> DeviceNew {
+    DeviceNew {
+        type_id: 1,
+        name: name.to_string(),
+        inventory_no: None, // no unique identifiers
+        serial_no: None,
+        model: Some("Model X".to_string()),
+        specs: None,
+        kit: None,
+        state: None,
+        location_id: None,
+        status_id,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// grouping_collapses_non_unique
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_collapses_non_unique() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Create 5 identical devices without inventory_no/serial_no.
+        for _ in 0..5 {
+            svc.create(non_unique_device("Бумага A4", 1))
+                .await
+                .expect("create");
+        }
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 1, "5 одинаковых устройств должны схлопнуться в 1 группу");
+        assert_eq!(groups[0].count, 5, "count должен быть 5");
+        assert_eq!(groups[0].ids.len(), 5, "ids должен содержать 5 элементов");
+    })
+    .await
+    .expect("grouping_collapses_non_unique exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_keeps_unique_separate (unique devices not included in grouped list)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_keeps_unique_separate() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // 3 devices with unique inventory_no — these are NOT included in list_grouped.
+        for i in 1..=3i32 {
+            let mut new = non_unique_device("Ноутбук", 1);
+            new.inventory_no = Some(format!("INV-{i:03}"));
+            svc.create(new).await.expect("create unique");
+        }
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        // Devices with inventory_no are NOT in the grouped list (unique devices belong to flat list).
+        assert_eq!(
+            groups.len(),
+            0,
+            "устройства с inventory_no не должны попадать в группированный список, получили {} групп",
+            groups.len()
+        );
+    })
+    .await
+    .expect("grouping_keeps_unique_separate exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_handles_empty_string_as_null (Pitfall #12)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_handles_empty_string_as_null() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Device with inventory_no = "" (empty string).
+        // Backend normalizes empty → NULL on INSERT, so it should appear in grouped list.
+        let mut new = non_unique_device("Карандаш", 1);
+        new.inventory_no = Some("".to_string()); // empty string — normalized to NULL
+        svc.create(new).await.expect("create with empty inventory_no");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "устройство с пустым inventory_no должно попадать в группу (Pitfall #12)"
+        );
+    })
+    .await
+    .expect("grouping_handles_empty_string_as_null exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_with_status_filter
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_with_status_filter() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Create 3 devices with status=1 (На складе).
+        for _ in 0..3 {
+            svc.create(non_unique_device("Флешка 16GB", 1))
+                .await
+                .expect("create status=1");
+        }
+        // Create 2 devices with status=2 (В работе).
+        for _ in 0..2 {
+            svc.create(non_unique_device("Флешка 16GB", 2))
+                .await
+                .expect("create status=2");
+        }
+
+        // Filter by status_id=2 — only 2 devices with status В работе.
+        let filter = DeviceFilter {
+            status_id: Some(2),
+            ..Default::default()
+        };
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped with status");
+
+        assert_eq!(groups.len(), 1, "должна быть 1 группа с status=2");
+        assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
+    })
+    .await
+    .expect("grouping_with_status_filter exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// status_counts_returns_correct_counts
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn status_counts_returns_correct_counts() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Create 3 devices with status=1, 2 with status=2.
+        for _ in 0..3 {
+            svc.create(non_unique_device("Тест", 1)).await.expect("create status=1");
+        }
+        for _ in 0..2 {
+            svc.create(non_unique_device("Тест", 2)).await.expect("create status=2");
+        }
+
+        let counts = svc.status_counts().await.expect("status_counts");
+        let map: std::collections::HashMap<i64, u64> =
+            counts.iter().map(|sc| (sc.status_id, sc.count)).collect();
+
+        assert_eq!(map.get(&1), Some(&3), "status_id=1 должен иметь count=3");
+        assert_eq!(map.get(&2), Some(&2), "status_id=2 должен иметь count=2");
+    })
+    .await
+    .expect("status_counts_returns_correct_counts exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// list_by_ids_returns_correct_devices
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_by_ids_returns_correct_devices() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let d1 = svc.create(non_unique_device("Устройство 1", 1)).await.expect("create 1");
+        let d2 = svc.create(non_unique_device("Устройство 2", 1)).await.expect("create 2");
+        let d3 = svc.create(non_unique_device("Устройство 3", 1)).await.expect("create 3");
+
+        let ids = vec![d1.id, d3.id]; // skip d2
+        let result = svc.list_by_ids(ids).await.expect("list_by_ids");
+
+        assert_eq!(result.len(), 2, "должно вернуть 2 устройства");
+        let names: Vec<&str> = result.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"Устройство 1"));
+        assert!(names.contains(&"Устройство 3"));
+        assert!(!names.contains(&"Устройство 2"));
+
+        let _ = d2; // suppress unused warning
+    })
+    .await
+    .expect("list_by_ids_returns_correct_devices exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_multiple_distinct_groups
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_multiple_distinct_groups() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // 3 devices named "Флешка 8GB".
+        for _ in 0..3 {
+            svc.create(non_unique_device("Флешка 8GB", 1)).await.expect("create");
+        }
+        // 2 devices named "Флешка 16GB".
+        for _ in 0..2 {
+            svc.create(non_unique_device("Флешка 16GB", 1)).await.expect("create");
+        }
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 2, "должно быть 2 группы (8GB и 16GB)");
+        let counts: std::collections::HashMap<&str, u64> = groups
+            .iter()
+            .map(|g| (g.repr.name.as_str(), g.count))
+            .collect();
+        assert_eq!(counts.get("Флешка 8GB"), Some(&3));
+        assert_eq!(counts.get("Флешка 16GB"), Some(&2));
+    })
+    .await
+    .expect("grouping_multiple_distinct_groups exceeded 30s");
+}

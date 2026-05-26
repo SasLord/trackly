@@ -214,6 +214,28 @@ pub struct DeviceListResponse {
     pub total: u64,
 }
 
+/// Группа одинаковых устройств (DEV-11 / D-Group-01).
+///
+/// Только для не-уникальных устройств (без inventory_number и serial_number).
+/// `repr` — представительная строка группы (с MIN(id)).
+/// `ids` — все ID в группе (для expand через `devices_list_by_ids`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceGroup {
+    pub repr: DeviceDto,
+    #[specta(type = u32)]
+    pub count: u64,
+    pub ids: Vec<i32>,
+}
+
+/// Счётчик устройств по статусу.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct StatusCount {
+    #[specta(type = i32)]
+    pub status_id: i64,
+    #[specta(type = u32)]
+    pub count: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
