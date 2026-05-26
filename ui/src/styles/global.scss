@@ -1,0 +1,97 @@
+// Global reset + base styles for Trackly UI.
+// Imported from main.ts before mount().
+
+// ── Box-sizing reset ──────────────────────────────────────────────────────────
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+// ── Base ──────────────────────────────────────────────────────────────────────
+
+html {
+  height: 100%;
+  // color-scheme is set per theme via CSS custom properties in _tokens.scss.
+  // We declare both here so UA defaults inherit correctly before JS runs.
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// ── Focus ring ───────────────────────────────────────────────────────────────
+
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-accent-focus);
+}
+
+// ── Reduced motion ────────────────────────────────────────────────────────────
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// ── Skip link (accessibility) ─────────────────────────────────────────────────
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 9999;
+
+  &:focus {
+    left: 0;
+    top: 0;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    padding: var(--space-md);
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-medium);
+    text-decoration: none;
+  }
+}
+
+// ── Scrollbar (Webkit) ────────────────────────────────────────────────────────
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+
+  &:hover {
+    background: var(--color-text-muted);
+  }
+}
