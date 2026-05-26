@@ -13,7 +13,8 @@
     "prebuild": "cargo test -p trackly-app --test export_bindings",
     "preview": "vite preview",
     "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "eslint . --ext .ts,.svelte && prettier --check ."
+    "lint": "eslint . --ext .ts,.svelte && prettier --check .",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
@@ -22,6 +23,7 @@
     "svelte-spa-router": "^5.1.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.0",
     "@eslint/js": "^10.0.1",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
