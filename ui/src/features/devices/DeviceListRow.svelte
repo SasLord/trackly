@@ -30,25 +30,11 @@
     4: 'destructive',
   };
 
-  const TYPE_LABELS: Record<number, string> = {
-    1: 'Компьютер',
-    2: 'Ноутбук',
-    3: 'Монитор',
-    4: 'Принтер',
-    5: 'МФУ',
-    6: 'Сервер',
-    7: 'Сеть',
-    8: 'Периферия',
-    9: 'Прочее',
-  };
-
   const statusLabel = $derived(STATUS_LABELS[device.status_id] ?? `Статус ${device.status_id}`);
   const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
-  const typeLabel = $derived(TYPE_LABELS[device.type_id] ?? `Тип ${device.type_id}`);
 </script>
 
 <tr class="device-row">
-  <td class="cell cell-type">{typeLabel}</td>
   <td class="cell cell-name">{device.name}</td>
   <td class="cell cell-numeric">{device.inventory_no ?? '—'}</td>
   <td class="cell cell-numeric">{device.serial_no ?? '—'}</td>
@@ -81,10 +67,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 0; // makes text-overflow work in table cells
-  }
-
-  .cell-type {
-    width: 100px;
   }
 
   .cell-name {

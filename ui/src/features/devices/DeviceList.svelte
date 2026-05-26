@@ -19,7 +19,6 @@
     <table class="device-table">
       <thead>
         <tr class="header-row">
-          <th class="th th-type">Тип</th>
           <th class="th th-name">Наименование</th>
           <th class="th th-numeric">Инвентарный №</th>
           <th class="th th-numeric">Серийный №</th>
@@ -32,7 +31,7 @@
       <tbody>
         {#each { length: 5 } as _}
           <tr class="skeleton-row">
-            {#each { length: 8 } as _}
+            {#each { length: 7 } as _}
               <td class="skeleton-cell">
                 <div class="skeleton-block"></div>
               </td>
@@ -50,7 +49,6 @@
     <table class="device-table">
       <thead>
         <tr class="header-row">
-          <th class="th th-type">Тип</th>
           <th class="th th-name">Наименование</th>
           <th class="th th-numeric">Инвентарный №</th>
           <th class="th th-numeric">Серийный №</th>
@@ -102,9 +100,6 @@
     background: var(--color-bg);
   }
 
-  .th-type {
-    width: 100px;
-  }
   .th-name {
     width: 25%;
   }
