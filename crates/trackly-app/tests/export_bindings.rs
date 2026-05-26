@@ -55,6 +55,17 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         .export(Typescript::default(), &target)
         .expect("tauri-specta export failed");
 
+    // Post-process: prepend `// @ts-nocheck` to the generated bindings.
+    // tauri-specta emits `TAURI_CHANNEL` import and `__makeEvents__` helper
+    // even when no events/channels are declared, which trips
+    // `noUnusedLocals` in `pnpm svelte-check`. Generated file is rewritten
+    // each `cargo test`, so the prefix MUST be applied here.
+    let raw = std::fs::read_to_string(&target).expect("read bindings.ts for ts-nocheck prefix");
+    if !raw.trim_start().starts_with("// @ts-nocheck") {
+        let patched = format!("// @ts-nocheck\n{raw}");
+        std::fs::write(&target, patched).expect("write bindings.ts with @ts-nocheck prefix");
+    }
+
     let contents = std::fs::read_to_string(&target).expect("read bindings.ts");
 
     assert!(
