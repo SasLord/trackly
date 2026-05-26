@@ -79,7 +79,7 @@ pub struct ListByIdsPayload {
 
 #[derive(serde::Deserialize)]
 pub struct BulkCreatePayload {
-    pub new: DeviceNew,
+    pub device: DeviceNew,
     pub count: u32,
 }
 
@@ -214,7 +214,7 @@ pub async fn handler_bulk_create(
     Json(payload): Json<BulkCreatePayload>,
 ) -> Result<Json<Vec<DeviceDto>>, AppErrorResponse> {
     Ok(Json(
-        build_devices_bulk_create(&ctx, payload.new, payload.count)
+        build_devices_bulk_create(&ctx, payload.device, payload.count)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

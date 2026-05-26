@@ -1,20 +1,41 @@
 <script lang="ts">
   import DeviceListRow from './DeviceListRow.svelte';
-  import type { DeviceDto } from '../../bindings';
+  import DeviceGroupRow from './DeviceGroupRow.svelte';
+  import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   interface Props {
     items: DeviceDto[];
+    groups: DeviceGroup[];
     total: number;
     loading: boolean;
+    grouped: boolean;
+    searchActive: boolean;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
   }
 
-  const { items, total, loading, onEdit, onDelete }: Props = $props();
+  const { items, groups, total, loading, grouped, searchActive, onEdit, onDelete }: Props = $props();
+
+  const showGroups = $derived(grouped && !searchActive && groups.length > 0);
+  const isEmpty = $derived(
+    !loading &&
+    (showGroups ? groups.length === 0 : items.length === 0)
+  );
+
+  const emptyMessage = $derived(
+    searchActive
+      ? 'По вашему запросу ничего не найдено'
+      : 'Устройств пока нет'
+  );
+  const emptySubtext = $derived(
+    searchActive
+      ? 'Попробуйте изменить поисковый запрос или сбросить фильтр статуса.'
+      : 'Создайте первое устройство или импортируйте список из CSV.'
+  );
 </script>
 
 <div class="device-list-wrapper">
-  {#if loading && items.length === 0}
+  {#if loading && items.length === 0 && groups.length === 0}
     <!-- Skeleton rows while initial load -->
     <table class="device-table">
       <thead>
@@ -40,10 +61,10 @@
         {/each}
       </tbody>
     </table>
-  {:else if items.length === 0 && !loading}
+  {:else if isEmpty}
     <div class="empty-state">
-      <p class="empty-title">Устройств пока нет</p>
-      <p class="empty-body">Создайте первое устройство или импортируйте список из CSV.</p>
+      <p class="empty-title">{emptyMessage}</p>
+      <p class="empty-body">{emptySubtext}</p>
     </div>
   {:else}
     <table class="device-table">
@@ -59,15 +80,25 @@
         </tr>
       </thead>
       <tbody>
-        {#each items as device (device.id)}
-          <DeviceListRow {device} {onEdit} {onDelete} />
-        {/each}
+        {#if showGroups}
+          {#each groups as group (group.repr.id)}
+            <DeviceGroupRow {group} {onEdit} {onDelete} />
+          {/each}
+        {:else}
+          {#each items as device (device.id)}
+            <DeviceListRow {device} {onEdit} {onDelete} />
+          {/each}
+        {/if}
       </tbody>
     </table>
 
     <footer class="list-footer">
       <span class="pagination-info">
-        Показано {items.length} из {total}
+        {#if showGroups}
+          Групп: {groups.length}
+        {:else}
+          Показано {items.length} из {total}
+        {/if}
       </span>
     </footer>
   {/if}

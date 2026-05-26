@@ -87,10 +87,10 @@ pub async fn build_devices_list_by_ids(
 
 pub async fn build_devices_bulk_create(
     ctx: &AppCtx,
-    new: DeviceNew,
+    device: DeviceNew,
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
-    ctx.devices.bulk_create(new, count).await
+    ctx.devices.bulk_create(device, count).await
 }
 
 // ---------------------------------------------------------------------------
@@ -211,8 +211,8 @@ pub async fn devices_list_by_ids(
 #[specta::specta]
 pub async fn devices_bulk_create(
     state: tauri::State<'_, AppCtx>,
-    new: DeviceNew,
+    device: DeviceNew,
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
-    build_devices_bulk_create(state.inner(), new, count).await
+    build_devices_bulk_create(state.inner(), device, count).await
 }

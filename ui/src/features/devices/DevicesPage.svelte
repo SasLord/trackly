@@ -3,25 +3,32 @@
   import Button from '$lib/components/Button.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import DeviceList from './DeviceList.svelte';
+  import DeviceFilters from './DeviceFilters.svelte';
   import DeviceFormModal from './DeviceFormModal.svelte';
   import { devices } from './api';
-  import type { DeviceDto, DeviceFilter, Pagination } from '../../bindings';
+  import type { DeviceDto, DeviceFilter, DeviceGroup, Pagination } from '../../bindings';
 
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
   let items = $state<DeviceDto[]>([]);
+  let groups = $state<DeviceGroup[]>([]);
   let total = $state(0);
   let loading = $state(false);
   let modalOpen = $state(false);
   let editTarget = $state<DeviceDto | null>(null);
 
+  // Filters state (Plan 04).
+  let searchQuery = $state('');
+  let statusFilter = $state<number | null>(null);
+  let grouped = $state(true);
+  let counts = $state<Map<number, number>>(new Map());
+
   // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
-  // /printers (Phase 6) will use type_id=2 ("Принтер").
-  const filter = $state<DeviceFilter>({
+  const baseFilter = $derived<DeviceFilter>({
     type_id: 1,
     location_id: null,
-    status_id: null,
+    status_id: statusFilter,
     state: null,
     name_prefix: null,
     include_deleted: false,
@@ -29,15 +36,32 @@
 
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
+  const searchActive = $derived(searchQuery.trim().length > 0);
+
   // ---------------------------------------------------------------------------
   // Data loading
   // ---------------------------------------------------------------------------
   async function refresh() {
     loading = true;
     try {
-      const resp = await devices.list(filter, pagination);
-      items = resp.items;
-      total = resp.total;
+      if (searchActive) {
+        // Search mode — FTS5 (overrides grouping).
+        const resp = await devices.search(searchQuery, pagination);
+        items = resp.items;
+        total = resp.total;
+        groups = [];
+      } else if (grouped) {
+        // Grouped mode — show non-unique devices as collapsible groups.
+        groups = await devices.listGrouped(baseFilter, pagination);
+        items = [];
+        total = 0;
+      } else {
+        // Flat list mode.
+        const resp = await devices.list(baseFilter, pagination);
+        items = resp.items;
+        total = resp.total;
+        groups = [];
+      }
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -49,7 +73,46 @@
     }
   }
 
-  onMount(refresh);
+  async function refreshCounts() {
+    try {
+      const arr = await devices.statusCounts();
+      counts = new Map(arr.map((x) => [x.status_id, Number(x.count)]));
+    } catch {
+      // Non-fatal — counters stay 0.
+    }
+  }
+
+  // Re-run refresh when filter/grouping changes.
+  $effect(() => {
+    // Access reactive deps: statusFilter, grouped — triggers re-run.
+    // searchQuery is handled separately via debounce in DeviceFilters.
+    void statusFilter;
+    void grouped;
+    refresh();
+    refreshCounts();
+  });
+
+  onMount(() => {
+    refresh();
+    refreshCounts();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Filter handlers
+  // ---------------------------------------------------------------------------
+  function handleSearchChange(q: string) {
+    searchQuery = q;
+    refresh();
+    if (!q) refreshCounts();
+  }
+
+  function handleStatusChange(s: number | null) {
+    statusFilter = s;
+  }
+
+  function handleGroupedChange(g: boolean) {
+    grouped = g;
+  }
 
   // ---------------------------------------------------------------------------
   // Modal handlers
@@ -67,6 +130,7 @@
   function onSaved() {
     modalOpen = false;
     refresh();
+    refreshCounts();
   }
 </script>
 
@@ -81,7 +145,26 @@
   </header>
 
   <div class="page-content">
-    <DeviceList {items} {total} {loading} onEdit={openEdit} onDelete={refresh} />
+    <DeviceFilters
+      {searchQuery}
+      {statusFilter}
+      {grouped}
+      {counts}
+      onSearchChange={handleSearchChange}
+      onStatusChange={handleStatusChange}
+      onGroupedChange={handleGroupedChange}
+    />
+
+    <DeviceList
+      {items}
+      {groups}
+      {total}
+      {loading}
+      {grouped}
+      {searchActive}
+      onEdit={openEdit}
+      onDelete={() => { refresh(); refreshCounts(); }}
+    />
   </div>
 </div>
 

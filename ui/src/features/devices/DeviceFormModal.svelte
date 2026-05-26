@@ -8,6 +8,7 @@
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
+  import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
   import type { DeviceDto, DeviceNew, DevicePatch } from '../../bindings';
@@ -52,6 +53,10 @@
   let kit = $state('');
   let stateField = $state('');
 
+  // Bulk-create quantity (scope extension 2026-05-26).
+  // Only shown in create mode AND when both inv/serial are empty.
+  let quantity = $state<number>(1);
+
   let stateHints = $state<string[]>([]);
   let loading = $state(false);
   let fieldErrors = $state<Record<string, string>>({});
@@ -62,10 +67,18 @@
 
   const canSubmit = $derived(name.trim() !== '' && location.trim() !== '' && statusId !== '');
 
-  // Reset form whenever the modal opens
+  // Show quantity field: create mode only, AND both inv/serial are empty.
+  const showQuantity = $derived(
+    !isEdit &&
+    inventoryNo.trim() === '' &&
+    serialNo.trim() === ''
+  );
+
+  // Reset form whenever the modal opens.
   $effect(() => {
     if (open) {
       fieldErrors = {};
+      quantity = 1;
       if (target) {
         name = target.name;
         location = target.specs ?? ''; // location is freetext until Plan 04 location lookup
@@ -87,6 +100,13 @@
         kit = '';
         stateField = '';
       }
+    }
+  });
+
+  // Reset quantity to 1 when user fills in inv/serial.
+  $effect(() => {
+    if (inventoryNo.trim() !== '' || serialNo.trim() !== '') {
+      quantity = 1;
     }
   });
 
@@ -137,8 +157,16 @@
           location_id: null,
           status_id: parseInt(statusId, 10),
         };
-        await devices.create(newDevice);
-        pushToast('success', 'Устройство создано');
+
+        // Use bulk_create for all create operations (count=1 is equivalent to create).
+        const qty = showQuantity ? Math.max(1, Math.min(100, quantity || 1)) : 1;
+        await devices.bulkCreate(newDevice, qty);
+
+        if (qty === 1) {
+          pushToast('success', 'Устройство создано');
+        } else {
+          pushToast('success', `Создано ${qty} устройств`);
+        }
       }
       onSaved();
     } catch (e: unknown) {
@@ -172,34 +200,37 @@
       handleSubmit();
     }}
   >
-    <!-- Required: Наименование -->
+    <!-- Required: Наименование (with autocomplete) -->
     <div class="field" class:has-error={!!fieldErrors['name']}>
       <label class="label" for="f-name">
         Наименование <span class="required" aria-hidden="true">*</span>
       </label>
-      <Input
-        id="f-name"
+      <DeviceAutocompleteField
+        field="name"
         value={name}
         placeholder="Ноутбук Lenovo ThinkPad X1"
+        id="f-name"
         invalid={!!fieldErrors['name']}
-        oninput={(v) => (name = v)}
+        onChange={(v) => (name = v)}
       />
       {#if fieldErrors['name']}
         <p class="field-error">{fieldErrors['name']}</p>
       {/if}
     </div>
 
-    <!-- Required: Расположение (freetext until Plan 04) -->
+    <!-- Required: Расположение (with autocomplete, contextual) -->
     <div class="field" class:has-error={!!fieldErrors['location']}>
       <label class="label" for="f-location">
         Расположение <span class="required" aria-hidden="true">*</span>
       </label>
-      <Input
-        id="f-location"
+      <DeviceAutocompleteField
+        field="location"
         value={location}
         placeholder="Кабинет 305"
+        id="f-location"
         invalid={!!fieldErrors['location']}
-        oninput={(v) => (location = v)}
+        contextName={name.trim() || undefined}
+        onChange={(v) => (location = v)}
       />
       {#if fieldErrors['location']}
         <p class="field-error">{fieldErrors['location']}</p>
@@ -249,14 +280,36 @@
       />
     </div>
 
-    <!-- Optional: Модель -->
+    <!-- Quantity (scope extension: bulk create for non-unique devices) -->
+    {#if showQuantity}
+      <div class="field">
+        <label class="label" for="f-qty">Количество</label>
+        <input
+          id="f-qty"
+          type="number"
+          class="input"
+          min={1}
+          max={100}
+          value={quantity}
+          oninput={(e) => {
+            const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+            quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
+          }}
+        />
+        <p class="field-help">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
+      </div>
+    {/if}
+
+    <!-- Optional: Модель (with autocomplete, contextual) -->
     <div class="field">
       <label class="label" for="f-model">Модель</label>
-      <Input
-        id="f-model"
+      <DeviceAutocompleteField
+        field="model"
         value={model}
         placeholder="ThinkPad X1 Carbon Gen 12"
-        oninput={(v) => (model = v)}
+        id="f-model"
+        contextName={name.trim() || undefined}
+        onChange={(v) => (model = v)}
       />
     </div>
 
@@ -284,14 +337,16 @@
       />
     </div>
 
-    <!-- Optional: Состояние + state-hints chips -->
+    <!-- Optional: Состояние + state-hints chips (with autocomplete) -->
     <div class="field">
       <label class="label" for="f-state">Состояние</label>
-      <Input
-        id="f-state"
+      <DeviceAutocompleteField
+        field="state"
         value={stateField}
         placeholder="Хорошее"
-        oninput={(v) => (stateField = v)}
+        id="f-state"
+        contextName={name.trim() || undefined}
+        onChange={(v) => (stateField = v)}
       />
       {#if stateHints.length > 0}
         <div class="state-hints">
@@ -349,6 +404,36 @@
     margin: 0;
     font-size: var(--font-size-label);
     color: var(--color-destructive);
+  }
+
+  .field-help {
+    margin: 0;
+    font-size: var(--font-size-label);
+    color: var(--color-text-secondary);
+  }
+
+  .input {
+    display: block;
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--space-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
   }
 
   .state-hints {
