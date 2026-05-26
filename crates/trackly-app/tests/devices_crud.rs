@@ -319,6 +319,75 @@ async fn list_with_status_filter() {
 }
 
 // ---------------------------------------------------------------------------
+// list_with_type_id_filter
+// ---------------------------------------------------------------------------
+//
+// Verifies the /devices vs /printers section split:
+// - type_id=1 ("Устройство") — shown in /devices UI section
+// - type_id=2 ("Принтер")   — shown in /printers UI section (Phase 6)
+// - type_id=None             — returns all (admin/internal use)
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_with_type_id_filter() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Create one device with type_id=1 (Устройство, seeded in V001)
+        let d1 = svc.create(minimal_new("Ноутбук Lenovo")).await.expect("create type=1");
+        assert_eq!(d1.type_id, 1);
+
+        // Create one device with type_id=2 (Принтер, seeded in V001)
+        let mut new2 = minimal_new("HP LaserJet Pro");
+        new2.type_id = 2;
+        let d2 = svc.create(new2).await.expect("create type=2");
+        assert_eq!(d2.type_id, 2);
+
+        // Filter by type_id=1: only Ноутбук Lenovo returned
+        let filter_type1 = DeviceFilter {
+            type_id: Some(1),
+            ..Default::default()
+        };
+        let resp1 = svc.list(filter_type1, Pagination::default()).await.expect("list type=1");
+        assert_eq!(
+            resp1.items.len(),
+            1,
+            "type_id=1 фильтр должен вернуть 1 устройство, получили {}",
+            resp1.items.len()
+        );
+        assert_eq!(resp1.items[0].name, "Ноутбук Lenovo");
+        assert_eq!(resp1.items[0].type_id, 1);
+
+        // Filter by type_id=2: only HP LaserJet Pro returned
+        let filter_type2 = DeviceFilter {
+            type_id: Some(2),
+            ..Default::default()
+        };
+        let resp2 = svc.list(filter_type2, Pagination::default()).await.expect("list type=2");
+        assert_eq!(
+            resp2.items.len(),
+            1,
+            "type_id=2 фильтр должен вернуть 1 устройство, получили {}",
+            resp2.items.len()
+        );
+        assert_eq!(resp2.items[0].name, "HP LaserJet Pro");
+        assert_eq!(resp2.items[0].type_id, 2);
+
+        // Filter by type_id=None: both returned
+        let filter_all = DeviceFilter::default(); // type_id: None
+        let resp_all = svc.list(filter_all, Pagination::default()).await.expect("list all");
+        assert_eq!(
+            resp_all.items.len(),
+            2,
+            "без фильтра type_id должно быть 2 устройства, получили {}",
+            resp_all.items.len()
+        );
+        assert_eq!(resp_all.total, 2);
+    })
+    .await
+    .expect("list_with_type_id_filter exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
 // state_hints_returns_six_russian_strings
 // ---------------------------------------------------------------------------
 
