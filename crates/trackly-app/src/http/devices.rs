@@ -64,6 +64,7 @@ pub struct AutocompletePayload {
     pub field: String,
     pub prefix: String,
     pub ctx_name: Option<String>,
+    pub ctx_status_id: Option<i64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -171,9 +172,15 @@ pub async fn handler_autocomplete(
     Json(payload): Json<AutocompletePayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
     Ok(Json(
-        build_devices_autocomplete(&ctx, payload.field, payload.prefix, payload.ctx_name)
-            .await
-            .map_err(AppErrorResponse::from)?,
+        build_devices_autocomplete(
+            &ctx,
+            payload.field,
+            payload.prefix,
+            payload.ctx_name,
+            payload.ctx_status_id,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
     ))
 }
 

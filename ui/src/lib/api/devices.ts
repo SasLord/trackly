@@ -28,8 +28,13 @@ export const devices = {
   search: (query: string, pagination: Pagination) =>
     apiCall<DeviceListResponse>('devices_search', { query, pagination }),
 
-  autocomplete: (field: string, prefix: string, ctxName?: string) =>
-    apiCall<string[]>('devices_autocomplete', { field, prefix, ctxName: ctxName ?? null }),
+  autocomplete: (field: string, prefix: string, ctxName?: string, ctxStatusId?: number | null) =>
+    apiCall<string[]>('devices_autocomplete', {
+      field,
+      prefix,
+      ctxName: ctxName ?? null,
+      ctxStatusId: ctxStatusId ?? null,
+    }),
 
   listGrouped: (filter: DeviceFilter, pagination: Pagination) =>
     apiCall<DeviceGroup[]>('devices_list_grouped', { filter, pagination }),

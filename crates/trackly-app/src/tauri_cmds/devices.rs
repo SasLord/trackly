@@ -62,8 +62,9 @@ pub async fn build_devices_autocomplete(
     field: String,
     prefix: String,
     ctx_name: Option<String>,
+    ctx_status_id: Option<i64>,
 ) -> Result<Vec<String>, AppError> {
-    ctx.devices.autocomplete(field, prefix, ctx_name).await
+    ctx.devices.autocomplete(field, prefix, ctx_name, ctx_status_id).await
 }
 
 pub async fn build_devices_list_grouped(
@@ -172,8 +173,9 @@ pub async fn devices_autocomplete(
     field: String,
     prefix: String,
     ctx_name: Option<String>,
+    ctx_status_id: Option<i64>,
 ) -> Result<Vec<String>, AppError> {
-    build_devices_autocomplete(state.inner(), field, prefix, ctx_name).await
+    build_devices_autocomplete(state.inner(), field, prefix, ctx_name, ctx_status_id).await
 }
 
 #[tauri::command]

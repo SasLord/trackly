@@ -10,13 +10,14 @@
     field: FieldName;
     value: string;
     contextName?: string;
+    contextStatusId?: number | null;
     placeholder?: string;
     id?: string;
     invalid?: boolean;
     onChange: (_v: string) => void;
   }
 
-  const { field, value, contextName, placeholder, id, invalid = false, onChange }: Props = $props();
+  const { field, value, contextName, contextStatusId, placeholder, id, invalid = false, onChange }: Props = $props();
 
   let suggestions = $state<string[]>([]);
   let loading = $state(false);
@@ -27,9 +28,12 @@
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Trigger autocomplete when value changes (debounced 200ms).
+  // Trigger autocomplete when value or context changes (debounced 200ms).
   $effect(() => {
     const v = value;
+    // Track context deps so effect re-runs when they change.
+    const ctxName = contextName;
+    const ctxStatus = contextStatusId;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     if (v.length < 1) {
       suggestions = [];
@@ -39,7 +43,7 @@
     debounceTimer = setTimeout(async () => {
       try {
         loading = true;
-        suggestions = await devices.autocomplete(field, v, contextName);
+        suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus);
         open = suggestions.length > 0;
         activeIndex = -1;
       } catch {
@@ -114,9 +118,15 @@
 
   {#if open}
     <div class="dropdown" role="listbox">
-      {#if contextName && field !== 'name' && suggestions.length > 0}
+      {#if field !== 'name' && suggestions.length > 0 && (contextName || contextStatusId)}
         <header class="dropdown-header">
-          Ранее использовалось с «{contextName}»:
+          {#if contextName && contextStatusId}
+            Ранее использовалось с «{contextName}» в статусе #{contextStatusId}:
+          {:else if contextName}
+            Ранее использовалось с «{contextName}»:
+          {:else if contextStatusId}
+            Ранее использовалось в статусе #{contextStatusId}:
+          {/if}
         </header>
       {/if}
       {#if loading}

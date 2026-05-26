@@ -218,25 +218,6 @@
       {/if}
     </div>
 
-    <!-- Required: Расположение (with autocomplete, contextual) -->
-    <div class="field" class:has-error={!!fieldErrors['location']}>
-      <label class="label" for="f-location">
-        Расположение <span class="required" aria-hidden="true">*</span>
-      </label>
-      <DeviceAutocompleteField
-        field="location"
-        value={location}
-        placeholder="Кабинет 305"
-        id="f-location"
-        invalid={!!fieldErrors['location']}
-        contextName={name.trim() || undefined}
-        onChange={(v) => (location = v)}
-      />
-      {#if fieldErrors['location']}
-        <p class="field-error">{fieldErrors['location']}</p>
-      {/if}
-    </div>
-
     <!-- Required: Статус -->
     <div class="field" class:has-error={!!fieldErrors['status_id']}>
       <label class="label" for="f-status">
@@ -258,6 +239,39 @@
       {/if}
     </div>
 
+    <!-- Required: Расположение (with autocomplete, filtered by status + name context) -->
+    <div class="field" class:has-error={!!fieldErrors['location']}>
+      <label class="label" for="f-location">
+        Расположение <span class="required" aria-hidden="true">*</span>
+      </label>
+      <DeviceAutocompleteField
+        field="location"
+        value={location}
+        placeholder="Кабинет 305"
+        id="f-location"
+        invalid={!!fieldErrors['location']}
+        contextName={name.trim() || undefined}
+        contextStatusId={parseInt(statusId, 10) || null}
+        onChange={(v) => (location = v)}
+      />
+      {#if fieldErrors['location']}
+        <p class="field-error">{fieldErrors['location']}</p>
+      {/if}
+    </div>
+
+    <!-- Optional: Модель (with autocomplete, contextual) -->
+    <div class="field">
+      <label class="label" for="f-model">Модель</label>
+      <DeviceAutocompleteField
+        field="model"
+        value={model}
+        placeholder="ThinkPad X1 Carbon Gen 12"
+        id="f-model"
+        contextName={name.trim() || undefined}
+        onChange={(v) => (model = v)}
+      />
+    </div>
+
     <!-- Optional: Инвентарный № -->
     <div class="field">
       <label class="label" for="f-inv">Инвентарный №</label>
@@ -277,63 +291,6 @@
         value={serialNo}
         placeholder="SN-XXXXXXXX"
         oninput={(v) => (serialNo = v)}
-      />
-    </div>
-
-    <!-- Quantity (scope extension: bulk create for non-unique devices) -->
-    {#if showQuantity}
-      <div class="field">
-        <label class="label" for="f-qty">Количество</label>
-        <input
-          id="f-qty"
-          type="number"
-          class="input"
-          min={1}
-          max={100}
-          value={quantity}
-          oninput={(e) => {
-            const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
-            quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
-          }}
-        />
-        <p class="field-help">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
-      </div>
-    {/if}
-
-    <!-- Optional: Модель (with autocomplete, contextual) -->
-    <div class="field">
-      <label class="label" for="f-model">Модель</label>
-      <DeviceAutocompleteField
-        field="model"
-        value={model}
-        placeholder="ThinkPad X1 Carbon Gen 12"
-        id="f-model"
-        contextName={name.trim() || undefined}
-        onChange={(v) => (model = v)}
-      />
-    </div>
-
-    <!-- Optional: Технические характеристики -->
-    <div class="field">
-      <label class="label" for="f-specs">Технические характеристики</label>
-      <Textarea
-        id="f-specs"
-        value={specs}
-        placeholder="i7-1365U, 16 ГБ RAM, 512 ГБ SSD"
-        rows={2}
-        oninput={(v) => (specs = v)}
-      />
-    </div>
-
-    <!-- Optional: Комплектация -->
-    <div class="field">
-      <label class="label" for="f-kit">Комплектация</label>
-      <Textarea
-        id="f-kit"
-        value={kit}
-        placeholder="Зарядное устройство, мышь"
-        rows={2}
-        oninput={(v) => (kit = v)}
       />
     </div>
 
@@ -366,6 +323,50 @@
         </div>
       {/if}
     </div>
+
+    <!-- Optional: Комплектация -->
+    <div class="field">
+      <label class="label" for="f-kit">Комплектация</label>
+      <Textarea
+        id="f-kit"
+        value={kit}
+        placeholder="Зарядное устройство, мышь"
+        rows={2}
+        oninput={(v) => (kit = v)}
+      />
+    </div>
+
+    <!-- Optional: Технические характеристики -->
+    <div class="field">
+      <label class="label" for="f-specs">Технические характеристики</label>
+      <Textarea
+        id="f-specs"
+        value={specs}
+        placeholder="i7-1365U, 16 ГБ RAM, 512 ГБ SSD"
+        rows={2}
+        oninput={(v) => (specs = v)}
+      />
+    </div>
+
+    <!-- Quantity (scope extension: bulk create for non-unique devices) -->
+    {#if showQuantity}
+      <div class="field">
+        <label class="label" for="f-qty">Количество</label>
+        <input
+          id="f-qty"
+          type="number"
+          class="input"
+          min={1}
+          max={100}
+          value={quantity}
+          oninput={(e) => {
+            const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+            quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
+          }}
+        />
+        <p class="field-help">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
+      </div>
+    {/if}
   </form>
 
   {#snippet footer()}

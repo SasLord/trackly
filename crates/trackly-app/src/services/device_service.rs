@@ -324,11 +324,13 @@ impl DeviceService {
     ///
     /// Validates `field_str` against `AutocompleteField` whitelist (T-02-04-02).
     /// Returns up to 30 DISTINCT values, sorted ASC.
+    /// `ctx_status_id`: optional filter restricts results to devices with given status_id.
     pub async fn autocomplete(
         &self,
         field_str: String,
         prefix: String,
         ctx_name: Option<String>,
+        ctx_status_id: Option<i64>,
     ) -> Result<Vec<String>, AppError> {
         // Enum-whitelist validation on service layer (T-02-04-02).
         let field = trackly_core::domain::devices::AutocompleteField::from_str(&field_str)?;
@@ -338,7 +340,7 @@ impl DeviceService {
 
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.autocomplete(&conn, field, &prefix, ctx_name.as_deref())
+            repo.autocomplete(&conn, field, &prefix, ctx_name.as_deref(), ctx_status_id)
         })
         .await
         .map_err(|e| AppError::Internal {

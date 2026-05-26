@@ -68,6 +68,8 @@ pub trait DeviceRepository {
 
     /// Per-field autocomplete: DISTINCT values of `field` matching `prefix`.
     /// `ctx_name`: if provided, restricts to devices with that `name` (D-AutocompleteEndpoint-01).
+    /// `ctx_status_id`: if provided, restricts to devices with that `status_id`.
+    /// Both filters are ANDed when both are present.
     /// `field` is a whitelisted enum — prevents SQL injection (T-02-04-02).
     fn autocomplete(
         &self,
@@ -75,6 +77,7 @@ pub trait DeviceRepository {
         field: AutocompleteField,
         prefix: &str,
         ctx_name: Option<&str>,
+        ctx_status_id: Option<i64>,
     ) -> Result<Vec<String>, AppError>;
 
     /// List grouped non-unique devices (D-Group-01). Returns groups with repr + ids + count.
