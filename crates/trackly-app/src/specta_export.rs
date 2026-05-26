@@ -18,12 +18,20 @@ pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         // Phase 1
         crate::tauri_cmds::health::health,
-        // Phase 2 — Devices CRUD
+        // Phase 2 — Devices CRUD (Plan 03)
         crate::tauri_cmds::devices::devices_list,
         crate::tauri_cmds::devices::devices_get,
         crate::tauri_cmds::devices::devices_create,
         crate::tauri_cmds::devices::devices_update,
         crate::tauri_cmds::devices::devices_delete,
         crate::tauri_cmds::devices::devices_state_hints,
+        // Phase 2 — Devices Search/Autocomplete/Grouping (Plan 04)
+        crate::tauri_cmds::devices::devices_search,
+        crate::tauri_cmds::devices::devices_autocomplete,
+        crate::tauri_cmds::devices::devices_list_grouped,
+        crate::tauri_cmds::devices::devices_status_counts,
+        crate::tauri_cmds::devices::devices_list_by_ids,
+        // Phase 2 — Devices Bulk Create (scope extension 2026-05-26)
+        crate::tauri_cmds::devices::devices_bulk_create,
     ])
 }

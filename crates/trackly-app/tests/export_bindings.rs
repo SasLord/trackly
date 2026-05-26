@@ -115,4 +115,40 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("devices_create"),
         "bindings.ts missing devices_create command"
     );
+
+    // Phase 2 — Plan 04: Search / Autocomplete / Grouping types and commands.
+    assert!(
+        contents.contains("DeviceGroup"),
+        "bindings.ts missing DeviceGroup type"
+    );
+    assert!(
+        contents.contains("StatusCount"),
+        "bindings.ts missing StatusCount type"
+    );
+    assert!(
+        contents.contains("devices_search"),
+        "bindings.ts missing devices_search command"
+    );
+    assert!(
+        contents.contains("devices_autocomplete"),
+        "bindings.ts missing devices_autocomplete command"
+    );
+    assert!(
+        contents.contains("devices_list_grouped"),
+        "bindings.ts missing devices_list_grouped command"
+    );
+    assert!(
+        contents.contains("devices_status_counts"),
+        "bindings.ts missing devices_status_counts command"
+    );
+    assert!(
+        contents.contains("devices_list_by_ids"),
+        "bindings.ts missing devices_list_by_ids command"
+    );
+
+    // Phase 2 — Scope extension: bulk create.
+    assert!(
+        contents.contains("devices_bulk_create"),
+        "bindings.ts missing devices_bulk_create command"
+    );
 }

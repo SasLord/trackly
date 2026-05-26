@@ -1,4 +1,4 @@
-//! Device Tauri commands — Plan 03 CRUD.
+//! Device Tauri commands — Plan 03 CRUD + Plan 04 Search/Autocomplete/Grouping.
 //!
 //! Паттерн: `build_*` helper + thin `#[tauri::command] #[specta::specta]` wrapper.
 //! Оба транспорта делегируют одному и тому же `build_*` функции.
@@ -7,7 +7,8 @@
 
 use crate::context::AppCtx;
 use crate::dto::device::{
-    DeviceDto, DeviceFilter, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
+    DeviceDto, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
+    StatusCount,
 };
 use trackly_core::error::AppError;
 
@@ -48,8 +49,52 @@ pub async fn build_devices_state_hints(ctx: &AppCtx) -> Result<Vec<String>, AppE
     Ok(ctx.devices.state_hints())
 }
 
+pub async fn build_devices_search(
+    ctx: &AppCtx,
+    query: String,
+    pagination: Pagination,
+) -> Result<DeviceListResponse, AppError> {
+    ctx.devices.search(query, pagination).await
+}
+
+pub async fn build_devices_autocomplete(
+    ctx: &AppCtx,
+    field: String,
+    prefix: String,
+    ctx_name: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    ctx.devices.autocomplete(field, prefix, ctx_name).await
+}
+
+pub async fn build_devices_list_grouped(
+    ctx: &AppCtx,
+    filter: DeviceFilter,
+    pagination: Pagination,
+) -> Result<Vec<DeviceGroup>, AppError> {
+    ctx.devices.list_grouped(filter, pagination).await
+}
+
+pub async fn build_devices_status_counts(ctx: &AppCtx) -> Result<Vec<StatusCount>, AppError> {
+    ctx.devices.status_counts().await
+}
+
+pub async fn build_devices_list_by_ids(
+    ctx: &AppCtx,
+    ids: Vec<i64>,
+) -> Result<Vec<DeviceDto>, AppError> {
+    ctx.devices.list_by_ids(ids).await
+}
+
+pub async fn build_devices_bulk_create(
+    ctx: &AppCtx,
+    new: DeviceNew,
+    count: u32,
+) -> Result<Vec<DeviceDto>, AppError> {
+    ctx.devices.bulk_create(new, count).await
+}
+
 // ---------------------------------------------------------------------------
-// Tauri commands — thin wrappers
+// Tauri commands — thin wrappers (Plan 03)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -104,4 +149,70 @@ pub async fn devices_state_hints(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<String>, AppError> {
     build_devices_state_hints(state.inner()).await
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — Plan 04: Search / Autocomplete / Grouping
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_search(
+    state: tauri::State<'_, AppCtx>,
+    query: String,
+    pagination: Pagination,
+) -> Result<DeviceListResponse, AppError> {
+    build_devices_search(state.inner(), query, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_autocomplete(
+    state: tauri::State<'_, AppCtx>,
+    field: String,
+    prefix: String,
+    ctx_name: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    build_devices_autocomplete(state.inner(), field, prefix, ctx_name).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_list_grouped(
+    state: tauri::State<'_, AppCtx>,
+    filter: DeviceFilter,
+    pagination: Pagination,
+) -> Result<Vec<DeviceGroup>, AppError> {
+    build_devices_list_grouped(state.inner(), filter, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_status_counts(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<Vec<StatusCount>, AppError> {
+    build_devices_status_counts(state.inner()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_list_by_ids(
+    state: tauri::State<'_, AppCtx>,
+    ids: Vec<i32>,
+) -> Result<Vec<DeviceDto>, AppError> {
+    build_devices_list_by_ids(state.inner(), ids.into_iter().map(|id| id as i64).collect()).await
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — scope extension: bulk create
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_bulk_create(
+    state: tauri::State<'_, AppCtx>,
+    new: DeviceNew,
+    count: u32,
+) -> Result<Vec<DeviceDto>, AppError> {
+    build_devices_bulk_create(state.inner(), new, count).await
 }

@@ -1,4 +1,4 @@
-//! Device axum HTTP routes — Plan 03.
+//! Device axum HTTP routes — Plan 03 CRUD + Plan 04 Search/Autocomplete/Grouping.
 //!
 //! Все routes — POST /api/v1/devices_* (аналогично Tauri command names).
 //! Handlers — thin adapters, делегируют `build_*` helpers из tauri_cmds.
@@ -9,12 +9,15 @@ use axum::{extract::State, routing::post, Json, Router};
 
 use crate::context::AppCtx;
 use crate::dto::device::{
-    DeviceDto, DeviceFilter, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
+    DeviceDto, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
+    StatusCount,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
-    build_devices_create, build_devices_delete, build_devices_get, build_devices_list,
-    build_devices_state_hints, build_devices_update,
+    build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
+    build_devices_delete, build_devices_get, build_devices_list, build_devices_list_by_ids,
+    build_devices_list_grouped, build_devices_search, build_devices_state_hints,
+    build_devices_status_counts, build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -50,8 +53,38 @@ pub struct DeletePayload {
     pub version: i64,
 }
 
+#[derive(serde::Deserialize)]
+pub struct SearchPayload {
+    pub query: String,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+pub struct AutocompletePayload {
+    pub field: String,
+    pub prefix: String,
+    pub ctx_name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ListGroupedPayload {
+    pub filter: DeviceFilter,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ListByIdsPayload {
+    pub ids: Vec<i64>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct BulkCreatePayload {
+    pub new: DeviceNew,
+    pub count: u32,
+}
+
 // ---------------------------------------------------------------------------
-// Handlers
+// Handlers (Plan 03)
 // ---------------------------------------------------------------------------
 
 pub async fn handler_list(
@@ -119,15 +152,93 @@ pub async fn handler_state_hints(
 }
 
 // ---------------------------------------------------------------------------
+// Handlers (Plan 04)
+// ---------------------------------------------------------------------------
+
+pub async fn handler_search(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<SearchPayload>,
+) -> Result<Json<DeviceListResponse>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_search(&ctx, payload.query, payload.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_autocomplete(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<AutocompletePayload>,
+) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_autocomplete(&ctx, payload.field, payload.prefix, payload.ctx_name)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_grouped(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<ListGroupedPayload>,
+) -> Result<Json<Vec<DeviceGroup>>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_list_grouped(&ctx, payload.filter, payload.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_status_counts(
+    State(ctx): State<AppCtx>,
+) -> Result<Json<Vec<StatusCount>>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_status_counts(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_by_ids(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<ListByIdsPayload>,
+) -> Result<Json<Vec<DeviceDto>>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_list_by_ids(&ctx, payload.ids)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_bulk_create(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<BulkCreatePayload>,
+) -> Result<Json<Vec<DeviceDto>>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_bulk_create(&ctx, payload.new, payload.count)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<AppCtx> {
     Router::new()
+        // Plan 03 CRUD
         .route("/api/v1/devices_list", post(handler_list))
         .route("/api/v1/devices_get", post(handler_get))
         .route("/api/v1/devices_create", post(handler_create))
         .route("/api/v1/devices_update", post(handler_update))
         .route("/api/v1/devices_delete", post(handler_delete))
         .route("/api/v1/devices_state_hints", post(handler_state_hints))
+        // Plan 04 Search/Autocomplete/Grouping
+        .route("/api/v1/devices_search", post(handler_search))
+        .route("/api/v1/devices_autocomplete", post(handler_autocomplete))
+        .route("/api/v1/devices_list_grouped", post(handler_list_grouped))
+        .route("/api/v1/devices_status_counts", post(handler_status_counts))
+        .route("/api/v1/devices_list_by_ids", post(handler_list_by_ids))
+        // Scope extension: bulk create
+        .route("/api/v1/devices_bulk_create", post(handler_bulk_create))
 }
