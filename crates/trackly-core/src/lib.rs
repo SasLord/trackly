@@ -11,7 +11,9 @@
 //! (`Secret<T>`, `Clock` trait).
 #![forbid(unsafe_code)]
 
+pub mod domain;
 pub mod error;
+pub mod ports;
 pub mod primitives;
 
 pub use error::AppError;

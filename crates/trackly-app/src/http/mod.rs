@@ -5,4 +5,5 @@
 //! используется в `tauri_cmds/*` — это инвариант «один DTO, два транспорта»
 //! (success criterion #5).
 
+pub mod devices;
 pub mod health;

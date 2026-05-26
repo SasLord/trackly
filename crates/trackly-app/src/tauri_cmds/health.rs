@@ -58,6 +58,11 @@ mod tests {
         // но никаких реальных tracing-вызовов в этих тестах нет.
         let (_nb, log_guard) = tracing_appender::non_blocking(std::io::sink());
         let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        let devices = Arc::new(crate::services::DeviceService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -67,6 +72,7 @@ mod tests {
             shutdown: CancellationToken::new(),
             log_guard: Arc::new(log_guard),
             schema_version: 13,
+            devices,
         };
         (ctx, dir)
     }

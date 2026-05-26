@@ -30,6 +30,8 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::WriterHandle};
 use trackly_infra::{AppConfig, Paths};
 
+use crate::services::DeviceService;
+
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
 pub struct AppCtx {
@@ -52,6 +54,9 @@ pub struct AppCtx {
     /// `PRAGMA user_version` после миграций. Совпадает с `max_known_version()`
     /// если миграции прошли успешно.
     pub schema_version: u32,
+    /// Device service — CRUD, search, autocomplete, grouping, CSV import/export.
+    /// Added in Phase 2 Plan 01 (D-AppCtx-Extension-01).
+    pub devices: Arc<DeviceService>,
 }
 
 impl AppCtx {
@@ -126,15 +131,24 @@ impl AppCtx {
         // Step 10: open reader pool (size 4 per D-WriterChannel-01).
         let readers = Arc::new(ReaderPool::new(&db_path, 4)?);
 
+        // Step 11: build clock and Phase 2 services (D-AppCtx-Extension-01).
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        let devices = Arc::new(DeviceService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+
         Ok(Self {
             writer,
             readers,
             paths: Arc::new(paths),
             config: Arc::new(config),
-            clock: Arc::new(SystemClock),
+            clock,
             shutdown: CancellationToken::new(),
             log_guard: Arc::new(log_guard),
             schema_version,
+            devices,
         })
     }
 }

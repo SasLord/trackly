@@ -19,10 +19,12 @@
 //! - `specta_export` — `tauri_specta::Builder` для генерации `ui/src/bindings.ts`.
 
 pub mod context;
+pub mod csv;
 pub mod dto;
 pub mod error_axum;
 pub mod http;
 pub mod logging;
+pub mod services;
 pub mod shutdown;
 pub mod specta_export;
 pub mod tauri_cmds;

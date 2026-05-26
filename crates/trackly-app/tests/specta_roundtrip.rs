@@ -32,6 +32,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
     let config = trackly_infra::AppConfig::default();
     let (_nb, log_guard) = tracing_appender::non_blocking(std::io::sink());
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let devices = Arc::new(trackly_app::services::DeviceService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -40,7 +45,8 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         clock,
         shutdown: CancellationToken::new(),
         log_guard: Arc::new(log_guard),
-        schema_version: 12,
+        schema_version: 13,
+        devices,
     };
     (ctx, dir)
 }
