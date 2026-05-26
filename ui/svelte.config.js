@@ -1,12 +1,9 @@
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
-// Re-export the same preprocess config used in vite.config.ts so svelte-check
-// (which does NOT go through Vite) picks up the SCSS preprocessor + design-token
-// auto-import. Without this, svelte-check fails on <style lang="scss"> blocks.
+// Mirrors vite.config.ts so svelte-check (which does NOT go through Vite)
+// processes <style lang="scss"> blocks the same way. Design tokens are
+// loaded globally via global.scss — see vite.config.ts for the rationale
+// against scss.prependData.
 export default {
-  preprocess: vitePreprocess({
-    scss: {
-      prependData: '@use "src/styles/_tokens.scss" as *;',
-    },
-  }),
+  preprocess: vitePreprocess(),
 };

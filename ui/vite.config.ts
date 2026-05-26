@@ -8,12 +8,12 @@ import path from 'path';
 export default defineConfig({
   plugins: [
     svelte({
-      preprocess: vitePreprocess({
-        scss: {
-          // Design tokens auto-imported into every <style lang="scss"> block.
-          prependData: '@use "src/styles/_tokens.scss" as *;',
-        },
-      }),
+      // Design tokens live globally in `src/styles/_tokens.scss` and are
+      // imported once via `global.scss`. We deliberately do NOT use
+      // scss.prependData — svelte scopes component <style> blocks, which
+      // would hash any `:root { --var: … }` rule injected per component
+      // and prevent the CSS variables from applying to <html>.
+      preprocess: vitePreprocess(),
     }),
   ],
   resolve: {

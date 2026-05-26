@@ -1,5 +1,10 @@
 // Global reset + base styles for Trackly UI.
-// Imported from main.ts before mount().
+// Imported from main.ts before mount(). `@use './tokens';` emits the
+// `:root` / `[data-theme=…]` CSS-variable blocks exactly once into the
+// global stylesheet — svelte component `<style>` blocks are scoped, so
+// putting the tokens there (via `prependData`) would hash `:root` and
+// break variable resolution app-wide.
+@use './tokens';
 
 // ── Box-sizing reset ──────────────────────────────────────────────────────────
 
