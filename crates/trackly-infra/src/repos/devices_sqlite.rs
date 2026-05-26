@@ -609,9 +609,12 @@ impl DeviceRepository for SqliteDeviceRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Group non-unique devices (those without inventory_number AND serial_number).
-        // Pitfall #12: empty string treated same as NULL (Pitfall #12).
-        // The WHERE clause normalizes both NULL and '' as absent.
+        // Group devices by name + attributes.
+        // New behaviour (defect fix): devices with inventory_number / serial_number
+        // are INCLUDED in groups — the grouping criterion is the attribute key
+        // (type_id, name, model, notes, complectation, condition, location_id, status_id),
+        // NOT the absence of unique identifiers. Groups with count == 1 are returned
+        // as singletons; the frontend renders them as plain rows (no chevron).
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
@@ -625,8 +628,6 @@ impl DeviceRepository for SqliteDeviceRepository {
                    version, created_at_utc, updated_at_utc
                  FROM devices
                  WHERE deleted_at_utc IS NULL
-                   AND (inventory_number IS NULL OR inventory_number = '')
-                   AND (serial_number   IS NULL OR serial_number   = '')
                    AND (?1 IS NULL OR status_id = ?1)
                  GROUP BY type_id, name, model, notes, complectation, condition, location_id, status_id
                  ORDER BY name

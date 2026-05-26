@@ -66,35 +66,70 @@ async fn grouping_collapses_non_unique() {
 }
 
 // ---------------------------------------------------------------------------
-// grouping_keeps_unique_separate (unique devices not included in grouped list)
+// grouping_groups_devices_with_same_name_even_if_inventory_set
 // ---------------------------------------------------------------------------
+// New behaviour: devices with inventory_no ARE included in groups when they
+// share the same (name, model, ...) key. The old test "grouping_keeps_unique_separate"
+// assumed the opposite — it has been replaced by this test.
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn grouping_keeps_unique_separate() {
+async fn grouping_groups_devices_with_same_name_even_if_inventory_set() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        // 3 devices with unique inventory_no — these are NOT included in list_grouped.
+        // 3 devices with the same name but different inventory_no values.
         for i in 1..=3i32 {
-            let mut new = non_unique_device("Ноутбук", 1);
-            new.inventory_no = Some(format!("INV-{i:03}"));
-            svc.create(new).await.expect("create unique");
+            let mut new = non_unique_device("Ноутбук Lenovo X1", 1);
+            new.inventory_no = Some(format!("LEN-{i:03}"));
+            svc.create(new).await.expect("create with inv");
         }
 
         let filter = DeviceFilter::default();
         let page = Pagination { offset: 0, limit: 50 };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
-        // Devices with inventory_no are NOT in the grouped list (unique devices belong to flat list).
+        // All 3 share the same (name, model, ...) key → 1 group with count=3.
         assert_eq!(
             groups.len(),
-            0,
-            "устройства с inventory_no не должны попадать в группированный список, получили {} групп",
+            1,
+            "3 устройства с одинаковым именем должны схлопнуться в 1 группу, получили {} групп",
             groups.len()
         );
+        assert_eq!(groups[0].count, 3, "count в группе должен быть 3");
+        assert_eq!(groups[0].ids.len(), 3, "ids должен содержать 3 элемента");
     })
     .await
-    .expect("grouping_keeps_unique_separate exceeded 30s");
+    .expect("grouping_groups_devices_with_same_name_even_if_inventory_set exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_singleton_included (count == 1 device appears as its own group)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_singleton_included() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // A single device with a unique inventory_no — should appear as a group of count=1.
+        let mut new = non_unique_device("Монитор Dell U2722D", 1);
+        new.inventory_no = Some("MON-001".to_string());
+        svc.create(new).await.expect("create singleton");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(), 1,
+            "singleton устройство должно появляться как группа count=1, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].count, 1, "count группы должен быть 1");
+        assert_eq!(groups[0].ids.len(), 1, "ids должен содержать 1 элемент");
+    })
+    .await
+    .expect("grouping_singleton_included exceeded 30s");
 }
 
 // ---------------------------------------------------------------------------
