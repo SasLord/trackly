@@ -1,4 +1,7 @@
 <script lang="ts">
+  // type_id=1 = "Устройство" (V001 seed). The /devices section creates only devices of this
+  // internal type. /printers (Phase 6) will hardcode type_id=2. "Тип" is NOT a user-facing
+  // field — it is an internal entity-class discriminator set automatically by the UI section.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -12,17 +15,9 @@
   // ---------------------------------------------------------------------------
   // Placeholder lookups (Plan 04 wires real Tauri queries)
   // ---------------------------------------------------------------------------
-  const DEVICE_TYPES = [
-    { id: 1, label: 'Компьютер' },
-    { id: 2, label: 'Ноутбук' },
-    { id: 3, label: 'Монитор' },
-    { id: 4, label: 'Принтер' },
-    { id: 5, label: 'МФУ' },
-    { id: 6, label: 'Сервер' },
-    { id: 7, label: 'Сетевое оборудование' },
-    { id: 8, label: 'Периферия' },
-    { id: 9, label: 'Прочее' },
-  ];
+  // NOTE: DEVICE_TYPES removed — "Тип" is an internal discriminator, not user-facing.
+  // The /devices section always uses type_id=1 ("Устройство").
+  // The /printers section (Phase 6) will use type_id=2 ("Принтер").
 
   const STATUSES = [
     { id: 1, label: 'На складе' },
@@ -46,7 +41,7 @@
   // ---------------------------------------------------------------------------
   // Form state (reset on open)
   // ---------------------------------------------------------------------------
-  let typeId = $state('');
+  // typeId is intentionally NOT in form state — /devices always creates with type_id=1.
   let name = $state('');
   let location = $state('');
   let statusId = $state('');
@@ -65,16 +60,13 @@
   const modalTitle = $derived(isEdit ? 'Редактирование устройства' : 'Новое устройство');
   const submitLabel = $derived(isEdit ? 'Сохранить' : 'Создать');
 
-  const canSubmit = $derived(
-    typeId !== '' && name.trim() !== '' && location.trim() !== '' && statusId !== '',
-  );
+  const canSubmit = $derived(name.trim() !== '' && location.trim() !== '' && statusId !== '');
 
   // Reset form whenever the modal opens
   $effect(() => {
     if (open) {
       fieldErrors = {};
       if (target) {
-        typeId = String(target.type_id);
         name = target.name;
         location = target.specs ?? ''; // location is freetext until Plan 04 location lookup
         statusId = String(target.status_id);
@@ -85,7 +77,6 @@
         kit = target.kit ?? '';
         stateField = target.state ?? '';
       } else {
-        typeId = '';
         name = '';
         location = '';
         statusId = '';
@@ -118,7 +109,8 @@
     try {
       if (isEdit && target) {
         const patch: DevicePatch = {
-          type_id: parseInt(typeId, 10) || null,
+          // type_id intentionally omitted — edit never changes the internal type discriminator
+          type_id: null,
           name: name.trim() || null,
           inventory_no: inventoryNo.trim() || null,
           serial_no: serialNo.trim() || null,
@@ -133,7 +125,8 @@
         pushToast('success', 'Устройство сохранено');
       } else {
         const newDevice: DeviceNew = {
-          type_id: parseInt(typeId, 10),
+          // type_id=1 hardcoded: /devices section always creates "Устройство" (V001 seed id=1)
+          type_id: 1,
           name: name.trim(),
           inventory_no: inventoryNo.trim() || null,
           serial_no: serialNo.trim() || null,
@@ -179,27 +172,6 @@
       handleSubmit();
     }}
   >
-    <!-- Required: Тип -->
-    <div class="field" class:has-error={!!fieldErrors['type_id']}>
-      <label class="label" for="f-type"
-        >Тип <span class="required" aria-hidden="true">*</span></label
-      >
-      <Select
-        id="f-type"
-        value={typeId}
-        invalid={!!fieldErrors['type_id']}
-        onchange={(v) => (typeId = v)}
-      >
-        <option value="">— выберите тип —</option>
-        {#each DEVICE_TYPES as t}
-          <option value={String(t.id)}>{t.label}</option>
-        {/each}
-      </Select>
-      {#if fieldErrors['type_id']}
-        <p class="field-error">{fieldErrors['type_id']}</p>
-      {/if}
-    </div>
-
     <!-- Required: Наименование -->
     <div class="field" class:has-error={!!fieldErrors['name']}>
       <label class="label" for="f-name">

@@ -16,8 +16,10 @@
   let modalOpen = $state(false);
   let editTarget = $state<DeviceDto | null>(null);
 
+  // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
+  // /printers (Phase 6) will use type_id=2 ("Принтер").
   const filter = $state<DeviceFilter>({
-    type_id: null,
+    type_id: 1,
     location_id: null,
     status_id: null,
     state: null,
