@@ -1,19 +1,19 @@
-//! Device DTOs — scaffold only in Plan 01.
+//! Device DTOs — полная реализация Plan 03.
 //!
-//! Full DTO struct definitions (`DeviceDto`, `DeviceNew`, `DevicePatch`, etc.)
-//! land in Plan 03 once the CRUD impl is ready.
+//! `STATE_HINTS` определён здесь (DEV-10 / D-DeviceHints-01).
+//! `DeviceDto`, `DeviceNew`, `DevicePatch`, `DeviceFilter`, `Pagination`, `DeviceListResponse` —
+//! с derives `Serialize + Deserialize + specta::Type`.
 //!
-//! `STATE_HINTS` is defined here now because:
-//!   - It's referenced in D-DeviceHints-01 (CONTEXT.md Phase 2)
-//!   - It's used to populate the quick-pick UI for the "Состояние" field
-//!   - 6 entries per DEV-10 / D-DeviceHints-01
+//! Snake_case JSON — НИКАКИХ `rename_all = "camelCase"` (PATTERNS.md §Pattern 3).
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use trackly_core::domain::devices::DeviceRow;
 
 /// Quick-pick hints for the device "Состояние" (condition/state) field.
 ///
-/// These are static UI affordances — not database-driven. A user clicks one of
-/// these to fill in the state field, then can still type free-form text.
-///
-/// Per DEV-10 and D-DeviceHints-01 (Phase 2 CONTEXT.md).
+/// Static UI affordances — not database-driven.
+/// Per DEV-10 and D-DeviceHints-01.
 pub const STATE_HINTS: &[&str] = &[
     "Новое",
     "Новый в заводской упаковке, не вскрытый",
@@ -22,3 +22,242 @@ pub const STATE_HINTS: &[&str] = &[
     "Среднее",
     "Б/У",
 ];
+
+/// Device DTO — полный набор полей, возвращаемый frontend'у.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceDto {
+    pub id: i64,
+    pub version: i64,
+    pub type_id: i64,
+    pub name: String,
+    pub inventory_no: Option<String>,
+    pub serial_no: Option<String>,
+    pub model: Option<String>,
+    /// Технические характеристики (notes в БД).
+    pub specs: Option<String>,
+    /// Комплектация (complectation в БД).
+    pub kit: Option<String>,
+    /// Состояние (condition в БД).
+    pub state: Option<String>,
+    pub location_id: Option<i64>,
+    pub status_id: i64,
+    pub created_at_utc: i64,
+    pub updated_at_utc: i64,
+}
+
+impl From<DeviceRow> for DeviceDto {
+    fn from(row: DeviceRow) -> Self {
+        Self {
+            id: row.id,
+            version: row.version,
+            type_id: row.type_id,
+            name: row.name,
+            inventory_no: row.inventory_no,
+            serial_no: row.serial_no,
+            model: row.model,
+            specs: row.specs,
+            kit: row.kit,
+            state: row.state,
+            location_id: row.location_id,
+            status_id: row.status_id,
+            created_at_utc: row.created_at_utc,
+            updated_at_utc: row.updated_at_utc,
+        }
+    }
+}
+
+/// DTO для создания нового устройства.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceNew {
+    pub type_id: i64,
+    pub name: String,
+    pub inventory_no: Option<String>,
+    pub serial_no: Option<String>,
+    pub model: Option<String>,
+    pub specs: Option<String>,
+    pub kit: Option<String>,
+    pub state: Option<String>,
+    pub location_id: Option<i64>,
+    pub status_id: i64,
+}
+
+impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
+    fn from(dto: DeviceNew) -> Self {
+        Self {
+            type_id: dto.type_id,
+            name: dto.name,
+            inventory_no: dto.inventory_no,
+            serial_no: dto.serial_no,
+            model: dto.model,
+            specs: dto.specs,
+            kit: dto.kit,
+            state: dto.state,
+            location_id: dto.location_id,
+            status_id: dto.status_id,
+        }
+    }
+}
+
+/// DTO для частичного обновления устройства.
+/// `Option<Option<T>>` — None означает «не менять», Some(None) — «установить NULL»,
+/// Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct DevicePatch {
+    pub type_id: Option<i64>,
+    pub name: Option<String>,
+    pub inventory_no: Option<Option<String>>,
+    pub serial_no: Option<Option<String>>,
+    pub model: Option<Option<String>>,
+    pub specs: Option<Option<String>>,
+    pub kit: Option<Option<String>>,
+    pub state: Option<Option<String>>,
+    pub location_id: Option<Option<i64>>,
+    pub status_id: Option<i64>,
+}
+
+impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
+    fn from(dto: DevicePatch) -> Self {
+        // Преобразуем плоские Option-поля в domain::DevicePatch
+        // (domain использует простые Option<T>, не Option<Option<T>>)
+        // Для nullable полей (inventory_no и пр.) передаём внутренний Option.
+        let mut p = trackly_core::domain::devices::DevicePatch::default();
+        if let Some(v) = dto.type_id {
+            p.type_id = Some(v);
+        }
+        if let Some(v) = dto.name {
+            p.name = Some(v);
+        }
+        if let Some(inner) = dto.inventory_no {
+            p.inventory_no = inner;
+        }
+        if let Some(inner) = dto.serial_no {
+            p.serial_no = inner;
+        }
+        if let Some(inner) = dto.model {
+            p.model = inner;
+        }
+        if let Some(inner) = dto.specs {
+            p.specs = inner;
+        }
+        if let Some(inner) = dto.kit {
+            p.kit = inner;
+        }
+        if let Some(inner) = dto.state {
+            p.state = inner;
+        }
+        if let Some(inner) = dto.location_id {
+            p.location_id = inner;
+        }
+        if let Some(v) = dto.status_id {
+            p.status_id = Some(v);
+        }
+        p
+    }
+}
+
+/// Фильтр для списка устройств.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct DeviceFilter {
+    pub type_id: Option<i64>,
+    pub location_id: Option<i64>,
+    pub status_id: Option<i64>,
+    pub state: Option<String>,
+    pub name_prefix: Option<String>,
+    /// Включать ли мягко-удалённые устройства. По умолчанию false.
+    pub include_deleted: bool,
+}
+
+/// Параметры пагинации.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct Pagination {
+    pub offset: u64,
+    pub limit: u64,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 50,
+        }
+    }
+}
+
+/// Ответ на запрос списка устройств.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct DeviceListResponse {
+    pub items: Vec<DeviceDto>,
+    pub total: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_round_trip_device_dto() {
+        let dto = DeviceDto {
+            id: 42,
+            version: 3,
+            type_id: 1,
+            name: "Ноутбук Lenovo".to_string(),
+            inventory_no: Some("INV-001".to_string()),
+            serial_no: None,
+            model: Some("ThinkPad X1".to_string()),
+            specs: None,
+            kit: None,
+            state: Some("Хорошее".to_string()),
+            location_id: Some(5),
+            status_id: 2,
+            created_at_utc: 1_700_000_000,
+            updated_at_utc: 1_700_001_000,
+        };
+        let json = serde_json::to_string(&dto).expect("serialize");
+        let back: DeviceDto = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, dto);
+    }
+
+    #[test]
+    fn serde_round_trip_device_new() {
+        let new = DeviceNew {
+            type_id: 1,
+            name: "Принтер HP".to_string(),
+            inventory_no: None,
+            serial_no: Some("SN-999".to_string()),
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            location_id: None,
+            status_id: 1,
+        };
+        let json = serde_json::to_string(&new).expect("serialize");
+        let back: DeviceNew = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, new);
+    }
+
+    #[test]
+    fn snake_case_json_invariant() {
+        let dto = DeviceDto {
+            id: 1,
+            version: 1,
+            type_id: 1,
+            name: "Test".to_string(),
+            inventory_no: Some("INV".to_string()),
+            serial_no: None,
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            location_id: None,
+            status_id: 1,
+            created_at_utc: 0,
+            updated_at_utc: 0,
+        };
+        let json = serde_json::to_string(&dto).expect("serialize");
+        assert!(json.contains("inventory_no"), "должен содержать snake_case 'inventory_no'");
+        assert!(json.contains("type_id"), "должен содержать snake_case 'type_id'");
+        assert!(json.contains("status_id"), "должен содержать snake_case 'status_id'");
+        assert!(!json.contains("inventoryNo"), "НЕ должен содержать camelCase");
+    }
+}
