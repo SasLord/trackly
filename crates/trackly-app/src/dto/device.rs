@@ -24,10 +24,18 @@ pub const STATE_HINTS: &[&str] = &[
 ];
 
 /// Device DTO — полный набор полей, возвращаемый frontend'у.
+///
+/// `#[specta(type = i32)]` на `i64`-полях — specta-typescript запрещает BigInt
+/// (i64/u64) по умолчанию. ID-значения и версии в SQLite умещаются в i32,
+/// timestamps (Unix-секунды ≤ ~2 млрд до 2038) тоже помещаются. TypeScript
+/// получает `number` — JSON-числа передаются без потерь.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceDto {
+    #[specta(type = i32)]
     pub id: i64,
+    #[specta(type = i32)]
     pub version: i64,
+    #[specta(type = i32)]
     pub type_id: i64,
     pub name: String,
     pub inventory_no: Option<String>,
@@ -39,9 +47,13 @@ pub struct DeviceDto {
     pub kit: Option<String>,
     /// Состояние (condition в БД).
     pub state: Option<String>,
+    #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
+    #[specta(type = i32)]
     pub status_id: i64,
+    #[specta(type = i32)]
     pub created_at_utc: i64,
+    #[specta(type = i32)]
     pub updated_at_utc: i64,
 }
 
@@ -69,6 +81,7 @@ impl From<DeviceRow> for DeviceDto {
 /// DTO для создания нового устройства.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceNew {
+    #[specta(type = i32)]
     pub type_id: i64,
     pub name: String,
     pub inventory_no: Option<String>,
@@ -77,7 +90,9 @@ pub struct DeviceNew {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
+    #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
+    #[specta(type = i32)]
     pub status_id: i64,
 }
 
@@ -103,6 +118,7 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
 /// Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct DevicePatch {
+    #[specta(type = Option<i32>)]
     pub type_id: Option<i64>,
     pub name: Option<String>,
     pub inventory_no: Option<Option<String>>,
@@ -111,7 +127,9 @@ pub struct DevicePatch {
     pub specs: Option<Option<String>>,
     pub kit: Option<Option<String>>,
     pub state: Option<Option<String>>,
+    #[specta(type = Option<Option<i32>>)]
     pub location_id: Option<Option<i64>>,
+    #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
 }
 
@@ -158,8 +176,11 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
 /// Фильтр для списка устройств.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct DeviceFilter {
+    #[specta(type = Option<i32>)]
     pub type_id: Option<i64>,
+    #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
+    #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
     pub state: Option<String>,
     pub name_prefix: Option<String>,
@@ -170,7 +191,9 @@ pub struct DeviceFilter {
 /// Параметры пагинации.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct Pagination {
+    #[specta(type = u32)]
     pub offset: u64,
+    #[specta(type = u32)]
     pub limit: u64,
 }
 
@@ -187,6 +210,7 @@ impl Default for Pagination {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceListResponse {
     pub items: Vec<DeviceDto>,
+    #[specta(type = u32)]
     pub total: u64,
 }
 

@@ -85,4 +85,34 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("AppError"),
         "bindings.ts missing AppError type"
     );
+
+    // Phase 2 — Devices CRUD types.
+    assert!(
+        contents.contains("DeviceDto"),
+        "bindings.ts missing DeviceDto type"
+    );
+    assert!(
+        contents.contains("DeviceNew"),
+        "bindings.ts missing DeviceNew type"
+    );
+    assert!(
+        contents.contains("DevicePatch"),
+        "bindings.ts missing DevicePatch type"
+    );
+    assert!(
+        contents.contains("DeviceFilter"),
+        "bindings.ts missing DeviceFilter type"
+    );
+    assert!(
+        contents.contains("DeviceListResponse"),
+        "bindings.ts missing DeviceListResponse type"
+    );
+    assert!(
+        contents.contains("devices_list"),
+        "bindings.ts missing devices_list command"
+    );
+    assert!(
+        contents.contains("devices_create"),
+        "bindings.ts missing devices_create command"
+    );
 }

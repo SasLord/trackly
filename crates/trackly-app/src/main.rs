@@ -117,12 +117,27 @@ fn main() -> anyhow::Result<()> {
             return Ok::<(), anyhow::Error>(());
         }
 
-        // Step 8: normal branch — UI not yet wired in Phase 1.
-        eprintln!(
-            "Phase 1 — UI not yet wired. Use `trackly --self-test`. (schema_version={})",
-            ctx.schema_version
-        );
-        ctx.shutdown.cancel();
+        // Step 8 (Plan 03): UI wired via Tauri Builder.
+        // WriterHandle и ReaderPool из AppCtx::build уже инициализированы —
+        // writer-worker крутится на dedicated thread, reader-pool использует
+        // sync rusqlite::Connection через tokio::task::spawn_blocking.
+        // tauri::Builder использует свой main-thread event loop (Wry/Tao) и
+        // НЕ создаёт дополнительный tokio runtime; #[tauri::command] async-функции
+        // выполняются на текущем tokio::Runtime через tauri::async_runtime integration.
+        let builder = trackly_app::specta_export::builder();
+        tauri::Builder::default()
+            .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
+                tracing::info!("single-instance: second launch ignored");
+            }))
+            .plugin(tauri_plugin_dialog::init())
+            .manage(ctx)
+            .invoke_handler(builder.invoke_handler())
+            .setup(move |app| {
+                builder.mount_events(app);
+                Ok(())
+            })
+            .run(tauri::generate_context!())
+            .expect("tauri runtime failed");
         Ok::<(), anyhow::Error>(())
     })?;
 
