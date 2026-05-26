@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte, vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import path from 'path';
 
 // Trackly UI: vanilla Svelte 5 SPA. Served by Tauri webview (desktop) and by
 // the axum static-file handler in server mode (Phase 5). Vite dev port 1420
@@ -15,6 +16,11 @@ export default defineConfig({
       }),
     }),
   ],
+  resolve: {
+    alias: {
+      $lib: path.resolve(__dirname, 'src/lib'),
+    },
+  },
   clearScreen: false,
   envPrefix: ['VITE_', 'TAURI_'],
   server: {

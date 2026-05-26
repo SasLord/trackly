@@ -17,7 +17,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
-    "types": ["svelte", "vite/client"]
+    "types": ["svelte", "vite/client"],
+    "paths": {
+      "$lib": ["./src/lib/index.ts"],
+      "$lib/*": ["./src/lib/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"],
   "exclude": ["node_modules", "dist"]

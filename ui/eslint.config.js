@@ -4,23 +4,75 @@ import tsParser from '@typescript-eslint/parser';
 import svelte from 'eslint-plugin-svelte';
 import svelteParser from 'svelte-eslint-parser';
 
-// Flat config required by ESLint 9. Phase 1 ruleset is intentionally minimal —
-// Phase 2 will tighten rules as real UI code lands.
+// Flat config required by ESLint 9.
+
+const browserGlobals = {
+  document: 'readonly',
+  window: 'readonly',
+  console: 'readonly',
+  localStorage: 'readonly',
+  sessionStorage: 'readonly',
+  navigator: 'readonly',
+  location: 'readonly',
+  history: 'readonly',
+  setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+  requestAnimationFrame: 'readonly',
+  cancelAnimationFrame: 'readonly',
+  fetch: 'readonly',
+  URL: 'readonly',
+  URLSearchParams: 'readonly',
+  crypto: 'readonly',
+  matchMedia: 'readonly',
+  Event: 'readonly',
+  KeyboardEvent: 'readonly',
+  MouseEvent: 'readonly',
+  HTMLElement: 'readonly',
+  HTMLInputElement: 'readonly',
+  HTMLTextAreaElement: 'readonly',
+  HTMLSelectElement: 'readonly',
+  MutationObserver: 'readonly',
+  ResizeObserver: 'readonly',
+  IntersectionObserver: 'readonly',
+};
+
+// Svelte 5 rune globals (available in .svelte.ts and .svelte files)
+const svelteRunes = {
+  $state: 'readonly',
+  $derived: 'readonly',
+  $effect: 'readonly',
+  $props: 'readonly',
+  $bindable: 'readonly',
+  $inspect: 'readonly',
+  $host: 'readonly',
+};
+
+const nodeGlobals = {
+  __dirname: 'readonly',
+  __filename: 'readonly',
+  process: 'readonly',
+  require: 'readonly',
+  module: 'readonly',
+  exports: 'readonly',
+};
+
 export default [
   {
     ignores: ['node_modules/', 'dist/', 'src/bindings.ts', 'pnpm-lock.yaml'],
   },
   js.configs.recommended,
+  // Node/config files
   {
-    files: ['**/*.ts'],
+    files: ['vite.config.ts', 'svelte.config.js', 'eslint.config.js'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
-        document: 'readonly',
-        window: 'readonly',
-        console: 'readonly',
+        ...nodeGlobals,
+        ...browserGlobals,
       },
     },
     plugins: { '@typescript-eslint': ts },
@@ -28,6 +80,29 @@ export default [
       ...ts.configs.recommended.rules,
     },
   },
+  // TypeScript source files (including .svelte.ts rune modules)
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...browserGlobals,
+        ...svelteRunes,
+      },
+    },
+    plugins: { '@typescript-eslint': ts },
+    rules: {
+      ...ts.configs.recommended.rules,
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  // Svelte component files
   ...svelte.configs['flat/recommended'],
   {
     files: ['**/*.svelte'],
@@ -37,10 +112,17 @@ export default [
         parser: tsParser,
       },
       globals: {
-        document: 'readonly',
-        window: 'readonly',
-        console: 'readonly',
+        ...browserGlobals,
+        ...svelteRunes,
       },
+    },
+    plugins: { '@typescript-eslint': ts },
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 ];
