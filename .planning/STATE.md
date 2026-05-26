@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-26T04:41:00.493Z"
-last_activity: 2026-05-26 -- Phase 02 planning complete
+last_updated: "2026-05-26T05:00:29.123Z"
+last_activity: 2026-05-26
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 11
-  completed_plans: 6
+  completed_plans: 7
   percent: 13
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 1 — Фундамент
+**Current focus:** Phase 02 — ui
 
 ## Current Position
 
-Phase: 1 — COMPLETE
-Plan: 6 of 6 in current phase
+Phase: 02 (ui) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-05-26 -- Phase 02 planning complete
+Last activity: 2026-05-26
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 64%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 01 P03 | 6 min | 3 tasks | 23 files |
 | Phase 01 P04 | 25 min | 3 tasks | 24 files |
 | Phase 01 P06 | 22 min | - tasks | - files |
+| Phase 02-ui P01 | 20 min | 2 tasks | 29 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 06: svelte-check is continue-on-error in ci-full.yml until Phase 2 wires @tauri-apps/api (per deferred-items.md)
 - [Phase ?]: Plan 06: Sysinternals ProcMon SHA256 logged but NOT gated (Microsoft does not publish stable checksums; T-06-01 accepted with audit-log mitigation)
 - [Phase ?]: Plan 06: cyrillic sandbox doubles as success-criterion-#1 + FOUND-11 fixture; crash gate (T-06-04) prevents silent pass
+- [Phase ?]: 02-01: Path B column mapping: domain uses UI names, SQL stays V003
+- [Phase ?]: 02-01: DeviceRepository associated type Conn keeps rusqlite out of trackly-core (hexagonal boundary)
+- [Phase ?]: 02-01: ImportSessionStore lazy sweep on put() only - no background task
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-25T16:10:38.720Z
+Last session: 2026-05-26T05:00:29.117Z
 Stopped at: Phase 2 UI-SPEC approved
-Resume file: .planning/phases/02-ui/02-UI-SPEC.md
+Resume file: None
