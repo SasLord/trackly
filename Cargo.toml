@@ -43,6 +43,12 @@ specta-typescript = "0.0.9"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "macros"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
+chardetng = "0.1"
+encoding_rs = "0.8"
+csv = "1.3"
+uuid = { version = "1", features = ["v4", "serde"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 
 [workspace.lints.clippy]
 disallowed_methods = "deny"
