@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint . --ext .ts,.svelte && prettier --check .",
-    "tauri": "cd ../crates/trackly-app && pnpm --dir ../../ui exec tauri"
+    "tauri": "cd ../crates/trackly-app && node ../../ui/node_modules/@tauri-apps/cli/tauri.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
