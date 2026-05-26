@@ -22,6 +22,10 @@
     (showGroups ? groups.length === 0 : items.length === 0)
   );
 
+  // In grouped mode, singletons (count == 1) render as plain DeviceListRow.
+  // Groups with count > 1 render as expandable DeviceGroupRow.
+  // This ensures every device is visible in grouped mode — no vanishing singletons.
+
   const emptyMessage = $derived(
     searchActive
       ? 'По вашему запросу ничего не найдено'
@@ -82,7 +86,13 @@
       <tbody>
         {#if showGroups}
           {#each groups as group (group.repr.id)}
-            <DeviceGroupRow {group} {onEdit} {onDelete} />
+            {#if group.count > 1}
+              <!-- Multi-device group: expandable row with chevron and count badge -->
+              <DeviceGroupRow {group} {onEdit} {onDelete} />
+            {:else}
+              <!-- Singleton group (count == 1): render as plain row, no chevron -->
+              <DeviceListRow device={group.repr} {onEdit} {onDelete} />
+            {/if}
           {/each}
         {:else}
           {#each items as device (device.id)}
