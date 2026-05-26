@@ -84,14 +84,10 @@ jobs:
         working-directory: ui
         run: pnpm install --frozen-lockfile
 
-      # NOTE: svelte-check is allowed to fail because ui/src/bindings.ts
-      # references @tauri-apps/api/* which is not in package.json yet
-      # (deferred to Phase 2 — see .planning/phases/01-foundation/deferred-items.md).
-      # When Phase 2 wires the Tauri runtime + adds @tauri-apps/api, remove
-      # `continue-on-error: true` to make svelte-check a blocking gate again.
-      - name: pnpm svelte-check (non-blocking until Phase 2)
+      # Phase 2 (Plan 02-02) resolved the @tauri-apps/api deferred item — svelte-check
+      # is now a blocking gate. See .planning/phases/01-foundation/deferred-items.md.
+      - name: pnpm svelte-check
         id: svelte_check
-        continue-on-error: true
         working-directory: ui
         run: pnpm svelte-check
 
