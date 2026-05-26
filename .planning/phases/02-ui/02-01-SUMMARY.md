@@ -175,6 +175,7 @@ metrics:
 
 ## Verification Results
 
+**Automated (CI-level):**
 - `cargo build --workspace` — PASS
 - `cargo clippy --workspace --all-targets -- -D warnings` — PASS (чист)
 - `cargo test --workspace --no-fail-fast` — PASS (все тесты зелёные)
@@ -182,6 +183,12 @@ metrics:
 - `cargo test -p trackly-infra --lib db::migrations` — PASS (3 теста, schema_version = 13)
 - `cargo test -p trackly-app --test health_smoke` — PASS
 - `grep -c "PRAGMA user_version = 13" migrations/V013__devices_fts_triggers.sql` — 1
+
+**Manual (Task 3 checkpoint — approved 2026-05-26):**
+- `cargo run -p trackly-app -- --self-test` → `schema_version=13` — PASS
+- `PRAGMA user_version` = 13 — PASS
+- `sqlite_master` triggers: `devices_fts_ai`, `devices_fts_ad`, `devices_fts_au` (3 of 3) — PASS
+- `sqlite_master` indexes `idx_devices_autocomplete_*` (5 of 5) — PASS
 
 ## Self-Check: PASSED
 
