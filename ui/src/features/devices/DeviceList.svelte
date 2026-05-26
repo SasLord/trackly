@@ -1,0 +1,180 @@
+<script lang="ts">
+  import DeviceListRow from './DeviceListRow.svelte';
+  import type { DeviceDto } from '../../bindings';
+
+  interface Props {
+    items: DeviceDto[];
+    total: number;
+    loading: boolean;
+    onEdit: (_d: DeviceDto) => void;
+    onDelete: () => void;
+  }
+
+  const { items, total, loading, onEdit, onDelete }: Props = $props();
+</script>
+
+<div class="device-list-wrapper">
+  {#if loading && items.length === 0}
+    <!-- Skeleton rows while initial load -->
+    <table class="device-table">
+      <thead>
+        <tr class="header-row">
+          <th class="th th-type">Тип</th>
+          <th class="th th-name">Наименование</th>
+          <th class="th th-numeric">Инвентарный №</th>
+          <th class="th th-numeric">Серийный №</th>
+          <th class="th">Модель</th>
+          <th class="th">Расположение</th>
+          <th class="th th-status">Статус</th>
+          <th class="th th-actions">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each { length: 5 } as _}
+          <tr class="skeleton-row">
+            {#each { length: 8 } as _}
+              <td class="skeleton-cell">
+                <div class="skeleton-block"></div>
+              </td>
+            {/each}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {:else if items.length === 0 && !loading}
+    <div class="empty-state">
+      <p class="empty-title">Устройств пока нет</p>
+      <p class="empty-body">Создайте первое устройство или импортируйте список из CSV.</p>
+    </div>
+  {:else}
+    <table class="device-table">
+      <thead>
+        <tr class="header-row">
+          <th class="th th-type">Тип</th>
+          <th class="th th-name">Наименование</th>
+          <th class="th th-numeric">Инвентарный №</th>
+          <th class="th th-numeric">Серийный №</th>
+          <th class="th">Модель</th>
+          <th class="th">Расположение</th>
+          <th class="th th-status">Статус</th>
+          <th class="th th-actions">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each items as device (device.id)}
+          <DeviceListRow {device} {onEdit} {onDelete} />
+        {/each}
+      </tbody>
+    </table>
+
+    <footer class="list-footer">
+      <span class="pagination-info">
+        Показано {items.length} из {total}
+      </span>
+    </footer>
+  {/if}
+</div>
+
+<style lang="scss">
+  .device-list-wrapper {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .device-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-body);
+    table-layout: auto;
+  }
+
+  .header-row {
+    border-bottom: 2px solid var(--color-border-strong);
+  }
+
+  .th {
+    padding: var(--space-xs) var(--space-sm);
+    text-align: left;
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    background: var(--color-bg);
+  }
+
+  .th-type {
+    width: 100px;
+  }
+  .th-name {
+    width: 25%;
+  }
+  .th-numeric {
+    width: 140px;
+  }
+  .th-status {
+    width: 120px;
+  }
+  .th-actions {
+    width: 40px;
+  }
+
+  // Empty state
+  .empty-state {
+    padding: var(--space-xl) var(--space-lg);
+    text-align: center;
+  }
+
+  .empty-title {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--font-size-heading);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+  }
+
+  .empty-body {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-body);
+  }
+
+  // Skeleton
+  .skeleton-row {
+    height: var(--row-height, 40px);
+  }
+
+  .skeleton-cell {
+    padding: 0 var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .skeleton-block {
+    height: 16px;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-sunken);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  // Footer
+  .list-footer {
+    padding: var(--space-sm) var(--space-md);
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .pagination-info {
+    font-size: var(--font-size-label);
+    color: var(--color-text-secondary);
+  }
+</style>

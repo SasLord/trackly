@@ -42,7 +42,7 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
 
         // axum-path: POST /api/v1/devices_create
         let app = devices_router().with_state(ctx.clone());
-        let body_json = serde_json::json!({ "new": new });
+        let body_json = serde_json::json!({ "device": new });
         let res = app
             .oneshot(
                 Request::builder()

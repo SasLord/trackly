@@ -72,9 +72,9 @@ pub async fn devices_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<Dev
 #[specta::specta]
 pub async fn devices_create(
     state: tauri::State<'_, AppCtx>,
-    new: DeviceNew,
+    device: DeviceNew,
 ) -> Result<DeviceDto, AppError> {
-    build_devices_create(state.inner(), new).await
+    build_devices_create(state.inner(), device).await
 }
 
 #[tauri::command]

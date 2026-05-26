@@ -34,7 +34,7 @@ pub struct GetPayload {
 
 #[derive(serde::Deserialize)]
 pub struct CreatePayload {
-    pub new: DeviceNew,
+    pub device: DeviceNew,
 }
 
 #[derive(serde::Deserialize)]
@@ -81,7 +81,7 @@ pub async fn handler_create(
     Json(payload): Json<CreatePayload>,
 ) -> Result<Json<DeviceDto>, AppErrorResponse> {
     Ok(Json(
-        build_devices_create(&ctx, payload.new)
+        build_devices_create(&ctx, payload.device)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
