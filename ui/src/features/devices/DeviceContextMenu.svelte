@@ -3,6 +3,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
+  import { portal } from '$lib/utils/portal';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {
@@ -17,8 +18,26 @@
   let confirmOpen = $state(false);
   let deleting = $state(false);
 
+  // Координаты плавающего меню в viewport (px).
+  let menuX = $state(0);
+  let menuY = $state(0);
+
+  // Ссылка на кнопку-триггер (⋮).
+  let triggerEl = $state<HTMLButtonElement | null>(null);
+
   function toggleMenu() {
-    menuOpen = !menuOpen;
+    if (menuOpen) {
+      menuOpen = false;
+      return;
+    }
+    if (triggerEl) {
+      const rect = triggerEl.getBoundingClientRect();
+      // Позиционируем меню так, чтобы оно открывалось вниз и вправо от кнопки,
+      // выровнено по правому краю кнопки.
+      menuX = rect.right - 160; // 160px — min-width меню
+      menuY = rect.bottom + 4;
+    }
+    menuOpen = true;
   }
 
   function handleEdit() {
@@ -49,20 +68,33 @@
     }
   }
 
-  function handleOutsideClick(e: MouseEvent) {
-    if (menuOpen) {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.context-menu-wrapper')) {
-        menuOpen = false;
-      }
-    }
+  // Закрыть меню при клике вне его (mousedown на <body>).
+  function handleBodyMousedown(e: MouseEvent) {
+    if (!menuOpen) return;
+    const target = e.target as HTMLElement;
+    // Если клик на триггере — toggleMenu уже обработает это.
+    if (triggerEl && triggerEl.contains(target)) return;
+    // Если клик внутри самого меню — игнорируем (клик по пункту закроет сам).
+    if (target.closest('.ctx-menu-portal')) return;
+    menuOpen = false;
+  }
+
+  // Закрыть меню при прокрутке или ресайзе — простейший способ избежать
+  // «висящего» меню с устаревшими координатами.
+  function handleScrollOrResize() {
+    if (menuOpen) menuOpen = false;
   }
 </script>
 
-<svelte:window onclick={handleOutsideClick} />
+<svelte:window
+  onmousedown={handleBodyMousedown}
+  onscroll={handleScrollOrResize}
+  onresize={handleScrollOrResize}
+/>
 
 <div class="context-menu-wrapper">
   <button
+    bind:this={triggerEl}
     class="kebab-btn"
     onclick={toggleMenu}
     aria-label="Действия с устройством"
@@ -71,21 +103,34 @@
   >
     <span class="dots">⋮</span>
   </button>
-
-  {#if menuOpen}
-    <div class="dropdown" role="menu">
-      <button class="dropdown-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
-      <hr class="dropdown-sep" />
-      <button
-        class="dropdown-item dropdown-item--destructive"
-        role="menuitem"
-        onclick={openConfirm}
-      >
-        Удалить
-      </button>
-    </div>
-  {/if}
 </div>
+
+<!--
+  Меню рендерится в портале (<body>), поэтому оно не обрезается контейнером
+  с overflow:hidden/auto. z-index: 2000 гарантирует видимость поверх всех слоёв.
+-->
+{#if menuOpen}
+  <div
+    use:portal
+    class="ctx-menu-portal"
+    role="menu"
+    tabindex="-1"
+    style="left:{menuX}px; top:{menuY}px;"
+    onkeydown={(e) => {
+      if (e.key === 'Escape') menuOpen = false;
+    }}
+  >
+    <button class="ctx-menu-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
+    <hr class="ctx-menu-sep" />
+    <button
+      class="ctx-menu-item ctx-menu-item--destructive"
+      role="menuitem"
+      onclick={openConfirm}
+    >
+      Удалить
+    </button>
+  </div>
+{/if}
 
 <Modal open={confirmOpen} title="Удалить устройство?" onClose={() => (confirmOpen = false)}>
   <p class="confirm-body">
@@ -101,7 +146,6 @@
 
 <style lang="scss">
   .context-menu-wrapper {
-    position: relative;
     display: inline-block;
   }
 
@@ -135,20 +179,29 @@
     user-select: none;
   }
 
-  .dropdown {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
+  .confirm-body {
+    margin: 0;
+    color: var(--color-text-secondary);
+    line-height: var(--line-height-body);
+  }
+
+  /*
+   * Глобальные стили для портала.
+   * Элемент .ctx-menu-portal перемещён use:portal в <body>, поэтому scoped CSS
+   * компонента до него не доходит — нужен :global().
+   */
+  :global(.ctx-menu-portal) {
+    position: fixed;
+    z-index: 2000;
     background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-elev-1);
     min-width: 160px;
-    z-index: 100;
     padding: var(--space-xs) 0;
   }
 
-  .dropdown-item {
+  :global(.ctx-menu-item) {
     display: block;
     width: 100%;
     padding: var(--space-xs) var(--space-md);
@@ -164,21 +217,15 @@
     &:hover {
       background: var(--color-surface);
     }
-
-    &--destructive {
-      color: var(--color-destructive);
-    }
   }
 
-  .dropdown-sep {
+  :global(.ctx-menu-item--destructive) {
+    color: var(--color-destructive);
+  }
+
+  :global(.ctx-menu-sep) {
     border: none;
     border-top: 1px solid var(--color-border);
     margin: var(--space-xs) 0;
-  }
-
-  .confirm-body {
-    margin: 0;
-    color: var(--color-text-secondary);
-    line-height: var(--line-height-body);
   }
 </style>
