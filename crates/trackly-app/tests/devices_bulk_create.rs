@@ -287,3 +287,104 @@ async fn bulk_create_exactly_100_allowed() {
     .await
     .expect("bulk_create_exactly_100_allowed exceeded 60s");
 }
+
+// ---------------------------------------------------------------------------
+// REGRESSION TESTS — round 4 (2026-05-27)
+// Covers: serial_no and inventory_no persist independently across N consecutive
+// bulk_create calls with count=1.  Bug scenario: user creates several devices in
+// sequence via the modal — later creations silently lost serial/inv numbers.
+// Root cause was UI-side (form state not reset), but backend integrity is also
+// confirmed here so any future backend regression is caught immediately.
+// ---------------------------------------------------------------------------
+
+/// Regression: serial_no persists when count=1 (single device with serial number).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bulk_create_each_row_has_independent_serial_and_inv_when_count_eq_1() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let devices_to_create = vec![
+            ("Ноутбук #1", Some("INV-001"), Some("SN-001")),
+            ("Ноутбук #2", Some("INV-002"), Some("SN-002")),
+            ("Ноутбук #3", None, None),
+            ("Ноутбук #4", Some("INV-004"), None),
+            ("Ноутбук #5", None, Some("SN-005")),
+        ];
+
+        let mut created_ids = Vec::new();
+        for (name, inv, sn) in &devices_to_create {
+            let new = DeviceNew {
+                type_id: 1,
+                name: name.to_string(),
+                inventory_no: inv.map(|s| s.to_string()),
+                serial_no: sn.map(|s| s.to_string()),
+                model: None,
+                specs: None,
+                kit: None,
+                state: None,
+                location: None,
+                location_id: None,
+                status_id: 1,
+            };
+            let result = svc.bulk_create(new, 1).await.expect("bulk_create count=1");
+            assert_eq!(result.len(), 1);
+            created_ids.push(result[0].id);
+        }
+
+        // Verify each device round-trips its own serial/inv values independently.
+        for (i, id) in created_ids.iter().enumerate() {
+            let dto = svc.get(*id).await.expect("get device");
+            let (_, expected_inv, expected_sn) = &devices_to_create[i];
+            assert_eq!(
+                dto.inventory_no.as_deref(),
+                *expected_inv,
+                "device[{i}] inventory_no mismatch: expected {expected_inv:?}, got {:?}",
+                dto.inventory_no
+            );
+            assert_eq!(
+                dto.serial_no.as_deref(),
+                *expected_sn,
+                "device[{i}] serial_no mismatch: expected {expected_sn:?}, got {:?}",
+                dto.serial_no
+            );
+        }
+    })
+    .await
+    .expect("bulk_create_each_row_has_independent_serial_and_inv_when_count_eq_1 exceeded 30s");
+}
+
+/// Regression: a single bulk_create(count=1) with serial_no persists the serial_no.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bulk_create_single_call_count_eq_1_persists_serial() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let new = DeviceNew {
+            type_id: 1,
+            name: "DVD-ROM".to_string(),
+            inventory_no: Some("ИНВ-007".to_string()),
+            serial_no: Some("SN-001".to_string()),
+            model: Some("Pioneer DVR-S21LBK".to_string()),
+            specs: None,
+            kit: None,
+            state: None,
+            location: None,
+            location_id: None,
+            status_id: 1,
+        };
+
+        let result = svc.bulk_create(new, 1).await.expect("bulk_create count=1 with serial");
+        assert_eq!(result.len(), 1);
+
+        let dto = svc.get(result[0].id).await.expect("get");
+        assert_eq!(dto.serial_no.as_deref(), Some("SN-001"), "serial_no должен быть SN-001");
+        assert_eq!(
+            dto.inventory_no.as_deref(),
+            Some("ИНВ-007"),
+            "inventory_no должен быть ИНВ-007"
+        );
+        assert_eq!(dto.name, "DVD-ROM");
+    })
+    .await
+    .expect("bulk_create_single_call_count_eq_1_persists_serial exceeded 30s");
+}
