@@ -14,10 +14,13 @@
     placeholder?: string;
     id?: string;
     invalid?: boolean;
+    /** When true, renders a <textarea> instead of <input>.
+     *  Autocomplete dropdown still works identically. */
+    multiline?: boolean;
     onChange: (_v: string) => void;
   }
 
-  const { field, value, contextName, contextStatusId, placeholder, id, invalid = false, onChange }: Props = $props();
+  const { field, value, contextName, contextStatusId, placeholder, id, invalid = false, multiline = false, onChange }: Props = $props();
 
   let suggestions = $state<string[]>([]);
   let loading = $state(false);
@@ -28,53 +31,56 @@
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Track the last value that was chosen via a suggestion click/keyboard.
+  // Track the last value that was chosen via a suggestion click/keyboard,
+  // OR the value present when the component mounted (pre-filled in edit mode).
   // While suppressDropdown is true the dropdown stays closed even if suggestions
-  // are returned — it is cleared only when the user types a character that
-  // differs from the just-selected value (or clears the field).
+  // are returned — it is lifted only when the user types a character that
+  // differs from lastSelected (or clears the field entirely).
   //
-  // INVARIANT: «initial value = already-selected».
-  // When the component mounts with a non-empty value (e.g. edit-mode pre-fill),
-  // that value is treated as already-selected so the dropdown does NOT flash open.
-  // Suppression lifts the first time the user types a character that differs from
-  // the pre-filled value. ArrowDown is always an explicit escape hatch.
+  // DESIGN RULE: only oninput may open the dropdown.
+  //   - Programmatic value changes (props, effects) MUST NOT open the dropdown.
+  //   - They MUST update lastSelected so the first user keystroke is judged
+  //     against the right baseline.
   //
-  // NOTE: lastSelected / suppressDropdown / _prevValue are initialised to reflect
-  // the prop `value` at mount time. Svelte 5 warns "state_referenced_locally" because
-  // props are captured once during $state(). This is intentional: we deliberately
-  // read `value` exactly once here to seed the «already-selected» invariant.
-  // Changes arriving later through the prop are tracked via the _prevValue $effect below.
+  // Concretely:
+  //   1. On mount with non-empty value → seed lastSelected + suppress (edit-mode).
+  //   2. When parent changes value externally (e.g. modal reopened for different
+  //      device) → re-seed lastSelected + suppress. Detect «external» by checking
+  //      that the change did NOT come from our own oninput handler.
+  //   3. handleInput (user typing) → the only place that lifts suppression and
+  //      lets the debounced fetch open the dropdown.
+  //
+  // We distinguish external from internal changes via a boolean `_userTyping` flag
+  // set synchronously in handleInput and cleared after the tick.
+
   let lastSelected: string | null = $state<string | null>(null);
   let suppressDropdown = $state(false);
-  let _prevValue = $state('');
+  // True for exactly the synchronous duration of an oninput call so that
+  // the value-watcher $effect can distinguish user keystrokes from parent updates.
+  let _userTyping = $state(false);
 
-  // Initialise suppression flags on first render (runs synchronously before DOM paint).
+  // Seed suppression on mount for pre-filled (edit-mode) fields.
+  // $effect.pre runs synchronously before the first DOM paint, so we see the
+  // initial prop value without any async lag.
   $effect.pre(() => {
-    // Only seed on the very first run (_prevValue is still '').
-    // For subsequent runs we rely on the watcher $effect below.
-    if (_prevValue === '' && value.length > 0) {
+    if (value.length > 0) {
       lastSelected = value;
       suppressDropdown = true;
-      _prevValue = value;
     }
   });
 
-  // When the value prop changes from outside the component (e.g. parent reopens the
-  // modal with a different device), re-arm suppression so the new initial value is
-  // also treated as already-selected.
+  // Watch external prop changes (e.g. parent swaps target device in modal).
+  // When _userTyping is true the change originated from our own oninput handler
+  // and we must NOT re-arm suppression — the user is actively typing.
   $effect(() => {
-    const v = value;
-    if (v !== _prevValue) {
-      if (v.length > 0) {
-        // External assignment — treat as already-selected, suppress dropdown.
-        lastSelected = v;
-        suppressDropdown = true;
-      } else {
-        // Field was cleared externally — reset suppression.
-        suppressDropdown = false;
-        lastSelected = null;
-      }
-      _prevValue = v;
+    const v = value; // track this dep
+    if (_userTyping) return; // internal change — skip
+    if (v.length > 0) {
+      lastSelected = v;
+      suppressDropdown = true;
+    } else {
+      suppressDropdown = false;
+      lastSelected = null;
     }
   });
 
@@ -93,7 +99,6 @@
       open = false;
       suppressDropdown = false;
       lastSelected = null;
-      _prevValue = '';
       return;
     }
     debounceTimer = setTimeout(async () => {
@@ -125,13 +130,22 @@
 
   function handleInput(e: Event) {
     const newValue = (e.currentTarget as HTMLInputElement).value;
-    // If the user is typing a value that differs from the last selected suggestion,
-    // lift the suppression so the dropdown can open again.
+    // Mark that this value change originates from user typing so the watcher
+    // $effect does NOT re-arm suppression.
+    _userTyping = true;
+    // Lift suppression when the user types something that differs from the last
+    // selected (or pre-filled) value, or when they clear the field.
     if (suppressDropdown && newValue !== lastSelected) {
       suppressDropdown = false;
       lastSelected = null;
     }
     onChange(newValue);
+    // Clear the flag on the next microtask — after Svelte has propagated the
+    // value change to the parent and back through the prop. The watcher $effect
+    // runs synchronously within the same flush, so this is always safe.
+    Promise.resolve().then(() => {
+      _userTyping = false;
+    });
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -181,19 +195,35 @@
 </script>
 
 <div class="autocomplete-wrapper" bind:this={wrapperEl}>
-  <input
-    type="text"
-    {id}
-    {placeholder}
-    class="autocomplete-input"
-    class:invalid
-    {value}
-    autocomplete="off"
-    aria-autocomplete="list"
-    aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
-    oninput={handleInput}
-    onkeydown={handleKeydown}
-  />
+  {#if multiline}
+    <textarea
+      {id}
+      {placeholder}
+      rows={3}
+      class="autocomplete-input autocomplete-textarea"
+      class:invalid
+      {value}
+      autocomplete="off"
+      aria-autocomplete="list"
+      aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
+      oninput={handleInput}
+      onkeydown={handleKeydown}
+    ></textarea>
+  {:else}
+    <input
+      type="text"
+      {id}
+      {placeholder}
+      class="autocomplete-input"
+      class:invalid
+      {value}
+      autocomplete="off"
+      aria-autocomplete="list"
+      aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
+      oninput={handleInput}
+      onkeydown={handleKeydown}
+    />
+  {/if}
 
   {#if open}
     <div class="dropdown" role="listbox">
@@ -266,6 +296,14 @@
       border-color: var(--color-destructive);
       box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
     }
+  }
+
+  // Multiline variant — overrides the fixed single-line height.
+  .autocomplete-textarea {
+    height: auto;
+    min-height: 76px; // ~ 3 rows
+    padding: var(--space-sm) var(--space-md);
+    resize: vertical;
   }
 
   .dropdown {
