@@ -91,9 +91,16 @@
   });
 
   // React to parent's submit trigger (incremented when user clicks the footer button).
-  // Guard: ignore if already submitting (double-click / rapid re-trigger).
+  // Guards:
+  //   - submitTrigger > 0: ignore the initial value (0) on mount.
+  //   - !submitting: ignore double-click / rapid re-trigger.
+  //   - canSubmit: defensive — do not call handleSubmit if required fields are not
+  //     filled. The parent resets submitTrigger to 0 before remounting this component
+  //     (via DeviceFormModal's open-detection $effect), so a stale trigger from a prior
+  //     modal session should never reach this guard. The canSubmit check is a belt-and-
+  //     suspenders backstop in case the parent's reset races with this effect.
   $effect(() => {
-    if (submitTrigger > 0 && !submitting) {
+    if (submitTrigger > 0 && !submitting && canSubmit) {
       handleSubmit();
     }
   });
