@@ -59,19 +59,24 @@
   // the value-watcher $effect can distinguish user keystrokes from parent updates.
   let _userTyping = $state(false);
 
-  // Seed suppression on mount for pre-filled (edit-mode) fields.
-  // $effect.pre runs synchronously before the first DOM paint, so we see the
-  // initial prop value without any async lag.
-  $effect.pre(() => {
-    if (value.length > 0) {
-      lastSelected = value;
-      suppressDropdown = true;
-    }
-  });
-
-  // Watch external prop changes (e.g. parent swaps target device in modal).
-  // When _userTyping is true the change originated from our own oninput handler
-  // and we must NOT re-arm suppression — the user is actively typing.
+  // Watch external prop changes AND handle the initial mount value (edit-mode).
+  //
+  // This single $effect covers both cases:
+  //   1. Mount with non-empty value (edit-mode pre-fill): seeds lastSelected and
+  //      suppresses the dropdown so focusing a pre-filled field does NOT re-open it.
+  //   2. Parent swaps value externally (e.g. different device opened): same seed+suppress.
+  //
+  // When _userTyping is true the change came from our own oninput handler — skip,
+  // so user keystrokes are never suppressed by this watcher.
+  //
+  // NOTE: no separate $effect.pre is needed. $effect.pre in Svelte 5 is reactive and
+  // re-runs on every dep change just like $effect — it is NOT limited to mount-only.
+  // A $effect.pre that checks `value.length > 0` unconditionally would re-arm
+  // suppressDropdown on every parent value update, including when the user is typing
+  // (because the parent's state change propagates back through the prop). That breaks
+  // the dropdown: even though _userTyping lifts suppression in handleInput, $effect.pre
+  // re-sets it before the debounced fetch completes. Removing $effect.pre and keeping
+  // only this watcher (with the _userTyping guard) is the correct design.
   $effect(() => {
     const v = value; // track this dep
     if (_userTyping) return; // internal change — skip
