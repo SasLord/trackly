@@ -53,7 +53,11 @@
   let stateField = $state(target?.state ?? '');
   let quantity = $state(1);
   let loading = $state(false);
+  let submitting = $state(false);
   let fieldErrors = $state<Record<string, string>>({});
+  // Local mutable copy of target.version so we can refresh it after a
+  // successful update without requiring the parent to re-mount the form.
+  let currentVersion = $state(target?.version ?? 1);
 
   const isEdit = $derived(target !== null);
 
@@ -63,7 +67,11 @@
     serialNo.trim() !== ''
   );
 
-  const canSubmit = $derived(name.trim() !== '' && location.trim() !== '' && statusId !== '');
+  // canSubmit: all required fields filled AND no in-flight request.
+  // submitting guards against double-submit even before loading propagates.
+  const canSubmit = $derived(
+    name.trim() !== '' && location.trim() !== '' && statusId !== '' && !submitting,
+  );
 
   // Reset quantity to 1 when inv/serial become non-empty.
   $effect(() => {
@@ -83,8 +91,9 @@
   });
 
   // React to parent's submit trigger (incremented when user clicks the footer button).
+  // Guard: ignore if already submitting (double-click / rapid re-trigger).
   $effect(() => {
-    if (submitTrigger > 0) {
+    if (submitTrigger > 0 && !submitting) {
       handleSubmit();
     }
   });
@@ -94,6 +103,10 @@
   // ---------------------------------------------------------------------------
   async function handleSubmit() {
     if (!canSubmit) return;
+    // In-flight guard: prevent double-submit from rapid clicks or concurrent
+    // form-onsubmit + submitTrigger firing.
+    if (submitting) return;
+    submitting = true;
     loading = true;
     fieldErrors = {};
 
@@ -112,7 +125,10 @@
           location_id: null,
           status_id: parseInt(statusId, 10) || null,
         };
-        await devices.update(target.id, target.version, patch);
+        const updated = await devices.update(target.id, currentVersion, patch);
+        // Refresh the local version counter so a subsequent edit in the same
+        // modal session uses the correct (incremented) version.
+        currentVersion = updated.version;
         pushToast('success', 'Устройство сохранено');
       } else {
         const newDevice: DeviceNew = {
@@ -158,6 +174,7 @@
       }
     } finally {
       loading = false;
+      submitting = false;
     }
   }
 </script>
@@ -165,8 +182,11 @@
 <form
   class="device-form"
   onsubmit={(e) => {
+    // Prevent default HTML form submission in all cases.
+    // Submission is always triggered via submitTrigger from DeviceFormModal's
+    // footer button — never via Enter key or implicit form submit.
     e.preventDefault();
-    handleSubmit();
+    e.stopPropagation();
   }}
 >
   <!-- 1. Required: Наименование (with autocomplete) -->
