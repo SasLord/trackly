@@ -448,3 +448,95 @@ Five defects found during manual smoke were applied as atomic commits after the 
 - `cargo test --workspace --no-fail-fast` — все тесты зелёные (+2 новых devices_crud)
 - `pnpm svelte-check --threshold error` — 0 ошибок (1 старое предупреждение DeviceFilters)
 - `pnpm build` — зелёный (0 ошибок)
+
+---
+
+## Post-checkpoint Fixes — Round 4 (2026-05-27)
+
+Семь дефектов найдены при ручном смоке после round 3. Два из них — РЕГРЕССИИ, введённые в round 3. Применены атомарными коммитами.
+
+### РЕГРЕССИЯ 7 — Autocomplete dropdown перестал открываться (commit adb27ff)
+
+**Корневая причина:** Watcher `$effect(() => { const v = value; if (v !== _prevValue) { ... } })` срабатывал на КАЖДОЕ изменение `value`, включая изменения от пользовательского ввода. Когда пользователь печатал символ:
+1. `handleInput` вызывал `onChange(newValue)` → `name = v` в родителе
+2. Prop `value` обновлялся → watcher срабатывал
+3. Watcher видел `newValue !== ''` → устанавливал `suppressDropdown = true`
+4. В debounce-эффекте `suppressDropdown === true` → дропдаун не открывался
+
+**Исправление:** Введён флаг `_userTyping = $state(false)`:
+- `handleInput` устанавливает `_userTyping = true` перед `onChange()`
+- Сбрасывает `_userTyping = false` через `Promise.resolve().then()`
+- Watcher проверяет `if (_userTyping) return` — пропускает внутренние изменения
+- Внешние изменения (смена `target` в edit-режиме) по-прежнему re-arm suppression
+
+**Принцип:** только `oninput` может открыть дропдаун; программные изменения значения обновляют `lastSelected` без открытия.
+
+**Также добавлен `multiline` prop** (`textarea` рендер для поля Тех.характеристики).
+
+**Файл:** `ui/src/features/devices/DeviceAutocompleteField.svelte`
+
+### РЕГРЕССИЯ 6 — Серийный/инвентарный номер перестал сохраняться (commit 4e944ba)
+
+**Корневая причина:** `$effect(() => { if (open) { ... reset fields ... } })` работал надёжно при первом открытии. Но Svelte 5 `$effect` не гарантирует повторный запуск, если зависимости не изменились (e.g. `open = true`, `target = null` — обе были `true/null` в предыдущем открытии). Состояние полей `name`, `inventoryNo`, `serialNo` и т.д. не сбрасывалось между последовательными открытиями.
+
+**Исправление:** Форма вынесена в отдельный компонент `DeviceFormBody.svelte`. Родитель (`DeviceFormModal`) оборачивает его в `{#key openInstanceCounter}` — при каждом переходе `open: false → true` счётчик инкрементируется, компонент полностью пересоздаётся. Все `$state` инициализируются свежо из пропа `target`. Никаких стейт-эффектов для сброса — просто пересоздание.
+
+**Дополнительные изменения при рефакторинге:**
+- Удалён hint text под Количество (визуальный disabled достаточен — Дефект 3)
+- Specs поле получает `multiline={true}` (Дефект 5)
+
+**Файлы:** `ui/src/features/devices/DeviceFormBody.svelte` (создан), `ui/src/features/devices/DeviceFormModal.svelte`
+
+### Регрессионные тесты backend (commit 3e46293)
+
+**Добавлено в `crates/trackly-app/tests/devices_bulk_create.rs`:**
+- `bulk_create_each_row_has_independent_serial_and_inv_when_count_eq_1` — 5 последовательных `bulk_create(count=1)` с различными inv/serial комбинациями → каждый row сохраняет своё значение независимо
+- `bulk_create_single_call_count_eq_1_persists_serial` — одиночный вызов с serial+inventory → оба round-trip корректно
+
+**Все 10 тестов devices_bulk_create зелёные.**
+
+### Дефект 1 — Confirm-delete modal: горизонтальный скролл (commit f319ad2)
+
+**Исправление:**
+- `Modal.svelte`: `overflow-x: hidden` + `overflow-wrap: anywhere` + `word-break: break-word` на `.modal-body`
+- `DeviceContextMenu.svelte`: аналогичные wrap-правила на `.confirm-body` (defence-in-depth)
+
+### Дефект 2 — Expanded state теряется при мутациях (commit 1b2da21)
+
+**Исправление:**
+- `DevicesPage.svelte`: `expandedGroups = $state(new Set<string>())` + обработчик `onExpandToggle`
+- `DeviceList.svelte`: принимает `expandedGroups` и `onExpandToggle`, передаёт в `DeviceGroupRow`
+- `DeviceGroupRow.svelte`:
+  - Вычисляет stable ключ из `(name, model, specs, kit, state, location, status_id)` — стабилен при удалении repr-устройства
+  - `expanded = $derived(expandedGroups.has(stableKey))` — derived, не локальный $state
+  - `$effect` автоматически загружает children если группа раскрыта при монтировании (после refresh)
+
+### Дефект 3 — Hint text под Количество (включён в commit 4e944ba)
+
+Hint `«Доступно только для устройств без инвентарного и серийного номера»` удалён при вынесении формы в `DeviceFormBody.svelte`. Disabled состояние — достаточная визуальная подсказка.
+
+### Дефект 4 — Группировка: контраст заголовка + разделитель (commit 2d1bc32)
+
+**Исправление:**
+- Заголовок группы: `color-mix(surface 94%, accent 6%)` — вместо `--color-surface-sunken` (слишком тёмного)
+- Hover: `color-mix(surface 86%, accent 14%)`
+- `DeviceListRow.svelte`: prop `isLastInGroup: boolean` → `border-bottom: 2px solid --color-border-strong` на последнем child раскрытой группы
+
+### Дефект 5 — Тех.характеристики как multiline textarea (включён в commit adb27ff + 4e944ba)
+
+**Исправление:**
+- `DeviceAutocompleteField.svelte`: prop `multiline?: boolean` → рендерит `<textarea rows=3>` вместо `<input type="text">`; dropdown anchors идентично
+- `DeviceFormBody.svelte`: `multiline={true}` на поле specs
+- CSS: `.autocomplete-textarea` с `height: auto`, `min-height: 76px`, `resize: vertical`
+
+### Итоговая верификация post-checkpoint (round 4)
+
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (10 bulk_create + все предыдущие)
+- `pnpm svelte-check --threshold error` — 0 ошибок (11 предупреждений state_referenced_locally — все ожидаемые/намеренные)
+- `pnpm build` — зелёный (0 ошибок)
+
+**Регрессионное покрытие:**
+- Autocomplete: «только oninput открывает дропдаун» — задокументировано как DESIGN RULE в исходнике
+- Form reset: `{#key openInstanceCounter}` гарантирует пересоздание на каждое открытие — структурная гарантия, не `$effect`-зависимая
+- Backend serial/inv: 2 новых теста покрывают N последовательных creates и single-call round-trip
