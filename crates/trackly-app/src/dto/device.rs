@@ -250,6 +250,58 @@ pub struct StatusCount {
     pub count: u64,
 }
 
+// ---------------------------------------------------------------------------
+// CSV Import / Export DTOs (Plan 05)
+// ---------------------------------------------------------------------------
+
+/// Response from `import_csv_preview` — includes token + decoded preview data.
+///
+/// `token: String` — UUID v4 serialized as hyphenated string (not Uuid type,
+/// to avoid specta::Type complexity with non-primitive UUID types).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct CsvImportPreviewResponse {
+    /// Session token (UUID v4, hyphenated). Use in `import_csv_commit`.
+    pub token: String,
+    /// Detected encoding label, e.g. "UTF-8" or "windows-1251".
+    pub encoding: String,
+    /// Delimiter character, either "," or ";".
+    pub delimiter: String,
+    /// Column headers from the first CSV row.
+    pub headers: Vec<String>,
+    /// First 5 decoded data rows (or fewer if file is short).
+    pub preview_rows: Vec<Vec<String>>,
+    /// Total number of data rows (excluding header).
+    #[specta(type = u32)]
+    pub total_rows: u64,
+    /// True if encoding_rs encountered replacement characters during decode —
+    /// surface a warning to the user (RESEARCH §Pitfall 7).
+    pub had_replacements: bool,
+}
+
+/// Result of a successful (or partial) `import_csv_commit` call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct CsvImportReport {
+    /// Number of devices successfully inserted.
+    #[specta(type = u32)]
+    pub inserted: u64,
+    /// Per-row errors (rows that were skipped due to validation failures).
+    pub failed: Vec<RowError>,
+}
+
+/// A per-row import error.
+///
+/// Flattened struct (no nested AppError) for simpler specta::Type / JSON shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct RowError {
+    /// 1-based row index (matching what the user sees in a spreadsheet).
+    #[specta(type = u32)]
+    pub row_index: u64,
+    /// AppError variant code (e.g. "Validation").
+    pub error_code: String,
+    /// Human-readable error message in Russian.
+    pub error_message: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

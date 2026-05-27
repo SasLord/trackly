@@ -14,16 +14,29 @@
 use std::sync::Arc;
 
 use trackly_core::error::AppError;
+
+/// Excel formula injection prevention (T-02-05-03).
+/// Prefixes cells starting with `=`, `+`, `-`, `@` with `'` (Excel-safe per OWASP).
+fn csv_safe(value: &str) -> String {
+    if value.starts_with(['=', '+', '-', '@']) {
+        format!("'{value}")
+    } else {
+        value.to_string()
+    }
+}
 use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::SqliteDeviceRepository;
 
+use std::collections::HashMap;
+
 use crate::csv::session_store::ImportSessionStore;
+use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
 use crate::dto::device::{
-    DeviceDto, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
-    StatusCount, STATE_HINTS,
+    CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
+    DeviceListResponse, DeviceNew, DevicePatch, Pagination, RowError, StatusCount, STATE_HINTS,
 };
 
 /// Application service for device management.
@@ -441,6 +454,334 @@ impl DeviceService {
             .into_iter()
             .map(|(status_id, count)| StatusCount { status_id, count })
             .collect())
+    }
+
+    // -----------------------------------------------------------------------
+    // CSV Import / Export (Plan 05)
+    // -----------------------------------------------------------------------
+
+    /// Phase 1 of CSV import: decode bytes, sniff encoding+delimiter, parse rows,
+    /// store session, return preview.
+    ///
+    /// T-02-05-01: rejects files > 50 MB.
+    pub async fn import_csv_preview(
+        &self,
+        bytes: Vec<u8>,
+    ) -> Result<CsvImportPreviewResponse, AppError> {
+        // T-02-05-01: size cap (50 MB).
+        if bytes.len() > 50 * 1024 * 1024 {
+            return Err(AppError::Validation {
+                field: "file".to_string(),
+                message: "Файл больше 50 МБ".to_string(),
+            });
+        }
+
+        // Sniff encoding + delimiter.
+        let profile = detect(&bytes);
+        // Decode bytes to String.
+        let (text, had_replacements) = decode_to_string(&bytes, profile.encoding);
+        // Parse CSV.
+        let (headers, all_rows) = parse_rows(&text, profile.delimiter).map_err(|e| {
+            AppError::Validation {
+                field: "file".to_string(),
+                message: format!("Не удалось разобрать CSV: {e}"),
+            }
+        })?;
+
+        let total_rows = all_rows.len() as u64;
+        let preview_rows = all_rows.iter().take(5).cloned().collect();
+
+        // Store session for commit step.
+        let session = ImportSession {
+            encoding: profile.encoding,
+            delimiter: profile.delimiter,
+            headers: headers.clone(),
+            all_rows,
+            created: std::time::Instant::now(),
+        };
+        let token = self.csv_sessions.put(session);
+
+        Ok(CsvImportPreviewResponse {
+            token: token.to_string(),
+            encoding: profile.encoding.name().to_string(),
+            delimiter: (profile.delimiter as char).to_string(),
+            headers,
+            preview_rows,
+            total_rows,
+            had_replacements,
+        })
+    }
+
+    /// Phase 2 of CSV import: retrieve session, validate + insert rows, return report.
+    ///
+    /// `mapping`: CSV column header → device field name (e.g. "Наименование" → "name").
+    /// Known field names: "type", "name", "inventory_no", "serial_no", "model",
+    ///   "specs", "kit", "state", "location", "status".
+    /// Unknown keys are ignored (T-02-05-08).
+    pub async fn import_csv_commit(
+        &self,
+        token: String,
+        mapping: HashMap<String, String>,
+    ) -> Result<CsvImportReport, AppError> {
+        let uuid = uuid::Uuid::parse_str(&token).map_err(|_| AppError::Validation {
+            field: "token".to_string(),
+            message: "Некорректный токен".to_string(),
+        })?;
+
+        let session = self
+            .csv_sessions
+            .take(uuid)
+            .ok_or_else(|| AppError::Validation {
+                field: "token".to_string(),
+                message: "Сессия истекла или уже использована".to_string(),
+            })?;
+
+        // Build header→column-index lookup.
+        let header_idx: HashMap<String, usize> = session
+            .headers
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (h.clone(), i))
+            .collect();
+
+        let mut report = CsvImportReport {
+            inserted: 0,
+            failed: Vec::new(),
+        };
+
+        // Process each row individually (per-row error accumulation, D-CSV-01).
+        for (row_offset, row) in session.all_rows.iter().enumerate() {
+            let row_index = (row_offset + 1) as u64; // 1-based for user display
+
+            // Build DeviceNew from mapping.
+            let build_result = Self::build_device_new_from_row(row, &header_idx, &mapping);
+            let new_device = match build_result {
+                Ok(d) => d,
+                Err(e) => {
+                    report.failed.push(RowError {
+                        row_index,
+                        error_code: "Validation".to_string(),
+                        error_message: e.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            // Validate via service validation.
+            if let Err(e) = Self::validate_new(&new_device) {
+                let msg = match &e {
+                    AppError::Validation { message, .. } => message.clone(),
+                    _ => e.to_string(),
+                };
+                report.failed.push(RowError {
+                    row_index,
+                    error_code: "Validation".to_string(),
+                    error_message: msg,
+                });
+                continue;
+            }
+
+            // Insert via service.create (handles location resolution + audit_log).
+            match self.create(new_device).await {
+                Ok(_) => {
+                    report.inserted += 1;
+                }
+                Err(e) => {
+                    let (code, msg) = match &e {
+                        AppError::Validation { field, message } => {
+                            (format!("Validation:{field}"), message.clone())
+                        }
+                        AppError::NotFound { entity, id } => {
+                            ("NotFound".to_string(), format!("{entity} {id} не найден"))
+                        }
+                        _ => ("Internal".to_string(), e.to_string()),
+                    };
+                    report.failed.push(RowError {
+                        row_index,
+                        error_code: code,
+                        error_message: msg,
+                    });
+                }
+            }
+        }
+
+        Ok(report)
+    }
+
+    /// Build a `DeviceNew` from a CSV row using the provided column mapping.
+    fn build_device_new_from_row(
+        row: &[String],
+        header_idx: &HashMap<String, usize>,
+        mapping: &HashMap<String, String>,
+    ) -> Result<DeviceNew, String> {
+        let get_field = |csv_col: &str| -> Option<String> {
+            header_idx
+                .get(csv_col)
+                .and_then(|&idx| row.get(idx))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+
+        // Resolve each mapped CSV column to a device field.
+        let mut name: Option<String> = None;
+        let mut type_label: Option<String> = None;
+        let mut inventory_no: Option<String> = None;
+        let mut serial_no: Option<String> = None;
+        let mut model: Option<String> = None;
+        let mut specs: Option<String> = None;
+        let mut kit: Option<String> = None;
+        let mut state: Option<String> = None;
+        let mut location: Option<String> = None;
+        let mut status_label: Option<String> = None;
+
+        for (csv_col, device_field) in mapping {
+            let value = get_field(csv_col);
+            match device_field.as_str() {
+                "name" => name = value.or(name),
+                "type" => type_label = value.or(type_label),
+                "inventory_no" => inventory_no = value.or(inventory_no),
+                "serial_no" => serial_no = value.or(serial_no),
+                "model" => model = value.or(model),
+                "specs" => specs = value.or(specs),
+                "kit" => kit = value.or(kit),
+                "state" => state = value.or(state),
+                "location" => location = value.or(location),
+                "status" => status_label = value.or(status_label),
+                _ => {} // T-02-05-08: unknown keys ignored
+            }
+        }
+
+        // Resolve type_id from label (or default to 1 = "Устройство").
+        // For CSV import, we use well-known seed IDs: type_id 1 = Устройство, 2 = Расходник.
+        let type_id = Self::resolve_type_id(type_label.as_deref());
+        // Resolve status_id from label (or default to 1 = "На складе").
+        let status_id = Self::resolve_status_id(status_label.as_deref());
+
+        // name is required.
+        let name = name.ok_or_else(|| "Наименование обязательно для заполнения".to_string())?;
+
+        Ok(DeviceNew {
+            type_id,
+            name,
+            inventory_no,
+            serial_no,
+            model,
+            specs,
+            kit,
+            state,
+            location,
+            location_id: None,
+            status_id,
+        })
+    }
+
+    /// Resolve type_id from a Russian type label.
+    /// Known seed values: 1 = Устройство, 2 = Расходник.
+    fn resolve_type_id(label: Option<&str>) -> i64 {
+        match label {
+            Some("Расходник") | Some("расходник") => 2,
+            _ => 1, // default: Устройство
+        }
+    }
+
+    /// Resolve status_id from a Russian status label.
+    /// Known seed values: 1 = На складе, 2 = В работе, 3 = На ремонте, 4 = Списано.
+    fn resolve_status_id(label: Option<&str>) -> i64 {
+        match label {
+            Some("В работе") | Some("в работе") => 2,
+            Some("На ремонте") | Some("на ремонте") => 3,
+            Some("Списано") | Some("списано") => 4,
+            _ => 1, // default: На складе
+        }
+    }
+
+    /// Export devices as UTF-8 BOM + semicolon-delimited CSV (D-CSV-02).
+    ///
+    /// Returns a String containing the full CSV (BOM + headers + rows).
+    /// The caller saves this to a file via the save-dialog.
+    ///
+    /// T-02-05-03: Excel formula injection prevention — cells starting with
+    /// `=`, `+`, `-`, `@` are prefixed with `'` (Excel-safe).
+    pub async fn export_csv(&self, filter: DeviceFilter) -> Result<String, AppError> {
+        // Fetch all devices matching the filter (large cap for export).
+        let response = self
+            .list(filter, Pagination { offset: 0, limit: 1_000_000 })
+            .await?;
+
+        let mut wtr = csv::WriterBuilder::new()
+            .delimiter(b';')
+            .from_writer(Vec::new());
+
+        // Russian headers (D-CSV-02).
+        wtr.write_record(&[
+            "Тип",
+            "Наименование",
+            "Инвентарный №",
+            "Серийный №",
+            "Модель",
+            "Технические характеристики",
+            "Комплектация",
+            "Состояние",
+            "Расположение",
+            "Статус",
+        ])
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("csv writer headers: {e}"),
+        })?;
+
+        for device in &response.items {
+            // Lookup type name from type_id (known seed values).
+            let type_name = Self::type_id_to_name(device.type_id);
+            // Lookup status name from status_id.
+            let status_name = Self::status_id_to_name(device.status_id);
+
+            wtr.write_record(&[
+                csv_safe(type_name),
+                csv_safe(&device.name),
+                csv_safe(device.inventory_no.as_deref().unwrap_or("")),
+                csv_safe(device.serial_no.as_deref().unwrap_or("")),
+                csv_safe(device.model.as_deref().unwrap_or("")),
+                csv_safe(device.specs.as_deref().unwrap_or("")),
+                csv_safe(device.kit.as_deref().unwrap_or("")),
+                csv_safe(device.state.as_deref().unwrap_or("")),
+                csv_safe(device.location.as_deref().unwrap_or("")),
+                csv_safe(status_name),
+            ])
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("csv writer row: {e}"),
+            })?;
+        }
+
+        let inner = wtr.into_inner().map_err(|e| AppError::Internal {
+            source_chain: format!("csv writer flush: {e}"),
+        })?;
+
+        let body = String::from_utf8(inner).map_err(|e| AppError::Internal {
+            source_chain: format!("csv utf8 conversion: {e}"),
+        })?;
+
+        // Prepend UTF-8 BOM (D-CSV-02: Russian Excel requires BOM to detect UTF-8).
+        let mut output = String::with_capacity(3 + body.len());
+        output.push('\u{FEFF}'); // U+FEFF encoded as UTF-8 = EF BB BF
+        output.push_str(&body);
+
+        Ok(output)
+    }
+
+    fn type_id_to_name(type_id: i64) -> &'static str {
+        match type_id {
+            2 => "Расходник",
+            _ => "Устройство",
+        }
+    }
+
+    fn status_id_to_name(status_id: i64) -> &'static str {
+        match status_id {
+            2 => "В работе",
+            3 => "На ремонте",
+            4 => "Списано",
+            _ => "На складе",
+        }
     }
 
     /// Получить несколько устройств по списку ID (DEV-11 expand).
