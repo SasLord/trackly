@@ -622,3 +622,73 @@ Hint `«Доступно только для устройств без инве�
 - `cargo test --workspace --no-fail-fast` — все тесты зелёные (13 devices_crud + все предыдущие)
 - `pnpm svelte-check --threshold error` — 0 ошибок (12 предупреждений state_referenced_locally — все ожидаемые/намеренные)
 - `pnpm build` — зелёный (0 ошибок)
+
+---
+
+## Post-checkpoint Fixes — Round 7 (2026-05-27)
+
+Два дефекта найдены при ручном смоке после round 6. Применены атомарными коммитами.
+
+### Дефект 1 — Autocomplete dropdown перестал открываться (регрессия от round 3) (commit e9773ba)
+
+**Симптом:** дропдаун не открывался ни в одном поле — ни в create, ни в edit, после ввода любого символа.
+
+**Корневая причина:** `$effect.pre` в Svelte 5 является реактивным и запускается при **каждом** изменении зависимости (`value`), а не только при монтировании. Блок:
+
+```ts
+$effect.pre(() => {
+  if (value.length > 0) {
+    lastSelected = value;
+    suppressDropdown = true;
+  }
+});
+```
+
+...не проверял `_userTyping`. Флоу: пользователь печатает букву → `handleInput` вызывает `onChange("А")` → `name = "А"` в родителе → prop `value = "А"` → `$effect.pre` запускается → `suppressDropdown = true`. Когда через 200ms debounce возвращались подсказки: `if (!suppressDropdown)` — false → дропдаун оставался закрыт.
+
+**Исправление:** удалён блок `$effect.pre` полностью. Watcher `$effect` (строки 75-85) уже покрывает оба случая — монтирование (первый запуск видит начальный проп) и внешние изменения пропа (проверяет `_userTyping`). Добавлен расширенный комментарий, объясняющий почему отдельный `$effect.pre` не нужен.
+
+**Файл:** `ui/src/features/devices/DeviceAutocompleteField.svelte`
+
+### Дефект 2 — Второе открытие модала немедленно сабмитит форму (commit 5507d5f)
+
+**Симптом:** при втором открытии модала (например, bulk_create count=5) — ввод первой буквы в «Расположение» закрывал модал и создавал устройства с неполными данными.
+
+**Корневая причина:** `submitTrigger` объявлен в `DeviceFormModal.svelte` **вне** блока `{#key openInstanceCounter}` и сохраняет значение между ремаунтами. После первого успешного создания `submitTrigger = 1`. При следующем открытии модала `DeviceFormBody` монтируется свежо, но его `$effect`:
+
+```ts
+$effect(() => {
+  if (submitTrigger > 0 && !submitting) {
+    handleSubmit();
+  }
+});
+```
+
+...при монтировании видит `submitTrigger === 1, !submitting === true` и **немедленно вызывает `handleSubmit()`** — с частично заполненной формой.
+
+**Исправление:** в `$effect` открытия модала в `DeviceFormModal.svelte` добавлен сброс `submitTrigger = 0` одновременно с инкрементом `openInstanceCounter`. Это гарантирует, что каждый новый экземпляр `DeviceFormBody` стартует с `submitTrigger === 0`.
+
+**Файл:** `ui/src/features/devices/DeviceFormModal.svelte`
+
+### Дефект 2b — Defensive guard в submitTrigger $effect (commit 81fefe5)
+
+**Дополнительная защита:** в `DeviceFormBody.svelte` добавлена проверка `canSubmit` в `$effect` на `submitTrigger`:
+
+```ts
+$effect(() => {
+  if (submitTrigger > 0 && !submitting && canSubmit) {
+    handleSubmit();
+  }
+});
+```
+
+Если гонка между сбросом `submitTrigger` и монтированием `DeviceFormBody` каким-либо образом проскочила, `canSubmit === false` на пустой форме отбросит вызов тихо.
+
+**Файл:** `ui/src/features/devices/DeviceFormBody.svelte`
+
+### Итоговая верификация round 7
+
+- `cargo build --workspace` — зелёный (0.48s, без изменений бэкенда)
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (только frontend-изменения, backend-тесты не затронуты)
+- `pnpm svelte-check` — 0 ошибок, 12 предупреждений (все pre-existing `state_referenced_locally` — намеренные)
+- `pnpm build` — зелёный (0 ошибок, 97.32 kB / 34.79 kB gzip)
