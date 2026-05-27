@@ -8,14 +8,17 @@
 use axum::{extract::State, routing::post, Json, Router};
 
 use crate::context::AppCtx;
+use std::collections::HashMap;
+
 use crate::dto::device::{
-    DeviceDto, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
-    StatusCount,
+    CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
+    DeviceListResponse, DeviceNew, DevicePatch, Pagination, StatusCount,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
     build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
-    build_devices_delete, build_devices_get, build_devices_list, build_devices_list_by_ids,
+    build_devices_delete, build_devices_export_csv, build_devices_get, build_devices_import_csv_commit,
+    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
     build_devices_list_grouped, build_devices_search, build_devices_state_hints,
     build_devices_status_counts, build_devices_update,
 };
@@ -82,6 +85,24 @@ pub struct ListByIdsPayload {
 pub struct BulkCreatePayload {
     pub device: DeviceNew,
     pub count: u32,
+}
+
+// CSV import / export payloads (Plan 05)
+
+#[derive(serde::Deserialize)]
+pub struct ImportCsvPreviewPayload {
+    pub bytes: Vec<u8>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ImportCsvCommitPayload {
+    pub token: String,
+    pub mapping: HashMap<String, String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ExportCsvPayload {
+    pub filter: DeviceFilter,
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +249,43 @@ pub async fn handler_bulk_create(
 }
 
 // ---------------------------------------------------------------------------
+// Handlers (Plan 05) — CSV import / export
+// ---------------------------------------------------------------------------
+
+pub async fn handler_import_csv_preview(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<ImportCsvPreviewPayload>,
+) -> Result<Json<CsvImportPreviewResponse>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_import_csv_preview(&ctx, payload.bytes)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_import_csv_commit(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<ImportCsvCommitPayload>,
+) -> Result<Json<CsvImportReport>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_import_csv_commit(&ctx, payload.token, payload.mapping)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_export_csv(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<ExportCsvPayload>,
+) -> Result<Json<String>, AppErrorResponse> {
+    Ok(Json(
+        build_devices_export_csv(&ctx, payload.filter)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -248,4 +306,8 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/devices_list_by_ids", post(handler_list_by_ids))
         // Scope extension: bulk create
         .route("/api/v1/devices_bulk_create", post(handler_bulk_create))
+        // Plan 05: CSV import / export
+        .route("/api/v1/devices_import_csv_preview", post(handler_import_csv_preview))
+        .route("/api/v1/devices_import_csv_commit", post(handler_import_csv_commit))
+        .route("/api/v1/devices_export_csv", post(handler_export_csv))
 }

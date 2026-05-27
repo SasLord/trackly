@@ -6,4 +6,5 @@
 //! (success criterion #5).
 
 pub mod devices;
+pub mod fs_helpers;
 pub mod health;

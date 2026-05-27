@@ -7,4 +7,5 @@
 //! хелпер — это и есть «один DTO, два транспорта».
 
 pub mod devices;
+pub mod fs_helpers;
 pub mod health;

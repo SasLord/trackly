@@ -151,4 +151,42 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("devices_bulk_create"),
         "bindings.ts missing devices_bulk_create command"
     );
+
+    // Phase 2 — Plan 05: CSV import / export types.
+    assert!(
+        contents.contains("CsvImportPreviewResponse"),
+        "bindings.ts missing CsvImportPreviewResponse type"
+    );
+    assert!(
+        contents.contains("CsvImportReport"),
+        "bindings.ts missing CsvImportReport type"
+    );
+    assert!(
+        contents.contains("RowError"),
+        "bindings.ts missing RowError type"
+    );
+
+    // Phase 2 — Plan 05: CSV import / export commands.
+    assert!(
+        contents.contains("devices_import_csv_preview"),
+        "bindings.ts missing devices_import_csv_preview command"
+    );
+    assert!(
+        contents.contains("devices_import_csv_commit"),
+        "bindings.ts missing devices_import_csv_commit command"
+    );
+    assert!(
+        contents.contains("devices_export_csv"),
+        "bindings.ts missing devices_export_csv command"
+    );
+
+    // Phase 2 — Plan 05: FS helper commands (B2 pinned strategy).
+    assert!(
+        contents.contains("read_file_bytes"),
+        "bindings.ts missing read_file_bytes command"
+    );
+    assert!(
+        contents.contains("write_file_bytes"),
+        "bindings.ts missing write_file_bytes command"
+    );
 }

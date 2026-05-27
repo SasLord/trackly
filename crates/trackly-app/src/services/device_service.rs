@@ -703,17 +703,47 @@ impl DeviceService {
     /// T-02-05-03: Excel formula injection prevention — cells starting with
     /// `=`, `+`, `-`, `@` are prefixed with `'` (Excel-safe).
     pub async fn export_csv(&self, filter: DeviceFilter) -> Result<String, AppError> {
-        // Fetch all devices matching the filter (large cap for export).
-        let response = self
-            .list(filter, Pagination { offset: 0, limit: 1_000_000 })
-            .await?;
+        // Fetch all devices matching the filter.
+        // Note: bypasses the 200-item pagination cap in `list()` by calling the repo directly.
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let domain_filter = trackly_core::domain::devices::DeviceFilter {
+            type_id: filter.type_id,
+            location_id: filter.location_id,
+            status_id: filter.status_id,
+            state: filter.state,
+            name_prefix: filter.name_prefix,
+            include_deleted: filter.include_deleted,
+        };
+        // Use a very large limit to fetch all rows for export.
+        let domain_page = trackly_core::domain::devices::Pagination {
+            offset: 0,
+            limit: 1_000_000,
+        };
+
+        use trackly_core::ports::devices::DeviceRepository;
+        let (rows, _total) = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.as_ref().list(&conn, &domain_filter, &domain_page)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking export_csv: {e}"),
+        })??;
+
+        struct ExportItems {
+            items: Vec<DeviceDto>,
+        }
+        let response = ExportItems {
+            items: rows.into_iter().map(DeviceDto::from).collect(),
+        };
 
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b';')
             .from_writer(Vec::new());
 
         // Russian headers (D-CSV-02).
-        wtr.write_record(&[
+        wtr.write_record([
             "Тип",
             "Наименование",
             "Инвентарный №",

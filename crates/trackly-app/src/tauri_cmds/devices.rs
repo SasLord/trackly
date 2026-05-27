@@ -6,9 +6,11 @@
 //! `#[specta::specta]` ПОСЛЕ `#[tauri::command]` — требование tauri-specta v2 rc.21.
 
 use crate::context::AppCtx;
+use std::collections::HashMap;
+
 use crate::dto::device::{
-    DeviceDto, DeviceFilter, DeviceGroup, DeviceListResponse, DeviceNew, DevicePatch, Pagination,
-    StatusCount,
+    CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
+    DeviceListResponse, DeviceNew, DevicePatch, Pagination, StatusCount,
 };
 use trackly_core::error::AppError;
 
@@ -224,4 +226,62 @@ pub async fn devices_bulk_create(
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
     build_devices_bulk_create(state.inner(), device, count).await
+}
+
+// ---------------------------------------------------------------------------
+// build_* helpers — CSV import / export (Plan 05)
+// ---------------------------------------------------------------------------
+
+pub async fn build_devices_import_csv_preview(
+    ctx: &AppCtx,
+    bytes: Vec<u8>,
+) -> Result<CsvImportPreviewResponse, AppError> {
+    ctx.devices.import_csv_preview(bytes).await
+}
+
+pub async fn build_devices_import_csv_commit(
+    ctx: &AppCtx,
+    token: String,
+    mapping: HashMap<String, String>,
+) -> Result<CsvImportReport, AppError> {
+    ctx.devices.import_csv_commit(token, mapping).await
+}
+
+pub async fn build_devices_export_csv(
+    ctx: &AppCtx,
+    filter: DeviceFilter,
+) -> Result<String, AppError> {
+    ctx.devices.export_csv(filter).await
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — CSV import / export (Plan 05)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_import_csv_preview(
+    state: tauri::State<'_, AppCtx>,
+    bytes: Vec<u8>,
+) -> Result<CsvImportPreviewResponse, AppError> {
+    build_devices_import_csv_preview(state.inner(), bytes).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_import_csv_commit(
+    state: tauri::State<'_, AppCtx>,
+    token: String,
+    mapping: HashMap<String, String>,
+) -> Result<CsvImportReport, AppError> {
+    build_devices_import_csv_commit(state.inner(), token, mapping).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_export_csv(
+    state: tauri::State<'_, AppCtx>,
+    filter: DeviceFilter,
+) -> Result<String, AppError> {
+    build_devices_export_csv(state.inner(), filter).await
 }

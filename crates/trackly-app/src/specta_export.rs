@@ -33,5 +33,12 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::devices::devices_list_by_ids,
         // Phase 2 — Devices Bulk Create (scope extension 2026-05-26)
         crate::tauri_cmds::devices::devices_bulk_create,
+        // Phase 2 — CSV import / export (Plan 05)
+        crate::tauri_cmds::devices::devices_import_csv_preview,
+        crate::tauri_cmds::devices::devices_import_csv_commit,
+        crate::tauri_cmds::devices::devices_export_csv,
+        // Phase 2 — FS helpers (Plan 05 B2 pinned strategy)
+        crate::tauri_cmds::fs_helpers::read_file_bytes,
+        crate::tauri_cmds::fs_helpers::write_file_bytes,
     ])
 }
