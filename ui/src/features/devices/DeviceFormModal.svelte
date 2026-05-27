@@ -15,7 +15,7 @@
   // ---------------------------------------------------------------------------
   // Placeholder lookups (Plan 04 wires real Tauri queries)
   // ---------------------------------------------------------------------------
-  // NOTE: DEVICE_TYPES removed — "Тип" is an internal discriminator, not user-facing.
+  // NOTE: DEVICE_TYPES removed — "Тип" является внутренним дискриминатором, не пользовательским полем.
   // The /devices section always uses type_id=1 ("Устройство").
   // The /printers section (Phase 6) will use type_id=2 ("Принтер").
 
@@ -52,8 +52,9 @@
   let kit = $state('');
   let stateField = $state('');
 
-  // Bulk-create quantity (scope extension 2026-05-26).
-  // Only shown in create mode AND when both inv/serial are empty.
+  // Bulk-create quantity.
+  // Всегда видимо. Disabled и принудительно = 1, когда инв. или серийный номер заполнен,
+  // или когда это режим редактирования (count > 1 не имеет смысла при edit).
   let quantity = $state<number>(1);
 
   let stateHints = $state<string[]>([]);
@@ -66,11 +67,13 @@
 
   const canSubmit = $derived(name.trim() !== '' && location.trim() !== '' && statusId !== '');
 
-  // Show quantity field: create mode only, AND both inv/serial are empty.
-  const showQuantity = $derived(
-    !isEdit &&
-    inventoryNo.trim() === '' &&
-    serialNo.trim() === ''
+  // Количество disabled когда:
+  // - режим редактирования (bulk-create только при создании), ИЛИ
+  // - заполнен инвентарный или серийный номер.
+  const quantityDisabled = $derived(
+    isEdit ||
+    inventoryNo.trim() !== '' ||
+    serialNo.trim() !== ''
   );
 
   // Reset form whenever the modal opens.
@@ -102,7 +105,8 @@
     }
   });
 
-  // Reset quantity to 1 when user fills in inv/serial.
+  // Reset quantity to 1 when user fills in inv/serial (quantityDisabled handles the lock,
+  // but we also reset the value so submit sends count=1 if user had set qty>1 before).
   $effect(() => {
     if (inventoryNo.trim() !== '' || serialNo.trim() !== '') {
       quantity = 1;
@@ -161,8 +165,8 @@
           status_id: parseInt(statusId, 10),
         };
 
-        // Use bulk_create for all create operations (count=1 is equivalent to create).
-        const qty = showQuantity ? Math.max(1, Math.min(100, quantity || 1)) : 1;
+        // Количество: если disabled (inv/serial заполнен), всегда 1.
+        const qty = quantityDisabled ? 1 : Math.max(1, Math.min(100, quantity || 1));
         await devices.bulkCreate(newDevice, qty);
 
         if (qty === 1) {
@@ -222,7 +226,8 @@
     </div>
 
     <!-- 2–4. Инвентарный № / Серийный № / Количество — один горизонтальный ряд.
-         Количество показывается только когда оба числовых поля пустые (create mode). -->
+         Количество ВСЕГДА отображается, но disabled когда inv/serial заполнен или это edit-режим.
+         Это исключает «дёрганье» макета при вводе номеров. -->
     <div class="field-row">
       <div class="field field-row-item">
         <label class="label" for="f-inv">Инвентарный №</label>
@@ -242,27 +247,29 @@
           oninput={(v) => (serialNo = v)}
         />
       </div>
-      {#if showQuantity}
-        <div class="field field-row-item">
-          <label class="label" for="f-qty">Количество</label>
-          <input
-            id="f-qty"
-            type="number"
-            class="input"
-            min={1}
-            max={100}
-            value={quantity}
-            oninput={(e) => {
+      <div class="field field-row-item">
+        <label class="label" for="f-qty">Количество</label>
+        <input
+          id="f-qty"
+          type="number"
+          class="input"
+          class:input-disabled={quantityDisabled}
+          min={1}
+          max={100}
+          value={quantityDisabled ? 1 : quantity}
+          disabled={quantityDisabled}
+          oninput={(e) => {
+            if (!quantityDisabled) {
               const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
               quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
-            }}
-          />
-        </div>
-      {/if}
+            }
+          }}
+        />
+        {#if quantityDisabled}
+          <p class="field-help">Доступно только для устройств без инвентарного и серийного номера.</p>
+        {/if}
+      </div>
     </div>
-    {#if showQuantity}
-      <p class="field-help field-help-row">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
-    {/if}
 
     <!-- 5. Optional: Модель (with autocomplete, contextual) -->
     <div class="field">
@@ -303,7 +310,48 @@
       />
     </div>
 
-    <!-- 8. Optional: Состояние + state-hints chips (with autocomplete) -->
+    <!-- 8. Required: Статус -->
+    <div class="field" class:has-error={!!fieldErrors['status_id']}>
+      <label class="label" for="f-status">
+        Статус <span class="required" aria-hidden="true">*</span>
+      </label>
+      <Select
+        id="f-status"
+        value={statusId}
+        invalid={!!fieldErrors['status_id']}
+        onchange={(v) => (statusId = v)}
+      >
+        <option value="">— выберите статус —</option>
+        {#each STATUSES as s}
+          <option value={String(s.id)}>{s.label}</option>
+        {/each}
+      </Select>
+      {#if fieldErrors['status_id']}
+        <p class="field-error">{fieldErrors['status_id']}</p>
+      {/if}
+    </div>
+
+    <!-- 9. Required: Расположение (with autocomplete, filtered by status + name context) -->
+    <div class="field" class:has-error={!!fieldErrors['location']}>
+      <label class="label" for="f-location">
+        Расположение <span class="required" aria-hidden="true">*</span>
+      </label>
+      <DeviceAutocompleteField
+        field="location"
+        value={location}
+        placeholder="Кабинет 305"
+        id="f-location"
+        invalid={!!fieldErrors['location']}
+        contextName={name.trim() || undefined}
+        contextStatusId={parseInt(statusId, 10) || null}
+        onChange={(v) => (location = v)}
+      />
+      {#if fieldErrors['location']}
+        <p class="field-error">{fieldErrors['location']}</p>
+      {/if}
+    </div>
+
+    <!-- 10. Optional: Состояние + state-hints chips (with autocomplete) — ПОСЛЕДНЕЕ -->
     <div class="field">
       <label class="label" for="f-state">Состояние</label>
       <DeviceAutocompleteField
@@ -332,47 +380,6 @@
         </div>
       {/if}
     </div>
-
-    <!-- 9. Required: Статус -->
-    <div class="field" class:has-error={!!fieldErrors['status_id']}>
-      <label class="label" for="f-status">
-        Статус <span class="required" aria-hidden="true">*</span>
-      </label>
-      <Select
-        id="f-status"
-        value={statusId}
-        invalid={!!fieldErrors['status_id']}
-        onchange={(v) => (statusId = v)}
-      >
-        <option value="">— выберите статус —</option>
-        {#each STATUSES as s}
-          <option value={String(s.id)}>{s.label}</option>
-        {/each}
-      </Select>
-      {#if fieldErrors['status_id']}
-        <p class="field-error">{fieldErrors['status_id']}</p>
-      {/if}
-    </div>
-
-    <!-- 10. Required: Расположение (with autocomplete, filtered by status + name context) -->
-    <div class="field" class:has-error={!!fieldErrors['location']}>
-      <label class="label" for="f-location">
-        Расположение <span class="required" aria-hidden="true">*</span>
-      </label>
-      <DeviceAutocompleteField
-        field="location"
-        value={location}
-        placeholder="Кабинет 305"
-        id="f-location"
-        invalid={!!fieldErrors['location']}
-        contextName={name.trim() || undefined}
-        contextStatusId={parseInt(statusId, 10) || null}
-        onChange={(v) => (location = v)}
-      />
-      {#if fieldErrors['location']}
-        <p class="field-error">{fieldErrors['location']}</p>
-      {/if}
-    </div>
   </form>
 
   {#snippet footer()}
@@ -397,8 +404,7 @@
   }
 
   // Horizontal row for Инв.№ / Серийный № / Количество.
-  // Three fields share equal width; when Количество is hidden the two remaining
-  // fields stretch equally via flex-grow: 1.
+  // Все три поля всегда присутствуют — макет не «прыгает».
   .field-row {
     display: flex;
     gap: var(--space-md);
@@ -408,10 +414,6 @@
   .field-row-item {
     flex: 1 1 0;
     min-width: 0; // prevents flex child from overflowing
-  }
-
-  .field-help-row {
-    margin-top: calc(var(--space-xs) * -1); // pull up slightly after the row
   }
 
   .label {
@@ -458,6 +460,13 @@
       outline: none;
       border-color: var(--color-accent);
       box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
+
+    &:disabled,
+    &.input-disabled {
+      background: var(--color-surface-sunken);
+      color: var(--color-text-muted);
+      cursor: not-allowed;
     }
   }
 
