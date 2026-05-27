@@ -39,7 +39,7 @@
   <td class="cell cell-numeric">{device.inventory_no ?? '—'}</td>
   <td class="cell cell-numeric">{device.serial_no ?? '—'}</td>
   <td class="cell">{device.model ?? '—'}</td>
-  <td class="cell">{device.location_id ?? '—'}</td>
+  <td class="cell">{device.location ?? '—'}</td>
   <td class="cell cell-status">
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>

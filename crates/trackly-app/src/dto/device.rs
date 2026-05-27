@@ -49,6 +49,8 @@ pub struct DeviceDto {
     pub state: Option<String>,
     #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
+    /// Resolved location name (from `locations` table via LEFT JOIN).
+    pub location: Option<String>,
     #[specta(type = i32)]
     pub status_id: i64,
     #[specta(type = i32)]
@@ -71,6 +73,7 @@ impl From<DeviceRow> for DeviceDto {
             kit: row.kit,
             state: row.state,
             location_id: row.location_id,
+            location: row.location,
             status_id: row.status_id,
             created_at_utc: row.created_at_utc,
             updated_at_utc: row.updated_at_utc,
@@ -79,6 +82,10 @@ impl From<DeviceRow> for DeviceDto {
 }
 
 /// DTO для создания нового устройства.
+///
+/// `location` — строковое название расположения. Сервис автоматически создаёт
+/// запись в таблице `locations` (INSERT OR IGNORE) и записывает `location_id`.
+/// Поле `location_id` оставлено для совместимости, но игнорируется если задан `location`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceNew {
     #[specta(type = i32)]
@@ -90,6 +97,8 @@ pub struct DeviceNew {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
+    /// Строковое название расположения (автоматически разрешается в location_id).
+    pub location: Option<String>,
     #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
     #[specta(type = i32)]
@@ -116,6 +125,9 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
 /// DTO для частичного обновления устройства.
 /// `Option<Option<T>>` — None означает «не менять», Some(None) — «установить NULL»,
 /// Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
+///
+/// `location` — строковое название расположения. Если задано Some(Some(name)),
+/// сервис разрешает в `location_id`; Some(None) — очищает расположение.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct DevicePatch {
     #[specta(type = Option<i32>)]
@@ -127,6 +139,8 @@ pub struct DevicePatch {
     pub specs: Option<Option<String>>,
     pub kit: Option<Option<String>>,
     pub state: Option<Option<String>>,
+    /// Строковое название расположения (автоматически разрешается в location_id).
+    pub location: Option<Option<String>>,
     #[specta(type = Option<Option<i32>>)]
     pub location_id: Option<Option<i64>>,
     #[specta(type = Option<i32>)]
@@ -254,6 +268,7 @@ mod tests {
             kit: None,
             state: Some("Хорошее".to_string()),
             location_id: Some(5),
+            location: Some("Склад A".to_string()),
             status_id: 2,
             created_at_utc: 1_700_000_000,
             updated_at_utc: 1_700_001_000,
@@ -274,6 +289,7 @@ mod tests {
             specs: None,
             kit: None,
             state: None,
+            location: None,
             location_id: None,
             status_id: 1,
         };
@@ -296,6 +312,7 @@ mod tests {
             kit: None,
             state: None,
             location_id: None,
+            location: None,
             status_id: 1,
             created_at_utc: 0,
             updated_at_utc: 0,

@@ -83,6 +83,8 @@ pub struct DeviceRow {
     pub kit: Option<String>,
     pub state: Option<String>,
     pub location_id: Option<i64>,
+    /// Resolved location name from the `locations` table (via LEFT JOIN on read paths).
+    pub location: Option<String>,
     pub status_id: i64,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
@@ -119,8 +121,8 @@ pub enum AutocompleteField {
     Kit,
     /// `condition` column (state in DTO)
     State,
-    /// Autocomplete returns distinct `location_id` values (Phase 2: numeric IDs).
-    /// Phase 7 will add a JOIN to return location names instead.
+    /// Autocomplete returns distinct `locations.name` values via JOIN.
+    /// Filtered by ctx_status_id / ctx_name when provided.
     Location,
 }
 
@@ -148,6 +150,8 @@ impl AutocompleteField {
     /// Returns the SQL column name corresponding to this field.
     ///
     /// Column names come **only** from this match — user input is never interpolated.
+    /// `Location` is handled separately in the adapter (JOIN query) — callers must
+    /// check `AutocompleteField::is_location()` before using this method for that variant.
     pub fn sql_column(self) -> &'static str {
         match self {
             Self::Name => "name",
@@ -155,7 +159,14 @@ impl AutocompleteField {
             Self::Specs => "notes",
             Self::Kit => "complectation",
             Self::State => "condition",
+            // Location is resolved via locations JOIN — this fallback is unused but
+            // needs a value to satisfy the match.
             Self::Location => "location_id",
         }
+    }
+
+    /// Returns `true` for the `Location` variant, which requires special JOIN handling.
+    pub fn is_location(self) -> bool {
+        matches!(self, Self::Location)
     }
 }

@@ -87,7 +87,7 @@
     </button>
     {group.repr.name}
   </td>
-  <td class="cell">{group.repr.location_id ?? '—'}</td>
+  <td class="cell">{group.repr.location ?? '—'}</td>
   <td class="cell cell-status">
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>

@@ -91,18 +91,28 @@ impl DeviceService {
     ///
     /// Валидирует обязательные поля, затем вставляет устройство и запись audit_log
     /// в одной транзакции (RESEARCH §Pattern 2, T-02-03-03).
+    /// Если передан `new.location` (строка), автоматически создаёт запись в `locations`
+    /// (INSERT OR IGNORE) и записывает `location_id`.
     pub async fn create(&self, new: DeviceNew) -> Result<DeviceDto, AppError> {
         Self::validate_new(&new)?;
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
-        let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
+        let location_str = new.location.clone();
+        let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
 
         let id = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Resolve location string → location_id (autocreate in locations table).
+                if let Some(ref loc) = location_str {
+                    if !loc.trim().is_empty() {
+                        domain_new.location_id = repo.resolve_location_id_in_tx(&tx, Some(loc), now)?;
+                    }
+                }
 
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
                 let after = repo.get_in_tx(&tx, id)?;
@@ -188,6 +198,7 @@ impl DeviceService {
     }
 
     /// Обновить устройство с optimistic-lock.
+    /// Если передан `patch.location` (строка), разрешает в `location_id` через `locations` таблицу.
     pub async fn update(
         &self,
         id: i64,
@@ -196,13 +207,25 @@ impl DeviceService {
     ) -> Result<DeviceDto, AppError> {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
-        let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
+        let location_patch = patch.location.clone();
+        let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         let user_id_opt: Option<i64> = None;
 
         let updated_row = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Resolve location string → location_id.
+                // location_patch: None = no change, Some(None) = no change (clear not yet supported),
+                // Some(Some(s)) = resolve to locations table id.
+                if let Some(Some(ref loc)) = location_patch {
+                    if !loc.trim().is_empty() {
+                        if let Some(lid) = repo.resolve_location_id_in_tx(&tx, Some(loc), now)? {
+                            domain_patch.location_id = Some(lid);
+                        }
+                    }
+                }
 
                 // before_json для audit_log
                 let before = repo.get_in_tx(&tx, id).ok();
@@ -498,13 +521,21 @@ impl DeviceService {
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
-        let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
+        let location_str = new.location.clone();
+        let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
 
         let ids: Vec<i64> = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Resolve location string → location_id once for the whole batch.
+                if let Some(ref loc) = location_str {
+                    if !loc.trim().is_empty() {
+                        domain_new.location_id = repo.resolve_location_id_in_tx(&tx, Some(loc), now)?;
+                    }
+                }
 
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {

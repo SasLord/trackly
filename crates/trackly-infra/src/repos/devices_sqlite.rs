@@ -26,11 +26,14 @@ use crate::error_conversions::map_rusqlite;
 pub struct SqliteDeviceRepository;
 
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
+/// LEFT JOIN locations добавляет `l.name` как последний столбец (индекс 15).
 const SELECT_DEVICES: &str = "
-    SELECT id, type_id, name, inventory_number, serial_number, model,
-           condition, complectation, location_id, status_id, notes,
-           version, created_at_utc, updated_at_utc, deleted_at_utc
-    FROM devices
+    SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, d.model,
+           d.condition, d.complectation, d.location_id, d.status_id, d.notes,
+           d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
+           l.name AS location_name
+    FROM devices d
+    LEFT JOIN locations l ON d.location_id = l.id
 ";
 
 /// Маппинг строки результата → `DeviceRow`.
@@ -52,6 +55,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         created_at_utc: row.get(12)?,
         updated_at_utc: row.get(13)?,
         deleted_at_utc: row.get(14)?,
+        location: row.get(15)?,      // l.name from LEFT JOIN
     })
 }
 
@@ -81,6 +85,41 @@ fn build_fts_query(user_input: &str) -> String {
 /// Вспомогательные методы для использования внутри rusqlite-транзакций.
 /// `DeviceService` использует эти методы внутри `writer.execute` closures.
 impl SqliteDeviceRepository {
+    /// Разрешает строковое название расположения в `location_id`.
+    ///
+    /// Если строка непустая:
+    /// - Создаёт запись в `locations` если не существует (INSERT OR IGNORE).
+    /// - Возвращает id существующей или только что созданной записи.
+    /// Если строка пустая / None — возвращает None.
+    pub fn resolve_location_id_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        location: Option<&str>,
+        now_utc: i64,
+    ) -> Result<Option<i64>, AppError> {
+        let name = match normalize_str(location) {
+            Some(n) => n,
+            None => return Ok(None),
+        };
+
+        tx.execute(
+            "INSERT OR IGNORE INTO locations (name, created_at_utc, updated_at_utc) \
+             VALUES (?1, ?2, ?2)",
+            rusqlite::params![name, now_utc],
+        )
+        .map_err(map_rusqlite)?;
+
+        let id: i64 = tx
+            .query_row(
+                "SELECT id FROM locations WHERE name = ?1",
+                rusqlite::params![name],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+
+        Ok(Some(id))
+    }
+
     /// INSERT в пределах транзакции. Возвращает новый `id`.
     pub fn create_in_tx(
         &self,
@@ -124,7 +163,7 @@ impl SqliteDeviceRepository {
         id: i64,
     ) -> Result<DeviceRow, AppError> {
         tx.query_row(
-            &format!("{SELECT_DEVICES} WHERE id = ?1"),
+            &format!("{SELECT_DEVICES} WHERE d.id = ?1"),
             rusqlite::params![id],
             from_row,
         )
@@ -284,7 +323,7 @@ impl DeviceRepository for SqliteDeviceRepository {
 
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<DeviceRow, AppError> {
         conn.query_row(
-            &format!("{SELECT_DEVICES} WHERE id = ?1 AND deleted_at_utc IS NULL"),
+            &format!("{SELECT_DEVICES} WHERE d.id = ?1 AND d.deleted_at_utc IS NULL"),
             rusqlite::params![id],
             from_row,
         )
@@ -311,10 +350,10 @@ impl DeviceRepository for SqliteDeviceRepository {
 
         let total: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM devices WHERE
-                   (?1 = 1 OR deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR status_id = ?2) AND
-                   (?3 IS NULL OR type_id = ?3)",
+                "SELECT COUNT(*) FROM devices d WHERE
+                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
+                   (?2 IS NULL OR d.status_id = ?2) AND
+                   (?3 IS NULL OR d.type_id = ?3)",
                 rusqlite::params![include_deleted as i64, status_id, type_id],
                 |r| r.get(0),
             )
@@ -323,10 +362,10 @@ impl DeviceRepository for SqliteDeviceRepository {
         let mut stmt = conn
             .prepare(&format!(
                 "{SELECT_DEVICES} WHERE
-                   (?1 = 1 OR deleted_at_utc IS NULL) AND
-                   (?2 IS NULL OR status_id = ?2) AND
-                   (?3 IS NULL OR type_id = ?3)
-                 ORDER BY name
+                   (?1 = 1 OR d.deleted_at_utc IS NULL) AND
+                   (?2 IS NULL OR d.status_id = ?2) AND
+                   (?3 IS NULL OR d.type_id = ?3)
+                 ORDER BY d.name
                  LIMIT ?4 OFFSET ?5"
             ))
             .map_err(map_rusqlite)?;
@@ -484,8 +523,10 @@ impl DeviceRepository for SqliteDeviceRepository {
             .prepare(&format!(
                 "SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number,
                         d.model, d.condition, d.complectation, d.location_id, d.status_id,
-                        d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc
+                        d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
+                        l.name AS location_name
                  FROM devices d
+                 LEFT JOIN locations l ON d.location_id = l.id
                  JOIN devices_fts ON d.id = devices_fts.rowid
                  WHERE devices_fts MATCH ?1
                    AND d.deleted_at_utc IS NULL
@@ -514,10 +555,90 @@ impl DeviceRepository for SqliteDeviceRepository {
         ctx_name: Option<&str>,
         ctx_status_id: Option<i64>,
     ) -> Result<Vec<String>, AppError> {
+        let like_pattern = format!("{prefix}%");
+        let mut results = Vec::new();
+
+        // Location is special: queries `locations` table via JOIN with context filtering.
+        if field.is_location() {
+            let sql = {
+                let mut clauses = vec![
+                    "l.deleted_at_utc IS NULL".to_string(),
+                    "l.name LIKE ?1".to_string(),
+                    "d.deleted_at_utc IS NULL".to_string(),
+                ];
+                if ctx_name.is_some() {
+                    clauses.push("d.name = ?2".to_string());
+                }
+                if ctx_status_id.is_some() {
+                    let idx = if ctx_name.is_some() { 3 } else { 2 };
+                    clauses.push(format!("d.status_id = ?{idx}"));
+                }
+                format!(
+                    "SELECT DISTINCT l.name
+                     FROM locations l
+                     JOIN devices d ON d.location_id = l.id
+                     WHERE {conds}
+                     ORDER BY l.name
+                     LIMIT 30",
+                    conds = clauses.join("\n                     AND "),
+                )
+            };
+
+            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+
+            match (ctx_name, ctx_status_id) {
+                (Some(name), Some(status_id)) => {
+                    let rows = stmt
+                        .query_map(
+                            rusqlite::params![like_pattern, name, status_id],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    for row in rows {
+                        results.push(row.map_err(map_rusqlite)?);
+                    }
+                }
+                (Some(name), None) => {
+                    let rows = stmt
+                        .query_map(
+                            rusqlite::params![like_pattern, name],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    for row in rows {
+                        results.push(row.map_err(map_rusqlite)?);
+                    }
+                }
+                (None, Some(status_id)) => {
+                    let rows = stmt
+                        .query_map(
+                            rusqlite::params![like_pattern, status_id],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    for row in rows {
+                        results.push(row.map_err(map_rusqlite)?);
+                    }
+                }
+                (None, None) => {
+                    let rows = stmt
+                        .query_map(
+                            rusqlite::params![like_pattern],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    for row in rows {
+                        results.push(row.map_err(map_rusqlite)?);
+                    }
+                }
+            }
+
+            return Ok(results);
+        }
+
+        // All other fields: query `devices` table directly.
         // Column name comes ONLY from the whitelisted enum — never from user input (T-02-04-02).
         let col = field.sql_column();
-
-        let like_pattern = format!("{prefix}%");
 
         // Build SQL dynamically based on which context filters are present.
         // Both ctx_name and ctx_status_id can be combined (AND semantics).
@@ -545,7 +666,6 @@ impl DeviceRepository for SqliteDeviceRepository {
         };
 
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
-        let mut results = Vec::new();
 
         // Dispatch based on which optional params are set.
         // Each branch iterates immediately to avoid type mismatch between MappedRows variants.
@@ -618,19 +738,23 @@ impl DeviceRepository for SqliteDeviceRepository {
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
+        // list_grouped uses a manual query (not SELECT_DEVICES) because it aggregates.
+        // LEFT JOIN locations to resolve location_name for the representative row.
         let mut stmt = conn
             .prepare(
                 "SELECT
-                   MIN(id)                     AS repr_id,
+                   MIN(d.id)                   AS repr_id,
                    COUNT(*)                    AS cnt,
-                   GROUP_CONCAT(id)            AS id_list,
-                   type_id, name, model, notes, complectation, condition, location_id, status_id,
-                   version, created_at_utc, updated_at_utc
-                 FROM devices
-                 WHERE deleted_at_utc IS NULL
-                   AND (?1 IS NULL OR status_id = ?1)
-                 GROUP BY type_id, name, model, notes, complectation, condition, location_id, status_id
-                 ORDER BY name
+                   GROUP_CONCAT(d.id)          AS id_list,
+                   d.type_id, d.name, d.model, d.notes, d.complectation, d.condition,
+                   d.location_id, d.status_id,
+                   d.version, d.created_at_utc, d.updated_at_utc,
+                   (SELECT l.name FROM locations l WHERE l.id = d.location_id LIMIT 1) AS location_name
+                 FROM devices d
+                 WHERE d.deleted_at_utc IS NULL
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                 GROUP BY d.type_id, d.name, d.model, d.notes, d.complectation, d.condition, d.location_id, d.status_id
+                 ORDER BY d.name
                  LIMIT ?2 OFFSET ?3",
             )
             .map_err(map_rusqlite)?;
@@ -651,14 +775,15 @@ impl DeviceRepository for SqliteDeviceRepository {
                 let version: i64 = row.get(11)?;
                 let created_at_utc: i64 = row.get(12)?;
                 let updated_at_utc: i64 = row.get(13)?;
+                let location_name: Option<String> = row.get(14)?;
 
-                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc))
+                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name))
             })
             .map_err(map_rusqlite)?;
 
         let mut groups = Vec::new();
         for row_result in rows {
-            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc) =
+            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name) =
                 row_result.map_err(map_rusqlite)?;
 
             // Parse GROUP_CONCAT result (T-02-04-06: parse failure → AppError::Internal).
@@ -681,6 +806,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 kit,
                 state,
                 location_id,
+                location: location_name,
                 status_id,
                 version,
                 created_at_utc,
@@ -741,7 +867,7 @@ impl DeviceRepository for SqliteDeviceRepository {
             .join(", ");
 
         let sql = format!(
-            "{SELECT_DEVICES} WHERE id IN ({placeholders}) AND deleted_at_utc IS NULL ORDER BY id"
+            "{SELECT_DEVICES} WHERE d.id IN ({placeholders}) AND d.deleted_at_utc IS NULL ORDER BY d.id"
         );
 
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
