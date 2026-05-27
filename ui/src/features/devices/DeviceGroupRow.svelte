@@ -151,8 +151,13 @@
       <td colspan="7" class="children-loading">Загрузка…</td>
     </tr>
   {:else if children && children.length > 0}
-    {#each children as child (child.id)}
-      <DeviceListRow device={child} onEdit={handleEdit} onDelete={handleDelete} />
+    {#each children as child, i (child.id)}
+      <DeviceListRow
+        device={child}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        isLastInGroup={i === children.length - 1}
+      />
     {/each}
   {/if}
 {/if}
@@ -160,11 +165,13 @@
 <style lang="scss">
   .group-row {
     height: var(--row-height, 40px);
-    background: var(--color-surface-sunken);
+    // Toned-down group header: slightly darker than normal rows but not a strong accent.
+    // color-mix blends the surface with a small 6% accent tint — readable but subtle.
+    background: color-mix(in srgb, var(--color-surface) 94%, var(--color-accent) 6%);
     cursor: pointer;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-surface-sunken) 80%, var(--color-accent) 10%);
+      background: color-mix(in srgb, var(--color-surface) 86%, var(--color-accent) 14%);
     }
   }
 

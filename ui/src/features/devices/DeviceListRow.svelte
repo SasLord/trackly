@@ -7,9 +7,11 @@
     device: DeviceDto;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
+    /** When true, renders a stronger bottom border to visually close the group. */
+    isLastInGroup?: boolean;
   }
 
-  const { device, onEdit, onDelete }: Props = $props();
+  const { device, onEdit, onDelete, isLastInGroup = false }: Props = $props();
 
   // ---------------------------------------------------------------------------
   // Placeholder status mapping (Plan 04 wires seeded lookups)
@@ -34,7 +36,7 @@
   const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
 </script>
 
-<tr class="device-row">
+<tr class="device-row" class:group-last-child={isLastInGroup}>
   <td class="cell cell-name">{device.name}</td>
   <td class="cell cell-numeric">{device.inventory_no ?? '—'}</td>
   <td class="cell cell-numeric">{device.serial_no ?? '—'}</td>
@@ -54,6 +56,12 @@
 
     &:hover {
       background: var(--color-surface);
+    }
+
+    // Visual group-end divider: last child in an expanded group gets a stronger
+    // bottom border so the eye clearly sees where the group ends.
+    &.group-last-child .cell {
+      border-bottom: 2px solid var(--color-border-strong);
     }
   }
 
