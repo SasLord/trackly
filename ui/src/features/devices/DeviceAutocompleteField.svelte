@@ -32,8 +32,51 @@
   // While suppressDropdown is true the dropdown stays closed even if suggestions
   // are returned — it is cleared only when the user types a character that
   // differs from the just-selected value (or clears the field).
-  let lastSelected: string | null = $state(null);
+  //
+  // INVARIANT: «initial value = already-selected».
+  // When the component mounts with a non-empty value (e.g. edit-mode pre-fill),
+  // that value is treated as already-selected so the dropdown does NOT flash open.
+  // Suppression lifts the first time the user types a character that differs from
+  // the pre-filled value. ArrowDown is always an explicit escape hatch.
+  //
+  // NOTE: lastSelected / suppressDropdown / _prevValue are initialised to reflect
+  // the prop `value` at mount time. Svelte 5 warns "state_referenced_locally" because
+  // props are captured once during $state(). This is intentional: we deliberately
+  // read `value` exactly once here to seed the «already-selected» invariant.
+  // Changes arriving later through the prop are tracked via the _prevValue $effect below.
+  let lastSelected: string | null = $state<string | null>(null);
   let suppressDropdown = $state(false);
+  let _prevValue = $state('');
+
+  // Initialise suppression flags on first render (runs synchronously before DOM paint).
+  $effect.pre(() => {
+    // Only seed on the very first run (_prevValue is still '').
+    // For subsequent runs we rely on the watcher $effect below.
+    if (_prevValue === '' && value.length > 0) {
+      lastSelected = value;
+      suppressDropdown = true;
+      _prevValue = value;
+    }
+  });
+
+  // When the value prop changes from outside the component (e.g. parent reopens the
+  // modal with a different device), re-arm suppression so the new initial value is
+  // also treated as already-selected.
+  $effect(() => {
+    const v = value;
+    if (v !== _prevValue) {
+      if (v.length > 0) {
+        // External assignment — treat as already-selected, suppress dropdown.
+        lastSelected = v;
+        suppressDropdown = true;
+      } else {
+        // Field was cleared externally — reset suppression.
+        suppressDropdown = false;
+        lastSelected = null;
+      }
+      _prevValue = v;
+    }
+  });
 
   // Trigger autocomplete when value or context changes (debounced 200ms).
   // The $effect intentionally does NOT open the dropdown — opening is done
@@ -50,6 +93,7 @@
       open = false;
       suppressDropdown = false;
       lastSelected = null;
+      _prevValue = '';
       return;
     }
     debounceTimer = setTimeout(async () => {
