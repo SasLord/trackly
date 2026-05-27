@@ -37,6 +37,15 @@
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
+      // CRITICAL: reset submitTrigger to 0 on every modal open.
+      //
+      // submitTrigger lives OUTSIDE the {#key openInstanceCounter} block, so it
+      // persists across remounts of DeviceFormBody. After the first successful
+      // submit, submitTrigger is 1. When the modal reopens and DeviceFormBody
+      // mounts fresh, its $effect( submitTrigger > 0 → handleSubmit() ) fires
+      // immediately on mount — submitting the form before the user has entered
+      // anything. Resetting to 0 here prevents that spurious call.
+      submitTrigger = 0;
     }
     _wasOpen = isOpen;
   });
@@ -46,6 +55,8 @@
   let formCanSubmit = $state(false);
 
   // Submit trigger — incrementing this causes DeviceFormBody to call handleSubmit().
+  // Reset to 0 each time the modal opens (see $effect above) to avoid spurious
+  // submits when DeviceFormBody remounts and sees a stale trigger value.
   let submitTrigger = $state(0);
 
   // State hints loaded once on mount (non-fatal if fails).
