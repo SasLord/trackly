@@ -2,9 +2,12 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { isTauri } from '$lib/stores/transport.svelte';
+  import { apiCall } from '$lib/api/client';
   import DeviceList from './DeviceList.svelte';
   import DeviceFilters from './DeviceFilters.svelte';
   import DeviceFormModal from './DeviceFormModal.svelte';
+  import DeviceImportCsvModal from './DeviceImportCsvModal.svelte';
   import { devices } from './api';
   import type { DeviceDto, DeviceFilter, DeviceGroup, Pagination } from '../../bindings';
 
@@ -17,6 +20,7 @@
   let loading = $state(false);
   let modalOpen = $state(false);
   let editTarget = $state<DeviceDto | null>(null);
+  let csvModalOpen = $state(false);
 
   // Filters state (Plan 04).
   let searchQuery = $state('');
@@ -136,6 +140,57 @@
     refresh();
     refreshCounts();
   }
+
+  // ---------------------------------------------------------------------------
+  // Export CSV handler
+  // ---------------------------------------------------------------------------
+  async function exportCsv() {
+    try {
+      const csvContent = await devices.exportCsv({
+        type_id: 1,
+        location_id: null,
+        status_id: statusFilter,
+        state: null,
+        name_prefix: null,
+        include_deleted: false,
+      });
+
+      if (isTauri) {
+        const { save: saveDialog } = await import('@tauri-apps/plugin-dialog');
+        const today = new Date().toISOString().slice(0, 10);
+        const defaultPath = `устройства_${today}.csv`;
+        const savePath = await saveDialog({
+          defaultPath,
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        });
+        if (!savePath) return;
+
+        await apiCall<void>('write_file_bytes', { path: savePath, content: csvContent });
+
+        // Count devices in current response for toast message.
+        const count = csvContent
+          .split('\n')
+          .filter((l) => l.trim().length > 0).length - 1; // subtract header row
+        pushToast('success', `Экспортировано ${Math.max(0, count)} устройств.`);
+      } else {
+        // Browser fallback: trigger <a download>.
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const today = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `устройства_${today}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось экспортировать';
+      pushToast('error', msg);
+    }
+  }
 </script>
 
 <div class="devices-page">
@@ -143,8 +198,8 @@
     <h1 class="page-title">Устройства</h1>
     <div class="header-actions">
       <Button variant="primary" onclick={openCreate}>+ Создать устройство</Button>
-      <Button variant="secondary" disabled>Импорт CSV</Button>
-      <Button variant="secondary" disabled>Экспорт CSV</Button>
+      <Button variant="secondary" onclick={() => (csvModalOpen = true)}>Импорт CSV</Button>
+      <Button variant="secondary" onclick={exportCsv}>Экспорт CSV</Button>
     </div>
   </header>
 
@@ -187,6 +242,17 @@
   target={editTarget}
   onClose={() => (modalOpen = false)}
   {onSaved}
+/>
+
+<DeviceImportCsvModal
+  open={csvModalOpen}
+  onClose={() => (csvModalOpen = false)}
+  onImported={() => {
+    csvModalOpen = false;
+    refresh();
+    refreshCounts();
+    pushToast('success', 'Импорт завершён');
+  }}
 />
 
 <style lang="scss">

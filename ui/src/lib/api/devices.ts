@@ -1,12 +1,14 @@
 import { apiCall } from './client';
 import type {
+  CsvImportPreviewResponse,
+  CsvImportReport,
   DeviceDto,
+  DeviceFilter,
+  DeviceGroup,
+  DeviceListResponse,
   DeviceNew,
   DevicePatch,
-  DeviceFilter,
   Pagination,
-  DeviceListResponse,
-  DeviceGroup,
   StatusCount,
 } from '../../bindings';
 
@@ -45,4 +47,13 @@ export const devices = {
 
   bulkCreate: (payload: DeviceNew, count: number) =>
     apiCall<DeviceDto[]>('devices_bulk_create', { device: payload, count }),
+
+  importCsvPreview: (bytes: number[]) =>
+    apiCall<CsvImportPreviewResponse>('devices_import_csv_preview', { bytes }),
+
+  importCsvCommit: (token: string, mapping: Record<string, string>) =>
+    apiCall<CsvImportReport>('devices_import_csv_commit', { token, mapping }),
+
+  exportCsv: (filter: DeviceFilter) =>
+    apiCall<string>('devices_export_csv', { filter }),
 };

@@ -36,6 +36,9 @@ const browserGlobals = {
   MutationObserver: 'readonly',
   ResizeObserver: 'readonly',
   IntersectionObserver: 'readonly',
+  Blob: 'readonly',
+  FileReader: 'readonly',
+  FormData: 'readonly',
 };
 
 // Svelte 5 rune globals (available in .svelte.ts and .svelte files)
