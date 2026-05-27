@@ -256,6 +256,83 @@ async fn list_by_ids_returns_correct_devices() {
 }
 
 // ---------------------------------------------------------------------------
+// grouping_singleton_includes_inventory_and_serial_no
+// ---------------------------------------------------------------------------
+// Regression: list_grouped SQL previously omitted inventory_number/serial_number
+// from SELECT, so repr.inventory_no and repr.serial_no were always None.
+// For count==1 groups the frontend renders a plain DeviceListRow, so «—» was
+// shown instead of the actual values.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_singleton_includes_inventory_and_serial_no() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut new = non_unique_device("Singleton X", 1);
+        new.inventory_no = Some("INV-1".to_string());
+        new.serial_no = Some("SN-1".to_string());
+        svc.create(new).await.expect("create singleton");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 1, "должна быть 1 группа (singleton)");
+        let g = &groups[0];
+        assert_eq!(g.count, 1, "count должен быть 1");
+        assert_eq!(
+            g.repr.inventory_no.as_deref(),
+            Some("INV-1"),
+            "repr.inventory_no должен быть INV-1, получен {:?}",
+            g.repr.inventory_no
+        );
+        assert_eq!(
+            g.repr.serial_no.as_deref(),
+            Some("SN-1"),
+            "repr.serial_no должен быть SN-1, получен {:?}",
+            g.repr.serial_no
+        );
+    })
+    .await
+    .expect("grouping_singleton_includes_inventory_and_serial_no exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_collapsed_group_aggregates_inv_serial_safely
+// ---------------------------------------------------------------------------
+// For count>1 groups the UI hides inv/serial via colspan. The aggregated value
+// must be Some (not None) — the guard here is just that the column is present
+// and non-null for at least one device.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_collapsed_group_aggregates_inv_serial_safely() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        for letter in &["A", "B", "C"] {
+            let mut new = non_unique_device("Multi", 1);
+            new.inventory_no = Some(letter.to_string());
+            svc.create(new).await.expect("create");
+        }
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 1, "3 одинаковых устройства → 1 группа");
+        let g = &groups[0];
+        assert_eq!(g.count, 3, "count должен быть 3");
+        // MAX("A","B","C") = "C" in SQLite; just assert Some (not None).
+        assert!(
+            g.repr.inventory_no.is_some(),
+            "repr.inventory_no должен быть Some для группы с inv_no у членов, получен None"
+        );
+    })
+    .await
+    .expect("grouping_collapsed_group_aggregates_inv_serial_safely exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
 // grouping_multiple_distinct_groups
 // ---------------------------------------------------------------------------
 
