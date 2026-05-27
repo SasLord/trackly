@@ -7,7 +7,6 @@
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
-  import Textarea from '$lib/components/Textarea.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
@@ -81,7 +80,7 @@
       quantity = 1;
       if (target) {
         name = target.name;
-        location = target.specs ?? ''; // location is freetext until Plan 04 location lookup
+        location = target.location ?? ''; // round-tripped via locations table (Plan 04 Defect 4)
         statusId = String(target.status_id);
         inventoryNo = target.inventory_no ?? '';
         serialNo = target.serial_no ?? '';
@@ -138,6 +137,8 @@
           specs: specs.trim() || null,
           kit: kit.trim() || null,
           state: stateField.trim() || null,
+          // Pass location as string — backend resolves to location_id via locations table.
+          location: location.trim() || null,
           location_id: null,
           status_id: parseInt(statusId, 10) || null,
         };
@@ -154,6 +155,8 @@
           specs: specs.trim() || null,
           kit: kit.trim() || null,
           state: stateField.trim() || null,
+          // Pass location as string — backend resolves to location_id via locations table.
+          location: location.trim() || null,
           location_id: null,
           status_id: parseInt(statusId, 10),
         };
@@ -200,7 +203,7 @@
       handleSubmit();
     }}
   >
-    <!-- Required: Наименование (with autocomplete) -->
+    <!-- 1. Required: Наименование (with autocomplete) -->
     <div class="field" class:has-error={!!fieldErrors['name']}>
       <label class="label" for="f-name">
         Наименование <span class="required" aria-hidden="true">*</span>
@@ -218,48 +221,50 @@
       {/if}
     </div>
 
-    <!-- Required: Статус -->
-    <div class="field" class:has-error={!!fieldErrors['status_id']}>
-      <label class="label" for="f-status">
-        Статус <span class="required" aria-hidden="true">*</span>
-      </label>
-      <Select
-        id="f-status"
-        value={statusId}
-        invalid={!!fieldErrors['status_id']}
-        onchange={(v) => (statusId = v)}
-      >
-        <option value="">— выберите статус —</option>
-        {#each STATUSES as s}
-          <option value={String(s.id)}>{s.label}</option>
-        {/each}
-      </Select>
-      {#if fieldErrors['status_id']}
-        <p class="field-error">{fieldErrors['status_id']}</p>
+    <!-- 2–4. Инвентарный № / Серийный № / Количество — один горизонтальный ряд.
+         Количество показывается только когда оба числовых поля пустые (create mode). -->
+    <div class="field-row">
+      <div class="field field-row-item">
+        <label class="label" for="f-inv">Инвентарный №</label>
+        <Input
+          id="f-inv"
+          value={inventoryNo}
+          placeholder="ИНВ-000001"
+          oninput={(v) => (inventoryNo = v)}
+        />
+      </div>
+      <div class="field field-row-item">
+        <label class="label" for="f-serial">Серийный №</label>
+        <Input
+          id="f-serial"
+          value={serialNo}
+          placeholder="SN-XXXXXXXX"
+          oninput={(v) => (serialNo = v)}
+        />
+      </div>
+      {#if showQuantity}
+        <div class="field field-row-item">
+          <label class="label" for="f-qty">Количество</label>
+          <input
+            id="f-qty"
+            type="number"
+            class="input"
+            min={1}
+            max={100}
+            value={quantity}
+            oninput={(e) => {
+              const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+              quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
+            }}
+          />
+        </div>
       {/if}
     </div>
+    {#if showQuantity}
+      <p class="field-help field-help-row">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
+    {/if}
 
-    <!-- Required: Расположение (with autocomplete, filtered by status + name context) -->
-    <div class="field" class:has-error={!!fieldErrors['location']}>
-      <label class="label" for="f-location">
-        Расположение <span class="required" aria-hidden="true">*</span>
-      </label>
-      <DeviceAutocompleteField
-        field="location"
-        value={location}
-        placeholder="Кабинет 305"
-        id="f-location"
-        invalid={!!fieldErrors['location']}
-        contextName={name.trim() || undefined}
-        contextStatusId={parseInt(statusId, 10) || null}
-        onChange={(v) => (location = v)}
-      />
-      {#if fieldErrors['location']}
-        <p class="field-error">{fieldErrors['location']}</p>
-      {/if}
-    </div>
-
-    <!-- Optional: Модель (with autocomplete, contextual) -->
+    <!-- 5. Optional: Модель (with autocomplete, contextual) -->
     <div class="field">
       <label class="label" for="f-model">Модель</label>
       <DeviceAutocompleteField
@@ -272,29 +277,33 @@
       />
     </div>
 
-    <!-- Optional: Инвентарный № -->
+    <!-- 6. Optional: Технические характеристики (specs) -->
     <div class="field">
-      <label class="label" for="f-inv">Инвентарный №</label>
-      <Input
-        id="f-inv"
-        value={inventoryNo}
-        placeholder="ИНВ-000001"
-        oninput={(v) => (inventoryNo = v)}
+      <label class="label" for="f-specs">Технические характеристики</label>
+      <DeviceAutocompleteField
+        field="specs"
+        value={specs}
+        placeholder="i7-1365U, 16 ГБ RAM, 512 ГБ SSD"
+        id="f-specs"
+        contextName={name.trim() || undefined}
+        onChange={(v) => (specs = v)}
       />
     </div>
 
-    <!-- Optional: Серийный № -->
+    <!-- 7. Optional: Комплектация (kit) -->
     <div class="field">
-      <label class="label" for="f-serial">Серийный №</label>
-      <Input
-        id="f-serial"
-        value={serialNo}
-        placeholder="SN-XXXXXXXX"
-        oninput={(v) => (serialNo = v)}
+      <label class="label" for="f-kit">Комплектация</label>
+      <DeviceAutocompleteField
+        field="kit"
+        value={kit}
+        placeholder="Зарядное устройство, мышь"
+        id="f-kit"
+        contextName={name.trim() || undefined}
+        onChange={(v) => (kit = v)}
       />
     </div>
 
-    <!-- Optional: Состояние + state-hints chips (with autocomplete) -->
+    <!-- 8. Optional: Состояние + state-hints chips (with autocomplete) -->
     <div class="field">
       <label class="label" for="f-state">Состояние</label>
       <DeviceAutocompleteField
@@ -324,49 +333,46 @@
       {/if}
     </div>
 
-    <!-- Optional: Комплектация -->
-    <div class="field">
-      <label class="label" for="f-kit">Комплектация</label>
-      <Textarea
-        id="f-kit"
-        value={kit}
-        placeholder="Зарядное устройство, мышь"
-        rows={2}
-        oninput={(v) => (kit = v)}
-      />
+    <!-- 9. Required: Статус -->
+    <div class="field" class:has-error={!!fieldErrors['status_id']}>
+      <label class="label" for="f-status">
+        Статус <span class="required" aria-hidden="true">*</span>
+      </label>
+      <Select
+        id="f-status"
+        value={statusId}
+        invalid={!!fieldErrors['status_id']}
+        onchange={(v) => (statusId = v)}
+      >
+        <option value="">— выберите статус —</option>
+        {#each STATUSES as s}
+          <option value={String(s.id)}>{s.label}</option>
+        {/each}
+      </Select>
+      {#if fieldErrors['status_id']}
+        <p class="field-error">{fieldErrors['status_id']}</p>
+      {/if}
     </div>
 
-    <!-- Optional: Технические характеристики -->
-    <div class="field">
-      <label class="label" for="f-specs">Технические характеристики</label>
-      <Textarea
-        id="f-specs"
-        value={specs}
-        placeholder="i7-1365U, 16 ГБ RAM, 512 ГБ SSD"
-        rows={2}
-        oninput={(v) => (specs = v)}
+    <!-- 10. Required: Расположение (with autocomplete, filtered by status + name context) -->
+    <div class="field" class:has-error={!!fieldErrors['location']}>
+      <label class="label" for="f-location">
+        Расположение <span class="required" aria-hidden="true">*</span>
+      </label>
+      <DeviceAutocompleteField
+        field="location"
+        value={location}
+        placeholder="Кабинет 305"
+        id="f-location"
+        invalid={!!fieldErrors['location']}
+        contextName={name.trim() || undefined}
+        contextStatusId={parseInt(statusId, 10) || null}
+        onChange={(v) => (location = v)}
       />
+      {#if fieldErrors['location']}
+        <p class="field-error">{fieldErrors['location']}</p>
+      {/if}
     </div>
-
-    <!-- Quantity (scope extension: bulk create for non-unique devices) -->
-    {#if showQuantity}
-      <div class="field">
-        <label class="label" for="f-qty">Количество</label>
-        <input
-          id="f-qty"
-          type="number"
-          class="input"
-          min={1}
-          max={100}
-          value={quantity}
-          oninput={(e) => {
-            const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
-            quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
-          }}
-        />
-        <p class="field-help">При создании одинаковых устройств без серийного и инвентарного номеров.</p>
-      </div>
-    {/if}
   </form>
 
   {#snippet footer()}
@@ -388,6 +394,24 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-xs);
+  }
+
+  // Horizontal row for Инв.№ / Серийный № / Количество.
+  // Three fields share equal width; when Количество is hidden the two remaining
+  // fields stretch equally via flex-grow: 1.
+  .field-row {
+    display: flex;
+    gap: var(--space-md);
+    align-items: flex-start;
+  }
+
+  .field-row-item {
+    flex: 1 1 0;
+    min-width: 0; // prevents flex child from overflowing
+  }
+
+  .field-help-row {
+    margin-top: calc(var(--space-xs) * -1); // pull up slightly after the row
   }
 
   .label {
