@@ -10,11 +10,15 @@
     loading: boolean;
     grouped: boolean;
     searchActive: boolean;
+    /** Set of stable group keys that should be rendered expanded. */
+    expandedGroups?: Set<string>;
+    /** Called when a group's expansion state toggles. */
+    onExpandToggle?: (_key: string, _expanded: boolean) => void;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
   }
 
-  const { items, groups, total, loading, grouped, searchActive, onEdit, onDelete }: Props = $props();
+  const { items, groups, total, loading, grouped, searchActive, expandedGroups, onExpandToggle, onEdit, onDelete }: Props = $props();
 
   const showGroups = $derived(grouped && !searchActive && groups.length > 0);
   const isEmpty = $derived(
@@ -88,7 +92,13 @@
           {#each groups as group (group.repr.id)}
             {#if group.count > 1}
               <!-- Multi-device group: expandable row with chevron and count badge -->
-              <DeviceGroupRow {group} {onEdit} {onDelete} />
+              <DeviceGroupRow
+                {group}
+                {onEdit}
+                {onDelete}
+                expandedGroups={expandedGroups ?? new Set()}
+                {onExpandToggle}
+              />
             {:else}
               <!-- Singleton group (count == 1): render as plain row, no chevron -->
               <DeviceListRow device={group.repr} {onEdit} {onDelete} />

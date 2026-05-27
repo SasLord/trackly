@@ -9,15 +9,38 @@
   import { devices } from './api';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
+  // Compute a stable string key for this group from its grouping dimensions.
+  // The key is based on the repr device's displayable fields that form the GROUP BY
+  // clause in list_grouped SQL. Using repr.id as the key is fragile (repr changes
+  // when the representative is deleted); this hash-based key is stable as long as
+  // the group exists with the same attributes.
+  function groupStableKey(g: DeviceGroup): string {
+    return [
+      g.repr.name,
+      g.repr.model ?? '',
+      g.repr.specs ?? '',
+      g.repr.kit ?? '',
+      g.repr.state ?? '',
+      g.repr.location ?? '',
+      String(g.repr.status_id),
+    ].join('\x00');
+  }
+
   interface Props {
     group: DeviceGroup;
+    /** Set of stable keys that should be rendered expanded (from parent DevicesPage). */
+    expandedGroups: Set<string>;
+    /** Called when this group's expanded state changes. */
+    onExpandToggle?: (_key: string, _expanded: boolean) => void;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
   }
 
-  const { group, onEdit, onDelete }: Props = $props();
+  const { group, expandedGroups, onExpandToggle, onEdit, onDelete }: Props = $props();
 
-  let expanded = $state(false);
+  const stableKey = $derived(groupStableKey(group));
+  const expanded = $derived(expandedGroups.has(stableKey));
+
   let children = $state<DeviceDto[] | null>(null);
   let loadingChildren = $state(false);
 
@@ -40,8 +63,10 @@
   const statusVariant = $derived(STATUS_VARIANTS[group.repr.status_id] ?? 'default');
 
   async function toggleExpand() {
-    expanded = !expanded;
-    if (expanded && children === null) {
+    const willExpand = !expanded;
+    // Notify parent to update the expandedGroups Set.
+    onExpandToggle?.(stableKey, willExpand);
+    if (willExpand && children === null) {
       loadingChildren = true;
       try {
         children = await devices.listByIds(group.ids);
@@ -51,14 +76,37 @@
             ? String((e as { message: unknown }).message)
             : 'Не удалось загрузить устройства';
         pushToast('error', msg);
-        expanded = false;
+        // Collapse again on error.
+        onExpandToggle?.(stableKey, false);
       } finally {
         loadingChildren = false;
       }
     }
   }
 
-  // Invalidate children cache when a mutation happens.
+  // When this component mounts and the group is already in the expandedGroups set
+  // (i.e. the list refreshed after a mutation), auto-load children if not yet cached.
+  $effect(() => {
+    if (expanded && children === null && !loadingChildren) {
+      loadingChildren = true;
+      devices.listByIds(group.ids).then((rows) => {
+        children = rows;
+      }).catch((e: unknown) => {
+        const msg =
+          e && typeof e === 'object' && 'message' in e
+            ? String((e as { message: unknown }).message)
+            : 'Не удалось загрузить устройства';
+        pushToast('error', msg);
+        onExpandToggle?.(stableKey, false);
+      }).finally(() => {
+        loadingChildren = false;
+      });
+    }
+  });
+
+  // After a mutation (edit/delete) let the parent refresh first (onEdit/onDelete
+  // triggers refresh() in DevicesPage), then the component remounts with children=null
+  // and the $effect above reloads them if still expanded.
   function handleEdit(d: DeviceDto) {
     children = null;
     onEdit(d);

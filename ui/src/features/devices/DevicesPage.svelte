@@ -24,6 +24,10 @@
   let grouped = $state(true);
   let counts = $state<Map<number, number>>(new Map());
 
+  // Persisted expansion state: Set of group stable-key strings.
+  // DeviceGroupRow reports its key on toggle; keys survive list refreshes.
+  let expandedGroups = $state(new Set<string>());
+
   // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
   const baseFilter = $derived<DeviceFilter>({
     type_id: 1,
@@ -162,6 +166,16 @@
       {loading}
       {grouped}
       {searchActive}
+      {expandedGroups}
+      onExpandToggle={(key, isExpanded) => {
+        if (isExpanded) {
+          expandedGroups.add(key);
+        } else {
+          expandedGroups.delete(key);
+        }
+        // Trigger reactivity: reassign to a new Set so Svelte detects the change.
+        expandedGroups = new Set(expandedGroups);
+      }}
       onEdit={openEdit}
       onDelete={() => { refresh(); refreshCounts(); }}
     />
