@@ -34,6 +34,7 @@ fn minimal_new(name: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
+        location: None,
         location_id: None,
         status_id: 1,
     }

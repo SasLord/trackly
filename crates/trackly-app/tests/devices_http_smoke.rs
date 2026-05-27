@@ -31,6 +31,7 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
             specs: None,
             kit: None,
             state: None,
+            location: None,
             location_id: None,
             status_id: 1,
         };

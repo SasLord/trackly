@@ -35,6 +35,7 @@ fn non_unique_device(name: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
+        location: None,
         location_id: None,
         status_id: 1,
     }
