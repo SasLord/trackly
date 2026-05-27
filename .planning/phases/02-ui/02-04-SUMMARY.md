@@ -282,9 +282,85 @@ Five defects found during manual smoke were applied as atomic commits after the 
 
 **Файл:** `ui/src/features/devices/DeviceGroupRow.svelte`
 
-### Итоговая верификация post-checkpoint
+### Итоговая верификация post-checkpoint (round 1)
 
 - `cargo build --workspace` — зелёный
 - `cargo test --workspace --no-fail-fast` — все тесты прошли (9 autocomplete + 8 grouping + все остальные)
 - `pnpm svelte-check --threshold error` — 0 ошибок
 - `pnpm build` — зелёный (0 ошибок, 1 существующее предупреждение state_referenced_locally в DeviceFilters)
+
+---
+
+## Post-checkpoint Fixes — Round 2 (2026-05-27)
+
+Четыре дефекта найдены при ручном смоке после round 1. Применены атомарными коммитами.
+
+### Fix 1 — Autocomplete: suppression после выбора + no auto-open on focus (commit e767cf9)
+
+**Дефекты:**
+- (a) После выбора подсказки дропдаун немедленно переоткрывался с той же строкой
+- (b) Повторный фокус на заполненном поле переоткрывал дропдаун
+
+**Реализация:**
+- Добавлены флаги `lastSelected: string | null` и `suppressDropdown = $state(false)`
+- При выборе: `suppressDropdown = true`, дропдаун закрыт
+- `onfocus` удалён — дропдаун открывается только через `oninput` или `ArrowDown`
+- `handleInput`: снимает suppression когда новое значение отличается от `lastSelected`
+- ArrowDown на непустом поле явно переоткрывает дропдаун (escape hatch пользователя)
+- mousedown на click-outside уже использовался (Дефект 2 уже был исправлен в round 1)
+
+**Файл:** `ui/src/features/devices/DeviceAutocompleteField.svelte`
+
+### Fix 2 — Порядок полей формы + горизонтальный ряд Инв/Серийный/Количество (commit 14d465b)
+
+**Дефект:** Поля были в неправильном порядке; Инв.№ / Серийный № / Количество отображались вертикально отдельными строками.
+
+**Правильный порядок:** Наименование → Инв.№/Серийный/Количество (flex row) → Модель → Тех.хар-ки → Комплектация → Состояние → Статус → Расположение
+
+**Изменения:**
+- Три поля (Инв.№, Серийный №, Количество) помещены в `.field-row` (flex, gap, `flex: 1 1 0` для равномерного распределения)
+- При скрытии Количество остальные два растягиваются на всю ширину
+- Технические характеристики и Комплектация переключены с Textarea на DeviceAutocompleteField (контекстные подсказки), импорт Textarea удалён
+
+**Файл:** `ui/src/features/devices/DeviceFormModal.svelte`
+
+### Fix 3 — Редактирование показывает корректное Расположение из DTO (часть commit fe899e0)
+
+**Дефект:** `location = target.specs ?? ''` — заглушка из Plan 03, показывала технические характеристики в поле Расположение.
+
+**Исправление:** `location = target.location ?? ''` — берётся из нового поля `DeviceDto.location` (строка из таблицы `locations`).
+
+### Fix 4 — Round-trip location через таблицу locations (commit fe899e0 + e84bf2b)
+
+**Дефект:** `devices.location_id` был всегда NULL — расположение нигде не сохранялось. Автодополнение поля Location возвращало числовые ID.
+
+**Backend изменения:**
+- `DeviceRow` / `DeviceDto`: добавлено поле `location: Option<String>`
+- `DeviceNew` / `DevicePatch`: добавлено поле `location: Option<String>` (строковый ввод)
+- `SqliteDeviceRepository::resolve_location_id_in_tx`: `INSERT OR IGNORE INTO locations` + `SELECT id` в одной транзакции
+- `create` / `bulk_create`: разрешают строку расположения в `location_id` через хелпер
+- `update`: разрешает `patch.location = Some(Some(name))` → `location_id`
+- `SELECT_DEVICES`: LEFT JOIN locations l ON d.location_id = l.id (колонка 15 = location_name)
+- `list_grouped`: scalar subquery для location_name у representative row
+- `search_fts`: добавлен LEFT JOIN locations для location_name
+- `AutocompleteField::Location`: отдельная SQL-ветка — `JOIN devices d ON d.location_id = l.id WHERE l.name LIKE ?` с фильтрами по ctx_status_id и ctx_name
+
+**Frontend изменения:**
+- `DeviceFormModal.svelte`: create и edit отправляют `location` строкой (не location_id)
+- `DeviceListRow.svelte`: `device.location ?? '—'`
+- `DeviceGroupRow.svelte`: `group.repr.location ?? '—'`
+
+**Тесты (6 новых в devices_location_roundtrip.rs):**
+- `create_with_location_persists_round_trip`
+- `create_with_same_location_reuses_id`
+- `update_changes_location_creates_new_locations_row`
+- `create_with_empty_location_keeps_null`
+- `autocomplete_location_returns_from_locations_table`
+- `autocomplete_location_filtered_by_ctx_status_id_via_locations_table`
+
+### Итоговая верификация post-checkpoint (round 2)
+
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (6 location roundtrip + все предыдущие)
+- `pnpm svelte-check --threshold error` — 0 ошибок (1 существующее предупреждение DeviceFilters)
+- `pnpm build` — зелёный (0 ошибок)
