@@ -729,33 +729,53 @@ impl DeviceRepository for SqliteDeviceRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Group devices by name + attributes.
-        // New behaviour (defect fix): devices with inventory_number / serial_number
-        // are INCLUDED in groups — the grouping criterion is the attribute key
-        // (type_id, name, model, notes, complectation, condition, location_id, status_id),
-        // NOT the absence of unique identifiers. Groups with count == 1 are returned
-        // as singletons; the frontend renders them as plain rows (no chevron).
+        // Group devices by (type_id, name) only.
+        //
+        // Round 8 fix: the previous key included model/notes/complectation/condition/
+        // location_id/status_id, which was too strict — two monitors with the same
+        // Наименование but different locations or statuses would NOT collapse.
+        //
+        // The user's mental model is «same Наименование → same group», so we relax
+        // the key to just (type_id, name). Other attribute columns become MAX(...)
+        // aggregates for the representative row — for groups of truly identical
+        // devices those aggregates equal the unique value; for heterogeneous groups
+        // (different locations, statuses, etc.) they show one representative value,
+        // which is acceptable because the user can expand the group to see all members.
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
         // list_grouped uses a manual query (not SELECT_DEVICES) because it aggregates.
-        // LEFT JOIN locations to resolve location_name for the representative row.
         let mut stmt = conn
             .prepare(
                 "SELECT
-                   MIN(d.id)                   AS repr_id,
-                   COUNT(*)                    AS cnt,
-                   GROUP_CONCAT(d.id)          AS id_list,
-                   d.type_id, d.name, d.model, d.notes, d.complectation, d.condition,
-                   d.location_id, d.status_id,
-                   d.version, d.created_at_utc, d.updated_at_utc,
-                   (SELECT l.name FROM locations l WHERE l.id = d.location_id LIMIT 1) AS location_name,
-                   MAX(d.inventory_number)     AS inv_no,
-                   MAX(d.serial_number)        AS serial_no
+                   MIN(d.id)                       AS repr_id,
+                   COUNT(*)                        AS cnt,
+                   GROUP_CONCAT(d.id)              AS id_list,
+                   d.type_id, d.name,
+                   MAX(d.model)                    AS model,
+                   MAX(d.notes)                    AS notes,
+                   MAX(d.complectation)            AS complectation,
+                   MAX(d.condition)                AS condition,
+                   MAX(d.location_id)              AS location_id,
+                   MAX(d.status_id)                AS status_id,
+                   MAX(d.version)                  AS version,
+                   MAX(d.created_at_utc)           AS created_at_utc,
+                   MAX(d.updated_at_utc)           AS updated_at_utc,
+                   l.name                          AS location_name,
+                   MAX(d.inventory_number)         AS inv_no,
+                   MAX(d.serial_number)            AS serial_no
                  FROM devices d
+                 LEFT JOIN locations l ON l.id = (
+                   SELECT MAX(d2.location_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
                  WHERE d.deleted_at_utc IS NULL
                    AND (?1 IS NULL OR d.status_id = ?1)
-                 GROUP BY d.type_id, d.name, d.model, d.notes, d.complectation, d.condition, d.location_id, d.status_id
+                 GROUP BY d.type_id, d.name
                  ORDER BY d.name
                  LIMIT ?2 OFFSET ?3",
             )

@@ -365,3 +365,105 @@ async fn grouping_multiple_distinct_groups() {
     .await
     .expect("grouping_multiple_distinct_groups exceeded 30s");
 }
+
+// ---------------------------------------------------------------------------
+// grouping_groups_devices_with_same_name_and_different_status
+// ---------------------------------------------------------------------------
+// Round 8: group key relaxed to (type_id, name). Two devices with the same
+// Наименование but different status_id must collapse into one group.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_groups_devices_with_same_name_and_different_status() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // One monitor with status=1 (На складе), another with status=2 (В работе).
+        svc.create(non_unique_device("Монитор", 1)).await.expect("create status=1");
+        svc.create(non_unique_device("Монитор", 2)).await.expect("create status=2");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "два монитора с разными статусами должны схлопнуться в 1 группу, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
+        assert_eq!(groups[0].ids.len(), 2, "ids должен содержать 2 элемента");
+    })
+    .await
+    .expect("grouping_groups_devices_with_same_name_and_different_status exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_groups_devices_with_same_name_and_different_location
+// ---------------------------------------------------------------------------
+// Two devices with the same Наименование but different locations must group.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_groups_devices_with_same_name_and_different_location() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d1 = non_unique_device("Монитор Dell", 1);
+        d1.location = Some("Кабинет 305".to_string());
+
+        let mut d2 = non_unique_device("Монитор Dell", 1);
+        d2.location = Some("Склад".to_string());
+
+        svc.create(d1).await.expect("create location=Кабинет 305");
+        svc.create(d2).await.expect("create location=Склад");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "два монитора с разными локациями должны схлопнуться в 1 группу, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
+    })
+    .await
+    .expect("grouping_groups_devices_with_same_name_and_different_location exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_groups_devices_with_same_name_and_different_condition
+// ---------------------------------------------------------------------------
+// Two devices with the same Наименование but different condition/state must group.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_groups_devices_with_same_name_and_different_condition() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d1 = non_unique_device("Клавиатура", 1);
+        d1.state = Some("Новое".to_string());
+
+        let mut d2 = non_unique_device("Клавиатура", 1);
+        d2.state = Some("Б/У".to_string());
+
+        svc.create(d1).await.expect("create condition=Новое");
+        svc.create(d2).await.expect("create condition=Б/У");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination { offset: 0, limit: 50 };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "две клавиатуры с разными состояниями должны схлопнуться в 1 группу, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
+    })
+    .await
+    .expect("grouping_groups_devices_with_same_name_and_different_condition exceeded 30s");
+}
