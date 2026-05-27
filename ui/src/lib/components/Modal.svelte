@@ -142,7 +142,11 @@
   .modal-body {
     padding: var(--space-lg);
     overflow-y: auto;
+    overflow-x: hidden; // prevent horizontal scroll from long unbreakable strings
     flex: 1;
+    // Ensure text inside modal body always wraps.
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .modal-footer {
