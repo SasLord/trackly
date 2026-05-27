@@ -159,6 +159,30 @@
       }
       return;
     }
+    if (e.key === 'Escape') {
+      // Always prevent Escape from bubbling — callers (form, modal) must not
+      // receive it while the dropdown is managing keyboard state.
+      e.preventDefault();
+      e.stopPropagation();
+      open = false;
+      activeIndex = -1;
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (open) {
+        // When dropdown is open, Enter either selects the highlighted suggestion
+        // or does nothing — but in BOTH cases it must NOT submit the form.
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeIndex >= 0 && activeIndex < suggestions.length) {
+          select(suggestions[activeIndex]);
+        }
+        // activeIndex === -1: no suggestion focused, dropdown stays open — form
+        // submit intentionally suppressed (user is still navigating suggestions).
+      }
+      // When dropdown is closed, Enter propagates naturally → form submit.
+      return;
+    }
     if (!open) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -166,14 +190,6 @@
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       activeIndex = activeIndex <= 0 ? suggestions.length - 1 : activeIndex - 1;
-    } else if (e.key === 'Enter') {
-      if (activeIndex >= 0 && activeIndex < suggestions.length) {
-        e.preventDefault();
-        select(suggestions[activeIndex]);
-      }
-    } else if (e.key === 'Escape') {
-      open = false;
-      activeIndex = -1;
     } else if (e.key === 'Tab') {
       if (activeIndex >= 0 && activeIndex < suggestions.length) {
         select(suggestions[activeIndex]);

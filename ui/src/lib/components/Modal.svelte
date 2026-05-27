@@ -38,7 +38,7 @@
     <div class="modal-container modal-{size}">
       <header class="modal-header">
         <h2 id={titleId} class="modal-title">{title}</h2>
-        <button class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
+        <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
       </header>
       <div class="modal-body">
         {@render children?.()}
