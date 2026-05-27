@@ -389,6 +389,97 @@ async fn list_with_type_id_filter() {
 }
 
 // ---------------------------------------------------------------------------
+// create_persists_serial_number
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_persists_serial_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let new = DeviceNew {
+            type_id: 1,
+            name: "Ноутбук Lenovo".to_string(),
+            inventory_no: None,
+            serial_no: Some("SN-XYZ-001".to_string()),
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            location: None,
+            location_id: None,
+            status_id: 1,
+        };
+
+        let dto = svc.create(new).await.expect("create device with serial_no");
+
+        // Round-trip: читаем только что созданное устройство
+        let fetched = svc.get(dto.id).await.expect("get by id");
+        assert_eq!(
+            fetched.serial_no,
+            Some("SN-XYZ-001".to_string()),
+            "serial_no должен сохраниться и вернуться как есть, получили {:?}",
+            fetched.serial_no
+        );
+
+        // create() возвращает DeviceDto с serial_no — проверяем сразу
+        assert_eq!(
+            dto.serial_no,
+            Some("SN-XYZ-001".to_string()),
+            "create() должен вернуть dto с serial_no, получили {:?}",
+            dto.serial_no
+        );
+    })
+    .await
+    .expect("create_persists_serial_number exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// create_persists_inventory_and_serial_together
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_persists_inventory_and_serial_together() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let new = DeviceNew {
+            type_id: 1,
+            name: "Сервер Dell".to_string(),
+            inventory_no: Some("ИНВ-000007".to_string()),
+            serial_no: Some("DELLSN-20240001".to_string()),
+            model: Some("PowerEdge R640".to_string()),
+            specs: None,
+            kit: None,
+            state: None,
+            location: None,
+            location_id: None,
+            status_id: 1,
+        };
+
+        let dto = svc.create(new).await.expect("create device with both numbers");
+
+        assert_eq!(
+            dto.inventory_no,
+            Some("ИНВ-000007".to_string()),
+            "inventory_no должен сохраниться"
+        );
+        assert_eq!(
+            dto.serial_no,
+            Some("DELLSN-20240001".to_string()),
+            "serial_no должен сохраниться"
+        );
+
+        // Verify via get() for full round-trip
+        let fetched = svc.get(dto.id).await.expect("get by id");
+        assert_eq!(fetched.inventory_no, dto.inventory_no);
+        assert_eq!(fetched.serial_no, dto.serial_no);
+    })
+    .await
+    .expect("create_persists_inventory_and_serial_together exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
 // state_hints_returns_six_russian_strings
 // ---------------------------------------------------------------------------
 
