@@ -183,8 +183,11 @@
     margin: 0;
     color: var(--color-text-secondary);
     line-height: var(--line-height-body);
+    text-align: center;
     overflow-wrap: anywhere;
     word-break: break-word;
+    white-space: normal;
+    max-width: 100%;
   }
 
   /*
