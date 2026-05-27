@@ -480,6 +480,50 @@ async fn create_persists_inventory_and_serial_together() {
 }
 
 // ---------------------------------------------------------------------------
+// update_second_save_after_successful_first_uses_new_version
+//
+// Regression guard for the symptom: user edits device, clicks Save (success,
+// v1→v2), edits again within the same modal session without page reload,
+// clicks Save again — the second save must succeed (v2→v3), NOT fail with
+// OptimisticLockMismatch because the form still held v1.
+//
+// The frontend fix (currentVersion = updated.version) ensures this; the
+// backend contract itself is correct and has always worked — this test
+// documents the expected call sequence.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_second_save_after_successful_first_uses_new_version() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let dto = svc.create(minimal_new("Тест версий")).await.expect("create");
+        assert_eq!(dto.version, 1);
+
+        // First update: expected_version=1 → succeeds, returns v2.
+        let patch1 = DevicePatch {
+            name: Some("Тест версий v2".to_string()),
+            ..Default::default()
+        };
+        let v2 = svc.update(dto.id, 1, patch1).await.expect("first update");
+        assert_eq!(v2.version, 2, "first update must return version=2");
+
+        // Second update using the REFRESHED version: expected_version=2 → succeeds, returns v3.
+        let patch2 = DevicePatch {
+            name: Some("Тест версий v3".to_string()),
+            ..Default::default()
+        };
+        let v3 = svc
+            .update(dto.id, v2.version, patch2)
+            .await
+            .expect("second update must succeed when using refreshed version");
+        assert_eq!(v3.version, 3, "second update must return version=3");
+        assert_eq!(v3.name, "Тест версий v3");
+    })
+    .await
+    .expect("update_second_save_after_successful_first_uses_new_version exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
 // state_hints_returns_six_russian_strings
 // ---------------------------------------------------------------------------
 
