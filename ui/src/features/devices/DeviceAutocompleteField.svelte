@@ -28,7 +28,17 @@
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Track the last value that was chosen via a suggestion click/keyboard.
+  // While suppressDropdown is true the dropdown stays closed even if suggestions
+  // are returned — it is cleared only when the user types a character that
+  // differs from the just-selected value (or clears the field).
+  let lastSelected: string | null = $state(null);
+  let suppressDropdown = $state(false);
+
   // Trigger autocomplete when value or context changes (debounced 200ms).
+  // The $effect intentionally does NOT open the dropdown — opening is done
+  // only inside the oninput handler so that focusing a pre-filled field
+  // does NOT re-open the dropdown.
   $effect(() => {
     const v = value;
     // Track context deps so effect re-runs when they change.
@@ -38,13 +48,18 @@
     if (v.length < 1) {
       suggestions = [];
       open = false;
+      suppressDropdown = false;
+      lastSelected = null;
       return;
     }
     debounceTimer = setTimeout(async () => {
       try {
         loading = true;
         suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus);
-        open = suggestions.length > 0;
+        // Only open if not suppressed (i.e. user is typing, not just focused).
+        if (!suppressDropdown) {
+          open = suggestions.length > 0;
+        }
         activeIndex = -1;
       } catch {
         suggestions = [];
@@ -56,13 +71,36 @@
   });
 
   function select(s: string) {
+    lastSelected = s;
+    suppressDropdown = true;
     onChange(s);
     open = false;
     activeIndex = -1;
     suggestions = [];
   }
 
+  function handleInput(e: Event) {
+    const newValue = (e.currentTarget as HTMLInputElement).value;
+    // If the user is typing a value that differs from the last selected suggestion,
+    // lift the suppression so the dropdown can open again.
+    if (suppressDropdown && newValue !== lastSelected) {
+      suppressDropdown = false;
+      lastSelected = null;
+    }
+    onChange(newValue);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
+    // ArrowDown on non-empty field explicitly re-opens the dropdown (escape hatch).
+    if (e.key === 'ArrowDown' && !open && value.length > 0) {
+      e.preventDefault();
+      suppressDropdown = false;
+      if (suggestions.length > 0) {
+        open = true;
+        activeIndex = 0;
+      }
+      return;
+    }
     if (!open) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -109,11 +147,8 @@
     autocomplete="off"
     aria-autocomplete="list"
     aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
-    oninput={(e) => onChange((e.currentTarget as HTMLInputElement).value)}
+    oninput={handleInput}
     onkeydown={handleKeydown}
-    onfocus={() => {
-      if (suggestions.length > 0) open = true;
-    }}
   />
 
   {#if open}
