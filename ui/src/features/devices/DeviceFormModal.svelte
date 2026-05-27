@@ -5,6 +5,10 @@
   // {#key openInstanceCounter} remounts DeviceFormBody on every open, guaranteeing
   // all form fields reset to their initial values — no stale serial/inv data
   // carries over between create sessions (Regression 6 fix).
+  //
+  // Round 8 refactor: submitTrigger side-channel eliminated.
+  // The footer button now calls bodySubmitFn() directly — a function bound from
+  // DeviceFormBody via `bind:submit`. No reactive trigger, no race condition.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -37,15 +41,6 @@
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
-      // CRITICAL: reset submitTrigger to 0 on every modal open.
-      //
-      // submitTrigger lives OUTSIDE the {#key openInstanceCounter} block, so it
-      // persists across remounts of DeviceFormBody. After the first successful
-      // submit, submitTrigger is 1. When the modal reopens and DeviceFormBody
-      // mounts fresh, its $effect( submitTrigger > 0 → handleSubmit() ) fires
-      // immediately on mount — submitting the form before the user has entered
-      // anything. Resetting to 0 here prevents that spurious call.
-      submitTrigger = 0;
     }
     _wasOpen = isOpen;
   });
@@ -54,10 +49,10 @@
   let formLoading = $state(false);
   let formCanSubmit = $state(false);
 
-  // Submit trigger — incrementing this causes DeviceFormBody to call handleSubmit().
-  // Reset to 0 each time the modal opens (see $effect above) to avoid spurious
-  // submits when DeviceFormBody remounts and sees a stale trigger value.
-  let submitTrigger = $state(0);
+  // Registered submit function — DeviceFormBody calls onRegisterSubmit(handleSubmit)
+  // from its onMount hook. Each {#key} remount provides a fresh function pointer.
+  // The footer button calls this directly — no reactive trigger, no ordering race.
+  let bodySubmitFn = $state<(() => void) | null>(null);
 
   // State hints loaded once on mount (non-fatal if fails).
   let stateHints = $state<string[]>([]);
@@ -79,7 +74,7 @@
       {onSaved}
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(can) => (formCanSubmit = can)}
-      {submitTrigger}
+      onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
     />
   {/key}
 
@@ -89,7 +84,7 @@
       variant="primary"
       loading={formLoading}
       disabled={!formCanSubmit}
-      onclick={() => (submitTrigger += 1)}
+      onclick={() => bodySubmitFn?.()}
     >
       {#if formLoading}Сохранение…{:else}{submitLabel}{/if}
     </Button>

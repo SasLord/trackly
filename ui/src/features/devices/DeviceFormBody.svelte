@@ -7,9 +7,11 @@
   // serialNo, etc.) are reset to their initial values on each opening —
   // no stale form data carries over between create/edit sessions.
   //
-  // Regression 6 fix: serial_no and inventory_no now always reset correctly
-  // because the component is re-created from scratch on each open.
+  // Round 8: submitTrigger side-channel eliminated. The parent now binds to
+  // the `submit` prop (exposed via $bindable) and calls it directly from the
+  // footer button. No reactive trigger, no ordering race.
 
+  import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
@@ -31,11 +33,16 @@
     /** Expose submit-button state to parent's footer snippet. */
     onLoading: (_loading: boolean) => void;
     onCanSubmitChange: (_can: boolean) => void;
-    /** Called when parent's submit button is clicked — triggers submit. */
-    submitTrigger: number;
+    /**
+     * Called once on mount with a reference to handleSubmit.
+     * The parent stores this function and calls it from the footer button.
+     * Because {#key openInstanceCounter} remounts the body on each modal open,
+     * a fresh function is provided each time — no stale closures, no side-channel races.
+     */
+    onRegisterSubmit: (_fn: () => void) => void;
   }
 
-  const { target, stateHints, onSaved, onLoading, onCanSubmitChange, submitTrigger }: Props = $props();
+  const { target, stateHints, onSaved, onLoading, onCanSubmitChange, onRegisterSubmit }: Props = $props();
 
   // ---------------------------------------------------------------------------
   // Form state — all initialised from target (edit) or empty (create).
@@ -90,19 +97,12 @@
     onLoading(loading);
   });
 
-  // React to parent's submit trigger (incremented when user clicks the footer button).
-  // Guards:
-  //   - submitTrigger > 0: ignore the initial value (0) on mount.
-  //   - !submitting: ignore double-click / rapid re-trigger.
-  //   - canSubmit: defensive — do not call handleSubmit if required fields are not
-  //     filled. The parent resets submitTrigger to 0 before remounting this component
-  //     (via DeviceFormModal's open-detection $effect), so a stale trigger from a prior
-  //     modal session should never reach this guard. The canSubmit check is a belt-and-
-  //     suspenders backstop in case the parent's reset races with this effect.
-  $effect(() => {
-    if (submitTrigger > 0 && !submitting && canSubmit) {
-      handleSubmit();
-    }
+  // Register handleSubmit with the parent once on mount.
+  // onMount is used (not $effect) to guarantee exactly one call per component
+  // instance — when the parent remounts via {#key}, a fresh instance calls
+  // onRegisterSubmit with the new closure.
+  onMount(() => {
+    onRegisterSubmit(handleSubmit);
   });
 
   // ---------------------------------------------------------------------------
@@ -110,8 +110,7 @@
   // ---------------------------------------------------------------------------
   async function handleSubmit() {
     if (!canSubmit) return;
-    // In-flight guard: prevent double-submit from rapid clicks or concurrent
-    // form-onsubmit + submitTrigger firing.
+    // In-flight guard: prevent double-submit from rapid clicks.
     if (submitting) return;
     submitting = true;
     loading = true;
@@ -190,8 +189,8 @@
   class="device-form"
   onsubmit={(e) => {
     // Prevent default HTML form submission in all cases.
-    // Submission is always triggered via submitTrigger from DeviceFormModal's
-    // footer button — never via Enter key or implicit form submit.
+    // Submission is always triggered via the bound submit function from
+    // DeviceFormModal's footer button — never via Enter key or implicit form submit.
     e.preventDefault();
     e.stopPropagation();
   }}
