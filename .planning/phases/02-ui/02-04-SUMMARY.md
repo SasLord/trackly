@@ -564,3 +564,61 @@ Hint `«Доступно только для устройств без инве�
 - `cargo test --workspace --no-fail-fast` — все тесты зелёные (10 grouping + все предыдущие)
 - `pnpm svelte-check --threshold error` — 0 ошибок (11 предупреждений state_referenced_locally — все ожидаемые)
 - `pnpm build` — зелёный (0 ошибок)
+
+---
+
+## Post-checkpoint Fixes — Round 6 (2026-05-27)
+
+Один корневой дефект, проявляющийся двумя симптомами:
+
+**Симптом A:** при наборе первой буквы в поле «Расположение» форма закрывалась и устройство создавалось с неполными данными.
+
+**Симптом B:** редактирование устройства → двойной тост («Устройство сохранено» + «optimistic lock mismatch on device 3: expected v3, found v4»).
+
+**Корневая причина:** Enter-нажатие в любом `<input>` внутри `<form>` пробивалось к `<form onsubmit>` и вызывало `handleSubmit()` (стандартное поведение HTML). Одновременно `submitTrigger` из footer-кнопки вызывал тот же `handleSubmit()` второй раз. Итог: два конкурирующих вызова с одной и той же `target.version` → первый успевал (v1→v2), второй падал с OptimisticLockMismatch.
+
+**Четырёхслойная защита:**
+
+### Fix 1 — Autocomplete Enter/Esc preventDefault+stopPropagation (commit 10d2184)
+
+**Изменения в `DeviceAutocompleteField.svelte`:**
+- `Escape`: всегда `preventDefault()+stopPropagation()` — Escape не должен достигать `<svelte:window>` пока автокомплит управляет клавиатурным состоянием
+- `Enter` (дропдаун открыт): `preventDefault()+stopPropagation()` в **обоих** случаях — когда `activeIndex >= 0` (выбор подсказки) И когда `activeIndex === -1` (пользователь ещё смотрит на список, не нужно сабмитить форму)
+- `Enter` (дропдаун закрыт): пропагируется естественно → форма может среагировать
+
+**Изменения в `Modal.svelte`:**
+- Добавлен `type="button"` на кнопку закрытия `×` (defensive fix — вне `<form>`, но защита корректная)
+
+### Fix 2 — form onsubmit больше не вызывает handleSubmit (commit f4baf05)
+
+**Изменения в `DeviceFormBody.svelte`:**
+- `<form onsubmit>`: всегда `preventDefault()+stopPropagation()`, но НЕ вызывает `handleSubmit()`
+- Весь submit идёт исключительно через `submitTrigger` из footer-кнопки родителя
+
+### Fix 3 — In-flight guard (commit f4baf05)
+
+**Изменения в `DeviceFormBody.svelte`:**
+- Добавлен `let submitting = $state(false)` — устанавливается в `true` в начале `handleSubmit`, сбрасывается в `finally`
+- `canSubmit = $derived(... && !submitting)` → footer-кнопка дизаблится немедленно при старте сабмита
+- `$effect` на `submitTrigger`: проверяет `if (submitTrigger > 0 && !submitting)` — игнорирует повторные триггеры пока идёт запрос
+
+### Fix 4 — Version refresh после успешного update (commit f4baf05)
+
+**Изменения в `DeviceFormBody.svelte`:**
+- Добавлен `let currentVersion = $state(target?.version ?? 1)` — локальная копия версии
+- `devices.update(target.id, currentVersion, patch)` вместо `target.version`
+- `const updated = await devices.update(...)` → `currentVersion = updated.version`
+- Последующие сохранения в той же сессии модала используют актуальную версию (не требуют перезагрузки страницы)
+
+### Fix 5 — Backend regression test (commit 54c9d25)
+
+**Новый тест `update_second_save_after_successful_first_uses_new_version`:**
+- create (v1) → update (v1→v2) → update (v2→v3, использует refreshed version) → success
+- Закрепляет последовательность вызовов, которую фронтенд-фикс теперь обеспечивает
+- Дополняет уже существующий `update_returns_optimistic_lock_mismatch_on_stale_version` (rejection path)
+
+**Итоговая верификация round 6:**
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (13 devices_crud + все предыдущие)
+- `pnpm svelte-check --threshold error` — 0 ошибок (12 предупреждений state_referenced_locally — все ожидаемые/намеренные)
+- `pnpm build` — зелёный (0 ошибок)
