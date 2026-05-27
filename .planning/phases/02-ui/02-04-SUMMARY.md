@@ -692,3 +692,93 @@ $effect(() => {
 - `cargo test --workspace --no-fail-fast` — все тесты зелёные (только frontend-изменения, backend-тесты не затронуты)
 - `pnpm svelte-check` — 0 ошибок, 12 предупреждений (все pre-existing `state_referenced_locally` — намеренные)
 - `pnpm build` — зелёный (0 ошибок, 97.32 kB / 34.79 kB gzip)
+
+---
+
+## Round 8 — Checkpoint loop, 4 дефекта (commits 100f5b7…05a639a)
+
+### Дефект 1 — confirm-delete modal text wrapping (commit 100f5b7)
+
+**Симптом:** при длинном названии устройства текст модала подтверждения удаления обрезался вместо переноса.
+
+**Диагностика:** `Modal.svelte` имел `overflow-wrap: anywhere` на `.modal-body`, а `DeviceContextMenu.svelte` — на `.confirm-body`. Однако отсутствовало центрирование и явный `white-space: normal`.
+
+**Исправление:** добавлено в `.confirm-body` в `DeviceContextMenu.svelte`:
+```css
+text-align: center;
+white-space: normal;
+max-width: 100%;
+```
+
+**Файл:** `ui/src/features/devices/DeviceContextMenu.svelte`
+
+---
+
+### Дефект 2 — submitTrigger side-channel полностью устранён (commit 272e51b)
+
+**Симптом:** при первом открытии модала «Редактировать» после запуска приложения модал открывался и сразу закрывался с тостом «Устройство сохранено».
+
+**Первопричина:** `submitTrigger` жил вне `{#key openInstanceCounter}`, поэтому пережил ремаунт `DeviceFormBody`. Round 7 пытался сбросить его в `$effect` открытия — но race между `$effect` (сброс) и `$effect` в `DeviceFormBody` (реакция на `submitTrigger > 0`) был нестабилен на первом открытии.
+
+**Новая архитектура:** `submitTrigger` полностью удалён.
+- `DeviceFormBody` получает проп `onRegisterSubmit: (_fn: () => void) => void`
+- В `onMount()` вызывает `onRegisterSubmit(handleSubmit)` — регистрирует свою функцию в родителе
+- `DeviceFormModal` хранит `bodySubmitFn = $state<(() => void) | null>(null)` и вызывает `bodySubmitFn?.()` из кнопки footer
+- При каждом `{#key openInstanceCounter}` remount — `onMount` нового экземпляра предоставляет свежий `handleSubmit`
+
+**Нет reactive trigger — нет race. Функция вызывается прямо, а не через счётчик.**
+
+**Файлы:** `DeviceFormModal.svelte`, `DeviceFormBody.svelte`
+
+---
+
+### Дефект 3 — Autocomplete state machine переписана на onMount (commit ee948fe)
+
+**Симптом:** dropdown не открывался на первом keystroke — multi-round regression.
+
+**Первопричина:** `_userTyping` flag + `Promise.resolve().then(() => _userTyping = false)` микротаска не синхронизировалась с Svelte 5 effect scheduling. Watcher `$effect` периодически ре-армировал `suppressDropdown = true` после `handleInput` уже снял его.
+
+**Новая state machine (полная замена):**
+1. `onMount` (один раз): если `value.length > 0` — seed `lastSelected + suppressDropdown = true` (edit-mode pre-fill)
+2. Fetch `$effect`: открывает dropdown только когда `!suppressDropdown`
+3. `handleInput` (единственное место снятия suppression): если `newValue !== lastSelected` — `suppressDropdown = false`
+4. `select(s)`: `suppressDropdown = true` после выбора
+
+**Удалены:** `_userTyping`, watcher `$effect` с guard на `_userTyping`
+
+**Трассировка (новое устройство):** `onMount`: `value=''` → `suppressDropdown` остаётся `false`. Keystroke 'М': `handleInput` → `suppressDropdown === false` → skip check → `onChange('М')`. Fetch `$effect`: `!suppressDropdown === true` → `open = true`. Dropdown открывается.
+
+**Нет ни одного пути где `suppressDropdown = true` устанавливается на user keystroke.**
+
+**Визуальная верификация:** порт 1420 занят (dev-сервер уже запущен), запустить новый экземпляр не удалось. Трассировка state machine выполнена вручную — подтверждает корректность. Пользователю рекомендуется провести smoke-тест вручную.
+
+**Файл:** `ui/src/features/devices/DeviceAutocompleteField.svelte`
+
+---
+
+### Дефект 4 — GROUP BY расслаблен до (type_id, name) (commit 05a639a)
+
+**Симптом:** два монитора с одинаковым Наименованием, но разными серийными номерами/статусами/локациями не схлопывались в группу.
+
+**Первопричина:** GROUP BY включал `model, notes, complectation, condition, location_id, status_id` — любое различие в этих полях создавало отдельную группу.
+
+**Исправление:** ключ группировки сокращён до `GROUP BY d.type_id, d.name`. Остальные атрибуты стали `MAX(...)` агрегатами. Для `location_name` использован коррелированный подзапрос `(SELECT l.name ... WHERE l.id = MAX(d2.location_id) ...)` вместо `LEFT JOIN l ON l.id = MAX(d.location_id)` (SQLite не позволяет агрегат внутри ON-условия).
+
+**Новые тесты:**
+- `grouping_groups_devices_with_same_name_and_different_status` — два монитора с status=1 и status=2 → 1 группа
+- `grouping_groups_devices_with_same_name_and_different_location` — два монитора в разных локациях → 1 группа
+- `grouping_groups_devices_with_same_name_and_different_condition` — две клавиатуры с разными состояниями → 1 группа
+
+Все 13 тестов зелёные.
+
+**Файлы:** `crates/trackly-infra/src/repos/devices_sqlite.rs`, `crates/trackly-app/tests/devices_grouping.rs`
+
+---
+
+### Итоговая верификация round 8
+
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (13/13 в devices_grouping, общий счёт >100)
+- `pnpm svelte-check` — 0 ошибок, 12 предупреждений (все pre-existing)
+- `pnpm build` — зелёный (97.23 kB / 34.76 kB gzip)
+- Визуальная верификация autocomplete: трассировка line-by-line выполнена — нет race path; browser smoke — пользователю (dev-сервер занят)
