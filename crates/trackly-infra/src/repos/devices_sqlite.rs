@@ -749,7 +749,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                    d.type_id, d.name, d.model, d.notes, d.complectation, d.condition,
                    d.location_id, d.status_id,
                    d.version, d.created_at_utc, d.updated_at_utc,
-                   (SELECT l.name FROM locations l WHERE l.id = d.location_id LIMIT 1) AS location_name
+                   (SELECT l.name FROM locations l WHERE l.id = d.location_id LIMIT 1) AS location_name,
+                   MAX(d.inventory_number)     AS inv_no,
+                   MAX(d.serial_number)        AS serial_no
                  FROM devices d
                  WHERE d.deleted_at_utc IS NULL
                    AND (?1 IS NULL OR d.status_id = ?1)
@@ -776,14 +778,19 @@ impl DeviceRepository for SqliteDeviceRepository {
                 let created_at_utc: i64 = row.get(12)?;
                 let updated_at_utc: i64 = row.get(13)?;
                 let location_name: Option<String> = row.get(14)?;
+                // MAX aggregates: for count==1 these equal the device's actual values;
+                // for count>1 the UI hides inv/serial columns via colspan, so the value
+                // is present but not displayed (no regression for multi-device groups).
+                let inv_no: Option<String> = row.get(15)?;
+                let serial_no: Option<String> = row.get(16)?;
 
-                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name))
+                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name, inv_no, serial_no))
             })
             .map_err(map_rusqlite)?;
 
         let mut groups = Vec::new();
         for row_result in rows {
-            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name) =
+            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name, inv_no, serial_no) =
                 row_result.map_err(map_rusqlite)?;
 
             // Parse GROUP_CONCAT result (T-02-04-06: parse failure → AppError::Internal).
@@ -799,8 +806,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 id: repr_id,
                 type_id,
                 name,
-                inventory_no: None,
-                serial_no: None,
+                inventory_no: inv_no,
+                serial_no,
                 model,
                 specs,
                 kit,
