@@ -364,3 +364,87 @@ Five defects found during manual smoke were applied as atomic commits after the 
 - `cargo test --workspace --no-fail-fast` — все тесты зелёные (6 location roundtrip + все предыдущие)
 - `pnpm svelte-check --threshold error` — 0 ошибок (1 существующее предупреждение DeviceFilters)
 - `pnpm build` — зелёный (0 ошибок)
+
+---
+
+## Post-checkpoint Fixes — Round 3 (2026-05-27)
+
+Четыре дефекта найдены при ручном смоке после round 2. Применены атомарными коммитами.
+
+### Fix 1 — Тест serial_no round-trip (commit a3cbc9d)
+
+**Дефект:** Пользователь сообщил, что серийный номер не сохраняется при создании устройства.
+
+**Диагностика:**
+- Backend (`create_in_tx`) корректно принимает `serial_no` и биндит на колонку `serial_number`
+- Frontend payload: `serial_no: serialNo.trim() || null` — корректно
+- `Input` компонент с `oninput={(v) => (serialNo = v)}` — корректно
+
+**Результат:** Backend и frontend работают корректно. Тест отсутствовал — это и создавало неопределённость. Добавлены 2 теста для документирования и регрессии.
+
+**Новые тесты:**
+- `create_persists_serial_number`: round-trip `serial_no="SN-XYZ-001"` через create → get
+- `create_persists_inventory_and_serial_together`: оба номера одновременно
+
+**Файл:** `crates/trackly-app/tests/devices_crud.rs`
+
+### Fix 2 — Autocomplete: начальное значение = уже-выбранное (commit 0bb9f71)
+
+**Дефект:** При открытии устройства в режиме редактирования каждый автокомплит-дропдаун мгновенно открывался, показывая текущее значение как единственную подсказку.
+
+**Корневая причина:** `lastSelected` и `suppressDropdown` инициализировались как пустые независимо от пропа `value`. При монтировании в edit-режиме `$effect` запускал debounced fetch, подгружал подсказки и открывал дропдаун, так как suppression не была активна.
+
+**Исправление:**
+- Добавлен `$effect.pre`: при первом рендере с `value.length > 0` → `lastSelected = value`, `suppressDropdown = true`
+- Добавлен watcher `_prevValue`: при изменении `value` извне (смена target) re-arm suppression
+- Документирован инвариант «initial value = already-selected» в комментарии
+- Исправлено 4 предупреждения `state_referenced_locally` (убраны `$state(value.x)`)
+
+**Файл:** `ui/src/features/devices/DeviceAutocompleteField.svelte`
+
+### Fix 3 — DeviceContextMenu портализован в `<body>` (commit 870d77d)
+
+**Дефект:** Меню ⋮ обрезалось контейнером списка с `overflow: auto`, добавляло скролл-бар.
+
+**Исправление:**
+- Создан `ui/src/lib/utils/portal.ts` — Svelte use-action, перемещает DOM-узел в `<body>`
+- `DeviceContextMenu.svelte` переработан: dropdown рендерится через `use:portal`
+- Координаты вычисляются из `triggerEl.getBoundingClientRect()` при каждом открытии
+- `position: fixed; z-index: 2000` — видим поверх всех контейнеров
+- Закрывается: mousedown вне меню, Esc, выбор пункта, scroll/resize
+- `:global()` стили для портализованного div
+- Добавлен `tabindex="-1"` на `role="menu"` (a11y)
+
+**Файлы:**
+- `ui/src/lib/utils/portal.ts` (создан)
+- `ui/src/features/devices/DeviceContextMenu.svelte`
+
+### Fix 4 — Финальный порядок полей + Количество всегда visible disabled (commit 0582122)
+
+**Дефект:** Поля расположены не в том порядке; Количество исчезало и появлялось при вводе номеров («прыжки» макета).
+
+**Финальный порядок полей:**
+1. Наименование (required, autocomplete)
+2. Инв.№ / Серийный № / Количество — один flex ряд (всегда 3 поля, нет добавления/удаления)
+3. Модель (autocomplete, ctx_name)
+4. Технические характеристики (autocomplete, ctx_name)
+5. Комплектация (autocomplete, ctx_name)
+6. Статус (required, Select)
+7. Расположение (required, autocomplete, ctx_name + ctx_status_id)
+8. Состояние (autocomplete, ctx_name) — ПОСЛЕДНЕЕ
+
+**Поведение Количества:**
+- Всегда отображается — нет `{#if}`, макет стабилен
+- `disabled` + значение `1` когда: edit-режим ИЛИ инв./серийный заполнен
+- Подсказка «Доступно только для устройств без инвентарного и серийного номера.»
+- Submit: `quantityDisabled ? 1 : quantity`
+- Backend-валидация `count>1 с inv/serial` сохранена как defence-in-depth
+
+**Файл:** `ui/src/features/devices/DeviceFormModal.svelte`
+
+### Итоговая верификация post-checkpoint (round 3)
+
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (+2 новых devices_crud)
+- `pnpm svelte-check --threshold error` — 0 ошибок (1 старое предупреждение DeviceFilters)
+- `pnpm build` — зелёный (0 ошибок)
