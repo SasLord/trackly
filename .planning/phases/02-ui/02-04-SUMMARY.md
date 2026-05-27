@@ -540,3 +540,27 @@ Hint `«Доступно только для устройств без инве�
 - Autocomplete: «только oninput открывает дропдаун» — задокументировано как DESIGN RULE в исходнике
 - Form reset: `{#key openInstanceCounter}` гарантирует пересоздание на каждое открытие — структурная гарантия, не `$effect`-зависимая
 - Backend serial/inv: 2 новых теста покрывают N последовательных creates и single-call round-trip
+
+---
+
+## Post-checkpoint Fixes — Round 5 (2026-05-27)
+
+### Fix 1 — Singleton в grouped view показывал «—» для Инв.№ / Серийного № (commit f4dc83e)
+
+**Дефект:** При включённой группировке устройство с count==1 рендерилось как `DeviceListRow`, но поля `inventory_no` и `serial_no` отображались как «—». Выключение группировки возвращало номера.
+
+**Корневая причина:** SQL `list_grouped` не включал `inventory_number`/`serial_number` в SELECT-агрегаты. Поля `repr.inventory_no` и `repr.serial_no` всегда устанавливались в `None` в маппинге строки.
+
+**Исправление:** Добавлены `MAX(d.inventory_number) AS inv_no` и `MAX(d.serial_number) AS serial_no` в SELECT агрегирующего запроса. Для `count==1` `MAX()` возвращает фактическое значение устройства. Для `count>1` значение присутствует, но UI скрывает эти колонки через `colspan="4"` — регрессий нет.
+
+**Файл:** `crates/trackly-infra/src/repos/devices_sqlite.rs`
+
+**Новые тесты (commit 2601859):**
+- `grouping_singleton_includes_inventory_and_serial_no` — singleton с `INV-1`/`SN-1` → repr содержит оба значения
+- `grouping_collapsed_group_aggregates_inv_serial_safely` — группа из 3 устройств с разными inv_no → `repr.inventory_no.is_some()`
+
+**Итоговая верификация (round 5):**
+- `cargo build --workspace` — зелёный
+- `cargo test --workspace --no-fail-fast` — все тесты зелёные (10 grouping + все предыдущие)
+- `pnpm svelte-check --threshold error` — 0 ошибок (11 предупреждений state_referenced_locally — все ожидаемые)
+- `pnpm build` — зелёный (0 ошибок)
