@@ -1,7 +1,29 @@
 <script lang="ts">
   // DeviceAutocompleteField — reusable autocomplete with contextual support.
   // Per UI-SPEC §DeviceAutocompleteField, DEV-08, DEV-09, D-Autocomplete-01.
+  //
+  // Round 8 rewrite: state machine simplified from _userTyping flag + watcher
+  // $effect to onMount-based suppression seed.
+  //
+  // STATE MACHINE (simplified):
+  //   1. onMount (fires exactly once): if value is non-empty, seed lastSelected=value
+  //      and set suppressDropdown=true. This covers the edit-mode pre-fill case.
+  //      Subsequent prop changes from parent do NOT trigger re-suppression.
+  //   2. Main fetch $effect: debounces on `value` change, calls autocomplete API,
+  //      sets open=true only when !suppressDropdown.
+  //   3. handleInput: the ONLY place that can lift suppressDropdown. When the user
+  //      types a character that differs from lastSelected, suppression is cleared,
+  //      and the next fetch $effect run will open the dropdown.
+  //   4. select(s): sets lastSelected=s, suppressDropdown=true — user chose a
+  //      suggestion, no need to re-open on the same value.
+  //
+  // LIMITATION: if the parent changes `value` externally WITHOUT a remount (e.g.
+  // via a hypothetical "clear" button), suppressDropdown stays as it was. This is
+  // intentional and acceptable — no such "clear" button exists in current UI.
+  // When DeviceFormModal remounts DeviceFormBody via {#key openInstanceCounter},
+  // this component also remounts → onMount fires fresh → correct suppression seeded.
 
+  import { onMount } from 'svelte';
   import { devices } from './api';
 
   type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state' | 'location';
@@ -31,68 +53,25 @@
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Track the last value that was chosen via a suggestion click/keyboard,
-  // OR the value present when the component mounted (pre-filled in edit mode).
-  // While suppressDropdown is true the dropdown stays closed even if suggestions
-  // are returned — it is lifted only when the user types a character that
-  // differs from lastSelected (or clears the field entirely).
-  //
-  // DESIGN RULE: only oninput may open the dropdown.
-  //   - Programmatic value changes (props, effects) MUST NOT open the dropdown.
-  //   - They MUST update lastSelected so the first user keystroke is judged
-  //     against the right baseline.
-  //
-  // Concretely:
-  //   1. On mount with non-empty value → seed lastSelected + suppress (edit-mode).
-  //   2. When parent changes value externally (e.g. modal reopened for different
-  //      device) → re-seed lastSelected + suppress. Detect «external» by checking
-  //      that the change did NOT come from our own oninput handler.
-  //   3. handleInput (user typing) → the only place that lifts suppression and
-  //      lets the debounced fetch open the dropdown.
-  //
-  // We distinguish external from internal changes via a boolean `_userTyping` flag
-  // set synchronously in handleInput and cleared after the tick.
-
+  // Track the last value that was chosen via a suggestion click/keyboard.
+  // suppressDropdown: when true, the fetch $effect will NOT open the dropdown
+  // even if suggestions are returned.
   let lastSelected: string | null = $state<string | null>(null);
   let suppressDropdown = $state(false);
-  // True for exactly the synchronous duration of an oninput call so that
-  // the value-watcher $effect can distinguish user keystrokes from parent updates.
-  let _userTyping = $state(false);
 
-  // Watch external prop changes AND handle the initial mount value (edit-mode).
-  //
-  // This single $effect covers both cases:
-  //   1. Mount with non-empty value (edit-mode pre-fill): seeds lastSelected and
-  //      suppresses the dropdown so focusing a pre-filled field does NOT re-open it.
-  //   2. Parent swaps value externally (e.g. different device opened): same seed+suppress.
-  //
-  // When _userTyping is true the change came from our own oninput handler — skip,
-  // so user keystrokes are never suppressed by this watcher.
-  //
-  // NOTE: no separate $effect.pre is needed. $effect.pre in Svelte 5 is reactive and
-  // re-runs on every dep change just like $effect — it is NOT limited to mount-only.
-  // A $effect.pre that checks `value.length > 0` unconditionally would re-arm
-  // suppressDropdown on every parent value update, including when the user is typing
-  // (because the parent's state change propagates back through the prop). That breaks
-  // the dropdown: even though _userTyping lifts suppression in handleInput, $effect.pre
-  // re-sets it before the debounced fetch completes. Removing $effect.pre and keeping
-  // only this watcher (with the _userTyping guard) is the correct design.
-  $effect(() => {
-    const v = value; // track this dep
-    if (_userTyping) return; // internal change — skip
-    if (v.length > 0) {
-      lastSelected = v;
+  // Seed suppression exactly once, on mount.
+  // If value is non-empty (edit-mode pre-fill), treat it as already-selected:
+  // do not open the dropdown on focus or programmatic value updates.
+  onMount(() => {
+    if (value.length > 0) {
+      lastSelected = value;
       suppressDropdown = true;
-    } else {
-      suppressDropdown = false;
-      lastSelected = null;
     }
   });
 
   // Trigger autocomplete when value or context changes (debounced 200ms).
-  // The $effect intentionally does NOT open the dropdown — opening is done
-  // only inside the oninput handler so that focusing a pre-filled field
-  // does NOT re-open the dropdown.
+  // Opens the dropdown only when suppressDropdown is false — i.e. the user
+  // is actively typing (handleInput cleared suppression).
   $effect(() => {
     const v = value;
     // Track context deps so effect re-runs when they change.
@@ -110,7 +89,9 @@
       try {
         loading = true;
         suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus);
-        // Only open if not suppressed (i.e. user is typing, not just focused).
+        // Only open if the user is actively typing (suppression was lifted by handleInput).
+        // This prevents the dropdown from re-opening on programmatic value changes
+        // (e.g. parent re-rendering, edit-mode pre-fill, prop change from outside).
         if (!suppressDropdown) {
           open = suggestions.length > 0;
         }
@@ -135,22 +116,19 @@
 
   function handleInput(e: Event) {
     const newValue = (e.currentTarget as HTMLInputElement).value;
-    // Mark that this value change originates from user typing so the watcher
-    // $effect does NOT re-arm suppression.
-    _userTyping = true;
     // Lift suppression when the user types something that differs from the last
-    // selected (or pre-filled) value, or when they clear the field.
+    // selected (or mount-seeded) value, or when they clear the field.
+    // This is the ONLY place suppressDropdown is set to false for non-empty input.
     if (suppressDropdown && newValue !== lastSelected) {
       suppressDropdown = false;
       lastSelected = null;
     }
     onChange(newValue);
-    // Clear the flag on the next microtask — after Svelte has propagated the
-    // value change to the parent and back through the prop. The watcher $effect
-    // runs synchronously within the same flush, so this is always safe.
-    Promise.resolve().then(() => {
-      _userTyping = false;
-    });
+    // Note: no _userTyping flag needed. onMount handles initial seeding exactly
+    // once; subsequent prop changes from parent do not re-arm suppression.
+    // The fetch $effect reads suppressDropdown AFTER onChange() has propagated
+    // the new value back through the prop — by that point suppressDropdown is
+    // already false (lifted above), so the dropdown will open correctly.
   }
 
   function handleKeydown(e: KeyboardEvent) {
