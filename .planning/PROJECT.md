@@ -200,5 +200,10 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+## Phase Evolution Log
+
+- **Phase 1: Фундамент** (completed 2026-05-25) — workspace, схема БД (миграции V001–V012), single-writer pattern, portable mode, audit_log, ProcMon CI gate.
+- **Phase 2: Устройства и базовый UI** (completed 2026-05-28) — V013 миграция (FTS5 triggers + 5 autocomplete partial indexes), полный CRUD устройств в Tauri-десктоп + axum HTTP, hash-router SPA с sidebar/ThemeSwitcher/toast/11 primitives, FTS5 search с Cyrillic-aware токенайзером, контекстный autocomplete (per-field + ctx_name + ctx_status_id), Status switch-bar с counters, группировка по Наименованию с expand, bulk_create 1..=100 для не-уникальных устройств, locations round-trip через INSERT OR IGNORE, CSV import (BOM+chardetng detect, ; / , delimiter, 5-min TTL session) + CSV export (UTF-8 BOM + ; + Russian headers + formula-injection guard).
+
 ---
-*Last updated: 2026-05-24 after initialization*
+*Last updated: 2026-05-28 after Phase 2 completion*
