@@ -145,9 +145,7 @@
     loading = true;
     try {
       // Filter out unmapped columns.
-      const activeMapping = Object.fromEntries(
-        Object.entries(mapping).filter(([, v]) => v !== ''),
-      );
+      const activeMapping = Object.fromEntries(Object.entries(mapping).filter(([, v]) => v !== ''));
       report = await devices.importCsvCommit(preview.token, activeMapping);
       step = 4;
     } catch (e: unknown) {
@@ -204,11 +202,7 @@
   <!-- Step indicator -->
   <div class="step-indicator" role="status" aria-label="Шаг {step} из 4">
     {#each [1, 2, 3, 4] as s}
-      <span
-        class="step-dot"
-        class:active={s === step}
-        class:done={s < step}
-        aria-hidden="true"
+      <span class="step-dot" class:active={s === step} class:done={s < step} aria-hidden="true"
       ></span>
     {/each}
     <span class="step-label">Шаг {step} из 4</span>
@@ -220,8 +214,8 @@
   {#if step === 1}
     <div class="step-body">
       <p class="step-help">
-        Выберите CSV-файл. Поддерживаются UTF-8, UTF-8 с BOM, Windows-1251.
-        Разделители — запятая или точка с запятой.
+        Выберите CSV-файл. Поддерживаются UTF-8, UTF-8 с BOM, Windows-1251. Разделители — запятая
+        или точка с запятой.
       </p>
       <div class="step-actions">
         <Button variant="primary" onclick={openFilePicker} disabled={loading}>
@@ -230,15 +224,15 @@
       </div>
     </div>
 
-  <!-- -------------------------------------------------------------------------
+    <!-- -------------------------------------------------------------------------
        Step 2: Preview
   --------------------------------------------------------------------------- -->
   {:else if step === 2 && preview}
     <div class="step-body">
       <p class="encoding-info">
         Определена кодировка: <strong>{preview.encoding}</strong>, разделитель:
-        <strong>«{preview.delimiter}»</strong>.
-        Показаны первые {preview.preview_rows.length} строк из {preview.total_rows}.
+        <strong>«{preview.delimiter}»</strong>. Показаны первые {preview.preview_rows.length} строк из
+        {preview.total_rows}.
       </p>
       {#if preview.had_replacements}
         <div class="warning-banner" role="alert">
@@ -267,14 +261,14 @@
       </div>
     </div>
 
-  <!-- -------------------------------------------------------------------------
+    <!-- -------------------------------------------------------------------------
        Step 3: Mapping
   --------------------------------------------------------------------------- -->
   {:else if step === 3 && preview}
     <div class="step-body">
       <p class="step-help">
-        Колонки CSV сопоставлены с полями устройств автоматически по заголовкам.
-        При необходимости измените.
+        Колонки CSV сопоставлены с полями устройств автоматически по заголовкам. При необходимости
+        измените.
       </p>
       <table class="mapping-table">
         <thead>
@@ -305,14 +299,14 @@
       </table>
     </div>
 
-  <!-- -------------------------------------------------------------------------
+    <!-- -------------------------------------------------------------------------
        Step 4: Result
   --------------------------------------------------------------------------- -->
   {:else if step === 4 && report}
     <div class="step-body">
       <p class="result-summary">
-        Импортировано: <strong>{report.inserted}</strong>.
-        Пропущено с ошибками: <strong>{report.failed.length}</strong>.
+        Импортировано: <strong>{report.inserted}</strong>. Пропущено с ошибками:
+        <strong>{report.failed.length}</strong>.
       </p>
       {#if report.failed.length > 0}
         <button

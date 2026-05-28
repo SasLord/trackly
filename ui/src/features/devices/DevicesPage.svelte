@@ -168,9 +168,7 @@
         await apiCall<void>('write_file_bytes', { path: savePath, content: csvContent });
 
         // Count devices in current response for toast message.
-        const count = csvContent
-          .split('\n')
-          .filter((l) => l.trim().length > 0).length - 1; // subtract header row
+        const count = csvContent.split('\n').filter((l) => l.trim().length > 0).length - 1; // subtract header row
         pushToast('success', `Экспортировано ${Math.max(0, count)} устройств.`);
       } else {
         // Browser fallback: trigger <a download>.
@@ -232,7 +230,10 @@
         expandedGroups = new Set(expandedGroups);
       }}
       onEdit={openEdit}
-      onDelete={() => { refresh(); refreshCounts(); }}
+      onDelete={() => {
+        refresh();
+        refreshCounts();
+      }}
     />
   </div>
 </div>

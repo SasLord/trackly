@@ -18,27 +18,33 @@
     onDelete: () => void;
   }
 
-  const { items, groups, total, loading, grouped, searchActive, expandedGroups, onExpandToggle, onEdit, onDelete }: Props = $props();
+  const {
+    items,
+    groups,
+    total,
+    loading,
+    grouped,
+    searchActive,
+    expandedGroups,
+    onExpandToggle,
+    onEdit,
+    onDelete,
+  }: Props = $props();
 
   const showGroups = $derived(grouped && !searchActive && groups.length > 0);
-  const isEmpty = $derived(
-    !loading &&
-    (showGroups ? groups.length === 0 : items.length === 0)
-  );
+  const isEmpty = $derived(!loading && (showGroups ? groups.length === 0 : items.length === 0));
 
   // In grouped mode, singletons (count == 1) render as plain DeviceListRow.
   // Groups with count > 1 render as expandable DeviceGroupRow.
   // This ensures every device is visible in grouped mode — no vanishing singletons.
 
   const emptyMessage = $derived(
-    searchActive
-      ? 'По вашему запросу ничего не найдено'
-      : 'Устройств пока нет'
+    searchActive ? 'По вашему запросу ничего не найдено' : 'Устройств пока нет',
   );
   const emptySubtext = $derived(
     searchActive
       ? 'Попробуйте изменить поисковый запрос или сбросить фильтр статуса.'
-      : 'Создайте первое устройство или импортируйте список из CSV.'
+      : 'Создайте первое устройство или импортируйте список из CSV.',
   );
 </script>
 

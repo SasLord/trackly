@@ -42,7 +42,17 @@
     onChange: (_v: string) => void;
   }
 
-  const { field, value, contextName, contextStatusId, placeholder, id, invalid = false, multiline = false, onChange }: Props = $props();
+  const {
+    field,
+    value,
+    contextName,
+    contextStatusId,
+    placeholder,
+    id,
+    invalid = false,
+    multiline = false,
+    onChange,
+  }: Props = $props();
 
   let suggestions = $state<string[]>([]);
   let loading = $state(false);

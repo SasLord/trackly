@@ -122,11 +122,7 @@
   >
     <button class="ctx-menu-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
     <hr class="ctx-menu-sep" />
-    <button
-      class="ctx-menu-item ctx-menu-item--destructive"
-      role="menuitem"
-      onclick={openConfirm}
-    >
+    <button class="ctx-menu-item ctx-menu-item--destructive" role="menuitem" onclick={openConfirm}>
       Удалить
     </button>
   </div>

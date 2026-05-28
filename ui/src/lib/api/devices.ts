@@ -54,6 +54,5 @@ export const devices = {
   importCsvCommit: (token: string, mapping: Record<string, string>) =>
     apiCall<CsvImportReport>('devices_import_csv_commit', { token, mapping }),
 
-  exportCsv: (filter: DeviceFilter) =>
-    apiCall<string>('devices_export_csv', { filter }),
+  exportCsv: (filter: DeviceFilter) => apiCall<string>('devices_export_csv', { filter }),
 };

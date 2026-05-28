@@ -42,7 +42,8 @@
     onRegisterSubmit: (_fn: () => void) => void;
   }
 
-  const { target, stateHints, onSaved, onLoading, onCanSubmitChange, onRegisterSubmit }: Props = $props();
+  const { target, stateHints, onSaved, onLoading, onCanSubmitChange, onRegisterSubmit }: Props =
+    $props();
 
   // ---------------------------------------------------------------------------
   // Form state — all initialised from target (edit) or empty (create).
@@ -68,11 +69,7 @@
 
   const isEdit = $derived(target !== null);
 
-  const quantityDisabled = $derived(
-    isEdit ||
-    inventoryNo.trim() !== '' ||
-    serialNo.trim() !== ''
-  );
+  const quantityDisabled = $derived(isEdit || inventoryNo.trim() !== '' || serialNo.trim() !== '');
 
   // canSubmit: all required fields filled AND no in-flight request.
   // submitting guards against double-submit even before loading propagates.

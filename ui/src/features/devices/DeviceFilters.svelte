@@ -12,7 +12,15 @@
     onGroupedChange: (_g: boolean) => void;
   }
 
-  const { searchQuery, statusFilter, grouped, counts, onSearchChange, onStatusChange, onGroupedChange }: Props = $props();
+  const {
+    searchQuery,
+    statusFilter,
+    grouped,
+    counts,
+    onSearchChange,
+    onStatusChange,
+    onGroupedChange,
+  }: Props = $props();
 
   // Internal search input value with debounce.
   let localSearch = $state(searchQuery);
@@ -39,9 +47,7 @@
   ] as const;
 
   // Total count = sum of all status counts.
-  const totalCount = $derived(
-    Array.from(counts.values()).reduce((sum, c) => sum + c, 0),
-  );
+  const totalCount = $derived(Array.from(counts.values()).reduce((sum, c) => sum + c, 0));
 
   function getCount(id: number | null): number {
     if (id === null) return totalCount;
@@ -53,9 +59,15 @@
   <!-- FTS search input -->
   <div class="search-wrapper">
     <span class="search-icon" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5" />
+        <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
       </svg>
     </span>
     <input

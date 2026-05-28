@@ -30,9 +30,12 @@ const browserGlobals = {
   KeyboardEvent: 'readonly',
   MouseEvent: 'readonly',
   HTMLElement: 'readonly',
+  HTMLDivElement: 'readonly',
+  HTMLButtonElement: 'readonly',
   HTMLInputElement: 'readonly',
   HTMLTextAreaElement: 'readonly',
   HTMLSelectElement: 'readonly',
+  Node: 'readonly',
   MutationObserver: 'readonly',
   ResizeObserver: 'readonly',
   IntersectionObserver: 'readonly',
@@ -126,6 +129,10 @@ export default [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // Svelte compile warnings (e.g. state_referenced_locally) are already
+      // surfaced by `pnpm svelte-check`; we use them intentionally for
+      // initial-prop capture inside {#key} remount blocks. Don't double-fail CI.
+      'svelte/valid-compile': ['error', { ignoreWarnings: true }],
     },
   },
 ];

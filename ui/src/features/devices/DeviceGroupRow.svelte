@@ -59,7 +59,9 @@
     4: 'destructive',
   };
 
-  const statusLabel = $derived(STATUS_LABELS[group.repr.status_id] ?? `Статус ${group.repr.status_id}`);
+  const statusLabel = $derived(
+    STATUS_LABELS[group.repr.status_id] ?? `Статус ${group.repr.status_id}`,
+  );
   const statusVariant = $derived(STATUS_VARIANTS[group.repr.status_id] ?? 'default');
 
   async function toggleExpand() {
@@ -89,18 +91,22 @@
   $effect(() => {
     if (expanded && children === null && !loadingChildren) {
       loadingChildren = true;
-      devices.listByIds(group.ids).then((rows) => {
-        children = rows;
-      }).catch((e: unknown) => {
-        const msg =
-          e && typeof e === 'object' && 'message' in e
-            ? String((e as { message: unknown }).message)
-            : 'Не удалось загрузить устройства';
-        pushToast('error', msg);
-        onExpandToggle?.(stableKey, false);
-      }).finally(() => {
-        loadingChildren = false;
-      });
+      devices
+        .listByIds(group.ids)
+        .then((rows) => {
+          children = rows;
+        })
+        .catch((e: unknown) => {
+          const msg =
+            e && typeof e === 'object' && 'message' in e
+              ? String((e as { message: unknown }).message)
+              : 'Не удалось загрузить устройства';
+          pushToast('error', msg);
+          onExpandToggle?.(stableKey, false);
+        })
+        .finally(() => {
+          loadingChildren = false;
+        });
     }
   });
 
@@ -127,10 +133,25 @@
       class="chevron-btn"
       class:expanded
       aria-label={expanded ? 'Свернуть группу' : 'Развернуть группу'}
-      onclick={(e) => { e.stopPropagation(); toggleExpand(); }}
+      onclick={(e) => {
+        e.stopPropagation();
+        toggleExpand();
+      }}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M4 5L7 8L10 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M4 5L7 8L10 5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
       </svg>
     </button>
     {group.repr.name}
