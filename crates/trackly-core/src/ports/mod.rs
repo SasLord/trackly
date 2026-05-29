@@ -3,4 +3,5 @@
 //! Declaring traits here keeps trackly-core I/O-free: the trait lives in core,
 //! the adapter (concrete impl) lives in trackly-infra.
 
+pub mod acts;
 pub mod devices;

@@ -243,6 +243,36 @@ impl SqliteDeviceRepository {
         self.get_in_tx(tx, id)
     }
 
+    /// UPDATE device.status_id + device.location_id внутри транзакции.
+    ///
+    /// Используется в `ActService::create` (handover): после INSERT акта
+    /// все позиции переводятся в статус «В работе» с новым `location_id`.
+    /// Возвращает свежий `DeviceRow` (после update) для записи в `audit_log.after_json`.
+    ///
+    /// NB: `version` инкрементируется, `updated_at_utc` обновляется. FK на
+    /// `device_statuses(status_id)` гарантирует целостность.
+    pub fn update_status_and_location_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        device_id: i64,
+        status_id: i64,
+        location_id: Option<i64>,
+        now_utc: i64,
+    ) -> Result<DeviceRow, AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE devices SET status_id = ?1, location_id = ?2, \
+                 version = version + 1, updated_at_utc = ?3 \
+                 WHERE id = ?4 AND deleted_at_utc IS NULL",
+                rusqlite::params![status_id, location_id, now_utc, device_id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound { entity: "device", id: device_id });
+        }
+        self.get_in_tx(tx, device_id)
+    }
+
     /// Soft-delete в пределах транзакции.
     pub fn delete_soft_in_tx(
         &self,

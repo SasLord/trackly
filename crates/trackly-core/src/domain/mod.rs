@@ -2,4 +2,5 @@
 //!
 //! No I/O dependencies allowed in this module (enforced by `tests/no_io_deps.rs`).
 
+pub mod acts;
 pub mod devices;
