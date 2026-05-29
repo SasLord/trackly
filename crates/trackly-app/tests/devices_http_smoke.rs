@@ -9,7 +9,9 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use trackly_app::dto::device::{DeviceDto, DeviceListResponse, DeviceNew, DeviceFilter, Pagination};
+use trackly_app::dto::device::{
+    DeviceDto, DeviceFilter, DeviceListResponse, DeviceNew, Pagination,
+};
 use trackly_app::http::devices::router as devices_router;
 use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_list};
 

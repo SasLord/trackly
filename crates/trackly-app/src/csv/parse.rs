@@ -71,7 +71,8 @@ mod tests {
 
     #[test]
     fn parses_cyrillic_headers_and_values() {
-        let text = "Тип,Наименование\nУстройство,Сидоров-Петроградский Иван Александрович (ё) №42\n";
+        let text =
+            "Тип,Наименование\nУстройство,Сидоров-Петроградский Иван Александрович (ё) №42\n";
         let (headers, rows) = parse_rows(text, b',').expect("parse ok");
         assert_eq!(headers[0], "Тип");
         assert_eq!(headers[1], "Наименование");

@@ -370,9 +370,21 @@ mod tests {
             updated_at_utc: 0,
         };
         let json = serde_json::to_string(&dto).expect("serialize");
-        assert!(json.contains("inventory_no"), "должен содержать snake_case 'inventory_no'");
-        assert!(json.contains("type_id"), "должен содержать snake_case 'type_id'");
-        assert!(json.contains("status_id"), "должен содержать snake_case 'status_id'");
-        assert!(!json.contains("inventoryNo"), "НЕ должен содержать camelCase");
+        assert!(
+            json.contains("inventory_no"),
+            "должен содержать snake_case 'inventory_no'"
+        );
+        assert!(
+            json.contains("type_id"),
+            "должен содержать snake_case 'type_id'"
+        );
+        assert!(
+            json.contains("status_id"),
+            "должен содержать snake_case 'status_id'"
+        );
+        assert!(
+            !json.contains("inventoryNo"),
+            "НЕ должен содержать camelCase"
+        );
     }
 }

@@ -89,7 +89,10 @@ async fn create_rejects_empty_name() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
         let new = minimal_new("");
-        let err = svc.create(new).await.expect_err("должно вернуть ошибку для пустого name");
+        let err = svc
+            .create(new)
+            .await
+            .expect_err("должно вернуть ошибку для пустого name");
         match err {
             AppError::Validation { field, message } => {
                 assert_eq!(field, "name");
@@ -115,7 +118,10 @@ async fn create_rejects_missing_type() {
         let (svc, _dir) = make_service();
         let mut new = minimal_new("Тест");
         new.type_id = 0; // невалидный type_id
-        let err = svc.create(new).await.expect_err("должно вернуть ошибку для type_id=0");
+        let err = svc
+            .create(new)
+            .await
+            .expect_err("должно вернуть ошибку для type_id=0");
         match err {
             AppError::Validation { field, .. } => {
                 assert_eq!(field, "type_id");
@@ -187,7 +193,9 @@ async fn update_returns_optimistic_lock_mismatch_on_stale_version() {
             name: Some("Тест OLM v2".to_string()),
             ..Default::default()
         };
-        svc.update(dto.id, 1, patch.clone()).await.expect("first update");
+        svc.update(dto.id, 1, patch.clone())
+            .await
+            .expect("first update");
 
         // Второй update со старой version=1 — должен вернуть OptimisticLockMismatch.
         let err = svc
@@ -264,9 +272,17 @@ async fn list_returns_only_non_deleted() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        let d1 = svc.create(minimal_new("Устройство 1")).await.expect("create 1");
-        let d2 = svc.create(minimal_new("Устройство 2")).await.expect("create 2");
-        svc.create(minimal_new("Устройство 3")).await.expect("create 3");
+        let d1 = svc
+            .create(minimal_new("Устройство 1"))
+            .await
+            .expect("create 1");
+        let d2 = svc
+            .create(minimal_new("Устройство 2"))
+            .await
+            .expect("create 2");
+        svc.create(minimal_new("Устройство 3"))
+            .await
+            .expect("create 3");
 
         // Удалим первые два
         svc.delete_soft(d1.id, d1.version).await.expect("delete 1");
@@ -275,7 +291,12 @@ async fn list_returns_only_non_deleted() {
         let filter = DeviceFilter::default();
         let page = Pagination::default();
         let resp = svc.list(filter, page).await.expect("list");
-        assert_eq!(resp.items.len(), 1, "должно быть 1 устройство, получили {}", resp.items.len());
+        assert_eq!(
+            resp.items.len(),
+            1,
+            "должно быть 1 устройство, получили {}",
+            resp.items.len()
+        );
         assert_eq!(resp.total, 1);
     })
     .await
@@ -291,7 +312,9 @@ async fn list_with_status_filter() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        svc.create(minimal_new("Устройство status=1")).await.expect("create status=1");
+        svc.create(minimal_new("Устройство status=1"))
+            .await
+            .expect("create status=1");
         let mut new2 = minimal_new("Устройство status=2");
         new2.status_id = 2;
         svc.create(new2).await.expect("create status=2");
@@ -334,7 +357,10 @@ async fn list_with_type_id_filter() {
         let (svc, _dir) = make_service();
 
         // Create one device with type_id=1 (Устройство, seeded in V001)
-        let d1 = svc.create(minimal_new("Ноутбук Lenovo")).await.expect("create type=1");
+        let d1 = svc
+            .create(minimal_new("Ноутбук Lenovo"))
+            .await
+            .expect("create type=1");
         assert_eq!(d1.type_id, 1);
 
         // Create one device with type_id=2 (Принтер, seeded in V001)
@@ -348,7 +374,10 @@ async fn list_with_type_id_filter() {
             type_id: Some(1),
             ..Default::default()
         };
-        let resp1 = svc.list(filter_type1, Pagination::default()).await.expect("list type=1");
+        let resp1 = svc
+            .list(filter_type1, Pagination::default())
+            .await
+            .expect("list type=1");
         assert_eq!(
             resp1.items.len(),
             1,
@@ -363,7 +392,10 @@ async fn list_with_type_id_filter() {
             type_id: Some(2),
             ..Default::default()
         };
-        let resp2 = svc.list(filter_type2, Pagination::default()).await.expect("list type=2");
+        let resp2 = svc
+            .list(filter_type2, Pagination::default())
+            .await
+            .expect("list type=2");
         assert_eq!(
             resp2.items.len(),
             1,
@@ -375,7 +407,10 @@ async fn list_with_type_id_filter() {
 
         // Filter by type_id=None: both returned
         let filter_all = DeviceFilter::default(); // type_id: None
-        let resp_all = svc.list(filter_all, Pagination::default()).await.expect("list all");
+        let resp_all = svc
+            .list(filter_all, Pagination::default())
+            .await
+            .expect("list all");
         assert_eq!(
             resp_all.items.len(),
             2,
@@ -457,7 +492,10 @@ async fn create_persists_inventory_and_serial_together() {
             status_id: 1,
         };
 
-        let dto = svc.create(new).await.expect("create device with both numbers");
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device with both numbers");
 
         assert_eq!(
             dto.inventory_no,
@@ -496,7 +534,10 @@ async fn create_persists_inventory_and_serial_together() {
 async fn update_second_save_after_successful_first_uses_new_version() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("Тест версий")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("Тест версий"))
+            .await
+            .expect("create");
         assert_eq!(dto.version, 1);
 
         // First update: expected_version=1 → succeeds, returns v2.
@@ -532,7 +573,12 @@ async fn state_hints_returns_six_russian_strings() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
         let hints = svc.state_hints();
-        assert_eq!(hints.len(), 6, "должно быть 6 state hints, получили {}", hints.len());
+        assert_eq!(
+            hints.len(),
+            6,
+            "должно быть 6 state hints, получили {}",
+            hints.len()
+        );
         assert_eq!(hints[0], "Новое");
         // Все строки непустые
         for h in &hints {

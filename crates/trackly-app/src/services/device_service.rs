@@ -481,12 +481,11 @@ impl DeviceService {
         // Decode bytes to String.
         let (text, had_replacements) = decode_to_string(&bytes, profile.encoding);
         // Parse CSV.
-        let (headers, all_rows) = parse_rows(&text, profile.delimiter).map_err(|e| {
-            AppError::Validation {
+        let (headers, all_rows) =
+            parse_rows(&text, profile.delimiter).map_err(|e| AppError::Validation {
                 field: "file".to_string(),
                 message: format!("Не удалось разобрать CSV: {e}"),
-            }
-        })?;
+            })?;
 
         let total_rows = all_rows.len() as u64;
         let preview_rows = all_rows.iter().take(5).cloned().collect();

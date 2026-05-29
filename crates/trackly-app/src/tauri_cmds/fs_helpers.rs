@@ -193,7 +193,10 @@ mod tests {
         let result = validate_csv_path_for_read("/some/../etc/file.csv");
         assert!(result.is_err(), "path with .. should be rejected");
         let err = format!("{:?}", result.unwrap_err());
-        assert!(err.contains("..") || err.contains("родитель") || err.contains("Путь"), "{err}");
+        assert!(
+            err.contains("..") || err.contains("родитель") || err.contains("Путь"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -212,7 +215,10 @@ mod tests {
     fn accepts_csv_extension() {
         // Only validates extension (canonicalize not called yet), so path need not exist.
         let result = validate_csv_path_for_read("/home/user/data.csv");
-        assert!(result.is_ok(), "csv extension should be accepted: {result:?}");
+        assert!(
+            result.is_ok(),
+            "csv extension should be accepted: {result:?}"
+        );
     }
 
     #[test]
@@ -224,12 +230,18 @@ mod tests {
     #[test]
     fn write_validates_extension() {
         let result = validate_csv_path_for_write("/tmp/output.txt");
-        assert!(result.is_err(), "non-csv extension should be rejected for write");
+        assert!(
+            result.is_err(),
+            "non-csv extension should be rejected for write"
+        );
     }
 
     #[test]
     fn write_accepts_csv() {
         let result = validate_csv_path_for_write("/tmp/output.csv");
-        assert!(result.is_ok(), "csv should be accepted for write: {result:?}");
+        assert!(
+            result.is_ok(),
+            "csv should be accepted for write: {result:?}"
+        );
     }
 }

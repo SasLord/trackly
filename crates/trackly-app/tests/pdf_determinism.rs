@@ -58,8 +58,6 @@ fn rendering_twice_yields_identical_bytes() {
             .filter_map(|(i, (x, y))| if x != y { Some(i) } else { None })
             .take(12)
             .collect();
-        panic!(
-            "non-deterministic PDF output. First diff offsets: {diffs:?}"
-        );
+        panic!("non-deterministic PDF output. First diff offsets: {diffs:?}");
     }
 }

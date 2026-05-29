@@ -275,8 +275,14 @@ async fn export_list_all_created_devices() {
         // Verify filter: status_id=1 returns all 3.
         let list_resp = svc
             .list(
-                DeviceFilter { status_id: Some(1), ..Default::default() },
-                Pagination { offset: 0, limit: 10 },
+                DeviceFilter {
+                    status_id: Some(1),
+                    ..Default::default()
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 10,
+                },
             )
             .await
             .expect("list");

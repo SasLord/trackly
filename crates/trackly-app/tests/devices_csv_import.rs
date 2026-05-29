@@ -77,7 +77,10 @@ async fn import_utf8_with_bom() {
             .await
             .expect("preview should succeed");
 
-        assert_eq!(preview.encoding, "UTF-8", "BOM-detected encoding should be UTF-8");
+        assert_eq!(
+            preview.encoding, "UTF-8",
+            "BOM-detected encoding should be UTF-8"
+        );
         assert_eq!(preview.delimiter, ",");
         assert!(
             preview.headers.iter().any(|h| h.contains("Наименование")),
@@ -213,9 +216,14 @@ async fn import_commit_per_row_errors() {
         );
         // The error messages should mention "Наименование" or name validation
         let any_name_error = report.failed.iter().any(|e| {
-            e.error_code.contains("Validation") || e.error_message.contains("Наименование") || e.error_message.contains("обязател")
+            e.error_code.contains("Validation")
+                || e.error_message.contains("Наименование")
+                || e.error_message.contains("обязател")
         });
-        assert!(any_name_error, "errors should mention required field validation");
+        assert!(
+            any_name_error,
+            "errors should mention required field validation"
+        );
     })
     .await
     .expect("timeout");
@@ -246,7 +254,10 @@ async fn import_commit_double_take_fails() {
         let err = result2.unwrap_err();
         let msg = format!("{err:?}");
         assert!(
-            msg.contains("expired") || msg.contains("istekla") || msg.contains("использована") || msg.contains("token"),
+            msg.contains("expired")
+                || msg.contains("istekla")
+                || msg.contains("использована")
+                || msg.contains("token"),
             "error should mention expired/used token: {msg}"
         );
     })
@@ -273,15 +284,18 @@ async fn import_cyrillic_round_trip() {
         // List all devices and check for the fixture cyrillic string
         use trackly_app::dto::device::{DeviceFilter, Pagination};
         let resp = svc
-            .list(DeviceFilter::default(), Pagination { offset: 0, limit: 50 })
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
             .await
             .expect("list");
 
         let fixture_name = "Сидоров-Петроградский Иван Александрович (ё) №42";
-        let found = resp
-            .items
-            .iter()
-            .any(|d| d.name == fixture_name);
+        let found = resp.items.iter().any(|d| d.name == fixture_name);
         assert!(
             found,
             "device with cyrillic fixture name should be in DB after import"
@@ -328,16 +342,22 @@ fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
         let h = header.trim();
         let field = match h {
             "Тип" | "тип" => Some("type"),
-            "Наименование" | "наименование" | "Имя" | "имя" => Some("name"),
+            "Наименование" | "наименование" | "Имя" | "имя" => {
+                Some("name")
+            }
             "Инвентарный №" | "Инв.№" | "Инвентарный" | "inv_no" | "inventory_no" => {
                 Some("inventory_no")
             }
             "Серийный №" | "Серийный" | "serial_no" => Some("serial_no"),
             "Модель" | "модель" => Some("model"),
-            "Технические характеристики" | "Тех.характеристики" | "specs" => Some("specs"),
+            "Технические характеристики" | "Тех.характеристики" | "specs" => {
+                Some("specs")
+            }
             "Комплектация" | "kit" => Some("kit"),
             "Состояние" | "state" => Some("state"),
-            "Расположение" | "Местоположение" | "location" => Some("location"),
+            "Расположение" | "Местоположение" | "location" => {
+                Some("location")
+            }
             "Статус" | "status" => Some("status"),
             _ => None,
         };

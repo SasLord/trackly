@@ -171,7 +171,10 @@ mod tests {
     fn act_type_roundtrip_sql() {
         assert_eq!(ActType::Handover.to_sql(), "handover");
         assert_eq!(ActType::Return.to_sql(), "return");
-        assert_eq!(ActType::from_str("handover").expect("ok"), ActType::Handover);
+        assert_eq!(
+            ActType::from_str("handover").expect("ok"),
+            ActType::Handover
+        );
         assert_eq!(ActType::from_str("return").expect("ok"), ActType::Return);
     }
 

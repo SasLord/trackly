@@ -55,10 +55,17 @@ async fn grouping_collapses_non_unique() {
         }
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
-        assert_eq!(groups.len(), 1, "5 одинаковых устройств должны схлопнуться в 1 группу");
+        assert_eq!(
+            groups.len(),
+            1,
+            "5 одинаковых устройств должны схлопнуться в 1 группу"
+        );
         assert_eq!(groups[0].count, 5, "count должен быть 5");
         assert_eq!(groups[0].ids.len(), 5, "ids должен содержать 5 элементов");
     })
@@ -86,7 +93,10 @@ async fn grouping_groups_devices_with_same_name_even_if_inventory_set() {
         }
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         // All 3 share the same (name, model, ...) key → 1 group with count=3.
@@ -118,11 +128,15 @@ async fn grouping_singleton_included() {
         svc.create(new).await.expect("create singleton");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(
-            groups.len(), 1,
+            groups.len(),
+            1,
             "singleton устройство должно появляться как группа count=1, получили {} групп",
             groups.len()
         );
@@ -146,10 +160,15 @@ async fn grouping_handles_empty_string_as_null() {
         // Backend normalizes empty → NULL on INSERT, so it should appear in grouped list.
         let mut new = non_unique_device("Карандаш", 1);
         new.inventory_no = Some("".to_string()); // empty string — normalized to NULL
-        svc.create(new).await.expect("create with empty inventory_no");
+        svc.create(new)
+            .await
+            .expect("create with empty inventory_no");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(
@@ -189,8 +208,14 @@ async fn grouping_with_status_filter() {
             status_id: Some(2),
             ..Default::default()
         };
-        let page = Pagination { offset: 0, limit: 50 };
-        let groups = svc.list_grouped(filter, page).await.expect("list_grouped with status");
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc
+            .list_grouped(filter, page)
+            .await
+            .expect("list_grouped with status");
 
         assert_eq!(groups.len(), 1, "должна быть 1 группа с status=2");
         assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
@@ -210,10 +235,14 @@ async fn status_counts_returns_correct_counts() {
 
         // Create 3 devices with status=1, 2 with status=2.
         for _ in 0..3 {
-            svc.create(non_unique_device("Тест", 1)).await.expect("create status=1");
+            svc.create(non_unique_device("Тест", 1))
+                .await
+                .expect("create status=1");
         }
         for _ in 0..2 {
-            svc.create(non_unique_device("Тест", 2)).await.expect("create status=2");
+            svc.create(non_unique_device("Тест", 2))
+                .await
+                .expect("create status=2");
         }
 
         let counts = svc.status_counts().await.expect("status_counts");
@@ -236,9 +265,18 @@ async fn list_by_ids_returns_correct_devices() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        let d1 = svc.create(non_unique_device("Устройство 1", 1)).await.expect("create 1");
-        let d2 = svc.create(non_unique_device("Устройство 2", 1)).await.expect("create 2");
-        let d3 = svc.create(non_unique_device("Устройство 3", 1)).await.expect("create 3");
+        let d1 = svc
+            .create(non_unique_device("Устройство 1", 1))
+            .await
+            .expect("create 1");
+        let d2 = svc
+            .create(non_unique_device("Устройство 2", 1))
+            .await
+            .expect("create 2");
+        let d3 = svc
+            .create(non_unique_device("Устройство 3", 1))
+            .await
+            .expect("create 3");
 
         let ids = vec![d1.id, d3.id]; // skip d2
         let result = svc.list_by_ids(ids).await.expect("list_by_ids");
@@ -274,7 +312,10 @@ async fn grouping_singleton_includes_inventory_and_serial_no() {
         svc.create(new).await.expect("create singleton");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(groups.len(), 1, "должна быть 1 группа (singleton)");
@@ -316,7 +357,10 @@ async fn grouping_collapsed_group_aggregates_inv_serial_safely() {
         }
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(groups.len(), 1, "3 одинаковых устройства → 1 группа");
@@ -343,15 +387,22 @@ async fn grouping_multiple_distinct_groups() {
 
         // 3 devices named "Флешка 8GB".
         for _ in 0..3 {
-            svc.create(non_unique_device("Флешка 8GB", 1)).await.expect("create");
+            svc.create(non_unique_device("Флешка 8GB", 1))
+                .await
+                .expect("create");
         }
         // 2 devices named "Флешка 16GB".
         for _ in 0..2 {
-            svc.create(non_unique_device("Флешка 16GB", 1)).await.expect("create");
+            svc.create(non_unique_device("Флешка 16GB", 1))
+                .await
+                .expect("create");
         }
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(groups.len(), 2, "должно быть 2 группы (8GB и 16GB)");
@@ -378,11 +429,18 @@ async fn grouping_groups_devices_with_same_name_and_different_status() {
         let (svc, _dir) = make_service();
 
         // One monitor with status=1 (На складе), another with status=2 (В работе).
-        svc.create(non_unique_device("Монитор", 1)).await.expect("create status=1");
-        svc.create(non_unique_device("Монитор", 2)).await.expect("create status=2");
+        svc.create(non_unique_device("Монитор", 1))
+            .await
+            .expect("create status=1");
+        svc.create(non_unique_device("Монитор", 2))
+            .await
+            .expect("create status=2");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(
@@ -418,7 +476,10 @@ async fn grouping_groups_devices_with_same_name_and_different_location() {
         svc.create(d2).await.expect("create location=Склад");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(
@@ -453,7 +514,10 @@ async fn grouping_groups_devices_with_same_name_and_different_condition() {
         svc.create(d2).await.expect("create condition=Б/У");
 
         let filter = DeviceFilter::default();
-        let page = Pagination { offset: 0, limit: 50 };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
         let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
 
         assert_eq!(

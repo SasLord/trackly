@@ -6,6 +6,7 @@
 //! gymnastics ломает unit-тесты). axum-handler из `http/*` вызывает тот же
 //! хелпер — это и есть «один DTO, два транспорта».
 
+pub mod acts;
 pub mod devices;
 pub mod fs_helpers;
 pub mod health;

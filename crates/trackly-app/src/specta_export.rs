@@ -40,5 +40,12 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 2 — FS helpers (Plan 05 B2 pinned strategy)
         crate::tauri_cmds::fs_helpers::read_file_bytes,
         crate::tauri_cmds::fs_helpers::write_file_bytes,
+        // Phase 3 Plan 02 — Acts CRUD
+        crate::tauri_cmds::acts::acts_list,
+        crate::tauri_cmds::acts::acts_get,
+        crate::tauri_cmds::acts::acts_create,
+        crate::tauri_cmds::acts::acts_delete,
+        crate::tauri_cmds::acts::acts_counts,
+        crate::tauri_cmds::acts::acts_peek_next_number,
     ])
 }

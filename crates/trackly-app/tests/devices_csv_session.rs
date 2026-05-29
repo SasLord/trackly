@@ -42,7 +42,10 @@ async fn session_put_returns_token_and_take_retrieves() {
 
         // take() must return the session.
         let retrieved = store.take(token);
-        assert!(retrieved.is_some(), "take() should return the stored session");
+        assert!(
+            retrieved.is_some(),
+            "take() should return the stored session"
+        );
 
         let s = retrieved.unwrap();
         assert_eq!(s.headers, expected_headers, "headers must match");
@@ -65,7 +68,10 @@ async fn session_double_take_returns_none() {
 
         // Second take with same token: must return None (single-use).
         let second = store.take(token);
-        assert!(second.is_none(), "second take with same token should return None");
+        assert!(
+            second.is_none(),
+            "second take with same token should return None"
+        );
     })
     .await
     .expect("timeout");
@@ -123,8 +129,7 @@ async fn session_expired_returns_none() {
 
         // Create a session with a backdated `created` field (6 minutes in the past).
         let mut expired_session = make_session();
-        expired_session.created =
-            std::time::Instant::now() - Duration::from_secs(6 * 60); // 6 min ago
+        expired_session.created = std::time::Instant::now() - Duration::from_secs(6 * 60); // 6 min ago
 
         let token = store.put(expired_session);
 

@@ -66,7 +66,9 @@ pub async fn build_devices_autocomplete(
     ctx_name: Option<String>,
     ctx_status_id: Option<i64>,
 ) -> Result<Vec<String>, AppError> {
-    ctx.devices.autocomplete(field, prefix, ctx_name, ctx_status_id).await
+    ctx.devices
+        .autocomplete(field, prefix, ctx_name, ctx_status_id)
+        .await
 }
 
 pub async fn build_devices_list_grouped(
@@ -148,9 +150,7 @@ pub async fn devices_delete(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn devices_state_hints(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<Vec<String>, AppError> {
+pub async fn devices_state_hints(state: tauri::State<'_, AppCtx>) -> Result<Vec<String>, AppError> {
     build_devices_state_hints(state.inner()).await
 }
 

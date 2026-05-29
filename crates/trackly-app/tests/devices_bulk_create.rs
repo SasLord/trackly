@@ -57,7 +57,13 @@ async fn bulk_create_inserts_n_rows_and_audit_rows() {
 
         // Verify all 5 device rows exist.
         let list = svc
-            .list(DeviceFilter::default(), Pagination { offset: 0, limit: 50 })
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
             .await
             .expect("list");
         assert_eq!(list.total, 5, "всего 5 устройств в БД");
@@ -76,7 +82,10 @@ async fn bulk_create_inserts_n_rows_and_audit_rows() {
         .expect("spawn_blocking")
         .expect("count audit_log");
 
-        assert_eq!(count, 5, "должно быть 5 записей audit_log action='create', получили {count}");
+        assert_eq!(
+            count, 5,
+            "должно быть 5 записей audit_log action='create', получили {count}"
+        );
     })
     .await
     .expect("bulk_create_inserts_n_rows_and_audit_rows exceeded 30s");
@@ -108,10 +117,19 @@ async fn bulk_create_rejects_when_inventory_no_set() {
 
         // No devices should be persisted.
         let list = svc
-            .list(DeviceFilter::default(), Pagination { offset: 0, limit: 50 })
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
             .await
             .expect("list");
-        assert_eq!(list.total, 0, "ни одного устройства не должно быть в БД после ошибки валидации");
+        assert_eq!(
+            list.total, 0,
+            "ни одного устройства не должно быть в БД после ошибки валидации"
+        );
     })
     .await
     .expect("bulk_create_rejects_when_inventory_no_set exceeded 30s");
@@ -142,7 +160,13 @@ async fn bulk_create_rejects_when_serial_no_set() {
         }
 
         let list = svc
-            .list(DeviceFilter::default(), Pagination { offset: 0, limit: 50 })
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
             .await
             .expect("list");
         assert_eq!(list.total, 0, "ни одного устройства после ошибки валидации");
@@ -251,7 +275,11 @@ async fn bulk_create_is_transactional() {
         // Valid bulk_create: should produce exactly 5 rows, not 1, 3, etc.
         let new = non_unique_device("Бумага A4");
         let result = svc.bulk_create(new, 5).await.expect("bulk_create");
-        assert_eq!(result.len(), 5, "транзакция должна создать ровно 5 устройств");
+        assert_eq!(
+            result.len(),
+            5,
+            "транзакция должна создать ровно 5 устройств"
+        );
 
         // All ids must be distinct.
         let ids: std::collections::HashSet<i64> = result.iter().map(|d| d.id).collect();
@@ -259,7 +287,13 @@ async fn bulk_create_is_transactional() {
 
         // Verify in DB.
         let list = svc
-            .list(DeviceFilter::default(), Pagination { offset: 0, limit: 50 })
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
             .await
             .expect("list");
         assert_eq!(list.total, 5);
@@ -373,11 +407,18 @@ async fn bulk_create_single_call_count_eq_1_persists_serial() {
             status_id: 1,
         };
 
-        let result = svc.bulk_create(new, 1).await.expect("bulk_create count=1 with serial");
+        let result = svc
+            .bulk_create(new, 1)
+            .await
+            .expect("bulk_create count=1 with serial");
         assert_eq!(result.len(), 1);
 
         let dto = svc.get(result[0].id).await.expect("get");
-        assert_eq!(dto.serial_no.as_deref(), Some("SN-001"), "serial_no должен быть SN-001");
+        assert_eq!(
+            dto.serial_no.as_deref(),
+            Some("SN-001"),
+            "serial_no должен быть SN-001"
+        );
         assert_eq!(
             dto.inventory_no.as_deref(),
             Some("ИНВ-007"),

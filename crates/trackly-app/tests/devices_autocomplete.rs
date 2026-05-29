@@ -50,10 +50,14 @@ async fn autocomplete_name_returns_distinct() {
 
         // 3 devices named "Принтер", 2 named "Сканер".
         for _ in 0..3 {
-            svc.create(minimal_new("Принтер")).await.expect("create Принтер");
+            svc.create(minimal_new("Принтер"))
+                .await
+                .expect("create Принтер");
         }
         for _ in 0..2 {
-            svc.create(minimal_new("Сканер")).await.expect("create Сканер");
+            svc.create(minimal_new("Сканер"))
+                .await
+                .expect("create Сканер");
         }
 
         let results = svc
@@ -62,7 +66,11 @@ async fn autocomplete_name_returns_distinct() {
             .expect("autocomplete name");
 
         // DISTINCT: should return ["Принтер"] only once.
-        assert_eq!(results.len(), 1, "DISTINCT — должен вернуть 1 значение 'Принтер', получили {results:?}");
+        assert_eq!(
+            results.len(),
+            1,
+            "DISTINCT — должен вернуть 1 значение 'Принтер', получили {results:?}"
+        );
         assert_eq!(results[0], "Принтер");
     })
     .await
@@ -104,7 +112,11 @@ async fn autocomplete_model_with_context() {
             .await
             .expect("autocomplete model contextual");
 
-        assert_eq!(results.len(), 2, "contextual: должны вернуться 2 LaserJet модели, получили {results:?}");
+        assert_eq!(
+            results.len(),
+            2,
+            "contextual: должны вернуться 2 LaserJet модели, получили {results:?}"
+        );
         assert!(results.contains(&"LaserJet 1020".to_string()));
         assert!(results.contains(&"LaserJet 2055".to_string()));
         assert!(
@@ -137,7 +149,12 @@ async fn autocomplete_limit_30() {
             .await
             .expect("autocomplete name all");
 
-        assert_eq!(results.len(), 30, "лимит автодополнения — 30 результатов, получили {}", results.len());
+        assert_eq!(
+            results.len(),
+            30,
+            "лимит автодополнения — 30 результатов, получили {}",
+            results.len()
+        );
     })
     .await
     .expect("autocomplete_limit_30 exceeded 60s");
@@ -152,9 +169,13 @@ async fn autocomplete_sorted_asc() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        svc.create(minimal_new("Сканер")).await.expect("create Сканер");
+        svc.create(minimal_new("Сканер"))
+            .await
+            .expect("create Сканер");
         svc.create(minimal_new("Мышь")).await.expect("create Мышь");
-        svc.create(minimal_new("Клавиатура")).await.expect("create Клавиатура");
+        svc.create(minimal_new("Клавиатура"))
+            .await
+            .expect("create Клавиатура");
 
         let results = svc
             .autocomplete("name".to_string(), "".to_string(), None, None)
@@ -167,7 +188,10 @@ async fn autocomplete_sorted_asc() {
             v.sort();
             v
         };
-        assert_eq!(results, sorted, "результаты автодополнения должны быть отсортированы ASC");
+        assert_eq!(
+            results, sorted,
+            "результаты автодополнения должны быть отсортированы ASC"
+        );
     })
     .await
     .expect("autocomplete_sorted_asc exceeded 30s");
@@ -192,7 +216,9 @@ async fn autocomplete_invalid_field_rejected() {
             trackly_core::error::AppError::Validation { field, message } => {
                 assert_eq!(field, "field");
                 assert!(
-                    message.contains("поддерживаемые") || message.contains("Поддерживаемые") || message.contains("Неподдерживаемое"),
+                    message.contains("поддерживаемые")
+                        || message.contains("Поддерживаемые")
+                        || message.contains("Неподдерживаемое"),
                     "message должен указывать на неподдерживаемое поле, получили: {message}"
                 );
             }
@@ -226,7 +252,11 @@ async fn autocomplete_no_context_returns_all_matching() {
             .await
             .expect("autocomplete no context");
 
-        assert_eq!(results.len(), 2, "без контекста должны вернуться все совпадения");
+        assert_eq!(
+            results.len(),
+            2,
+            "без контекста должны вернуться все совпадения"
+        );
     })
     .await
     .expect("autocomplete_no_context_returns_all_matching exceeded 30s");
@@ -267,7 +297,11 @@ async fn autocomplete_location_filtered_by_status() {
             .await
             .expect("autocomplete model filtered by status=1");
 
-        assert_eq!(results.len(), 1, "ctx_status_id=1: должен вернуть только 'Склад A', получили {results:?}");
+        assert_eq!(
+            results.len(),
+            1,
+            "ctx_status_id=1: должен вернуть только 'Склад A', получили {results:?}"
+        );
         assert_eq!(results[0], "Склад A");
 
         // Autocomplete model with ctx_status_id=2 → only "Офис 305".
@@ -276,7 +310,11 @@ async fn autocomplete_location_filtered_by_status() {
             .await
             .expect("autocomplete model filtered by status=2");
 
-        assert_eq!(results2.len(), 1, "ctx_status_id=2: должен вернуть только 'Офис 305', получили {results2:?}");
+        assert_eq!(
+            results2.len(),
+            1,
+            "ctx_status_id=2: должен вернуть только 'Офис 305', получили {results2:?}"
+        );
         assert_eq!(results2[0], "Офис 305");
 
         // Autocomplete model without status filter → both values.
@@ -285,7 +323,11 @@ async fn autocomplete_location_filtered_by_status() {
             .await
             .expect("autocomplete model no status filter");
 
-        assert_eq!(results_all.len(), 2, "без фильтра по статусу должны вернуться оба значения, получили {results_all:?}");
+        assert_eq!(
+            results_all.len(),
+            2,
+            "без фильтра по статусу должны вернуться оба значения, получили {results_all:?}"
+        );
         assert!(results_all.contains(&"Склад A".to_string()));
         assert!(results_all.contains(&"Офис 305".to_string()));
     })

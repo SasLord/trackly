@@ -54,7 +54,10 @@ impl ImportSessionStore {
     /// so the map never accumulates unbounded stale data.
     pub fn put(&self, session: ImportSession) -> Uuid {
         let token = Uuid::new_v4();
-        let mut g = self.inner.lock().expect("ImportSessionStore mutex poisoned");
+        let mut g = self
+            .inner
+            .lock()
+            .expect("ImportSessionStore mutex poisoned");
         // Lazy sweep — remove all expired entries on every put.
         let now = Instant::now();
         g.retain(|_, s| now.duration_since(s.created) < TTL);
@@ -66,7 +69,10 @@ impl ImportSessionStore {
     ///
     /// The token is removed from the store regardless (single-use semantics).
     pub fn take(&self, token: Uuid) -> Option<ImportSession> {
-        let mut g = self.inner.lock().expect("ImportSessionStore mutex poisoned");
+        let mut g = self
+            .inner
+            .lock()
+            .expect("ImportSessionStore mutex poisoned");
         let now = Instant::now();
         if let Some(s) = g.remove(&token) {
             if now.duration_since(s.created) < TTL {

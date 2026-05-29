@@ -30,7 +30,7 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::WriterHandle};
 use trackly_infra::{AppConfig, Paths};
 
-use crate::services::DeviceService;
+use crate::services::{ActService, DeviceService};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
@@ -57,6 +57,10 @@ pub struct AppCtx {
     /// Device service — CRUD, search, autocomplete, grouping, CSV import/export.
     /// Added in Phase 2 Plan 01 (D-AppCtx-Extension-01).
     pub devices: Arc<DeviceService>,
+    /// Act service — handover create + list + counts + peek next number.
+    /// Added in Phase 3 Plan 02 (D-AppCtx-Extension-03). Return lifecycle +
+    /// undo land in plan 03; organization/templates/pdf services land in plan 04.
+    pub acts: Arc<ActService>,
 }
 
 impl AppCtx {
@@ -138,6 +142,11 @@ impl AppCtx {
             readers.clone(),
             clock.clone(),
         ));
+        let acts = Arc::new(ActService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
 
         Ok(Self {
             writer,
@@ -149,6 +158,7 @@ impl AppCtx {
             log_guard: Arc::new(log_guard),
             schema_version,
             devices,
+            acts,
         })
     }
 }

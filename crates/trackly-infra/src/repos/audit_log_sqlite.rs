@@ -37,11 +37,7 @@ pub struct AuditEntry<'a> {
 
 impl SqliteAuditLogRepository {
     /// Insert a single audit_log row inside an open transaction.
-    pub fn insert(
-        &self,
-        tx: &Transaction<'_>,
-        e: AuditEntry<'_>,
-    ) -> Result<(), AppError> {
+    pub fn insert(&self, tx: &Transaction<'_>, e: AuditEntry<'_>) -> Result<(), AppError> {
         tx.execute(
             "INSERT INTO audit_log \
              (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \

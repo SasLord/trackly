@@ -87,7 +87,7 @@ async fn appctx_build_rejects_newer_db_and_leaves_file_byte_identical() {
         .expect("error should be AppError");
     match app_err {
         AppError::DatabaseFromNewerVersion { binary, file } => {
-            assert_eq!(*binary, 13, "binary should be 13 (max_known_version)");
+            assert_eq!(*binary, 14, "binary should be 14 (max_known_version)");
             assert_eq!(*file, 999, "file should be 999 (forced user_version)");
         }
         other => panic!("expected DatabaseFromNewerVersion, got {other:?}"),

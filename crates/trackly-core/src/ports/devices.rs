@@ -21,12 +21,8 @@ pub trait DeviceRepository {
     type Conn;
 
     /// Create a new device. Returns the new device's `id`.
-    fn create(
-        &self,
-        conn: &mut Self::Conn,
-        new: &DeviceNew,
-        now_utc: i64,
-    ) -> Result<i64, AppError>;
+    fn create(&self, conn: &mut Self::Conn, new: &DeviceNew, now_utc: i64)
+        -> Result<i64, AppError>;
 
     /// Get a single device by ID. Returns `AppError::NotFound` if absent or soft-deleted.
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<DeviceRow, AppError>;

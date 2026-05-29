@@ -143,13 +143,8 @@ mod tests {
     #[tokio::test]
     async fn env_rejects_parse_error() {
         let env = build_safe_env();
-        let result = render_with_timeout(
-            &env,
-            "broken",
-            "{% if unclosed",
-            serde_json::json!({}),
-        )
-        .await;
+        let result =
+            render_with_timeout(&env, "broken", "{% if unclosed", serde_json::json!({})).await;
         match result {
             Err(AppError::Validation { field, .. }) => assert_eq!(field, "template"),
             other => panic!("expected Validation, got {other:?}"),

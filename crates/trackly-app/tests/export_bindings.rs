@@ -189,4 +189,51 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("write_file_bytes"),
         "bindings.ts missing write_file_bytes command"
     );
+
+    // Phase 3 Plan 02 — Acts CRUD types
+    assert!(
+        contents.contains("ActDto"),
+        "bindings.ts missing ActDto type"
+    );
+    assert!(
+        contents.contains("ActCreateDto"),
+        "bindings.ts missing ActCreateDto type"
+    );
+    assert!(
+        contents.contains("ActItemNewDto"),
+        "bindings.ts missing ActItemNewDto type"
+    );
+    assert!(
+        contents.contains("ActsCountsDto"),
+        "bindings.ts missing ActsCountsDto type"
+    );
+    assert!(
+        contents.contains("ActFilter"),
+        "bindings.ts missing ActFilter type"
+    );
+    assert!(
+        contents.contains("ActListResponse"),
+        "bindings.ts missing ActListResponse type"
+    );
+    // Phase 3 Plan 02 — Acts commands
+    assert!(
+        contents.contains("acts_list"),
+        "bindings.ts missing acts_list command"
+    );
+    assert!(
+        contents.contains("acts_get"),
+        "bindings.ts missing acts_get command"
+    );
+    assert!(
+        contents.contains("acts_create"),
+        "bindings.ts missing acts_create command"
+    );
+    assert!(
+        contents.contains("acts_counts"),
+        "bindings.ts missing acts_counts command"
+    );
+    assert!(
+        contents.contains("acts_peek_next_number"),
+        "bindings.ts missing acts_peek_next_number command"
+    );
 }

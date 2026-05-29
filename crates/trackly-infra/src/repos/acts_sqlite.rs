@@ -8,9 +8,7 @@
 //! closure — see D-Counter-Acts-01).
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use trackly_core::domain::acts::{
-    ActCounts, ActFilter, ActRow, ActType, Pagination,
-};
+use trackly_core::domain::acts::{ActCounts, ActFilter, ActRow, ActType, Pagination};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 
@@ -89,11 +87,7 @@ impl SqliteActRepository {
     /// `created_at_utc` is used for both created and updated columns,
     /// `version` is forced to 1. Counter increment and audit_log row
     /// are the service's responsibility (orchestrated alongside this call).
-    pub fn insert_act_in_tx(
-        &self,
-        tx: &Transaction<'_>,
-        new: &ActRow,
-    ) -> Result<i64, AppError> {
+    pub fn insert_act_in_tx(&self, tx: &Transaction<'_>, new: &ActRow) -> Result<i64, AppError> {
         tx.execute(
             "INSERT INTO acts \
              (number, sub_number, parent_act_id, act_type, giver_name, \
@@ -132,7 +126,13 @@ impl SqliteActRepository {
             "INSERT INTO act_items \
              (act_id, device_id, quantity, condition_at_time, complectation_at_time) \
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![act_id, device_id, quantity, condition_at_time, complectation_at_time],
+            params![
+                act_id,
+                device_id,
+                quantity,
+                condition_at_time,
+                complectation_at_time
+            ],
         )
         .map_err(map_rusqlite)?;
         Ok(())
@@ -141,20 +141,14 @@ impl SqliteActRepository {
     /// Fetch a full act row (including JOIN'ed parent number + sibling count)
     /// inside an existing transaction. Used right after INSERT to capture
     /// the full snapshot for `audit_log.after_json`.
-    pub fn fetch_full_in_tx(
-        &self,
-        tx: &Transaction<'_>,
-        id: i64,
-    ) -> Result<ActRow, AppError> {
+    pub fn fetch_full_in_tx(&self, tx: &Transaction<'_>, id: i64) -> Result<ActRow, AppError> {
         tx.query_row(
             &format!("{SELECT_ACTS} WHERE a.id = ?1"),
             params![id],
             from_row,
         )
         .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                AppError::NotFound { entity: "act", id }
-            }
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound { entity: "act", id },
             other => map_rusqlite(other),
         })
     }
@@ -180,11 +174,9 @@ impl SqliteActRepository {
 
         if affected == 0 {
             let actual: Option<i64> = tx
-                .query_row(
-                    "SELECT version FROM acts WHERE id = ?1",
-                    params![id],
-                    |r| r.get(0),
-                )
+                .query_row("SELECT version FROM acts WHERE id = ?1", params![id], |r| {
+                    r.get(0)
+                })
                 .optional()
                 .map_err(map_rusqlite)?;
             return match actual {
@@ -209,10 +201,7 @@ impl SqliteActRepository {
 /// MUST be called inside a `BEGIN IMMEDIATE` transaction (which `Connection::transaction`
 /// supplies by default in rusqlite). Combined with the single-writer pattern
 /// (D-WriterChannel-01) this guarantees no two callers see the same number.
-pub fn increment_counter_in_tx(
-    tx: &Transaction<'_>,
-    name: &str,
-) -> Result<i64, AppError> {
+pub fn increment_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
     tx.query_row(
         "UPDATE counters SET current_value = current_value + 1 \
          WHERE name = ?1 RETURNING current_value",
@@ -243,10 +232,7 @@ pub fn peek_counter(conn: &Connection, name: &str) -> Result<i64, AppError> {
 }
 
 /// Peek a named counter inside an open transaction.
-pub fn peek_counter_in_tx(
-    tx: &Transaction<'_>,
-    name: &str,
-) -> Result<i64, AppError> {
+pub fn peek_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
     tx.query_row(
         "SELECT current_value FROM counters WHERE name = ?1",
         params![name],
@@ -270,9 +256,7 @@ impl ActRepository for SqliteActRepository {
             from_row,
         )
         .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                AppError::NotFound { entity: "act", id }
-            }
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound { entity: "act", id },
             other => map_rusqlite(other),
         })
     }
@@ -314,7 +298,13 @@ impl ActRepository for SqliteActRepository {
 
         let rows = stmt
             .query_map(
-                params![include_deleted as i64, act_type_sql, archived_i64, limit, offset],
+                params![
+                    include_deleted as i64,
+                    act_type_sql,
+                    archived_i64,
+                    limit,
+                    offset
+                ],
                 from_row,
             )
             .map_err(map_rusqlite)?;
@@ -388,8 +378,8 @@ impl ActRepository for SqliteActRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::pragmas::apply_writer_pragmas;
     use crate::db::migrations;
+    use crate::db::pragmas::apply_writer_pragmas;
     use tempfile::TempDir;
 
     fn fresh_conn() -> (Connection, TempDir) {
@@ -404,7 +394,8 @@ mod tests {
     #[test]
     fn device_status_codes_seeded() {
         let (conn, _g) = fresh_conn();
-        for code in ["на_складе", "в_работе", "на_ремонте", "списано"] {
+        for code in ["на_складе", "в_работе", "на_ремонте", "списано"]
+        {
             let id: i64 = conn
                 .query_row(
                     "SELECT id FROM device_statuses WHERE code = ?1",

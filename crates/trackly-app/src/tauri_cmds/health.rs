@@ -63,6 +63,11 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let acts = Arc::new(crate::services::ActService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -71,8 +76,9 @@ mod tests {
             clock,
             shutdown: CancellationToken::new(),
             log_guard: Arc::new(log_guard),
-            schema_version: 13,
+            schema_version: 14,
             devices,
+            acts,
         };
         (ctx, dir)
     }
@@ -85,7 +91,7 @@ mod tests {
             let dto = build_health(&ctx).await;
             assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
             assert!(dto.db_ready);
-            assert_eq!(dto.schema_version, 13);
+            assert_eq!(dto.schema_version, 14);
         })
         .await
         .expect("build_health exceeded 30 s budget — Linux-CI deadlock pattern");

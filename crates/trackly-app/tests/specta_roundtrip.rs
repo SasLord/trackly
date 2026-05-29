@@ -37,6 +37,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
+    let acts = Arc::new(trackly_app::services::ActService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -45,8 +50,9 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         clock,
         shutdown: CancellationToken::new(),
         log_guard: Arc::new(log_guard),
-        schema_version: 13,
+        schema_version: 14,
         devices,
+        acts,
     };
     (ctx, dir)
 }

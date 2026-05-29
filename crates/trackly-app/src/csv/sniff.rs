@@ -37,7 +37,10 @@ pub fn detect(bytes: &[u8]) -> CsvProfile {
     let semi = first_line.bytes().filter(|b| *b == b';').count();
     let delimiter = if semi > comma { b';' } else { b',' };
 
-    CsvProfile { encoding, delimiter }
+    CsvProfile {
+        encoding,
+        delimiter,
+    }
 }
 
 #[cfg(test)]

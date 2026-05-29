@@ -5,6 +5,8 @@
 //! `WriterHandle::execute(closure)`, all reads through `ReaderPool::acquire()`.
 //! Business validation (required fields, optimistic-lock checks) also lives here.
 
+pub mod act_service;
 pub mod device_service;
 
+pub use act_service::ActService;
 pub use device_service::DeviceService;

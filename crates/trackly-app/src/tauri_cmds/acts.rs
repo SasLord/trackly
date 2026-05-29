@@ -1,0 +1,98 @@
+//! Acts Tauri commands — Plan 02 vertical slice.
+//!
+//! Pattern (S-1): `build_*` helper + thin `#[tauri::command] #[specta::specta]`
+//! wrapper. Both transports (Tauri invoke + axum POST) delegate to the same
+//! helper.
+//!
+//! The `#[specta::specta]` attribute MUST appear AFTER `#[tauri::command]`
+//! — required by tauri-specta v2 rc.21.
+
+use crate::context::AppCtx;
+use crate::dto::act::{
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActsCountsDto, Pagination,
+};
+use trackly_core::error::AppError;
+
+// ---------------------------------------------------------------------------
+// build_* helpers (shared with axum handlers)
+// ---------------------------------------------------------------------------
+
+pub async fn build_acts_list(
+    ctx: &AppCtx,
+    filter: ActFilter,
+    pagination: Pagination,
+) -> Result<ActListResponse, AppError> {
+    ctx.acts.list(filter, pagination).await
+}
+
+pub async fn build_acts_get(ctx: &AppCtx, id: i64) -> Result<ActDto, AppError> {
+    ctx.acts.get(id).await
+}
+
+pub async fn build_acts_create(ctx: &AppCtx, payload: ActCreateDto) -> Result<ActDto, AppError> {
+    ctx.acts.create(payload).await
+}
+
+pub async fn build_acts_delete(ctx: &AppCtx, id: i64, version: i64) -> Result<(), AppError> {
+    ctx.acts.delete_soft(id, version).await
+}
+
+pub async fn build_acts_counts(ctx: &AppCtx) -> Result<ActsCountsDto, AppError> {
+    ctx.acts.counts().await
+}
+
+pub async fn build_acts_peek_next_number(ctx: &AppCtx) -> Result<i64, AppError> {
+    ctx.acts.peek_next_number().await
+}
+
+// ---------------------------------------------------------------------------
+// Thin Tauri wrappers
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_list(
+    state: tauri::State<'_, AppCtx>,
+    filter: ActFilter,
+    pagination: Pagination,
+) -> Result<ActListResponse, AppError> {
+    build_acts_list(state.inner(), filter, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<ActDto, AppError> {
+    build_acts_get(state.inner(), id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_create(
+    state: tauri::State<'_, AppCtx>,
+    payload: ActCreateDto,
+) -> Result<ActDto, AppError> {
+    build_acts_create(state.inner(), payload).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_delete(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+    version: i32,
+) -> Result<(), AppError> {
+    build_acts_delete(state.inner(), id as i64, version as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_counts(state: tauri::State<'_, AppCtx>) -> Result<ActsCountsDto, AppError> {
+    build_acts_counts(state.inner()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_peek_next_number(state: tauri::State<'_, AppCtx>) -> Result<i32, AppError> {
+    let next = build_acts_peek_next_number(state.inner()).await?;
+    Ok(next as i32)
+}

@@ -17,10 +17,10 @@ use crate::dto::device::{
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
     build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
-    build_devices_delete, build_devices_export_csv, build_devices_get, build_devices_import_csv_commit,
-    build_devices_import_csv_preview, build_devices_list, build_devices_list_by_ids,
-    build_devices_list_grouped, build_devices_search, build_devices_state_hints,
-    build_devices_status_counts, build_devices_update,
+    build_devices_delete, build_devices_export_csv, build_devices_get,
+    build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
+    build_devices_list_by_ids, build_devices_list_grouped, build_devices_search,
+    build_devices_state_hints, build_devices_status_counts, build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -307,7 +307,13 @@ pub fn router() -> Router<AppCtx> {
         // Scope extension: bulk create
         .route("/api/v1/devices_bulk_create", post(handler_bulk_create))
         // Plan 05: CSV import / export
-        .route("/api/v1/devices_import_csv_preview", post(handler_import_csv_preview))
-        .route("/api/v1/devices_import_csv_commit", post(handler_import_csv_commit))
+        .route(
+            "/api/v1/devices_import_csv_preview",
+            post(handler_import_csv_preview),
+        )
+        .route(
+            "/api/v1/devices_import_csv_commit",
+            post(handler_import_csv_commit),
+        )
         .route("/api/v1/devices_export_csv", post(handler_export_csv))
 }

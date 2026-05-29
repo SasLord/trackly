@@ -31,7 +31,7 @@ async fn health_smoke_end_to_end_against_real_app_ctx() -> anyhow::Result<()> {
     // Tauri-path.
     let dto_tauri = build_health(&ctx).await;
     assert_eq!(
-        dto_tauri.schema_version, 13,
+        dto_tauri.schema_version, 14,
         "schema_version after migrations"
     );
     assert!(dto_tauri.db_ready, "db_ready after build");

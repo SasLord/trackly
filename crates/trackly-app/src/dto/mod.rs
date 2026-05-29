@@ -6,6 +6,7 @@
 //! `ui/src/bindings.ts` через `specta_export::builder` (Builder собирает все
 //! DTOs, на которые ссылаются зарегистрированные команды).
 
+pub mod act;
 pub mod device;
 pub mod health;
 

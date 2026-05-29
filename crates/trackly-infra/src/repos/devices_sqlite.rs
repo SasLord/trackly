@@ -43,19 +43,19 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         id: row.get(0)?,
         type_id: row.get(1)?,
         name: row.get(2)?,
-        inventory_no: row.get(3)?,   // inventory_number → inventory_no
-        serial_no: row.get(4)?,      // serial_number → serial_no
+        inventory_no: row.get(3)?, // inventory_number → inventory_no
+        serial_no: row.get(4)?,    // serial_number → serial_no
         model: row.get(5)?,
-        state: row.get(6)?,          // condition → state
-        kit: row.get(7)?,            // complectation → kit
+        state: row.get(6)?, // condition → state
+        kit: row.get(7)?,   // complectation → kit
         location_id: row.get(8)?,
         status_id: row.get(9)?,
-        specs: row.get(10)?,         // notes → specs
+        specs: row.get(10)?, // notes → specs
         version: row.get(11)?,
         created_at_utc: row.get(12)?,
         updated_at_utc: row.get(13)?,
         deleted_at_utc: row.get(14)?,
-        location: row.get(15)?,      // l.name from LEFT JOIN
+        location: row.get(15)?, // l.name from LEFT JOIN
     })
 }
 
@@ -128,8 +128,7 @@ impl SqliteDeviceRepository {
         new: &DeviceNew,
         now_utc: i64,
     ) -> Result<i64, AppError> {
-        let inventory_number =
-            normalize_str(new.inventory_no.as_deref());
+        let inventory_number = normalize_str(new.inventory_no.as_deref());
         let serial_number = normalize_str(new.serial_no.as_deref());
 
         tx.execute(
@@ -169,9 +168,10 @@ impl SqliteDeviceRepository {
             from_row,
         )
         .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                AppError::NotFound { entity: "device", id }
-            }
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                entity: "device",
+                id,
+            },
             other => map_rusqlite(other),
         })
     }
@@ -230,7 +230,10 @@ impl SqliteDeviceRepository {
                 .map_err(map_rusqlite)?;
 
             return match actual {
-                None => Err(AppError::NotFound { entity: "device", id }),
+                None => Err(AppError::NotFound {
+                    entity: "device",
+                    id,
+                }),
                 Some(actual) => Err(AppError::OptimisticLockMismatch {
                     entity: "device",
                     id,
@@ -268,7 +271,10 @@ impl SqliteDeviceRepository {
             )
             .map_err(map_rusqlite)?;
         if affected == 0 {
-            return Err(AppError::NotFound { entity: "device", id: device_id });
+            return Err(AppError::NotFound {
+                entity: "device",
+                id: device_id,
+            });
         }
         self.get_in_tx(tx, device_id)
     }
@@ -301,7 +307,10 @@ impl SqliteDeviceRepository {
                 .map_err(map_rusqlite)?;
 
             return match actual {
-                None => Err(AppError::NotFound { entity: "device", id }),
+                None => Err(AppError::NotFound {
+                    entity: "device",
+                    id,
+                }),
                 Some(actual) => Err(AppError::OptimisticLockMismatch {
                     entity: "device",
                     id,
@@ -359,9 +368,10 @@ impl DeviceRepository for SqliteDeviceRepository {
             from_row,
         )
         .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                AppError::NotFound { entity: "device", id }
-            }
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                entity: "device",
+                id,
+            },
             other => map_rusqlite(other),
         })
     }
@@ -469,7 +479,10 @@ impl DeviceRepository for SqliteDeviceRepository {
                 .map_err(map_rusqlite)?;
 
             return match actual {
-                None => Err(AppError::NotFound { entity: "device", id }),
+                None => Err(AppError::NotFound {
+                    entity: "device",
+                    id,
+                }),
                 Some(actual) => Err(AppError::OptimisticLockMismatch {
                     entity: "device",
                     id,
@@ -509,7 +522,10 @@ impl DeviceRepository for SqliteDeviceRepository {
                 .map_err(map_rusqlite)?;
 
             return match actual {
-                None => Err(AppError::NotFound { entity: "device", id }),
+                None => Err(AppError::NotFound {
+                    entity: "device",
+                    id,
+                }),
                 Some(actual) => Err(AppError::OptimisticLockMismatch {
                     entity: "device",
                     id,
@@ -620,10 +636,9 @@ impl DeviceRepository for SqliteDeviceRepository {
             match (ctx_name, ctx_status_id) {
                 (Some(name), Some(status_id)) => {
                     let rows = stmt
-                        .query_map(
-                            rusqlite::params![like_pattern, name, status_id],
-                            |r| r.get::<_, String>(0),
-                        )
+                        .query_map(rusqlite::params![like_pattern, name, status_id], |r| {
+                            r.get::<_, String>(0)
+                        })
                         .map_err(map_rusqlite)?;
                     for row in rows {
                         results.push(row.map_err(map_rusqlite)?);
@@ -631,10 +646,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                 }
                 (Some(name), None) => {
                     let rows = stmt
-                        .query_map(
-                            rusqlite::params![like_pattern, name],
-                            |r| r.get::<_, String>(0),
-                        )
+                        .query_map(rusqlite::params![like_pattern, name], |r| {
+                            r.get::<_, String>(0)
+                        })
                         .map_err(map_rusqlite)?;
                     for row in rows {
                         results.push(row.map_err(map_rusqlite)?);
@@ -642,10 +656,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                 }
                 (None, Some(status_id)) => {
                     let rows = stmt
-                        .query_map(
-                            rusqlite::params![like_pattern, status_id],
-                            |r| r.get::<_, String>(0),
-                        )
+                        .query_map(rusqlite::params![like_pattern, status_id], |r| {
+                            r.get::<_, String>(0)
+                        })
                         .map_err(map_rusqlite)?;
                     for row in rows {
                         results.push(row.map_err(map_rusqlite)?);
@@ -653,10 +666,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 }
                 (None, None) => {
                     let rows = stmt
-                        .query_map(
-                            rusqlite::params![like_pattern],
-                            |r| r.get::<_, String>(0),
-                        )
+                        .query_map(rusqlite::params![like_pattern], |r| r.get::<_, String>(0))
                         .map_err(map_rusqlite)?;
                     for row in rows {
                         results.push(row.map_err(map_rusqlite)?);
@@ -703,10 +713,9 @@ impl DeviceRepository for SqliteDeviceRepository {
         match (ctx_name, ctx_status_id) {
             (Some(name), Some(status_id)) => {
                 let rows = stmt
-                    .query_map(
-                        rusqlite::params![like_pattern, name, status_id],
-                        |r| r.get::<_, String>(0),
-                    )
+                    .query_map(rusqlite::params![like_pattern, name, status_id], |r| {
+                        r.get::<_, String>(0)
+                    })
                     .map_err(map_rusqlite)?;
                 for row in rows {
                     results.push(row.map_err(map_rusqlite)?);
@@ -714,10 +723,9 @@ impl DeviceRepository for SqliteDeviceRepository {
             }
             (Some(name), None) => {
                 let rows = stmt
-                    .query_map(
-                        rusqlite::params![like_pattern, name],
-                        |r| r.get::<_, String>(0),
-                    )
+                    .query_map(rusqlite::params![like_pattern, name], |r| {
+                        r.get::<_, String>(0)
+                    })
                     .map_err(map_rusqlite)?;
                 for row in rows {
                     results.push(row.map_err(map_rusqlite)?);
@@ -725,10 +733,9 @@ impl DeviceRepository for SqliteDeviceRepository {
             }
             (None, Some(status_id)) => {
                 let rows = stmt
-                    .query_map(
-                        rusqlite::params![like_pattern, status_id],
-                        |r| r.get::<_, String>(0),
-                    )
+                    .query_map(rusqlite::params![like_pattern, status_id], |r| {
+                        r.get::<_, String>(0)
+                    })
                     .map_err(map_rusqlite)?;
                 for row in rows {
                     results.push(row.map_err(map_rusqlite)?);
@@ -736,10 +743,7 @@ impl DeviceRepository for SqliteDeviceRepository {
             }
             (None, None) => {
                 let rows = stmt
-                    .query_map(
-                        rusqlite::params![like_pattern],
-                        |r| r.get::<_, String>(0),
-                    )
+                    .query_map(rusqlite::params![like_pattern], |r| r.get::<_, String>(0))
                     .map_err(map_rusqlite)?;
                 for row in rows {
                     results.push(row.map_err(map_rusqlite)?);
@@ -820,9 +824,9 @@ impl DeviceRepository for SqliteDeviceRepository {
                 let type_id: i64 = row.get(3)?;
                 let name: String = row.get(4)?;
                 let model: Option<String> = row.get(5)?;
-                let specs: Option<String> = row.get(6)?;    // notes
-                let kit: Option<String> = row.get(7)?;       // complectation
-                let state: Option<String> = row.get(8)?;     // condition
+                let specs: Option<String> = row.get(6)?; // notes
+                let kit: Option<String> = row.get(7)?; // complectation
+                let state: Option<String> = row.get(8)?; // condition
                 let location_id: Option<i64> = row.get(9)?;
                 let status_id: i64 = row.get(10)?;
                 let version: i64 = row.get(11)?;
@@ -835,14 +839,49 @@ impl DeviceRepository for SqliteDeviceRepository {
                 let inv_no: Option<String> = row.get(15)?;
                 let serial_no: Option<String> = row.get(16)?;
 
-                Ok((repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name, inv_no, serial_no))
+                Ok((
+                    repr_id,
+                    count,
+                    id_list,
+                    type_id,
+                    name,
+                    model,
+                    specs,
+                    kit,
+                    state,
+                    location_id,
+                    status_id,
+                    version,
+                    created_at_utc,
+                    updated_at_utc,
+                    location_name,
+                    inv_no,
+                    serial_no,
+                ))
             })
             .map_err(map_rusqlite)?;
 
         let mut groups = Vec::new();
         for row_result in rows {
-            let (repr_id, count, id_list, type_id, name, model, specs, kit, state, location_id, status_id, version, created_at_utc, updated_at_utc, location_name, inv_no, serial_no) =
-                row_result.map_err(map_rusqlite)?;
+            let (
+                repr_id,
+                count,
+                id_list,
+                type_id,
+                name,
+                model,
+                specs,
+                kit,
+                state,
+                location_id,
+                status_id,
+                version,
+                created_at_utc,
+                updated_at_utc,
+                location_name,
+                inv_no,
+                serial_no,
+            ) = row_result.map_err(map_rusqlite)?;
 
             // Parse GROUP_CONCAT result (T-02-04-06: parse failure → AppError::Internal).
             let ids: Result<Vec<i64>, _> = id_list

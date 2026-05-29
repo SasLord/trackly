@@ -28,7 +28,11 @@ fn new_with_location(name: &str, location: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: if location.is_empty() { None } else { Some(location.to_string()) },
+        location: if location.is_empty() {
+            None
+        } else {
+            Some(location.to_string())
+        },
         location_id: None,
         status_id: 1,
     }
@@ -45,12 +49,23 @@ async fn create_with_location_persists_round_trip() {
         let new = new_with_location("Ноутбук Lenovo", "Склад A");
         let dto = svc.create(new).await.expect("create device");
 
-        assert_eq!(dto.location.as_deref(), Some("Склад A"), "location должен вернуться как строка");
-        assert!(dto.location_id.is_some(), "location_id должен быть заполнен");
+        assert_eq!(
+            dto.location.as_deref(),
+            Some("Склад A"),
+            "location должен вернуться как строка"
+        );
+        assert!(
+            dto.location_id.is_some(),
+            "location_id должен быть заполнен"
+        );
 
         // Re-fetch to confirm persistence.
         let fetched = svc.get(dto.id).await.expect("get device");
-        assert_eq!(fetched.location.as_deref(), Some("Склад A"), "после re-fetch location должен совпадать");
+        assert_eq!(
+            fetched.location.as_deref(),
+            Some("Склад A"),
+            "после re-fetch location должен совпадать"
+        );
     })
     .await
     .expect("create_with_location_persists_round_trip exceeded 30 s budget");
@@ -65,8 +80,14 @@ async fn create_with_same_location_reuses_id() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        let a = svc.create(new_with_location("Устройство A", "Склад A")).await.expect("create A");
-        let b = svc.create(new_with_location("Устройство B", "Склад A")).await.expect("create B");
+        let a = svc
+            .create(new_with_location("Устройство A", "Склад A"))
+            .await
+            .expect("create A");
+        let b = svc
+            .create(new_with_location("Устройство B", "Склад A"))
+            .await
+            .expect("create B");
 
         // Same location string → same location_id (INSERT OR IGNORE reuses existing row).
         assert_eq!(
@@ -90,16 +111,26 @@ async fn update_changes_location_creates_new_locations_row() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        let dto = svc.create(new_with_location("Ноутбук", "Склад A")).await.expect("create");
+        let dto = svc
+            .create(new_with_location("Ноутбук", "Склад A"))
+            .await
+            .expect("create");
         let original_location_id = dto.location_id;
 
         let patch = DevicePatch {
             location: Some(Some("Офис 305".to_string())),
             ..Default::default()
         };
-        let updated = svc.update(dto.id, dto.version, patch).await.expect("update");
+        let updated = svc
+            .update(dto.id, dto.version, patch)
+            .await
+            .expect("update");
 
-        assert_eq!(updated.location.as_deref(), Some("Офис 305"), "location должен обновиться");
+        assert_eq!(
+            updated.location.as_deref(),
+            Some("Офис 305"),
+            "location должен обновиться"
+        );
         assert_ne!(
             updated.location_id, original_location_id,
             "новая строка расположения должна дать новый location_id"
@@ -112,7 +143,10 @@ async fn update_changes_location_creates_new_locations_row() {
             .autocomplete("location".to_string(), "".to_string(), None, None)
             .await
             .expect("autocomplete location");
-        assert!(locs.contains(&"Офис 305".to_string()), "Офис 305 должен появиться в autocomplete");
+        assert!(
+            locs.contains(&"Офис 305".to_string()),
+            "Офис 305 должен появиться в autocomplete"
+        );
     })
     .await
     .expect("update_changes_location_creates_new_locations_row exceeded 30 s budget");
@@ -130,8 +164,14 @@ async fn create_with_empty_location_keeps_null() {
         let new = new_with_location("Устройство без расположения", "");
         let dto = svc.create(new).await.expect("create");
 
-        assert!(dto.location_id.is_none(), "location_id должен быть None при пустой строке");
-        assert!(dto.location.is_none(), "location должен быть None при пустой строке");
+        assert!(
+            dto.location_id.is_none(),
+            "location_id должен быть None при пустой строке"
+        );
+        assert!(
+            dto.location.is_none(),
+            "location должен быть None при пустой строке"
+        );
     })
     .await
     .expect("create_with_empty_location_keeps_null exceeded 30 s budget");
@@ -146,9 +186,15 @@ async fn autocomplete_location_returns_from_locations_table() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        svc.create(new_with_location("Устройство 1", "Склад A")).await.expect("create 1");
-        svc.create(new_with_location("Устройство 2", "Склад B")).await.expect("create 2");
-        svc.create(new_with_location("Устройство 3", "Офис 305")).await.expect("create 3");
+        svc.create(new_with_location("Устройство 1", "Склад A"))
+            .await
+            .expect("create 1");
+        svc.create(new_with_location("Устройство 2", "Склад B"))
+            .await
+            .expect("create 2");
+        svc.create(new_with_location("Устройство 3", "Офис 305"))
+            .await
+            .expect("create 3");
 
         // All locations with prefix "Скла"
         let results = svc
@@ -156,7 +202,11 @@ async fn autocomplete_location_returns_from_locations_table() {
             .await
             .expect("autocomplete location prefix");
 
-        assert_eq!(results.len(), 2, "должно вернуть 2 склада, получили {results:?}");
+        assert_eq!(
+            results.len(),
+            2,
+            "должно вернуть 2 склада, получили {results:?}"
+        );
         assert!(results.contains(&"Склад A".to_string()));
         assert!(results.contains(&"Склад B".to_string()));
         assert!(!results.contains(&"Офис 305".to_string()));
@@ -187,7 +237,9 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
             location: Some("Склад A".to_string()),
             location_id: None,
             status_id: 1,
-        }).await.expect("create 1");
+        })
+        .await
+        .expect("create 1");
 
         // Device B: location="Офис 305", status_id=2.
         svc.create(DeviceNew {
@@ -202,7 +254,9 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
             location: Some("Офис 305".to_string()),
             location_id: None,
             status_id: 2,
-        }).await.expect("create 2");
+        })
+        .await
+        .expect("create 2");
 
         // ctx_status_id=1 → only "Склад A"
         let results = svc
@@ -210,7 +264,11 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
             .await
             .expect("autocomplete location ctx_status_id=1");
 
-        assert_eq!(results.len(), 1, "ctx_status_id=1: ожидаем 1 результат, получили {results:?}");
+        assert_eq!(
+            results.len(),
+            1,
+            "ctx_status_id=1: ожидаем 1 результат, получили {results:?}"
+        );
         assert_eq!(results[0], "Склад A");
 
         // ctx_status_id=2 → only "Офис 305"
@@ -219,9 +277,15 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
             .await
             .expect("autocomplete location ctx_status_id=2");
 
-        assert_eq!(results2.len(), 1, "ctx_status_id=2: ожидаем 1 результат, получили {results2:?}");
+        assert_eq!(
+            results2.len(),
+            1,
+            "ctx_status_id=2: ожидаем 1 результат, получили {results2:?}"
+        );
         assert_eq!(results2[0], "Офис 305");
     })
     .await
-    .expect("autocomplete_location_filtered_by_ctx_status_id_via_locations_table exceeded 30 s budget");
+    .expect(
+        "autocomplete_location_filtered_by_ctx_status_id_via_locations_table exceeded 30 s budget",
+    );
 }

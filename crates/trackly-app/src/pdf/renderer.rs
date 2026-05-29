@@ -26,11 +26,11 @@
 
 use std::sync::Arc;
 
-use krilla::Document;
 use krilla::geom::Point;
 use krilla::metadata::{DateTime as KrillaDateTime, Metadata};
 use krilla::page::PageSettings;
 use krilla::text::{Font, TextDirection};
+use krilla::Document;
 use krilla::SerializeSettings;
 use minijinja::Environment;
 use regex::bytes::Regex;
@@ -109,11 +109,10 @@ impl PdfRenderer {
             source_chain: "krilla Font::new(bold): None — invalid TTF".into(),
         })?;
 
-        let page_settings = PageSettings::from_wh(A4_WIDTH_PT, A4_HEIGHT_PT).ok_or_else(|| {
-            AppError::Internal {
+        let page_settings =
+            PageSettings::from_wh(A4_WIDTH_PT, A4_HEIGHT_PT).ok_or_else(|| AppError::Internal {
                 source_chain: "krilla PageSettings::from_wh: invalid A4 dimensions".into(),
-            }
-        })?;
+            })?;
 
         // Build a single page. Pagination is out of scope for Phase 3 plan 01;
         // plan 04 may add page breaks if a real act overflows.
@@ -147,10 +146,7 @@ impl PdfRenderer {
                 Point::from_xy(MARGIN_PT, y),
                 font_regular.clone(),
                 BODY_SIZE_PT,
-                &format!(
-                    "ИНН {}  КПП {}",
-                    spec.header.org_inn, spec.header.org_kpp
-                ),
+                &format!("ИНН {}  КПП {}", spec.header.org_inn, spec.header.org_kpp),
                 false,
                 TextDirection::Auto,
             );
