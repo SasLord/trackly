@@ -61,11 +61,14 @@
 #### D-Archive-01: автоархив на 100% возврате, без ручного флага
 - Сервис в той же транзакции возврата считает «остатки в работе» по handover-акту:
   ```sql
-  SELECT SUM(ai.quantity_left) FROM act_items ai
+  -- Финальная форма (после B-1/B-2 fix): V014 добавляет device_statuses.code И act_items.quantity:
+  SELECT COALESCE(SUM(ai.quantity), 0) FROM act_items ai
    JOIN devices d ON d.id = ai.device_id
    WHERE ai.act_id = ? AND d.status_id = (SELECT id FROM device_statuses WHERE code='в_работе')
   ```
-  (Точная форма зависит от того, как Phase 3 моделирует «сколько вернулось»; ключевой вход — сервис должен надёжно ответить «остаток = 0 → archived=1»).
+  «Остаток в работе» = сумма quantity по тем позициям handover-акта, чьи devices всё ещё в status='в_работе'. Когда возврат вернул всё → SUM=0 → archived=1.
+  
+  **B-1 resolution:** `device_statuses.code` колонка добавлена миграцией V014 (plan 02 task 1) — V001 хранил только Russian display names. **B-2 resolution:** `act_items.quantity` колонка добавлена той же V014; recompute_parent_archived использует SUM(quantity) для multi-quantity rows (D-Schema позволяет quantity > 1 для не-уникальных позиций).
 - При нулевом остатке: `UPDATE acts SET archived=1, updated_at_utc=?, version=version+1 WHERE id=?` на handover.
 - При delete return-акта (undo): аналогичный пересчёт; если остаток > 0 → `archived=0`.
 - **Ручной кнопки «В архив» НЕТ.** Это derived state.
