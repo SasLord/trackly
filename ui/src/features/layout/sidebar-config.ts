@@ -9,7 +9,7 @@ export const SIDEBAR_ITEMS: SidebarEntry[] = [
   { kind: 'item', route: '/map', label: 'Карта', phase: 'v2' },
   { kind: 'divider' },
   { kind: 'item', route: '/devices', label: 'Устройства' },
-  { kind: 'item', route: '/acts', label: 'Акты', phase: 3 },
+  { kind: 'item', route: '/acts', label: 'Акты' },
   { kind: 'divider' },
   { kind: 'item', route: '/printers', label: 'Принтеры', phase: 6 },
   { kind: 'item', route: '/cartridges', label: 'Картриджи', phase: 4 },
