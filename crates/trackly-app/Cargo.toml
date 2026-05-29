@@ -42,6 +42,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
+krilla = "=0.7.0"
+minijinja = { version = "^2.20", default-features = false, features = ["json"] }
+regex = "1.12.3"
 
 [build-dependencies]
 tauri-build = { workspace = true }
@@ -52,3 +55,4 @@ tempfile = { workspace = true }
 anyhow = { workspace = true }
 sha2 = "0.10"
 tracing-appender = { workspace = true }
+pdf-extract = "^0.10"
