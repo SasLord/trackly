@@ -43,7 +43,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
 krilla = "=0.7.0"
-minijinja = { version = "^2.20", default-features = false, features = ["json"] }
+minijinja = { version = "^2.20", default-features = false, features = ["json", "fuel", "serde"] }
 regex = "1.12.3"
 
 [build-dependencies]
