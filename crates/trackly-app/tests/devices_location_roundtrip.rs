@@ -140,7 +140,7 @@ async fn update_changes_location_creates_new_locations_row() {
         // "Склад A" is NOT checked here: the device moved away from it, so no device links to it,
         // and location autocomplete only surfaces locations that have associated devices.
         let locs = svc
-            .autocomplete("location".to_string(), "".to_string(), None, None)
+            .autocomplete("location".to_string(), "".to_string(), None, None, None)
             .await
             .expect("autocomplete location");
         assert!(
@@ -198,7 +198,7 @@ async fn autocomplete_location_returns_from_locations_table() {
 
         // All locations with prefix "Скла"
         let results = svc
-            .autocomplete("location".to_string(), "Скла".to_string(), None, None)
+            .autocomplete("location".to_string(), "Скла".to_string(), None, None, None)
             .await
             .expect("autocomplete location prefix");
 
@@ -260,7 +260,7 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
 
         // ctx_status_id=1 → only "Склад A"
         let results = svc
-            .autocomplete("location".to_string(), "".to_string(), None, Some(1))
+            .autocomplete("location".to_string(), "".to_string(), None, Some(1), None)
             .await
             .expect("autocomplete location ctx_status_id=1");
 
@@ -273,7 +273,7 @@ async fn autocomplete_location_filtered_by_ctx_status_id_via_locations_table() {
 
         // ctx_status_id=2 → only "Офис 305"
         let results2 = svc
-            .autocomplete("location".to_string(), "".to_string(), None, Some(2))
+            .autocomplete("location".to_string(), "".to_string(), None, Some(2), None)
             .await
             .expect("autocomplete location ctx_status_id=2");
 

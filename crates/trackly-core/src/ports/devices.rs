@@ -74,6 +74,7 @@ pub trait DeviceRepository {
         prefix: &str,
         ctx_name: Option<&str>,
         ctx_status_id: Option<i64>,
+        status_in: Option<&[i64]>,
     ) -> Result<Vec<String>, AppError>;
 
     /// List grouped non-unique devices (D-Group-01). Returns groups with repr + ids + count.

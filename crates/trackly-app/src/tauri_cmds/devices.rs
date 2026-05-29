@@ -65,9 +65,10 @@ pub async fn build_devices_autocomplete(
     prefix: String,
     ctx_name: Option<String>,
     ctx_status_id: Option<i64>,
+    status_in: Option<Vec<String>>,
 ) -> Result<Vec<String>, AppError> {
     ctx.devices
-        .autocomplete(field, prefix, ctx_name, ctx_status_id)
+        .autocomplete(field, prefix, ctx_name, ctx_status_id, status_in)
         .await
 }
 
@@ -176,6 +177,7 @@ pub async fn devices_autocomplete(
     prefix: String,
     ctx_name: Option<String>,
     ctx_status_id: Option<i32>,
+    status_in: Option<Vec<String>>,
 ) -> Result<Vec<String>, AppError> {
     build_devices_autocomplete(
         state.inner(),
@@ -183,6 +185,7 @@ pub async fn devices_autocomplete(
         prefix,
         ctx_name,
         ctx_status_id.map(|id| id as i64),
+        status_in,
     )
     .await
 }

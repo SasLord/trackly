@@ -68,6 +68,7 @@ pub struct AutocompletePayload {
     pub prefix: String,
     pub ctx_name: Option<String>,
     pub ctx_status_id: Option<i64>,
+    pub status_in: Option<Vec<String>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -199,6 +200,7 @@ pub async fn handler_autocomplete(
             payload.prefix,
             payload.ctx_name,
             payload.ctx_status_id,
+            payload.status_in,
         )
         .await
         .map_err(AppErrorResponse::from)?,

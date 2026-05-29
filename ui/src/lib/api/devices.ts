@@ -30,12 +30,19 @@ export const devices = {
   search: (query: string, pagination: Pagination) =>
     apiCall<DeviceListResponse>('devices_search', { query, pagination }),
 
-  autocomplete: (field: string, prefix: string, ctxName?: string, ctxStatusId?: number | null) =>
+  autocomplete: (
+    field: string,
+    prefix: string,
+    ctxName?: string,
+    ctxStatusId?: number | null,
+    statusIn?: string[],
+  ) =>
     apiCall<string[]>('devices_autocomplete', {
       field,
       prefix,
       ctxName: ctxName ?? null,
       ctxStatusId: ctxStatusId ?? null,
+      statusIn: statusIn ?? null,
     }),
 
   listGrouped: (filter: DeviceFilter, pagination: Pagination) =>

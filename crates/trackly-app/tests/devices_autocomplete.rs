@@ -61,7 +61,7 @@ async fn autocomplete_name_returns_distinct() {
         }
 
         let results = svc
-            .autocomplete("name".to_string(), "При".to_string(), None, None)
+            .autocomplete("name".to_string(), "При".to_string(), None, None, None)
             .await
             .expect("autocomplete name");
 
@@ -108,6 +108,7 @@ async fn autocomplete_model_with_context() {
                 "Las".to_string(),
                 Some("Принтер HP".to_string()),
                 None,
+                None,
             )
             .await
             .expect("autocomplete model contextual");
@@ -145,7 +146,7 @@ async fn autocomplete_limit_30() {
         }
 
         let results = svc
-            .autocomplete("name".to_string(), "".to_string(), None, None)
+            .autocomplete("name".to_string(), "".to_string(), None, None, None)
             .await
             .expect("autocomplete name all");
 
@@ -178,7 +179,7 @@ async fn autocomplete_sorted_asc() {
             .expect("create Клавиатура");
 
         let results = svc
-            .autocomplete("name".to_string(), "".to_string(), None, None)
+            .autocomplete("name".to_string(), "".to_string(), None, None, None)
             .await
             .expect("autocomplete sorted");
 
@@ -208,7 +209,7 @@ async fn autocomplete_invalid_field_rejected() {
 
         // status_id is not a whitelisted autocomplete field.
         let err = svc
-            .autocomplete("status_id".to_string(), "".to_string(), None, None)
+            .autocomplete("status_id".to_string(), "".to_string(), None, None, None)
             .await
             .expect_err("должно вернуть ошибку для неразрешённого поля 'status_id'");
 
@@ -248,7 +249,7 @@ async fn autocomplete_no_context_returns_all_matching() {
 
         // Without context, should return both LaserJet models.
         let results = svc
-            .autocomplete("model".to_string(), "Las".to_string(), None, None)
+            .autocomplete("model".to_string(), "Las".to_string(), None, None, None)
             .await
             .expect("autocomplete no context");
 
@@ -293,7 +294,7 @@ async fn autocomplete_location_filtered_by_status() {
 
         // Autocomplete model with ctx_status_id=1 → only "Склад A".
         let results = svc
-            .autocomplete("model".to_string(), "".to_string(), None, Some(1))
+            .autocomplete("model".to_string(), "".to_string(), None, Some(1), None)
             .await
             .expect("autocomplete model filtered by status=1");
 
@@ -306,7 +307,7 @@ async fn autocomplete_location_filtered_by_status() {
 
         // Autocomplete model with ctx_status_id=2 → only "Офис 305".
         let results2 = svc
-            .autocomplete("model".to_string(), "".to_string(), None, Some(2))
+            .autocomplete("model".to_string(), "".to_string(), None, Some(2), None)
             .await
             .expect("autocomplete model filtered by status=2");
 
@@ -319,7 +320,7 @@ async fn autocomplete_location_filtered_by_status() {
 
         // Autocomplete model without status filter → both values.
         let results_all = svc
-            .autocomplete("model".to_string(), "".to_string(), None, None)
+            .autocomplete("model".to_string(), "".to_string(), None, None, None)
             .await
             .expect("autocomplete model no status filter");
 
@@ -369,6 +370,7 @@ async fn autocomplete_location_combines_with_name() {
                 "".to_string(),
                 Some("Ноутбук Lenovo".to_string()),
                 Some(1),
+                None,
             )
             .await
             .expect("autocomplete model with name+status context");
@@ -386,6 +388,7 @@ async fn autocomplete_location_combines_with_name() {
                 "".to_string(),
                 Some("Ноутбук Lenovo".to_string()),
                 Some(2),
+                None,
             )
             .await
             .expect("autocomplete model with name+status_id=2");
@@ -414,7 +417,7 @@ async fn autocomplete_specs_field() {
         svc.create(a).await.expect("create");
 
         let results = svc
-            .autocomplete("specs".to_string(), "Intel".to_string(), None, None)
+            .autocomplete("specs".to_string(), "Intel".to_string(), None, None, None)
             .await
             .expect("autocomplete specs");
 
@@ -423,4 +426,105 @@ async fn autocomplete_specs_field() {
     })
     .await
     .expect("autocomplete_specs_field exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// W-5 regression: status_in filter by V014 code (B-1)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn autocomplete_filters_by_status_in_codes() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        // 2 in stock + 1 in work — distinct model values for the autocomplete.
+        let mut a = minimal_new("X");
+        a.model = Some("StockOnly1".to_string());
+        a.status_id = 1; // На складе
+        svc.create(a).await.expect("a");
+
+        let mut b = minimal_new("X");
+        b.model = Some("StockOnly2".to_string());
+        b.status_id = 1;
+        svc.create(b).await.expect("b");
+
+        let mut c = minimal_new("X");
+        c.model = Some("InWorkUnique".to_string());
+        c.status_id = 2;
+        svc.create(c).await.expect("c");
+
+        let results = svc
+            .autocomplete(
+                "model".to_string(),
+                "".to_string(),
+                None,
+                None,
+                Some(vec!["на_складе".to_string()]),
+            )
+            .await
+            .expect("status_in filter");
+        assert_eq!(
+            results.len(),
+            2,
+            "status_in=['на_складе'] must return only 2 stock models, got {results:?}"
+        );
+        assert!(results.iter().all(|m| m.starts_with("Stock")));
+    })
+    .await
+    .expect("autocomplete_filters_by_status_in_codes budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn autocomplete_status_in_none_returns_all() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        for (i, sid) in [1, 1, 2].into_iter().enumerate() {
+            let mut d = minimal_new("Y");
+            d.model = Some(format!("BackcompatModel{i}"));
+            d.status_id = sid;
+            svc.create(d).await.expect("seed");
+        }
+        let results = svc
+            .autocomplete(
+                "model".to_string(),
+                "Backcompat".to_string(),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("backcompat");
+        assert_eq!(
+            results.len(),
+            3,
+            "None status_in == no filter, got {results:?}"
+        );
+    })
+    .await
+    .expect("autocomplete_status_in_none_returns_all budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn autocomplete_status_in_rejects_unknown_code() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let err = svc
+            .autocomplete(
+                "model".to_string(),
+                "".to_string(),
+                None,
+                None,
+                Some(vec!["nonsense".to_string()]),
+            )
+            .await
+            .expect_err("unknown code must fail");
+        match err {
+            trackly_core::error::AppError::Validation { field, message } => {
+                assert_eq!(field, "status_in");
+                assert!(message.contains("nonsense"));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    })
+    .await
+    .expect("autocomplete_status_in_rejects_unknown_code budget");
 }

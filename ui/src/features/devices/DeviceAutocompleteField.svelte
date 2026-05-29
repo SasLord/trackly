@@ -33,6 +33,9 @@
     value: string;
     contextName?: string;
     contextStatusId?: number | null;
+    /** Filter results to devices whose status `code` (V014) is one of these,
+     *  e.g. `['на_складе']` to restrict the act-form device autocomplete. */
+    statusIn?: string[];
     placeholder?: string;
     id?: string;
     invalid?: boolean;
@@ -47,6 +50,7 @@
     value,
     contextName,
     contextStatusId,
+    statusIn,
     placeholder,
     id,
     invalid = false,
@@ -87,6 +91,7 @@
     // Track context deps so effect re-runs when they change.
     const ctxName = contextName;
     const ctxStatus = contextStatusId;
+    const sIn = statusIn;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     if (v.length < 1) {
       suggestions = [];
@@ -98,7 +103,7 @@
     debounceTimer = setTimeout(async () => {
       try {
         loading = true;
-        suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus);
+        suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus, sIn);
         // Only open if the user is actively typing (suppression was lifted by handleInput).
         // This prevents the dropdown from re-opening on programmatic value changes
         // (e.g. parent re-rendering, edit-mode pre-fill, prop change from outside).

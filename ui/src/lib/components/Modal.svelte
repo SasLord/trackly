@@ -4,7 +4,7 @@
   interface Props {
     open: boolean;
     title: string;
-    size?: 'md' | 'wide';
+    size?: 'md' | 'wide' | 'xwide' | 'pdf-preview';
     onClose: () => void;
     children?: Snippet;
     footer?: Snippet;
@@ -95,6 +95,15 @@
   .modal-wide {
     width: var(--modal-max-width-wide);
     max-width: var(--modal-max-width-wide);
+  }
+  .modal-xwide {
+    width: 100%;
+    max-width: 1000px;
+  }
+  .modal-pdf-preview {
+    width: 100%;
+    max-width: min(95vw, 1100px);
+    height: min(90vh, 920px);
   }
 
   .modal-header {

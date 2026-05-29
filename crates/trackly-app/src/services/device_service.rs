@@ -361,22 +361,73 @@ impl DeviceService {
     /// Validates `field_str` against `AutocompleteField` whitelist (T-02-04-02).
     /// Returns up to 30 DISTINCT values, sorted ASC.
     /// `ctx_status_id`: optional filter restricts results to devices with given status_id.
+    /// `status_in`: optional list of device-status codes (V014 `device_statuses.code`)
+    /// — service resolves each code → status_id; unknown codes return Validation.
     pub async fn autocomplete(
         &self,
         field_str: String,
         prefix: String,
         ctx_name: Option<String>,
         ctx_status_id: Option<i64>,
+        status_in: Option<Vec<String>>,
     ) -> Result<Vec<String>, AppError> {
         // Enum-whitelist validation on service layer (T-02-04-02).
         let field = trackly_core::domain::devices::AutocompleteField::from_str(&field_str)?;
+
+        // Resolve status codes → ids (V014 device_statuses.code, B-1). None → no filter.
+        let resolved_status_ids: Option<Vec<i64>> = if let Some(codes) = status_in {
+            if codes.is_empty() {
+                None
+            } else {
+                let readers = self.readers.clone();
+                let codes_clone = codes.clone();
+                let ids: Vec<i64> =
+                    tokio::task::spawn_blocking(move || -> Result<Vec<i64>, AppError> {
+                        let conn = readers.acquire();
+                        let mut out = Vec::with_capacity(codes_clone.len());
+                        for code in &codes_clone {
+                            let id_opt: Option<i64> = conn
+                                .query_row(
+                                    "SELECT id FROM device_statuses WHERE code = ?1",
+                                    rusqlite::params![code],
+                                    |r| r.get(0),
+                                )
+                                .ok();
+                            match id_opt {
+                                Some(id) => out.push(id),
+                                None => {
+                                    return Err(AppError::Validation {
+                                        field: "status_in".to_string(),
+                                        message: format!("Unknown status code: {code}"),
+                                    });
+                                }
+                            }
+                        }
+                        Ok(out)
+                    })
+                    .await
+                    .map_err(|e| AppError::Internal {
+                        source_chain: format!("spawn_blocking status_in resolve: {e}"),
+                    })??;
+                Some(ids)
+            }
+        } else {
+            None
+        };
 
         let readers = self.readers.clone();
         let repo = self.repo.clone();
 
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            repo.autocomplete(&conn, field, &prefix, ctx_name.as_deref(), ctx_status_id)
+            repo.autocomplete(
+                &conn,
+                field,
+                &prefix,
+                ctx_name.as_deref(),
+                ctx_status_id,
+                resolved_status_ids.as_deref(),
+            )
         })
         .await
         .map_err(|e| AppError::Internal {

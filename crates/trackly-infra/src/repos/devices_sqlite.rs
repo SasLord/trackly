@@ -601,79 +601,83 @@ impl DeviceRepository for SqliteDeviceRepository {
         prefix: &str,
         ctx_name: Option<&str>,
         ctx_status_id: Option<i64>,
+        status_in: Option<&[i64]>,
     ) -> Result<Vec<String>, AppError> {
         let like_pattern = format!("{prefix}%");
         let mut results = Vec::new();
 
+        // Build optional status-IN fragment + params. When `status_in` is set,
+        // we inline a parameterised `status_id IN (?, ?, ...)` clause. The
+        // parameter indices are appended AFTER the explicit ones used by the
+        // base SQL — for `Location` queries we re-use `d.status_id`, for
+        // direct device-field queries we use `status_id`.
+        let status_in_filter_devices: Option<String> = status_in.and_then(|ids| {
+            if ids.is_empty() {
+                None
+            } else {
+                let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+                Some(format!("status_id IN ({})", placeholders.join(",")))
+            }
+        });
+        let status_in_filter_location: Option<String> = status_in.and_then(|ids| {
+            if ids.is_empty() {
+                None
+            } else {
+                let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+                Some(format!("d.status_id IN ({})", placeholders.join(",")))
+            }
+        });
+
         // Location is special: queries `locations` table via JOIN with context filtering.
         if field.is_location() {
-            let sql = {
-                let mut clauses = vec![
-                    "l.deleted_at_utc IS NULL".to_string(),
-                    "l.name LIKE ?1".to_string(),
-                    "d.deleted_at_utc IS NULL".to_string(),
-                ];
-                if ctx_name.is_some() {
-                    clauses.push("d.name = ?2".to_string());
-                }
-                if ctx_status_id.is_some() {
-                    let idx = if ctx_name.is_some() { 3 } else { 2 };
-                    clauses.push(format!("d.status_id = ?{idx}"));
-                }
-                format!(
-                    "SELECT DISTINCT l.name
-                     FROM locations l
-                     JOIN devices d ON d.location_id = l.id
-                     WHERE {conds}
-                     ORDER BY l.name
-                     LIMIT 30",
-                    conds = clauses.join("\n                     AND "),
-                )
-            };
+            let mut clauses = vec![
+                "l.deleted_at_utc IS NULL".to_string(),
+                "l.name LIKE ?1".to_string(),
+                "d.deleted_at_utc IS NULL".to_string(),
+            ];
+            if ctx_name.is_some() {
+                clauses.push("d.name = ?2".to_string());
+            }
+            if ctx_status_id.is_some() {
+                let idx = if ctx_name.is_some() { 3 } else { 2 };
+                clauses.push(format!("d.status_id = ?{idx}"));
+            }
+            if let Some(ref f) = status_in_filter_location {
+                clauses.push(f.clone());
+            }
+            let sql = format!(
+                "SELECT DISTINCT l.name
+                 FROM locations l
+                 JOIN devices d ON d.location_id = l.id
+                 WHERE {conds}
+                 ORDER BY l.name
+                 LIMIT 30",
+                conds = clauses.join("\n                 AND "),
+            );
 
-            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
-
-            match (ctx_name, ctx_status_id) {
-                (Some(name), Some(status_id)) => {
-                    let rows = stmt
-                        .query_map(rusqlite::params![like_pattern, name, status_id], |r| {
-                            r.get::<_, String>(0)
-                        })
-                        .map_err(map_rusqlite)?;
-                    for row in rows {
-                        results.push(row.map_err(map_rusqlite)?);
-                    }
-                }
-                (Some(name), None) => {
-                    let rows = stmt
-                        .query_map(rusqlite::params![like_pattern, name], |r| {
-                            r.get::<_, String>(0)
-                        })
-                        .map_err(map_rusqlite)?;
-                    for row in rows {
-                        results.push(row.map_err(map_rusqlite)?);
-                    }
-                }
-                (None, Some(status_id)) => {
-                    let rows = stmt
-                        .query_map(rusqlite::params![like_pattern, status_id], |r| {
-                            r.get::<_, String>(0)
-                        })
-                        .map_err(map_rusqlite)?;
-                    for row in rows {
-                        results.push(row.map_err(map_rusqlite)?);
-                    }
-                }
-                (None, None) => {
-                    let rows = stmt
-                        .query_map(rusqlite::params![like_pattern], |r| r.get::<_, String>(0))
-                        .map_err(map_rusqlite)?;
-                    for row in rows {
-                        results.push(row.map_err(map_rusqlite)?);
-                    }
+            use rusqlite::types::ToSql;
+            let like_box: Box<dyn ToSql> = Box::new(like_pattern.clone());
+            let mut owned_params: Vec<Box<dyn ToSql>> = vec![like_box];
+            if let Some(name) = ctx_name {
+                owned_params.push(Box::new(name.to_string()));
+            }
+            if let Some(sid) = ctx_status_id {
+                owned_params.push(Box::new(sid));
+            }
+            if let Some(ids) = status_in {
+                for id in ids {
+                    owned_params.push(Box::new(*id));
                 }
             }
 
+            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+            let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt
+                .query_map(param_refs.as_slice(), |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                results.push(row.map_err(map_rusqlite)?);
+            }
             return Ok(results);
         }
 
@@ -681,74 +685,51 @@ impl DeviceRepository for SqliteDeviceRepository {
         // Column name comes ONLY from the whitelisted enum — never from user input (T-02-04-02).
         let col = field.sql_column();
 
-        // Build SQL dynamically based on which context filters are present.
-        // Both ctx_name and ctx_status_id can be combined (AND semantics).
-        let sql = {
-            let mut clauses = vec![
-                format!("{col} IS NOT NULL"),
-                format!("{col} != ''"),
-                format!("{col} LIKE ?1"),
-            ];
-            if ctx_name.is_some() {
-                clauses.push("name = ?2".to_string());
+        let mut clauses = vec![
+            format!("{col} IS NOT NULL"),
+            format!("{col} != ''"),
+            format!("{col} LIKE ?1"),
+        ];
+        if ctx_name.is_some() {
+            clauses.push("name = ?2".to_string());
+        }
+        if ctx_status_id.is_some() {
+            let idx = if ctx_name.is_some() { 3 } else { 2 };
+            clauses.push(format!("status_id = ?{idx}"));
+        }
+        if let Some(ref f) = status_in_filter_devices {
+            clauses.push(f.clone());
+        }
+        let sql = format!(
+            "SELECT DISTINCT {col} FROM devices
+             WHERE deleted_at_utc IS NULL
+               AND {conds}
+             ORDER BY {col}
+             LIMIT 30",
+            conds = clauses.join("\n               AND "),
+        );
+
+        use rusqlite::types::ToSql;
+        let mut owned_params: Vec<Box<dyn ToSql>> = vec![Box::new(like_pattern.clone())];
+        if let Some(name) = ctx_name {
+            owned_params.push(Box::new(name.to_string()));
+        }
+        if let Some(sid) = ctx_status_id {
+            owned_params.push(Box::new(sid));
+        }
+        if let Some(ids) = status_in {
+            for id in ids {
+                owned_params.push(Box::new(*id));
             }
-            if ctx_status_id.is_some() {
-                let idx = if ctx_name.is_some() { 3 } else { 2 };
-                clauses.push(format!("status_id = ?{idx}"));
-            }
-            format!(
-                "SELECT DISTINCT {col} FROM devices
-                 WHERE deleted_at_utc IS NULL
-                   AND {conds}
-                 ORDER BY {col}
-                 LIMIT 30",
-                conds = clauses.join("\n                   AND "),
-            )
-        };
+        }
 
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
-
-        // Dispatch based on which optional params are set.
-        // Each branch iterates immediately to avoid type mismatch between MappedRows variants.
-        match (ctx_name, ctx_status_id) {
-            (Some(name), Some(status_id)) => {
-                let rows = stmt
-                    .query_map(rusqlite::params![like_pattern, name, status_id], |r| {
-                        r.get::<_, String>(0)
-                    })
-                    .map_err(map_rusqlite)?;
-                for row in rows {
-                    results.push(row.map_err(map_rusqlite)?);
-                }
-            }
-            (Some(name), None) => {
-                let rows = stmt
-                    .query_map(rusqlite::params![like_pattern, name], |r| {
-                        r.get::<_, String>(0)
-                    })
-                    .map_err(map_rusqlite)?;
-                for row in rows {
-                    results.push(row.map_err(map_rusqlite)?);
-                }
-            }
-            (None, Some(status_id)) => {
-                let rows = stmt
-                    .query_map(rusqlite::params![like_pattern, status_id], |r| {
-                        r.get::<_, String>(0)
-                    })
-                    .map_err(map_rusqlite)?;
-                for row in rows {
-                    results.push(row.map_err(map_rusqlite)?);
-                }
-            }
-            (None, None) => {
-                let rows = stmt
-                    .query_map(rusqlite::params![like_pattern], |r| r.get::<_, String>(0))
-                    .map_err(map_rusqlite)?;
-                for row in rows {
-                    results.push(row.map_err(map_rusqlite)?);
-                }
-            }
+        let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |r| r.get::<_, String>(0))
+            .map_err(map_rusqlite)?;
+        for row in rows {
+            results.push(row.map_err(map_rusqlite)?);
         }
 
         Ok(results)
