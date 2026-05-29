@@ -77,6 +77,35 @@ pub struct ActItemNew {
     pub complectation_at_time: Option<String>,
 }
 
+/// Domain payload for `ActService::do_return` — описывает возврат по
+/// существующему handover-акту. См. D-Acts-Return-01.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActReturnNew {
+    /// Bulk condition («Хорошее», «Б/У» …) применяется ко всем checked-row'ам,
+    /// у которых нет per-row override (когда `apply_to_all = true`).
+    pub bulk_condition: Option<String>,
+    /// Bulk location_id применяется аналогично — куда вернуть на склад.
+    pub bulk_location_id: Option<i64>,
+    /// `true` → bulk-значения заполняют пропуски в items; `false` → каждый item
+    /// обязан содержать собственные override-значения.
+    pub apply_to_all: bool,
+    pub items: Vec<ActReturnItem>,
+}
+
+/// Один пункт возврата в `ActReturnNew`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActReturnItem {
+    /// id строки `act_items` родительского handover-акта.
+    pub act_item_id: i64,
+    pub device_id: i64,
+    /// Количество единиц к возврату (в Phase 3 всегда 1).
+    pub quantity: i64,
+    /// Per-row override condition — побеждает bulk-значение.
+    pub condition_override: Option<String>,
+    /// Per-row override location_id — побеждает bulk-значение.
+    pub location_id_override: Option<i64>,
+}
+
 /// Partial update for an act (used by Phase 7 admin UI; minimal usage in Phase 3).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ActPatch {

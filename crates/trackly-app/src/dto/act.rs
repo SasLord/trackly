@@ -97,6 +97,36 @@ pub struct ActItemDto {
     pub complectation_at_time: Option<String>,
 }
 
+/// Payload sent by the UI when оформляет возврат по handover-акту.
+///
+/// Snapshot semantics (D-Acts-Return-01):
+/// - per-row `condition_override` / `location_id_override` всегда побеждает.
+/// - Если `apply_to_all = true` и override is `None` — используется bulk-значение.
+/// - Если `apply_to_all = false` — каждый item обязан содержать override
+///   (валидация на сервисе).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ActReturnDto {
+    pub bulk_condition: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub bulk_location_id: Option<i64>,
+    pub apply_to_all: bool,
+    pub items: Vec<ActReturnItemDto>,
+}
+
+/// Один пункт возврата в `ActReturnDto`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ActReturnItemDto {
+    #[specta(type = i32)]
+    pub act_item_id: i64,
+    #[specta(type = i32)]
+    pub device_id: i64,
+    #[specta(type = i32)]
+    pub quantity: i64,
+    pub condition_override: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub location_id_override: Option<i64>,
+}
+
 /// Payload sent by the UI when creating a handover act.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct ActCreateDto {
@@ -262,6 +292,18 @@ mod tests {
             format_act_number(ActType::Return, 1000, Some(2), Some(42), Some(2)),
             "42в2"
         );
+    }
+
+    #[test]
+    fn format_retroactive_promotion() {
+        // Same row data — sub=1 — но при изменении sibling_count
+        // отображение меняется с «42в» (один возврат) на «42в1» (два).
+        // Это retroactive promotion из D-Numbering-01.
+        let solo = format_act_number(ActType::Return, 999, Some(1), Some(42), Some(1));
+        let with_sibling =
+            format_act_number(ActType::Return, 999, Some(1), Some(42), Some(2));
+        assert_eq!(solo, "42в");
+        assert_eq!(with_sibling, "42в1");
     }
 
     #[test]

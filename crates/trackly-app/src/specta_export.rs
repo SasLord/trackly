@@ -44,6 +44,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::acts::acts_list,
         crate::tauri_cmds::acts::acts_get,
         crate::tauri_cmds::acts::acts_create,
+        crate::tauri_cmds::acts::acts_return,
         crate::tauri_cmds::acts::acts_delete,
         crate::tauri_cmds::acts::acts_counts,
         crate::tauri_cmds::acts::acts_peek_next_number,

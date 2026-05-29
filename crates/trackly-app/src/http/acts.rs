@@ -7,12 +7,12 @@ use axum::{extract::State, routing::post, Json, Router};
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActsCountsDto, Pagination,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
-    build_acts_peek_next_number,
+    build_acts_peek_next_number, build_acts_return,
 };
 
 #[derive(serde::Deserialize)]
@@ -35,6 +35,12 @@ pub struct CreatePayload {
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ReturnPayload {
+    pub act_id: i64,
+    pub payload: ActReturnDto,
 }
 
 // Handlers ------------------------------------------------------------------
@@ -67,6 +73,17 @@ pub async fn handler_create(
 ) -> Result<Json<ActDto>, AppErrorResponse> {
     Ok(Json(
         build_acts_create(&ctx, p.payload)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_return(
+    State(ctx): State<AppCtx>,
+    Json(p): Json<ReturnPayload>,
+) -> Result<Json<ActDto>, AppErrorResponse> {
+    Ok(Json(
+        build_acts_return(&ctx, p.act_id, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -107,6 +124,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/acts_list", post(handler_list))
         .route("/api/v1/acts_get", post(handler_get))
         .route("/api/v1/acts_create", post(handler_create))
+        .route("/api/v1/acts_return", post(handler_return))
         .route("/api/v1/acts_delete", post(handler_delete))
         .route("/api/v1/acts_counts", post(handler_counts))
         .route(

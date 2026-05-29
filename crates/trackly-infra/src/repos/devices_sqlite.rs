@@ -279,6 +279,127 @@ impl SqliteDeviceRepository {
         self.get_in_tx(tx, device_id)
     }
 
+    /// UPDATE status_id + location_id + condition внутри транзакции — used by
+    /// `do_return` (plan 03). В отличие от `update_status_and_location_in_tx`
+    /// (plan 02 handover path), здесь также может меняться `condition` поле.
+    ///
+    /// `condition: Option<&str>` — если `None`, поле НЕ меняется (COALESCE);
+    /// если `Some` — записывается ровно это значение (включая пустую строку
+    /// — нормализуй на уровне сервиса при необходимости).
+    pub fn update_full_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        device_id: i64,
+        status_id: i64,
+        location_id: Option<i64>,
+        condition: Option<&str>,
+        now_utc: i64,
+    ) -> Result<DeviceRow, AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE devices SET \
+                   status_id      = ?1, \
+                   location_id    = ?2, \
+                   condition      = COALESCE(?3, condition), \
+                   version        = version + 1, \
+                   updated_at_utc = ?4 \
+                 WHERE id = ?5 AND deleted_at_utc IS NULL",
+                rusqlite::params![status_id, location_id, condition, now_utc, device_id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "device",
+                id: device_id,
+            });
+        }
+        self.get_in_tx(tx, device_id)
+    }
+
+    /// Восстанавливает device-row из snapshot, ранее записанного в
+    /// `audit_log.before_json` (D-Undo-01).
+    ///
+    /// snapshot — это `serde_json::Value`, который содержит как минимум
+    /// поля `status_id`, `location_id`, `state` (= condition), `kit`
+    /// (= complectation), `version`. Дополнительные поля (`name`, `model`,
+    /// `inventory_no`, `serial_no`, `specs`, `type_id`) применяются, если
+    /// присутствуют, иначе COALESCE сохраняет текущее значение в БД.
+    ///
+    /// Semantics:
+    ///   - `version` инкрементируется на 1 (новая ревизия), чтобы не
+    ///     ломать optimistic-lock в дальнейшем.
+    ///   - `updated_at_utc` ставится в `now_utc` (это новая мутация, не
+    ///     перепись истории).
+    ///
+    /// Если row отсутствует — `AppError::NotFound`.
+    pub fn restore_from_snapshot_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        device_id: i64,
+        snapshot: &serde_json::Value,
+        now_utc: i64,
+    ) -> Result<DeviceRow, AppError> {
+        // Extract scalars. Поля `status_id` обязательны; остальные опциональны.
+        let status_id = snapshot
+            .get("status_id")
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| AppError::Internal {
+                source_chain: format!("undo: snapshot for device {device_id} lacks status_id"),
+            })?;
+        let location_id: Option<i64> = snapshot.get("location_id").and_then(|v| v.as_i64());
+        let state: Option<&str> = snapshot.get("state").and_then(|v| v.as_str());
+        let kit: Option<&str> = snapshot.get("kit").and_then(|v| v.as_str());
+        // Optional «full» fields (когда snapshot писался полностью).
+        let name: Option<&str> = snapshot.get("name").and_then(|v| v.as_str());
+        let model: Option<&str> = snapshot.get("model").and_then(|v| v.as_str());
+        let inventory_no: Option<&str> = snapshot
+            .get("inventory_no")
+            .and_then(|v| v.as_str());
+        let serial_no: Option<&str> = snapshot.get("serial_no").and_then(|v| v.as_str());
+        let specs: Option<&str> = snapshot.get("specs").and_then(|v| v.as_str());
+        let type_id: Option<i64> = snapshot.get("type_id").and_then(|v| v.as_i64());
+
+        let affected = tx
+            .execute(
+                "UPDATE devices SET \
+                   type_id          = COALESCE(?1, type_id), \
+                   name             = COALESCE(?2, name), \
+                   inventory_number = COALESCE(?3, inventory_number), \
+                   serial_number    = COALESCE(?4, serial_number), \
+                   model            = COALESCE(?5, model), \
+                   condition        = COALESCE(?6, condition), \
+                   complectation    = COALESCE(?7, complectation), \
+                   notes            = COALESCE(?8, notes), \
+                   status_id        = ?9, \
+                   location_id      = ?10, \
+                   version          = version + 1, \
+                   updated_at_utc   = ?11 \
+                 WHERE id = ?12 AND deleted_at_utc IS NULL",
+                rusqlite::params![
+                    type_id,
+                    name,
+                    inventory_no,
+                    serial_no,
+                    model,
+                    state,
+                    kit,
+                    specs,
+                    status_id,
+                    location_id,
+                    now_utc,
+                    device_id,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "device",
+                id: device_id,
+            });
+        }
+        self.get_in_tx(tx, device_id)
+    }
+
     /// Soft-delete в пределах транзакции.
     pub fn delete_soft_in_tx(
         &self,

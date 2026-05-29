@@ -153,6 +153,53 @@ impl SqliteActRepository {
         })
     }
 
+    /// Список **активных** (не soft-deleted) return-актов того же родителя,
+    /// упорядоченный по `sub_number ASC`. Используется в `delete_soft`
+    /// (cascade) и в `get` (заполнить `ActDto.return_ids`).
+    pub fn list_returns_for_parent(
+        &self,
+        conn: &Connection,
+        parent_act_id: i64,
+    ) -> Result<Vec<ActRow>, AppError> {
+        let mut stmt = conn
+            .prepare(&format!(
+                "{SELECT_ACTS} WHERE a.parent_act_id = ?1 AND a.deleted_at_utc IS NULL \
+                 ORDER BY a.sub_number ASC, a.id ASC"
+            ))
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![parent_act_id], from_row)
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
+    }
+
+    /// Tx-вариант `list_returns_for_parent` — используется в `delete_soft`
+    /// внутри writer-tx, где нет доступа к `Connection`.
+    pub fn list_returns_for_parent_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        parent_act_id: i64,
+    ) -> Result<Vec<ActRow>, AppError> {
+        let mut stmt = tx
+            .prepare(&format!(
+                "{SELECT_ACTS} WHERE a.parent_act_id = ?1 AND a.deleted_at_utc IS NULL \
+                 ORDER BY a.sub_number ASC, a.id ASC"
+            ))
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![parent_act_id], from_row)
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
+    }
+
     /// Soft-delete an act with optimistic-lock check. Hard-deletes the
     /// junction `act_items` rows in the same transaction (CASCADE does not
     /// fire on soft-delete; D-Soft-vs-Hard-Acts-01).
@@ -229,6 +276,72 @@ pub fn peek_counter(conn: &Connection, name: &str) -> Result<i64, AppError> {
         },
         other => map_rusqlite(other),
     })
+}
+
+/// `SELECT COALESCE(MAX(sub_number), 0) + 1` для возврат-актов того же
+/// родителя. Используется в `do_return` per D-Numbering-01:
+/// первый возврат получает sub_number=1, второй — 2, и т.д.
+/// Single-writer + BEGIN IMMEDIATE гарантируют отсутствие race'ов.
+pub fn next_sub_number_for_parent(
+    tx: &Transaction<'_>,
+    parent_act_id: i64,
+) -> Result<i64, AppError> {
+    tx.query_row(
+        "SELECT COALESCE(MAX(sub_number), 0) + 1 FROM acts \
+         WHERE parent_act_id = ?1 AND deleted_at_utc IS NULL",
+        params![parent_act_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .map_err(map_rusqlite)
+}
+
+/// Пересчитывает поле `archived` родительского handover-акта на основе
+/// «остатка в работе» (B-2 SUM(quantity) semantics).
+///
+/// `remaining` = SUM(ai.quantity) по тем act_items handover-акта, у которых
+/// device всё ещё в status_id = 'в_работе'. Если `remaining == 0`
+/// → `archived = 1` (полный возврат); иначе `archived = 0`.
+///
+/// Возвращает новое значение `archived`. Идемпотентно: если значение не
+/// изменилось, `version` всё равно инкрементируется — это согласуется с
+/// optimistic-lock семантикой и облегчает аудит изменений archived-флага.
+pub fn recompute_parent_archived(
+    tx: &Transaction<'_>,
+    parent_act_id: i64,
+    now_utc: i64,
+) -> Result<bool, AppError> {
+    let in_work_status_id: i64 = tx
+        .query_row(
+            "SELECT id FROM device_statuses WHERE code = 'в_работе'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                source_chain:
+                    "device_statuses missing code='в_работе' — V014 not applied?".into(),
+            },
+            other => map_rusqlite(other),
+        })?;
+
+    let remaining: i64 = tx
+        .query_row(
+            "SELECT COALESCE(SUM(ai.quantity), 0) FROM act_items ai \
+             JOIN devices d ON d.id = ai.device_id \
+             WHERE ai.act_id = ?1 AND d.status_id = ?2",
+            params![parent_act_id, in_work_status_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+
+    let archived = if remaining == 0 { 1 } else { 0 };
+    tx.execute(
+        "UPDATE acts SET archived = ?1, updated_at_utc = ?2, version = version + 1 \
+         WHERE id = ?3",
+        params![archived, now_utc, parent_act_id],
+    )
+    .map_err(map_rusqlite)?;
+    Ok(archived == 1)
 }
 
 /// Peek a named counter inside an open transaction.

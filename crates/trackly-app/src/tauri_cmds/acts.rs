@@ -9,7 +9,7 @@
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActsCountsDto, Pagination,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
 use trackly_core::error::AppError;
 
@@ -31,6 +31,14 @@ pub async fn build_acts_get(ctx: &AppCtx, id: i64) -> Result<ActDto, AppError> {
 
 pub async fn build_acts_create(ctx: &AppCtx, payload: ActCreateDto) -> Result<ActDto, AppError> {
     ctx.acts.create(payload).await
+}
+
+pub async fn build_acts_return(
+    ctx: &AppCtx,
+    act_id: i64,
+    payload: ActReturnDto,
+) -> Result<ActDto, AppError> {
+    ctx.acts.do_return(act_id, payload).await
 }
 
 pub async fn build_acts_delete(ctx: &AppCtx, id: i64, version: i64) -> Result<(), AppError> {
@@ -72,6 +80,16 @@ pub async fn acts_create(
     payload: ActCreateDto,
 ) -> Result<ActDto, AppError> {
     build_acts_create(state.inner(), payload).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_return(
+    state: tauri::State<'_, AppCtx>,
+    act_id: i32,
+    payload: ActReturnDto,
+) -> Result<ActDto, AppError> {
+    build_acts_return(state.inner(), act_id as i64, payload).await
 }
 
 #[tauri::command]
