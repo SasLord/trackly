@@ -210,11 +210,10 @@ impl ActService {
                 for item in &payload.items {
                     let before = devices_repo.get_in_tx(&tx, item.device_id)?;
                     // Full snapshot — undo path в plan 03 читает эти поля.
-                    let before_json = device_snapshot_json(&before).map_err(|e| {
-                        AppError::Internal {
+                    let before_json =
+                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("before_json: {e}"),
-                        }
-                    })?;
+                        })?;
 
                     acts_repo.insert_act_item_in_tx(
                         &tx,
@@ -232,11 +231,10 @@ impl ActService {
                         payload.location_id,
                         now,
                     )?;
-                    let after_json = device_snapshot_json(&after).map_err(|e| {
-                        AppError::Internal {
+                    let after_json =
+                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
                             source_chain: format!("after_json: {e}"),
-                        }
-                    })?;
+                        })?;
 
                     let payload_json = serde_json::json!({
                         "act_id": act_id,
@@ -321,7 +319,8 @@ impl ActService {
                         message: "Состояние обязательно (apply_to_all = false)".into(),
                     });
                 }
-                if it.location_id_override.is_none() {
+                // Принимаем либо id, либо name.
+                if it.location_id_override.is_none() && it.location_name_override.is_none() {
                     return Err(AppError::Validation {
                         field: format!("items[{idx}].location_id_override"),
                         message: "Расположение обязательно (apply_to_all = false)".into(),
@@ -332,11 +331,7 @@ impl ActService {
         Ok(())
     }
 
-    pub async fn do_return(
-        &self,
-        act_id: i64,
-        payload: ActReturnDto,
-    ) -> Result<ActDto, AppError> {
+    pub async fn do_return(&self, act_id: i64, payload: ActReturnDto) -> Result<ActDto, AppError> {
         Self::validate_return(&payload)?;
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
@@ -409,6 +404,15 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
+                // 3a. Resolve bulk_location_name → id (если задан). Имя
+                // имеет приоритет над `bulk_location_id` (UX-friendly).
+                let resolved_bulk_location_id: Option<i64> =
+                    if let Some(name) = payload.bulk_location_name.as_deref() {
+                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                    } else {
+                        payload.bulk_location_id
+                    };
+
                 // 4. Next sub_number (atomic MAX+1 в той же tx).
                 let sub_number = next_sub_number_for_parent(&tx, act_id)?;
 
@@ -423,7 +427,7 @@ impl ActService {
                     act_type: ActType::Return,
                     giver_name: parent.giver_name.clone(),
                     receiver_name: parent.receiver_name.clone(),
-                    location_id: payload.bulk_location_id,
+                    location_id: resolved_bulk_location_id,
                     location: None,
                     notes: None,
                     deadline_utc: None,
@@ -440,31 +444,34 @@ impl ActService {
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
                 for item in &payload.items {
                     let before = devices_repo.get_in_tx(&tx, item.device_id)?;
-                    let before_json = device_snapshot_json(&before).map_err(|e| {
-                        AppError::Internal {
+                    let before_json =
+                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("return before_json: {e}"),
-                        }
-                    })?;
+                        })?;
 
                     // Effective values (per-row override wins; bulk fallback only when apply_to_all).
-                    let effective_condition: Option<String> = item
-                        .condition_override
-                        .clone()
-                        .or_else(|| {
+                    let effective_condition: Option<String> =
+                        item.condition_override.clone().or_else(|| {
                             if payload.apply_to_all {
                                 payload.bulk_condition.clone()
                             } else {
                                 None
                             }
                         });
-                    let effective_location: Option<i64> =
-                        item.location_id_override.or({
-                            if payload.apply_to_all {
-                                payload.bulk_location_id
-                            } else {
-                                None
-                            }
-                        });
+                    // Per-row location override: name имеет приоритет над id.
+                    let per_row_loc_id: Option<i64> =
+                        if let Some(name) = item.location_name_override.as_deref() {
+                            devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                        } else {
+                            item.location_id_override
+                        };
+                    let effective_location: Option<i64> = per_row_loc_id.or({
+                        if payload.apply_to_all {
+                            resolved_bulk_location_id
+                        } else {
+                            None
+                        }
+                    });
 
                     // INSERT act_item for the return-act (snapshot return moment).
                     acts_repo.insert_act_item_in_tx(
@@ -485,11 +492,10 @@ impl ActService {
                         effective_condition.as_deref(),
                         now,
                     )?;
-                    let after_json = device_snapshot_json(&after).map_err(|e| {
-                        AppError::Internal {
+                    let after_json =
+                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
                             source_chain: format!("return after_json: {e}"),
-                        }
-                    })?;
+                        })?;
 
                     let payload_json = serde_json::json!({
                         "act_id": return_act_id,
@@ -803,10 +809,9 @@ fn undo_device_mutations_for_act(
                 source_chain: format!("undo: corrupt before_json for device {device_id}: {e}"),
             })?;
         let restored = devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
-        let after_json =
-            device_snapshot_json(&restored).map_err(|e| AppError::Internal {
-                source_chain: format!("undo after_json: {e}"),
-            })?;
+        let after_json = device_snapshot_json(&restored).map_err(|e| AppError::Internal {
+            source_chain: format!("undo after_json: {e}"),
+        })?;
         let payload_json = serde_json::json!({
             "undo_of_act_id": act_id,
         })

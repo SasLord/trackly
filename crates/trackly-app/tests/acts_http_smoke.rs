@@ -126,6 +126,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
             bulk_location_id: None,
+            bulk_location_name: None,
             apply_to_all: true,
             items: vec![ActReturnItemDto {
                 act_item_id: handover.items[0].id,
@@ -133,6 +134,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                 quantity: 1,
                 condition_override: None,
                 location_id_override: None,
+                location_name_override: None,
             }],
         };
         let app = acts_router().with_state(ctx.clone());

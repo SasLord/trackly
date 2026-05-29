@@ -13,9 +13,10 @@
     onCreate: () => void;
     onDelete: (_act: ActDto) => void;
     onEdit?: (_act: ActDto) => void;
+    onReturn?: (_act: ActDto) => void;
   }
 
-  const { act, loading, onCreate, onDelete, onEdit }: Props = $props();
+  const { act, loading, onCreate, onDelete, onEdit, onReturn }: Props = $props();
 
   const MONTHS_RU = [
     'января',
@@ -64,9 +65,15 @@
         <Button variant="secondary" size="sm" onclick={() => onEdit?.(act)} disabled={!onEdit}>
           Редактировать
         </Button>
-        <span title="Доступно в plan 03">
-          <Button variant="secondary" size="sm" disabled>Возврат</Button>
-        </span>
+        {#if onReturn && act.act_type === 'handover' && !act.archived}
+          <Button variant="secondary" size="sm" onclick={() => onReturn(act)}>Возврат</Button>
+        {:else}
+          <span
+            title={act.archived ? 'Акт уже в Архиве' : 'Возврат доступен только для handover-актов'}
+          >
+            <Button variant="secondary" size="sm" disabled>Возврат</Button>
+          </span>
+        {/if}
         <Button variant="destructive" size="sm" onclick={() => onDelete(act)}>Удалить</Button>
       </div>
     </header>

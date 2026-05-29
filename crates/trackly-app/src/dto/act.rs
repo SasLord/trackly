@@ -104,17 +104,21 @@ pub struct ActItemDto {
 /// - Если `apply_to_all = true` и override is `None` — используется bulk-значение.
 /// - Если `apply_to_all = false` — каждый item обязан содержать override
 ///   (валидация на сервисе).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActReturnDto {
     pub bulk_condition: Option<String>,
     #[specta(type = Option<i32>)]
     pub bulk_location_id: Option<i64>,
+    /// UX-friendly: имя расположения. Если задано — сервис резолвит в id
+    /// (INSERT OR IGNORE → SELECT) и использует его. Имеет приоритет над
+    /// `bulk_location_id` (UI обычно передаёт name, а не id).
+    pub bulk_location_name: Option<String>,
     pub apply_to_all: bool,
     pub items: Vec<ActReturnItemDto>,
 }
 
 /// Один пункт возврата в `ActReturnDto`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActReturnItemDto {
     #[specta(type = i32)]
     pub act_item_id: i64,
@@ -125,6 +129,9 @@ pub struct ActReturnItemDto {
     pub condition_override: Option<String>,
     #[specta(type = Option<i32>)]
     pub location_id_override: Option<i64>,
+    /// UX-friendly: per-row имя расположения; сервис резолвит. Приоритет
+    /// над `location_id_override`.
+    pub location_name_override: Option<String>,
 }
 
 /// Payload sent by the UI when creating a handover act.
@@ -300,8 +307,7 @@ mod tests {
         // отображение меняется с «42в» (один возврат) на «42в1» (два).
         // Это retroactive promotion из D-Numbering-01.
         let solo = format_act_number(ActType::Return, 999, Some(1), Some(42), Some(1));
-        let with_sibling =
-            format_act_number(ActType::Return, 999, Some(1), Some(42), Some(2));
+        let with_sibling = format_act_number(ActType::Return, 999, Some(1), Some(42), Some(2));
         assert_eq!(solo, "42в");
         assert_eq!(with_sibling, "42в1");
     }

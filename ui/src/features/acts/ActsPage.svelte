@@ -9,6 +9,7 @@
   import ActsList from './ActsList.svelte';
   import ActDetail from './ActDetail.svelte';
   import ActFormModal from './ActFormModal.svelte';
+  import ReturnModal from './ReturnModal.svelte';
   import { acts } from './api';
   import type {
     ActDto,
@@ -29,6 +30,8 @@
   let selectedAct = $state<ActDto | null>(null);
   let detailLoading = $state(false);
   let createModalOpen = $state(false);
+  let returnModalOpen = $state(false);
+  let returnTargetAct = $state<ActDto | null>(null);
   let searchQuery = $state('');
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
@@ -122,14 +125,45 @@
   function handleResetSearch() {
     searchQuery = '';
   }
+  function handleReturn(act: ActDto) {
+    returnTargetAct = act;
+    returnModalOpen = true;
+  }
+
+  function handleReturnSuccess(_returnDto: ActDto, _parentArchived: boolean) {
+    returnModalOpen = false;
+    returnTargetAct = null;
+    // Refresh list + counts; selected act всё ещё может смотреться, обновим его detail.
+    refresh();
+    refreshCounts();
+    if (selectedActId !== null) {
+      acts
+        .get(selectedActId)
+        .then((a) => {
+          selectedAct = a;
+        })
+        .catch(() => {});
+    }
+  }
+
   async function handleDelete(act: ActDto) {
-    const confirmed = window.confirm(
-      `Удалить акт №${act.number}? Действие можно отменить только восстановлением из бэкапа БД.`,
-    );
+    const isReturn = act.act_type === 'return';
+    const heading = isReturn
+      ? `Удалить акт возврата №${act.number}?`
+      : `Удалить акт №${act.number}?`;
+    const body = isReturn
+      ? 'Акт будет помечен как удалённый. Состояние и Расположение устройств вернутся к значениям на момент выдачи. Если parent был в Архиве — выйдет из архива.'
+      : 'Акт будет помечен как удалённый. Все устройства из акта вернутся на склад в исходные Состояние и Расположение (на момент выдачи). Связанные возвраты также будут отменены. Действие можно отменить только восстановлением из бэкапа БД.';
+    const confirmed = window.confirm(`${heading}\n\n${body}`);
     if (!confirmed) return;
     try {
       await acts.delete(act.id, act.version);
-      pushToast('success', `Акт №${act.number} удалён`);
+      pushToast(
+        'success',
+        isReturn
+          ? `Акт возврата №${act.number} удалён. Устройства возвращены к состоянию на момент выдачи.`
+          : `Акт №${act.number} удалён. Устройства восстановлены.`,
+      );
       selectedActId = null;
       refresh();
       refreshCounts();
@@ -180,6 +214,7 @@
           loading={detailLoading}
           onCreate={openCreate}
           onDelete={handleDelete}
+          onReturn={handleReturn}
         />
       {/snippet}
     </ActsMasterDetail>
@@ -190,6 +225,16 @@
   open={createModalOpen}
   onClose={() => (createModalOpen = false)}
   onSaved={handleSaved}
+/>
+
+<ReturnModal
+  open={returnModalOpen}
+  act={returnTargetAct}
+  onClose={() => {
+    returnModalOpen = false;
+    returnTargetAct = null;
+  }}
+  onSuccess={handleReturnSuccess}
 />
 
 <style lang="scss">

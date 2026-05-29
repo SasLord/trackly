@@ -352,9 +352,7 @@ impl SqliteDeviceRepository {
         // Optional «full» fields (когда snapshot писался полностью).
         let name: Option<&str> = snapshot.get("name").and_then(|v| v.as_str());
         let model: Option<&str> = snapshot.get("model").and_then(|v| v.as_str());
-        let inventory_no: Option<&str> = snapshot
-            .get("inventory_no")
-            .and_then(|v| v.as_str());
+        let inventory_no: Option<&str> = snapshot.get("inventory_no").and_then(|v| v.as_str());
         let serial_no: Option<&str> = snapshot.get("serial_no").and_then(|v| v.as_str());
         let specs: Option<&str> = snapshot.get("specs").and_then(|v| v.as_str());
         let type_id: Option<i64> = snapshot.get("type_id").and_then(|v| v.as_i64());

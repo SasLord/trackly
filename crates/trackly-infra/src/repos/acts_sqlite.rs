@@ -318,8 +318,7 @@ pub fn recompute_parent_archived(
         )
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-                source_chain:
-                    "device_statuses missing code='в_работе' — V014 not applied?".into(),
+                source_chain: "device_statuses missing code='в_работе' — V014 not applied?".into(),
             },
             other => map_rusqlite(other),
         })?;

@@ -16,9 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
-use trackly_app::dto::act::{
-    ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto,
-};
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::services::ActService;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -37,7 +35,9 @@ async fn seed_devices(
     writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
     count: usize,
 ) -> Vec<i64> {
-    let names: Vec<String> = (0..count).map(|i| format!("ReturnTestDevice {i}")).collect();
+    let names: Vec<String> = (0..count)
+        .map(|i| format!("ReturnTestDevice {i}"))
+        .collect();
     writer
         .execute(move |conn| {
             let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -96,6 +96,7 @@ async fn partial_return_keeps_handover_active() {
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
             bulk_location_id: None,
+            bulk_location_name: None,
             apply_to_all: true,
             items: vec![ActReturnItemDto {
                 act_item_id: first_item.id,
@@ -103,6 +104,7 @@ async fn partial_return_keeps_handover_active() {
                 quantity: 1,
                 condition_override: None,
                 location_id_override: None,
+                location_name_override: None,
             }],
         };
         let ret = svc
@@ -146,6 +148,7 @@ async fn full_return_archives_handover() {
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
             bulk_location_id: None,
+            bulk_location_name: None,
             apply_to_all: true,
             items: handover
                 .items
@@ -156,6 +159,7 @@ async fn full_return_archives_handover() {
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
+                    location_name_override: None,
                 })
                 .collect(),
         };
@@ -195,6 +199,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
                     bulk_location_id: None,
+                    bulk_location_name: None,
                     apply_to_all: true,
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
@@ -202,6 +207,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
+                        location_name_override: None,
                     }],
                 },
             )
@@ -216,6 +222,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
                     bulk_location_id: None,
+                    bulk_location_name: None,
                     apply_to_all: true,
                     items: handover.items[1..]
                         .iter()
@@ -225,6 +232,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                             quantity: 1,
                             condition_override: None,
                             location_id_override: None,
+                            location_name_override: None,
                         })
                         .collect(),
                 },
@@ -288,6 +296,7 @@ async fn bulk_apply_with_per_row_override() {
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
             bulk_location_id: Some(bulk_loc_id),
+            bulk_location_name: None,
             apply_to_all: true,
             items: vec![
                 ActReturnItemDto {
@@ -296,6 +305,7 @@ async fn bulk_apply_with_per_row_override() {
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
+                    location_name_override: None,
                 },
                 ActReturnItemDto {
                     act_item_id: handover.items[1].id,
@@ -303,10 +313,13 @@ async fn bulk_apply_with_per_row_override() {
                     quantity: 1,
                     condition_override: Some("Б/У".into()),
                     location_id_override: None,
+                    location_name_override: None,
                 },
             ],
         };
-        svc.do_return(handover.id, payload).await.expect("do_return");
+        svc.do_return(handover.id, payload)
+            .await
+            .expect("do_return");
 
         // Devices: A → bulk condition («Хорошее»); B → override («Б/У»). Оба
         // → bulk location.
@@ -362,6 +375,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
         let payload = ActReturnDto {
             bulk_condition: None,
             bulk_location_id: None,
+            bulk_location_name: None,
             apply_to_all: false,
             items: vec![ActReturnItemDto {
                 act_item_id: handover.items[0].id,
@@ -369,6 +383,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
                 quantity: 1,
                 condition_override: None, // ← missing
                 location_id_override: None,
+                location_name_override: None,
             }],
         };
         let err = svc
@@ -378,8 +393,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
         match err {
             AppError::Validation { field, .. } => {
                 assert!(
-                    field.contains("condition_override")
-                        || field.contains("location_id_override"),
+                    field.contains("condition_override") || field.contains("location_id_override"),
                     "field should mention per-row override, got: {field}"
                 );
             }
@@ -413,6 +427,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
                     bulk_location_id: None,
+                    bulk_location_name: None,
                     apply_to_all: true,
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
@@ -420,6 +435,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
+                        location_name_override: None,
                     }],
                 },
             )
@@ -431,6 +447,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
                     bulk_location_id: None,
+                    bulk_location_name: None,
                     apply_to_all: true,
                     items: vec![ActReturnItemDto {
                         act_item_id: it1.id,
@@ -438,6 +455,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
+                        location_name_override: None,
                     }],
                 },
             )
@@ -484,6 +502,7 @@ async fn return_does_not_increment_act_counter() {
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
                 bulk_location_id: None,
+                bulk_location_name: None,
                 apply_to_all: true,
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
@@ -491,6 +510,7 @@ async fn return_does_not_increment_act_counter() {
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
+                    location_name_override: None,
                 }],
             },
         )
@@ -552,6 +572,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
             ActReturnDto {
                 bulk_condition: None,
                 bulk_location_id: None,
+                bulk_location_name: None,
                 apply_to_all: false,
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
@@ -559,6 +580,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
                     quantity: 1,
                     condition_override: Some("Хорошее".into()),
                     location_id_override: Some(loc_id),
+                    location_name_override: None,
                 }],
             },
         )
@@ -567,18 +589,17 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
 
         let dev_id = device_ids[0];
         let readers = svc.readers.clone();
-        let (cond, loc): (Option<String>, Option<i64>) =
-            tokio::task::spawn_blocking(move || {
-                let conn = readers.acquire();
-                conn.query_row(
-                    "SELECT condition, location_id FROM devices WHERE id = ?1",
-                    params![dev_id],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
-                )
-                .expect("query device")
-            })
-            .await
-            .expect("spawn_blocking");
+        let (cond, loc): (Option<String>, Option<i64>) = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT condition, location_id FROM devices WHERE id = ?1",
+                params![dev_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("query device")
+        })
+        .await
+        .expect("spawn_blocking");
         assert_eq!(cond.as_deref(), Some("Хорошее"));
         assert_eq!(loc, Some(loc_id));
     })
