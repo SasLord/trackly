@@ -1,0 +1,37 @@
+{
+  "title": "Акт приёма-передачи №42",
+  "header": {
+    "org_name": "ООО Ромашка",
+    "org_inn": "7700000000",
+    "org_kpp": "770001001",
+    "org_address": "г. Москва, ул. Ленина, 1",
+    "logo_path": null,
+    "act_label": "Акт приёма-передачи №42",
+    "date_label": "28 мая 2026 г."
+  },
+  "sections": [
+    { "type": "heading", "level": 1, "text": "Акт приёма-передачи №42" },
+    { "type": "spacer", "height_pt": 12.0 },
+    {
+      "type": "key_value_table",
+      "rows": [
+        { "key": "Сдал", "value": "Сидоров-Петроградский Иван Александрович (ё)" },
+        { "key": "Принял", "value": "Петров Пётр Петрович" },
+        { "key": "Дата", "value": "28 мая 2026 г." }
+      ]
+    },
+    { "type": "spacer", "height_pt": 16.0 },
+    {
+      "type": "items_table",
+      "columns": ["№", "Наименование", "Кол-во"],
+      "rows": [["1", "Ноутбук Lenovo", "1"]]
+    },
+    { "type": "spacer", "height_pt": 40.0 },
+    {
+      "type": "signature",
+      "left_label": "Сдал: ____________",
+      "right_label": "Принял: ____________",
+      "spacer_pt": 30.0
+    }
+  ]
+}
