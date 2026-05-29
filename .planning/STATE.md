@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-29T11:20:26.903Z"
-last_activity: 2026-05-29 -- Phase 03 planning complete
+last_updated: "2026-05-29T11:53:02.246Z"
+last_activity: 2026-05-29
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 16
-  completed_plans: 11
+  completed_plans: 12
   percent: 25
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 3 — акты приёма передачи и первая pdf печать
+**Current focus:** Phase 03 — pdf
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
+Phase: 03 (pdf) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-05-29 -- Phase 03 planning complete
+Last activity: 2026-05-29
 
-Progress: [██████████] 100%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 02-ui P02-02 | 50m | 4 tasks | 46 files |
 | Phase 02-ui P04 | 120 min | 3 tasks | 20 files |
 | Phase 02-ui P05 | 240 | 3 tasks | 31 files |
+| Phase 03-pdf P01 | 25 | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,10 @@ Recent decisions affecting current work:
 - [Phase ?]: 02-02: DevicesPlaceholder.svelte временный; Plan 03 заменит на features/devices/DevicesPage.svelte
 - [Phase ?]: 02-02: initTheme() вызывается в main.ts ДО mount — no-flash guarantee
 - [Phase ?]: 02-02: svelte-check теперь blocking gate в ci-fast + ci-full (Phase 1 deferred item закрыт)
+- [Phase ?]: Phase 3-01 (PDF spike): krilla 0.7 PASSED — pinned Metadata + xmp_metadata=false + regex post-process yields deterministic byte-stream on macOS aarch64 (sha256 88df7f9d…); Typst-as-lib fallback NOT triggered
+- [Phase ?]: Phase 3-01: MSRV 1.88 → 1.92; Win7 32-bit closed in v1
+- [Phase ?]: Phase 3-01: minijinja features = json + fuel + serde (required for set_fuel and tmpl.render(serde_json::Value))
+- [Phase ?]: Phase 3-01: krilla 0.7 API path — krilla::metadata::{Metadata, DateTime}, krilla::SerializeSettings (interchange/serialize are private modules)
 
 ### Pending Todos
 
@@ -125,6 +130,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-28T13:32:19.435Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-pdf/03-CONTEXT.md
+Last session: 2026-05-29T11:53:02.240Z
+Stopped at: Plan 03-01 complete; ready for 03-02
+Resume file: 
