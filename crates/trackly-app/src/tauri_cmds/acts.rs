@@ -53,6 +53,22 @@ pub async fn build_acts_peek_next_number(ctx: &AppCtx) -> Result<i64, AppError> 
     ctx.acts.peek_next_number().await
 }
 
+pub async fn build_acts_render_pdf(ctx: &AppCtx, act_id: i64) -> Result<Vec<u8>, AppError> {
+    ctx.acts.render_pdf(act_id).await
+}
+
+pub async fn build_devices_render_acceptance_pdf(
+    ctx: &AppCtx,
+    device_id: i64,
+    giver_name: String,
+    receiver_name: String,
+    date_utc: i64,
+) -> Result<Vec<u8>, AppError> {
+    ctx.acts
+        .render_acceptance_pdf(device_id, giver_name, receiver_name, date_utc)
+        .await
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri wrappers
 // ---------------------------------------------------------------------------
@@ -113,4 +129,32 @@ pub async fn acts_counts(state: tauri::State<'_, AppCtx>) -> Result<ActsCountsDt
 pub async fn acts_peek_next_number(state: tauri::State<'_, AppCtx>) -> Result<i32, AppError> {
     let next = build_acts_peek_next_number(state.inner()).await?;
     Ok(next as i32)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_render_pdf(
+    state: tauri::State<'_, AppCtx>,
+    act_id: i32,
+) -> Result<Vec<u8>, AppError> {
+    build_acts_render_pdf(state.inner(), act_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_render_acceptance_pdf(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+    giver_name: String,
+    receiver_name: String,
+    date_utc: i32,
+) -> Result<Vec<u8>, AppError> {
+    build_devices_render_acceptance_pdf(
+        state.inner(),
+        device_id as i64,
+        giver_name,
+        receiver_name,
+        date_utc as i64,
+    )
+    .await
 }

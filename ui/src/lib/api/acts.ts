@@ -36,12 +36,24 @@ export const acts = {
 
   peekNextNumber: () => apiCall<number>('acts_peek_next_number'),
 
-  // -- Stubs (will be wired by later plans) -----------------------------------
+  /** Plan 04 — PDF render handover акта (возвращает PDF bytes как number[]). */
+  renderPdf: (actId: number): Promise<number[]> => apiCall<number[]>('acts_render_pdf', { actId }),
 
-  /** Plan 04 — PDF generation. */
-  renderPdf: (_actId: number): Promise<number[]> => {
-    throw new Error('acts.renderPdf доступен начиная с plan 04 (PDF).');
-  },
+  /** Plan 04 — PDF render документа приёма (acceptance) по device_id. */
+  renderAcceptancePdf: (
+    deviceId: number,
+    giverName: string,
+    receiverName: string,
+    dateUtc: number,
+  ): Promise<number[]> =>
+    apiCall<number[]>('devices_render_acceptance_pdf', {
+      deviceId,
+      giverName,
+      receiverName,
+      dateUtc,
+    }),
+
+  // -- Stubs (will be wired by later plans) -----------------------------------
 
   /** Plan 03/post — FTS search across acts. */
   search: (

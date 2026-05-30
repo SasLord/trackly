@@ -933,7 +933,7 @@ impl ActService {
                 let conn = readers.acquire();
                 let row = conn
                     .query_row(
-                        "SELECT d.name, d.inventory_number, d.serial_number, d.model, d.state \
+                        "SELECT d.name, d.inventory_number, d.serial_number, d.model, d.condition \
                          FROM devices d WHERE d.id = ?1 AND d.deleted_at_utc IS NULL",
                         params![device_id],
                         |r| {

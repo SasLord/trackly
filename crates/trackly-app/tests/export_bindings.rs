@@ -236,4 +236,30 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("acts_peek_next_number"),
         "bindings.ts missing acts_peek_next_number command"
     );
+
+    // Phase 3 Plan 04 — PDF + Organization + Templates
+    assert!(
+        contents.contains("OrgDto"),
+        "bindings.ts missing OrgDto type"
+    );
+    assert!(
+        contents.contains("organization_get"),
+        "bindings.ts missing organization_get command"
+    );
+    assert!(
+        contents.contains("templates_get_active"),
+        "bindings.ts missing templates_get_active command"
+    );
+    assert!(
+        contents.contains("templates_render_preview"),
+        "bindings.ts missing templates_render_preview command"
+    );
+    assert!(
+        contents.contains("acts_render_pdf"),
+        "bindings.ts missing acts_render_pdf command"
+    );
+    assert!(
+        contents.contains("devices_render_acceptance_pdf"),
+        "bindings.ts missing devices_render_acceptance_pdf command"
+    );
 }

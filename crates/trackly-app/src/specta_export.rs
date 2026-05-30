@@ -48,5 +48,11 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::acts::acts_delete,
         crate::tauri_cmds::acts::acts_counts,
         crate::tauri_cmds::acts::acts_peek_next_number,
+        // Phase 3 Plan 04 — PDF render + Organization + Templates
+        crate::tauri_cmds::acts::acts_render_pdf,
+        crate::tauri_cmds::acts::devices_render_acceptance_pdf,
+        crate::tauri_cmds::organization::organization_get,
+        crate::tauri_cmds::templates::templates_get_active,
+        crate::tauri_cmds::templates::templates_render_preview,
     ])
 }

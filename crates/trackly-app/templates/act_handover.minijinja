@@ -9,7 +9,7 @@
     act.location_name, act.items[], act.parent
     return.condition_default, return.location_default
 
-  All optional fields use `{% if … %}` or `{{ … | default("—") }}` (Pitfall 6).
+  All optional fields use `{% if … %}` or `{{ … | default("—", true) }}` (Pitfall 6).
 -#}
 {
   "title": "Акт приёма-передачи №{{ act.number }}{{ act.suffix | default('') }}",
@@ -38,7 +38,7 @@
         { "key": "Дата",          "value": {{ act.date_human | default(act.date) | tojson }} },
         { "key": "Сдал",          "value": {{ act.giver_name | tojson }} },
         { "key": "Принял",        "value": {{ act.receiver_name | tojson }} },
-        { "key": "Расположение",  "value": {{ (act.location_name | default("—")) | tojson }} }
+        { "key": "Расположение",  "value": {{ (act.location_name | default("—", true)) | tojson }} }
         {%- if act.deadline_human %},
         { "key": "Сроком до",     "value": {{ act.deadline_human | tojson }} }
         {%- elif act.deadline %},
@@ -66,9 +66,9 @@
         [
           {{ loop.index | string | tojson }},
           {{ item.name | tojson }},
-          {{ (item.inventory_no | default("—")) | tojson }},
-          {{ (item.serial_no | default("—")) | tojson }},
-          {{ (item.model | default("—")) | tojson }},
+          {{ (item.inventory_no | default("—", true)) | tojson }},
+          {{ (item.serial_no | default("—", true)) | tojson }},
+          {{ (item.model | default("—", true)) | tojson }},
           {{ (item.quantity | default(1) | string) | tojson }}
         ]{% if not loop.last %},{% endif %}
         {%- endfor %}

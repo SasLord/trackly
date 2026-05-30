@@ -10,6 +10,7 @@
   import ActDetail from './ActDetail.svelte';
   import ActFormModal from './ActFormModal.svelte';
   import ReturnModal from './ReturnModal.svelte';
+  import PdfPreviewModal from './PdfPreviewModal.svelte';
   import { acts } from './api';
   import type {
     ActDto,
@@ -32,6 +33,8 @@
   let createModalOpen = $state(false);
   let returnModalOpen = $state(false);
   let returnTargetAct = $state<ActDto | null>(null);
+  let pdfModalOpen = $state(false);
+  let pdfModalAct = $state<ActDto | null>(null);
   let searchQuery = $state('');
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
 
@@ -130,6 +133,11 @@
     returnModalOpen = true;
   }
 
+  function handlePrint(act: ActDto) {
+    pdfModalAct = act;
+    pdfModalOpen = true;
+  }
+
   function handleReturnSuccess(_returnDto: ActDto, _parentArchived: boolean) {
     returnModalOpen = false;
     returnTargetAct = null;
@@ -215,6 +223,7 @@
           onCreate={openCreate}
           onDelete={handleDelete}
           onReturn={handleReturn}
+          onPrint={handlePrint}
         />
       {/snippet}
     </ActsMasterDetail>
@@ -235,6 +244,18 @@
     returnTargetAct = null;
   }}
   onSuccess={handleReturnSuccess}
+/>
+
+<PdfPreviewModal
+  open={pdfModalOpen}
+  actId={pdfModalAct ? pdfModalAct.id : null}
+  title={pdfModalAct ? `Печать акта №${pdfModalAct.number}` : 'Печать акта'}
+  actNumberDisplay={pdfModalAct ? pdfModalAct.number : null}
+  actDateUtc={pdfModalAct ? pdfModalAct.created_at_utc : null}
+  onClose={() => {
+    pdfModalOpen = false;
+    pdfModalAct = null;
+  }}
 />
 
 <style lang="scss">

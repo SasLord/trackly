@@ -3,6 +3,8 @@
 //! Mirrors `tauri_cmds::acts` via POST endpoints. The router is BUILT in
 //! Plan 02 but NOT bound to a TCP listener — server-mode wiring is Phase 5.
 
+use axum::http::{header, StatusCode};
+use axum::response::IntoResponse;
 use axum::{extract::State, routing::post, Json, Router};
 
 use crate::context::AppCtx;
@@ -12,7 +14,8 @@ use crate::dto::act::{
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
-    build_acts_peek_next_number, build_acts_return,
+    build_acts_peek_next_number, build_acts_render_pdf, build_acts_return,
+    build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
@@ -41,6 +44,19 @@ pub struct DeletePayload {
 pub struct ReturnPayload {
     pub act_id: i64,
     pub payload: ActReturnDto,
+}
+
+#[derive(serde::Deserialize)]
+pub struct RenderPdfPayload {
+    pub act_id: i64,
+}
+
+#[derive(serde::Deserialize)]
+pub struct RenderAcceptancePdfPayload {
+    pub device_id: i64,
+    pub giver_name: String,
+    pub receiver_name: String,
+    pub date_utc: i64,
 }
 
 // Handlers ------------------------------------------------------------------
@@ -119,6 +135,40 @@ pub async fn handler_peek_next_number(
     ))
 }
 
+pub async fn handler_render_pdf(
+    State(ctx): State<AppCtx>,
+    Json(p): Json<RenderPdfPayload>,
+) -> Result<impl IntoResponse, AppErrorResponse> {
+    let bytes = build_acts_render_pdf(&ctx, p.act_id)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/pdf")],
+        bytes,
+    ))
+}
+
+pub async fn handler_render_acceptance_pdf(
+    State(ctx): State<AppCtx>,
+    Json(p): Json<RenderAcceptancePdfPayload>,
+) -> Result<impl IntoResponse, AppErrorResponse> {
+    let bytes = build_devices_render_acceptance_pdf(
+        &ctx,
+        p.device_id,
+        p.giver_name,
+        p.receiver_name,
+        p.date_utc,
+    )
+    .await
+    .map_err(AppErrorResponse::from)?;
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/pdf")],
+        bytes,
+    ))
+}
+
 pub fn router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/acts_list", post(handler_list))
@@ -130,5 +180,10 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/acts_peek_next_number",
             post(handler_peek_next_number),
+        )
+        .route("/api/v1/acts_render_pdf", post(handler_render_pdf))
+        .route(
+            "/api/v1/devices_render_acceptance_pdf",
+            post(handler_render_acceptance_pdf),
         )
 }

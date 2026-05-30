@@ -14,9 +14,10 @@
     onDelete: (_act: ActDto) => void;
     onEdit?: (_act: ActDto) => void;
     onReturn?: (_act: ActDto) => void;
+    onPrint?: (_act: ActDto) => void;
   }
 
-  const { act, loading, onCreate, onDelete, onEdit, onReturn }: Props = $props();
+  const { act, loading, onCreate, onDelete, onEdit, onReturn, onPrint }: Props = $props();
 
   const MONTHS_RU = [
     'января',
@@ -59,9 +60,13 @@
     <header class="detail-header">
       <h2 class="detail-title">№{act.number} от {headerDate}</h2>
       <div class="actions">
-        <span title="Доступно в plan 04">
-          <Button variant="secondary" size="sm" disabled>Печать</Button>
-        </span>
+        {#if onPrint}
+          <Button variant="secondary" size="sm" onclick={() => onPrint(act)}>Печать</Button>
+        {:else}
+          <span title="Печать недоступна">
+            <Button variant="secondary" size="sm" disabled>Печать</Button>
+          </span>
+        {/if}
         <Button variant="secondary" size="sm" onclick={() => onEdit?.(act)} disabled={!onEdit}>
           Редактировать
         </Button>

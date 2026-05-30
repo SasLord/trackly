@@ -49,10 +49,10 @@
       "type": "key_value_table",
       "rows": [
         { "key": "Наименование",  "value": {{ device.name | tojson }} },
-        { "key": "Инв.№",         "value": {{ (device.inventory_no | default("—")) | tojson }} },
-        { "key": "Серийный №",    "value": {{ (device.serial_no | default("—")) | tojson }} },
-        { "key": "Модель",        "value": {{ (device.model | default("—")) | tojson }} },
-        { "key": "Состояние",     "value": {{ (device.condition | default("—")) | tojson }} }
+        { "key": "Инв.№",         "value": {{ (device.inventory_no | default("—", true)) | tojson }} },
+        { "key": "Серийный №",    "value": {{ (device.serial_no | default("—", true)) | tojson }} },
+        { "key": "Модель",        "value": {{ (device.model | default("—", true)) | tojson }} },
+        { "key": "Состояние",     "value": {{ (device.condition | default("—", true)) | tojson }} }
       ]
     },
     {
