@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-last_updated: "2026-05-30T09:19:38.419Z"
+last_updated: "2026-05-30T15:57:35.215Z"
 last_activity: 2026-05-30
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 3
-  total_plans: 16
-  completed_plans: 16
-  percent: 38
+  total_plans: 17
+  completed_plans: 17
+  percent: 33
 ---
 
 # Project State
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03 — pdf
+**Current focus:** Phase 03.1 — acts-quantity-model-uat-gap-closure (inserted after Phase 03 UAT)
 
 ## Current Position
 
-Phase: 03 (pdf) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
+Phase: 03.1 (acts-quantity-model-uat-gap-closure) — PENDING
+Plan: 0 of 0
+Status: Inserted from /gsd-verify-work — ready for /gsd-discuss-phase 3.1
 Last activity: 2026-05-30
 
 Progress: [██████████] 100%
@@ -68,6 +68,10 @@ Progress: [██████████] 100%
 | Phase 03 P05 | 60 | 2 tasks | 21 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 03.1 inserted after Phase 03: Acts quantity model + UAT gap closure (G-1..G-13)
 
 ### Decisions
 

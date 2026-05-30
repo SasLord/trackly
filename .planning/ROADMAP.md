@@ -92,6 +92,16 @@ Trackly — портативное приложение для учёта тех
 
 **UI hint:** yes
 
+### Phase 03.1: Acts quantity model + UAT gap closure (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+
 ### Phase 4: Картриджи
 
 **Goal:** Поставить раздел «Картриджи» — модели с матрицей совместимости, экземпляры с авто-кодом `C-000001`, lifecycle с контекстными действиями, журнал перемещений и баннер низкого остатка.
