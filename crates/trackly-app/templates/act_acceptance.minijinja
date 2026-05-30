@@ -1,0 +1,69 @@
+{#- Default template for «Документ приёма товара на склад» (kind='act_acceptance').
+
+  Outputs JSON that deserializes to crates/trackly-app/src/pdf/docspec.rs::DocSpec.
+
+  Context (smaller than handover — see act_service::render_acceptance_pdf):
+    org.{name,inn,kpp,address,logo_path}
+    device.{name,inventory_no,serial_no,model,condition}
+    document.{giver_name, receiver_name, date_human}
+-#}
+{
+  "title": "Документ приёма устройства на склад",
+  "header": {
+    "org_name":    {{ org.name | tojson }},
+    "org_inn":     {{ org.inn | tojson }},
+    "org_kpp":     {{ org.kpp | tojson }},
+    "org_address": {{ org.address | tojson }},
+    "logo_path":   {{ org.logo_path | default(none) | tojson }},
+    "act_label":   "Документ приёма устройства на склад",
+    "date_label":  {{ document.date_human | tojson }}
+  },
+  "sections": [
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Документ приёма устройства на склад"
+    },
+    {
+      "type": "spacer",
+      "height_pt": 8.0
+    },
+    {
+      "type": "key_value_table",
+      "rows": [
+        { "key": "Дата",          "value": {{ document.date_human | tojson }} },
+        { "key": "Кто передал",   "value": {{ document.giver_name | tojson }} },
+        { "key": "Кто принял",    "value": {{ document.receiver_name | tojson }} }
+      ]
+    },
+    {
+      "type": "spacer",
+      "height_pt": 12.0
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "Устройство"
+    },
+    {
+      "type": "key_value_table",
+      "rows": [
+        { "key": "Наименование",  "value": {{ device.name | tojson }} },
+        { "key": "Инв.№",         "value": {{ (device.inventory_no | default("—")) | tojson }} },
+        { "key": "Серийный №",    "value": {{ (device.serial_no | default("—")) | tojson }} },
+        { "key": "Модель",        "value": {{ (device.model | default("—")) | tojson }} },
+        { "key": "Состояние",     "value": {{ (device.condition | default("—")) | tojson }} }
+      ]
+    },
+    {
+      "type": "spacer",
+      "height_pt": 24.0
+    },
+    {
+      "type": "signature",
+      "left_label":  {{ ("Кто передал: " ~ document.giver_name) | tojson }},
+      "right_label": {{ ("Кто принял: " ~ document.receiver_name) | tojson }},
+      "spacer_pt": 30.0
+    }
+  ]
+}

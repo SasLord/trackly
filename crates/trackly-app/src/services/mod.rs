@@ -7,6 +7,10 @@
 
 pub mod act_service;
 pub mod device_service;
+pub mod organization_service;
+pub mod template_service;
 
 pub use act_service::ActService;
 pub use device_service::DeviceService;
+pub use organization_service::{OrgData, OrganizationService};
+pub use template_service::{TemplateService, DEFAULT_TEMPLATES};

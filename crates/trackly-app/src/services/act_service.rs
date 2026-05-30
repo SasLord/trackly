@@ -31,6 +31,9 @@ use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
     ActsCountsDto, Pagination,
 };
+use crate::pdf::PdfRenderer;
+use crate::services::organization_service::OrganizationService;
+use crate::services::template_service::TemplateService;
 
 /// Application service for act lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -41,6 +44,13 @@ pub struct ActService {
     pub(crate) acts_repo: Arc<SqliteActRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
     pub(crate) devices_repo: Arc<SqliteDeviceRepository>,
+    /// PDF pipeline deps — Optional чтобы Phase 2 тесты (helper-based fixtures
+    /// `ActService::new`) могли работать без переписывания. AppCtx::build
+    /// вызывает `with_pdf_pipeline(...)` — production runtime всегда имеет
+    /// заполненные поля. Если render_pdf вызвать с None — вернёт `Internal`.
+    pub(crate) templates: Option<Arc<TemplateService>>,
+    pub(crate) organization: Option<Arc<OrganizationService>>,
+    pub(crate) pdf: Option<Arc<PdfRenderer>>,
 }
 
 impl ActService {
@@ -56,7 +66,25 @@ impl ActService {
             acts_repo: Arc::new(SqliteActRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
             devices_repo: Arc::new(SqliteDeviceRepository),
+            templates: None,
+            organization: None,
+            pdf: None,
         }
+    }
+
+    /// Builder: подключить PDF pipeline deps (templates + organization + pdf).
+    /// Используется в `AppCtx::build` (production runtime) и в plan-04
+    /// integration tests, проверяющих render_pdf end-to-end.
+    pub fn with_pdf_pipeline(
+        mut self,
+        templates: Arc<TemplateService>,
+        organization: Arc<OrganizationService>,
+        pdf: Arc<PdfRenderer>,
+    ) -> Self {
+        self.templates = Some(templates);
+        self.organization = Some(organization);
+        self.pdf = Some(pdf);
+        self
     }
 
     // -----------------------------------------------------------------------
@@ -782,6 +810,277 @@ impl ActService {
                 Ok(())
             })
             .await
+    }
+
+    // -----------------------------------------------------------------------
+    // PDF render path (ACT-11, DEV-15 — Plan 04)
+    // -----------------------------------------------------------------------
+
+    /// Render handover act → PDF bytes (D-PDF-Render-Path-01).
+    ///
+    /// 3-stage pipeline:
+    ///   1. Load full ActDto (with items + optional parent block).
+    ///   2. Load OrgData + active `act_handover` template body.
+    ///   3. Build MiniJinja context per D-PDF-Templates-Schema-01.
+    ///   4. Render template → JSON string (safe-mode + 5s timeout).
+    ///   5. Deserialize JSON → DocSpec (Validation если broken).
+    ///   6. krilla render → Vec<u8>.
+    pub async fn render_pdf(&self, act_id: i64) -> Result<Vec<u8>, AppError> {
+        let pipeline = self.pdf_pipeline()?;
+        let act = self.get(act_id).await?;
+        let org = pipeline.organization.read().await?;
+        let safe_logo = pipeline.organization.safe_logo_canonical(&org).await?;
+        let template_src = pipeline.templates.get_active("act_handover").await?;
+
+        // Optional parent block для return-актов (Plan 04 рендерит handover,
+        // но для cascade — оставляем path).
+        let parent_block: Option<serde_json::Value> = if let Some(parent_id) = act.parent_act_id {
+            let parent = self.get(parent_id).await?;
+            Some(serde_json::json!({
+                "number": parent.number,
+                "date_human": format_ru_date(parent.created_at_utc),
+                "date": format_iso_date(parent.created_at_utc),
+            }))
+        } else {
+            None
+        };
+
+        // Compute suffix (часть после числа) для печатной формы — берём из
+        // ActDto.number (уже отформатирован через format_act_number).
+        let suffix = compute_suffix_from_display(&act.number, act.number_raw);
+
+        let items_json: Vec<serde_json::Value> = act
+            .items
+            .iter()
+            .map(|it| {
+                serde_json::json!({
+                    "name": it.device_name,
+                    "inventory_no": it.inventory_no,
+                    "serial_no": it.serial_no,
+                    "model": it.model,
+                    "specs": serde_json::Value::Null,
+                    "kit": it.complectation_at_time,
+                    "condition": it.condition_at_time,
+                    "quantity": it.quantity,
+                })
+            })
+            .collect();
+
+        let ctx = serde_json::json!({
+            "org": {
+                "name": org.name,
+                "inn": org.inn,
+                "kpp": org.kpp,
+                "address": org.address,
+                "logo_path": safe_logo.map(|p| p.display().to_string()),
+            },
+            "act": {
+                "number": act.number_raw,
+                "suffix": suffix,
+                "date": format_iso_date(act.created_at_utc),
+                "date_human": format_ru_date(act.created_at_utc),
+                "giver_name": act.giver_name,
+                "receiver_name": act.receiver_name,
+                "deadline": act.deadline_utc.map(format_iso_date),
+                "deadline_human": act.deadline_utc.map(format_ru_date),
+                "location_name": act.location,
+                "items": items_json,
+                "parent": parent_block,
+            },
+            "return": {
+                "condition_default": serde_json::Value::Null,
+                "location_default": serde_json::Value::Null,
+            },
+        });
+
+        let rendered = crate::pdf::minijinja_env::render_with_timeout(
+            &pipeline.pdf.minijinja_env,
+            "act_handover",
+            &template_src,
+            ctx,
+        )
+        .await?;
+
+        let spec: crate::pdf::docspec::DocSpec =
+            serde_json::from_str(&rendered).map_err(|e| AppError::Validation {
+                field: "template".to_string(),
+                message: format!("Шаблон не выдал валидный DocSpec JSON: {e}"),
+            })?;
+
+        pipeline.pdf.render_docspec(&spec)
+    }
+
+    /// Render acceptance document (документ приёма устройства на склад) → PDF bytes.
+    ///
+    /// Использует kind=`act_acceptance` шаблон. Контекст беднее handover'а —
+    /// одна позиция (device), плюс шапка организации и подписи.
+    pub async fn render_acceptance_pdf(
+        &self,
+        device_id: i64,
+        giver_name: String,
+        receiver_name: String,
+        date_utc: i64,
+    ) -> Result<Vec<u8>, AppError> {
+        let pipeline = self.pdf_pipeline()?;
+        let org = pipeline.organization.read().await?;
+        let safe_logo = pipeline.organization.safe_logo_canonical(&org).await?;
+        let template_src = pipeline.templates.get_active("act_acceptance").await?;
+
+        // Загрузить device.
+        let readers = self.readers.clone();
+        let device_json: serde_json::Value =
+            tokio::task::spawn_blocking(move || -> Result<serde_json::Value, AppError> {
+                let conn = readers.acquire();
+                let row = conn
+                    .query_row(
+                        "SELECT d.name, d.inventory_number, d.serial_number, d.model, d.state \
+                         FROM devices d WHERE d.id = ?1 AND d.deleted_at_utc IS NULL",
+                        params![device_id],
+                        |r| {
+                            Ok((
+                                r.get::<_, String>(0)?,
+                                r.get::<_, Option<String>>(1)?,
+                                r.get::<_, Option<String>>(2)?,
+                                r.get::<_, Option<String>>(3)?,
+                                r.get::<_, Option<String>>(4)?,
+                            ))
+                        },
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                            entity: "device",
+                            id: device_id,
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+                Ok(serde_json::json!({
+                    "name": row.0,
+                    "inventory_no": row.1,
+                    "serial_no": row.2,
+                    "model": row.3,
+                    "condition": row.4,
+                }))
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking load device for acceptance: {e}"),
+            })??;
+
+        let ctx = serde_json::json!({
+            "org": {
+                "name": org.name,
+                "inn": org.inn,
+                "kpp": org.kpp,
+                "address": org.address,
+                "logo_path": safe_logo.map(|p| p.display().to_string()),
+            },
+            "device": device_json,
+            "document": {
+                "giver_name": giver_name,
+                "receiver_name": receiver_name,
+                "date_human": format_ru_date(date_utc),
+                "date": format_iso_date(date_utc),
+            },
+        });
+
+        let rendered = crate::pdf::minijinja_env::render_with_timeout(
+            &pipeline.pdf.minijinja_env,
+            "act_acceptance",
+            &template_src,
+            ctx,
+        )
+        .await?;
+
+        let spec: crate::pdf::docspec::DocSpec =
+            serde_json::from_str(&rendered).map_err(|e| AppError::Validation {
+                field: "template".to_string(),
+                message: format!("Шаблон не выдал валидный DocSpec JSON: {e}"),
+            })?;
+
+        pipeline.pdf.render_docspec(&spec)
+    }
+
+    /// Возвращает PDF-pipeline deps как refs или `Internal` если не подключены.
+    fn pdf_pipeline(&self) -> Result<PdfPipelineRefs<'_>, AppError> {
+        match (&self.templates, &self.organization, &self.pdf) {
+            (Some(t), Some(o), Some(p)) => Ok(PdfPipelineRefs {
+                templates: t,
+                organization: o,
+                pdf: p,
+            }),
+            _ => Err(AppError::Internal {
+                source_chain: "ActService::render_pdf called without with_pdf_pipeline".into(),
+            }),
+        }
+    }
+}
+
+struct PdfPipelineRefs<'a> {
+    templates: &'a Arc<TemplateService>,
+    organization: &'a Arc<OrganizationService>,
+    pdf: &'a Arc<PdfRenderer>,
+}
+
+// ---------------------------------------------------------------------------
+// PDF helpers — date formatting + suffix extraction
+// ---------------------------------------------------------------------------
+
+const MONTHS_RU: [&str; 12] = [
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+];
+
+/// «28 мая 2026 г.» — RU-only formatter поверх `time` crate.
+pub fn format_ru_date(unix_seconds: i64) -> String {
+    let odt = match time::OffsetDateTime::from_unix_timestamp(unix_seconds) {
+        Ok(odt) => odt,
+        Err(_) => return "—".to_string(),
+    };
+    let day = odt.day();
+    let month_idx = (odt.month() as u8 as usize).saturating_sub(1);
+    let month = MONTHS_RU.get(month_idx).copied().unwrap_or("—");
+    let year = odt.year();
+    format!("{day} {month} {year} г.")
+}
+
+/// «2026-05-28» — ISO date.
+pub fn format_iso_date(unix_seconds: i64) -> String {
+    let odt = match time::OffsetDateTime::from_unix_timestamp(unix_seconds) {
+        Ok(odt) => odt,
+        Err(_) => return "—".to_string(),
+    };
+    format!(
+        "{:04}-{:02}-{:02}",
+        odt.year(),
+        odt.month() as u8,
+        odt.day()
+    )
+}
+
+/// Извлекает суффикс (например, «в», «в1», «в2») из отформатированного
+/// `ActDto.number` относительно raw counter value. Для handover → "".
+fn compute_suffix_from_display(display: &str, number_raw: i64) -> String {
+    let raw_str = number_raw.to_string();
+    if let Some(rest) = display.strip_prefix(&raw_str) {
+        rest.to_string()
+    } else {
+        // Дисплей не начинается с raw (return: «42в» где raw мог быть 999).
+        // В этом случае весь display — это {parent_number}{suffix}; ищем 'в'.
+        if let Some(idx) = display.find('в') {
+            display[idx..].to_string()
+        } else {
+            String::new()
+        }
     }
 }
 

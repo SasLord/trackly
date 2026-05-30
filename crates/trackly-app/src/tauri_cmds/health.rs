@@ -63,15 +63,26 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
-        let acts = Arc::new(crate::services::ActService::new(
+        let paths_arc = Arc::new(paths);
+        let organization = Arc::new(crate::services::OrganizationService::new(paths_arc.clone()));
+        let templates = Arc::new(crate::services::TemplateService::new(
             writer.clone(),
             readers.clone(),
             clock.clone(),
         ));
+        let pdf = Arc::new(crate::pdf::PdfRenderer::new());
+        templates
+            .seed_defaults_on_startup()
+            .await
+            .expect("seed templates");
+        let acts = Arc::new(
+            crate::services::ActService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone()),
+        );
         let ctx = AppCtx {
             writer,
             readers,
-            paths: Arc::new(paths),
+            paths: paths_arc,
             config: Arc::new(config),
             clock,
             shutdown: CancellationToken::new(),
@@ -79,6 +90,9 @@ mod tests {
             schema_version: 14,
             devices,
             acts,
+            organization,
+            templates,
+            pdf,
         };
         (ctx, dir)
     }

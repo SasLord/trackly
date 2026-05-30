@@ -37,15 +37,24 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
-    let acts = Arc::new(trackly_app::services::ActService::new(
+    let paths_arc = Arc::new(paths);
+    let organization = Arc::new(trackly_app::services::OrganizationService::new(
+        paths_arc.clone(),
+    ));
+    let templates = Arc::new(trackly_app::services::TemplateService::new(
         writer.clone(),
         readers.clone(),
         clock.clone(),
     ));
+    let pdf = Arc::new(trackly_app::pdf::PdfRenderer::new());
+    let acts = Arc::new(
+        trackly_app::services::ActService::new(writer.clone(), readers.clone(), clock.clone())
+            .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone()),
+    );
     let ctx = AppCtx {
         writer,
         readers,
-        paths: Arc::new(paths),
+        paths: paths_arc,
         config: Arc::new(config),
         clock,
         shutdown: CancellationToken::new(),
@@ -53,6 +62,9 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         schema_version: 14,
         devices,
         acts,
+        organization,
+        templates,
+        pdf,
     };
     (ctx, dir)
 }

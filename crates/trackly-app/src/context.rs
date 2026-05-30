@@ -30,7 +30,8 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::WriterHandle};
 use trackly_infra::{AppConfig, Paths};
 
-use crate::services::{ActService, DeviceService};
+use crate::pdf::PdfRenderer;
+use crate::services::{ActService, DeviceService, OrganizationService, TemplateService};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
@@ -61,6 +62,15 @@ pub struct AppCtx {
     /// Added in Phase 3 Plan 02 (D-AppCtx-Extension-03). Return lifecycle +
     /// undo land in plan 03; organization/templates/pdf services land in plan 04.
     pub acts: Arc<ActService>,
+    /// Organization service — read org.json + logo path-traversal mitigation.
+    /// Added in Phase 3 Plan 04.
+    pub organization: Arc<OrganizationService>,
+    /// Template service — seed defaults + get_active body for MiniJinja render.
+    /// Added in Phase 3 Plan 04.
+    pub templates: Arc<TemplateService>,
+    /// PDF renderer — krilla 0.7 wrapper + embedded fonts + MiniJinja env.
+    /// Added in Phase 3 Plan 04.
+    pub pdf: Arc<PdfRenderer>,
 }
 
 impl AppCtx {
@@ -142,16 +152,33 @@ impl AppCtx {
             readers.clone(),
             clock.clone(),
         ));
-        let acts = Arc::new(ActService::new(
+
+        // Step 12: Phase 3 Plan 04 PDF pipeline services.
+        let paths_arc = Arc::new(paths);
+        let organization = Arc::new(OrganizationService::new(paths_arc.clone()));
+        let templates = Arc::new(TemplateService::new(
             writer.clone(),
             readers.clone(),
             clock.clone(),
         ));
+        let pdf = Arc::new(PdfRenderer::new());
+
+        // Seed default templates on first run (idempotent).
+        templates.seed_defaults_on_startup().await?;
+
+        // ActService с подключённым PDF pipeline.
+        let acts = Arc::new(
+            ActService::new(writer.clone(), readers.clone(), clock.clone()).with_pdf_pipeline(
+                templates.clone(),
+                organization.clone(),
+                pdf.clone(),
+            ),
+        );
 
         Ok(Self {
             writer,
             readers,
-            paths: Arc::new(paths),
+            paths: paths_arc,
             config: Arc::new(config),
             clock,
             shutdown: CancellationToken::new(),
@@ -159,6 +186,9 @@ impl AppCtx {
             schema_version,
             devices,
             acts,
+            organization,
+            templates,
+            pdf,
         })
     }
 }
