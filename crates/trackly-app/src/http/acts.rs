@@ -14,12 +14,19 @@ use crate::dto::act::{
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
-    build_acts_peek_next_number, build_acts_render_pdf, build_acts_return,
+    build_acts_peek_next_number, build_acts_render_pdf, build_acts_return, build_acts_search,
     build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
 pub struct ListPayload {
+    pub filter: ActFilter,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SearchPayload {
+    pub query: String,
     pub filter: ActFilter,
     pub pagination: Pagination,
 }
@@ -67,6 +74,17 @@ pub async fn handler_list(
 ) -> Result<Json<ActListResponse>, AppErrorResponse> {
     Ok(Json(
         build_acts_list(&ctx, p.filter, p.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_search(
+    State(ctx): State<AppCtx>,
+    Json(p): Json<SearchPayload>,
+) -> Result<Json<ActListResponse>, AppErrorResponse> {
+    Ok(Json(
+        build_acts_search(&ctx, p.query, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -172,6 +190,7 @@ pub async fn handler_render_acceptance_pdf(
 pub fn router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/acts_list", post(handler_list))
+        .route("/api/v1/acts_search", post(handler_search))
         .route("/api/v1/acts_get", post(handler_get))
         .route("/api/v1/acts_create", post(handler_create))
         .route("/api/v1/acts_return", post(handler_return))

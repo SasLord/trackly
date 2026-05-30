@@ -200,6 +200,122 @@ impl SqliteActRepository {
         Ok(out)
     }
 
+    /// FTS5 + LIKE search over acts (ACT-04).
+    ///
+    /// Реализация per Phase 3 RESEARCH §«FTS search across acts joining
+    /// act_items + devices_fts»: UNION двух CTE — `act_text_hits` (LIKE по
+    /// числовому номеру, ФИО Сдал/Принял) и `device_text_hits` (FTS5 MATCH
+    /// через `devices_fts` JOIN `act_items.device_id`). Без отдельного
+    /// `acts_fts` (отложено до Phase 7).
+    ///
+    /// Параметры:
+    ///   - `plain_query`: уже подготовленный LIKE pattern (например, `%Иван%`)
+    ///     с escape'нутыми `%` и `_`.
+    ///   - `fts_query`: уже подготовленный FTS5 MATCH expression
+    ///     (`build_fts_query` из service layer). Если пустой — device-hit
+    ///     ветка пропускается (LIKE-only fallback).
+    ///   - `filter`: act_type/archived/include_deleted.
+    ///   - `page`: limit/offset.
+    pub fn search_acts(
+        &self,
+        conn: &Connection,
+        plain_query: &str,
+        fts_query: &str,
+        filter: &ActFilter,
+        page: &Pagination,
+    ) -> Result<(Vec<ActRow>, u64), AppError> {
+        let limit = page.limit.min(200) as i64;
+        let offset = page.offset as i64;
+        let include_deleted = filter.include_deleted;
+        let act_type_sql: Option<&'static str> = filter.act_type.map(|t| t.to_sql());
+        let archived_i64: Option<i64> = filter.archived.map(|b| if b { 1 } else { 0 });
+        let fts_present = !fts_query.trim().is_empty();
+
+        // Build hits CTE. When `fts_query` пустой — device_text_hits даёт
+        // пустое множество (SELECT id FROM acts WHERE 0).
+        let device_hits_cte = if fts_present {
+            "SELECT DISTINCT ai.act_id AS id \
+               FROM act_items ai \
+               JOIN devices_fts f ON f.rowid = ai.device_id \
+              WHERE devices_fts MATCH ?2"
+        } else {
+            "SELECT a.id FROM acts a WHERE 0"
+        };
+
+        let where_filters = "(?3 = 1 OR a.deleted_at_utc IS NULL) AND \
+                             (?4 IS NULL OR a.act_type = ?4) AND \
+                             (?5 IS NULL OR a.archived = ?5)";
+
+        // COUNT
+        let count_sql = format!(
+            "WITH act_text_hits AS ( \
+                 SELECT a.id FROM acts a \
+                  WHERE (CAST(a.number AS TEXT) LIKE ?1 \
+                         OR a.giver_name LIKE ?1 \
+                         OR a.receiver_name LIKE ?1) \
+             ), \
+             device_text_hits AS ( {device_hits_cte} ) \
+             SELECT COUNT(*) FROM acts a \
+              WHERE a.id IN (SELECT id FROM act_text_hits \
+                              UNION SELECT id FROM device_text_hits) \
+                AND {where_filters}"
+        );
+
+        let total: i64 = conn
+            .query_row(
+                &count_sql,
+                params![
+                    plain_query,
+                    fts_query,
+                    include_deleted as i64,
+                    act_type_sql,
+                    archived_i64
+                ],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+
+        // SELECT — переиспользуем SELECT_ACTS, добавляя CTE префикс и
+        // фильтр по id IN union.
+        let select_sql = format!(
+            "WITH act_text_hits AS ( \
+                 SELECT a.id FROM acts a \
+                  WHERE (CAST(a.number AS TEXT) LIKE ?1 \
+                         OR a.giver_name LIKE ?1 \
+                         OR a.receiver_name LIKE ?1) \
+             ), \
+             device_text_hits AS ( {device_hits_cte} ) \
+             {SELECT_ACTS} \
+             WHERE a.id IN (SELECT id FROM act_text_hits \
+                             UNION SELECT id FROM device_text_hits) \
+               AND {where_filters} \
+             ORDER BY a.created_at_utc DESC, a.id DESC \
+             LIMIT ?6 OFFSET ?7"
+        );
+
+        let mut stmt = conn.prepare(&select_sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(
+                params![
+                    plain_query,
+                    fts_query,
+                    include_deleted as i64,
+                    act_type_sql,
+                    archived_i64,
+                    limit,
+                    offset
+                ],
+                from_row,
+            )
+            .map_err(map_rusqlite)?;
+
+        let mut acts = Vec::new();
+        for row in rows {
+            acts.push(row.map_err(map_rusqlite)?);
+        }
+        Ok((acts, total as u64))
+    }
+
     /// Soft-delete an act with optimistic-lock check. Hard-deletes the
     /// junction `act_items` rows in the same transaction (CASCADE does not
     /// fire on soft-delete; D-Soft-vs-Hard-Acts-01).

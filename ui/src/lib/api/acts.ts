@@ -53,14 +53,7 @@ export const acts = {
       dateUtc,
     }),
 
-  // -- Stubs (will be wired by later plans) -----------------------------------
-
-  /** Plan 03/post — FTS search across acts. */
-  search: (
-    _query: string,
-    _filter: ActFilter,
-    _pagination: Pagination,
-  ): Promise<ActListResponse> => {
-    throw new Error('acts.search доступен начиная с post-plan-03 (поиск по актам).');
-  },
+  /** Plan 03-05 — FTS5 + LIKE search across acts (ACT-04). */
+  search: (query: string, filter: ActFilter, pagination: Pagination) =>
+    apiCall<ActListResponse>('acts_search', { query, filter, pagination }),
 };

@@ -221,6 +221,10 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         "bindings.ts missing acts_list command"
     );
     assert!(
+        contents.contains("acts_search"),
+        "bindings.ts missing acts_search command"
+    );
+    assert!(
         contents.contains("acts_get"),
         "bindings.ts missing acts_get command"
     );

@@ -611,6 +611,69 @@ impl ActService {
         })?
     }
 
+    /// FTS5 + LIKE search over acts (ACT-04).
+    ///
+    /// Если `query` (после trim) пустой — fallback на `self.list(filter, page)`.
+    /// Иначе строит plain LIKE pattern и FTS5 MATCH expression и делегирует
+    /// в `SqliteActRepository::search_acts`.
+    pub async fn search(
+        &self,
+        query: String,
+        filter: ActFilter,
+        pagination: Pagination,
+    ) -> Result<ActListResponse, AppError> {
+        if pagination.limit > 200 {
+            return Err(AppError::Validation {
+                field: "pagination.limit".into(),
+                message: "Максимум 200 элементов на страницу".into(),
+            });
+        }
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return self.list(filter, pagination).await;
+        }
+
+        // LIKE escape (T-03-05-01): любые `%` и `_` в пользовательском вводе
+        // должны быть literally матчены, не как wildcard. SQLite по умолчанию
+        // не имеет `ESCAPE`-клаузы в нашем WHERE — используем `\`-escape +
+        // `ESCAPE '\\'`-добавление в SQL. Простейший путь: убрать `%`/`_` из
+        // запроса (заменить на пробел) — для пользовательского поиска по ФИО
+        // это безвредно.
+        let cleaned: String = trimmed
+            .chars()
+            .map(|c| if c == '%' || c == '_' { ' ' } else { c })
+            .collect();
+        let plain_query = format!("%{}%", cleaned.trim());
+        let fts_query = build_fts_query(&cleaned);
+
+        let domain_filter = filter.into_domain()?;
+        let domain_page = trackly_core::domain::acts::Pagination {
+            offset: pagination.offset,
+            limit: pagination.limit,
+        };
+
+        let readers = self.readers.clone();
+        let repo = self.acts_repo.clone();
+        let (items, total) =
+            tokio::task::spawn_blocking(move || -> Result<(Vec<ActDto>, u64), AppError> {
+                let conn = readers.acquire();
+                let (rows, total) =
+                    repo.search_acts(&conn, &plain_query, &fts_query, &domain_filter, &domain_page)?;
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let items = load_items_for_act(&conn, row.id)?;
+                    out.push(act_dto_from_row(row, items, Vec::new()));
+                }
+                Ok((out, total))
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??;
+
+        Ok(ActListResponse { items, total })
+    }
+
     pub async fn list(
         &self,
         filter: ActFilter,
@@ -1198,3 +1261,29 @@ fn load_items_for_act(
 // `ActItemRow` re-export (unused yet — plan 03 will consume).
 #[allow(dead_code)]
 fn _act_item_row_ref(_r: &ActItemRow) {}
+
+// ---------------------------------------------------------------------------
+// FTS5 query builder (mirrors devices_sqlite::build_fts_query — Phase 2)
+// ---------------------------------------------------------------------------
+
+/// Sanitize user input for FTS5 MATCH queries (T-03-05-01).
+///
+/// 1-к-1 c `devices_sqlite::build_fts_query` (приватный в trackly-infra crate,
+/// поэтому дублируем здесь — короткая функция, кросс-crate publish не оправдан
+/// в Phase 3).
+///
+/// - Splits on whitespace.
+/// - Strips null bytes.
+/// - Escapes internal `"` as `""`.
+/// - Wraps each token in double-quotes and appends `*` for prefix search.
+///
+/// Empty input → empty result; caller-side handles fallback.
+pub(crate) fn build_fts_query(user_input: &str) -> String {
+    user_input
+        .split_whitespace()
+        .map(|t| t.replace('\0', "").replace('"', "\"\""))
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{t}\"*"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}

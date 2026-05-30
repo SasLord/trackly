@@ -42,6 +42,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::fs_helpers::write_file_bytes,
         // Phase 3 Plan 02 — Acts CRUD
         crate::tauri_cmds::acts::acts_list,
+        crate::tauri_cmds::acts::acts_search,
         crate::tauri_cmds::acts::acts_get,
         crate::tauri_cmds::acts::acts_create,
         crate::tauri_cmds::acts::acts_return,

@@ -25,6 +25,15 @@ pub async fn build_acts_list(
     ctx.acts.list(filter, pagination).await
 }
 
+pub async fn build_acts_search(
+    ctx: &AppCtx,
+    query: String,
+    filter: ActFilter,
+    pagination: Pagination,
+) -> Result<ActListResponse, AppError> {
+    ctx.acts.search(query, filter, pagination).await
+}
+
 pub async fn build_acts_get(ctx: &AppCtx, id: i64) -> Result<ActDto, AppError> {
     ctx.acts.get(id).await
 }
@@ -81,6 +90,17 @@ pub async fn acts_list(
     pagination: Pagination,
 ) -> Result<ActListResponse, AppError> {
     build_acts_list(state.inner(), filter, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_search(
+    state: tauri::State<'_, AppCtx>,
+    query: String,
+    filter: ActFilter,
+    pagination: Pagination,
+) -> Result<ActListResponse, AppError> {
+    build_acts_search(state.inner(), query, filter, pagination).await
 }
 
 #[tauri::command]

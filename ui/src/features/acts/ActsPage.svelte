@@ -48,7 +48,10 @@
   async function refresh() {
     loading = true;
     try {
-      const resp: ActListResponse = await acts.list(baseFilter, pagination);
+      const trimmed = searchQuery.trim();
+      const resp: ActListResponse = trimmed
+        ? await acts.search(trimmed, baseFilter, pagination)
+        : await acts.list(baseFilter, pagination);
       items = resp.items;
       total = resp.total;
     } catch (e: unknown) {
