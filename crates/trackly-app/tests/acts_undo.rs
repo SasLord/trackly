@@ -211,6 +211,7 @@ async fn delete_handover_with_partial_return_cascades_undo() {
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
+                device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -275,6 +276,7 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
                         .map(|it| ActReturnItemDto {
                             act_item_id: it.id,
                             device_id: it.device_id,
+                device_ids: vec![it.device_id],
                             quantity: 1,
                             condition_override: None,
                             location_id_override: None,

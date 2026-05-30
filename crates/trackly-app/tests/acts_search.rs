@@ -197,6 +197,7 @@ async fn search_filters_by_tab() {
             items: vec![trackly_app::dto::act::ActReturnItemDto {
                 act_item_id,
                 device_id: device_ids[1],
+                device_ids: vec![device_ids[1]],
                 quantity: 1,
                 condition_override: None,
                 location_id_override: None,

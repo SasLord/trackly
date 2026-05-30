@@ -1340,6 +1340,11 @@ fn load_items_for_act(
                 inventory_no: r.get(6)?,
                 serial_no: r.get(7)?,
                 model: r.get(8)?,
+                // G-10/G-12 (Phase 03.1): outstanding_device_ids заполняется
+                // в caller'е (ActService::get / list / search) — этот helper
+                // только подгружает joined-device fields. Initialized to empty;
+                // populate_outstanding_device_ids() fills handover-acts.
+                outstanding_device_ids: Vec::new(),
             })
         })
         .map_err(map_rusqlite)?;

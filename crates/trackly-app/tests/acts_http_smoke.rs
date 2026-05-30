@@ -131,6 +131,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
             items: vec![ActReturnItemDto {
                 act_item_id: handover.items[0].id,
                 device_id,
+                device_ids: vec![device_id],
                 quantity: 1,
                 condition_override: None,
                 location_id_override: None,

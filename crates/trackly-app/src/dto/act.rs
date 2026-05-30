@@ -81,6 +81,13 @@ pub struct ActDto {
 }
 
 /// Single item line on an act (resolved with the joined device fields).
+///
+/// `outstanding_device_ids` (Phase 03.1, G-10/G-12): per handover act_item,
+/// список device_id ещё НЕ возвращённых (canonical source для ReturnModal UI).
+/// Для return-актов — всегда пустой vec (returns не возвращают сами себя).
+/// Для handover-актов с qty=1 (single device): содержит `[device_id]` если не
+/// возвращено, иначе `[]`. Для клонированных handover (qty>1): один device_id
+/// в outstanding на каждый ещё-не-возвращённый clone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct ActItemDto {
     #[specta(type = i32)]
@@ -95,6 +102,10 @@ pub struct ActItemDto {
     pub model: Option<String>,
     pub condition_at_time: Option<String>,
     pub complectation_at_time: Option<String>,
+    /// G-10 / G-12 (Phase 03.1): device_id'ы, ещё не возвращённые.
+    /// Заполняется только для handover-актов; для return-актов всегда `[]`.
+    #[specta(type = Vec<i32>)]
+    pub outstanding_device_ids: Vec<i64>,
 }
 
 /// Payload sent by the UI when оформляет возврат по handover-акту.
@@ -118,12 +129,29 @@ pub struct ActReturnDto {
 }
 
 /// Один пункт возврата в `ActReturnDto`.
+///
+/// Phase 03.1 (G-12 model shift): canonical новый contract — `device_ids: Vec<i64>`
+/// (cardinality check vs `outstanding_device_ids`). Старые поля `device_id` +
+/// `quantity` сохраняются для backward-compat с уже существующими тестами и
+/// со старыми UI-версиями; backend применяет следующую логику:
+///   - Если `device_ids` непустой → используется он (canonical).
+///   - Иначе fallback: `device_ids := vec![device_id]` (legacy qty=1 path).
+///   - `quantity` поле игнорируется backend-ом полностью в G-12 модели
+///     (canonical count = device_ids.len()).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActReturnItemDto {
     #[specta(type = i32)]
     pub act_item_id: i64,
+    /// Legacy single-device возврат — `device_ids` непустой имеет приоритет.
     #[specta(type = i32)]
     pub device_id: i64,
+    /// Phase 03.1 canonical: список device_id для возврата по этой позиции.
+    /// Используется UI-планами 03.1-03 (ReturnModal с чекбоксами per device).
+    #[serde(default)]
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
+    /// Deprecated в Phase 03.1 G-12 model: остаётся в DTO для backward-compat,
+    /// backend игнорирует (canonical count = `device_ids.len()` или 1 для legacy).
     #[specta(type = i32)]
     pub quantity: i64,
     pub condition_override: Option<String>,

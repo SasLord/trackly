@@ -143,6 +143,7 @@ async fn recompute_parent_archived_count_based() {
                 ActReturnItemDto {
                     act_item_id: it0.id,
                     device_id: it0.device_id,
+                device_ids: vec![it0.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -151,6 +152,7 @@ async fn recompute_parent_archived_count_based() {
                 ActReturnItemDto {
                     act_item_id: it1.id,
                     device_id: it1.device_id,
+                device_ids: vec![it1.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -178,6 +180,7 @@ async fn recompute_parent_archived_count_based() {
             items: vec![ActReturnItemDto {
                 act_item_id: it2.id,
                 device_id: it2.device_id,
+                device_ids: vec![it2.device_id],
                 quantity: 1,
                 condition_override: None,
                 location_id_override: None,
