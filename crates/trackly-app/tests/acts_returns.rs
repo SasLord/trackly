@@ -1,4 +1,4 @@
-//! Acts returns integration tests — Plan 03 vertical slice.
+//! Acts returns integration tests — Plan 03 vertical slice + Plan 06 gap closure.
 //!
 //! Covers (per VALIDATION + plan behavior list):
 //!   - partial_return_keeps_handover_active
@@ -9,6 +9,12 @@
 //!   - return_concurrent_two_returns_correct_sub_numbers
 //!   - return_does_not_increment_act_counter
 //!   - return_with_apply_to_all_false_and_full_per_row_succeeds
+//!
+//! Plan 06 (ACT-13 / CR-02..04) gap-closure additions:
+//!   - return_twice_same_device_rejected (CR-02 status guard)
+//!   - return_with_duplicate_act_item_id_rejected (CR-03 dedup)
+//!   - return_with_duplicate_device_id_rejected (CR-03 dedup)
+//!   - return_quantity_exceeds_handover_rejected (CR-04 quantity bound)
 //!
 //! Каждый тест wrapped в `tokio::time::timeout(30s)` (S-6).
 
@@ -605,4 +611,252 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
     })
     .await
     .expect("per-row budget");
+}
+
+// ---------------------------------------------------------------------------
+// Plan 06 gap closure (CR-02..04 / ACT-13)
+// ---------------------------------------------------------------------------
+
+// Test 9 (CR-02): двойной возврат тех же device_id отклоняется status-guard'ом.
+// Handover держит 2 устройства, первое возвращается, затем повторный return
+// первого должен сорваться с Conflict «уже не в работе» (handover ещё активен,
+// так что check на `parent.archived` не сработает первым).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_twice_same_device_rejected() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 2).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let item = handover.items[0].clone();
+
+        let payload = || ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            items: vec![ActReturnItemDto {
+                act_item_id: item.id,
+                device_id: item.device_id,
+                quantity: 1,
+                condition_override: None,
+                location_id_override: None,
+                location_name_override: None,
+            }],
+        };
+
+        // 1st return of device A — succeeds; handover still has device B in
+        // work, so parent.archived stays false.
+        svc.do_return(handover.id, payload())
+            .await
+            .expect("first return");
+
+        // 2nd return on device A — device is now «на_складе», status guard
+        // must reject with Conflict («уже не в работе»). The parent-archived
+        // check up the stack does NOT trip because device B is still in work.
+        let err = svc
+            .do_return(handover.id, payload())
+            .await
+            .expect_err("second return must fail");
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(
+                    reason.contains("уже не в работе"),
+                    "Conflict reason must mention «уже не в работе», got: {reason}"
+                );
+                assert!(
+                    reason.contains(&format!("id={}", item.device_id)),
+                    "Conflict reason must include device id, got: {reason}"
+                );
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+
+        // State invariant: no second return-act was inserted (count = 1).
+        let counts = svc.counts().await.expect("counts");
+        assert_eq!(counts.returns, 1, "second return must not be persisted");
+    })
+    .await
+    .expect("return_twice budget");
+}
+
+// Test 10 (CR-03): duplicate act_item_id внутри одного payload отклоняется.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_with_duplicate_act_item_id_rejected() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let item = handover.items[0].clone();
+
+        let dup_item = ActReturnItemDto {
+            act_item_id: item.id,
+            device_id: item.device_id,
+            quantity: 1,
+            condition_override: None,
+            location_id_override: None,
+            location_name_override: None,
+        };
+        let payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            items: vec![dup_item.clone(), dup_item],
+        };
+        let err = svc
+            .do_return(handover.id, payload)
+            .await
+            .expect_err("dup act_item_id must fail");
+        match err {
+            AppError::Validation { field, message } => {
+                assert!(
+                    field.contains("act_item_id"),
+                    "field must mention act_item_id, got: {field}"
+                );
+                assert!(
+                    message.contains("продублирован"),
+                    "message must say 'продублирован', got: {message}"
+                );
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+
+        // No return-act persisted.
+        let counts = svc.counts().await.expect("counts");
+        assert_eq!(counts.returns, 0);
+    })
+    .await
+    .expect("dup act_item_id budget");
+}
+
+// Test 11 (CR-03): duplicate device_id (разные act_item_id) внутри payload отклоняется.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_with_duplicate_device_id_rejected() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let item = handover.items[0].clone();
+
+        // Two payload entries with distinct act_item_id values (one real,
+        // one fake) but the same device_id — HashSet dedup must trip before
+        // any SQL existence check runs.
+        let payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            items: vec![
+                ActReturnItemDto {
+                    act_item_id: item.id,
+                    device_id: item.device_id,
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                },
+                ActReturnItemDto {
+                    act_item_id: 999_999,
+                    device_id: item.device_id,
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                },
+            ],
+        };
+        let err = svc
+            .do_return(handover.id, payload)
+            .await
+            .expect_err("dup device_id must fail");
+        match err {
+            AppError::Validation { field, message } => {
+                assert!(
+                    field.contains("device_id"),
+                    "field must mention device_id, got: {field}"
+                );
+                assert!(
+                    message.contains("продублирован"),
+                    "message must say 'продублирован', got: {message}"
+                );
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+
+        let counts = svc.counts().await.expect("counts");
+        assert_eq!(counts.returns, 0);
+    })
+    .await
+    .expect("dup device_id budget");
+}
+
+// Test 12 (CR-04): quantity > handover_quantity отклоняется.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_quantity_exceeds_handover_rejected() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let item = handover.items[0].clone();
+        // create_handover seeds quantity=1 — return 100 must fail.
+
+        let payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            items: vec![ActReturnItemDto {
+                act_item_id: item.id,
+                device_id: item.device_id,
+                quantity: 100,
+                condition_override: None,
+                location_id_override: None,
+                location_name_override: None,
+            }],
+        };
+        let err = svc
+            .do_return(handover.id, payload)
+            .await
+            .expect_err("quantity overflow must fail");
+        match err {
+            AppError::Validation { field, message } => {
+                assert!(
+                    field.contains("items") || field.contains("quantity"),
+                    "field should mention items/quantity, got: {field}"
+                );
+                assert!(
+                    message.contains("превышает выданное"),
+                    "message must say 'превышает выданное', got: {message}"
+                );
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+
+        // Roll back: no return-act persisted, device still «в_работе».
+        let counts = svc.counts().await.expect("counts");
+        assert_eq!(counts.returns, 0);
+
+        let dev_id = device_ids[0];
+        let readers = svc.readers.clone();
+        let status_id: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT status_id FROM devices WHERE id = ?1",
+                params![dev_id],
+                |r| r.get(0),
+            )
+            .expect("query status")
+        })
+        .await
+        .expect("spawn_blocking");
+        // status_id 2 is «В работе» (V001 seed; create_handover transitions
+        // the seeded id=1 «На складе» → id=2 «В работе»). After the failed
+        // return the device must still be in_work — full rollback on Err.
+        assert_eq!(
+            status_id, 2,
+            "device must remain «в_работе» after failed return"
+        );
+    })
+    .await
+    .expect("quantity_overflow budget");
 }

@@ -332,7 +332,25 @@ impl ActService {
                 message: "Добавьте хотя бы одну позицию к возврату".into(),
             });
         }
+        // CR-03 (ACT-13): intra-payload dedup. Two independent HashSet<i64>
+        // catch duplicate act_item_id and duplicate device_id BEFORE any SQL
+        // existence check, so the writer-task never sees a payload that would
+        // otherwise produce a doubled audit snapshot (and break undo replay).
+        let mut seen_act_items: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        let mut seen_device_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
         for (idx, it) in payload.items.iter().enumerate() {
+            if !seen_act_items.insert(it.act_item_id) {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].act_item_id"),
+                    message: format!("act_item_id={} продублирован в возврате", it.act_item_id),
+                });
+            }
+            if !seen_device_ids.insert(it.device_id) {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].device_id"),
+                    message: format!("device_id={} продублирован в возврате", it.device_id),
+                });
+            }
             if it.quantity < 1 {
                 return Err(AppError::Validation {
                     field: format!("items[{idx}].quantity"),
@@ -432,6 +450,23 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
+                // 3b. CR-02 (ACT-13): resolve in_work_status_id once, reused
+                // by the per-item status guard inside the loop below.
+                let in_work_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'в_работе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='в_работе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+
                 // 3a. Resolve bulk_location_name → id (если задан). Имя
                 // имеет приоритет над `bulk_location_id` (UX-friendly).
                 let resolved_bulk_location_id: Option<i64> =
@@ -472,6 +507,58 @@ impl ActService {
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
                 for item in &payload.items {
                     let before = devices_repo.get_in_tx(&tx, item.device_id)?;
+
+                    // CR-02 (ACT-13): status guard. The device must currently
+                    // be «в_работе» — otherwise this is a double-return (the
+                    // device was already returned by another tx, or was
+                    // mutated outside the act lifecycle). Reject with
+                    // Conflict so the writer-task rolls back the whole tx.
+                    if before.status_id != in_work_status_id {
+                        return Err(AppError::Conflict {
+                            reason: format!(
+                                "Устройство id={} уже не в работе — возможно, оно уже возвращено",
+                                item.device_id
+                            ),
+                        });
+                    }
+
+                    // CR-04 (ACT-13): quantity bound. Read handover_qty for
+                    // this (act_item_id, parent act_id) pair, sum already-
+                    // returned quantities from non-deleted child return acts,
+                    // and refuse if `current + already_returned > handover`.
+                    // This protects against overflow returns that would skew
+                    // SUM-based reports (recompute_parent_archived stays
+                    // correct, but downstream analytics rely on these sums).
+                    let handover_qty: i64 = tx
+                        .query_row(
+                            "SELECT quantity FROM act_items WHERE id = ?1 AND act_id = ?2",
+                            params![item.act_item_id, act_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    let already_returned: i64 = tx
+                        .query_row(
+                            "SELECT COALESCE(SUM(rai.quantity), 0) \
+                             FROM act_items rai \
+                             JOIN acts ra ON ra.id = rai.act_id \
+                             WHERE ra.parent_act_id = ?1 \
+                               AND rai.device_id = ?2 \
+                               AND ra.deleted_at_utc IS NULL",
+                            params![act_id, item.device_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    if item.quantity + already_returned > handover_qty {
+                        return Err(AppError::Validation {
+                            field: "items".into(),
+                            message: format!(
+                                "Возврат превышает выданное количество для устройства id={}: \
+                                 уже возвращено {} + текущее {} > выдано {}",
+                                item.device_id, already_returned, item.quantity, handover_qty,
+                            ),
+                        });
+                    }
+
                     let before_json =
                         device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("return before_json: {e}"),
