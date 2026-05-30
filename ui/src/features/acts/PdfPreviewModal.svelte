@@ -20,6 +20,14 @@
   import { acts } from '$lib/api/acts';
   import { fetchPdfBlob, revokePdfUrl } from '$lib/api/pdf';
 
+  interface AcceptancePayload {
+    deviceId: number;
+    giverName: string;
+    receiverName: string;
+    dateUtc: number;
+    deviceName?: string;
+  }
+
   interface Props {
     open: boolean;
     actId: number | null;
@@ -27,9 +35,23 @@
     actNumberDisplay: string | null;
     actDateUtc: number | null;
     onClose: () => void;
+    /** Plan 03-05: 'handover' → render акта приёма-передачи (default);
+     *  'acceptance' → render документа приёма устройства (DEV-14). */
+    mode?: 'handover' | 'acceptance';
+    /** Required when mode='acceptance'. */
+    acceptancePayload?: AcceptancePayload | null;
   }
 
-  const { open, actId, title, actNumberDisplay, actDateUtc, onClose }: Props = $props();
+  const {
+    open,
+    actId,
+    title,
+    actNumberDisplay,
+    actDateUtc,
+    onClose,
+    mode = 'handover',
+    acceptancePayload = null,
+  }: Props = $props();
 
   let blobUrl = $state<string | null>(null);
   let pdfBytes = $state<number[] | null>(null);
@@ -48,13 +70,40 @@
   }
 
   function suggestedFilename(): string {
+    if (mode === 'acceptance' && acceptancePayload) {
+      const deviceName = acceptancePayload.deviceName ?? `dev-${acceptancePayload.deviceId}`;
+      const date = isoDateForFilename(acceptancePayload.dateUtc);
+      return `Документ_приёма_${deviceName}_${date}.pdf`;
+    }
     const number = actNumberDisplay ?? 'N';
     const date = isoDateForFilename(actDateUtc);
     return `Акт_приёма-передачи_№${number}_${date}.pdf`;
   }
 
+  function renderCall(): Promise<number[]> {
+    if (mode === 'acceptance') {
+      if (!acceptancePayload) {
+        return Promise.reject(new Error('acceptancePayload required for mode="acceptance"'));
+      }
+      return acts.renderAcceptancePdf(
+        acceptancePayload.deviceId,
+        acceptancePayload.giverName,
+        acceptancePayload.receiverName,
+        acceptancePayload.dateUtc,
+      );
+    }
+    if (actId === null) {
+      return Promise.reject(new Error('actId required for mode="handover"'));
+    }
+    return acts.renderPdf(actId);
+  }
+
+  const ready = $derived(
+    open && (mode === 'acceptance' ? acceptancePayload !== null : actId !== null),
+  );
+
   $effect(() => {
-    if (!open || actId === null) {
+    if (!ready) {
       // Cleanup on close
       if (blobUrl !== null) {
         revokePdfUrl(blobUrl);
@@ -72,7 +121,7 @@
 
     (async () => {
       try {
-        const result = await fetchPdfBlob(acts.renderPdf(actId));
+        const result = await fetchPdfBlob(renderCall());
         if (cancelled) {
           revokePdfUrl(result.url);
           return;
@@ -105,7 +154,7 @@
   });
 
   async function handleSave() {
-    if (actId === null) return;
+    if (!ready) return;
     try {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const path = await save({
@@ -114,7 +163,7 @@
       });
       if (!path) return;
       // Re-fetch bytes (simplest reliable path; backend is fast).
-      const bytes = pdfBytes ?? (await acts.renderPdf(actId));
+      const bytes = pdfBytes ?? (await renderCall());
       pdfBytes = bytes;
       const { writeFile } = await import('@tauri-apps/plugin-fs');
       await writeFile(path, new Uint8Array(bytes));
@@ -129,9 +178,9 @@
   }
 
   async function handleOpen() {
-    if (actId === null) return;
+    if (!ready) return;
     try {
-      const bytes = pdfBytes ?? (await acts.renderPdf(actId));
+      const bytes = pdfBytes ?? (await renderCall());
       pdfBytes = bytes;
       // Write to a temp file via tauri-plugin-fs, then open via shell.
       // Phase 3: simplest path — use the user's temp dir via OS plugin.
@@ -155,6 +204,7 @@
   }
 
   function handlePrint() {
+    if (!ready) return;
     if (iframeEl?.contentWindow) {
       try {
         iframeEl.contentWindow.focus();

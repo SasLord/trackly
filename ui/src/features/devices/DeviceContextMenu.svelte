@@ -10,9 +10,12 @@
     device: DeviceDto;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
+    /** Plan 03-05 (DEV-14): открыть intermediate-модал документа приёма
+     *  для этого устройства. Optional — если не передан, пункт меню скрыт. */
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
-  const { device, onEdit, onDelete }: Props = $props();
+  const { device, onEdit, onDelete, onPrintAcceptance }: Props = $props();
 
   let menuOpen = $state(false);
   let confirmOpen = $state(false);
@@ -43,6 +46,11 @@
   function handleEdit() {
     menuOpen = false;
     onEdit(device);
+  }
+
+  function handlePrintAcceptance() {
+    menuOpen = false;
+    onPrintAcceptance?.(device);
   }
 
   function openConfirm() {
@@ -121,6 +129,11 @@
     }}
   >
     <button class="ctx-menu-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
+    {#if onPrintAcceptance}
+      <button class="ctx-menu-item" role="menuitem" onclick={handlePrintAcceptance}>
+        Печать документа приёма
+      </button>
+    {/if}
     <hr class="ctx-menu-sep" />
     <button class="ctx-menu-item ctx-menu-item--destructive" role="menuitem" onclick={openConfirm}>
       Удалить

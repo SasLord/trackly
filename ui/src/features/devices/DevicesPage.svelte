@@ -8,6 +8,8 @@
   import DeviceFilters from './DeviceFilters.svelte';
   import DeviceFormModal from './DeviceFormModal.svelte';
   import DeviceImportCsvModal from './DeviceImportCsvModal.svelte';
+  import DocumentAcceptanceModal from '../acts/DocumentAcceptanceModal.svelte';
+  import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
   import { devices } from './api';
   import type { DeviceDto, DeviceFilter, DeviceGroup, Pagination } from '../../bindings';
 
@@ -21,6 +23,16 @@
   let modalOpen = $state(false);
   let editTarget = $state<DeviceDto | null>(null);
   let csvModalOpen = $state(false);
+
+  // Plan 03-05 (DEV-14): intermediate acceptance modal + preview modal state.
+  let acceptanceDevice = $state<DeviceDto | null>(null);
+  let acceptancePayload = $state<{
+    deviceId: number;
+    giverName: string;
+    receiverName: string;
+    dateUtc: number;
+    deviceName: string;
+  } | null>(null);
 
   // Filters state (Plan 04).
   let searchQuery = $state('');
@@ -141,6 +153,25 @@
     refreshCounts();
   }
 
+  // -------------------------------------------------------------------------
+  // DEV-14 «Печать документа приёма» flow
+  // -------------------------------------------------------------------------
+  function handlePrintAcceptance(d: DeviceDto) {
+    acceptanceDevice = d;
+  }
+
+  function handleAcceptanceSubmit(payload: {
+    deviceId: number;
+    giverName: string;
+    receiverName: string;
+    dateUtc: number;
+  }) {
+    // Запомним имя устройства для подсказки имени файла, затем переключаем модалки.
+    const name = acceptanceDevice?.name ?? `dev-${payload.deviceId}`;
+    acceptanceDevice = null;
+    acceptancePayload = { ...payload, deviceName: name };
+  }
+
   // ---------------------------------------------------------------------------
   // Export CSV handler
   // ---------------------------------------------------------------------------
@@ -234,6 +265,7 @@
         refresh();
         refreshCounts();
       }}
+      onPrintAcceptance={handlePrintAcceptance}
     />
   </div>
 </div>
@@ -254,6 +286,28 @@
     refreshCounts();
     pushToast('success', 'Импорт завершён');
   }}
+/>
+
+<!-- DEV-14 (Plan 03-05) — intermediate modal collects giver/receiver/date,
+     then opens PdfPreviewModal in mode='acceptance'. -->
+<DocumentAcceptanceModal
+  open={acceptanceDevice !== null}
+  device={acceptanceDevice}
+  onClose={() => (acceptanceDevice = null)}
+  onSubmit={handleAcceptanceSubmit}
+/>
+
+<PdfPreviewModal
+  open={acceptancePayload !== null}
+  actId={null}
+  title={acceptancePayload
+    ? `Печать документа приёма: ${acceptancePayload.deviceName}`
+    : 'Печать документа приёма'}
+  actNumberDisplay={null}
+  actDateUtc={acceptancePayload ? acceptancePayload.dateUtc : null}
+  mode="acceptance"
+  {acceptancePayload}
+  onClose={() => (acceptancePayload = null)}
 />
 
 <style lang="scss">

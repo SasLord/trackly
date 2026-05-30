@@ -80,9 +80,7 @@ impl TemplateService {
                             params![kind, name, body, now],
                         )
                         .map_err(map_rusqlite)?;
-                        tracing::info!(
-                            "Seeded default template kind={kind} name={name}"
-                        );
+                        tracing::info!("Seeded default template kind={kind} name={name}");
                     }
                 }
                 tx.commit().map_err(map_rusqlite)?;

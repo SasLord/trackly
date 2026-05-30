@@ -27,11 +27,17 @@ async fn first_run_creates_placeholder() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, dir) = make_service();
         let org_path = dir.path().join("org.json");
-        assert!(!org_path.exists(), "precondition: org.json should not exist");
+        assert!(
+            !org_path.exists(),
+            "precondition: org.json should not exist"
+        );
 
         let org = svc.read().await.expect("read");
         assert_eq!(org.name, "Ваша организация");
-        assert!(org_path.exists(), "org.json placeholder must have been written");
+        assert!(
+            org_path.exists(),
+            "org.json placeholder must have been written"
+        );
     })
     .await
     .expect("timeout");

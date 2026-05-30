@@ -9,9 +9,11 @@
     onDelete: () => void;
     /** When true, renders a stronger bottom border to visually close the group. */
     isLastInGroup?: boolean;
+    /** Plan 03-05 (DEV-14): pass-through к DeviceContextMenu. */
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
-  const { device, onEdit, onDelete, isLastInGroup = false }: Props = $props();
+  const { device, onEdit, onDelete, isLastInGroup = false, onPrintAcceptance }: Props = $props();
 
   // ---------------------------------------------------------------------------
   // Placeholder status mapping (Plan 04 wires seeded lookups)
@@ -46,7 +48,7 @@
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>
   <td class="cell cell-actions">
-    <DeviceContextMenu {device} {onEdit} {onDelete} />
+    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} />
   </td>
 </tr>
 

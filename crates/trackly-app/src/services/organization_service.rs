@@ -72,11 +72,10 @@ impl OrganizationService {
                     path.display()
                 );
                 let placeholder = OrgData::placeholder();
-                let json = serde_json::to_string_pretty(&placeholder).map_err(|e| {
-                    AppError::Internal {
+                let json =
+                    serde_json::to_string_pretty(&placeholder).map_err(|e| AppError::Internal {
                         source_chain: format!("serialize org placeholder: {e}"),
-                    }
-                })?;
+                    })?;
                 std::fs::write(&path, json).map_err(|e| AppError::Internal {
                     source_chain: format!("write org.json placeholder: {e}"),
                 })?;
@@ -108,10 +107,7 @@ impl OrganizationService {
     /// - `Ok(None)` — `logo_path` пуст ИЛИ файла нет (warning в лог, не ошибка).
     /// - `Ok(Some(path))` — canonical absolute path, гарантированно внутри exe_dir.
     /// - `Err(Validation { field: "org.logo_path", ... })` — попытка path traversal.
-    pub async fn safe_logo_canonical(
-        &self,
-        org: &OrgData,
-    ) -> Result<Option<PathBuf>, AppError> {
+    pub async fn safe_logo_canonical(&self, org: &OrgData) -> Result<Option<PathBuf>, AppError> {
         if org.logo_path.trim().is_empty() {
             return Ok(None);
         }
@@ -134,10 +130,7 @@ impl OrganizationService {
             if !canonical.starts_with(&exe_canonical) {
                 return Err(AppError::Validation {
                     field: "org.logo_path".to_string(),
-                    message: format!(
-                        "Путь к логотипу вне рабочей папки: {}",
-                        canonical.display()
-                    ),
+                    message: format!("Путь к логотипу вне рабочей папки: {}", canonical.display()),
                 });
             }
             Ok(Some(canonical))

@@ -117,8 +117,7 @@ async fn search_by_act_number() {
 async fn search_by_giver_name() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
-        let device_ids =
-            seed_devices_named(&svc.writer, &["D-A", "D-B", "D-C"]).await;
+        let device_ids = seed_devices_named(&svc.writer, &["D-A", "D-B", "D-C"]).await;
         create_handover(&svc, &[device_ids[0]], "Иванов И.И.", "Петров П.П.").await;
         create_handover(&svc, &[device_ids[1]], "Петров С.С.", "Сидоров С.С.").await;
         create_handover(&svc, &[device_ids[2]], "Сидоров К.К.", "Иванов А.А.").await;
@@ -140,7 +139,11 @@ async fn search_by_device_name() {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices_named(
             &svc.writer,
-            &["Ноутбук Lenovo ThinkPad", "Принтер HP LaserJet", "Монитор Dell"],
+            &[
+                "Ноутбук Lenovo ThinkPad",
+                "Принтер HP LaserJet",
+                "Монитор Dell",
+            ],
         )
         .await;
         for &id in &device_ids {
@@ -152,7 +155,10 @@ async fn search_by_device_name() {
             .await
             .expect("search");
         assert_eq!(resp.total, 1, "expected 1 act for device «Lenovo»");
-        assert_eq!(resp.items[0].items[0].device_name, "Ноутбук Lenovo ThinkPad");
+        assert_eq!(
+            resp.items[0].items[0].device_name,
+            "Ноутбук Lenovo ThinkPad"
+        );
     })
     .await
     .expect("budget");
@@ -240,8 +246,7 @@ async fn search_filters_by_tab() {
 async fn search_empty_query_falls_back_to_list() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
-        let device_ids =
-            seed_devices_named(&svc.writer, &["A", "B", "C", "D", "E"]).await;
+        let device_ids = seed_devices_named(&svc.writer, &["A", "B", "C", "D", "E"]).await;
         for &id in &device_ids {
             create_handover(&svc, &[id], "Тестов", "Проверкин").await;
         }
@@ -279,7 +284,11 @@ async fn search_handles_special_chars() {
         // FTS5 spec chars: `"` — экранируется через `""`; `*` сам по себе —
         // build_fts_query обрабатывает.
         let resp2 = svc
-            .search("\"unmatched".into(), handover_filter(), Pagination::default())
+            .search(
+                "\"unmatched".into(),
+                handover_filter(),
+                Pagination::default(),
+            )
             .await
             .expect("FTS quote no panic");
         assert_eq!(resp2.total, 0);

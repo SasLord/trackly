@@ -16,6 +16,8 @@
     onExpandToggle?: (_key: string, _expanded: boolean) => void;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
+    /** Plan 03-05 (DEV-14): pass-through. */
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
   const {
@@ -29,6 +31,7 @@
     onExpandToggle,
     onEdit,
     onDelete,
+    onPrintAcceptance,
   }: Props = $props();
 
   const showGroups = $derived(grouped && !searchActive && groups.length > 0);
@@ -104,15 +107,16 @@
                 {onDelete}
                 expandedGroups={expandedGroups ?? new Set()}
                 {onExpandToggle}
+                {onPrintAcceptance}
               />
             {:else}
               <!-- Singleton group (count == 1): render as plain row, no chevron -->
-              <DeviceListRow device={group.repr} {onEdit} {onDelete} />
+              <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} />
             {/if}
           {/each}
         {:else}
           {#each items as device (device.id)}
-            <DeviceListRow {device} {onEdit} {onDelete} />
+            <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} />
           {/each}
         {/if}
       </tbody>

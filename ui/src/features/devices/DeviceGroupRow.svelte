@@ -34,9 +34,12 @@
     onExpandToggle?: (_key: string, _expanded: boolean) => void;
     onEdit: (_d: DeviceDto) => void;
     onDelete: () => void;
+    /** Plan 03-05 (DEV-14): pass-through. */
+    onPrintAcceptance?: (_d: DeviceDto) => void;
   }
 
-  const { group, expandedGroups, onExpandToggle, onEdit, onDelete }: Props = $props();
+  const { group, expandedGroups, onExpandToggle, onEdit, onDelete, onPrintAcceptance }: Props =
+    $props();
 
   const stableKey = $derived(groupStableKey(group));
   const expanded = $derived(expandedGroups.has(stableKey));
@@ -178,6 +181,7 @@
         onEdit={handleEdit}
         onDelete={handleDelete}
         isLastInGroup={i === children.length - 1}
+        {onPrintAcceptance}
       />
     {/each}
   {/if}

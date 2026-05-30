@@ -121,7 +121,11 @@ async fn render_handover_act_produces_cyrillic_pdf() {
         )
         .await;
         let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        assert!(bytes.len() > 1000, "expected substantive PDF, got {}", bytes.len());
+        assert!(
+            bytes.len() > 1000,
+            "expected substantive PDF, got {}",
+            bytes.len()
+        );
         assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
 
         let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
@@ -243,8 +247,11 @@ async fn render_pdf_with_missing_logo_renders_without_logo() {
             "address": "г. Москва",
             "logo_path": "missing-logo.png"
         });
-        std::fs::write(&org_path, serde_json::to_string_pretty(&custom_org).unwrap())
-            .expect("write org.json");
+        std::fs::write(
+            &org_path,
+            serde_json::to_string_pretty(&custom_org).unwrap(),
+        )
+        .expect("write org.json");
 
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Тестов Т.Т.").await;

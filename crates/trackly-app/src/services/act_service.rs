@@ -657,8 +657,13 @@ impl ActService {
         let (items, total) =
             tokio::task::spawn_blocking(move || -> Result<(Vec<ActDto>, u64), AppError> {
                 let conn = readers.acquire();
-                let (rows, total) =
-                    repo.search_acts(&conn, &plain_query, &fts_query, &domain_filter, &domain_page)?;
+                let (rows, total) = repo.search_acts(
+                    &conn,
+                    &plain_query,
+                    &fts_query,
+                    &domain_filter,
+                    &domain_page,
+                )?;
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
                     let items = load_items_for_act(&conn, row.id)?;
