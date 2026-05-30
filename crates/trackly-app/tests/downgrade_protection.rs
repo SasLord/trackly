@@ -5,7 +5,7 @@
 //! 2. Set `PRAGMA user_version = 999` manually (force "newer than binary").
 //! 3. Drop conn so file flushes.
 //! 4. SHA256 of `.db` (+ `.db-wal` if present) → `before`.
-//! 5. Call `AppCtx::build(...)`; expect `AppError::DatabaseFromNewerVersion { binary: 12, file: 999 }`.
+//! 5. Call `AppCtx::build(...)`; expect `AppError::DatabaseFromNewerVersion { binary: 15, file: 999 }`.
 //! 6. SHA256 again → `after`. Assert `before == after` via single `String == String`.
 //!
 //! The probe-read pattern in `AppCtx::build` (W4) guarantees the assertion holds:
@@ -87,7 +87,7 @@ async fn appctx_build_rejects_newer_db_and_leaves_file_byte_identical() {
         .expect("error should be AppError");
     match app_err {
         AppError::DatabaseFromNewerVersion { binary, file } => {
-            assert_eq!(*binary, 14, "binary should be 14 (max_known_version)");
+            assert_eq!(*binary, 15, "binary should be 15 (max_known_version)");
             assert_eq!(*file, 999, "file should be 999 (forced user_version)");
         }
         other => panic!("expected DatabaseFromNewerVersion, got {other:?}"),

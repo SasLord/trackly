@@ -412,11 +412,22 @@ pub fn next_sub_number_for_parent(
 }
 
 /// Пересчитывает поле `archived` родительского handover-акта на основе
-/// «остатка в работе» (B-2 SUM(quantity) semantics).
+/// COUNT-based формулы (G-11 / G-12 clone-on-handover model, V015+).
 ///
-/// `remaining` = SUM(ai.quantity) по тем act_items handover-акта, у которых
-/// device всё ещё в status_id = 'в_работе'. Если `remaining == 0`
-/// → `archived = 1` (полный возврат); иначе `archived = 0`.
+/// `handover_total` = COUNT(*) FROM act_items WHERE act_id = parent_act_id.
+///   В новой модели каждая device-row в handover это 1 act_item, поэтому
+///   COUNT(*) — это canonical «сколько устройств выдано».
+///
+/// `returned_total` = COUNT(DISTINCT rai.device_id) по всем НЕудалённым
+///   return-актам с parent_act_id = parent_act_id.
+///   COUNT(DISTINCT) защищает от случайных дубликатов device_id в return-act
+///   (defence-in-depth поверх validate_return dedup).
+///
+/// `archived = (handover_total > 0 AND handover_total <= returned_total)`.
+///
+/// Note: `act_items` НЕ имеет `deleted_at_utc` колонки (B-1). Soft-delete
+/// filter применяется ТОЛЬКО на parent `acts` row через JOIN. Caller гарантирует
+/// что recompute вызывается только для не-удалённого parent.
 ///
 /// Возвращает новое значение `archived`. Идемпотентно: если значение не
 /// изменилось, `version` всё равно инкрементируется — это согласуется с
@@ -426,30 +437,31 @@ pub fn recompute_parent_archived(
     parent_act_id: i64,
     now_utc: i64,
 ) -> Result<bool, AppError> {
-    let in_work_status_id: i64 = tx
+    let handover_total: i64 = tx
         .query_row(
-            "SELECT id FROM device_statuses WHERE code = 'в_работе'",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-                source_chain: "device_statuses missing code='в_работе' — V014 not applied?".into(),
-            },
-            other => map_rusqlite(other),
-        })?;
-
-    let remaining: i64 = tx
-        .query_row(
-            "SELECT COALESCE(SUM(ai.quantity), 0) FROM act_items ai \
-             JOIN devices d ON d.id = ai.device_id \
-             WHERE ai.act_id = ?1 AND d.status_id = ?2",
-            params![parent_act_id, in_work_status_id],
+            "SELECT COUNT(*) FROM act_items WHERE act_id = ?1",
+            params![parent_act_id],
             |r| r.get(0),
         )
         .map_err(map_rusqlite)?;
 
-    let archived = if remaining == 0 { 1 } else { 0 };
+    let returned_total: i64 = tx
+        .query_row(
+            "SELECT COUNT(DISTINCT rai.device_id) \
+               FROM act_items rai \
+               JOIN acts ra ON ra.id = rai.act_id \
+              WHERE ra.parent_act_id = ?1 \
+                AND ra.deleted_at_utc IS NULL",
+            params![parent_act_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)?;
+
+    let archived = if handover_total > 0 && handover_total <= returned_total {
+        1
+    } else {
+        0
+    };
     tx.execute(
         "UPDATE acts SET archived = ?1, updated_at_utc = ?2, version = version + 1 \
          WHERE id = ?3",

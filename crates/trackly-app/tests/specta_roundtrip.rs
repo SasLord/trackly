@@ -59,7 +59,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         clock,
         shutdown: CancellationToken::new(),
         log_guard: Arc::new(log_guard),
-        schema_version: 14,
+        schema_version: 15,
         devices,
         acts,
         organization,

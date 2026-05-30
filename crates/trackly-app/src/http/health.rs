@@ -71,7 +71,7 @@ mod tests {
             clock,
             shutdown: CancellationToken::new(),
             log_guard: Arc::new(log_guard),
-            schema_version: 14,
+            schema_version: 15,
             devices,
             acts,
             organization,
@@ -105,7 +105,7 @@ mod tests {
             let dto: HealthDto = serde_json::from_slice(&bytes).expect("deserialize");
             assert_eq!(dto.version, env!("CARGO_PKG_VERSION"));
             assert!(dto.db_ready);
-            assert_eq!(dto.schema_version, 14);
+            assert_eq!(dto.schema_version, 15);
         })
         .await
         .expect("get_health exceeded 30 s budget — Linux-CI deadlock pattern");
