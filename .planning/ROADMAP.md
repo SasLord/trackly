@@ -94,13 +94,18 @@ Trackly — портативное приложение для учёта тех
 
 ### Phase 03.1: Acts quantity model + UAT gap closure (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Закрыть 12 UAT-выявленных gaps (G-1..G-12, G-13 deferred в Phase 8) с архитектурным переходом acts/devices model на clone-on-handover quantity-семантику. Включает: V015 schema migration с data-migration существующих qty>1 актов, ActService rewrite на device_ids per item, переписанные ReturnModal/ActFormModal (DatePicker + handover_date + person autocomplete + outstanding-only + symmetric apply_to_all), исправления PDF (column truncation + logo aspect-ratio + Save/Open/Print buttons), и cross-cutting Modal backdrop discipline + DeviceAutocomplete close-on-select.
+**Requirements:** G-1, G-2, G-3, G-4, G-5, G-6, G-7, G-8a, G-8b, G-9, G-10, G-11, G-12 (G-IDs из 03-UAT.md; G-13 deferred to Phase 8)
 **Depends on:** Phase 3
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
+- [ ] 03.1-01-PLAN.md — G-12 clone-on-handover backend + V015 migration + G-7/G-11 (recompute_parent_archived COUNT-based, display rule)
+- [ ] 03.1-02-PLAN.md — G-5 acts.suggest_person tauri command + PersonAutocomplete.svelte shared component + 3-modal wire-up
+- [ ] 03.1-03-PLAN.md — G-6 + G-10 ReturnModal UX (per-row symmetric unlock + outstanding-only display, depends on 01+02)
+- [ ] 03.1-04-PLAN.md — G-2 DatePicker.svelte + handover_date_utc UI/backend + G-3 qty bound (depends on 01)
+- [ ] 03.1-05-PLAN.md — G-8a column truncation + G-8b PdfPreviewModal Save/Open/Print + G-9 logo aspect-ratio + tauri-plugin-shell
+- [ ] 03.1-06-PLAN.md — G-1 Modal backdrop mousedown/mouseup discipline + G-4 DeviceAutocomplete close-on-select
 
 ### Phase 4: Картриджи
 
