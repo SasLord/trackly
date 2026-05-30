@@ -26,7 +26,8 @@
 
 use std::sync::Arc;
 
-use krilla::geom::Point;
+use krilla::geom::{Point, Size, Transform};
+use krilla::image::Image;
 use krilla::metadata::{DateTime as KrillaDateTime, Metadata};
 use krilla::page::PageSettings;
 use krilla::text::{Font, TextDirection};
@@ -160,6 +161,17 @@ impl PdfRenderer {
                 TextDirection::Auto,
             );
             y += BODY_SIZE_PT + 16.0;
+
+            // Optional logo in the top-right corner. Graceful — a missing file
+            // or unsupported mime is a tracing::warn, never an error: orgs
+            // without a logo (or with a misconfigured path) must still print.
+            // ACT-11 / CR-01: previous Phase-3 plans wired `safe_logo_canonical`
+            // up to `spec.header.logo_path`, but the renderer ignored it. This
+            // block consumes it via `std::fs::read` → `Image::from_png/jpeg`
+            // → `surface.draw_image`.
+            if let Some(logo_path_str) = &spec.header.logo_path {
+                draw_logo_top_right(&mut surface, logo_path_str);
+            }
 
             // Walk DocSpec sections.
             for section in &spec.sections {
@@ -299,6 +311,75 @@ fn render_section(
         }
         Section::Spacer { height_pt } => y + height_pt,
     }
+}
+
+/// Default rendered logo box size in PDF points (top-right corner of page).
+const LOGO_WIDTH_PT: f32 = 100.0;
+const LOGO_HEIGHT_PT: f32 = 50.0;
+
+/// Read a logo image from disk and emit a `draw_image` call into the
+/// top-right corner of the page. Failures (missing file, unsupported mime,
+/// invalid bytes) are logged at WARN and the function returns silently —
+/// rendering must remain graceful so orgs without a valid logo still get a
+/// document (ACT-11 / CR-01 design choice in 03-06-PLAN.md).
+fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str: &str) {
+    let bytes = match std::fs::read(logo_path_str) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(
+                path = %logo_path_str,
+                error = %e,
+                "Logo file not readable — skipping"
+            );
+            return;
+        }
+    };
+
+    // krilla::image::Image::from_png / from_jpeg expect `krilla::Data` (a
+    // ref-counted byte container) — convert via `Into`. `interpolate = true`
+    // gives smoother scaling for line-art logos.
+    let lower = logo_path_str.to_lowercase();
+    let image_result: Result<Image, String> = if lower.ends_with(".png") {
+        Image::from_png(bytes.into(), true)
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        Image::from_jpeg(bytes.into(), true)
+    } else {
+        tracing::warn!(
+            path = %logo_path_str,
+            "Logo mime not supported (only .png / .jpg / .jpeg) — skipping"
+        );
+        return;
+    };
+
+    let image = match image_result {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::warn!(
+                path = %logo_path_str,
+                error = %e,
+                "Logo bytes failed to parse — skipping"
+            );
+            return;
+        }
+    };
+
+    let size = match Size::from_wh(LOGO_WIDTH_PT, LOGO_HEIGHT_PT) {
+        Some(s) => s,
+        None => {
+            tracing::warn!("Logo size constants invalid — skipping");
+            return;
+        }
+    };
+
+    // `surface.draw_image` paints at the current transform origin with the
+    // image's natural origin = (0,0). Translate so the logo lands at the
+    // top-right corner with a uniform page margin. push_transform / pop is a
+    // standard graphics-state save/restore.
+    let tx = A4_WIDTH_PT - MARGIN_PT - LOGO_WIDTH_PT;
+    let ty = MARGIN_PT;
+    surface.push_transform(&Transform::from_translate(tx, ty));
+    surface.draw_image(image, size);
+    surface.pop();
 }
 
 /// Apply regex post-processing on raw PDF bytes to normalize known
