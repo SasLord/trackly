@@ -14,12 +14,25 @@
 
   const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
 
+  // G-1 fix (Phase 3.1 Plan 06): backdrop dismiss срабатывает ТОЛЬКО когда
+  // mousedown AND mouseup произошли на backdrop element. Это защищает
+  // от закрытия модала при text-selection drag (mousedown внутри → drag
+  // outside → mouseup на backdrop), который ранее закрывал модал.
+  let mouseDownOnBackdrop = $state(false);
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose();
   }
 
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
+  function handleBackdropMousedown(e: MouseEvent) {
+    mouseDownOnBackdrop = e.target === e.currentTarget;
+  }
+
+  function handleBackdropMouseup(e: MouseEvent) {
+    if (mouseDownOnBackdrop && e.target === e.currentTarget) {
+      onClose();
+    }
+    mouseDownOnBackdrop = false;
   }
 </script>
 
@@ -28,7 +41,8 @@
 {#if open}
   <div
     class="modal-backdrop"
-    onclick={handleBackdropClick}
+    onmousedown={handleBackdropMousedown}
+    onmouseup={handleBackdropMouseup}
     onkeydown={handleKeydown}
     aria-modal="true"
     role="dialog"

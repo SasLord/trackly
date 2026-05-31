@@ -64,6 +64,12 @@
   let activeIndex = $state(-1);
 
   let wrapperEl = $state<HTMLDivElement | null>(null);
+  // G-4 (Phase 3.1 Plan 06): inputEl reference для explicit blur() в select(),
+  // чтобы при click на suggestion dropdown definitively закрылся и не reopen-ил
+  // на refocus до явного нового keystroke. Эквивалентно `justSelected` flag
+  // pattern из 03.1-CONTEXT.md G-4, но реализовано через suppressDropdown +
+  // lastSelected (см. comments на state machine выше).
+  let inputEl = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -121,12 +127,17 @@
   });
 
   function select(s: string) {
+    // G-4 fix (03.1 Plan 06): equivalent of `justSelected` guard — see comment
+    // на `inputEl` declaration. suppressDropdown=true defers любой dropdown
+    // re-open до genuine handleInput keystroke; explicit blur() убирает focus
+    // чтобы visual cues совпали (caret/dropdown оба закрыты).
     lastSelected = s;
     suppressDropdown = true;
     onChange(s);
     open = false;
     activeIndex = -1;
     suggestions = [];
+    inputEl?.blur();
   }
 
   function handleInput(e: Event) {
@@ -211,6 +222,7 @@
 <div class="autocomplete-wrapper" bind:this={wrapperEl}>
   {#if multiline}
     <textarea
+      bind:this={inputEl}
       {id}
       {placeholder}
       rows={3}
@@ -226,6 +238,7 @@
   {:else}
     <input
       type="text"
+      bind:this={inputEl}
       {id}
       {placeholder}
       class="autocomplete-input"
