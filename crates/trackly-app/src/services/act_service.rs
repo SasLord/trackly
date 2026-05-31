@@ -198,6 +198,10 @@ impl ActService {
                 };
 
                 // 2. INSERT acts.
+                // G-2 (Phase 3.1 Plan 04): handover_date_utc — explicit
+                // payload value или fallback на now() (backward-compat для
+                // clients без поля).
+                let handover_date = payload.handover_date_utc.unwrap_or(now);
                 let new_row = ActRow {
                     id: 0,
                     number,
@@ -215,6 +219,7 @@ impl ActService {
                     updated_at_utc: now,
                     deleted_at_utc: None,
                     version: 1,
+                    handover_date_utc: handover_date,
                     parent_number: None,
                     sibling_return_count: None,
                 };
@@ -602,6 +607,8 @@ impl ActService {
                     updated_at_utc: now,
                     deleted_at_utc: None,
                     version: 1,
+                    // Return-акты наследуют parent.handover_date_utc.
+                    handover_date_utc: parent.handover_date_utc,
                     parent_number: None,
                     sibling_return_count: None,
                 };

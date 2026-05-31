@@ -73,6 +73,7 @@ async fn concurrent_50_creates_unique_numbers() {
                         updated_at_utc: 1_700_000_000,
                         deleted_at_utc: None,
                         version: 1,
+                        handover_date_utc: 1_700_000_000,
                         parent_number: None,
                         sibling_return_count: None,
                     };

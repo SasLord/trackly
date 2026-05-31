@@ -121,6 +121,7 @@ async fn recompute_parent_archived_count_based() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![
                 ActItemNewDto { device_id: d1, quantity: 1 },
                 ActItemNewDto { device_id: d2, quantity: 1 },
@@ -251,6 +252,7 @@ async fn clone_3_devices_on_handover_qty_3() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -303,6 +305,7 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -376,6 +379,7 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -484,6 +488,7 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -554,6 +559,7 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -636,6 +642,7 @@ async fn cardinality_bound_rejects_extra_device_id() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 1,
@@ -698,6 +705,7 @@ async fn max_clone_qty_validation_rejects_1001() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 1001,
@@ -739,6 +747,7 @@ async fn clones_have_null_serial_number_per_w5() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,
@@ -813,6 +822,7 @@ async fn undo_return_restores_archived_to_false() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: source,
                     quantity: 3,

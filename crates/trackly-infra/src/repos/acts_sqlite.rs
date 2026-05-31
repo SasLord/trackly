@@ -36,7 +36,8 @@ const SELECT_ACTS: &str = "
            p.number AS parent_number,
            (SELECT COUNT(*) FROM acts r
               WHERE r.parent_act_id = COALESCE(a.parent_act_id, a.id)
-                AND r.deleted_at_utc IS NULL) AS sibling_return_count
+                AND r.deleted_at_utc IS NULL) AS sibling_return_count,
+           a.handover_date_utc
       FROM acts a
       LEFT JOIN locations l ON a.location_id = l.id
       LEFT JOIN acts p ON p.id = a.parent_act_id
@@ -77,6 +78,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
         location: row.get(15)?,
         parent_number: row.get(16)?,
         sibling_return_count: row.get(17)?,
+        handover_date_utc: row.get(18)?,
     })
 }
 
@@ -92,8 +94,8 @@ impl SqliteActRepository {
             "INSERT INTO acts \
              (number, sub_number, parent_act_id, act_type, giver_name, \
               receiver_name, location_id, notes, deadline_utc, archived, \
-              created_at_utc, updated_at_utc, version) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, 1)",
+              created_at_utc, updated_at_utc, version, handover_date_utc) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, 1, ?12)",
             params![
                 new.number,
                 new.sub_number,
@@ -106,6 +108,7 @@ impl SqliteActRepository {
                 new.deadline_utc,
                 if new.archived { 1 } else { 0 },
                 new.created_at_utc,
+                new.handover_date_utc,
             ],
         )
         .map_err(map_rusqlite)?;
@@ -694,6 +697,7 @@ mod tests {
             updated_at_utc: now,
             deleted_at_utc: None,
             version: 1,
+            handover_date_utc: now,
             parent_number: None,
             sibling_return_count: None,
         };

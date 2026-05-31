@@ -163,7 +163,7 @@ pub struct ActReturnItemDto {
 }
 
 /// Payload sent by the UI when creating a handover act.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActCreateDto {
     /// `None` → service increments `counters.act_number`.
     /// `Some(n)` → service uses `n` (audited as `custom:act_number_override`).
@@ -176,6 +176,14 @@ pub struct ActCreateDto {
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
+    /// Phase 3.1 Plan 04 (G-2): дата фактической handover (когда отдали),
+    /// независимая от `created_at_utc` (когда строка появилась в БД).
+    /// `None` → service использует `clock.now_unix_seconds()` (backward-compat
+    /// для clients, которые ещё не передают это поле).
+    /// Persisted в `acts.handover_date_utc` (column из V015).
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub handover_date_utc: Option<i64>,
     pub items: Vec<ActItemNewDto>,
 }
 
@@ -349,6 +357,7 @@ mod tests {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![],
         };
         let s = serde_json::to_string(&dto).expect("ser");

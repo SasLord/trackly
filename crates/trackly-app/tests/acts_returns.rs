@@ -73,6 +73,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
         location_id: None,
         notes: None,
         deadline_utc: None,
+        handover_date_utc: None,
         items: device_ids
             .iter()
             .map(|&id| ActItemNewDto {

@@ -62,6 +62,7 @@ async fn make_handover_with_giver_receiver(
         location_id: None,
         notes: None,
         deadline_utc: None,
+        handover_date_utc: None,
         items: vec![ActItemNewDto {
             device_id,
             quantity: 1,
@@ -236,6 +237,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: d1,
                 quantity: 1,
@@ -251,6 +253,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: d2,
                     quantity: 1,

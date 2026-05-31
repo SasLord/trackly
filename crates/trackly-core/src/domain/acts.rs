@@ -136,6 +136,10 @@ pub struct ActRow {
     pub updated_at_utc: i64,
     pub deleted_at_utc: Option<i64>,
     pub version: i64,
+    /// Phase 3.1 Plan 04 (G-2): фактическая дата handover (когда отдали),
+    /// independent of `created_at_utc`. Column добавлен V015 миграцией.
+    /// На handover-актах — explicit value; на return-актах = parent.handover_date_utc.
+    pub handover_date_utc: i64,
     /// Parent act's `number` joined via LEFT JOIN acts p ON p.id = a.parent_act_id.
     /// `None` for handover. Used by display-rule «в»/«в1»/«в2».
     pub parent_number: Option<i64>,

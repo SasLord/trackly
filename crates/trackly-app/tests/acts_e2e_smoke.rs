@@ -133,6 +133,7 @@ async fn full_lifecycle_then_undo() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: ids
                     .iter()
                     .map(|&id| ActItemNewDto {
@@ -260,6 +261,7 @@ async fn handover_pdf_render_within_e2e() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: ids
                     .iter()
                     .map(|&id| ActItemNewDto {

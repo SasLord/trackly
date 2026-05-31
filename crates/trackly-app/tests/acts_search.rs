@@ -67,6 +67,7 @@ async fn create_handover(
         location_id: None,
         notes: None,
         deadline_utc: None,
+        handover_date_utc: None,
         items: device_ids
             .iter()
             .map(|&id| ActItemNewDto {

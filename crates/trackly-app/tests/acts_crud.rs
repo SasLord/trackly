@@ -70,6 +70,7 @@ async fn create_handover_happy() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: device_ids
                 .iter()
                 .map(|&id| ActItemNewDto {
@@ -159,6 +160,7 @@ async fn create_with_override_audits_and_increments_only_audit() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
                 quantity: 1,
@@ -236,6 +238,7 @@ async fn override_number_already_exists_returns_conflict() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
                 quantity: 1,
@@ -250,6 +253,7 @@ async fn override_number_already_exists_returns_conflict() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[1],
                 quantity: 1,
@@ -286,6 +290,7 @@ async fn rollback_on_invalid_device_id() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: 9999,
                 quantity: 1,
@@ -350,6 +355,7 @@ async fn counts_match_switch_bar() {
                 location_id: None,
                 notes: None,
                 deadline_utc: None,
+                handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: id,
                     quantity: 1,
@@ -386,6 +392,7 @@ async fn handover_with_quantity_persists() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: source_id,
                 quantity: 3,
@@ -450,6 +457,7 @@ async fn create_validates_required_fields() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
                 quantity: 1,
@@ -469,6 +477,7 @@ async fn create_validates_required_fields() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: vec![],
         };
         let err = svc.create(p2).await.expect_err("empty items");
@@ -497,6 +506,7 @@ async fn list_returns_handover_with_items() {
             location_id: None,
             notes: None,
             deadline_utc: None,
+            handover_date_utc: None,
             items: ids
                 .iter()
                 .map(|&id| ActItemNewDto {
