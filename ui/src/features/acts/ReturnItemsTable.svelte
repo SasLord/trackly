@@ -1,13 +1,14 @@
 <script lang="ts">
-  // Plan 03-03: per-row table inside ReturnModal.
+  // Phase 3.1 Plan 03: per-DEVICE-ID table inside ReturnModal (G-10).
   //
-  // Columns: ☑ checkbox · Устройство · Кол-во к возврату · Состояние · Расположение.
-  // Per-row visual: unchecked → opacity 0.5 + disabled inputs.
-  // Per-row annotation: «(по умолчанию)» когда bulk-default используется,
-  // «(переопределено)» когда user задал per-row значение.
-  //
-  // applyToAll = false → bulk не применяется; per-row override обязателен (валидация
-  // на бэке через AppError::Validation).
+  // G-10: каждая row соответствует ОДНОМУ device_id из outstanding_device_ids.
+  //       Если act_item имеет outstanding_device_ids=[10,11,12] — render 3 rows.
+  // G-6 (symmetric apply_to_all disable): condition И location inputs обе имеют
+  //       ОДИНАКОВУЮ disabled formula = `!row.checked || applyToAll`. Раньше
+  //       location имел только `!row.checked` (asymmetric — UAT bug).
+  // Когда apply_to_all=true: per-row inputs disabled, placeholder «(по умолчанию)».
+  // Когда apply_to_all=false: per-row inputs enabled per checked row.
+  // Когда row.checked=false: row opacity 0.5 + оба disabled regardless of applyToAll.
   import Input from '$lib/components/Input.svelte';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
 
@@ -15,13 +16,10 @@
     actItemId: number;
     deviceId: number;
     deviceLabel: string;
-    quantity: number;
     /** Per-row checked flag — default true. */
     checked: boolean;
     /** Per-row condition override; null → fallback на bulk (если applyToAll). */
     conditionOverride: string | null;
-    /** Per-row location override (locations.id); null → fallback на bulk. */
-    locationOverrideId: number | null;
     /** Локально набираемое имя расположения (autocomplete возвращает строку). */
     locationOverrideName: string;
   }
@@ -31,7 +29,6 @@
     applyToAll: boolean;
     bulkCondition: string | null;
     bulkLocationName: string;
-    /** Map имя расположения → id (заполняется родителем по мере выбора). */
     onChange: (_items: ReturnRowState[]) => void;
   }
 
@@ -39,13 +36,6 @@
 
   function toggleChecked(idx: number) {
     const next = items.map((r, i) => (i === idx ? { ...r, checked: !r.checked } : r));
-    onChange(next);
-  }
-
-  function setQty(idx: number, v: string) {
-    const parsed = parseInt(v, 10);
-    const qty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    const next = items.map((r, i) => (i === idx ? { ...r, quantity: qty } : r));
     onChange(next);
   }
 
@@ -57,10 +47,8 @@
   }
 
   function setLocOverrideName(idx: number, v: string) {
-    // Сбрасываем id при изменении строки — родитель resolve'ит имя в id при submit
-    // (resolve через bulk_location_id или через server-side INSERT OR IGNORE locations).
     const next = items.map((r, i) =>
-      i === idx ? { ...r, locationOverrideName: v, locationOverrideId: null } : r,
+      i === idx ? { ...r, locationOverrideName: v } : r,
     );
     onChange(next);
   }
@@ -70,16 +58,16 @@
   <div class="thead" role="row">
     <div class="th col-check" aria-label="Выбрано"></div>
     <div class="th col-device">Устройство</div>
-    <div class="th col-qty">Кол-во к возврату</div>
     <div class="th col-condition">Состояние</div>
     <div class="th col-location">Расположение</div>
   </div>
 
-  {#each items as row, idx (row.actItemId)}
+  {#each items as row, idx (`${row.actItemId}-${row.deviceId}`)}
     {@const effectiveCondPlaceholder = applyToAll && bulkCondition ? bulkCondition : ''}
     {@const effectiveLocPlaceholder = applyToAll && bulkLocationName ? bulkLocationName : ''}
     {@const condOverridden = row.conditionOverride !== null}
     {@const locOverridden = row.locationOverrideName.trim().length > 0}
+    {@const perRowDisabled = !row.checked || applyToAll}
     <div class="tr" class:tr-unchecked={!row.checked} role="row">
       <div class="td col-check">
         <input
@@ -92,30 +80,22 @@
       <div class="td col-device">
         <span class="device-label">{row.deviceLabel}</span>
       </div>
-      <div class="td col-qty">
-        <Input
-          type="number"
-          value={String(row.quantity)}
-          disabled={!row.checked}
-          oninput={(v) => setQty(idx, v)}
-        />
-      </div>
       <div class="td col-condition">
         <Input
           type="text"
           value={row.conditionOverride ?? ''}
-          placeholder={effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
-          disabled={!row.checked}
+          placeholder={applyToAll && row.checked ? '(по умолчанию)' : effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
+          disabled={perRowDisabled}
           oninput={(v) => setCondOverride(idx, v)}
         />
         {#if row.checked && applyToAll && !condOverridden}
           <span class="hint hint-default">(по умолчанию)</span>
-        {:else if row.checked && condOverridden}
+        {:else if row.checked && condOverridden && !applyToAll}
           <span class="hint hint-warning">(переопределено)</span>
         {/if}
       </div>
       <div class="td col-location">
-        {#if row.checked}
+        {#if row.checked && !applyToAll}
           <DeviceAutocompleteField
             field="location"
             value={row.locationOverrideName}
@@ -124,11 +104,16 @@
             onChange={(v) => setLocOverrideName(idx, v)}
           />
         {:else}
-          <Input type="text" value="" disabled />
+          <Input
+            type="text"
+            value={row.locationOverrideName}
+            placeholder={applyToAll && row.checked ? '(по умолчанию)' : ''}
+            disabled
+          />
         {/if}
         {#if row.checked && applyToAll && !locOverridden}
           <span class="hint hint-default">(по умолчанию)</span>
-        {:else if row.checked && locOverridden}
+        {:else if row.checked && locOverridden && !applyToAll}
           <span class="hint hint-warning">(переопределено)</span>
         {/if}
       </div>
@@ -145,7 +130,7 @@
   .thead,
   .tr {
     display: grid;
-    grid-template-columns: 40px 1fr 140px 1fr 1.4fr;
+    grid-template-columns: 40px 1.4fr 1fr 1.4fr;
     gap: var(--space-sm);
     align-items: start;
     padding: var(--space-sm) var(--space-md);
@@ -176,7 +161,6 @@
     justify-content: center;
     padding-top: 6px;
   }
-  .col-qty,
   .col-condition,
   .col-location {
     font-variant-numeric: tabular-nums;
