@@ -260,12 +260,17 @@ fn render_section(
             let col_count = columns.len().max(1);
             let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
             let col_width = usable_width / col_count as f32;
+            // G-8a: cell text rendered в col_width minus padding (4pt справа)
+            // чтобы было видимое разделение между ячейками.
+            const CELL_PADDING_PT: f32 = 4.0;
+            let cell_text_width = (col_width - CELL_PADDING_PT).max(0.0);
             for (idx, col) in columns.iter().enumerate() {
+                let truncated = truncate_to_width(col, BODY_SIZE_PT, cell_text_width);
                 surface.draw_text(
                     Point::from_xy(MARGIN_PT + idx as f32 * col_width, y),
                     font_bold.clone(),
                     BODY_SIZE_PT,
-                    col,
+                    &truncated,
                     false,
                     TextDirection::Auto,
                 );
@@ -273,11 +278,12 @@ fn render_section(
             y += BODY_SIZE_PT + 6.0;
             for row in rows {
                 for (idx, cell) in row.iter().enumerate() {
+                    let truncated = truncate_to_width(cell, BODY_SIZE_PT, cell_text_width);
                     surface.draw_text(
                         Point::from_xy(MARGIN_PT + idx as f32 * col_width, y),
                         font_regular.clone(),
                         BODY_SIZE_PT,
-                        cell,
+                        &truncated,
                         false,
                         TextDirection::Auto,
                     );
@@ -318,6 +324,37 @@ fn render_section(
 /// Default rendered logo box size in PDF points (top-right corner of page).
 const LOGO_WIDTH_PT: f32 = 100.0;
 const LOGO_HEIGHT_PT: f32 = 50.0;
+
+/// G-8a (Phase 3.1): truncate cell text to fit within `max_width` PDF points
+/// чтобы избежать overlap'а с соседней колонкой ItemsTable. Approximation:
+/// average glyph width = 0.5 * font_size (для DejaVu Sans en-em ratio ≈ 0.5).
+///
+/// B-3 INVARIANT: input strings ≤ max_chars MUST pass through BYTE-IDENTICALLY
+/// (early return). The `pdf_determinism::fixture_act_42_renders_to_known_hash`
+/// test pins SHA256 of fixture act_42 PDF. Fixture rows have short cell text
+/// (e.g. "1", "INV-001"); truncate должен быть no-op для них, иначе SHA256
+/// drift сломает existing test.
+///
+/// Word-wrap отложен per CONTEXT.md G-8a (Phase 3.1 = ellipsis-only,
+/// follow-up issue для real font measure если approximation окажется
+/// слишком неточной в real-world UAT).
+pub fn truncate_to_width(text: &str, font_size: f32, max_width: f32) -> String {
+    let avg_glyph_w = 0.5 * font_size;
+    let max_chars = if avg_glyph_w > 0.0 {
+        (max_width / avg_glyph_w).floor() as usize
+    } else {
+        0
+    };
+    // BYTE-IDENTICAL early return (B-3): сохраняет pdf_determinism hash.
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars <= 1 {
+        return "…".to_string();
+    }
+    let truncated: String = text.chars().take(max_chars - 1).collect();
+    format!("{truncated}…")
+}
 
 /// G-9 (Phase 3.1): scale logo proportionally to fit within `(max_w, max_h)`
 /// box without distortion. Returns `(final_w, final_h)`.
