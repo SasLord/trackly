@@ -29,7 +29,7 @@ use trackly_infra::repos::{SqliteActRepository, SqliteAuditLogRepository, Sqlite
 
 use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
-    ActsCountsDto, Pagination,
+    ActReturnItemDto, ActsCountsDto, Pagination,
 };
 use crate::pdf::PdfRenderer;
 use crate::services::organization_service::OrganizationService;
@@ -116,11 +116,19 @@ impl ActService {
                 message: "Максимум 100 позиций в одном акте".into(),
             });
         }
+        // T-03.1-02: bound quantity to prevent DoS via 10000x clones.
+        const MAX_CLONE_QTY: i64 = 1000;
         for (idx, it) in p.items.iter().enumerate() {
             if it.quantity < 1 {
                 return Err(AppError::Validation {
                     field: format!("items[{idx}].quantity"),
                     message: "Количество должно быть ≥ 1".into(),
+                });
+            }
+            if it.quantity > MAX_CLONE_QTY {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].quantity"),
+                    message: "Кол-во не должно превышать 1000".into(),
                 });
             }
         }
@@ -235,53 +243,123 @@ impl ActService {
                 }
 
                 // 4. INSERT act_items + UPDATE devices + audit each device mutation.
+                //
+                // G-12 (Phase 03.1) clone-on-handover:
+                //   - quantity == 1: legacy path (existing single device_id).
+                //   - quantity  > 1: clone (quantity - 1) device rows via
+                //     SqliteDeviceRepository::clone_device_in_tx; each clone
+                //     gets its own act_item (parent_act_item_id = original
+                //     act_item.id for clones, NULL for the original).
+                //
+                // Each effective device (original + clones) goes through the
+                // same status/location/audit cycle so undo (which replays from
+                // audit_log) restores every clone independently.
                 for item in &payload.items {
-                    let before = devices_repo.get_in_tx(&tx, item.device_id)?;
-                    // Full snapshot — undo path в plan 03 читает эти поля.
-                    let before_json =
-                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
-                            source_chain: format!("before_json: {e}"),
-                        })?;
+                    let source_before = devices_repo.get_in_tx(&tx, item.device_id)?;
 
-                    acts_repo.insert_act_item_in_tx(
-                        &tx,
-                        act_id,
-                        item.device_id,
-                        item.quantity,
-                        before.state.as_deref(),
-                        before.kit.as_deref(),
-                    )?;
+                    // Build the full list of device_ids participating in this
+                    // act_item: [source_id, clone_id_1, clone_id_2, ...].
+                    let mut effective_device_ids: Vec<i64> = Vec::with_capacity(item.quantity as usize);
+                    effective_device_ids.push(item.device_id);
+                    for _ in 1..item.quantity {
+                        let clone_id =
+                            devices_repo.clone_device_in_tx(&tx, item.device_id, now)?;
+                        // Audit the clone-creation (T-03.1-04 repudiation).
+                        let clone_after = devices_repo.get_in_tx(&tx, clone_id)?;
+                        let clone_after_json = device_snapshot_json(&clone_after).map_err(
+                            |e| AppError::Internal {
+                                source_chain: format!("clone after_json: {e}"),
+                            },
+                        )?;
+                        let clone_payload_json = serde_json::json!({
+                            "source_device_id": item.device_id,
+                            "act_id": act_id,
+                        })
+                        .to_string();
+                        audit_repo.insert(
+                            &tx,
+                            AuditEntry {
+                                entity_type: "device",
+                                entity_id: clone_id,
+                                action: "custom:device_clone_for_handover",
+                                user_id: user_id_opt,
+                                before_json: None,
+                                after_json: Some(clone_after_json),
+                                payload_json: Some(clone_payload_json),
+                                created_at_utc: now,
+                            },
+                        )?;
+                        effective_device_ids.push(clone_id);
+                    }
 
-                    let after = devices_repo.update_status_and_location_in_tx(
-                        &tx,
-                        item.device_id,
-                        in_work_status_id,
-                        payload.location_id,
-                        now,
-                    )?;
-                    let after_json =
-                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
-                            source_chain: format!("after_json: {e}"),
-                        })?;
+                    // INSERT act_items: one row per effective device.
+                    // The first row (original device_id) has parent_act_item_id = NULL.
+                    // Subsequent rows reference the first row's id (clone provenance).
+                    let mut first_act_item_id: Option<i64> = None;
+                    for (idx, &dev_id) in effective_device_ids.iter().enumerate() {
+                        let parent_aiid = if idx == 0 { None } else { first_act_item_id };
+                        tx.execute(
+                            "INSERT INTO act_items \
+                             (act_id, device_id, quantity, condition_at_time, \
+                              complectation_at_time, parent_act_item_id) \
+                             VALUES (?1, ?2, 1, ?3, ?4, ?5)",
+                            params![
+                                act_id,
+                                dev_id,
+                                source_before.state.as_deref(),
+                                source_before.kit.as_deref(),
+                                parent_aiid,
+                            ],
+                        )
+                        .map_err(map_rusqlite)?;
+                        if idx == 0 {
+                            first_act_item_id = Some(tx.last_insert_rowid());
+                        }
+                    }
 
-                    let payload_json = serde_json::json!({
-                        "act_id": act_id,
-                        "kind": "handover",
-                    })
-                    .to_string();
-                    audit_repo.insert(
-                        &tx,
-                        AuditEntry {
-                            entity_type: "device",
-                            entity_id: item.device_id,
-                            action: "update",
-                            user_id: user_id_opt,
-                            before_json: Some(before_json),
-                            after_json: Some(after_json),
-                            payload_json: Some(payload_json),
-                            created_at_utc: now,
-                        },
-                    )?;
+                    // UPDATE devices (each effective device) + audit each mutation.
+                    // We snapshot BEFORE status change (source: before status update;
+                    // clones: just after creation, before status update).
+                    for &dev_id in &effective_device_ids {
+                        let before = devices_repo.get_in_tx(&tx, dev_id)?;
+                        let before_json = device_snapshot_json(&before).map_err(
+                            |e| AppError::Internal {
+                                source_chain: format!("before_json: {e}"),
+                            },
+                        )?;
+
+                        let after = devices_repo.update_status_and_location_in_tx(
+                            &tx,
+                            dev_id,
+                            in_work_status_id,
+                            payload.location_id,
+                            now,
+                        )?;
+                        let after_json = device_snapshot_json(&after).map_err(
+                            |e| AppError::Internal {
+                                source_chain: format!("after_json: {e}"),
+                            },
+                        )?;
+
+                        let payload_json = serde_json::json!({
+                            "act_id": act_id,
+                            "kind": "handover",
+                        })
+                        .to_string();
+                        audit_repo.insert(
+                            &tx,
+                            AuditEntry {
+                                entity_type: "device",
+                                entity_id: dev_id,
+                                action: "update",
+                                user_id: user_id_opt,
+                                before_json: Some(before_json),
+                                after_json: Some(after_json),
+                                payload_json: Some(payload_json),
+                                created_at_utc: now,
+                            },
+                        )?;
+                    }
                 }
 
                 // 5. Final audit row for the act creation.
@@ -332,10 +410,14 @@ impl ActService {
                 message: "Добавьте хотя бы одну позицию к возврату".into(),
             });
         }
-        // CR-03 (ACT-13): intra-payload dedup. Two independent HashSet<i64>
-        // catch duplicate act_item_id and duplicate device_id BEFORE any SQL
-        // existence check, so the writer-task never sees a payload that would
-        // otherwise produce a doubled audit snapshot (and break undo replay).
+        // CR-03 (ACT-13) + G-12 (Phase 03.1): intra-payload dedup. After G-12
+        // shift one ReturnItemDto can carry multiple device_id'ов через
+        // `device_ids: Vec<i64>` (clones share одного act_item_id для UI groupа).
+        // Dedup primary key — device_id (a device cannot be returned twice in one payload);
+        // дубликат act_item_id допустим если разные device_ids указывают на
+        // разные cloned act_items одного оригинала, но в G-12 модели каждый
+        // act_item ↔ единственный device_id, поэтому дубликат act_item_id
+        // практически всегда ошибка → оставляем дубликат-чек для строгости.
         let mut seen_act_items: std::collections::HashSet<i64> = std::collections::HashSet::new();
         let mut seen_device_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
         for (idx, it) in payload.items.iter().enumerate() {
@@ -345,13 +427,24 @@ impl ActService {
                     message: format!("act_item_id={} продублирован в возврате", it.act_item_id),
                 });
             }
-            if !seen_device_ids.insert(it.device_id) {
+            // Canonical device_ids (G-12) с fallback на [device_id] (legacy).
+            let dids = effective_device_ids(it);
+            if dids.is_empty() {
                 return Err(AppError::Validation {
-                    field: format!("items[{idx}].device_id"),
-                    message: format!("device_id={} продублирован в возврате", it.device_id),
+                    field: format!("items[{idx}].device_ids"),
+                    message: "Укажите хотя бы один device_id к возврату".into(),
                 });
             }
-            if it.quantity < 1 {
+            for &did in &dids {
+                if !seen_device_ids.insert(did) {
+                    return Err(AppError::Validation {
+                        field: format!("items[{idx}].device_ids"),
+                        message: format!("device_id={} продублирован в возврате", did),
+                    });
+                }
+            }
+            // quantity-чек применим только в legacy-режиме (device_ids пуст).
+            if it.device_ids.is_empty() && it.quantity < 1 {
                 return Err(AppError::Validation {
                     field: format!("items[{idx}].quantity"),
                     message: "Количество должно быть ≥ 1".into(),
@@ -414,23 +507,32 @@ impl ActService {
                 }
 
                 // 2. Validate act_item_id refs (все принадлежат parent акту).
+                //
+                // G-12 (Phase 03.1): `device_ids[]` canonical — каждый device_id
+                // ДОЛЖЕН принадлежать handover-акту (existence check на парах
+                // (parent_act_id, device_id) без зависимости от act_item_id —
+                // это устойчиво к clone-провенансу, где act_item_id может
+                // указывать на оригинал или на клон).
                 for (idx, it) in payload.items.iter().enumerate() {
-                    let exists: bool = tx
-                        .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM act_items \
-                             WHERE id = ?1 AND act_id = ?2 AND device_id = ?3 LIMIT 1)",
-                            params![it.act_item_id, act_id, it.device_id],
-                            |r| r.get(0),
-                        )
-                        .map_err(map_rusqlite)?;
-                    if !exists {
-                        return Err(AppError::Validation {
-                            field: format!("items[{idx}].act_item_id"),
-                            message: format!(
-                                "act_item_id={} не принадлежит акту №{}",
-                                it.act_item_id, parent.number
-                            ),
-                        });
+                    let dids = effective_device_ids(it);
+                    for &did in &dids {
+                        let exists: bool = tx
+                            .query_row(
+                                "SELECT EXISTS(SELECT 1 FROM act_items \
+                                 WHERE act_id = ?1 AND device_id = ?2 LIMIT 1)",
+                                params![act_id, did],
+                                |r| r.get(0),
+                            )
+                            .map_err(map_rusqlite)?;
+                        if !exists {
+                            return Err(AppError::Validation {
+                                field: format!("items[{idx}].device_ids"),
+                                message: format!(
+                                    "device_id={} не принадлежит акту №{}",
+                                    did, parent.number
+                                ),
+                            });
+                        }
                     }
                 }
 
@@ -505,66 +607,23 @@ impl ActService {
                 let return_act_id = acts_repo.insert_act_in_tx(&tx, &return_row)?;
 
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
+                //
+                // G-12 (Phase 03.1) flat-iterate over canonical device_ids:
+                // в новой модели каждый returned device = одна строка в
+                // return-act_items (quantity=1), один device update, один audit.
+                // Legacy fallback (`device_ids` пуст) даёт один элемент
+                // [device_id] с per_device_qty=item.quantity (для PRE-V015
+                // тестов и backward-compat).
                 for item in &payload.items {
-                    let before = devices_repo.get_in_tx(&tx, item.device_id)?;
+                    let dids = effective_device_ids(item);
+                    let per_device_qty: i64 = if item.device_ids.is_empty() {
+                        item.quantity
+                    } else {
+                        1
+                    };
 
-                    // CR-02 (ACT-13): status guard. The device must currently
-                    // be «в_работе» — otherwise this is a double-return (the
-                    // device was already returned by another tx, or was
-                    // mutated outside the act lifecycle). Reject with
-                    // Conflict so the writer-task rolls back the whole tx.
-                    if before.status_id != in_work_status_id {
-                        return Err(AppError::Conflict {
-                            reason: format!(
-                                "Устройство id={} уже не в работе — возможно, оно уже возвращено",
-                                item.device_id
-                            ),
-                        });
-                    }
-
-                    // CR-04 (ACT-13): quantity bound. Read handover_qty for
-                    // this (act_item_id, parent act_id) pair, sum already-
-                    // returned quantities from non-deleted child return acts,
-                    // and refuse if `current + already_returned > handover`.
-                    // This protects against overflow returns that would skew
-                    // SUM-based reports (recompute_parent_archived stays
-                    // correct, but downstream analytics rely on these sums).
-                    let handover_qty: i64 = tx
-                        .query_row(
-                            "SELECT quantity FROM act_items WHERE id = ?1 AND act_id = ?2",
-                            params![item.act_item_id, act_id],
-                            |r| r.get(0),
-                        )
-                        .map_err(map_rusqlite)?;
-                    let already_returned: i64 = tx
-                        .query_row(
-                            "SELECT COALESCE(SUM(rai.quantity), 0) \
-                             FROM act_items rai \
-                             JOIN acts ra ON ra.id = rai.act_id \
-                             WHERE ra.parent_act_id = ?1 \
-                               AND rai.device_id = ?2 \
-                               AND ra.deleted_at_utc IS NULL",
-                            params![act_id, item.device_id],
-                            |r| r.get(0),
-                        )
-                        .map_err(map_rusqlite)?;
-                    if item.quantity + already_returned > handover_qty {
-                        return Err(AppError::Validation {
-                            field: "items".into(),
-                            message: format!(
-                                "Возврат превышает выданное количество для устройства id={}: \
-                                 уже возвращено {} + текущее {} > выдано {}",
-                                item.device_id, already_returned, item.quantity, handover_qty,
-                            ),
-                        });
-                    }
-
-                    let before_json =
-                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
-                            source_chain: format!("return before_json: {e}"),
-                        })?;
-
-                    // Effective values (per-row override wins; bulk fallback only when apply_to_all).
+                    // Per-row override resolution one раз на item (одинаковый
+                    // condition/location для всех device_ids в этом item).
                     let effective_condition: Option<String> =
                         item.condition_override.clone().or_else(|| {
                             if payload.apply_to_all {
@@ -573,7 +632,6 @@ impl ActService {
                                 None
                             }
                         });
-                    // Per-row location override: name имеет приоритет над id.
                     let per_row_loc_id: Option<i64> =
                         if let Some(name) = item.location_name_override.as_deref() {
                             devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
@@ -588,48 +646,103 @@ impl ActService {
                         }
                     });
 
-                    // INSERT act_item for the return-act (snapshot return moment).
-                    acts_repo.insert_act_item_in_tx(
-                        &tx,
-                        return_act_id,
-                        item.device_id,
-                        item.quantity,
-                        effective_condition.as_deref(),
-                        before.kit.as_deref(),
-                    )?;
+                    for &device_id in &dids {
+                        let before = devices_repo.get_in_tx(&tx, device_id)?;
 
-                    // UPDATE devices: → склад + condition.
-                    let after = devices_repo.update_full_in_tx(
-                        &tx,
-                        item.device_id,
-                        on_warehouse_status_id,
-                        effective_location,
-                        effective_condition.as_deref(),
-                        now,
-                    )?;
-                    let after_json =
-                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
-                            source_chain: format!("return after_json: {e}"),
-                        })?;
+                        // CR-02 (ACT-13): status guard. Защита от двойного
+                        // возврата — device должен быть 'в_работе'.
+                        if before.status_id != in_work_status_id {
+                            return Err(AppError::Conflict {
+                                reason: format!(
+                                    "Устройство id={} уже не в работе — возможно, оно уже возвращено",
+                                    device_id
+                                ),
+                            });
+                        }
 
-                    let payload_json = serde_json::json!({
-                        "act_id": return_act_id,
-                        "kind": "return",
-                    })
-                    .to_string();
-                    audit_repo.insert(
-                        &tx,
-                        AuditEntry {
-                            entity_type: "device",
-                            entity_id: item.device_id,
-                            action: "update",
-                            user_id: user_id_opt,
-                            before_json: Some(before_json),
-                            after_json: Some(after_json),
-                            payload_json: Some(payload_json),
-                            created_at_utc: now,
-                        },
-                    )?;
+                        // CR-04 (ACT-13): quantity bound. В G-12 модели handover_qty
+                        // на (act_id, device_id) ВСЕГДА единственная строка
+                        // act_items с quantity=1 (clones имеют свой act_item).
+                        // SUM используется на legacy data (PRE-V015 qty>1 originals).
+                        let handover_qty: i64 = tx
+                            .query_row(
+                                "SELECT COALESCE(SUM(quantity), 0) FROM act_items \
+                                 WHERE act_id = ?1 AND device_id = ?2",
+                                params![act_id, device_id],
+                                |r| r.get(0),
+                            )
+                            .map_err(map_rusqlite)?;
+                        let already_returned: i64 = tx
+                            .query_row(
+                                "SELECT COALESCE(SUM(rai.quantity), 0) \
+                                 FROM act_items rai \
+                                 JOIN acts ra ON ra.id = rai.act_id \
+                                 WHERE ra.parent_act_id = ?1 \
+                                   AND rai.device_id = ?2 \
+                                   AND ra.deleted_at_utc IS NULL",
+                                params![act_id, device_id],
+                                |r| r.get(0),
+                            )
+                            .map_err(map_rusqlite)?;
+                        if per_device_qty + already_returned > handover_qty {
+                            return Err(AppError::Validation {
+                                field: "items".into(),
+                                message: format!(
+                                    "Возврат превышает выданное количество для устройства id={}: \
+                                     уже возвращено {} + текущее {} > выдано {}",
+                                    device_id, already_returned, per_device_qty, handover_qty,
+                                ),
+                            });
+                        }
+
+                        let before_json =
+                            device_snapshot_json(&before).map_err(|e| AppError::Internal {
+                                source_chain: format!("return before_json: {e}"),
+                            })?;
+
+                        // INSERT act_item for the return-act (snapshot return moment).
+                        acts_repo.insert_act_item_in_tx(
+                            &tx,
+                            return_act_id,
+                            device_id,
+                            per_device_qty,
+                            effective_condition.as_deref(),
+                            before.kit.as_deref(),
+                        )?;
+
+                        // UPDATE devices: → склад + condition.
+                        let after = devices_repo.update_full_in_tx(
+                            &tx,
+                            device_id,
+                            on_warehouse_status_id,
+                            effective_location,
+                            effective_condition.as_deref(),
+                            now,
+                        )?;
+                        let after_json =
+                            device_snapshot_json(&after).map_err(|e| AppError::Internal {
+                                source_chain: format!("return after_json: {e}"),
+                            })?;
+
+                        let payload_json = serde_json::json!({
+                            "act_id": return_act_id,
+                            "kind": "return",
+                        })
+                        .to_string();
+                        audit_repo.insert(
+                            &tx,
+                            AuditEntry {
+                                entity_type: "device",
+                                entity_id: device_id,
+                                action: "update",
+                                user_id: user_id_opt,
+                                before_json: Some(before_json),
+                                after_json: Some(after_json),
+                                payload_json: Some(payload_json),
+                                created_at_utc: now,
+                            },
+                        )?;
+                    }
                 }
 
                 // 7. Recompute parent.archived (auto-archive at 100% return).
@@ -680,7 +793,12 @@ impl ActService {
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             let row = repo.get(&conn, id)?;
-            let items = load_items_for_act(&conn, id)?;
+            let mut items = load_items_for_act(&conn, id)?;
+            // G-10 / G-12 (Phase 03.1): populate outstanding_device_ids
+            // только для handover-актов (returns не возвращают сами себя).
+            if row.act_type == ActType::Handover {
+                populate_outstanding_device_ids(&conn, id, &mut items)?;
+            }
             // Заполнить return_ids только для handover-актов.
             let return_ids = if row.act_type == ActType::Handover {
                 repo.list_returns_for_parent(&conn, id)?
@@ -1292,6 +1410,17 @@ fn undo_device_mutations_for_act(
 /// Включает ВСЕ поля, необходимые для `restore_from_snapshot_in_tx` (D-Undo-01):
 /// `id`, `status_id`, `location_id`, `state`, `kit`, `name`, `model`,
 /// `inventory_no`, `serial_no`, `specs`, `type_id`, `version`.
+/// G-12 canonical device_ids per ReturnItemDto с fallback на legacy
+/// `[device_id]` (для совместимости с уже существующими тестами / клиентами,
+/// которые шлют единственный device_id + quantity=1).
+fn effective_device_ids(item: &ActReturnItemDto) -> Vec<i64> {
+    if item.device_ids.is_empty() {
+        vec![item.device_id]
+    } else {
+        item.device_ids.clone()
+    }
+}
+
 fn device_snapshot_json(row: &DeviceRow) -> Result<String, serde_json::Error> {
     serde_json::to_string(&serde_json::json!({
         "id": row.id,
@@ -1353,6 +1482,54 @@ fn load_items_for_act(
         out.push(row.map_err(map_rusqlite)?);
     }
     Ok(out)
+}
+
+/// G-10 / G-12 (Phase 03.1): for each handover-act item, fill
+/// `outstanding_device_ids` — the device_id'ы ещё НЕ возвращённые через
+/// активные return-акты этого parent.
+///
+/// SQL semantics (B-1 compliant — `act_items` НЕ имеет `deleted_at_utc`,
+/// soft-delete filter применяется ТОЛЬКО на `acts` через JOIN):
+///
+/// ```sql
+/// SELECT device_id FROM act_items WHERE act_id = ?
+///   EXCEPT
+/// SELECT rai.device_id FROM act_items rai
+///   JOIN acts ra ON ra.id = rai.act_id
+///  WHERE ra.parent_act_id = ?  AND ra.deleted_at_utc IS NULL;
+/// ```
+///
+/// Каждый ActItemDto получает `outstanding_device_ids = [device_id]` если этот
+/// device НЕ возвращён, иначе `[]`. В G-12 модели 1 act_item ↔ 1 device_id,
+/// поэтому outstanding на конкретном item это всегда либо `[device_id]`
+/// либо `[]`.
+fn populate_outstanding_device_ids(
+    conn: &rusqlite::Connection,
+    act_id: i64,
+    items: &mut [ActItemDto],
+) -> Result<(), AppError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT device_id FROM act_items WHERE act_id = ?1 \
+             EXCEPT \
+             SELECT rai.device_id FROM act_items rai \
+               JOIN acts ra ON ra.id = rai.act_id \
+              WHERE ra.parent_act_id = ?1 AND ra.deleted_at_utc IS NULL",
+        )
+        .map_err(map_rusqlite)?;
+    let outstanding: std::collections::HashSet<i64> = stmt
+        .query_map(params![act_id], |r| r.get::<_, i64>(0))
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(map_rusqlite)?;
+    for item in items.iter_mut() {
+        if outstanding.contains(&item.device_id) {
+            item.outstanding_device_ids = vec![item.device_id];
+        } else {
+            item.outstanding_device_ids = Vec::new();
+        }
+    }
+    Ok(())
 }
 
 // `ActItemRow` re-export (unused yet — plan 03 will consume).

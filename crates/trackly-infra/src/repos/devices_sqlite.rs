@@ -398,6 +398,52 @@ impl SqliteDeviceRepository {
         self.get_in_tx(tx, device_id)
     }
 
+    /// Phase 03.1 (G-12 clone-on-handover): клонирует device-row внутри
+    /// writer-tx. Возвращает id вновь созданной row.
+    ///
+    /// Semantics (G-12 + W-5):
+    /// - Все scalar-поля копируются из source EXCEPT:
+    ///   - `inventory_number := NULL` (G-12 decision (b) — клоны анонимны)
+    ///   - `serial_number    := NULL` (W-5 — физический serial уникален)
+    /// - `version := 1`, `created_at_utc/updated_at_utc := now_utc`,
+    ///   `deleted_at_utc := NULL`.
+    /// - `status_id` сохраняется (caller сразу переведёт в 'в_работе' через
+    ///   update_status_and_location_in_tx — типичный pattern в ActService::create).
+    ///
+    /// Errors: AppError::NotFound если source отсутствует / soft-deleted.
+    pub fn clone_device_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        source_id: i64,
+        now_utc: i64,
+    ) -> Result<i64, AppError> {
+        let affected = tx
+            .execute(
+                "INSERT INTO devices ( \
+                   type_id, name, inventory_number, serial_number, model, \
+                   condition, complectation, notes, \
+                   location_id, status_id, \
+                   version, created_at_utc, updated_at_utc, deleted_at_utc \
+                 ) \
+                 SELECT \
+                   d.type_id, d.name, NULL, NULL, d.model, \
+                   d.condition, d.complectation, d.notes, \
+                   d.location_id, d.status_id, \
+                   1, ?1, ?1, NULL \
+                 FROM devices d \
+                 WHERE d.id = ?2 AND d.deleted_at_utc IS NULL",
+                rusqlite::params![now_utc, source_id],
+            )
+            .map_err(map_rusqlite)?;
+        if affected == 0 {
+            return Err(AppError::NotFound {
+                entity: "device",
+                id: source_id,
+            });
+        }
+        Ok(tx.last_insert_rowid())
+    }
+
     /// Soft-delete в пределах транзакции.
     pub fn delete_soft_in_tx(
         &self,

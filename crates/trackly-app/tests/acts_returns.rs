@@ -815,6 +815,10 @@ async fn return_quantity_exceeds_handover_rejected() {
         let item = handover.items[0].clone();
         // create_handover seeds quantity=1 — return 100 must fail.
 
+        // G-12 legacy path: device_ids empty → backend применяет quantity-bound
+        // guard на single device_id из item. В canonical G-12 модели
+        // (`device_ids` non-empty) quantity игнорируется backend-ом и double-return
+        // ловится `return_twice_same_device_rejected` через status-guard.
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
             bulk_location_id: None,
@@ -823,7 +827,7 @@ async fn return_quantity_exceeds_handover_rejected() {
             items: vec![ActReturnItemDto {
                 act_item_id: item.id,
                 device_id: item.device_id,
-                device_ids: vec![item.device_id],
+                device_ids: Vec::new(),
                 quantity: 100,
                 condition_override: None,
                 location_id_override: None,

@@ -367,14 +367,18 @@ async fn counts_match_switch_bar() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: quantity persists end-to-end (B-2 regression)
+// Test 6: handover qty>1 splits в N device-rows (G-12 clone-on-handover)
 // ---------------------------------------------------------------------------
+// PRE-V015 интент: «quantity column denorm column на act_items сохраняет N».
+// POST-V015 G-12: qty=3 порождает 3 разных act_items (по одному device_id
+// каждый, quantity=1), 2 из них клоны (parent_act_item_id != NULL).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn handover_with_quantity_persists() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 1).await;
+        let source_id = ids[0];
         let payload = ActCreateDto {
             number_override: None,
             giver_name: "А".into(),
@@ -383,27 +387,46 @@ async fn handover_with_quantity_persists() {
             notes: None,
             deadline_utc: None,
             items: vec![ActItemNewDto {
-                device_id: ids[0],
+                device_id: source_id,
                 quantity: 3,
             }],
         };
         let dto = svc.create(payload).await.expect("create");
-        assert_eq!(dto.items[0].quantity, 3);
+        // G-12: 3 act_items (1 original + 2 clones), все с quantity=1.
+        assert_eq!(dto.items.len(), 3);
+        for it in &dto.items {
+            assert_eq!(it.quantity, 1);
+        }
+        // Все 3 device_id различны.
+        let mut dids: Vec<i64> = dto.items.iter().map(|i| i.device_id).collect();
+        dids.sort();
+        dids.dedup();
+        assert_eq!(dids.len(), 3);
 
         let readers = svc.readers.clone();
         let act_id = dto.id;
-        let stored_qty: i64 = tokio::task::spawn_blocking(move || {
+        let (rows, clones) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            conn.query_row(
-                "SELECT quantity FROM act_items WHERE act_id=?1 LIMIT 1",
-                params![act_id],
-                |r| r.get(0),
-            )
-            .expect("query stored qty")
+            let rows: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM act_items WHERE act_id=?1",
+                    params![act_id],
+                    |r| r.get(0),
+                )
+                .expect("count rows");
+            let clones: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM act_items WHERE act_id=?1 AND parent_act_item_id IS NOT NULL",
+                    params![act_id],
+                    |r| r.get(0),
+                )
+                .expect("count clones");
+            (rows, clones)
         })
         .await
         .expect("spawn_blocking");
-        assert_eq!(stored_qty, 3);
+        assert_eq!(rows, 3, "3 act_items per G-12 clone-on-handover");
+        assert_eq!(clones, 2, "2 of 3 act_items имеют parent_act_item_id (clones)");
     })
     .await
     .expect("quantity budget");
