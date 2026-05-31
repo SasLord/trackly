@@ -69,15 +69,30 @@
     return `${y}-${m}-${day}`;
   }
 
+  // G-8b filename sanitization (T-03.1-05-03): user-provided strings (device
+  // name, act number override) могут содержать reserved chars или быть
+  // патологически длинными → защита от path injection и FS-level errors.
+  function sanitizeFilename(s: string): string {
+    // Replace reserved filesystem chars on Windows + Unix (* запрещён всеми).
+    return s.replace(/[/\\:*?"<>|]/g, '_').slice(0, 200);
+  }
+
   function suggestedFilename(): string {
+    let raw: string;
     if (mode === 'acceptance' && acceptancePayload) {
       const deviceName = acceptancePayload.deviceName ?? `dev-${acceptancePayload.deviceId}`;
       const date = isoDateForFilename(acceptancePayload.dateUtc);
-      return `Документ_приёма_${deviceName}_${date}.pdf`;
+      raw = `Документ_приёма_${deviceName}_${date}.pdf`;
+    } else {
+      const number = actNumberDisplay ?? 'N';
+      const date = isoDateForFilename(actDateUtc);
+      // Return-акты (с suffix «в»/«в1»/«в2») — display number сам по себе
+      // отражает что это return; на этом этапе используем единый patron
+      // «Акт_приёма-передачи_№{number}_{date}.pdf» (return UI ещё не
+      // передаёт `mode='return'` в этот модал — отложено на Phase 4).
+      raw = `Акт_приёма-передачи_№${number}_${date}.pdf`;
     }
-    const number = actNumberDisplay ?? 'N';
-    const date = isoDateForFilename(actDateUtc);
-    return `Акт_приёма-передачи_№${number}_${date}.pdf`;
+    return sanitizeFilename(raw);
   }
 
   function renderCall(): Promise<number[]> {

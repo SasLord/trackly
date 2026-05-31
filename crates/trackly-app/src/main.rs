@@ -130,6 +130,9 @@ fn main() -> anyhow::Result<()> {
                 tracing::info!("single-instance: second launch ignored");
             }))
             .plugin(tauri_plugin_dialog::init())
+            // Phase 3.1 Plan 05 — G-8b PDF preview actions.
+            .plugin(tauri_plugin_shell::init())
+            .plugin(tauri_plugin_fs::init())
             .manage(ctx)
             .invoke_handler(builder.invoke_handler())
             .setup(move |app| {

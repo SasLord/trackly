@@ -5,6 +5,18 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:default"
+    "dialog:default",
+    "shell:allow-open",
+    "fs:default",
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        { "path": "$TEMP/**/*.pdf" },
+        { "path": "$HOME/**/*.pdf" },
+        { "path": "$DOCUMENT/**/*.pdf" },
+        { "path": "$DESKTOP/**/*.pdf" },
+        { "path": "$DOWNLOAD/**/*.pdf" }
+      ]
+    }
   ]
 }
