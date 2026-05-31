@@ -23,7 +23,14 @@
     query: string;
     /** True if user picked a device — disables further suggestions until cleared. */
     picked: boolean;
+    /** W-5 (Phase 3.1 Plan 04): true if picked device имеет non-null serial_number.
+     *  Используется для UX guard: qty max=1 (клоны теряют serial — undesirable
+     *  для серийных устройств). Backend всё равно clones; это hint. */
+    has_serial?: boolean;
   }
+
+  // G-3 / T-03.1-02 mirror: backend MAX_CLONE_QTY = 1000.
+  const MAX_CLONE_QTY = 1000;
 
   interface Props {
     items: FormItemRow[];
@@ -85,6 +92,7 @@
 
   function pickDevice(idx: number, d: DeviceDto) {
     const label = d.inventory_no ? `${d.name} (инв. ${d.inventory_no})` : d.name;
+    const hasSerial = !!d.serial_no;
     const next = items.map((it, i) =>
       i === idx
         ? {
@@ -93,6 +101,9 @@
             device_label: label,
             query: label,
             picked: true,
+            has_serial: hasSerial,
+            // W-5: если выбранное устройство имеет serial — clamp qty=1.
+            quantity: hasSerial ? 1 : it.quantity,
           }
         : it,
     );
@@ -103,7 +114,11 @@
 
   function handleQtyInput(idx: number, v: string) {
     const parsed = parseInt(v, 10);
-    const qty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    let qty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    // G-3: hard cap UX feedback (mirror backend MAX_CLONE_QTY = 1000).
+    if (qty > MAX_CLONE_QTY) qty = MAX_CLONE_QTY;
+    // W-5: serialised devices must stay at qty=1.
+    if (items[idx]?.has_serial && qty > 1) qty = 1;
     const next = items.map((it, i) => (i === idx ? { ...it, quantity: qty } : it));
     onChange(next);
   }
@@ -156,14 +171,25 @@
           {/if}
         </div>
         <div class="td col-qty" class:has-error={!!errFor(idx, 'quantity')}>
-          <Input
+          <input
             type="number"
+            class="input qty-input"
+            class:invalid={!!errFor(idx, 'quantity')}
             value={String(row.quantity)}
-            invalid={!!errFor(idx, 'quantity')}
-            oninput={(v) => handleQtyInput(idx, v)}
+            min="1"
+            max={row.has_serial ? 1 : MAX_CLONE_QTY}
+            title={row.has_serial
+              ? 'У устройства есть серийный номер; для нескольких единиц используйте отдельные позиции.'
+              : `Максимум ${MAX_CLONE_QTY}`}
+            oninput={(e) => handleQtyInput(idx, (e.currentTarget as HTMLInputElement).value)}
           />
           {#if errFor(idx, 'quantity')}
             <p class="row-error">{errFor(idx, 'quantity')}</p>
+          {/if}
+          {#if row.has_serial}
+            <p class="hint hint-warn">
+              Сер. номер — qty фикс. 1
+            </p>
           {/if}
         </div>
         <div class="td col-actions">
@@ -290,5 +316,36 @@
   .add-row {
     padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--color-border);
+  }
+
+  // G-3 / W-5 — qty input native styling согласован с Input.svelte tokens.
+  .qty-input {
+    display: block;
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--space-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
+    &.invalid {
+      border-color: var(--color-destructive);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+    }
+  }
+
+  .hint-warn {
+    margin: var(--space-xs) 0 0;
+    font-size: 12px;
+    color: var(--color-warning, #b45309);
   }
 </style>

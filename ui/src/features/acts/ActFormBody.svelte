@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
+  import DatePicker from '$lib/components/DatePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from './api';
   import ActNumberField from './ActNumberField.svelte';
@@ -30,6 +31,16 @@
   let receiverName = $state('');
   let location = $state('');
   let deadlineISO = $state(''); // YYYY-MM-DD picker value
+  // G-2 (Phase 3.1 Plan 04): дата фактической передачи (когда отдали).
+  // Default = today UTC (browser-local будет хорошо для пользователя в МСК).
+  function todayISO(): string {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  let handoverDateISO = $state(todayISO());
   let notes = $state('');
   let items = $state<FormItemRow[]>([
     { device_id: null, quantity: 1, device_label: '', query: '', picked: false },
@@ -91,6 +102,7 @@
         location_id: null,
         notes: notes.trim() || null,
         deadline_utc: isoToUnix(deadlineISO),
+        handover_date_utc: isoToUnix(handoverDateISO),
         items: payloadItems,
       };
 
@@ -149,14 +161,14 @@
     </div>
 
     <div class="field">
+      <label class="label" for="act-handover-date">Когда отдали <span class="req">*</span></label>
+      <DatePicker id="act-handover-date" bind:value={handoverDateISO} required />
+      <p class="hint">Фактическая дата передачи устройств.</p>
+    </div>
+
+    <div class="field">
       <label class="label" for="act-deadline">Сроком до</label>
-      <Input
-        id="act-deadline"
-        type="text"
-        value={deadlineISO}
-        placeholder="YYYY-MM-DD"
-        oninput={(v) => (deadlineISO = v)}
-      />
+      <DatePicker id="act-deadline" bind:value={deadlineISO} />
       <p class="hint">Необязательно. Например, «до конца проекта».</p>
     </div>
 
