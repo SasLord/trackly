@@ -702,6 +702,31 @@ impl ActService {
                                 ),
                             });
                         }
+                        // CR-03 fix: в legacy режиме (device_ids: []) status guard
+                        // на 'в_работе' блокирует любой второй partial return —
+                        // первое частичное вернуло device в 'на_складе' и второе
+                        // вернёт Conflict. Чтобы избежать misleading «уже не в работе»,
+                        // явно требуем full-closing return: per_device_qty +
+                        // already_returned == handover_qty. Сообщение объясняет
+                        // правильное использование. В G-12 (canonical device_ids[])
+                        // each act_item = 1 device → этот guard не срабатывает.
+                        if item.device_ids.is_empty()
+                            && per_device_qty + already_returned != handover_qty
+                        {
+                            return Err(AppError::Validation {
+                                field: "items".into(),
+                                message: format!(
+                                    "Legacy-режим возврата (без device_ids[]) поддерживает только \
+                                     один полный закрывающий возврат: для устройства id={} нужно \
+                                     вернуть ровно {}, а не {} (уже возвращено {}). Используйте \
+                                     device_ids[] для частичных возвратов (G-12 contract).",
+                                    device_id,
+                                    handover_qty - already_returned,
+                                    per_device_qty,
+                                    already_returned,
+                                ),
+                            });
+                        }
 
                         let before_json =
                             device_snapshot_json(&before).map_err(|e| AppError::Internal {

@@ -56,6 +56,36 @@ CREATE INDEX IF NOT EXISTS idx_act_items_parent_act_item_id
 -- Idempotency: refinery's version-table prevents V015 from being re-applied.
 -- We do NOT content-sniff to skip work.
 
+-- 4.0 (CR-01 SAFETY GUARD): refuse migration if pre-V015 prod data has
+-- BOTH (a) handover act_items with quantity > 1 AND (b) any existing
+-- return-act_items linked to those handovers. На таких базах
+-- recompute_parent_archived post-V015 формула (handover_total = COUNT(*))
+-- сравнивается с returned_total = COUNT(DISTINCT device_id) — last value
+-- pre-V015 был SUM(quantity), и архив parent был verified. После split'а
+-- handover в N rows COUNT distinct device_id of returns (=1) < handover N →
+-- formerly archived act становится un-archived.
+--
+-- Dev environment: handover-act_items с quantity>1 не существуют (UI всегда
+-- слал qty=1), → этот guard никогда не сработает. Production safety net.
+--
+-- Implementation note: SQLite RAISE() работает только в triggers. Используем
+-- CHECK-constrained TEMP table: insert 0 при unsafe condition → refinery
+-- получает constraint violation и откатывает всю миграцию.
+CREATE TEMP TABLE t_v015_safety_check (
+  ok INTEGER NOT NULL CHECK (ok = 1)
+);
+INSERT INTO t_v015_safety_check (ok)
+  SELECT CASE WHEN EXISTS (
+    SELECT 1
+      FROM act_items rai
+      JOIN acts ra ON ra.id = rai.act_id
+      JOIN act_items hai ON hai.act_id = ra.parent_act_id
+     WHERE ra.act_type = 'return'
+       AND ra.deleted_at_utc IS NULL
+       AND hai.quantity > 1
+  ) THEN 0 ELSE 1 END;
+DROP TABLE t_v015_safety_check;
+
 -- 4a. Recursive CTE → temp table with AUTOINCREMENT seq.
 CREATE TEMP TABLE t_clones (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,12 +112,19 @@ INSERT INTO t_clones (orig_act_item_id, source_device_id, act_id,
   WHERE ai.quantity > 1
   ORDER BY ai.id, ints.n;
 
--- 4b. Snapshot id_floor = MAX(devices.id) before bulk INSERT.
+-- 4b. Snapshot id_floor = max-ever-assigned device id (sqlite_sequence.seq),
+-- НЕ MAX(devices.id). CR-04 fix: devices.id is INTEGER PRIMARY KEY AUTOINCREMENT
+-- (V003__devices.sql), и SQLite's AUTOINCREMENT assigns next id = seq+1, где
+-- seq хранится в sqlite_sequence (max-ever-assigned). При наличии удалённых
+-- devices MAX(id) < sqlite_sequence.seq, и формула `id_floor + tc.seq` ссылалась
+-- бы на несуществующие/неправильные device IDs → orphan FK или коллизия с
+-- существующими rows. sqlite_sequence rows создаются при первой INSERT в
+-- таблицу — для empty DB строки нет, COALESCE даёт 0.
 CREATE TEMP TABLE t_id_floor (
   id_floor INTEGER NOT NULL
 );
 INSERT INTO t_id_floor (id_floor)
-  SELECT COALESCE(MAX(id), 0) FROM devices;
+  SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'devices'), 0);
 
 -- 4c. Bulk INSERT clone devices in seq order. AUTOINCREMENT assigns
 --     id = id_floor + seq for each row inserted in order.
@@ -119,7 +156,24 @@ SELECT
 FROM t_clones tc
 ORDER BY tc.seq;
 
--- 4e. Cleanup temp tables (TEMP auto-dropped at session close, explicit
+-- 4e. Post-migration orphan-FK assertion (CR-04 defence-in-depth).
+-- Если AUTOINCREMENT did not produce expected IDs (e.g. due to concurrent
+-- modifications or sqlite_sequence inconsistency), 4d вставил бы rows с
+-- FK на несуществующие devices. CHECK constraint violation → refinery
+-- откатывает transaction.
+CREATE TEMP TABLE t_v015_orphan_check (
+  ok INTEGER NOT NULL CHECK (ok = 1)
+);
+INSERT INTO t_v015_orphan_check (ok)
+  SELECT CASE WHEN EXISTS (
+    SELECT 1
+      FROM act_items ai
+     WHERE ai.parent_act_item_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.id = ai.device_id)
+  ) THEN 0 ELSE 1 END;
+DROP TABLE t_v015_orphan_check;
+
+-- 4f. Cleanup temp tables (TEMP auto-dropped at session close, explicit
 --     drops free memory immediately).
 DROP TABLE t_clones;
 DROP TABLE t_id_floor;

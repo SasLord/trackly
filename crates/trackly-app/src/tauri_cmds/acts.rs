@@ -12,6 +12,7 @@ use crate::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
+use tauri_plugin_shell::ShellExt;
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -177,6 +178,58 @@ pub async fn acts_suggest_person(
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
     build_acts_suggest_person(state.inner(), field, prefix).await
+}
+
+/// CR-02 (Phase 3.1 code review fix): secure wrapper для shell::open.
+/// Frontend больше не имеет capability `shell:allow-open` — все open-операции
+/// проходят через эту команду, которая валидирует path:
+///   1. Canonicalize → защита от `../` traversal.
+///   2. Path must start with `std::env::temp_dir()`.
+///   3. Path must end with `.pdf` (lowercase).
+/// Только при passing all guards path передаётся в tauri_plugin_shell::open.
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_open_pdf_in_system(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<(), AppError> {
+    let candidate = std::path::PathBuf::from(&path);
+    let canonical = candidate.canonicalize().map_err(|e| AppError::Validation {
+        field: "path".into(),
+        message: format!("invalid path: {e}"),
+    })?;
+    let temp_dir =
+        std::env::temp_dir()
+            .canonicalize()
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("temp_dir canonicalize: {e}"),
+            })?;
+    if !canonical.starts_with(&temp_dir) {
+        return Err(AppError::Validation {
+            field: "path".into(),
+            message: "path is outside temp directory".into(),
+        });
+    }
+    let ext_ok = canonical
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if !ext_ok {
+        return Err(AppError::Validation {
+            field: "path".into(),
+            message: "only .pdf files allowed".into(),
+        });
+    }
+    let canonical_str = canonical.to_string_lossy().to_string();
+    // TODO(Phase 4): migrate to tauri-plugin-opener (shell::open deprecated в v2.3+).
+    #[allow(deprecated)]
+    app.shell()
+        .open(canonical_str, None)
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("shell::open failed: {e}"),
+        })?;
+    Ok(())
 }
 
 #[tauri::command]

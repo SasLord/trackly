@@ -197,8 +197,10 @@
     try {
       const bytes = pdfBytes ?? (await renderCall());
       pdfBytes = bytes;
-      // Write to a temp file via tauri-plugin-fs, then open via shell.
-      // Phase 3: simplest path — use the user's temp dir via OS plugin.
+      // Write to a temp file via tauri-plugin-fs, then open via secure
+      // backend command. CR-02 (Phase 3.1 code review): frontend больше
+      // НЕ имеет capability shell:allow-open; acts_open_pdf_in_system
+      // validate-ит path (must be in $TEMP + .pdf extension).
       const { writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
       const filename = `trackly-preview-${Date.now()}.pdf`;
       await writeFile(filename, new Uint8Array(bytes), {
@@ -207,8 +209,9 @@
       const { tempDir } = await import('@tauri-apps/api/path');
       const tmp = await tempDir();
       const full = `${tmp}${filename}`;
-      const { open: openShell } = await import('@tauri-apps/plugin-shell');
-      await openShell(full);
+      // Use apiCall wrapper для secure backend dispatch.
+      const { apiCall } = await import('$lib/api/client');
+      await apiCall<null>('acts_open_pdf_in_system', { path: full });
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
