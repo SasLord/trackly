@@ -27,7 +27,9 @@
 use std::sync::Arc;
 
 use krilla::geom::{Point, Size, Transform};
+use image::ImageReader;
 use krilla::image::Image;
+use std::io::Cursor;
 use krilla::metadata::{DateTime as KrillaDateTime, Metadata};
 use krilla::page::PageSettings;
 use krilla::text::{Font, TextDirection};
@@ -317,6 +319,30 @@ fn render_section(
 const LOGO_WIDTH_PT: f32 = 100.0;
 const LOGO_HEIGHT_PT: f32 = 50.0;
 
+/// G-9 (Phase 3.1): scale logo proportionally to fit within `(max_w, max_h)`
+/// box without distortion. Returns `(final_w, final_h)`.
+///
+/// scale = min(max_w / orig_w, max_h / orig_h) → contain-fit; равные scale
+/// гарантируют aspect-ratio preservation.
+///
+/// Edge cases:
+/// - orig dims ≤ 0 → return (0, 0) — caller treats как «skip render».
+/// - scale > 1 (image smaller than max) → НЕ масштабируем вверх (keep orig);
+///   практически — для очень маленьких логотипов на PDF лучше показать их в
+///   натуральном размере, чем растянуть.
+pub fn scale_logo_dimensions(
+    orig_w: f32,
+    orig_h: f32,
+    max_w: f32,
+    max_h: f32,
+) -> (f32, f32) {
+    if orig_w <= 0.0 || orig_h <= 0.0 || max_w <= 0.0 || max_h <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let scale = (max_w / orig_w).min(max_h / orig_h).min(1.0);
+    (orig_w * scale, orig_h * scale)
+}
+
 /// Read a logo image from disk and emit a `draw_image` call into the
 /// top-right corner of the page. Failures (missing file, unsupported mime,
 /// invalid bytes) are logged at WARN and the function returns silently —
@@ -330,6 +356,33 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
                 path = %logo_path_str,
                 error = %e,
                 "Logo file not readable — skipping"
+            );
+            return;
+        }
+    };
+
+    // G-9 (Phase 3.1): parse intrinsic dimensions BEFORE moving `bytes`
+    // into krilla. image crate returns u32 для w/h без фактического decoding
+    // pixel data — копировать bytes не нужно (ImageReader работает по &[u8]).
+    let (orig_w, orig_h) = match ImageReader::new(Cursor::new(bytes.as_slice()))
+        .with_guessed_format()
+    {
+        Ok(reader) => match reader.into_dimensions() {
+            Ok((w, h)) => (w as f32, h as f32),
+            Err(e) => {
+                tracing::warn!(
+                    path = %logo_path_str,
+                    error = %e,
+                    "Logo intrinsic dimensions parse failed — skipping"
+                );
+                return;
+            }
+        },
+        Err(e) => {
+            tracing::warn!(
+                path = %logo_path_str,
+                error = %e,
+                "Logo format guess failed — skipping"
             );
             return;
         }
@@ -363,10 +416,21 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
         }
     };
 
-    let size = match Size::from_wh(LOGO_WIDTH_PT, LOGO_HEIGHT_PT) {
+    let (final_w, final_h) =
+        scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
+    if final_w <= 0.0 || final_h <= 0.0 {
+        tracing::warn!(
+            path = %logo_path_str,
+            orig_w, orig_h,
+            "Logo scaled dimensions non-positive — skipping"
+        );
+        return;
+    }
+
+    let size = match Size::from_wh(final_w, final_h) {
         Some(s) => s,
         None => {
-            tracing::warn!("Logo size constants invalid — skipping");
+            tracing::warn!(final_w, final_h, "Logo size invalid — skipping");
             return;
         }
     };
@@ -375,7 +439,10 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
     // image's natural origin = (0,0). Translate so the logo lands at the
     // top-right corner with a uniform page margin. push_transform / pop is a
     // standard graphics-state save/restore.
-    let tx = A4_WIDTH_PT - MARGIN_PT - LOGO_WIDTH_PT;
+    //
+    // Right-align based on final_w (NOT LOGO_WIDTH_PT) — иначе при final_w <
+    // LOGO_WIDTH_PT логотип будет смещён ВПРАВО от правильного anchor'а.
+    let tx = A4_WIDTH_PT - MARGIN_PT - final_w;
     let ty = MARGIN_PT;
     surface.push_transform(&Transform::from_translate(tx, ty));
     surface.draw_image(image, size);
