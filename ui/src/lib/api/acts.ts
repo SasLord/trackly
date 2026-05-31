@@ -56,4 +56,8 @@ export const acts = {
   /** Plan 03-05 — FTS5 + LIKE search across acts (ACT-04). */
   search: (query: string, filter: ActFilter, pagination: Pagination) =>
     apiCall<ActListResponse>('acts_search', { query, filter, pagination }),
+
+  /** Phase 3.1 Plan 02 — G-5 person autocomplete для giver/receiver полей. */
+  suggestPerson: (field: 'giver' | 'receiver', prefix: string): Promise<string[]> =>
+    apiCall<string[]>('acts_suggest_person', { field, prefix }),
 };

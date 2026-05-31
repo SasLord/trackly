@@ -18,7 +18,7 @@
   // dateLocalToUtcSeconds.
 
   import Button from '$lib/components/Button.svelte';
-  import Input from '$lib/components/Input.svelte';
+  import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import type { DeviceDto } from '../../bindings';
 
@@ -105,20 +105,18 @@
 
     <label class="field">
       <span class="field-label">Кто передал</span>
-      <Input
-        type="text"
-        value={giverName}
-        oninput={(v) => (giverName = v)}
+      <PersonAutocomplete
+        field="giver"
+        bind:value={giverName}
         placeholder="ФИО передающего"
       />
     </label>
 
     <label class="field">
       <span class="field-label">Кто принял</span>
-      <Input
-        type="text"
-        value={receiverName}
-        oninput={(v) => (receiverName = v)}
+      <PersonAutocomplete
+        field="receiver"
+        bind:value={receiverName}
         placeholder="ФИО принимающего"
       />
     </label>

@@ -5,6 +5,7 @@
   // bodySubmitFn() directly.
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
+  import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from './api';
   import ActNumberField from './ActNumberField.svelte';
@@ -161,26 +162,24 @@
 
     <div class="field" class:has-error={!!fieldErrors['giver_name']}>
       <label class="label" for="act-giver">Сдал ⃰</label>
-      <Input
+      <PersonAutocomplete
         id="act-giver"
-        type="text"
-        value={giverName}
+        field="giver"
+        bind:value={giverName}
         placeholder="Иванов Иван Иванович"
         invalid={!!fieldErrors['giver_name']}
-        oninput={(v) => (giverName = v)}
       />
       {#if fieldErrors['giver_name']}<p class="error">{fieldErrors['giver_name']}</p>{/if}
     </div>
 
     <div class="field" class:has-error={!!fieldErrors['receiver_name']}>
       <label class="label" for="act-receiver">Принял ⃰</label>
-      <Input
+      <PersonAutocomplete
         id="act-receiver"
-        type="text"
-        value={receiverName}
+        field="receiver"
+        bind:value={receiverName}
         placeholder="Петров Пётр Петрович"
         invalid={!!fieldErrors['receiver_name']}
-        oninput={(v) => (receiverName = v)}
       />
       {#if fieldErrors['receiver_name']}<p class="error">{fieldErrors['receiver_name']}</p>{/if}
     </div>
