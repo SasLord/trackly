@@ -52,6 +52,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 3 Plan 04 — PDF render + Organization + Templates
         crate::tauri_cmds::acts::acts_render_pdf,
         crate::tauri_cmds::acts::devices_render_acceptance_pdf,
+        // Phase 3.1 Plan 02 — G-5 person autocomplete
+        crate::tauri_cmds::acts::acts_suggest_person,
         crate::tauri_cmds::organization::organization_get,
         crate::tauri_cmds::templates::templates_get_active,
         crate::tauri_cmds::templates::templates_render_preview,

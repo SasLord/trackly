@@ -10,6 +10,7 @@ pub mod act;
 pub mod device;
 pub mod health;
 pub mod organization;
+pub mod suggest;
 
 pub use health::HealthDto;
 pub use organization::OrgDto;

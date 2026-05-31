@@ -31,6 +31,7 @@ use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
     ActReturnItemDto, ActsCountsDto, Pagination,
 };
+use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
 use crate::services::organization_service::OrganizationService;
 use crate::services::template_service::TemplateService;
@@ -936,6 +937,63 @@ impl ActService {
         Ok(counts.into())
     }
 
+    /// G-5: autocomplete для полей «Кто сдал» / «Кто принял».
+    /// Источник — DISTINCT `acts.{giver_name|receiver_name}` отсортированные
+    /// по frequency DESC (alpha ASC tiebreak). LIKE-prefix match с
+    /// `escape_like` защитой от SQL injection через `%` / `_` / `\`.
+    /// Soft-deleted акты не учитываются.
+    ///
+    /// Phase 5 (future): UNION ALL с AD displayName — расширение в SQL без
+    /// изменения сигнатуры / UI contract.
+    pub async fn suggest_person(
+        &self,
+        field: SuggestPersonField,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, AppError> {
+        if prefix.chars().count() > 100 {
+            return Err(AppError::Validation {
+                field: "prefix".into(),
+                message: "prefix слишком длинный (макс. 100 символов)".into(),
+            });
+        }
+        let bounded_limit = limit.clamp(1, 20) as i64;
+        let pattern = format!("{}%", escape_like(prefix));
+        // whitelisted column через enum (НЕ string interpolation от user).
+        let column = match field {
+            SuggestPersonField::Giver => "giver_name",
+            SuggestPersonField::Receiver => "receiver_name",
+        };
+        let sql = format!(
+            "SELECT {col} AS name, COUNT(*) AS freq \
+               FROM acts \
+              WHERE {col} LIKE ?1 ESCAPE '\\' \
+                AND deleted_at_utc IS NULL \
+              GROUP BY {col} \
+              ORDER BY freq DESC, {col} ASC \
+              LIMIT ?2",
+            col = column
+        );
+
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+            let conn = readers.acquire();
+            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(params![pattern, bounded_limit], |r| r.get::<_, String>(0))
+                .map_err(map_rusqlite)?;
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(r.map_err(map_rusqlite)?);
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
     pub async fn peek_next_number(&self) -> Result<i64, AppError> {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
@@ -1314,6 +1372,20 @@ const MONTHS_RU: [&str; 12] = [
 ];
 
 /// «28 мая 2026 г.» — RU-only formatter поверх `time` crate.
+/// G-5 helper (T-03.1-02-01): escape `%`, `_`, `\` для SQL LIKE с
+/// `ESCAPE '\'`-клаузой. Защищает от LIKE injection через пользовательский
+/// prefix.
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch == '%' || ch == '_' || ch == '\\' {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 pub fn format_ru_date(unix_seconds: i64) -> String {
     let odt = match time::OffsetDateTime::from_unix_timestamp(unix_seconds) {
         Ok(odt) => odt,

@@ -11,11 +11,12 @@ use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
+use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
     build_acts_peek_next_number, build_acts_render_pdf, build_acts_return, build_acts_search,
-    build_devices_render_acceptance_pdf,
+    build_acts_suggest_person, build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
@@ -56,6 +57,12 @@ pub struct ReturnPayload {
 #[derive(serde::Deserialize)]
 pub struct RenderPdfPayload {
     pub act_id: i64,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SuggestPersonPayload {
+    pub field: SuggestPersonField,
+    pub prefix: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -187,6 +194,17 @@ pub async fn handler_render_acceptance_pdf(
     ))
 }
 
+pub async fn handler_suggest_person(
+    State(ctx): State<AppCtx>,
+    Json(p): Json<SuggestPersonPayload>,
+) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    Ok(Json(
+        build_acts_suggest_person(&ctx, p.field, p.prefix)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub fn router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/acts_list", post(handler_list))
@@ -205,4 +223,5 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/devices_render_acceptance_pdf",
             post(handler_render_acceptance_pdf),
         )
+        .route("/api/v1/acts_suggest_person", post(handler_suggest_person))
 }

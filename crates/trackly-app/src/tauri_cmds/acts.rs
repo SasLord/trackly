@@ -11,6 +11,7 @@ use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
+use crate::dto::suggest::SuggestPersonField;
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -64,6 +65,14 @@ pub async fn build_acts_peek_next_number(ctx: &AppCtx) -> Result<i64, AppError> 
 
 pub async fn build_acts_render_pdf(ctx: &AppCtx, act_id: i64) -> Result<Vec<u8>, AppError> {
     ctx.acts.render_pdf(act_id).await
+}
+
+pub async fn build_acts_suggest_person(
+    ctx: &AppCtx,
+    field: SuggestPersonField,
+    prefix: String,
+) -> Result<Vec<String>, AppError> {
+    ctx.acts.suggest_person(field, &prefix, 20).await
 }
 
 pub async fn build_devices_render_acceptance_pdf(
@@ -158,6 +167,16 @@ pub async fn acts_render_pdf(
     act_id: i32,
 ) -> Result<Vec<u8>, AppError> {
     build_acts_render_pdf(state.inner(), act_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_suggest_person(
+    state: tauri::State<'_, AppCtx>,
+    field: SuggestPersonField,
+    prefix: String,
+) -> Result<Vec<String>, AppError> {
+    build_acts_suggest_person(state.inner(), field, prefix).await
 }
 
 #[tauri::command]
