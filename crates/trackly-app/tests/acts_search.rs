@@ -72,6 +72,7 @@ async fn create_handover(
             .iter()
             .map(|&id| ActItemNewDto {
                 device_id: id,
+                device_ids: Vec::new(),
                 quantity: 1,
             })
             .collect(),

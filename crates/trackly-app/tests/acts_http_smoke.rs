@@ -49,6 +49,7 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id,
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -119,6 +120,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                 handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id,
+                    device_ids: Vec::new(),
                     quantity: 1,
                 }],
             })

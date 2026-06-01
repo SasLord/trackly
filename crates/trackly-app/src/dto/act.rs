@@ -188,10 +188,17 @@ pub struct ActCreateDto {
 }
 
 /// Single item line in `ActCreateDto.items`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActItemNewDto {
     #[specta(type = i32)]
     pub device_id: i64,
+    /// UAT Fix #3/#4 (Phase 3.1): canonical путь — UI передаёт ВСЕ device_ids из
+    /// одной "группы" (одинаковые name+model+inv_no=NULL+status=на_складе).
+    /// Backend использует именно эти devices (без cloning'а — sparing stock).
+    /// Если empty → fallback на legacy `device_id + quantity → clone`.
+    #[serde(default)]
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
     /// Defaults to 1 in the UI; persisted in `act_items.quantity` (V014).
     #[specta(type = i32)]
     pub quantity: i64,

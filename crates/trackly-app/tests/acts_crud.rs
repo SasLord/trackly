@@ -75,6 +75,7 @@ async fn create_handover_happy() {
                 .iter()
                 .map(|&id| ActItemNewDto {
                     device_id: id,
+                    device_ids: Vec::new(),
                     quantity: 1,
                 })
                 .collect(),
@@ -163,6 +164,7 @@ async fn create_with_override_audits_and_increments_only_audit() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -241,6 +243,7 @@ async fn override_number_already_exists_returns_conflict() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -256,6 +259,7 @@ async fn override_number_already_exists_returns_conflict() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[1],
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -293,6 +297,7 @@ async fn rollback_on_invalid_device_id() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: 9999,
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -358,6 +363,7 @@ async fn counts_match_switch_bar() {
                 handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: id,
+                    device_ids: Vec::new(),
                     quantity: 1,
                 }],
             };
@@ -395,6 +401,7 @@ async fn handover_with_quantity_persists() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: source_id,
+                device_ids: Vec::new(),
                 quantity: 3,
             }],
         };
@@ -460,6 +467,7 @@ async fn create_validates_required_fields() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: ids[0],
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         };
@@ -511,6 +519,7 @@ async fn list_returns_handover_with_items() {
                 .iter()
                 .map(|&id| ActItemNewDto {
                     device_id: id,
+                    device_ids: Vec::new(),
                     quantity: 1,
                 })
                 .collect(),

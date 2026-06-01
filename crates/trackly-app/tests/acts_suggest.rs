@@ -65,6 +65,7 @@ async fn make_handover_with_giver_receiver(
         handover_date_utc: None,
         items: vec![ActItemNewDto {
             device_id,
+            device_ids: Vec::new(),
             quantity: 1,
         }],
     })
@@ -240,6 +241,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
             handover_date_utc: None,
             items: vec![ActItemNewDto {
                 device_id: d1,
+                device_ids: Vec::new(),
                 quantity: 1,
             }],
         })
@@ -256,6 +258,7 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                 handover_date_utc: None,
                 items: vec![ActItemNewDto {
                     device_id: d2,
+                    device_ids: Vec::new(),
                     quantity: 1,
                 }],
             })

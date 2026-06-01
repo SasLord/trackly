@@ -97,6 +97,7 @@ async fn create_handover_with_location(
             .iter()
             .map(|&id| ActItemNewDto {
                 device_id: id,
+                device_ids: Vec::new(),
                 quantity: 1,
             })
             .collect(),

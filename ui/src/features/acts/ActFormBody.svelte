@@ -7,6 +7,7 @@
   import Input from '$lib/components/Input.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
+  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from './api';
   import ActNumberField from './ActNumberField.svelte';
@@ -86,12 +87,21 @@
 
     try {
       // Build payload — drop any incomplete item rows.
+      // UAT Fix #3/#4: device_ids[] = первые `quantity` штук из group_ids
+      // (если выбрана группа) — backend использует именно эти devices без
+      // клонирования; legacy fallback (group_ids пуст) — старый clone path.
       const payloadItems = items
         .filter((it) => it.device_id !== null && it.quantity >= 1)
-        .map((it) => ({
-          device_id: it.device_id as number,
-          quantity: it.quantity,
-        }));
+        .map((it) => {
+          const groupIds = it.group_ids ?? [];
+          const deviceIds =
+            groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [];
+          return {
+            device_id: it.device_id as number,
+            device_ids: deviceIds,
+            quantity: it.quantity,
+          };
+        });
 
       const payload: ActCreateDto = {
         number_override: numberOverride,
@@ -147,7 +157,8 @@
 >
   <h3 class="section-heading">Шапка акта</h3>
 
-  <div class="grid-2">
+  <!-- Row 1: №, Когда отдали, Сроком до (3 колонки) -->
+  <div class="grid-3">
     <div class="field" class:has-error={!!fieldErrors['number']}>
       <label class="label" for="act-number">№ ⃰</label>
       <ActNumberField
@@ -163,15 +174,16 @@
     <div class="field">
       <label class="label" for="act-handover-date">Когда отдали <span class="req">*</span></label>
       <DatePicker id="act-handover-date" bind:value={handoverDateISO} required />
-      <p class="hint">Фактическая дата передачи устройств.</p>
     </div>
 
     <div class="field">
       <label class="label" for="act-deadline">Сроком до</label>
       <DatePicker id="act-deadline" bind:value={deadlineISO} />
-      <p class="hint">Необязательно. Например, «до конца проекта».</p>
     </div>
+  </div>
 
+  <!-- Row 2: Сдал, Принял (2 колонки) -->
+  <div class="grid-2">
     <div class="field" class:has-error={!!fieldErrors['giver_name']}>
       <label class="label" for="act-giver">Сдал ⃰</label>
       <PersonAutocomplete
@@ -195,15 +207,18 @@
       />
       {#if fieldErrors['receiver_name']}<p class="error">{fieldErrors['receiver_name']}</p>{/if}
     </div>
+  </div>
 
+  <!-- Row 3: Расположение, Заметки (2 колонки) -->
+  <div class="grid-2">
     <div class="field">
       <label class="label" for="act-location">Расположение</label>
-      <Input
+      <DeviceAutocompleteField
         id="act-location"
-        type="text"
+        field="location"
         value={location}
         placeholder="Куда передаются устройства"
-        oninput={(v) => (location = v)}
+        onChange={(v) => (location = v)}
       />
     </div>
 
@@ -240,6 +255,11 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--space-md);
   }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--space-md);
+  }
   .field {
     display: flex;
     flex-direction: column;
@@ -262,7 +282,8 @@
   }
 
   @media (max-width: 720px) {
-    .grid-2 {
+    .grid-2,
+    .grid-3 {
       grid-template-columns: 1fr;
     }
   }

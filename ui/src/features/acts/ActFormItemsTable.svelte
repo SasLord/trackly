@@ -12,7 +12,7 @@
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { devices } from '$lib/api/devices';
-  import type { DeviceDto } from '../../bindings';
+  import type { DeviceGroup } from '../../bindings';
 
   export interface FormItemRow {
     device_id: number | null;
@@ -23,14 +23,31 @@
     query: string;
     /** True if user picked a device — disables further suggestions until cleared. */
     picked: boolean;
-    /** W-5 (Phase 3.1 Plan 04): true if picked device имеет non-null serial_number.
-     *  Используется для UX guard: qty max=1 (клоны теряют serial — undesirable
-     *  для серийных устройств). Backend всё равно clones; это hint. */
+    /** W-5 (Phase 3.1 Plan 04): true if picked device has non-null serial_number.
+     *  Backend всё равно clones (с serial=NULL у клонов), но UX-уровень
+     *  блокирует qty>1 для серийных. */
     has_serial?: boolean;
+    /** UAT Fix #3/#4 (Phase 3.1): кол-во девайсов в одной "группе" (одинаковые
+     *  name + model + inventory_number IS NULL + status='на_складе') которые
+     *  могут быть использованы для этой позиции. qty input bounded к этому
+     *  значению. Для серийных устройств = 1. */
+    stock_available?: number;
+    /** UAT Fix #3/#4: все device_ids в группе (для backend submit без cloning). */
+    group_ids?: number[];
   }
 
   // G-3 / T-03.1-02 mirror: backend MAX_CLONE_QTY = 1000.
   const MAX_CLONE_QTY = 1000;
+
+  /** Resolve max qty bound для row: 1 для serial, stock_available если
+   *  известен, иначе MAX_CLONE_QTY (как fallback до выбора device). */
+  function qtyMax(row: FormItemRow): number {
+    if (row.has_serial) return 1;
+    if (typeof row.stock_available === 'number' && row.stock_available > 0) {
+      return Math.min(row.stock_available, MAX_CLONE_QTY);
+    }
+    return MAX_CLONE_QTY;
+  }
 
   interface Props {
     items: FormItemRow[];
@@ -41,7 +58,10 @@
   const { items, fieldErrors, onChange }: Props = $props();
 
   // Per-row search state — keyed by row index. Reset when the row is mutated.
-  let suggestionsByRow = $state<Record<number, DeviceDto[]>>({});
+  // UAT Fix #3: changed DeviceDto[] → DeviceGroup[] чтобы dropdown показывал
+  // ОДНУ запись на группу (name+model+inv_no=NULL) с count badge, а не 20
+  // одинаковых клонов.
+  let suggestionsByRow = $state<Record<number, DeviceGroup[]>>({});
   let loadingByRow = $state<Record<number, boolean>>({});
   let openByRow = $state<Record<number, boolean>>({});
   const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
@@ -77,10 +97,21 @@
     debounceTimers[idx] = setTimeout(async () => {
       loadingByRow[idx] = true;
       try {
-        const resp = await devices.search(v.trim(), { offset: 0, limit: 20 });
-        // Filter to status_id=1 (на складе) locally.
-        suggestionsByRow[idx] = resp.items.filter((d) => d.status_id === 1);
-        openByRow[idx] = suggestionsByRow[idx].length > 0;
+        // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
+        // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
+        const groups = await devices.listGrouped(
+          {
+            type_id: null,
+            location_id: null,
+            status_id: 1,
+            state: null,
+            name_prefix: v.trim(),
+            include_deleted: false,
+          },
+          { offset: 0, limit: 20 },
+        );
+        suggestionsByRow[idx] = groups;
+        openByRow[idx] = groups.length > 0;
       } catch {
         suggestionsByRow[idx] = [];
         openByRow[idx] = false;
@@ -90,8 +121,15 @@
     }, 250);
   }
 
-  function pickDevice(idx: number, d: DeviceDto) {
-    const label = d.inventory_no ? `${d.name} (инв. ${d.inventory_no})` : d.name;
+  function pickGroup(idx: number, g: DeviceGroup) {
+    const d = g.repr;
+    // Для серийных устройств — суффикс с inv_no (каждое уникальное).
+    // Для групп — суффикс «×{count}» вместо инв.№.
+    const label = d.serial_no
+      ? d.inventory_no
+        ? `${d.name} (инв. ${d.inventory_no})`
+        : d.name
+      : `${d.name}${d.model ? ` · ${d.model}` : ''} ×${g.count}`;
     const hasSerial = !!d.serial_no;
     const next = items.map((it, i) =>
       i === idx
@@ -103,7 +141,9 @@
             picked: true,
             has_serial: hasSerial,
             // W-5: если выбранное устройство имеет serial — clamp qty=1.
-            quantity: hasSerial ? 1 : it.quantity,
+            quantity: hasSerial ? 1 : Math.min(it.quantity, g.count),
+            stock_available: g.count,
+            group_ids: g.ids,
           }
         : it,
     );
@@ -119,6 +159,10 @@
     if (qty > MAX_CLONE_QTY) qty = MAX_CLONE_QTY;
     // W-5: serialised devices must stay at qty=1.
     if (items[idx]?.has_serial && qty > 1) qty = 1;
+    // UAT Fix #4: hard cap к stock_available — иначе можно создать акт на
+    // несуществующее кол-во устройств (1000 мышек при stock=5 → bug-report).
+    const cap = items[idx]?.stock_available;
+    if (typeof cap === 'number' && cap > 0 && qty > cap) qty = cap;
     const next = items.map((it, i) => (i === idx ? { ...it, quantity: qty } : it));
     onChange(next);
   }
@@ -155,12 +199,18 @@
           {/if}
           {#if openByRow[idx] && suggestionsByRow[idx]?.length > 0}
             <ul class="dropdown" role="listbox">
-              {#each suggestionsByRow[idx] as d (d.id)}
+              {#each suggestionsByRow[idx] as g (g.repr.id)}
                 <li>
-                  <button type="button" class="opt" onclick={() => pickDevice(idx, d)}>
-                    <span class="opt-name">{d.name}</span>
-                    {#if d.inventory_no}<span class="opt-inv">инв. {d.inventory_no}</span>{/if}
-                    {#if d.serial_no}<span class="opt-sn">SN {d.serial_no}</span>{/if}
+                  <button type="button" class="opt" onclick={() => pickGroup(idx, g)}>
+                    <span class="opt-name">{g.repr.name}</span>
+                    {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
+                    {#if g.repr.serial_no}
+                      <span class="opt-sn">SN {g.repr.serial_no}</span>
+                    {:else if g.repr.inventory_no}
+                      <span class="opt-inv">инв. {g.repr.inventory_no}</span>
+                    {:else}
+                      <span class="opt-count">×{g.count}</span>
+                    {/if}
                   </button>
                 </li>
               {/each}
@@ -177,19 +227,12 @@
             class:invalid={!!errFor(idx, 'quantity')}
             value={String(row.quantity)}
             min="1"
-            max={row.has_serial ? 1 : MAX_CLONE_QTY}
-            title={row.has_serial
-              ? 'У устройства есть серийный номер; для нескольких единиц используйте отдельные позиции.'
-              : `Максимум ${MAX_CLONE_QTY}`}
+            max={qtyMax(row)}
+            disabled={row.has_serial}
             oninput={(e) => handleQtyInput(idx, (e.currentTarget as HTMLInputElement).value)}
           />
           {#if errFor(idx, 'quantity')}
             <p class="row-error">{errFor(idx, 'quantity')}</p>
-          {/if}
-          {#if row.has_serial}
-            <p class="hint hint-warn">
-              Сер. номер — qty фикс. 1
-            </p>
           {/if}
         </div>
         <div class="td col-actions">
@@ -289,9 +332,15 @@
     font-weight: 500;
   }
   .opt-inv,
-  .opt-sn {
+  .opt-sn,
+  .opt-model {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
+  }
+  .opt-count {
+    font-size: var(--font-size-label);
+    color: var(--color-accent, var(--color-text-secondary));
+    font-weight: 600;
   }
 
   .loading-row {

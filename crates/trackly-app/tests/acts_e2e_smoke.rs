@@ -138,6 +138,7 @@ async fn full_lifecycle_then_undo() {
                     .iter()
                     .map(|&id| ActItemNewDto {
                         device_id: id,
+                        device_ids: Vec::new(),
                         quantity: 1,
                     })
                     .collect(),
@@ -266,6 +267,7 @@ async fn handover_pdf_render_within_e2e() {
                     .iter()
                     .map(|&id| ActItemNewDto {
                         device_id: id,
+                        device_ids: Vec::new(),
                         quantity: 1,
                     })
                     .collect(),

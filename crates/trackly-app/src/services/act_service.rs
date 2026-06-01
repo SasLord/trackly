@@ -119,6 +119,10 @@ impl ActService {
         }
         // T-03.1-02: bound quantity to prevent DoS via 10000x clones.
         const MAX_CLONE_QTY: i64 = 1000;
+        // UAT Fix #3/#4 (Phase 3.1): UI device_ids[] tracking — when canonical
+        // device_ids[] is used, dedup проверка ensures no device_id appears в
+        // двух items.
+        let mut seen_device_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
         for (idx, it) in p.items.iter().enumerate() {
             if it.quantity < 1 {
                 return Err(AppError::Validation {
@@ -131,6 +135,36 @@ impl ActService {
                     field: format!("items[{idx}].quantity"),
                     message: "Кол-во не должно превышать 1000".into(),
                 });
+            }
+            // UAT Fix #4: when device_ids[] supplied, quantity must match its length.
+            if !it.device_ids.is_empty()
+                && it.device_ids.len() as i64 != it.quantity
+            {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].device_ids"),
+                    message: format!(
+                        "device_ids.len()={} не совпадает с quantity={}",
+                        it.device_ids.len(),
+                        it.quantity
+                    ),
+                });
+            }
+            // Dedup: same device_id не может быть в двух items одновременно.
+            let ids_to_check: Vec<i64> = if it.device_ids.is_empty() {
+                vec![it.device_id]
+            } else {
+                it.device_ids.clone()
+            };
+            for did in &ids_to_check {
+                if !seen_device_ids.insert(*did) {
+                    return Err(AppError::Validation {
+                        field: format!("items[{idx}].device_ids"),
+                        message: format!(
+                            "Устройство id={} включено в акт более одного раза",
+                            did
+                        ),
+                    });
+                }
             }
         }
         if let Some(n) = p.number_override {
@@ -172,6 +206,23 @@ impl ActService {
                         rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
                             source_chain:
                                 "device_statuses missing code='в_работе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+
+                // UAT Fix #3/#4 (Phase 3.1): on_warehouse_status_id resolved
+                // здесь для group-validation (device_ids[] canonical path).
+                let on_warehouse_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'на_складе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='на_складе' — V014 not applied?"
                                     .into(),
                         },
                         other => map_rusqlite(other),
@@ -263,40 +314,64 @@ impl ActService {
                 for item in &payload.items {
                     let source_before = devices_repo.get_in_tx(&tx, item.device_id)?;
 
-                    // Build the full list of device_ids participating in this
-                    // act_item: [source_id, clone_id_1, clone_id_2, ...].
-                    let mut effective_device_ids: Vec<i64> = Vec::with_capacity(item.quantity as usize);
-                    effective_device_ids.push(item.device_id);
-                    for _ in 1..item.quantity {
-                        let clone_id =
-                            devices_repo.clone_device_in_tx(&tx, item.device_id, now)?;
-                        // Audit the clone-creation (T-03.1-04 repudiation).
-                        let clone_after = devices_repo.get_in_tx(&tx, clone_id)?;
-                        let clone_after_json = device_snapshot_json(&clone_after).map_err(
-                            |e| AppError::Internal {
-                                source_chain: format!("clone after_json: {e}"),
-                            },
-                        )?;
-                        let clone_payload_json = serde_json::json!({
-                            "source_device_id": item.device_id,
-                            "act_id": act_id,
-                        })
-                        .to_string();
-                        audit_repo.insert(
-                            &tx,
-                            AuditEntry {
-                                entity_type: "device",
-                                entity_id: clone_id,
-                                action: "custom:device_clone_for_handover",
-                                user_id: user_id_opt,
-                                before_json: None,
-                                after_json: Some(clone_after_json),
-                                payload_json: Some(clone_payload_json),
-                                created_at_utc: now,
-                            },
-                        )?;
-                        effective_device_ids.push(clone_id);
-                    }
+                    // UAT Fix #3/#4 (Phase 3.1): canonical path — если UI передал
+                    // device_ids[] (группа existing devices того же типа на складе),
+                    // используем их напрямую без клонирования. Legacy fallback
+                    // (device_ids пуст) — original clone-on-handover behavior.
+                    let effective_device_ids: Vec<i64> = if !item.device_ids.is_empty() {
+                        // Canonical: используем existing devices группы (no cloning).
+                        // Validate: каждый ID должен быть на_складе и иметь serial=NULL
+                        // (защита от unintended group-substitution серийного устройства).
+                        for &dev_id in &item.device_ids {
+                            let d = devices_repo.get_in_tx(&tx, dev_id)?;
+                            if d.status_id != on_warehouse_status_id {
+                                return Err(AppError::Conflict {
+                                    reason: format!(
+                                        "Устройство id={} больше не на складе — \
+                                         обновите список и повторите.",
+                                        dev_id
+                                    ),
+                                });
+                            }
+                        }
+                        item.device_ids.clone()
+                    } else {
+                        // Legacy: clone-on-handover (item.quantity-1 клонов
+                        // источника). Сохраняется для backward-compat и для
+                        // случая когда в стоке только 1 девайс группы.
+                        let mut ids: Vec<i64> = Vec::with_capacity(item.quantity as usize);
+                        ids.push(item.device_id);
+                        for _ in 1..item.quantity {
+                            let clone_id =
+                                devices_repo.clone_device_in_tx(&tx, item.device_id, now)?;
+                            // Audit the clone-creation (T-03.1-04 repudiation).
+                            let clone_after = devices_repo.get_in_tx(&tx, clone_id)?;
+                            let clone_after_json = device_snapshot_json(&clone_after)
+                                .map_err(|e| AppError::Internal {
+                                    source_chain: format!("clone after_json: {e}"),
+                                })?;
+                            let clone_payload_json = serde_json::json!({
+                                "source_device_id": item.device_id,
+                                "act_id": act_id,
+                            })
+                            .to_string();
+                            audit_repo.insert(
+                                &tx,
+                                AuditEntry {
+                                    entity_type: "device",
+                                    entity_id: clone_id,
+                                    action: "custom:device_clone_for_handover",
+                                    user_id: user_id_opt,
+                                    before_json: None,
+                                    after_json: Some(clone_after_json),
+                                    payload_json: Some(clone_payload_json),
+                                    created_at_utc: now,
+                                },
+                            )?;
+                            ids.push(clone_id);
+                        }
+                        ids
+                    };
 
                     // INSERT act_items: one row per effective device.
                     // The first row (original device_id) has parent_act_item_id = NULL.
