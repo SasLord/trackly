@@ -10,7 +10,7 @@
   // Когда apply_to_all=false: per-row inputs enabled per checked row.
   // Когда row.checked=false: row opacity 0.5 + оба disabled regardless of applyToAll.
   import Input from '$lib/components/Input.svelte';
-  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
+  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
 
   export interface ReturnRowState {
     actItemId: number;
@@ -96,11 +96,9 @@
       </div>
       <div class="td col-location">
         {#if row.checked && !applyToAll}
-          <DeviceAutocompleteField
-            field="location"
+          <LocationAutocomplete
             value={row.locationOverrideName}
             placeholder={effectiveLocPlaceholder || 'Куда вернуть на склад'}
-            statusIn={['на_складе']}
             onChange={(v) => setLocOverrideName(idx, v)}
           />
         {:else}

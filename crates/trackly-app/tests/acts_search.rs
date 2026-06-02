@@ -65,6 +65,7 @@ async fn create_handover(
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
         location_id: None,
+        location_name: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,

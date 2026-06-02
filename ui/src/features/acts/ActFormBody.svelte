@@ -7,7 +7,7 @@
   import Input from '$lib/components/Input.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
-  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
+  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from './api';
   import ActNumberField from './ActNumberField.svelte';
@@ -110,6 +110,7 @@
         // location_id wiring TODO: Phase 2 currently stores `location` as text;
         // sending null means «not picked» — service is tolerant per Plan 02 spec.
         location_id: null,
+        location_name: location.trim().length > 0 ? location.trim() : null,
         notes: notes.trim() || null,
         deadline_utc: isoToUnix(deadlineISO),
         handover_date_utc: isoToUnix(handoverDateISO),
@@ -213,9 +214,8 @@
   <div class="grid-2">
     <div class="field">
       <label class="label" for="act-location">Расположение</label>
-      <DeviceAutocompleteField
+      <LocationAutocomplete
         id="act-location"
-        field="location"
         value={location}
         placeholder="Куда передаются устройства"
         onChange={(v) => (location = v)}

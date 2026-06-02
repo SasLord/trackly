@@ -253,6 +253,14 @@ impl ActService {
                 // payload value или fallback на now() (backward-compat для
                 // clients без поля).
                 let handover_date = payload.handover_date_utc.unwrap_or(now);
+                // UAT-fix: resolve location — name (autocomplete) → id, иначе
+                // fallback на location_id. INSERT OR IGNORE + SELECT в helper.
+                let resolved_location_id: Option<i64> =
+                    if let Some(name) = payload.location_name.as_deref() {
+                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                    } else {
+                        payload.location_id
+                    };
                 let new_row = ActRow {
                     id: 0,
                     number,
@@ -261,7 +269,7 @@ impl ActService {
                     act_type: ActType::Handover,
                     giver_name: payload.giver_name.clone(),
                     receiver_name: payload.receiver_name.clone(),
-                    location_id: payload.location_id,
+                    location_id: resolved_location_id,
                     location: None,
                     notes: payload.notes.clone(),
                     deadline_utc: payload.deadline_utc,

@@ -59,6 +59,13 @@ pub async fn build_devices_search(
     ctx.devices.search(query, pagination).await
 }
 
+pub async fn build_locations_autocomplete(
+    ctx: &AppCtx,
+    prefix: String,
+) -> Result<Vec<String>, AppError> {
+    ctx.devices.locations_autocomplete(prefix).await
+}
+
 pub async fn build_devices_autocomplete(
     ctx: &AppCtx,
     field: String,
@@ -167,6 +174,15 @@ pub async fn devices_search(
     pagination: Pagination,
 ) -> Result<DeviceListResponse, AppError> {
     build_devices_search(state.inner(), query, pagination).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn locations_autocomplete(
+    state: tauri::State<'_, AppCtx>,
+    prefix: String,
+) -> Result<Vec<String>, AppError> {
+    build_locations_autocomplete(state.inner(), prefix).await
 }
 
 #[tauri::command]

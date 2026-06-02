@@ -96,6 +96,7 @@ async fn create_handover_with_giver(
         giver_name: giver.to_string(),
         receiver_name: "Петров П.П.".into(),
         location_id: None,
+        location_name: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,

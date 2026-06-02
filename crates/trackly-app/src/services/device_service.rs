@@ -361,6 +361,56 @@ impl DeviceService {
     /// Validates `field_str` against `AutocompleteField` whitelist (T-02-04-02).
     /// Returns up to 30 DISTINCT values, sorted ASC.
     /// `ctx_status_id`: optional filter restricts results to devices with given status_id.
+    /// UAT-fix: дает АВТОНОМНЫЙ список расположений из таблицы `locations`
+    /// (не device-derived) с prefix-фильтрацией. Используется UI для
+    /// поля «Расположение» во всех модалах акта.
+    pub async fn locations_autocomplete(
+        &self,
+        prefix: String,
+    ) -> Result<Vec<String>, AppError> {
+        if prefix.chars().count() > 100 {
+            return Err(AppError::Validation {
+                field: "prefix".into(),
+                message: "prefix слишком длинный (макс. 100 символов)".into(),
+            });
+        }
+        let escaped: String = prefix
+            .chars()
+            .map(|c| if c == '%' || c == '_' || c == '\\' { format!("\\{c}") } else { c.to_string() })
+            .collect();
+        let pattern = format!("{escaped}%");
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT name FROM locations \
+                     WHERE deleted_at_utc IS NULL \
+                       AND name LIKE ?1 ESCAPE '\\' \
+                     ORDER BY name ASC LIMIT 20",
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("prepare locations_autocomplete: {e}"),
+                })?;
+            let rows = stmt
+                .query_map([pattern], |r| r.get::<_, String>(0))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("query locations_autocomplete: {e}"),
+                })?;
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(r.map_err(|e| AppError::Internal {
+                    source_chain: format!("row locations_autocomplete: {e}"),
+                })?);
+            }
+            Ok(out)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
     /// `status_in`: optional list of device-status codes (V014 `device_statuses.code`)
     /// — service resolves each code → status_id; unknown codes return Validation.
     pub async fn autocomplete(

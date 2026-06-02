@@ -16,7 +16,7 @@
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Input from '$lib/components/Input.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
+  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
   import ReturnItemsTable, { type ReturnRowState } from './ReturnItemsTable.svelte';
   import { buildReturnItems } from './returnPayload';
   import { acts } from './api';
@@ -203,11 +203,9 @@
           </div>
           <div class="bulk-field">
             <span class="label">Расположение на складе</span>
-            <DeviceAutocompleteField
-              field="location"
+            <LocationAutocomplete
               value={bulkLocationName}
               placeholder="Куда вернуть на склад"
-              statusIn={['на_складе']}
               onChange={(v) => (bulkLocationName = v)}
             />
           </div>

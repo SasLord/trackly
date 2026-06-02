@@ -90,6 +90,7 @@ async fn create_handover_with_location(
         giver_name: "А".into(),
         receiver_name: "Б".into(),
         location_id: Some(location_id),
+        location_name: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,

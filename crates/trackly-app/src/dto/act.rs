@@ -173,6 +173,11 @@ pub struct ActCreateDto {
     pub receiver_name: String,
     #[specta(type = Option<i32>)]
     pub location_id: Option<i64>,
+    /// UAT-fix: name-based location (UI обычно передаёт name через autocomplete).
+    /// Если задано — backend resolves через `INSERT OR IGNORE locations → SELECT id`
+    /// и использует. Приоритет над `location_id`.
+    #[serde(default)]
+    pub location_name: Option<String>,
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
@@ -362,6 +367,7 @@ mod tests {
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             location_id: None,
+            location_name: None,
             notes: None,
             deadline_utc: None,
             handover_date_utc: None,
