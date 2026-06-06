@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-06-06T15:42:08.863Z"
-last_activity: 2026-06-06
+status: executing
+last_updated: "2026-06-07T00:00:00.000Z"
+last_activity: 2026-06-07
 progress:
   total_phases: 11
   completed_phases: 5
-  total_plans: 25
+  total_plans: 27
   completed_plans: 25
   percent: 45
 ---
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.3 — device-list UX round 2 (planning next)
+**Current focus:** Phase 03.3 — device-list UX round 2 (planned, ready to execute)
 
 ## Current Position
 
-Phase: 03.2 (deferred-uat-gap-closure) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-06-06
+Phase: 03.3 (device-list-ux-round-2) — PLANNED
+Plan: 0 of 2
+Status: Plans created — ready for /gsd-execute-phase 03.3
+Last activity: 2026-06-07
 
-Progress: [██████████] 100%
+Progress: [__________] 0%
 
 ## Performance Metrics
 
@@ -129,6 +129,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 03-05: W-9 MSK encoding на UI; backend UTC форматирование оставлено Phase 7
 - [Phase ?]: Phase 3 closed: все 16 требований complete; готова к /gsd-verify-work
 - [Phase ?]: 03.2-02
+- [Phase 03.3]: ITEM-1 — Вариант A (флаг group_by_condition: bool в DeviceFilter); DevicesPage передаёт false, ActFormItemsTable передаёт true; DEF-2B сохранён
+- [Phase 03.3]: ITEM-1 — «разное» для смешанной group (зафиксировано пользователем, UAT-ITEMS §Решения п.1); вычисляется через condition_distinct_count > 1 на клиенте
+- [Phase 03.3]: ITEM-2 — нативный title= на всех text-ячейках (не кастомный tooltip-компонент)
+- [Phase 03.3]: ITEM-4 — вторая секция в DeviceAutocompleteField через существующую locations_autocomplete Tauri-команду; HTTP route добавляется в http/devices.rs
 
 ### Pending Todos
 
@@ -153,7 +157,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-06T14:06:47.185Z
-Stopped at: Plan 03-04 complete; ready for 03-05
+Last session: 2026-06-07T00:00:00.000Z
+Stopped at: Phase 03.3 plans created — ready for execution
 Resume file: 
-None
+.planning/phases/03.3-device-list-ux-round-2-grouping-condition-column-cell-toolti/03.3-01-PLAN.md
