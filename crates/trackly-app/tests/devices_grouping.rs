@@ -499,6 +499,7 @@ async fn grouping_groups_devices_with_same_name_and_different_location() {
 // ---------------------------------------------------------------------------
 // DEF-2B: two devices with the same Наименование but different condition/state
 // must appear as TWO separate groups (condition is now part of the group key).
+// Updated to use group_by_condition: true (ITEM-1).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn grouping_groups_devices_with_same_name_and_different_condition() {
@@ -514,7 +515,10 @@ async fn grouping_groups_devices_with_same_name_and_different_condition() {
         svc.create(d1).await.expect("create condition=Новое");
         svc.create(d2).await.expect("create condition=Б/У");
 
-        let filter = DeviceFilter::default();
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
         let page = Pagination {
             offset: 0,
             limit: 50,
@@ -543,6 +547,7 @@ async fn grouping_groups_devices_with_same_name_and_different_condition() {
 // Два устройства с одинаковым name+model, но разным condition → две отдельные группы.
 // Дополнительно проверяет, что repr.state каждой группы соответствует её condition
 // (т.е. LEFT JOIN для location_name фильтрует по condition — нет cross-contamination repr).
+// Updated to use group_by_condition: true (ITEM-1).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn condition_key_splits_groups() {
@@ -560,7 +565,10 @@ async fn condition_key_splits_groups() {
         svc.create(d1).await.expect("create condition=Новое");
         svc.create(d2).await.expect("create condition=Хорошее");
 
-        let filter = DeviceFilter::default();
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
         let page = Pagination {
             offset: 0,
             limit: 50,
@@ -588,6 +596,154 @@ async fn condition_key_splits_groups() {
     })
     .await
     .expect("condition_key_splits_groups exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// device_with_condition helper
+// ---------------------------------------------------------------------------
+
+fn device_with_condition(name: &str, condition: &str) -> DeviceNew {
+    DeviceNew {
+        type_id: 1,
+        name: name.to_string(),
+        inventory_no: None,
+        serial_no: None,
+        model: Some("Model X".to_string()),
+        specs: None,
+        kit: None,
+        state: Some(condition.to_string()),
+        location: None,
+        location_id: None,
+        status_id: 1,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// grouping_page_mode_ignores_condition (ITEM-1a)
+// ---------------------------------------------------------------------------
+// group_by_condition=false + два устройства с разным condition → 1 группа,
+// condition_distinct_count == 2.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_page_mode_ignores_condition() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        svc.create(device_with_condition("Клавиатура", "Новое"))
+            .await
+            .expect("create condition=Новое");
+        svc.create(device_with_condition("Клавиатура", "Б/У"))
+            .await
+            .expect("create condition=Б/У");
+
+        let filter = DeviceFilter {
+            group_by_condition: false,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "ITEM-1a: group_by_condition=false → разные condition схлопываются в 1 группу, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(
+            groups[0].condition_distinct_count, 2,
+            "ITEM-1a: condition_distinct_count должен быть 2 для смешанной группы"
+        );
+    })
+    .await
+    .expect("grouping_page_mode_ignores_condition exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_act_form_keeps_condition_split (ITEM-1b)
+// ---------------------------------------------------------------------------
+// group_by_condition=true + два устройства с разным condition → 2 группы.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_act_form_keeps_condition_split() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        svc.create(device_with_condition("Клавиатура", "Новое"))
+            .await
+            .expect("create condition=Новое");
+        svc.create(device_with_condition("Клавиатура", "Б/У"))
+            .await
+            .expect("create condition=Б/У");
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            2,
+            "ITEM-1b: group_by_condition=true → разные condition остаются 2 группами, получили {} групп",
+            groups.len()
+        );
+        assert!(
+            groups.iter().all(|g| g.count == 1),
+            "ITEM-1b: каждая condition-группа должна содержать ровно 1 устройство"
+        );
+    })
+    .await
+    .expect("grouping_act_form_keeps_condition_split exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_condition_distinct_count_mixed (ITEM-1c)
+// ---------------------------------------------------------------------------
+// group_by_condition=false + два устройства (Новое + Б/У) → condition_distinct_count > 1.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_condition_distinct_count_mixed() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        svc.create(device_with_condition("Монитор", "Новое"))
+            .await
+            .expect("create condition=Новое");
+        svc.create(device_with_condition("Монитор", "Б/У"))
+            .await
+            .expect("create condition=Б/У");
+
+        let filter = DeviceFilter {
+            group_by_condition: false,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "ITEM-1c: одна смешанная группа ожидается, получили {} групп",
+            groups.len()
+        );
+        assert!(
+            groups[0].condition_distinct_count > 1,
+            "ITEM-1c: condition_distinct_count должен быть > 1 для смешанной группы, получено {}",
+            groups[0].condition_distinct_count
+        );
+    })
+    .await
+    .expect("grouping_condition_distinct_count_mixed exceeded 30s");
 }
 
 // ---------------------------------------------------------------------------
