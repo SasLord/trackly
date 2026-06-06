@@ -52,6 +52,9 @@ pub struct DeviceFilter {
     pub name_prefix: Option<String>,
     /// Whether to include soft-deleted devices. Defaults to false.
     pub include_deleted: bool,
+    /// Если true — GROUP BY включает d.condition (для акт-формы).
+    /// Если false (по умолчанию) — без разбивки по condition (для страницы Устройств).
+    pub group_by_condition: bool,
 }
 
 /// Pagination parameters for list queries.
@@ -102,6 +105,9 @@ pub struct DeviceGroupRow {
     pub ids: Vec<i64>,
     /// Total count in this group.
     pub count: i64,
+    /// Number of distinct condition values in this group.
+    /// > 1 means the group has mixed conditions (only relevant when group_by_condition=false).
+    pub condition_distinct_count: i64,
 }
 
 /// Whitelisted fields for autocomplete queries (D-AutocompleteEndpoint-01, T-02-04-02).

@@ -189,6 +189,7 @@ impl DeviceService {
             state: filter.state,
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
+            group_by_condition: false,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -510,6 +511,7 @@ impl DeviceService {
             state: filter.state,
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
+            group_by_condition: filter.group_by_condition,
         };
         let domain_page = trackly_core::domain::devices::Pagination {
             offset: page.offset,
@@ -531,6 +533,7 @@ impl DeviceService {
                 repr: DeviceDto::from(g.repr),
                 count: g.count as u64,
                 ids: g.ids.into_iter().map(|id| id as i32).collect(),
+                condition_distinct_count: g.condition_distinct_count,
             })
             .collect();
 
@@ -814,6 +817,7 @@ impl DeviceService {
             state: filter.state,
             name_prefix: filter.name_prefix,
             include_deleted: filter.include_deleted,
+            group_by_condition: false,
         };
         // Use a very large limit to fetch all rows for export.
         let domain_page = trackly_core::domain::devices::Pagination {

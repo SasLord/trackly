@@ -200,6 +200,9 @@ pub struct DeviceFilter {
     pub name_prefix: Option<String>,
     /// Включать ли мягко-удалённые устройства. По умолчанию false.
     pub include_deleted: bool,
+    /// Если true — GROUP BY включает condition (для акт-формы, сохраняет DEF-2B).
+    /// Если false (по умолчанию) — без разбивки по condition (для страницы Устройств).
+    pub group_by_condition: bool,
 }
 
 /// Параметры пагинации.
@@ -239,6 +242,10 @@ pub struct DeviceGroup {
     #[specta(type = u32)]
     pub count: u64,
     pub ids: Vec<i32>,
+    /// Количество различных значений condition в группе.
+    /// > 1 означает смешанную группу (отображается как «разное» на фронтенде).
+    #[specta(type = i32)]
+    pub condition_distinct_count: i64,
 }
 
 /// Счётчик устройств по статусу.

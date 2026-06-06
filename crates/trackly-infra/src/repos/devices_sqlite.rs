@@ -910,45 +910,45 @@ impl DeviceRepository for SqliteDeviceRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Group devices by (type_id, name, condition) — DEF-2B fix.
+        // Group devices by (type_id, name[, condition]) — ITEM-1 dual-mode.
         //
         // Round 8 fix: the previous key included model/notes/complectation/condition/
         // location_id/status_id, which was too strict — two monitors with the same
         // Наименование but different locations or statuses would NOT collapse.
         //
-        // Round 9 fix (DEF-2B): condition is now included in the group key.
-        // Two devices with the same name but different condition remain separate groups
-        // (e.g. «DVD-ROM ASUS, Хорошее ×1» and «DVD-ROM ASUS, Новое ×1» are distinct).
-        // This ensures clone-on-handover inherits the correct condition from the
-        // representative device. Other attribute columns (location, status, etc.) still
-        // become MAX(...) aggregates within each condition-group.
+        // Round 9 fix (DEF-2B): condition was included in the group key.
+        //
+        // ITEM-1 fix: split into two static SQL branches controlled by filter.group_by_condition:
+        //   - false (default, DevicesPage): GROUP BY (type_id, name) — collapses mixed condition
+        //   - true (ActFormItemsTable): GROUP BY (type_id, name, condition) — preserves DEF-2B
+        //
+        // Both branches include COUNT(DISTINCT d.condition) AS condition_distinct_count
+        // so the frontend can display «разное» for mixed-condition groups.
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
         // list_grouped uses a manual query (not SELECT_DEVICES) because it aggregates.
         //
-        // LEFT JOIN subquery for location_name: must filter by condition using the IS
-        // operator (not =) so that NULL IS NULL evaluates as TRUE in SQLite — preventing
-        // cross-contamination of repr location across condition groups.
-        let mut stmt = conn
-            .prepare(
-                "SELECT
-                   MIN(d.id)                       AS repr_id,
-                   COUNT(*)                        AS cnt,
-                   GROUP_CONCAT(d.id)              AS id_list,
+        // Static strings — no format!() — SQL injection impossible (T-03.3-01).
+
+        let sql_with_condition = "SELECT
+                   MIN(d.id)                            AS repr_id,
+                   COUNT(*)                             AS cnt,
+                   GROUP_CONCAT(d.id)                   AS id_list,
                    d.type_id, d.name,
-                   MAX(d.model)                    AS model,
-                   MAX(d.notes)                    AS notes,
-                   MAX(d.complectation)            AS complectation,
-                   d.condition                     AS condition,
-                   MAX(d.location_id)              AS location_id,
-                   MAX(d.status_id)                AS status_id,
-                   MAX(d.version)                  AS version,
-                   MAX(d.created_at_utc)           AS created_at_utc,
-                   MAX(d.updated_at_utc)           AS updated_at_utc,
-                   l.name                          AS location_name,
-                   MAX(d.inventory_number)         AS inv_no,
-                   MAX(d.serial_number)            AS serial_no
+                   MAX(d.model)                         AS model,
+                   MAX(d.notes)                         AS notes,
+                   MAX(d.complectation)                 AS complectation,
+                   d.condition                          AS condition,
+                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.status_id)                     AS status_id,
+                   MAX(d.version)                       AS version,
+                   MAX(d.created_at_utc)                AS created_at_utc,
+                   MAX(d.updated_at_utc)                AS updated_at_utc,
+                   l.name                               AS location_name,
+                   MAX(d.inventory_number)              AS inv_no,
+                   MAX(d.serial_number)                 AS serial_no
                  FROM devices d
                  LEFT JOIN locations l ON l.id = (
                    SELECT MAX(d2.location_id)
@@ -963,9 +963,48 @@ impl DeviceRepository for SqliteDeviceRepository {
                    AND (?1 IS NULL OR d.status_id = ?1)
                  GROUP BY d.type_id, d.name, d.condition
                  ORDER BY d.name
-                 LIMIT ?2 OFFSET ?3",
-            )
-            .map_err(map_rusqlite)?;
+                 LIMIT ?2 OFFSET ?3";
+
+        let sql_without_condition = "SELECT
+                   MIN(d.id)                            AS repr_id,
+                   COUNT(*)                             AS cnt,
+                   GROUP_CONCAT(d.id)                   AS id_list,
+                   d.type_id, d.name,
+                   MAX(d.model)                         AS model,
+                   MAX(d.notes)                         AS notes,
+                   MAX(d.complectation)                 AS complectation,
+                   MAX(d.condition)                     AS condition,
+                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.status_id)                     AS status_id,
+                   MAX(d.version)                       AS version,
+                   MAX(d.created_at_utc)                AS created_at_utc,
+                   MAX(d.updated_at_utc)                AS updated_at_utc,
+                   l.name                               AS location_name,
+                   MAX(d.inventory_number)              AS inv_no,
+                   MAX(d.serial_number)                 AS serial_no
+                 FROM devices d
+                 LEFT JOIN locations l ON l.id = (
+                   SELECT MAX(d2.location_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
+                 WHERE d.deleted_at_utc IS NULL
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                 GROUP BY d.type_id, d.name
+                 ORDER BY d.name
+                 LIMIT ?2 OFFSET ?3";
+
+        let sql = if filter.group_by_condition {
+            sql_with_condition
+        } else {
+            sql_without_condition
+        };
+
+        let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
 
         let rows = stmt
             .query_map(rusqlite::params![status_id, limit, offset], |row| {
@@ -978,17 +1017,18 @@ impl DeviceRepository for SqliteDeviceRepository {
                 let specs: Option<String> = row.get(6)?; // notes
                 let kit: Option<String> = row.get(7)?; // complectation
                 let state: Option<String> = row.get(8)?; // condition
-                let location_id: Option<i64> = row.get(9)?;
-                let status_id: i64 = row.get(10)?;
-                let version: i64 = row.get(11)?;
-                let created_at_utc: i64 = row.get(12)?;
-                let updated_at_utc: i64 = row.get(13)?;
-                let location_name: Option<String> = row.get(14)?;
+                let condition_distinct_count: i64 = row.get(9)?;
+                let location_id: Option<i64> = row.get(10)?;
+                let status_id: i64 = row.get(11)?;
+                let version: i64 = row.get(12)?;
+                let created_at_utc: i64 = row.get(13)?;
+                let updated_at_utc: i64 = row.get(14)?;
+                let location_name: Option<String> = row.get(15)?;
                 // MAX aggregates: for count==1 these equal the device's actual values;
                 // for count>1 the UI hides inv/serial columns via colspan, so the value
                 // is present but not displayed (no regression for multi-device groups).
-                let inv_no: Option<String> = row.get(15)?;
-                let serial_no: Option<String> = row.get(16)?;
+                let inv_no: Option<String> = row.get(16)?;
+                let serial_no: Option<String> = row.get(17)?;
 
                 Ok((
                     repr_id,
@@ -1000,6 +1040,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                     specs,
                     kit,
                     state,
+                    condition_distinct_count,
                     location_id,
                     status_id,
                     version,
@@ -1024,6 +1065,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 specs,
                 kit,
                 state,
+                condition_distinct_count,
                 location_id,
                 status_id,
                 version,
@@ -1062,7 +1104,12 @@ impl DeviceRepository for SqliteDeviceRepository {
                 deleted_at_utc: None,
             };
 
-            groups.push(DeviceGroupRow { repr, ids, count });
+            groups.push(DeviceGroupRow {
+                repr,
+                ids,
+                count,
+                condition_distinct_count,
+            });
         }
 
         Ok(groups)
