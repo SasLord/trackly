@@ -114,9 +114,13 @@ Plans:
 **Depends on:** Phase 03.1
 **Plans:** 2 plans
 
-Plans:
+**Wave 1**
+
 - [ ] 03.2-01-PLAN.md — DEF-1 (focus-open PersonAutocomplete + DeviceAutocompleteField) + DEF-2A (dedupe выбранных groups в ActFormItemsTable dropdown)
-- [ ] 03.2-02-PLAN.md — DEF-2B (list_grouped GROUP BY condition + UI tooltip) + DEF-3 (handover UPDATE devices.location_id = resolved_location_id)
+
+**Wave 2** *(blocked on Wave 1 — общий файл ActFormItemsTable.svelte)*
+
+- [ ] 03.2-02-PLAN.md — DEF-2B (list_grouped GROUP BY condition + NULL-safe repr JOIN + UI tooltip) + DEF-3 (handover UPDATE devices.location_id = resolved_location_id)
 
 **Follow-up:** После 03.2 — финальный human UAT остальных pending-пунктов 03.1-HUMAN-UAT.md (13 items) перед merge Phase 03.
 

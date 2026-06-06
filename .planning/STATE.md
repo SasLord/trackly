@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-06T13:26:39.509Z"
-last_activity: 2026-06-06 -- Phase 03.2 inserted (gap-closure DEF-1/2/3); 03.1 human UAT pending
+last_updated: "2026-06-06T13:45:42.103Z"
+last_activity: "2026-06-06 -- Phase 03.2 planned: 2 plans, plan-checker CONCERNS resolved (NULL-safe repr JOIN + read_first fixes)"
 progress:
   total_phases: 10
   completed_phases: 4
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.2 — deferred-uat-gap-closure (planning next)
+**Current focus:** Phase 03.2 — deferred-uat-gap-closure (planned, ready to execute)
 
 ## Current Position
 
 Phase: 03.1 (acts-quantity-model-uat-gap-closure) — EXECUTING
 Plan: 1 of 6
 Status: Executing Phase 03.1
-Last activity: 2026-06-06 -- Phase 03.2 inserted (gap-closure DEF-1/2/3); 03.1 human UAT pending
+Last activity: 2026-06-06 -- Phase 03.2 planned: 2 plans, plan-checker CONCERNS resolved (NULL-safe repr JOIN + read_first fixes)
 
 Progress: [██████████] 100%
 
