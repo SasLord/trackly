@@ -130,7 +130,7 @@ Plans:
 **Goal:** Закрыть 4 пункта ручного UAT после 03.2, касающихся ТОЛЬКО списка устройств в разделе «Устройства» (см. 03.3-UAT-ITEMS.md). Ключевое архитектурное решение: `devices.listGrouped` сейчас вызывается и страницей «Устройства», и автокомплитом акт-формы — DEF-2B разбивку по Состоянию надо ОТКЛЮЧИТЬ для списка устройств, но СОХРАНИТЬ для акт-формы (развести два вызова — параметр у DeviceFilter/list_grouped либо отдельный путь).
 **Requirements:** ITEM-1, ITEM-2, ITEM-3, ITEM-4 (из 03.3-UAT-ITEMS.md)
 **Depends on:** Phase 03.2
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 **Wave 1**
 
@@ -138,7 +138,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03.3-02-PLAN.md — Фронтенд: колонка «Состояние» + «разное» + tooltip + скрытие «Статус» по вкладке + автокомплит «Все расположения» + HTTP route locations_autocomplete (ITEM-1/2/3/4)
+- [x] 03.3-02-PLAN.md — Фронтенд: колонка «Состояние» + «разное» + tooltip + скрытие «Статус» по вкладке + автокомплит «Все расположения» + HTTP route locations_autocomplete (ITEM-1/2/3/4)
 
 ### Phase 4: Картриджи
 
