@@ -110,8 +110,11 @@
           },
           { offset: 0, limit: 20 },
         );
-        suggestionsByRow[idx] = groups;
-        openByRow[idx] = groups.length > 0;
+        // DEF-2A: exclude groups whose IDs overlap with already-picked rows.
+        const selectedIds = getSelectedIds(idx);
+        const filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
+        suggestionsByRow[idx] = filtered;
+        openByRow[idx] = filtered.length > 0;
       } catch {
         suggestionsByRow[idx] = [];
         openByRow[idx] = false;
@@ -167,6 +170,18 @@
     onChange(next);
   }
 
+  /** DEF-2A (Phase 03.2): собрать Set всех device IDs, уже занятых picked-строками,
+   *  исключая строку с индексом excludeIdx (чтобы текущая строка не блокировала сама себя). */
+  function getSelectedIds(excludeIdx: number): Set<number> {
+    const ids = new Set<number>();
+    items.forEach((it, i) => {
+      if (i !== excludeIdx && it.picked && it.group_ids) {
+        it.group_ids.forEach((id) => ids.add(id));
+      }
+    });
+    return ids;
+  }
+
   function errFor(idx: number, field: string): string | null {
     return fieldErrors[`items[${idx}].${field}`] ?? null;
   }
@@ -199,7 +214,7 @@
           {/if}
           {#if openByRow[idx] && suggestionsByRow[idx]?.length > 0}
             <ul class="dropdown" role="listbox">
-              {#each suggestionsByRow[idx] as g (g.repr.id)}
+              {#each suggestionsByRow[idx].filter((g) => !g.ids.some((id) => getSelectedIds(idx).has(id))) as g (g.repr.id)}
                 <li>
                   <button type="button" class="opt" onclick={() => pickGroup(idx, g)}>
                     <span class="opt-name">{g.repr.name}</span>
