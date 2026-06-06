@@ -905,3 +905,145 @@ async fn undo_return_restores_archived_to_false() {
     .await
     .expect("undo_return_restores_archived_to_false budget");
 }
+
+// ---------------------------------------------------------------------------
+// Test 12 (DEF-3): handover via location_name sets devices.location_id.
+// ---------------------------------------------------------------------------
+// Verifies that ActService::create передаёт resolved_location_id (а не
+// payload.location_id=None) в update_status_and_location_in_tx при handover.
+// После create: devices.location_id == resolved location (не NULL).
+// После do_return с bulk_location_name: devices.location_id == return location.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn handover_via_location_name_sets_device_location_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_id = seed_device(&svc.writer, "DEF3-Device").await;
+
+        // Seed locations by inserting devices that reference them via DeviceService
+        // resolve path. Alternatively: INSERT directly into locations table.
+        // Simplest approach: seed the location row directly via writer and remember its id.
+        let handover_location_name = "Отдел кадров";
+        let return_location_name = "Склад-ОК";
+
+        // Pre-seed the handover location so its id is known for assertion.
+        let handover_loc_id: i64 = svc
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO locations (name, created_at_utc, updated_at_utc) \
+                     VALUES (?1, ?2, ?2)",
+                    params![handover_location_name, 1_700_000_000_i64],
+                )
+                .map_err(map_rusqlite)?;
+                let id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM locations WHERE name = ?1",
+                        params![handover_location_name],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(id)
+            })
+            .await
+            .expect("seed handover location");
+
+        // Create handover act via location_name (payload.location_id = None).
+        let handover = svc
+            .create(ActCreateDto {
+                number_override: None,
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                location_id: None,
+                location_name: Some(handover_location_name.into()),
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: vec![ActItemNewDto {
+                    device_id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                }],
+            })
+            .await
+            .expect("create handover via location_name");
+
+        // Assert: devices.location_id = resolved handover location (DEF-3 core assertion).
+        let readers = svc.readers.clone();
+        let loc_after_handover: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT location_id FROM devices WHERE id = ?1",
+                params![device_id],
+                |r| r.get(0),
+            )
+            .expect("query devices.location_id after handover")
+        })
+        .await
+        .expect("spawn_blocking location_after_handover");
+
+        assert_eq!(
+            loc_after_handover,
+            Some(handover_loc_id),
+            "DEF-3: после handover via location_name devices.location_id должен быть \
+             resolved location id={handover_loc_id}, получено {loc_after_handover:?}"
+        );
+
+        // Now do_return with bulk_location_name — verify devices.location_id is updated.
+        let it0 = handover.items[0].clone();
+        svc.do_return(
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some("Хорошее".into()),
+                bulk_location_id: None,
+                bulk_location_name: Some(return_location_name.into()),
+                apply_to_all: true,
+                items: vec![ActReturnItemDto {
+                    act_item_id: it0.id,
+                    device_id: it0.device_id,
+                    device_ids: vec![it0.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                }],
+            },
+        )
+        .await
+        .expect("do_return with bulk_location_name");
+
+        let readers = svc.readers.clone();
+        let (loc_after_return, return_loc_id): (Option<i64>, i64) =
+            tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                let loc_after: Option<i64> = conn
+                    .query_row(
+                        "SELECT location_id FROM devices WHERE id = ?1",
+                        params![device_id],
+                        |r| r.get(0),
+                    )
+                    .expect("query devices.location_id after return");
+                let ret_id: i64 = conn
+                    .query_row(
+                        "SELECT id FROM locations WHERE name = ?1",
+                        params![return_location_name],
+                        |r| r.get(0),
+                    )
+                    .expect("query return location id");
+                (loc_after, ret_id)
+            })
+            .await
+            .expect("spawn_blocking location_after_return");
+
+        assert_eq!(
+            loc_after_return,
+            Some(return_loc_id),
+            "DEF-3: после do_return via bulk_location_name devices.location_id должен быть \
+             return location id={return_loc_id}, получено {loc_after_return:?}"
+        );
+    })
+    .await
+    .expect("handover_via_location_name_sets_device_location_id budget");
+}

@@ -417,11 +417,16 @@ impl ActService {
                             },
                         )?;
 
+                        // DEF-3: передавать resolved_location_id (вычисленный из
+                        // location_name на строке ~258), а не payload.location_id.
+                        // Поскольку акты создаются через location_name (commit b2c43a5),
+                        // payload.location_id = None → без этого фикса devices.location_id
+                        // не обновлялся при handover.
                         let after = devices_repo.update_status_and_location_in_tx(
                             &tx,
                             dev_id,
                             in_work_status_id,
-                            payload.location_id,
+                            resolved_location_id,
                             now,
                         )?;
                         let after_json = device_snapshot_json(&after).map_err(
@@ -729,6 +734,9 @@ impl ActService {
                         } else {
                             item.location_id_override
                         };
+                    // DEF-3: если effective_location=None, update_full_in_tx запишет
+                    // NULL в location_id. Caller обязан передать bulk_location_name или
+                    // location_name_override для восстановления расположения при возврате.
                     let effective_location: Option<i64> = per_row_loc_id.or({
                         if payload.apply_to_all {
                             resolved_bulk_location_id
