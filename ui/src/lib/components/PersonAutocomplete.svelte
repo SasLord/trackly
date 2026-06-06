@@ -105,8 +105,31 @@
     onChange?.(newValue);
   }
 
+  function handleFocus() {
+    // DEF-1 (Phase 03.2): открываем dropdown сразу на focus (empty prefix → top 20).
+    // Сбрасываем suppressDropdown чтобы user-initiated focus всегда открывал дропдаун.
+    suppressDropdown = false;
+    lastSelected = null;
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        loading = true;
+        suggestions = await acts.suggestPerson(field, value);
+        if (!suppressDropdown) {
+          open = suggestions.length > 0;
+        }
+        activeIndex = -1;
+      } catch {
+        suggestions = [];
+        open = false;
+      } finally {
+        loading = false;
+      }
+    }, 0);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'ArrowDown' && !open && value.length > 0) {
+    if (e.key === 'ArrowDown' && !open) {
       e.preventDefault();
       suppressDropdown = false;
       if (suggestions.length > 0) {
@@ -172,6 +195,7 @@
     aria-autocomplete="list"
     aria-activedescendant={activeIndex >= 0 ? `person-autocomplete-item-${activeIndex}` : undefined}
     oninput={handleInput}
+    onfocus={handleFocus}
     onkeydown={handleKeydown}
   />
 
