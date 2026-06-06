@@ -99,6 +99,7 @@
       try {
         // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
         // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
+        // group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1).
         const groups = await devices.listGrouped(
           {
             type_id: null,
@@ -107,6 +108,7 @@
             state: null,
             name_prefix: v.trim(),
             include_deleted: false,
+            group_by_condition: true,
           },
           { offset: 0, limit: 20 },
         );

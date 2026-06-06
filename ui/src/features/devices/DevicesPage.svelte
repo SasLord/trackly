@@ -45,6 +45,7 @@
   let expandedGroups = $state(new Set<string>());
 
   // type_id=1 ("Устройство") hardcoded — /devices section shows only Устройства.
+  // group_by_condition: false — DevicesPage схлопывает разные condition в одну группу (ITEM-1).
   const baseFilter = $derived<DeviceFilter>({
     type_id: 1,
     location_id: null,
@@ -52,6 +53,7 @@
     state: null,
     name_prefix: null,
     include_deleted: false,
+    group_by_condition: false,
   });
 
   const pagination = $state<Pagination>({ offset: 0, limit: 50 });
@@ -184,6 +186,7 @@
         state: null,
         name_prefix: null,
         include_deleted: false,
+        group_by_condition: false,
       });
 
       if (isTauri) {
