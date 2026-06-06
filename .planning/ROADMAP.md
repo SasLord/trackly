@@ -112,7 +112,7 @@ Plans:
 **Goal:** Закрыть 3 отложенных UAT-пункта (DEF-1, DEF-2, DEF-3) из round-3 ручного UAT Phase 03.1 (03.1-DEFERRED-UAT-ITEMS.md) перед финальным merge Phase 03. Архитектурные решения зафиксированы: DEF-2B → Вариант 2 (sub-group DeviceGroup по (name, model, condition)); DEF-3 → Вариант A (ActService::create пишет resolved devices.location_id при handover, restore на return).
 **Requirements:** DEF-1, DEF-2A, DEF-2B, DEF-3 (из 03.1-DEFERRED-UAT-ITEMS.md)
 **Depends on:** Phase 03.1
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Wave 1**
 
@@ -120,7 +120,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — общий файл ActFormItemsTable.svelte)*
 
-- [ ] 03.2-02-PLAN.md — DEF-2B (list_grouped GROUP BY condition + NULL-safe repr JOIN + UI tooltip) + DEF-3 (handover UPDATE devices.location_id = resolved_location_id)
+- [x] 03.2-02-PLAN.md — DEF-2B (list_grouped GROUP BY condition + NULL-safe repr JOIN + UI tooltip) + DEF-3 (handover UPDATE devices.location_id = resolved_location_id)
 
 **Follow-up:** После 03.2 — финальный human UAT остальных pending-пунктов 03.1-HUMAN-UAT.md (13 items) перед merge Phase 03.
 
