@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-last_updated: "2026-06-06T14:06:47.191Z"
+last_updated: "2026-06-06T15:42:08.863Z"
 last_activity: 2026-06-06
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 5
   total_plans: 25
   completed_plans: 25
-  percent: 50
+  percent: 45
 ---
 
 # Project State
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.2 — deferred-uat-gap-closure
+**Current focus:** Phase 03.3 — device-list UX round 2 (planning next)
 
 ## Current Position
 
@@ -74,6 +74,7 @@ Progress: [██████████] 100%
 
 - Phase 03.1 inserted after Phase 03: Acts quantity model + UAT gap closure (G-1..G-13)
 - Phase 03.2 inserted after Phase 03.1: gap-closure deferred UAT items DEF-1/2/3 from Phase 03.1 (URGENT)
+- Phase 03.3 inserted after Phase 03.2: Device-list UX round 2 — 4 UAT items after 03.2 (grouping condition column / cell tooltips / status column / location autocomplete) (URGENT)
 
 ### Decisions
 
