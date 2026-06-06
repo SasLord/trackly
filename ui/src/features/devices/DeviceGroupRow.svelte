@@ -40,8 +40,15 @@
     showStatus?: boolean;
   }
 
-  const { group, expandedGroups, onExpandToggle, onEdit, onDelete, onPrintAcceptance, showStatus = true }: Props =
-    $props();
+  const {
+    group,
+    expandedGroups,
+    onExpandToggle,
+    onEdit,
+    onDelete,
+    onPrintAcceptance,
+    showStatus = true,
+  }: Props = $props();
 
   const stableKey = $derived(groupStableKey(group));
   const expanded = $derived(expandedGroups.has(stableKey));
@@ -169,9 +176,9 @@
   <td class="cell" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
   <td class="cell" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
-  <td class="cell cell-status">
-    <Badge variant={statusVariant}>{statusLabel}</Badge>
-  </td>
+    <td class="cell cell-status">
+      <Badge variant={statusVariant}>{statusLabel}</Badge>
+    </td>
   {/if}
   <!-- Actions column: count badge for multi-device groups -->
   <td class="cell cell-actions cell-count">

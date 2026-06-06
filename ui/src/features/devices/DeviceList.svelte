@@ -117,7 +117,13 @@
               />
             {:else}
               <!-- Singleton group (count == 1): render as plain row, no chevron -->
-              <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
+              <DeviceListRow
+                device={group.repr}
+                {onEdit}
+                {onDelete}
+                {onPrintAcceptance}
+                {showStatus}
+              />
             {/if}
           {/each}
         {:else}

@@ -25,6 +25,7 @@
 
   import { onMount } from 'svelte';
   import { devices } from './api';
+  import { apiCall } from '$lib/api/client';
 
   type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state' | 'location';
 
@@ -59,9 +60,15 @@
   }: Props = $props();
 
   let suggestions = $state<string[]>([]);
+  let allLocationSuggestions = $state<string[]>([]); // ITEM-4: distinct locations from all devices
   let loading = $state(false);
   let open = $state(false);
   let activeIndex = $state(-1);
+
+  // ITEM-4: combined list for keyboard navigation
+  const allItems = $derived(
+    field === 'location' ? [...suggestions, ...allLocationSuggestions] : suggestions,
+  );
 
   let wrapperEl = $state<HTMLDivElement | null>(null);
   // G-4 (Phase 3.1 Plan 06): inputEl reference для explicit blur() в select(),
@@ -110,15 +117,23 @@
       try {
         loading = true;
         suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus, sIn);
+        // ITEM-4: parallel fetch of all distinct locations for field="location"
+        if (field === 'location') {
+          const allLocs = await apiCall<string[]>('locations_autocomplete', { prefix: v });
+          allLocationSuggestions = allLocs.filter((l) => !suggestions.includes(l));
+        } else {
+          allLocationSuggestions = [];
+        }
         // Only open if the user is actively typing (suppression was lifted by handleInput).
         // This prevents the dropdown from re-opening on programmatic value changes
         // (e.g. parent re-rendering, edit-mode pre-fill, prop change from outside).
         if (!suppressDropdown) {
-          open = suggestions.length > 0;
+          open = suggestions.length > 0 || allLocationSuggestions.length > 0;
         }
         activeIndex = -1;
       } catch {
         suggestions = [];
+        allLocationSuggestions = [];
         open = false;
       } finally {
         loading = false;
@@ -166,13 +181,27 @@
     debounceTimer = setTimeout(async () => {
       try {
         loading = true;
-        suggestions = await devices.autocomplete(field, value, contextName, contextStatusId, statusIn);
+        suggestions = await devices.autocomplete(
+          field,
+          value,
+          contextName,
+          contextStatusId,
+          statusIn,
+        );
+        // ITEM-4: parallel fetch of all distinct locations for field="location"
+        if (field === 'location') {
+          const allLocs = await apiCall<string[]>('locations_autocomplete', { prefix: value });
+          allLocationSuggestions = allLocs.filter((l) => !suggestions.includes(l));
+        } else {
+          allLocationSuggestions = [];
+        }
         if (!suppressDropdown) {
-          open = suggestions.length > 0;
+          open = suggestions.length > 0 || allLocationSuggestions.length > 0;
         }
         activeIndex = -1;
       } catch {
         suggestions = [];
+        allLocationSuggestions = [];
         open = false;
       } finally {
         loading = false;
@@ -185,7 +214,7 @@
     if (e.key === 'ArrowDown' && !open) {
       e.preventDefault();
       suppressDropdown = false;
-      if (suggestions.length > 0) {
+      if (allItems.length > 0) {
         open = true;
         activeIndex = 0;
       }
@@ -206,8 +235,8 @@
         // or does nothing — but in BOTH cases it must NOT submit the form.
         e.preventDefault();
         e.stopPropagation();
-        if (activeIndex >= 0 && activeIndex < suggestions.length) {
-          select(suggestions[activeIndex]);
+        if (activeIndex >= 0 && activeIndex < allItems.length) {
+          select(allItems[activeIndex]);
         }
         // activeIndex === -1: no suggestion focused, dropdown stays open — form
         // submit intentionally suppressed (user is still navigating suggestions).
@@ -218,13 +247,13 @@
     if (!open) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      activeIndex = (activeIndex + 1) % suggestions.length;
+      activeIndex = (activeIndex + 1) % allItems.length;
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      activeIndex = activeIndex <= 0 ? suggestions.length - 1 : activeIndex - 1;
+      activeIndex = activeIndex <= 0 ? allItems.length - 1 : activeIndex - 1;
     } else if (e.key === 'Tab') {
-      if (activeIndex >= 0 && activeIndex < suggestions.length) {
-        select(suggestions[activeIndex]);
+      if (activeIndex >= 0 && activeIndex < allItems.length) {
+        select(allItems[activeIndex]);
       }
       open = false;
     }
@@ -292,7 +321,7 @@
       {/if}
       {#if loading}
         <div class="dropdown-loading">Загружаем подсказки…</div>
-      {:else if suggestions.length === 0}
+      {:else if allItems.length === 0}
         <div class="dropdown-empty">Начните вводить, чтобы увидеть подсказки</div>
       {:else}
         {#each suggestions as s, i (s)}
@@ -311,6 +340,25 @@
             {s}
           </button>
         {/each}
+        {#if field === 'location' && allLocationSuggestions.length > 0}
+          <header class="dropdown-header">Все расположения:</header>
+          {#each allLocationSuggestions as s, i ('all_' + s)}
+            <button
+              type="button"
+              id="autocomplete-item-{suggestions.length + i}"
+              role="option"
+              class="dropdown-item"
+              class:active={suggestions.length + i === activeIndex}
+              aria-selected={suggestions.length + i === activeIndex}
+              onmousedown={(e) => {
+                e.preventDefault();
+                select(s);
+              }}
+            >
+              {s}
+            </button>
+          {/each}
+        {/if}
       {/if}
     </div>
   {/if}

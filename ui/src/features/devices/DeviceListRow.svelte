@@ -15,7 +15,14 @@
     showStatus?: boolean;
   }
 
-  const { device, onEdit, onDelete, isLastInGroup = false, onPrintAcceptance, showStatus = true }: Props = $props();
+  const {
+    device,
+    onEdit,
+    onDelete,
+    isLastInGroup = false,
+    onPrintAcceptance,
+    showStatus = true,
+  }: Props = $props();
 
   // ---------------------------------------------------------------------------
   // Placeholder status mapping (Plan 04 wires seeded lookups)
@@ -48,9 +55,9 @@
   <td class="cell" title={device.location ?? ''}>{device.location ?? '—'}</td>
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
-  <td class="cell cell-status">
-    <Badge variant={statusVariant}>{statusLabel}</Badge>
-  </td>
+    <td class="cell cell-status">
+      <Badge variant={statusVariant}>{statusLabel}</Badge>
+    </td>
   {/if}
   <td class="cell cell-actions">
     <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} />
