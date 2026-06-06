@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-06T19:07:53.913Z"
-last_activity: 2026-06-06 -- Phase 03.3 planning complete
+last_updated: "2026-06-06T19:18:39.745Z"
+last_activity: 2026-06-06
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 27
-  completed_plans: 25
+  completed_plans: 26
   percent: 45
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.3 — device-list UX round 2 (planned, ready to execute)
+**Current focus:** Phase 03.3 — device-list-ux-round-2-grouping-condition-column-cell-toolti
 
 ## Current Position
 
-Phase: 03.3 (device-list-ux-round-2) — PLANNED
-Plan: 0 of 2
+Phase: 03.3 (device-list-ux-round-2-grouping-condition-column-cell-toolti) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-06-06 -- Phase 03.3 planning complete
+Last activity: 2026-06-06
 
-Progress: [__________] 0%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Progress: [__________] 0%
 | Phase 03 P04 | 75 | 2 tasks | 34 files |
 | Phase 03 P05 | 60 | 2 tasks | 21 files |
 | Phase 03.2-deferred-uat-gap-closure P02 | 15 | 2 tasks | 5 files |
+| Phase 03.3 P01 | 20 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -133,6 +134,7 @@ Recent decisions affecting current work:
 - [Phase 03.3]: ITEM-1 — «разное» для смешанной group (зафиксировано пользователем, UAT-ITEMS §Решения п.1); вычисляется через condition_distinct_count > 1 на клиенте
 - [Phase 03.3]: ITEM-2 — нативный title= на всех text-ячейках (не кастомный tooltip-компонент)
 - [Phase 03.3]: ITEM-4 — вторая секция в DeviceAutocompleteField через существующую locations_autocomplete Tauri-команду; HTTP route добавляется в http/devices.rs
+- [Phase ?]: group_by_condition flag design
 
 ### Pending Todos
 
@@ -157,7 +159,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-07T00:00:00.000Z
+Last session: 2026-06-06T19:18:34.704Z
 Stopped at: Phase 03.3 plans created — ready for execution
 Resume file: 
-.planning/phases/03.3-device-list-ux-round-2-grouping-condition-column-cell-toolti/03.3-01-PLAN.md
+None
