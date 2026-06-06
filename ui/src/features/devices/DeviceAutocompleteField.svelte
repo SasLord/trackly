@@ -157,9 +157,32 @@
     // already false (lifted above), so the dropdown will open correctly.
   }
 
+  function handleFocus() {
+    // DEF-1 (Phase 03.2): открываем dropdown сразу на focus (empty prefix → top 20).
+    // Bypass v.length < 1 guard из $effect — делаем прямой fetch с delay 0.
+    suppressDropdown = false;
+    lastSelected = null;
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        loading = true;
+        suggestions = await devices.autocomplete(field, value, contextName, contextStatusId, statusIn);
+        if (!suppressDropdown) {
+          open = suggestions.length > 0;
+        }
+        activeIndex = -1;
+      } catch {
+        suggestions = [];
+        open = false;
+      } finally {
+        loading = false;
+      }
+    }, 0);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
-    // ArrowDown on non-empty field explicitly re-opens the dropdown (escape hatch).
-    if (e.key === 'ArrowDown' && !open && value.length > 0) {
+    // ArrowDown explicitly re-opens the dropdown (escape hatch), works even on empty field.
+    if (e.key === 'ArrowDown' && !open) {
       e.preventDefault();
       suppressDropdown = false;
       if (suggestions.length > 0) {
@@ -233,6 +256,7 @@
       aria-autocomplete="list"
       aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
       oninput={handleInput}
+      onfocus={handleFocus}
       onkeydown={handleKeydown}
     ></textarea>
   {:else}
@@ -248,6 +272,7 @@
       aria-autocomplete="list"
       aria-activedescendant={activeIndex >= 0 ? `autocomplete-item-${activeIndex}` : undefined}
       oninput={handleInput}
+      onfocus={handleFocus}
       onkeydown={handleKeydown}
     />
   {/if}
