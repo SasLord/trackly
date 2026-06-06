@@ -497,7 +497,8 @@ async fn grouping_groups_devices_with_same_name_and_different_location() {
 // ---------------------------------------------------------------------------
 // grouping_groups_devices_with_same_name_and_different_condition
 // ---------------------------------------------------------------------------
-// Two devices with the same Наименование but different condition/state must group.
+// DEF-2B: two devices with the same Наименование but different condition/state
+// must appear as TWO separate groups (condition is now part of the group key).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn grouping_groups_devices_with_same_name_and_different_condition() {
@@ -522,12 +523,110 @@ async fn grouping_groups_devices_with_same_name_and_different_condition() {
 
         assert_eq!(
             groups.len(),
-            1,
-            "две клавиатуры с разными состояниями должны схлопнуться в 1 группу, получили {} групп",
+            2,
+            "DEF-2B: две клавиатуры с разными состояниями должны быть 2 группы, получили {} групп",
             groups.len()
         );
-        assert_eq!(groups[0].count, 2, "count в группе должен быть 2");
+        // Each group has count=1.
+        assert!(
+            groups.iter().all(|g| g.count == 1),
+            "каждая condition-группа должна содержать ровно 1 устройство"
+        );
     })
     .await
     .expect("grouping_groups_devices_with_same_name_and_different_condition exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// condition_key_splits_groups (DEF-2B)
+// ---------------------------------------------------------------------------
+// Два устройства с одинаковым name+model, но разным condition → две отдельные группы.
+// Дополнительно проверяет, что repr.state каждой группы соответствует её condition
+// (т.е. LEFT JOIN для location_name фильтрует по condition — нет cross-contamination repr).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn condition_key_splits_groups() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d1 = non_unique_device("DVD-ROM ASUS", 1);
+        d1.model = Some("BW-16D1HT".to_string());
+        d1.state = Some("Новое".to_string());
+
+        let mut d2 = non_unique_device("DVD-ROM ASUS", 1);
+        d2.model = Some("BW-16D1HT".to_string());
+        d2.state = Some("Хорошее".to_string());
+
+        svc.create(d1).await.expect("create condition=Новое");
+        svc.create(d2).await.expect("create condition=Хорошее");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            2,
+            "разный condition → две группы, получили {} групп",
+            groups.len()
+        );
+
+        // Repr.state не cross-contaminated — каждая группа несёт своё значение condition.
+        let states: std::collections::HashSet<Option<String>> =
+            groups.iter().map(|g| g.repr.state.clone()).collect();
+        assert!(
+            states.contains(&Some("Новое".to_string())),
+            "группа с condition='Новое' должна присутствовать, states={states:?}"
+        );
+        assert!(
+            states.contains(&Some("Хорошее".to_string())),
+            "группа с condition='Хорошее' должна присутствовать, states={states:?}"
+        );
+    })
+    .await
+    .expect("condition_key_splits_groups exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// condition_key_same_condition_collapses (DEF-2B)
+// ---------------------------------------------------------------------------
+// Два устройства с одинаковым name + одинаковым condition → одна группа count=2.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn condition_key_same_condition_collapses() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d1 = non_unique_device("DVD-ROM ASUS", 1);
+        d1.state = Some("Новое".to_string());
+
+        let mut d2 = non_unique_device("DVD-ROM ASUS", 1);
+        d2.state = Some("Новое".to_string());
+
+        svc.create(d1).await.expect("create condition=Новое (1)");
+        svc.create(d2).await.expect("create condition=Новое (2)");
+
+        let filter = DeviceFilter::default();
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "одинаковый condition → одна группа, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(
+            groups[0].count, 2,
+            "count группы должен быть 2"
+        );
+    })
+    .await
+    .expect("condition_key_same_condition_collapses exceeded 30s");
 }

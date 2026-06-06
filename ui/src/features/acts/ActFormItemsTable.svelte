@@ -226,6 +226,9 @@
                     {:else}
                       <span class="opt-count">×{g.count}</span>
                     {/if}
+                    {#if g.repr.state}
+                      <span class="opt-state">{g.repr.state}</span>
+                    {/if}
                   </button>
                 </li>
               {/each}
@@ -356,6 +359,10 @@
     font-size: var(--font-size-label);
     color: var(--color-accent, var(--color-text-secondary));
     font-weight: 600;
+  }
+  .opt-state {
+    font-size: var(--font-size-label);
+    color: var(--color-text-secondary);
   }
 
   .loading-row {

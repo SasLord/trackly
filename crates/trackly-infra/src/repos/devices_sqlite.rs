@@ -910,22 +910,26 @@ impl DeviceRepository for SqliteDeviceRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Group devices by (type_id, name) only.
+        // Group devices by (type_id, name, condition) — DEF-2B fix.
         //
         // Round 8 fix: the previous key included model/notes/complectation/condition/
         // location_id/status_id, which was too strict — two monitors with the same
         // Наименование but different locations or statuses would NOT collapse.
         //
-        // The user's mental model is «same Наименование → same group», so we relax
-        // the key to just (type_id, name). Other attribute columns become MAX(...)
-        // aggregates for the representative row — for groups of truly identical
-        // devices those aggregates equal the unique value; for heterogeneous groups
-        // (different locations, statuses, etc.) they show one representative value,
-        // which is acceptable because the user can expand the group to see all members.
+        // Round 9 fix (DEF-2B): condition is now included in the group key.
+        // Two devices with the same name but different condition remain separate groups
+        // (e.g. «DVD-ROM ASUS, Хорошее ×1» and «DVD-ROM ASUS, Новое ×1» are distinct).
+        // This ensures clone-on-handover inherits the correct condition from the
+        // representative device. Other attribute columns (location, status, etc.) still
+        // become MAX(...) aggregates within each condition-group.
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
         // list_grouped uses a manual query (not SELECT_DEVICES) because it aggregates.
+        //
+        // LEFT JOIN subquery for location_name: must filter by condition using the IS
+        // operator (not =) so that NULL IS NULL evaluates as TRUE in SQLite — preventing
+        // cross-contamination of repr location across condition groups.
         let mut stmt = conn
             .prepare(
                 "SELECT
@@ -936,7 +940,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.model)                    AS model,
                    MAX(d.notes)                    AS notes,
                    MAX(d.complectation)            AS complectation,
-                   MAX(d.condition)                AS condition,
+                   d.condition                     AS condition,
                    MAX(d.location_id)              AS location_id,
                    MAX(d.status_id)                AS status_id,
                    MAX(d.version)                  AS version,
@@ -951,12 +955,13 @@ impl DeviceRepository for SqliteDeviceRepository {
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
                      AND d2.name = d.name
+                     AND d2.condition IS d.condition
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
                  )
                  WHERE d.deleted_at_utc IS NULL
                    AND (?1 IS NULL OR d.status_id = ?1)
-                 GROUP BY d.type_id, d.name
+                 GROUP BY d.type_id, d.name, d.condition
                  ORDER BY d.name
                  LIMIT ?2 OFFSET ?3",
             )
