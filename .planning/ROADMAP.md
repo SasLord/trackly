@@ -100,6 +100,7 @@ Trackly — портативное приложение для учёта тех
 **Plans:** 6/6 plans complete
 
 Plans:
+
 - [x] 03.1-01-PLAN.md — G-12 clone-on-handover backend + V015 migration + G-7/G-11 (recompute_parent_archived COUNT-based, display rule)
 - [x] 03.1-02-PLAN.md — G-5 acts.suggest_person tauri command + PersonAutocomplete.svelte shared component + 3-modal wire-up
 - [x] 03.1-03-PLAN.md — G-6 + G-10 ReturnModal UX (per-row symmetric unlock + outstanding-only display, depends on 01+02)
@@ -130,9 +131,13 @@ Plans:
 **Requirements:** ITEM-1, ITEM-2, ITEM-3, ITEM-4 (из 03.3-UAT-ITEMS.md)
 **Depends on:** Phase 03.2
 **Plans:** 2 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 03.3-01-PLAN.md — Бэкенд: флаг group_by_condition в DeviceFilter + условный SQL list_grouped + condition_distinct_count + интеграционные тесты + регенерация TS-биндингов (ITEM-1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03.3-02-PLAN.md — Фронтенд: колонка «Состояние» + «разное» + tooltip + скрытие «Статус» по вкладке + автокомплит «Все расположения» + HTTP route locations_autocomplete (ITEM-1/2/3/4)
 
 ### Phase 4: Картриджи
