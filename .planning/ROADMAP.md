@@ -107,6 +107,19 @@ Plans:
 - [x] 03.1-05-PLAN.md — G-8a column truncation + G-8b PdfPreviewModal Save/Open/Print + G-9 logo aspect-ratio + tauri-plugin-shell
 - [x] 03.1-06-PLAN.md — G-1 Modal backdrop mousedown/mouseup discipline + G-4 DeviceAutocomplete close-on-select
 
+### Phase 03.2: Deferred UAT gap closure (INSERTED)
+
+**Goal:** Закрыть 3 отложенных UAT-пункта (DEF-1, DEF-2, DEF-3) из round-3 ручного UAT Phase 03.1 (03.1-DEFERRED-UAT-ITEMS.md) перед финальным merge Phase 03. Архитектурные решения зафиксированы: DEF-2B → Вариант 2 (sub-group DeviceGroup по (name, model, condition)); DEF-3 → Вариант A (ActService::create пишет resolved devices.location_id при handover, restore на return).
+**Requirements:** DEF-1, DEF-2A, DEF-2B, DEF-3 (из 03.1-DEFERRED-UAT-ITEMS.md)
+**Depends on:** Phase 03.1
+**Plans:** TBD (run /gsd-plan-phase 03.2 to break down)
+
+Plans (intended breakdown):
+- [ ] 03.2-01 — UX polish (~30 мин): DEF-1 focus-open для PersonAutocomplete + DeviceAutocompleteField (по образцу LocationAutocomplete.handleFocus, commit b2c43a5; снять non-empty prefix restriction в devices.search/listGrouped если есть) + DEF-2A dedupe уже-выбранных devices в ActFormItemsTable dropdown
+- [ ] 03.2-02 — architectural: DEF-2B [Вариант 2] DeviceGroup group key (name, model, condition) — list_grouped SQL + UI tooltip с condition + тесты; DEF-3 [Вариант A] ActService::create UPDATE devices.location_id (resolved) при handover в writer-tx + restore на return (do_return уже частично пишет туда)
+
+**Follow-up:** После 03.2 — финальный human UAT остальных pending-пунктов 03.1-HUMAN-UAT.md (13 items) перед merge Phase 03.
+
 ### Phase 4: Картриджи
 
 **Goal:** Поставить раздел «Картриджи» — модели с матрицей совместимости, экземпляры с авто-кодом `C-000001`, lifecycle с контекстными действиями, журнал перемещений и баннер низкого остатка.

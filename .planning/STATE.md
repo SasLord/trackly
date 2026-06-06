@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-05-30T20:24:46.492Z"
-last_activity: 2026-05-30 -- Phase 03.1 execution started
+last_updated: "2026-06-06T13:26:39.509Z"
+last_activity: 2026-06-06 -- Phase 03.2 inserted (gap-closure DEF-1/2/3); 03.1 human UAT pending
 progress:
-  total_phases: 9
-  completed_phases: 3
+  total_phases: 10
+  completed_phases: 4
   total_plans: 23
-  completed_plans: 17
-  percent: 33
+  completed_plans: 23
+  percent: 40
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.1 — acts-quantity-model-uat-gap-closure
+**Current focus:** Phase 03.2 — deferred-uat-gap-closure (planning next)
 
 ## Current Position
 
 Phase: 03.1 (acts-quantity-model-uat-gap-closure) — EXECUTING
 Plan: 1 of 6
 Status: Executing Phase 03.1
-Last activity: 2026-05-30 -- Phase 03.1 execution started
+Last activity: 2026-06-06 -- Phase 03.2 inserted (gap-closure DEF-1/2/3); 03.1 human UAT pending
 
 Progress: [██████████] 100%
 
@@ -72,6 +72,7 @@ Progress: [██████████] 100%
 ### Roadmap Evolution
 
 - Phase 03.1 inserted after Phase 03: Acts quantity model + UAT gap closure (G-1..G-13)
+- Phase 03.2 inserted after Phase 03.1: gap-closure deferred UAT items DEF-1/2/3 from Phase 03.1 (URGENT)
 
 ### Decisions
 
