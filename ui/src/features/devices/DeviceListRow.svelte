@@ -11,9 +11,11 @@
     isLastInGroup?: boolean;
     /** Plan 03-05 (DEV-14): pass-through к DeviceContextMenu. */
     onPrintAcceptance?: (_d: DeviceDto) => void;
+    /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
+    showStatus?: boolean;
   }
 
-  const { device, onEdit, onDelete, isLastInGroup = false, onPrintAcceptance }: Props = $props();
+  const { device, onEdit, onDelete, isLastInGroup = false, onPrintAcceptance, showStatus = true }: Props = $props();
 
   // ---------------------------------------------------------------------------
   // Placeholder status mapping (Plan 04 wires seeded lookups)
@@ -39,14 +41,17 @@
 </script>
 
 <tr class="device-row" class:group-last-child={isLastInGroup}>
-  <td class="cell cell-name">{device.name}</td>
-  <td class="cell cell-numeric">{device.inventory_no ?? '—'}</td>
-  <td class="cell cell-numeric">{device.serial_no ?? '—'}</td>
-  <td class="cell">{device.model ?? '—'}</td>
-  <td class="cell">{device.location ?? '—'}</td>
+  <td class="cell cell-name" title={device.name}>{device.name}</td>
+  <td class="cell cell-numeric" title={device.inventory_no ?? ''}>{device.inventory_no ?? '—'}</td>
+  <td class="cell cell-numeric" title={device.serial_no ?? ''}>{device.serial_no ?? '—'}</td>
+  <td class="cell" title={device.model ?? ''}>{device.model ?? '—'}</td>
+  <td class="cell" title={device.location ?? ''}>{device.location ?? '—'}</td>
+  <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
+  {#if showStatus}
   <td class="cell cell-status">
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>
+  {/if}
   <td class="cell cell-actions">
     <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} />
   </td>

@@ -269,6 +269,7 @@
         refreshCounts();
       }}
       onPrintAcceptance={handlePrintAcceptance}
+      showStatus={statusFilter === null}
     />
   </div>
 </div>

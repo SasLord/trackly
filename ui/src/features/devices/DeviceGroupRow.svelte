@@ -36,9 +36,11 @@
     onDelete: () => void;
     /** Plan 03-05 (DEV-14): pass-through. */
     onPrintAcceptance?: (_d: DeviceDto) => void;
+    /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
+    showStatus?: boolean;
   }
 
-  const { group, expandedGroups, onExpandToggle, onEdit, onDelete, onPrintAcceptance }: Props =
+  const { group, expandedGroups, onExpandToggle, onEdit, onDelete, onPrintAcceptance, showStatus = true }: Props =
     $props();
 
   const stableKey = $derived(groupStableKey(group));
@@ -66,6 +68,11 @@
     STATUS_LABELS[group.repr.status_id] ?? `Статус ${group.repr.status_id}`,
   );
   const statusVariant = $derived(STATUS_VARIANTS[group.repr.status_id] ?? 'default');
+
+  // ITEM-1: «разное» для смешанной группы по condition_distinct_count
+  const conditionDisplay = $derived(
+    group.condition_distinct_count > 1 ? 'разное' : (group.repr.state ?? '—'),
+  );
 
   async function toggleExpand() {
     const willExpand = !expanded;
@@ -130,7 +137,7 @@
 <tr class="group-row" onclick={toggleExpand}>
   <!-- colspan="4" merges Наименование + Инв.№ + Серийный № + Модель columns.
        Chevron is inline, followed by the group name — no truncation needed. -->
-  <td class="cell cell-name-wide" colspan="4">
+  <td class="cell cell-name-wide" colspan="4" title={group.repr.name}>
     <button
       type="button"
       class="chevron-btn"
@@ -159,10 +166,13 @@
     </button>
     {group.repr.name}
   </td>
-  <td class="cell">{group.repr.location ?? '—'}</td>
+  <td class="cell" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
+  <td class="cell" title={conditionDisplay}>{conditionDisplay}</td>
+  {#if showStatus}
   <td class="cell cell-status">
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>
+  {/if}
   <!-- Actions column: count badge for multi-device groups -->
   <td class="cell cell-actions cell-count">
     <span class="count-pill">{group.count} шт.</span>
@@ -172,7 +182,7 @@
 {#if expanded}
   {#if loadingChildren}
     <tr class="children-loading-row">
-      <td colspan="7" class="children-loading">Загрузка…</td>
+      <td colspan={showStatus ? 8 : 7} class="children-loading">Загрузка…</td>
     </tr>
   {:else if children && children.length > 0}
     {#each children as child, i (child.id)}
@@ -182,6 +192,7 @@
         onDelete={handleDelete}
         isLastInGroup={i === children.length - 1}
         {onPrintAcceptance}
+        {showStatus}
       />
     {/each}
   {/if}

@@ -18,6 +18,8 @@
     onDelete: () => void;
     /** Plan 03-05 (DEV-14): pass-through. */
     onPrintAcceptance?: (_d: DeviceDto) => void;
+    /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
+    showStatus?: boolean;
   }
 
   const {
@@ -32,6 +34,7 @@
     onEdit,
     onDelete,
     onPrintAcceptance,
+    showStatus = true,
   }: Props = $props();
 
   const showGroups = $derived(grouped && !searchActive && groups.length > 0);
@@ -62,14 +65,15 @@
           <th class="th th-numeric">Серийный №</th>
           <th class="th">Модель</th>
           <th class="th">Расположение</th>
-          <th class="th th-status">Статус</th>
+          <th class="th th-condition">Состояние</th>
+          {#if showStatus}<th class="th th-status">Статус</th>{/if}
           <th class="th th-actions">Действия</th>
         </tr>
       </thead>
       <tbody>
         {#each { length: 5 } as _}
           <tr class="skeleton-row">
-            {#each { length: 7 } as _}
+            {#each { length: showStatus ? 8 : 7 } as _}
               <td class="skeleton-cell">
                 <div class="skeleton-block"></div>
               </td>
@@ -92,7 +96,8 @@
           <th class="th th-numeric">Серийный №</th>
           <th class="th">Модель</th>
           <th class="th">Расположение</th>
-          <th class="th th-status">Статус</th>
+          <th class="th th-condition">Состояние</th>
+          {#if showStatus}<th class="th th-status">Статус</th>{/if}
           <th class="th th-actions">Действия</th>
         </tr>
       </thead>
@@ -108,15 +113,16 @@
                 expandedGroups={expandedGroups ?? new Set()}
                 {onExpandToggle}
                 {onPrintAcceptance}
+                {showStatus}
               />
             {:else}
               <!-- Singleton group (count == 1): render as plain row, no chevron -->
-              <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} />
+              <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
             {/if}
           {/each}
         {:else}
           {#each items as device (device.id)}
-            <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} />
+            <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
           {/each}
         {/if}
       </tbody>
@@ -166,6 +172,9 @@
   }
   .th-numeric {
     width: 140px;
+  }
+  .th-condition {
+    width: 120px;
   }
   .th-status {
     width: 120px;
