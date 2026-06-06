@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-06T13:45:42.103Z"
-last_activity: "2026-06-06 -- Phase 03.2 planned: 2 plans, plan-checker CONCERNS resolved (NULL-safe repr JOIN + read_first fixes)"
+last_updated: "2026-06-06T13:53:15.576Z"
+last_activity: 2026-06-06
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 23
-  completed_plans: 23
+  total_plans: 25
+  completed_plans: 24
   percent: 40
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 03.2 — deferred-uat-gap-closure (planned, ready to execute)
+**Current focus:** Phase 03.2 — deferred-uat-gap-closure
 
 ## Current Position
 
-Phase: 03.1 (acts-quantity-model-uat-gap-closure) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 03.1
-Last activity: 2026-06-06 -- Phase 03.2 planned: 2 plans, plan-checker CONCERNS resolved (NULL-safe repr JOIN + read_first fixes)
+Phase: 03.2 (deferred-uat-gap-closure) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-06-06
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -150,7 +150,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-30T09:19:18.909Z
+Last session: 2026-06-06T13:53:15.569Z
 Stopped at: Plan 03-04 complete; ready for 03-05
 Resume file: 
 None

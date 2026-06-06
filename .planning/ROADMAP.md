@@ -112,11 +112,11 @@ Plans:
 **Goal:** Закрыть 3 отложенных UAT-пункта (DEF-1, DEF-2, DEF-3) из round-3 ручного UAT Phase 03.1 (03.1-DEFERRED-UAT-ITEMS.md) перед финальным merge Phase 03. Архитектурные решения зафиксированы: DEF-2B → Вариант 2 (sub-group DeviceGroup по (name, model, condition)); DEF-3 → Вариант A (ActService::create пишет resolved devices.location_id при handover, restore на return).
 **Requirements:** DEF-1, DEF-2A, DEF-2B, DEF-3 (из 03.1-DEFERRED-UAT-ITEMS.md)
 **Depends on:** Phase 03.1
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 **Wave 1**
 
-- [ ] 03.2-01-PLAN.md — DEF-1 (focus-open PersonAutocomplete + DeviceAutocompleteField) + DEF-2A (dedupe выбранных groups в ActFormItemsTable dropdown)
+- [x] 03.2-01-PLAN.md — DEF-1 (focus-open PersonAutocomplete + DeviceAutocompleteField) + DEF-2A (dedupe выбранных groups в ActFormItemsTable dropdown)
 
 **Wave 2** *(blocked on Wave 1 — общий файл ActFormItemsTable.svelte)*
 
