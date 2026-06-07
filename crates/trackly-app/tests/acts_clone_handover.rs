@@ -65,7 +65,12 @@ fn migration_v015_applies_clean() {
     let user_version: i64 = conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .expect("read user_version");
-    assert_eq!(user_version, 15, "V015 must bring schema to version 15");
+    // V016 was added in plan 04-01 (cartridge tables), so the final schema version
+    // is 16, not 15. The test still verifies V015 columns exist below.
+    assert!(
+        user_version >= 15,
+        "schema must be at V015+ after migrations, got: {user_version}"
+    );
 
     // Verify new columns exist.
     let acts_columns: Vec<String> = {

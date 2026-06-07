@@ -79,6 +79,11 @@ mod tests {
             crate::services::ActService::new(writer.clone(), readers.clone(), clock.clone())
                 .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone()),
         );
+        let cartridges = Arc::new(crate::services::CartridgeService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -93,6 +98,7 @@ mod tests {
             organization,
             templates,
             pdf,
+            cartridges,
         };
         (ctx, dir)
     }

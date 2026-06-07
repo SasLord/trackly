@@ -139,6 +139,7 @@ impl SqliteCartridgeRepository {
     /// Performs location round-trip: if `location` is non-empty, inserts
     /// `INSERT OR IGNORE INTO locations` to maintain the shared locations
     /// autocomplete (D-Op-Location-01).
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_cartridge_in_tx(
         &self,
         tx: &Transaction<'_>,
@@ -199,6 +200,7 @@ impl SqliteCartridgeRepository {
     }
 
     /// UPDATE an existing cartridge model row inside a transaction.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_model_in_tx(
         &self,
         tx: &Transaction<'_>,

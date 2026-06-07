@@ -51,6 +51,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         trackly_app::services::ActService::new(writer.clone(), readers.clone(), clock.clone())
             .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone()),
     );
+    let cartridges = Arc::new(trackly_app::services::CartridgeService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -65,6 +70,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         organization,
         templates,
         pdf,
+        cartridges,
     };
     (ctx, dir)
 }

@@ -6,6 +6,7 @@
 //! (success criterion #5).
 
 pub mod acts;
+pub mod cartridges;
 pub mod devices;
 pub mod fs_helpers;
 pub mod health;
