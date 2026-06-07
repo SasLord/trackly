@@ -15,7 +15,16 @@
     onDelete: () => void;
   }
 
-  const { cartridge, onInstall, onReturnToStock, onToRefill, onFromRefill, onWriteOff, onEdit, onDelete }: Props = $props();
+  const {
+    cartridge,
+    onInstall,
+    onReturnToStock,
+    onToRefill,
+    onFromRefill,
+    onWriteOff,
+    onEdit,
+    onDelete,
+  }: Props = $props();
 
   let menuOpen = $state(false);
   let menuX = $state(0);
@@ -96,11 +105,7 @@
   }
 </script>
 
-<svelte:window
-  onmousedown={handleBodyMousedown}
-  onscroll={closeMenu}
-  onresize={closeMenu}
-/>
+<svelte:window onmousedown={handleBodyMousedown} onscroll={closeMenu} onresize={closeMenu} />
 
 <div class="context-menu-wrapper">
   <button

@@ -1,5 +1,6 @@
 <script lang="ts">
   // Plan 04-04: детальная панель картриджа — поля + история перемещений.
+  // Plan 04-05: action buttons wired (04-04 stubs → real handlers via onMenuAction callback).
   // По образцу ActDetail.svelte, паттерн из PATTERNS.md §CartridgeDetail.svelte.
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
@@ -11,9 +12,10 @@
     history: AuditEntryDto[];
     loading: boolean;
     onCreate: () => void;
+    onMenuAction?: (_op: string, _cartridge: CartridgeDto) => void;
   }
 
-  const { cartridge, history, loading, onCreate }: Props = $props();
+  const { cartridge, history, loading, onCreate, onMenuAction }: Props = $props();
 
   // Badge variant по status_id (UI-SPEC §Badge-цвета статусов):
   // 1→success, 2→accent, 3→warning, 4→default
@@ -113,17 +115,37 @@
       <div class="actions">
         {#if cartridge.status_id === 1}
           <!-- На складе: установить, отправить на заправку -->
-          <Button variant="secondary" size="sm" disabled>Установить</Button>
-          <Button variant="secondary" size="sm" disabled>На заправку</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => onMenuAction?.('install', cartridge!)}>Установить</Button
+          >
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => onMenuAction?.('to_refill', cartridge!)}>На заправку</Button
+          >
         {:else if cartridge.status_id === 2}
           <!-- В работе: вернуть на склад -->
-          <Button variant="secondary" size="sm" disabled>Вернуть на склад</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => onMenuAction?.('return_to_stock', cartridge!)}>Вернуть на склад</Button
+          >
         {:else if cartridge.status_id === 3}
           <!-- На заправке: забрать с заправки -->
-          <Button variant="secondary" size="sm" disabled>Забрать с заправки</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => onMenuAction?.('from_refill', cartridge!)}>Забрать с заправки</Button
+          >
         {/if}
-        <Button variant="secondary" size="sm" disabled>Редактировать</Button>
-        <Button variant="destructive" size="sm" disabled>Удалить</Button>
+        <Button variant="secondary" size="sm" onclick={() => onMenuAction?.('edit', cartridge!)}
+          >Редактировать</Button
+        >
+        <Button variant="destructive" size="sm" onclick={() => onMenuAction?.('delete', cartridge!)}
+          >Удалить</Button
+        >
       </div>
     </header>
 

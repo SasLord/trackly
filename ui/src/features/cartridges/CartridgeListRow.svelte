@@ -1,7 +1,9 @@
 <script lang="ts">
   // Plan 04-04: строка списка картриджей.
+  // Plan 04-05: kebab заглушка заменена на CartridgeContextMenu с portal (wire-up).
   // По образцу ActListRow.svelte, паттерн из PATTERNS.md §CartridgeListRow.svelte.
   import Badge from '$lib/components/Badge.svelte';
+  import CartridgeContextMenu from './CartridgeContextMenu.svelte';
   import type { CartridgeDto } from '../../bindings';
 
   interface Props {
@@ -38,20 +40,6 @@
     }
   }
 
-  function handleKebabClick(e: MouseEvent) {
-    e.stopPropagation();
-    // CartridgeContextMenu wire-up в плане 04-05; сейчас — заглушка.
-    onMenuAction('menu', cartridge);
-  }
-
-  function handleKebabKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      e.stopPropagation();
-      onMenuAction('menu', cartridge);
-    }
-  }
-
   const modelLabel = $derived(
     cartridge.model_brand || cartridge.model_name
       ? `${cartridge.model_brand ?? ''} ${cartridge.model_name ?? ''}`.trim()
@@ -76,14 +64,23 @@
     <span class="badge-wrap">
       <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
     </span>
-    <button
-      type="button"
-      class="kebab-btn"
-      aria-label="Действия с картриджем {cartridge.code}"
-      onclick={handleKebabClick}
-      onkeydown={handleKebabKeydown}
-      tabindex="-1">⋮</button
+    <span
+      class="kebab-wrap"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+      role="none"
     >
+      <CartridgeContextMenu
+        {cartridge}
+        onInstall={() => onMenuAction('install', cartridge)}
+        onReturnToStock={() => onMenuAction('return_to_stock', cartridge)}
+        onToRefill={() => onMenuAction('to_refill', cartridge)}
+        onFromRefill={() => onMenuAction('from_refill', cartridge)}
+        onWriteOff={() => onMenuAction('write_off', cartridge)}
+        onEdit={() => onMenuAction('edit', cartridge)}
+        onDelete={() => onMenuAction('delete', cartridge)}
+      />
+    </span>
   </div>
   <div class="bottom">
     <span class="location">{cartridge.location ?? '—'}</span>
@@ -146,30 +143,10 @@
     margin-left: auto;
   }
 
-  .kebab-btn {
+  .kebab-wrap {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--color-text-muted);
-    cursor: pointer;
-    font-size: 16px;
-    padding: 0;
-
-    &:hover {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-primary);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 2px var(--color-accent-focus);
-    }
   }
 
   .bottom {

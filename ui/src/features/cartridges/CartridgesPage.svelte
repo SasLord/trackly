@@ -1,14 +1,19 @@
 <script lang="ts">
   // Plan 04-04: корневой компонент раздела «Картриджи».
+  // Plan 04-05: wire CartridgeContextMenu + OperationModal + CartridgeFormModal + LowStockBanner.
   // Два таба: «Картриджи» (master-detail) / «Модели» (полноширинный CRUD-список).
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import CartridgesSearchAndTabs from './CartridgesSearchAndTabs.svelte';
   import CartridgesMasterDetail from './CartridgesMasterDetail.svelte';
   import CartridgeFilters from './CartridgeFilters.svelte';
   import CartridgesList from './CartridgesList.svelte';
   import CartridgeDetail from './CartridgeDetail.svelte';
+  import LowStockBanner from './LowStockBanner.svelte';
+  import OperationModal from './OperationModal.svelte';
+  import CartridgeFormModal from './CartridgeFormModal.svelte';
   import { cartridges } from './api';
   import type {
     AuditEntryDto,
@@ -154,17 +159,102 @@
     refreshLowStock();
   });
 
+  // --- Modal state (04-05) ---
+  type OpType = 'install' | 'return_to_stock' | 'to_refill' | 'from_refill' | 'write_off';
+
+  let operationModalOpen = $state(false);
+  let operationModalOp = $state<OpType>('install');
+  let operationModalCartridge = $state<CartridgeDto | null>(null);
+
+  let formModalOpen = $state(false);
+  let formModalTarget = $state<CartridgeDto | null>(null);
+
+  let confirmDeleteOpen = $state(false);
+  let confirmDeleteCartridge = $state<CartridgeDto | null>(null);
+  let deleting = $state(false);
+
   function handleSelect(id: number) {
     selectedCartridgeId = id;
   }
 
-  function handleMenuAction(_op: string, _cartridge: CartridgeDto) {
-    // CRUD / lifecycle модалки будут реализованы в плане 04-05.
-    // Пока — заглушка.
+  function handleMenuAction(op: string, cartridge: CartridgeDto) {
+    if (
+      op === 'install' ||
+      op === 'return_to_stock' ||
+      op === 'to_refill' ||
+      op === 'from_refill' ||
+      op === 'write_off'
+    ) {
+      operationModalCartridge = cartridge;
+      operationModalOp = op as OpType;
+      operationModalOpen = true;
+    } else if (op === 'edit') {
+      formModalTarget = cartridge;
+      formModalOpen = true;
+    } else if (op === 'delete') {
+      confirmDeleteCartridge = cartridge;
+      confirmDeleteOpen = true;
+    }
   }
 
   function openCreate() {
-    // Открытие модала создания — реализуется в плане 04-05.
+    formModalTarget = null;
+    formModalOpen = true;
+  }
+
+  function handleOperationSuccess() {
+    // Refresh list + detail after lifecycle operation
+    refresh();
+    refreshCounts();
+    refreshLowStock();
+    // Re-load selected cartridge detail if relevant
+    if (selectedCartridgeId !== null) {
+      const id = selectedCartridgeId;
+      Promise.all([cartridges.get(id), cartridges.getHistory(id)])
+        .then(([dto, history]) => {
+          selectedCartridge = dto;
+          cartridgeHistory = history;
+        })
+        .catch(() => {
+          // Non-fatal — list will refresh anyway
+        });
+    }
+  }
+
+  function handleFormSuccess(cart: CartridgeDto) {
+    refresh();
+    refreshCounts();
+    refreshModels();
+    refreshLowStock();
+    // Auto-select the created/updated cartridge
+    selectedCartridgeId = cart.id;
+  }
+
+  async function handleConfirmDelete() {
+    if (!confirmDeleteCartridge) return;
+    deleting = true;
+    try {
+      await cartridges.delete(confirmDeleteCartridge.id, confirmDeleteCartridge.version);
+      pushToast('success', `Картридж «${confirmDeleteCartridge.code}» удалён.`);
+      confirmDeleteOpen = false;
+      if (selectedCartridgeId === confirmDeleteCartridge.id) {
+        selectedCartridgeId = null;
+        selectedCartridge = null;
+        cartridgeHistory = [];
+      }
+      confirmDeleteCartridge = null;
+      refresh();
+      refreshCounts();
+      refreshLowStock();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось удалить картридж';
+      pushToast('error', msg);
+    } finally {
+      deleting = false;
+    }
   }
 </script>
 
@@ -190,39 +280,7 @@
     />
 
     {#if activeTab === 'cartridges'}
-      {#if lowStockItems.length > 0}
-        <div class="low-stock-banner">
-          <span class="low-stock-icon" aria-hidden="true">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M8 1.5L14.5 13H1.5L8 1.5Z"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linejoin="round"
-              />
-              <path d="M8 6V9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-              <circle cx="8" cy="11" r="0.75" fill="currentColor" />
-            </svg>
-          </span>
-          <div class="low-stock-content">
-            <strong class="low-stock-title">Низкий остаток картриджей</strong>
-            <ul class="low-stock-list">
-              {#each lowStockItems as item (item.model_id)}
-                <li>
-                  {item.brand}
-                  {item.model} — {item.count} шт. на складе (порог: {item.threshold})
-                </li>
-              {/each}
-            </ul>
-          </div>
-        </div>
-      {/if}
+      <LowStockBanner items={lowStockItems} />
 
       <CartridgesMasterDetail>
         {#snippet master()}
@@ -253,6 +311,7 @@
             history={cartridgeHistory}
             loading={detailLoading}
             onCreate={openCreate}
+            onMenuAction={handleMenuAction}
           />
         {/snippet}
       </CartridgesMasterDetail>
@@ -264,6 +323,40 @@
     {/if}
   </div>
 </div>
+
+<!-- OperationModal (04-05): lifecycle-операции -->
+<OperationModal
+  open={operationModalOpen}
+  op={operationModalOp}
+  cartridge={operationModalCartridge}
+  onClose={() => (operationModalOpen = false)}
+  onSuccess={handleOperationSuccess}
+/>
+
+<!-- CartridgeFormModal (04-05): создание/редактирование -->
+<CartridgeFormModal
+  open={formModalOpen}
+  target={formModalTarget}
+  {models}
+  onClose={() => (formModalOpen = false)}
+  onSuccess={handleFormSuccess}
+/>
+
+<!-- Confirm delete modal (04-05) -->
+<Modal
+  open={confirmDeleteOpen}
+  title="Удалить картридж?"
+  onClose={() => (confirmDeleteOpen = false)}
+>
+  <p class="confirm-body">
+    Картридж «{confirmDeleteCartridge?.code ?? ''}» будет помечен как удалённый. Отменить можно
+    только восстановлением из резервной копии БД.
+  </p>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={() => (confirmDeleteOpen = false)}>Отмена</Button>
+    <Button variant="destructive" loading={deleting} onclick={handleConfirmDelete}>Удалить</Button>
+  {/snippet}
+</Modal>
 
 <style lang="scss">
   .cartridges-page {
@@ -302,48 +395,15 @@
     padding: var(--space-lg) var(--space-xl);
   }
 
-  .low-stock-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-sm);
-    padding: var(--space-md);
-    margin-bottom: var(--space-md);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    border: 1px solid var(--color-warning);
-    border-radius: var(--radius-md);
-    color: var(--color-text-primary);
-  }
-
-  .low-stock-icon {
-    color: var(--color-warning);
-    flex-shrink: 0;
-    margin-top: 2px;
-    display: flex;
-    align-items: center;
-  }
-
-  .low-stock-content {
-    flex: 1;
-  }
-
-  .low-stock-title {
-    display: block;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
-    margin-bottom: var(--space-xs);
-  }
-
-  .low-stock-list {
+  .confirm-body {
     margin: 0;
-    padding: 0;
-    list-style: none;
-    font-size: var(--font-size-label);
     color: var(--color-text-secondary);
-
-    li {
-      line-height: 1.6;
-    }
+    line-height: var(--line-height-body);
+    text-align: center;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+    max-width: 100%;
   }
 
   .models-placeholder {
