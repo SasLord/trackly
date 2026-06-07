@@ -154,7 +154,7 @@ Plans:
   4. Поиск по картриджам находит совпадения по коду, модели, расположению.
   5. Когда количество картриджей со статусом «На складе» + зарядом «Полный» по конкретной модели опускается ниже настроенного порога (см. SET-04 в Phase 7), в разделе «Картриджи» отображается баннер «низкий остаток» с указанием модели и текущего количества.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 **Wave 1** *(параллельно)*
 
@@ -168,7 +168,7 @@ Plans:
 **Wave 3** *(параллельно, blocked on Wave 2)*
 
 - [x] 04-04-PLAN.md — UI skeleton: api.ts + CartridgesPage + CartridgesSearchAndTabs + CartridgesMasterDetail + CartridgesList + CartridgeListRow + CartridgeDetail + CartridgeFilters + sidebar activation (CART-03/04/05/10/11)
-- [ ] 04-05-PLAN.md — UI lifecycle: CartridgeContextMenu (portal + status-dependent) + OperationModal (5 ops) + CartridgeFormModal + LowStockBanner (CART-06/07/08/09/12)
+- [x] 04-05-PLAN.md — UI lifecycle: CartridgeContextMenu (portal + status-dependent) + OperationModal (5 ops) + CartridgeFormModal + LowStockBanner (CART-06/07/08/09/12)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -253,7 +253,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Фундамент | 6/6 | Complete   | 2026-05-25 |
 | 2. Устройства и базовый UI | 5/5 | Complete    | 2026-05-28 |
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
-| 4. Картриджи | 4/6 | In Progress|  |
+| 4. Картриджи | 5/6 | In Progress|  |
 | 5. Авторизация, локальные пользователи и серверный режим | 0/TBD | Not started | - |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 0/TBD | Not started | - |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
