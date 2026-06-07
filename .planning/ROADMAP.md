@@ -154,12 +154,12 @@ Plans:
   4. Поиск по картриджам находит совпадения по коду, модели, расположению.
   5. Когда количество картриджей со статусом «На складе» + зарядом «Полный» по конкретной модели опускается ниже настроенного порога (см. SET-04 в Phase 7), в разделе «Картриджи» отображается баннер «низкий остаток» с указанием модели и текущего количества.
 
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 **Wave 1** *(параллельно)*
 
 - [x] 04-01-PLAN.md — V016 миграция (cartridge_kinds + color + app_settings + FTS-триггеры) + test_db assertion 15→16 + 6 тестовых скаффолдов RED (CART-03/04/05/06/07/08/09/10/11/12)
-- [ ] 04-02-PLAN.md — Hexagonal слой: domain structs (CartridgeRow, CartridgeModelRow, TransitionOp, Filter, Counts, LowStockItem) + CartridgeRepository port + SqliteCartridgeRepository + assign_code_in_tx + transition_in_tx + FTS search + low_stock (CART-03/04/06/07/08/09/10/11/12)
+- [x] 04-02-PLAN.md — Hexagonal слой: domain structs (CartridgeRow, CartridgeModelRow, TransitionOp, Filter, Counts, LowStockItem) + CartridgeRepository port + SqliteCartridgeRepository + assign_code_in_tx + transition_in_tx + FTS search + low_stock (CART-03/04/06/07/08/09/10/11/12)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -253,7 +253,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Фундамент | 6/6 | Complete   | 2026-05-25 |
 | 2. Устройства и базовый UI | 5/5 | Complete    | 2026-05-28 |
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
-| 4. Картриджи | 1/6 | In Progress|  |
+| 4. Картриджи | 2/6 | In Progress|  |
 | 5. Авторизация, локальные пользователи и серверный режим | 0/TBD | Not started | - |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 0/TBD | Not started | - |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
