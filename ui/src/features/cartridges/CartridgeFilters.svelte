@@ -1,0 +1,206 @@
+<script lang="ts">
+  // Plan 04-04: switch-bar статусов + фильтр типа + фильтр модели.
+  // По образцу DeviceFilters.svelte, паттерн из PATTERNS.md §CartridgeFilters.svelte.
+  import type { CartridgeCountsDto, CartridgeModelDto } from '../../bindings';
+
+  interface Props {
+    statusId: number | null;
+    kindId: number | null;
+    modelId: number | null;
+    counts: CartridgeCountsDto;
+    models: CartridgeModelDto[];
+    onStatusChange: (_s: number | null) => void;
+    onKindChange: (_k: number | null) => void;
+    onModelChange: (_m: number | null) => void;
+  }
+
+  const {
+    statusId,
+    kindId,
+    modelId,
+    counts,
+    models,
+    onStatusChange,
+    onKindChange,
+    onModelChange,
+  }: Props = $props();
+
+  const STATUSES = [
+    { id: null, label: 'Все' },
+    { id: 1, label: 'На складе' },
+    { id: 2, label: 'В работе' },
+    { id: 3, label: 'На заправке' },
+    { id: 4, label: 'Списано' },
+  ] as const;
+
+  function getCount(id: number | null): number {
+    if (id === null) return counts.all;
+    if (id === 1) return counts.in_stock;
+    if (id === 2) return counts.in_use;
+    if (id === 3) return counts.at_refill;
+    if (id === 4) return counts.written_off;
+    return 0;
+  }
+</script>
+
+<div class="cartridge-filters">
+  <!-- Status switch-bar -->
+  <div class="status-bar" role="tablist" aria-label="Фильтр по статусу">
+    {#each STATUSES as s}
+      {@const active = statusId === s.id}
+      {@const count = getCount(s.id)}
+      <button
+        type="button"
+        role="tab"
+        class="status-tab"
+        class:active
+        aria-selected={active}
+        onclick={() => onStatusChange(s.id)}
+      >
+        {s.label}
+        <span class="count-badge" class:count-active={active}>{count}</span>
+      </button>
+    {/each}
+  </div>
+
+  <!-- Additional filters row -->
+  <div class="extra-filters">
+    <label class="filter-label">
+      <span class="filter-name">Тип</span>
+      <select
+        class="filter-select"
+        value={kindId ?? ''}
+        onchange={(e) => {
+          const v = (e.currentTarget as HTMLSelectElement).value;
+          onKindChange(v === '' ? null : Number(v));
+        }}
+      >
+        <option value="">Все</option>
+        <option value="1">Картридж</option>
+        <option value="2">Фотобарабан</option>
+      </select>
+    </label>
+
+    <label class="filter-label">
+      <span class="filter-name">Модель</span>
+      <select
+        class="filter-select"
+        value={modelId ?? ''}
+        onchange={(e) => {
+          const v = (e.currentTarget as HTMLSelectElement).value;
+          onModelChange(v === '' ? null : Number(v));
+        }}
+      >
+        <option value="">Все</option>
+        {#each models as m (m.id)}
+          <option value={m.id}>{m.brand} {m.model}</option>
+        {/each}
+      </select>
+    </label>
+  </div>
+</div>
+
+<style lang="scss">
+  .cartridge-filters {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-sm) var(--space-sm);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .status-bar {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+  }
+
+  .status-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+
+    &:hover {
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
+
+    &.active {
+      color: var(--color-accent);
+      border-bottom-color: var(--color-accent);
+      font-weight: var(--font-weight-medium);
+    }
+  }
+
+  .count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: var(--font-weight-medium);
+    background: var(--color-surface-sunken);
+    color: var(--color-text-secondary);
+    line-height: 1;
+
+    &.count-active {
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+      color: var(--color-accent);
+    }
+  }
+
+  .extra-filters {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .filter-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+  }
+
+  .filter-name {
+    font-size: var(--font-size-label);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  .filter-select {
+    height: 28px;
+    padding: 0 var(--space-sm);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-label);
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
+  }
+</style>
