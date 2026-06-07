@@ -767,7 +767,7 @@ pub async fn low_stock(&self) -> Result<Vec<LowStockItem>, AppError> {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Единая `cartridges_transition` vs отдельные команды**
    - Что мы знаем: D-Op-Modal-01 говорит «бэкенд — одна команда». Claude's Discretion явно отмечает этот выбор.
