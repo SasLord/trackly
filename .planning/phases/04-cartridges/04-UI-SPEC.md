@@ -1,10 +1,11 @@
 ---
 phase: 4
 slug: cartridges
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-06-07
+reviewed_at: 2026-06-07
 ---
 
 # Phase 4 — UI Design Contract: Картриджи
