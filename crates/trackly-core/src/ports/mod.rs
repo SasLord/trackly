@@ -4,4 +4,5 @@
 //! the adapter (concrete impl) lives in trackly-infra.
 
 pub mod acts;
+pub mod cartridges;
 pub mod devices;
