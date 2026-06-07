@@ -12,8 +12,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::json;
 use trackly_core::domain::cartridges::{
-    CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeNew,
-    CartridgeRow, CartridgeTransitionOp, LowStockItem, Pagination,
+    CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeRow,
+    CartridgeTransitionOp, LowStockItem, Pagination,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;

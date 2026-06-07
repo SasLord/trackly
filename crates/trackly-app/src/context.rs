@@ -31,7 +31,7 @@ use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::W
 use trackly_infra::{AppConfig, Paths};
 
 use crate::pdf::PdfRenderer;
-use crate::services::{ActService, DeviceService, OrganizationService, TemplateService};
+use crate::services::{ActService, CartridgeService, DeviceService, OrganizationService, TemplateService};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
@@ -71,6 +71,9 @@ pub struct AppCtx {
     /// PDF renderer — krilla 0.7 wrapper + embedded fonts + MiniJinja env.
     /// Added in Phase 3 Plan 04.
     pub pdf: Arc<PdfRenderer>,
+    /// Cartridge service — lifecycle, models CRUD, low-stock, history.
+    /// Added in Phase 4 Plan 03.
+    pub cartridges: Arc<CartridgeService>,
 }
 
 impl AppCtx {
@@ -175,6 +178,13 @@ impl AppCtx {
             ),
         );
 
+        // Phase 4 Plan 03: cartridge service.
+        let cartridges = Arc::new(CartridgeService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+
         Ok(Self {
             writer,
             readers,
@@ -189,6 +199,7 @@ impl AppCtx {
             organization,
             templates,
             pdf,
+            cartridges,
         })
     }
 }

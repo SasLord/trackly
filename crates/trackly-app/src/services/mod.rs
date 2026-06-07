@@ -6,11 +6,13 @@
 //! Business validation (required fields, optimistic-lock checks) also lives here.
 
 pub mod act_service;
+pub mod cartridge_service;
 pub mod device_service;
 pub mod organization_service;
 pub mod template_service;
 
 pub use act_service::ActService;
+pub use cartridge_service::CartridgeService;
 pub use device_service::DeviceService;
 pub use organization_service::{OrgData, OrganizationService};
 pub use template_service::{TemplateService, DEFAULT_TEMPLATES};
