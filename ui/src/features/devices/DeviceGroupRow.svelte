@@ -173,8 +173,8 @@
     </button>
     {group.repr.name}
   </td>
-  <td class="cell" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
-  <td class="cell" title={conditionDisplay}>{conditionDisplay}</td>
+  <td class="cell cell-truncate" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
+  <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
     <td class="cell cell-status">
       <Badge variant={statusVariant}>{statusLabel}</Badge>
@@ -224,6 +224,17 @@
     color: var(--color-text-primary);
     vertical-align: middle;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  // Location + Состояние cells: single line with ellipsis (mirror DeviceListRow .cell).
+  // max-width: 0 makes text-overflow work inside a table cell; title= provides the
+  // full text on hover (ITEM-2 tooltip). Prevents long condition labels from
+  // wrapping and stretching the group row height.
+  .cell-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
   }
 
   // Name cell spans Наименование + Инв.№ + Серийный + Модель — no truncation.
