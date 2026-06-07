@@ -1,83 +1,27 @@
 <script lang="ts">
   // Plan 04-06: полноширинный CRUD-список моделей картриджей.
   // По образцу ActsList.svelte + CartridgesList.svelte.
+  // Callbacks-first: ModelFormModal и confirm-delete управляются из CartridgesPage.
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
-  import Modal from '$lib/components/Modal.svelte';
   import ModelListRow from './ModelListRow.svelte';
-  import ModelFormModal from './ModelFormModal.svelte';
-  import { pushToast } from '$lib/stores/toast.svelte';
-  import { cartridges } from './api';
   import type { CartridgeModelDto } from '../../bindings';
 
   interface Props {
     models: CartridgeModelDto[];
     loading: boolean;
-    onRefresh: () => void;
+    onCreateModel: () => void;
+    onEditModel: (_model: CartridgeModelDto) => void;
+    onDeleteModel: (_model: CartridgeModelDto) => void;
   }
 
-  const { models, loading, onRefresh }: Props = $props();
-
-  // ModelFormModal state
-  let formOpen = $state(false);
-  let formTarget = $state<CartridgeModelDto | null>(null);
-
-  function openCreate() {
-    formTarget = null;
-    formOpen = true;
-  }
-
-  function openEdit(model: CartridgeModelDto) {
-    formTarget = model;
-    formOpen = true;
-  }
-
-  function handleFormSuccess() {
-    formOpen = false;
-    onRefresh();
-  }
-
-  // Confirm-delete state
-  let confirmDeleteOpen = $state(false);
-  let confirmDeleteModel = $state<CartridgeModelDto | null>(null);
-  let deleting = $state(false);
-
-  function openDelete(model: CartridgeModelDto) {
-    confirmDeleteModel = model;
-    confirmDeleteOpen = true;
-  }
-
-  async function handleConfirmDelete() {
-    if (!confirmDeleteModel) return;
-    deleting = true;
-    try {
-      await cartridges.modelsDelete(confirmDeleteModel.id, confirmDeleteModel.version);
-      pushToast('success', `Модель «${confirmDeleteModel.brand} ${confirmDeleteModel.model}» удалена.`);
-      confirmDeleteOpen = false;
-      confirmDeleteModel = null;
-      onRefresh();
-    } catch (e: unknown) {
-      const msg =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message: unknown }).message)
-          : 'Не удалось удалить модель';
-      // UI-SPEC §ModelListRow: если модель используется — показываем Toast error (без confirm-модала).
-      if (msg.toLowerCase().includes('используется') || msg.toLowerCase().includes('conflict')) {
-        confirmDeleteOpen = false;
-        pushToast('error', msg);
-      } else {
-        pushToast('error', msg);
-      }
-    } finally {
-      deleting = false;
-    }
-  }
+  const { models, loading, onCreateModel, onEditModel, onDeleteModel }: Props = $props();
 </script>
 
 <div class="models-list">
   <header class="models-toolbar">
     <h2 class="models-heading">Модели картриджей</h2>
-    <Button variant="primary" onclick={openCreate}>+ Добавить модель</Button>
+    <Button variant="primary" onclick={onCreateModel}>+ Добавить модель</Button>
   </header>
 
   {#if loading && models.length === 0}
@@ -87,8 +31,10 @@
   {:else if models.length === 0}
     <div class="empty">
       <h3 class="empty-heading">Моделей пока нет</h3>
-      <p class="empty-body">Добавьте модель картриджа — укажите бренд, тип и совместимые принтеры.</p>
-      <Button variant="primary" onclick={openCreate}>+ Добавить модель</Button>
+      <p class="empty-body">
+        Добавьте модель картриджа — укажите бренд, тип и совместимые принтеры.
+      </p>
+      <Button variant="primary" onclick={onCreateModel}>+ Добавить модель</Button>
     </div>
   {:else}
     <div class="rows">
@@ -96,37 +42,13 @@
         <ModelListRow
           model={m}
           instanceCount={0}
-          onEdit={() => openEdit(m)}
-          onDelete={() => openDelete(m)}
+          onEdit={() => onEditModel(m)}
+          onDelete={() => onDeleteModel(m)}
         />
       {/each}
     </div>
   {/if}
 </div>
-
-<!-- ModelFormModal -->
-<ModelFormModal
-  open={formOpen}
-  target={formTarget}
-  onClose={() => (formOpen = false)}
-  onSuccess={handleFormSuccess}
-/>
-
-<!-- Confirm-delete Modal -->
-<Modal
-  open={confirmDeleteOpen}
-  title="Удалить модель?"
-  onClose={() => (confirmDeleteOpen = false)}
->
-  <p class="confirm-body">
-    Модель «{confirmDeleteModel?.brand ?? ''} {confirmDeleteModel?.model ?? ''}» будет помечена как
-    удалённая.
-  </p>
-  {#snippet footer()}
-    <Button variant="secondary" onclick={() => (confirmDeleteOpen = false)}>Отмена</Button>
-    <Button variant="destructive" loading={deleting} onclick={handleConfirmDelete}>Удалить</Button>
-  {/snippet}
-</Modal>
 
 <style lang="scss">
   .models-list {
@@ -186,16 +108,5 @@
   .rows {
     flex: 1;
     overflow: auto;
-  }
-
-  .confirm-body {
-    margin: 0;
-    color: var(--color-text-secondary);
-    line-height: var(--line-height-body);
-    text-align: center;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    white-space: normal;
-    max-width: 100%;
   }
 </style>

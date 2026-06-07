@@ -1,6 +1,7 @@
 <script lang="ts">
   // Plan 04-04: корневой компонент раздела «Картриджи».
   // Plan 04-05: wire CartridgeContextMenu + OperationModal + CartridgeFormModal + LowStockBanner.
+  // Plan 04-06: финальная интеграция ModelsList + ModelFormModal.
   // Два таба: «Картриджи» (master-detail) / «Модели» (полноширинный CRUD-список).
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
@@ -14,6 +15,8 @@
   import LowStockBanner from './LowStockBanner.svelte';
   import OperationModal from './OperationModal.svelte';
   import CartridgeFormModal from './CartridgeFormModal.svelte';
+  import ModelsList from './ModelsList.svelte';
+  import ModelFormModal from './ModelFormModal.svelte';
   import { cartridges } from './api';
   import type {
     AuditEntryDto,
@@ -44,6 +47,7 @@
     written_off: 0,
   });
   let models = $state<CartridgeModelDto[]>([]);
+  let modelsLoading = $state(false);
   let lowStockItems = $state<LowStockItemDto[]>([]);
 
   let searchQuery = $state('');
@@ -94,10 +98,13 @@
   }
 
   async function refreshModels() {
+    modelsLoading = true;
     try {
       models = await cartridges.modelsList();
     } catch {
       // Non-fatal.
+    } finally {
+      modelsLoading = false;
     }
   }
 
@@ -107,6 +114,11 @@
     } catch {
       // Non-fatal.
     }
+  }
+
+  // loadAll: единое место для загрузки данных вкладки «Картриджи» (Task 2 §2).
+  async function loadAll() {
+    await Promise.all([refresh(), refreshCounts(), refreshLowStock()]);
   }
 
   // Сбрасываем выбранный картридж при смене таба.
@@ -153,10 +165,8 @@
   });
 
   onMount(() => {
-    refresh();
-    refreshCounts();
+    loadAll();
     refreshModels();
-    refreshLowStock();
   });
 
   // --- Modal state (04-05) ---
@@ -172,6 +182,14 @@
   let confirmDeleteOpen = $state(false);
   let confirmDeleteCartridge = $state<CartridgeDto | null>(null);
   let deleting = $state(false);
+
+  // --- Model modal state (04-06) ---
+  let modelFormOpen = $state(false);
+  let modelFormTarget = $state<CartridgeModelDto | null>(null);
+
+  let confirmDeleteModelOpen = $state(false);
+  let confirmDeleteModel = $state<CartridgeModelDto | null>(null);
+  let deletingModel = $state(false);
 
   function handleSelect(id: number) {
     selectedCartridgeId = id;
@@ -198,16 +216,19 @@
   }
 
   function openCreate() {
-    formModalTarget = null;
-    formModalOpen = true;
+    if (activeTab === 'models') {
+      modelFormTarget = null;
+      modelFormOpen = true;
+    } else {
+      formModalTarget = null;
+      formModalOpen = true;
+    }
   }
 
   function handleOperationSuccess() {
-    // Refresh list + detail after lifecycle operation
-    refresh();
-    refreshCounts();
-    refreshLowStock();
-    // Re-load selected cartridge detail if relevant
+    // Refresh list + counts + low_stock after lifecycle operation (Task 2 §6).
+    loadAll();
+    // Re-load selected cartridge detail if relevant.
     if (selectedCartridgeId !== null) {
       const id = selectedCartridgeId;
       Promise.all([cartridges.get(id), cartridges.getHistory(id)])
@@ -216,17 +237,15 @@
           cartridgeHistory = history;
         })
         .catch(() => {
-          // Non-fatal — list will refresh anyway
+          // Non-fatal — list will refresh anyway.
         });
     }
   }
 
   function handleFormSuccess(cart: CartridgeDto) {
-    refresh();
-    refreshCounts();
+    loadAll();
     refreshModels();
-    refreshLowStock();
-    // Auto-select the created/updated cartridge
+    // Auto-select the created/updated cartridge.
     selectedCartridgeId = cart.id;
   }
 
@@ -243,9 +262,7 @@
         cartridgeHistory = [];
       }
       confirmDeleteCartridge = null;
-      refresh();
-      refreshCounts();
-      refreshLowStock();
+      loadAll();
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -254,6 +271,56 @@
       pushToast('error', msg);
     } finally {
       deleting = false;
+    }
+  }
+
+  // --- Model callbacks (04-06) ---
+
+  function handleCreateModel() {
+    modelFormTarget = null;
+    modelFormOpen = true;
+  }
+
+  function handleEditModel(model: CartridgeModelDto) {
+    modelFormTarget = model;
+    modelFormOpen = true;
+  }
+
+  function handleDeleteModel(model: CartridgeModelDto) {
+    confirmDeleteModel = model;
+    confirmDeleteModelOpen = true;
+  }
+
+  function handleModelFormSuccess(_model: CartridgeModelDto) {
+    modelFormOpen = false;
+    refreshModels();
+    // Low stock may change when model list changes.
+    refreshLowStock();
+  }
+
+  async function handleConfirmDeleteModel() {
+    if (!confirmDeleteModel) return;
+    deletingModel = true;
+    try {
+      await cartridges.modelsDelete(confirmDeleteModel.id, confirmDeleteModel.version);
+      pushToast(
+        'success',
+        `Модель «${confirmDeleteModel.brand} ${confirmDeleteModel.model}» удалена.`,
+      );
+      confirmDeleteModelOpen = false;
+      confirmDeleteModel = null;
+      refreshModels();
+      refreshLowStock();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось удалить модель';
+      // UI-SPEC §ModelListRow: если используется — показываем Toast (без confirm).
+      confirmDeleteModelOpen = false;
+      pushToast('error', msg);
+    } finally {
+      deletingModel = false;
     }
   }
 </script>
@@ -316,10 +383,14 @@
         {/snippet}
       </CartridgesMasterDetail>
     {:else}
-      <!-- ModelsList будет реализован в плане 04-05 -->
-      <div class="models-placeholder">
-        <p class="models-placeholder-text">Список моделей появится в следующем обновлении.</p>
-      </div>
+      <!-- Вкладка «Модели» (04-06) -->
+      <ModelsList
+        {models}
+        loading={modelsLoading}
+        onCreateModel={handleCreateModel}
+        onEditModel={handleEditModel}
+        onDeleteModel={handleDeleteModel}
+      />
     {/if}
   </div>
 </div>
@@ -342,7 +413,15 @@
   onSuccess={handleFormSuccess}
 />
 
-<!-- Confirm delete modal (04-05) -->
+<!-- ModelFormModal (04-06): создание/редактирование модели -->
+<ModelFormModal
+  open={modelFormOpen}
+  target={modelFormTarget}
+  onClose={() => (modelFormOpen = false)}
+  onSuccess={handleModelFormSuccess}
+/>
+
+<!-- Confirm delete modal (04-05): картриджи -->
 <Modal
   open={confirmDeleteOpen}
   title="Удалить картридж?"
@@ -355,6 +434,24 @@
   {#snippet footer()}
     <Button variant="secondary" onclick={() => (confirmDeleteOpen = false)}>Отмена</Button>
     <Button variant="destructive" loading={deleting} onclick={handleConfirmDelete}>Удалить</Button>
+  {/snippet}
+</Modal>
+
+<!-- Confirm delete modal (04-06): модели -->
+<Modal
+  open={confirmDeleteModelOpen}
+  title="Удалить модель?"
+  onClose={() => (confirmDeleteModelOpen = false)}
+>
+  <p class="confirm-body">
+    Модель «{confirmDeleteModel?.brand ?? ''} {confirmDeleteModel?.model ?? ''}» будет помечена как
+    удалённая.
+  </p>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={() => (confirmDeleteModelOpen = false)}>Отмена</Button>
+    <Button variant="destructive" loading={deletingModel} onclick={handleConfirmDeleteModel}
+      >Удалить</Button
+    >
   {/snippet}
 </Modal>
 
@@ -404,20 +501,5 @@
     word-break: break-word;
     white-space: normal;
     max-width: 100%;
-  }
-
-  .models-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 240px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface);
-  }
-
-  .models-placeholder-text {
-    color: var(--color-text-muted);
-    font-size: var(--font-size-body);
   }
 </style>
