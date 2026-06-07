@@ -204,6 +204,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 - **Phase 1: Фундамент** (completed 2026-05-25) — workspace, схема БД (миграции V001–V012), single-writer pattern, portable mode, audit_log, ProcMon CI gate.
 - **Phase 2: Устройства и базовый UI** (completed 2026-05-28) — V013 миграция (FTS5 triggers + 5 autocomplete partial indexes), полный CRUD устройств в Tauri-десктоп + axum HTTP, hash-router SPA с sidebar/ThemeSwitcher/toast/11 primitives, FTS5 search с Cyrillic-aware токенайзером, контекстный autocomplete (per-field + ctx_name + ctx_status_id), Status switch-bar с counters, группировка по Наименованию с expand, bulk_create 1..=100 для не-уникальных устройств, locations round-trip через INSERT OR IGNORE, CSV import (BOM+chardetng detect, ; / , delimiter, 5-min TTL session) + CSV export (UTF-8 BOM + ; + Russian headers + formula-injection guard).
+- **Phase 03.3: Device-list UX round 2** (completed 2026-06-07) — флаг `group_by_condition` в `DeviceFilter`/`list_grouped` (раздельная DEF-2B разбивка: выкл для списка устройств, вкл для акт-формы) + `condition_distinct_count` с индикатором «разное»; колонка «Состояние» + native tooltip (`title=`) на text-ячейках; скрытие колонки «Статус» при выбранном статус-фильтре; вторая секция автокомплита «Все расположения» + HTTP route `POST /api/v1/locations_autocomplete`. UAT 5/5 пройден; group-row ячейки усечены до одной строки с ellipsis.
 
 ---
-*Last updated: 2026-05-28 after Phase 2 completion*
+*Last updated: 2026-06-07 after Phase 03.3 completion*
