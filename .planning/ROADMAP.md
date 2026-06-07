@@ -154,7 +154,7 @@ Plans:
   4. Поиск по картриджам находит совпадения по коду, модели, расположению.
   5. Когда количество картриджей со статусом «На складе» + зарядом «Полный» по конкретной модели опускается ниже настроенного порога (см. SET-04 в Phase 7), в разделе «Картриджи» отображается баннер «низкий остаток» с указанием модели и текущего количества.
 
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 **Wave 1** *(параллельно)*
 
@@ -163,7 +163,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-03-PLAN.md — App-слой: CartridgeDto + CartridgeTransitionPayload + CartridgeService (write/read/transition/low_stock/model_*) + Tauri commands + HTTP router (строится, не bind'ится) + AppCtx wire-up + specta export + GREEN тесты + bindings.ts регенерация (CART-01..12)
+- [x] 04-03-PLAN.md — App-слой: CartridgeDto + CartridgeTransitionPayload + CartridgeService (write/read/transition/low_stock/model_*) + Tauri commands + HTTP router (строится, не bind'ится) + AppCtx wire-up + specta export + GREEN тесты + bindings.ts регенерация (CART-01..12)
 
 **Wave 3** *(параллельно, blocked on Wave 2)*
 
@@ -253,7 +253,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Фундамент | 6/6 | Complete   | 2026-05-25 |
 | 2. Устройства и базовый UI | 5/5 | Complete    | 2026-05-28 |
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
-| 4. Картриджи | 2/6 | In Progress|  |
+| 4. Картриджи | 3/6 | In Progress|  |
 | 5. Авторизация, локальные пользователи и серверный режим | 0/TBD | Not started | - |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 0/TBD | Not started | - |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
