@@ -12,7 +12,7 @@ export const SIDEBAR_ITEMS: SidebarEntry[] = [
   { kind: 'item', route: '/acts', label: 'Акты' },
   { kind: 'divider' },
   { kind: 'item', route: '/printers', label: 'Принтеры', phase: 6 },
-  { kind: 'item', route: '/cartridges', label: 'Картриджи', phase: 4 },
+  { kind: 'item', route: '/cartridges', label: 'Картриджи' },
   { kind: 'item', route: '/requests', label: 'Заявки', phase: 6 },
   { kind: 'divider' },
   { kind: 'item', route: '/reports', label: 'Отчёты', phase: 7 },

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  import CartridgesPageFeature from '../features/cartridges/CartridgesPage.svelte';
 </script>
 
-<Placeholder section="Картриджи" phase={4} />
+<CartridgesPageFeature />
