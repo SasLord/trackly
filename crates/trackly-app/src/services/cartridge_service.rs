@@ -550,6 +550,30 @@ impl CartridgeService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Pre-check for duplicate (brand, model) to return a Russian
+                // conflict reason instead of leaking the raw SQLite UNIQUE error
+                // to the UI (WR-02).
+                let exists: bool = tx
+                    .query_row(
+                        "SELECT EXISTS( \
+                             SELECT 1 FROM cartridge_models \
+                              WHERE brand = ?1 AND model = ?2 \
+                                AND deleted_at_utc IS NULL LIMIT 1)",
+                        params![payload.brand.trim(), payload.model.trim()],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if exists {
+                    return Err(AppError::Conflict {
+                        reason: format!(
+                            "Модель «{} {}» уже существует",
+                            payload.brand.trim(),
+                            payload.model.trim()
+                        ),
+                    });
+                }
+
                 let new = CartridgeModelNew {
                     brand: payload.brand.clone(),
                     model: payload.model.clone(),
@@ -592,6 +616,30 @@ impl CartridgeService {
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Pre-check for duplicate (brand, model) excluding the current
+                // row to return a Russian conflict reason (WR-02).
+                let conflict: bool = tx
+                    .query_row(
+                        "SELECT EXISTS( \
+                             SELECT 1 FROM cartridge_models \
+                              WHERE brand = ?1 AND model = ?2 \
+                                AND id != ?3 \
+                                AND deleted_at_utc IS NULL LIMIT 1)",
+                        params![payload.brand.trim(), payload.model.trim(), payload.id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                if conflict {
+                    return Err(AppError::Conflict {
+                        reason: format!(
+                            "Модель «{} {}» уже существует",
+                            payload.brand.trim(),
+                            payload.model.trim()
+                        ),
+                    });
+                }
+
                 cart_repo.update_model_in_tx(
                     &tx,
                     payload.id,
