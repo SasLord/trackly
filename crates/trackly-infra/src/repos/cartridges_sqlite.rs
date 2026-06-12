@@ -88,18 +88,37 @@ impl SqliteCartridgeRepository {
     // Tx-helpers used by CartridgeService
     // -----------------------------------------------------------------------
 
-    /// Assign a code to a new cartridge inside a transaction.
+    /// Look up the kind_id (1=Картридж, 2=Фотобарабан) of a cartridge model
+    /// inside a transaction. Used by the create path to pick the C-/D- code
+    /// prefix. Returns `NotFound` if the model is missing/soft-deleted.
+    pub fn model_kind_in_tx(tx: &Transaction<'_>, model_id: i64) -> Result<i64, AppError> {
+        tx.query_row(
+            "SELECT kind_id FROM cartridge_models WHERE id = ?1 AND deleted_at_utc IS NULL",
+            params![model_id],
+            |r| r.get::<_, i64>(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                entity: "cartridge_model",
+                id: model_id,
+            },
+            other => map_rusqlite(other),
+        })
+    }
+
+    /// Assign a code to a new cartridge/drum inside a transaction.
     ///
     /// - `code_override = Some(s)`: validate UNIQUE; return `(s, false)` or
     ///   `AppError::Conflict` on collision (D-Code-Override-01).
-    /// - `code_override = None`: increment `cartridge_seq` counter in a retry
-    ///   loop until a unique code is found (D-Code-01). The counter is never
-    ///   lost: if C-000042 already exists, the counter moves to 43, etc.
+    /// - `code_override = None`: increment the kind-specific counter
+    ///   (`cartridge_seq`→`C-NNNNNN` / `drum_seq`→`D-NNNNNN`) in a retry loop
+    ///   until a unique code is found (D-Code-01). The counter is never lost.
     ///
     /// Returns `(code, was_auto)`.
     pub fn assign_code_in_tx(
         tx: &Transaction<'_>,
         code_override: Option<&str>,
+        kind_id: i64,
         _now_utc: i64,
     ) -> Result<(String, bool), AppError> {
         if let Some(custom) = code_override {
@@ -118,10 +137,18 @@ impl SqliteCartridgeRepository {
             return Ok((custom.to_owned(), false));
         }
 
+        // Префикс и счётчик зависят от вида расходника: фотобарабаны (kind 2) →
+        // D-NNNNNN из drum_seq; картриджи (kind 1) → C-NNNNNN из cartridge_seq.
+        let (counter_name, prefix) = if kind_id == 2 {
+            ("drum_seq", 'D')
+        } else {
+            ("cartridge_seq", 'C')
+        };
+
         // Auto-code: increment counter + retry loop (counter never lost on collision).
         loop {
-            let seq = increment_counter_in_tx(tx, "cartridge_seq")?;
-            let candidate = format!("C-{:06}", seq);
+            let seq = increment_counter_in_tx(tx, counter_name)?;
+            let candidate = format!("{prefix}-{seq:06}");
             let exists: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM cartridges WHERE code = ?1 LIMIT 1)",
@@ -333,6 +360,28 @@ impl SqliteCartridgeRepository {
 
         // 3. Domain rule: validate the transition is allowed for current status.
         op.validate_from_status(current.status_id)?;
+
+        // 3b. Kind-specific rules для фотобарабанов (kind 2): нет заправки;
+        // отработанный (state 6) нельзя устанавливать — только списать.
+        if current.model_kind_id == Some(2) {
+            match op {
+                CartridgeTransitionOp::ToRefill { .. }
+                | CartridgeTransitionOp::FromRefill { .. } => {
+                    return Err(AppError::Validation {
+                        field: "op".to_string(),
+                        message: "Фотобарабан нельзя отправлять на заправку".to_string(),
+                    });
+                }
+                CartridgeTransitionOp::Install { .. } if current.state_id == Some(6) => {
+                    return Err(AppError::Validation {
+                        field: "op".to_string(),
+                        message: "Отработанный фотобарабан нельзя установить — только списать"
+                            .to_string(),
+                    });
+                }
+                _ => {}
+            }
+        }
 
         // 4. Calculate new field values.
         let new_status_id = op.target_status_id();
@@ -1107,16 +1156,37 @@ mod tests {
         let tx = conn.transaction().expect("tx");
         let now = 1_700_000_000_i64;
         let (code1, was_auto) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code1");
+            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code1");
         assert!(was_auto);
         assert_eq!(code1, "C-000001");
         tx.commit().expect("commit");
 
         let tx2 = conn.transaction().expect("tx2");
         let (code2, _) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx2, None, now).expect("code2");
+            SqliteCartridgeRepository::assign_code_in_tx(&tx2, None, 1, now).expect("code2");
         assert_eq!(code2, "C-000002");
         tx2.commit().expect("commit");
+    }
+
+    #[test]
+    fn assign_code_drum_uses_d_prefix_and_separate_counter() {
+        // UAT round 3 №4: фотобарабаны (kind 2) получают код D-NNNNNN из
+        // отдельного счётчика drum_seq, не конфликтуя с C-NNNNNN картриджей.
+        let (mut conn, _g) = fresh_conn();
+        let now = 1_700_000_000_i64;
+
+        let tx = conn.transaction().expect("tx");
+        let (c_code, _) =
+            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("cartridge");
+        let (d_code, _) =
+            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("drum");
+        let (d_code2, _) =
+            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("drum2");
+        tx.commit().expect("commit");
+
+        assert_eq!(c_code, "C-000001");
+        assert_eq!(d_code, "D-000001");
+        assert_eq!(d_code2, "D-000002");
     }
 
     #[test]
@@ -1125,7 +1195,7 @@ mod tests {
         let tx = conn.transaction().expect("tx");
         let now = 1_700_000_000_i64;
         let (code, was_auto) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("BARCODE-42"), now)
+            SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("BARCODE-42"), 1, now)
                 .expect("custom code");
         assert!(!was_auto);
         assert_eq!(code, "BARCODE-42");
@@ -1142,7 +1212,7 @@ mod tests {
         let id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), Some("Склад"), None, None, now)
                 .expect("insert");
@@ -1169,7 +1239,7 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_id, 1, None, None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");
@@ -1197,7 +1267,7 @@ mod tests {
         for _ in 0..2 {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_a, 1, None, None, None, None, now)
                 .expect("insert");
@@ -1207,7 +1277,7 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_b, 1, None, None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");
@@ -1241,7 +1311,7 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), Some("Склад"), None, None, now)
                 .expect("insert");
@@ -1279,7 +1349,7 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert");
@@ -1312,7 +1382,7 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");

@@ -32,7 +32,7 @@ async fn health_smoke_end_to_end_against_real_app_ctx() -> anyhow::Result<()> {
     let dto_tauri = build_health(&ctx).await;
     // V016 was added in plan 04-01 (cartridge tables); max_known_version is now 16.
     assert_eq!(
-        dto_tauri.schema_version, 16,
+        dto_tauri.schema_version, 17,
         "schema_version after migrations"
     );
     assert!(dto_tauri.db_ready, "db_ready after build");

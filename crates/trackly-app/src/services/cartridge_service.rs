@@ -112,10 +112,15 @@ impl CartridgeService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
+                // Вид расходника берём из модели — он определяет префикс кода
+                // (C- картридж / D- фотобарабан).
+                let kind_id = SqliteCartridgeRepository::model_kind_in_tx(&tx, payload.model_id)?;
+
                 // Assign code (auto or custom).
                 let (code, was_auto) = SqliteCartridgeRepository::assign_code_in_tx(
                     &tx,
                     payload.code_override.as_deref(),
+                    kind_id,
                     now,
                 )?;
 

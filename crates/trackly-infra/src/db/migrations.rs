@@ -90,26 +90,26 @@ mod tests {
     fn run_applies_all_known_migrations_on_fresh_db() {
         let (mut conn, _guard) = fresh_conn();
         let report = run(&mut conn).expect("run migrations");
-        assert_eq!(report.schema_version, 16, "expected schema_version 16");
-        assert_eq!(report.applied_count, 16, "expected 16 migrations applied");
+        assert_eq!(report.schema_version, 17, "expected schema_version 17");
+        assert_eq!(report.applied_count, 17, "expected 17 migrations applied");
     }
 
     #[test]
-    fn max_known_version_returns_sixteen() {
-        assert_eq!(max_known_version(), 16);
+    fn max_known_version_returns_seventeen() {
+        assert_eq!(max_known_version(), 17);
     }
 
     #[test]
     fn run_is_idempotent_on_same_connection() {
         let (mut conn, _guard) = fresh_conn();
         let first = run(&mut conn).expect("first run");
-        assert_eq!(first.applied_count, 16);
+        assert_eq!(first.applied_count, 17);
 
         let second = run(&mut conn).expect("second run");
         assert_eq!(
             second.applied_count, 0,
             "second run should be a no-op (0 applied)"
         );
-        assert_eq!(second.schema_version, 16);
+        assert_eq!(second.schema_version, 17);
     }
 }

@@ -1,7 +1,7 @@
 //! `test_db()` — the canonical SQLite fixture for integration tests.
 //!
 //! Returns a writable rusqlite `Connection` with all writer PRAGMAs applied
-//! and every refinery migration (V001..V016) already run. The caller MUST
+//! and every refinery migration (V001..V017) already run. The caller MUST
 //! keep the returned `TempDir` alive for the lifetime of the connection;
 //! dropping it removes the on-disk DB file and the WAL/SHM sidecars.
 //!
@@ -38,7 +38,7 @@ mod tests {
         let user_version: i64 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .expect("read user_version");
-        assert_eq!(user_version, 16);
+        assert_eq!(user_version, 17);
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM device_types", [], |r| r.get(0))

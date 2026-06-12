@@ -45,9 +45,14 @@ fn cartridge_states_seed_matches_d_migrations_01() {
     assert_eq!(
         got,
         vec![
+            // kind 1 (картриджи) — состояние заряда
             "Полный".to_string(),
             "Частичный".to_string(),
             "Пустой".to_string(),
+            // kind 2 (фотобарабаны) — состояние (V017)
+            "Новый".to_string(),
+            "Изношенный".to_string(),
+            "Отработанный".to_string(),
         ]
     );
 }
@@ -80,7 +85,11 @@ fn counters_seeded_with_act_number_and_cartridge_seq() {
         .expect("collect");
     assert_eq!(
         names,
-        vec!["act_number".to_string(), "cartridge_seq".to_string()]
+        vec![
+            "act_number".to_string(),
+            "cartridge_seq".to_string(),
+            "drum_seq".to_string(), // V017: фотобарабаны (D-NNNNNN)
+        ]
     );
 
     // Both counters start at 0.
