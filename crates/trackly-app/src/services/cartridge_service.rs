@@ -256,14 +256,9 @@ impl CartridgeService {
     pub async fn delete(&self, id: i64, version: i64) -> Result<(), AppError> {
         let now = self.clock.unix_seconds();
         let audit_repo = self.audit_repo.clone();
-        let cart_repo = self.cart_repo.clone();
 
         self.writer
             .execute(move |conn| {
-                // delete_soft uses its own internal transaction — use the readers
-                // variant by opening a new connection... actually, the trait
-                // delete_soft takes `&mut conn`. We replicate inline here to stay
-                // inside the writer closure.
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
                 let affected = tx
@@ -298,7 +293,6 @@ impl CartridgeService {
                     };
                 }
 
-                drop(cart_repo); // not needed inside this tx
                 audit_repo.insert(
                     &tx,
                     AuditEntry {
