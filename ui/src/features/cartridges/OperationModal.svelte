@@ -45,8 +45,11 @@
   // install: поле состояния не показывается (не меняется при install)
   const defaultStateId = $derived(op === 'from_refill' ? 1 : 3);
 
-  // Reset form when modal opens
+  // Reset form when modal opens or when `op` changes while modal is already
+  // open (WR-03: stateId must track defaultStateId whenever op changes, not
+  // only on open→close cycle).
   $effect(() => {
+    void op; // explicit dependency: re-run when op changes
     if (open) {
       const now = new Date();
       const y = now.getFullYear();
