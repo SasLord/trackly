@@ -32,9 +32,33 @@ result: [pending]
 
 total: 4
 passed: 0
-issues: 0
+issues: 3
 pending: 4
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+### UAT Round 1 — 2026-06-12 (issues found, fixes applied)
+
+- **GAP-1 (Critical) — `ReaderPool` exhaustion → mutex poison panic.** `cargo tauri dev`
+  паниковал при открытии раздела «Картриджи»: `ReaderPool exhausted` под удержанным
+  локом → `PoisonError` каскадом → весь reader-пул мёртв процесс-wide. Причина:
+  CartridgesPage `loadAll()` (`Promise.all([list, counts, lowStock])` + model_list/
+  search) даёт >4 одновременных чтений против пула size=4.
+  **Fix:** `acquire()` теперь блокируется на `Condvar` (queue-on-exhaust) + poison-
+  устойчивые `lock()` (into_inner); размер 4→8. Регресс-тест добавлен. Commit `c2e5626`.
+
+- **GAP-2 — Модель создаётся («уже создана» при повторе), но не отображается в списках;
+  первый сабмит даёт «Данные изменились в другом окне».** Downstream-симптом GAP-1:
+  writer-create проходит (отдельный канал), но последующие reader-чтения (refresh
+  списка, post-create read) били в мёртвый пул → пустые списки и неверно
+  смапленная ошибка. `list_models` SQL корректен (`WHERE deleted_at_utc IS NULL`).
+  **Ожидается resolved через GAP-1 — требует повторного ручного теста.**
+
+- **GAP-3 (UX) — switch-bar статусов был зажат внутри узкой колонки списка.**
+  **Fix:** `CartridgeFilters` вынесен на уровень страницы (полная ширина, между
+  строкой поиска и списком). Commit `158bab5`.
+
+Status: fixes applied, backend tests + clippy + svelte-check + lint зелёные.
+Awaiting UAT Round 2 (re-run `cargo tauri dev`).
