@@ -621,13 +621,21 @@ impl SqliteCartridgeRepository {
     ///
     /// Returns models where `count(in_stock AND full) < threshold`.
     /// Threshold is read from `app_settings.low_stock_threshold` (default 2).
+    ///
+    /// WR-06: `CAST(value AS INTEGER)` in SQLite silently converts non-numeric
+    /// strings to 0, bypassing the `unwrap_or(2)` fallback. Instead, read the
+    /// raw string value and parse it in Rust with an explicit > 0 guard so a
+    /// malformed setting always falls back to the intended default of 2.
     pub fn low_stock(&self, conn: &Connection) -> Result<Vec<LowStockItem>, AppError> {
         let threshold: i64 = conn
             .query_row(
-                "SELECT CAST(value AS INTEGER) FROM app_settings WHERE key = 'low_stock_threshold'",
+                "SELECT value FROM app_settings WHERE key = 'low_stock_threshold'",
                 [],
-                |r| r.get(0),
+                |r| r.get::<_, String>(0),
             )
+            .ok()
+            .and_then(|s| s.trim().parse::<i64>().ok())
+            .filter(|&t| t > 0)
             .unwrap_or(2);
 
         let sql = "SELECT m.id, m.brand, m.model, COUNT(c.id) AS cnt \
