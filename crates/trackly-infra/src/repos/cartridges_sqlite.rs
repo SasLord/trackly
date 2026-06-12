@@ -768,6 +768,31 @@ impl SqliteCartridgeRepository {
         Ok(out)
     }
 
+    /// Count live (non-deleted) cartridge instances grouped by model id.
+    /// Returns a map `model_id -> count`; models with zero instances are absent.
+    pub fn count_instances_by_model(
+        &self,
+        conn: &Connection,
+    ) -> Result<std::collections::HashMap<i64, i64>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT model_id, COUNT(*) AS cnt \
+                   FROM cartridges \
+                  WHERE deleted_at_utc IS NULL \
+                  GROUP BY model_id",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(map_rusqlite)?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (model_id, cnt) = row.map_err(map_rusqlite)?;
+            map.insert(model_id, cnt);
+        }
+        Ok(map)
+    }
+
     /// Soft-delete a cartridge model inside a transaction.
     ///
     /// Guards: returns `AppError::Conflict` if there are live (non-deleted)
@@ -1154,6 +1179,56 @@ mod tests {
         assert_eq!(counts.all, 1);
         assert_eq!(counts.in_stock, 1);
         assert_eq!(counts.in_use, 0);
+    }
+
+    #[test]
+    fn count_instances_by_model_groups_live_cartridges() {
+        // UAT round 2 №4: модели показывали «0 шт.» — счётчик экземпляров не
+        // вычислялся. Здесь проверяем, что count группирует только живые
+        // (не soft-deleted) картриджи по model_id.
+        let (mut conn, _g) = fresh_conn();
+        let model_a = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let model_b = seed_model(&mut conn, "HP", "W1106A");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        // 2 картриджа модели A (один потом soft-delete) + 1 модели B.
+        let mut a_ids = Vec::new();
+        for _ in 0..2 {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+            let id = repo
+                .insert_cartridge_in_tx(&tx, &code, model_a, 1, None, None, None, None, now)
+                .expect("insert");
+            tx.commit().expect("commit");
+            a_ids.push(id);
+        }
+        {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, now).expect("code");
+            repo.insert_cartridge_in_tx(&tx, &code, model_b, 1, None, None, None, None, now)
+                .expect("insert");
+            tx.commit().expect("commit");
+        }
+
+        let map = repo
+            .count_instances_by_model(&conn)
+            .expect("count_instances_by_model");
+        assert_eq!(map.get(&model_a).copied().unwrap_or(0), 2);
+        assert_eq!(map.get(&model_b).copied().unwrap_or(0), 1);
+
+        // Soft-delete one cartridge of model A → count drops to 1, не в нуль.
+        conn.execute(
+            "UPDATE cartridges SET deleted_at_utc = ?1 WHERE id = ?2",
+            params![now, a_ids[0]],
+        )
+        .expect("soft delete");
+        let map2 = repo
+            .count_instances_by_model(&conn)
+            .expect("count after delete");
+        assert_eq!(map2.get(&model_a).copied().unwrap_or(0), 1);
     }
 
     #[test]

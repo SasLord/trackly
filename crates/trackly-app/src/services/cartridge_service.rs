@@ -492,10 +492,12 @@ impl CartridgeService {
         tokio::task::spawn_blocking(move || -> Result<Vec<CartridgeModelDto>, AppError> {
             let conn = readers.acquire();
             let rows = repo.list_models(&conn)?;
+            let counts = repo.count_instances_by_model(&conn)?;
             let mut out = Vec::with_capacity(rows.len());
             for row in rows {
                 let compat = repo.get_compatibility(&conn, row.id)?;
-                out.push(CartridgeModelDto::from_row(row, compat));
+                let instances = counts.get(&row.id).copied().unwrap_or(0);
+                out.push(CartridgeModelDto::from_row(row, compat).with_instance_count(instances));
             }
             Ok(out)
         })
@@ -512,7 +514,8 @@ impl CartridgeService {
             let conn = readers.acquire();
             let row = repo.get_model(&conn, id)?;
             let compat = repo.get_compatibility(&conn, row.id)?;
-            Ok(CartridgeModelDto::from_row(row, compat))
+            let instances = repo.count_instances_by_model(&conn)?.get(&id).copied().unwrap_or(0);
+            Ok(CartridgeModelDto::from_row(row, compat).with_instance_count(instances))
         })
         .await
         .map_err(|e| AppError::Internal {

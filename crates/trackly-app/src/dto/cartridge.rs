@@ -92,10 +92,16 @@ pub struct CartridgeModelDto {
     pub updated_at_utc: i64,
     /// Compatibility pairs (printer_brand, printer_model).
     pub compatibility: Vec<(String, String)>,
+    /// Number of live (non-deleted) cartridge instances of this model.
+    /// Defaults to 0; populated by the service for list/get reads.
+    #[specta(type = i32)]
+    #[serde(default)]
+    pub instance_count: i64,
 }
 
 impl CartridgeModelDto {
     /// Build a DTO from a domain row + loaded compatibility pairs.
+    /// `instance_count` defaults to 0 — enrich via [`Self::with_instance_count`].
     pub fn from_row(r: DomainModelRow, compatibility: Vec<(String, String)>) -> Self {
         Self {
             id: r.id,
@@ -108,7 +114,15 @@ impl CartridgeModelDto {
             created_at_utc: r.created_at_utc,
             updated_at_utc: r.updated_at_utc,
             compatibility,
+            instance_count: 0,
         }
+    }
+
+    /// Set the live-instance count (non-deleted cartridges of this model).
+    #[must_use]
+    pub fn with_instance_count(mut self, count: i64) -> Self {
+        self.instance_count = count;
+        self
     }
 }
 

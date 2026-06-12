@@ -41,7 +41,7 @@
       {#each models as m (m.id)}
         <ModelListRow
           model={m}
-          instanceCount={0}
+          instanceCount={m.instance_count ?? 0}
           onEdit={() => onEditModel(m)}
           onDelete={() => onDeleteModel(m)}
         />
