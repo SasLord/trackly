@@ -1,11 +1,21 @@
 //! `ReaderPool` — простой LIFO-пул read-only connections.
 //!
-//! Размер фиксирован (`size`), LAN-scale: 4 readers >> типичная concurrent
-//! нагрузка 20 пользователей. Если все заняты, `acquire()` *панично* выходит
-//! (Phase 2+ может swap'нуть на `deadpool` который очередует acquirers).
+//! Размер фиксирован (`size`), LAN-scale: 8 readers покрывают типичную
+//! concurrent-нагрузку. Если все заняты, `acquire()` **блокируется** на
+//! `Condvar` до освобождения соединения (queue-on-exhaust) — НЕ паникует.
 //!
-//! Использует `std::sync::Mutex` (НЕ `tokio::sync::Mutex`) — `Connection`
-//! синхронный, `acquire` — не async.
+//! Исторически (Phase 1) `acquire()` паниковал при пустом пуле, причём паника
+//! происходила *под* удержанным `MutexGuard`, что отравляло (`poison`) Mutex и
+//! навсегда убивало пул: каждый последующий `lock()` тоже паниковал. Раздел
+//! «Картриджи» (CartridgesPage `loadAll()` → `Promise.all([list, counts,
+//! lowStock])` + model_list/search) штатно порождает >4 одновременных чтений и
+//! детерминированно ронял пул. Теперь acquire очередует, а все `lock()`
+//! poison-устойчивы (`into_inner`), так что одна паника где-либо больше не
+//! убивает пул необратимо.
+//!
+//! Использует `std::sync::Mutex` + `std::sync::Condvar` (НЕ `tokio::sync`) —
+//! `Connection` синхронный, а `acquire()` всегда вызывается внутри
+//! `spawn_blocking`, поэтому парковка blocking-потока безопасна для рантайма.
 //!
 //! Каждое соединение открыто с `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_NO_MUTEX`:
 //! - `READ_ONLY` — никаких случайных писем через reader-пути (FOUND-02 invariant).
@@ -13,7 +23,7 @@
 
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 use trackly_core::error::AppError;
 
 use crate::db::pragmas::apply_reader_pragmas;
@@ -22,6 +32,9 @@ use crate::error_conversions::map_rusqlite;
 /// Пул read-only SQLite соединений. Каждое — с применёнными reader pragmas.
 pub struct ReaderPool {
     conns: Mutex<Vec<Connection>>,
+    /// Сигнализируется на drop'е `ReaderHandle`; пробуждает acquirers,
+    /// ожидающих свободное соединение при исчерпанном пуле.
+    available: Condvar,
     size: usize,
 }
 
@@ -43,26 +56,38 @@ impl ReaderPool {
         }
         Ok(Self {
             conns: Mutex::new(conns),
+            available: Condvar::new(),
             size,
         })
     }
 
     /// Получить соединение из пула. Возвращает RAII-guard; на drop'е
-    /// connection возвращается в пул.
+    /// connection возвращается в пул и будит одного ожидающего acquirer'а.
     ///
-    /// **Паникует**, если пул пуст. Phase 1 принимает это (LAN-scale,
-    /// 4 readers >> 20 users типичной concurrency); Phase 2+ может
-    /// заменить на `deadpool` для queue-on-exhaust.
+    /// **Блокирует** вызывающий поток, если пул пуст, до освобождения
+    /// соединения (queue-on-exhaust через `Condvar`). НЕ паникует на
+    /// исчерпании. `lock()` poison-устойчив: паника в другом потоке не
+    /// убивает пул необратимо.
+    ///
+    /// Контракт: вызывается только внутри `tokio::task::spawn_blocking`,
+    /// поэтому блокировка потока безопасна (не стопорит async-рантайм).
     pub fn acquire(&self) -> ReaderHandle<'_> {
-        let conn = self
+        let mut conns = self
             .conns
             .lock()
-            .expect("ReaderPool mutex poisoned")
-            .pop()
-            .expect("ReaderPool exhausted — bump size or audit long-running reads");
-        ReaderHandle {
-            pool: self,
-            conn: Some(conn),
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        loop {
+            if let Some(conn) = conns.pop() {
+                return ReaderHandle {
+                    pool: self,
+                    conn: Some(conn),
+                };
+            }
+            // Пул исчерпан — паркуемся до notify_one() из Drop'а ReaderHandle.
+            conns = self
+                .available
+                .wait(conns)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
         }
     }
 
@@ -91,12 +116,17 @@ impl std::ops::Deref for ReaderHandle<'_> {
 impl Drop for ReaderHandle<'_> {
     fn drop(&mut self) {
         if let Some(c) = self.conn.take() {
-            // Если mutex poisoned, мы уже в plate-glass-shattering pizdets
-            // mode: разумнее тихо потерять connection (просто закроется на
-            // drop'е), чем second-order panic в Drop.
-            if let Ok(mut conns) = self.pool.conns.lock() {
-                conns.push(c);
-            }
+            // Poison-устойчиво: даже если кто-то паниковал под локом, возвращаем
+            // соединение в пул (into_inner), чтобы пул не «усыхал».
+            let mut conns = self
+                .pool
+                .conns
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            conns.push(c);
+            drop(conns);
+            // Будим одного ожидающего acquirer'а (если есть).
+            self.pool.available.notify_one();
         }
     }
 }
@@ -201,5 +231,52 @@ mod tests {
         for h in handles {
             h.join().expect("thread");
         }
+    }
+
+    #[test]
+    fn concurrent_acquirers_exceeding_size_queue_instead_of_panicking() {
+        // Regression for the UAT ReaderPool panic: CartridgesPage loadAll fired
+        // more concurrent reads than the pool size. Old behaviour: pop()-on-empty
+        // panicked *under the held lock*, poisoning the Mutex and killing the pool
+        // for the whole process. New behaviour: acquire() blocks until a handle is
+        // dropped, so N >> size acquirers all complete and the pool stays healthy.
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::thread;
+        use std::time::Duration;
+
+        let dir = seed_db();
+        let path = dir.path().join("reader-pool-test.db");
+        let pool = Arc::new(ReaderPool::new(&path, 2).expect("new pool"));
+        let done = Arc::new(AtomicUsize::new(0));
+
+        // 12 threads contend for a pool of 2 — 10 must queue at some point.
+        let handles: Vec<_> = (0..12)
+            .map(|_| {
+                let p = pool.clone();
+                let d = done.clone();
+                thread::spawn(move || {
+                    let g = p.acquire();
+                    let v: String = g
+                        .query_row("SELECT v FROM t WHERE id = 1", [], |r| r.get(0))
+                        .expect("query");
+                    assert_eq!(v, "seed");
+                    // Hold briefly to force genuine contention / queueing.
+                    thread::sleep(Duration::from_millis(5));
+                    d.fetch_add(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("acquirer thread must not panic");
+        }
+        assert_eq!(done.load(Ordering::SeqCst), 12);
+
+        // Pool is still usable afterwards (all connections returned, no poison).
+        let g = pool.acquire();
+        let v: String = g
+            .query_row("SELECT v FROM t WHERE id = 1", [], |r| r.get(0))
+            .expect("pool still healthy after contention");
+        assert_eq!(v, "seed");
     }
 }

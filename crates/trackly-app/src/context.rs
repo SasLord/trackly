@@ -14,7 +14,7 @@
 //! 3. Open WRITER connection (создаст файл если нужно), apply writer pragmas,
 //!    run миграции.
 //! 4. Hand writer conn в `WriterHandle::spawn` (mpsc 256 + spawn_blocking worker).
-//! 5. Open `ReaderPool::new(_, 4)`.
+//! 5. Open `ReaderPool::new(_, 8)`.
 //! 6. Собрать `AppCtx`.
 
 use std::path::PathBuf;
@@ -145,8 +145,12 @@ impl AppCtx {
         // Step 9: hand writer conn в spawn_blocking worker.
         let writer = Arc::new(WriterHandle::spawn(writer_conn));
 
-        // Step 10: open reader pool (size 4 per D-WriterChannel-01).
-        let readers = Arc::new(ReaderPool::new(&db_path, 4)?);
+        // Step 10: open reader pool. Size 8 (bumped from 4): a single page load
+        // can fire several concurrent reads (e.g. CartridgesPage loadAll →
+        // Promise.all([list, counts, lowStock]) + model_list); 4 was too tight.
+        // acquire() now also queues-on-exhaust instead of panicking, so 8 is
+        // headroom, not a hard ceiling.
+        let readers = Arc::new(ReaderPool::new(&db_path, 8)?);
 
         // Step 11: build clock and Phase 2 services (D-AppCtx-Extension-01).
         let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
