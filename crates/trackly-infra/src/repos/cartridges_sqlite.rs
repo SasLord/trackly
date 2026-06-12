@@ -539,39 +539,68 @@ impl SqliteCartridgeRepository {
         query: &str,
         filter: &CartridgeFilter,
     ) -> Result<Vec<CartridgeRow>, AppError> {
-        // Escape double-quotes in FTS query to avoid FTS5 syntax errors (T-04-02-01).
-        let fts_query = format!("\"{}\"*", query.replace('"', "\"\""));
+        // Guard: FTS5 MATCH on a phrase with no alphanumeric tokens (e.g. "---",
+        // a lone double-quote, or punctuation-only input) can return SQLITE_ERROR
+        // on some unicode61 builds. When the query has no alphanumeric chars,
+        // skip the fts_hits CTE and fall back to LIKE-only (WR-01).
+        let has_token = query.chars().any(|c| c.is_alphanumeric());
+
         let like_query = format!("%{}%", query);
 
-        let sql = format!(
-            "WITH fts_hits AS ( \
-               SELECT f.rowid AS id FROM cartridges_fts f \
-               WHERE cartridges_fts MATCH ?1 \
-             ), \
-             like_hits AS ( \
-               SELECT c.id FROM cartridges c \
-               LEFT JOIN cartridge_models m ON m.id = c.model_id \
-               WHERE c.code LIKE ?2 \
-                  OR c.location LIKE ?2 \
-                  OR c.holder_name LIKE ?2 \
-                  OR m.brand LIKE ?2 \
-                  OR m.model LIKE ?2 \
-             ) \
-             {SELECT_CARTRIDGES} \
-             WHERE c.id IN (SELECT id FROM fts_hits UNION SELECT id FROM like_hits) \
-               AND c.deleted_at_utc IS NULL \
-               AND (?3 IS NULL OR c.status_id = ?3) \
-               AND (?4 IS NULL OR m.kind_id = ?4) \
-               AND (?5 IS NULL OR c.model_id = ?5) \
-             ORDER BY c.created_at_utc DESC, c.id DESC \
-             LIMIT 200"
-        );
+        let sql = if has_token {
+            // Escape double-quotes in FTS query to avoid FTS5 syntax errors (T-04-02-01).
+            let fts_query_escaped = query.replace('"', "\"\"");
+            // Store in a way that outlives the if-arm.
+            format!(
+                "WITH fts_hits AS ( \
+                   SELECT f.rowid AS id FROM cartridges_fts f \
+                   WHERE cartridges_fts MATCH '\"{}\"*' \
+                 ), \
+                 like_hits AS ( \
+                   SELECT c.id FROM cartridges c \
+                   LEFT JOIN cartridge_models m ON m.id = c.model_id \
+                   WHERE c.code LIKE ?1 \
+                      OR c.location LIKE ?1 \
+                      OR c.holder_name LIKE ?1 \
+                      OR m.brand LIKE ?1 \
+                      OR m.model LIKE ?1 \
+                 ) \
+                 {SELECT_CARTRIDGES} \
+                 WHERE c.id IN (SELECT id FROM fts_hits UNION SELECT id FROM like_hits) \
+                   AND c.deleted_at_utc IS NULL \
+                   AND (?2 IS NULL OR c.status_id = ?2) \
+                   AND (?3 IS NULL OR m.kind_id = ?3) \
+                   AND (?4 IS NULL OR c.model_id = ?4) \
+                 ORDER BY c.created_at_utc DESC, c.id DESC \
+                 LIMIT 200",
+                fts_query_escaped
+            )
+        } else {
+            format!(
+                "WITH like_hits AS ( \
+                   SELECT c.id FROM cartridges c \
+                   LEFT JOIN cartridge_models m ON m.id = c.model_id \
+                   WHERE c.code LIKE ?1 \
+                      OR c.location LIKE ?1 \
+                      OR c.holder_name LIKE ?1 \
+                      OR m.brand LIKE ?1 \
+                      OR m.model LIKE ?1 \
+                 ) \
+                 {SELECT_CARTRIDGES} \
+                 WHERE c.id IN (SELECT id FROM like_hits) \
+                   AND c.deleted_at_utc IS NULL \
+                   AND (?2 IS NULL OR c.status_id = ?2) \
+                   AND (?3 IS NULL OR m.kind_id = ?3) \
+                   AND (?4 IS NULL OR c.model_id = ?4) \
+                 ORDER BY c.created_at_utc DESC, c.id DESC \
+                 LIMIT 200"
+            )
+        };
 
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
             .query_map(
                 params![
-                    fts_query,
                     like_query,
                     filter.status_id,
                     filter.kind_id,
@@ -1222,5 +1251,23 @@ mod tests {
         // Would break if input was concatenated into SQL string.
         let result = repo.search(&conn, "' OR '1'='1", &filter);
         assert!(result.is_ok(), "search should not panic on injection input");
+    }
+
+    #[test]
+    fn search_punctuation_only_query_returns_ok() {
+        // WR-01: a query with no alphanumeric tokens (e.g. "---") must not
+        // produce an FTS5 syntax error — the LIKE-only fallback path is used.
+        let (conn, _g) = fresh_conn();
+        let repo = SqliteCartridgeRepository;
+        let filter = CartridgeFilter::default();
+        for q in &["---", "...", "\"", "   ", "!!"] {
+            let result = repo.search(&conn, q, &filter);
+            assert!(
+                result.is_ok(),
+                "search should return Ok for punctuation-only query {:?}, got: {:?}",
+                q,
+                result
+            );
+        }
     }
 }
