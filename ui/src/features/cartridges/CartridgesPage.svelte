@@ -444,8 +444,8 @@
   onClose={() => (confirmDeleteModelOpen = false)}
 >
   <p class="confirm-body">
-    Модель «{confirmDeleteModel?.brand ?? ''} {confirmDeleteModel?.model ?? ''}» будет помечена как
-    удалённая.
+    Модель «{confirmDeleteModel?.brand ?? ''}
+    {confirmDeleteModel?.model ?? ''}» будет помечена как удалённая.
   </p>
   {#snippet footer()}
     <Button variant="secondary" onclick={() => (confirmDeleteModelOpen = false)}>Отмена</Button>

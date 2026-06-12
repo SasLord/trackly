@@ -216,7 +216,7 @@
           {/if}
           {#if openByRow[idx] && suggestionsByRow[idx]?.length > 0}
             <ul class="dropdown" role="listbox">
-              {#each suggestionsByRow[idx].filter((g) => !g.ids.some((id) => getSelectedIds(idx).has(id))) as g (g.repr.id)}
+              {#each suggestionsByRow[idx].filter((g) => !g.ids.some( (id) => getSelectedIds(idx).has(id), )) as g (g.repr.id)}
                 <li>
                   <button type="button" class="opt" onclick={() => pickGroup(idx, g)}>
                     <span class="opt-name">{g.repr.name}</span>

@@ -94,8 +94,7 @@
         .filter((it) => it.device_id !== null && it.quantity >= 1)
         .map((it) => {
           const groupIds = it.group_ids ?? [];
-          const deviceIds =
-            groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [];
+          const deviceIds = groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [];
           return {
             device_id: it.device_id as number,
             device_ids: deviceIds,

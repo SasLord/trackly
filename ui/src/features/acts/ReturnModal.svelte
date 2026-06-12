@@ -92,7 +92,8 @@
     }
     // per-row mode: каждая checked row должна иметь condition + location.
     return checkedRows.every(
-      (r) => (r.conditionOverride ?? '').trim().length > 0 && r.locationOverrideName.trim().length > 0,
+      (r) =>
+        (r.conditionOverride ?? '').trim().length > 0 && r.locationOverrideName.trim().length > 0,
     );
   });
 
@@ -228,8 +229,8 @@
         {/if}
         {#if !applyToAll && checkedRows.length > 0 && !canSubmit && !submitting}
           <p class="empty-hint">
-            Заполните «Состояние» и «Расположение» для каждой выбранной позиции
-            (либо включите «Применить ко всем»).
+            Заполните «Состояние» и «Расположение» для каждой выбранной позиции (либо включите
+            «Применить ко всем»).
           </p>
         {/if}
         {#if applyToAll && !canSubmit && checkedRows.length > 0 && !submitting}

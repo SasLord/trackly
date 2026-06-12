@@ -136,8 +136,7 @@
       brandActiveIndex = (brandActiveIndex + 1) % brandSuggestions.length;
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      brandActiveIndex =
-        brandActiveIndex <= 0 ? brandSuggestions.length - 1 : brandActiveIndex - 1;
+      brandActiveIndex = brandActiveIndex <= 0 ? brandSuggestions.length - 1 : brandActiveIndex - 1;
     } else if (e.key === 'Enter') {
       if (brandActiveIndex >= 0) {
         e.preventDefault();
@@ -197,8 +196,7 @@
       modelActiveIndex = (modelActiveIndex + 1) % modelSuggestions.length;
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      modelActiveIndex =
-        modelActiveIndex <= 0 ? modelSuggestions.length - 1 : modelActiveIndex - 1;
+      modelActiveIndex = modelActiveIndex <= 0 ? modelSuggestions.length - 1 : modelActiveIndex - 1;
     } else if (e.key === 'Enter') {
       if (modelActiveIndex >= 0) {
         e.preventDefault();
@@ -253,7 +251,7 @@
           brand: brand.trim(),
           model: model.trim(),
           kind_id: kindId,
-          color: kindId !== 2 ? (color || null) : null,
+          color: kindId !== 2 ? color || null : null,
           notes: notes.trim() || null,
           compatibility: filteredCompatibility.map((p) => [p.printer_brand, p.printer_model]),
         });
@@ -262,7 +260,7 @@
           brand: brand.trim(),
           model: model.trim(),
           kind_id: kindId,
-          color: kindId !== 2 ? (color || null) : null,
+          color: kindId !== 2 ? color || null : null,
           notes: notes.trim() || null,
           compatibility: filteredCompatibility.map((p) => [p.printer_brand, p.printer_model]),
         });
@@ -397,11 +395,7 @@
       {#if kindId !== 2}
         <div class="field">
           <label class="field-label" for="model-color">Цвет</label>
-          <Select
-            id="model-color"
-            value={color}
-            onchange={(v) => (color = v)}
-          >
+          <Select id="model-color" value={color} onchange={(v) => (color = v)}>
             {#each COLOR_OPTIONS as c (c)}
               <option value={c}>{c}</option>
             {/each}
@@ -440,12 +434,7 @@
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onClose}>Отмена</Button>
-    <Button
-      variant="primary"
-      loading={submitting}
-      disabled={!canSubmit}
-      onclick={handleSubmit}
-    >
+    <Button variant="primary" loading={submitting} disabled={!canSubmit} onclick={handleSubmit}>
       {#if submitting}Сохранение…{:else}{submitLabel}{/if}
     </Button>
   {/snippet}

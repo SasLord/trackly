@@ -66,7 +66,8 @@
     const key = getKey(index, field);
     loadingKey = key;
     try {
-      const results = field === 'brand' ? await suggestBrandFn(prefix) : await suggestModelFn(prefix);
+      const results =
+        field === 'brand' ? await suggestBrandFn(prefix) : await suggestModelFn(prefix);
       if (openKey === key) {
         suggestions = results;
         activeIndex = -1;
@@ -88,7 +89,7 @@
       void fetchSuggestions(
         index,
         field,
-        field === 'brand' ? rows[index]?.printer_brand ?? '' : rows[index]?.printer_model ?? '',
+        field === 'brand' ? (rows[index]?.printer_brand ?? '') : (rows[index]?.printer_model ?? ''),
       );
     }, 0);
   }
@@ -163,11 +164,7 @@
   {#each rows as row, i (i)}
     <div class="compat-row">
       <!-- Бренд принтера -->
-      <div
-        class="compat-field"
-        bind:this={wrapperEls[`${i}-brand`]}
-        role="none"
-      >
+      <div class="compat-field" bind:this={wrapperEls[`${i}-brand`]} role="none">
         <label class="field-label" for="compat-brand-{i}">Бренд принтера</label>
         <div class="autocomplete-wrapper">
           <input
@@ -215,11 +212,7 @@
       </div>
 
       <!-- Модель принтера -->
-      <div
-        class="compat-field"
-        bind:this={wrapperEls[`${i}-model`]}
-        role="none"
-      >
+      <div class="compat-field" bind:this={wrapperEls[`${i}-model`]} role="none">
         <label class="field-label" for="compat-model-{i}">Модель принтера</label>
         <div class="autocomplete-wrapper">
           <input

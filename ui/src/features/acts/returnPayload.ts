@@ -51,10 +51,7 @@ import type { ReturnRowState } from './ReturnItemsTable.svelte';
  * // ]
  * ```
  */
-export function buildReturnItems(
-  rows: ReturnRowState[],
-  applyToAll: boolean,
-): ActReturnItemDto[] {
+export function buildReturnItems(rows: ReturnRowState[], applyToAll: boolean): ActReturnItemDto[] {
   const checked = rows.filter((r) => r.checked);
   if (checked.length === 0) return [];
 

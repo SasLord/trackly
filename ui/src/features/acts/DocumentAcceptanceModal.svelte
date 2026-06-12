@@ -105,11 +105,7 @@
 
     <label class="field">
       <span class="field-label">Кто передал</span>
-      <PersonAutocomplete
-        field="giver"
-        bind:value={giverName}
-        placeholder="ФИО передающего"
-      />
+      <PersonAutocomplete field="giver" bind:value={giverName} placeholder="ФИО передающего" />
     </label>
 
     <label class="field">

@@ -47,9 +47,7 @@
   }
 
   function setLocOverrideName(idx: number, v: string) {
-    const next = items.map((r, i) =>
-      i === idx ? { ...r, locationOverrideName: v } : r,
-    );
+    const next = items.map((r, i) => (i === idx ? { ...r, locationOverrideName: v } : r));
     onChange(next);
   }
 </script>
@@ -84,7 +82,9 @@
         <Input
           type="text"
           value={row.conditionOverride ?? ''}
-          placeholder={applyToAll && row.checked ? '(по умолчанию)' : effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
+          placeholder={applyToAll && row.checked
+            ? '(по умолчанию)'
+            : effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
           disabled={perRowDisabled}
           oninput={(v) => setCondOverride(idx, v)}
         />
