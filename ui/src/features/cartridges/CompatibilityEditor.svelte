@@ -50,7 +50,6 @@
   let loadingKey = $state<string | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let wrapperEls: Record<string, HTMLDivElement | null> = {};
 
   function getKey(index: number, field: 'brand' | 'model') {
     return `${index}-${field}`;
@@ -146,11 +145,11 @@
 
   function handleClickOutside(e: MouseEvent) {
     if (!openKey) return;
-    const target = e.target as Node;
-    // Проверяем все wrapper'ы — если клик вне всех, закрываем.
-    for (const el of Object.values(wrapperEls)) {
-      if (el && el.contains(target)) return;
-    }
+    // Клик внутри любого поля совместимости — не закрываем (focus переключит
+    // openKey сам). Клик вне — закрываем. `closest` убирает необходимость в
+    // bind:this в нереактивный объект (svelte binding_property_non_reactive).
+    const el = e.target as HTMLElement | null;
+    if (el && el.closest('.compat-field')) return;
     closeSuggestions();
   }
 
@@ -161,11 +160,19 @@
 </script>
 
 <div class="compat-editor">
+  {#if rows.length > 0}
+    <!-- Метки колонок — один раз сверху списка (UAT round 2, замечание №2). -->
+    <div class="compat-header">
+      <span class="field-label">Бренд принтера</span>
+      <span class="field-label">Модель принтера</span>
+      <span class="header-spacer" aria-hidden="true"></span>
+    </div>
+  {/if}
   {#each rows as row, i (i)}
     <div class="compat-row">
       <!-- Бренд принтера -->
-      <div class="compat-field" bind:this={wrapperEls[`${i}-brand`]} role="none">
-        <label class="field-label" for="compat-brand-{i}">Бренд принтера</label>
+      <div class="compat-field" role="none">
+        <label class="visually-hidden" for="compat-brand-{i}">Бренд принтера {i + 1}</label>
         <div class="autocomplete-wrapper">
           <input
             id="compat-brand-{i}"
@@ -212,8 +219,8 @@
       </div>
 
       <!-- Модель принтера -->
-      <div class="compat-field" bind:this={wrapperEls[`${i}-model`]} role="none">
-        <label class="field-label" for="compat-model-{i}">Модель принтера</label>
+      <div class="compat-field" role="none">
+        <label class="visually-hidden" for="compat-model-{i}">Модель принтера {i + 1}</label>
         <div class="autocomplete-wrapper">
           <input
             id="compat-model-{i}"
@@ -279,6 +286,29 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
+  }
+
+  .compat-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr 28px;
+    gap: var(--space-sm);
+    margin-bottom: 4px;
+  }
+
+  .header-spacer {
+    width: 28px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .compat-row {
