@@ -12,13 +12,24 @@
     loading: boolean;
     selectedId: number | null;
     hasFilter: boolean;
+    /** Список отфильтрован по конкретному статусу — скрыть бейдж статуса в строках. */
+    statusFiltered?: boolean;
     onSelect: (_id: number) => void;
     onMenuAction: (_op: string, _cartridge: CartridgeDto) => void;
     onCreate: () => void;
   }
 
-  const { items, total, loading, selectedId, hasFilter, onSelect, onMenuAction, onCreate }: Props =
-    $props();
+  const {
+    items,
+    total,
+    loading,
+    selectedId,
+    hasFilter,
+    statusFiltered = false,
+    onSelect,
+    onMenuAction,
+    onCreate,
+  }: Props = $props();
 
   // Empty state config per UI-SPEC §Пустые состояния.
   const emptyConfig = $derived.by(() => {
@@ -56,6 +67,7 @@
         <CartridgeListRow
           cartridge={c}
           selected={c.id === selectedId}
+          {statusFiltered}
           onSelect={() => onSelect(c.id)}
           {onMenuAction}
         />

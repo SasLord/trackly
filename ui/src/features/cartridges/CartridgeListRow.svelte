@@ -9,11 +9,13 @@
   interface Props {
     cartridge: CartridgeDto;
     selected: boolean;
+    /** Скрывать бейдж статуса (список уже отфильтрован по статусу). */
+    statusFiltered?: boolean;
     onSelect: () => void;
     onMenuAction: (_op: string, _cartridge: CartridgeDto) => void;
   }
 
-  const { cartridge, selected, onSelect, onMenuAction }: Props = $props();
+  const { cartridge, selected, statusFiltered = false, onSelect, onMenuAction }: Props = $props();
 
   // Badge variant по status_id (UI-SPEC §Badge-цвета статусов):
   // 1→success, 2→accent, 3→warning, 4→default
@@ -27,6 +29,21 @@
         : cartridge.status_id === 3
           ? 'warning'
           : 'default',
+  );
+
+  // Индикатор заряда по state_id: 1 Полный → зелёный, 2 Частичный → янтарный,
+  // 3 Пустой → красный. Подсказка — state_name (UAT round 2, замечание №5).
+  const chargeColor = $derived(
+    cartridge.state_id === 1
+      ? 'var(--color-success)'
+      : cartridge.state_id === 2
+        ? 'var(--color-warning)'
+        : cartridge.state_id === 3
+          ? 'var(--color-destructive)'
+          : 'var(--color-border)',
+  );
+  const chargeTitle = $derived(
+    cartridge.state_name ? `Заряд: ${cartridge.state_name}` : 'Заряд неизвестен',
   );
 
   function handleClick() {
@@ -57,13 +74,21 @@
   onkeydown={handleKeydown}
 >
   <div class="top">
+    <span
+      class="charge-dot"
+      style="background: {chargeColor}"
+      title={chargeTitle}
+      aria-label={chargeTitle}
+    ></span>
     <span class="code" style="font-variant-numeric: tabular-nums">{cartridge.code}</span>
     {#if modelLabel}
       <span class="model">{modelLabel}</span>
     {/if}
-    <span class="badge-wrap">
-      <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
-    </span>
+    {#if !statusFiltered}
+      <span class="badge-wrap">
+        <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
+      </span>
+    {/if}
     <span
       class="kebab-wrap"
       onclick={(e) => e.stopPropagation()}
@@ -120,6 +145,14 @@
     gap: var(--space-xs);
     font-size: var(--font-size-body);
     line-height: 1.2;
+  }
+
+  .charge-dot {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 12%, transparent);
   }
 
   .code {

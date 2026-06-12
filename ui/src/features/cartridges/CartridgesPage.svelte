@@ -370,6 +370,7 @@
             loading={listLoading}
             selectedId={selectedCartridgeId}
             {hasFilter}
+            statusFiltered={statusId !== null}
             onSelect={handleSelect}
             onMenuAction={handleMenuAction}
             onCreate={openCreate}
