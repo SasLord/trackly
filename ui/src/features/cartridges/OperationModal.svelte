@@ -41,9 +41,15 @@
   let givenByError = $state('');
   let givenToError = $state('');
 
-  // D-Op-Fields-01: from_refill → Полный (1), остальные → Пустой (3)
-  // install: поле состояния не показывается (не меняется при install)
-  const defaultStateId = $derived(op === 'from_refill' ? 1 : 3);
+  // Вид расходника: фотобарабан (kind 2) использует другой набор состояний.
+  const isDrum = $derived(cartridge?.model_kind_id === 2);
+
+  // D-Op-Fields-01: from_refill → Полный (1), остальные → Пустой (3).
+  // Для фотобарабана при возврате на склад сохраняем текущее состояние
+  // (или «Новый» 4, если неизвестно). install: поле не показывается.
+  const defaultStateId = $derived(
+    isDrum ? (cartridge?.state_id ?? 4) : op === 'from_refill' ? 1 : 3,
+  );
 
   // Reset form when modal opens or when `op` changes while modal is already
   // open (WR-03: stateId must track defaultStateId whenever op changes, not
@@ -85,12 +91,19 @@
     write_off: 'Списать',
   };
 
-  // State options for Select (Состояние заряда)
-  const STATE_OPTIONS = [
+  // State options for Select — по виду расходника (V017).
+  const CARTRIDGE_STATES = [
     { value: 1, label: 'Полный' },
     { value: 2, label: 'Частичный' },
     { value: 3, label: 'Пустой' },
   ];
+  const DRUM_STATES = [
+    { value: 4, label: 'Новый' },
+    { value: 5, label: 'Изношенный' },
+    { value: 6, label: 'Отработанный' },
+  ];
+  const stateOptions = $derived(isDrum ? DRUM_STATES : CARTRIDGE_STATES);
+  const stateFieldLabel = $derived(isDrum ? 'Состояние' : 'Состояние заряда');
 
   // Convert ISO date string to unix seconds
   function isoToUnix(iso: string): number {
@@ -275,11 +288,11 @@
         {/if}
       </div>
     {:else if op === 'return_to_stock' || op === 'from_refill'}
-      <!-- Состояние заряда -->
+      <!-- Состояние (заряда — для картриджей; для фотобарабанов — состояние) -->
       <div class="field">
-        <label class="label" for="op-state">Состояние заряда</label>
+        <label class="label" for="op-state">{stateFieldLabel}</label>
         <Select value={String(stateId)} id="op-state" onchange={(v) => (stateId = parseInt(v, 10))}>
-          {#each STATE_OPTIONS as opt (opt.value)}
+          {#each stateOptions as opt (opt.value)}
             <option value={String(opt.value)}>{opt.label}</option>
           {/each}
         </Select>

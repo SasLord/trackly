@@ -39,17 +39,25 @@
   const menuItems = $derived.by<MenuItem[]>(() => {
     const items: MenuItem[] = [];
     const s = cartridge.status_id;
+    // Фотобарабан (kind 2): нет заправки; отработанный (state 6) нельзя
+    // устанавливать — только списать (V017 / UAT round 3 №4).
+    const isDrum = cartridge.model_kind_id === 2;
+    const isWornOut = cartridge.state_id === 6;
 
     // Status-specific lifecycle actions first
     if (s === 1) {
       // На складе
-      items.push({ kind: 'action', label: 'Установить в принтер', action: onInstall });
-      items.push({ kind: 'action', label: 'Отправить на заправку', action: onToRefill });
+      if (!(isDrum && isWornOut)) {
+        items.push({ kind: 'action', label: 'Установить в принтер', action: onInstall });
+      }
+      if (!isDrum) {
+        items.push({ kind: 'action', label: 'Отправить на заправку', action: onToRefill });
+      }
     } else if (s === 2) {
       // В работе
       items.push({ kind: 'action', label: 'Вернуть на склад', action: onReturnToStock });
     } else if (s === 3) {
-      // На заправке
+      // На заправке (только картриджи)
       items.push({ kind: 'action', label: 'Забрать с заправки', action: onFromRefill });
     }
     // status_id === 4 (Списано): no lifecycle actions

@@ -99,7 +99,7 @@
       <p class="empty-body">
         Выберите картридж слева, чтобы увидеть историю и выполнить действие, или добавьте новый.
       </p>
-      <Button variant="primary" onclick={onCreate}>+ Добавить картридж</Button>
+      <Button variant="primary" onclick={onCreate}>+ Добавить картридж/фотобарабан</Button>
     </div>
   {:else}
     <header class="detail-header">

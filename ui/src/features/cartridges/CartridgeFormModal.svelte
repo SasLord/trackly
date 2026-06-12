@@ -23,8 +23,13 @@
   const { open, target, models, onClose, onSuccess }: Props = $props();
 
   const isEdit = $derived(target !== null);
-  const modalTitle = $derived(isEdit ? 'Редактирование картриджа' : 'Новый картридж');
-  const submitLabel = $derived(isEdit ? 'Сохранить изменения' : 'Добавить картридж');
+  // При редактировании заголовок зависит от вида (картридж/фотобарабан);
+  // при создании вид ещё не выбран — общий заголовок.
+  const editKindNoun = $derived(target?.model_kind_id === 2 ? 'фотобарабана' : 'картриджа');
+  const modalTitle = $derived(
+    isEdit ? `Редактирование ${editKindNoun}` : 'Новый картридж/фотобарабан',
+  );
+  const submitLabel = $derived(isEdit ? 'Сохранить изменения' : 'Добавить');
 
   // ---------------------------------------------------------------------------
   // Form instance counter — incremented each time the modal opens (false → true).

@@ -346,7 +346,7 @@
     <h1 class="page-title">Картриджи</h1>
     <div class="header-actions">
       {#if activeTab === 'cartridges'}
-        <Button variant="primary" onclick={openCreate}>+ Добавить картридж</Button>
+        <Button variant="primary" onclick={openCreate}>+ Добавить картридж/фотобарабан</Button>
       {:else}
         <Button variant="primary" onclick={openCreate}>+ Добавить модель</Button>
       {/if}
