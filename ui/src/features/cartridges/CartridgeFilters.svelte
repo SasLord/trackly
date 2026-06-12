@@ -41,6 +41,11 @@
     if (id === 4) return counts.written_off;
     return 0;
   }
+
+  // Модели, соответствующие выбранному типу (kindId). При «Все» — все модели.
+  const visibleModels = $derived(
+    kindId === null ? models : models.filter((m) => m.kind_id === kindId),
+  );
 </script>
 
 <div class="cartridge-filters">
@@ -75,9 +80,11 @@
           onKindChange(v === '' ? null : Number(v));
         }}
       >
+        <!-- Числовые value (не строковые): Svelte select_option сравнивает строго,
+             а kindId — число; строковые "1"/"2" не матчились → метка пропадала. -->
         <option value="">Все</option>
-        <option value="1">Картридж</option>
-        <option value="2">Фотобарабан</option>
+        <option value={1}>Картридж</option>
+        <option value={2}>Фотобарабан</option>
       </select>
     </label>
 
@@ -92,7 +99,7 @@
         }}
       >
         <option value="">Все</option>
-        {#each models as m (m.id)}
+        {#each visibleModels as m (m.id)}
           <option value={m.id}>{m.brand} {m.model}</option>
         {/each}
       </select>
