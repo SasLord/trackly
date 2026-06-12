@@ -347,20 +347,23 @@
     />
 
     {#if activeTab === 'cartridges'}
+      <!-- Switch-bar статусов + фильтры вынесены на уровень страницы (между -->
+      <!-- строкой поиска и списком), полноширинно — не зажаты в узкой колонке. -->
+      <CartridgeFilters
+        {statusId}
+        {kindId}
+        {modelId}
+        {counts}
+        {models}
+        onStatusChange={(s: number | null) => (statusId = s)}
+        onKindChange={(k: number | null) => (kindId = k)}
+        onModelChange={(m: number | null) => (modelId = m)}
+      />
+
       <LowStockBanner items={lowStockItems} />
 
       <CartridgesMasterDetail>
         {#snippet master()}
-          <CartridgeFilters
-            {statusId}
-            {kindId}
-            {modelId}
-            {counts}
-            {models}
-            onStatusChange={(s: number | null) => (statusId = s)}
-            onKindChange={(k: number | null) => (kindId = k)}
-            onModelChange={(m: number | null) => (modelId = m)}
-          />
           <CartridgesList
             {items}
             {total}
