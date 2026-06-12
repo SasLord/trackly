@@ -183,7 +183,7 @@
         <p class="history-empty">История пуста</p>
       {:else}
         <ul class="history-list">
-          {#each history as entry (entry.created_at_utc)}
+          {#each history as entry (entry.id)}
             <li class="history-row">
               {formatHistoryEntry(entry)}
             </li>

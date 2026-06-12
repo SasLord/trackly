@@ -29,6 +29,8 @@ pub struct SqliteCartridgeRepository;
 /// A row from `audit_log` for the cartridge history view (D-History-01).
 #[derive(Debug, Clone)]
 pub struct AuditEntryRow {
+    /// Primary key of the audit_log row (stable unique key for UI list keying).
+    pub id: i64,
     pub entity_type: String,
     pub entity_id: i64,
     pub action: String,
@@ -647,7 +649,7 @@ impl SqliteCartridgeRepository {
     ) -> Result<Vec<AuditEntryRow>, AppError> {
         let mut stmt = conn
             .prepare(
-                "SELECT entity_type, entity_id, action, user_id, \
+                "SELECT id, entity_type, entity_id, action, user_id, \
                         before_json, after_json, payload_json, created_at_utc \
                    FROM audit_log \
                   WHERE entity_type = 'cartridge' \
@@ -660,14 +662,15 @@ impl SqliteCartridgeRepository {
         let rows = stmt
             .query_map(params![cartridge_id], |r| {
                 Ok(AuditEntryRow {
-                    entity_type: r.get(0)?,
-                    entity_id: r.get(1)?,
-                    action: r.get(2)?,
-                    user_id: r.get(3)?,
-                    before_json: r.get(4)?,
-                    after_json: r.get(5)?,
-                    payload_json: r.get(6)?,
-                    created_at_utc: r.get(7)?,
+                    id: r.get(0)?,
+                    entity_type: r.get(1)?,
+                    entity_id: r.get(2)?,
+                    action: r.get(3)?,
+                    user_id: r.get(4)?,
+                    before_json: r.get(5)?,
+                    after_json: r.get(6)?,
+                    payload_json: r.get(7)?,
+                    created_at_utc: r.get(8)?,
                 })
             })
             .map_err(map_rusqlite)?;

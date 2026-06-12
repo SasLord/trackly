@@ -426,6 +426,9 @@ impl From<LowStockItem> for LowStockItemDto {
 /// A single row from the cartridge audit history.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct AuditEntryDto {
+    /// Primary key of the audit_log row — stable unique key for UI list rendering.
+    #[specta(type = i32)]
+    pub id: i64,
     pub action: String,
     pub payload_json: Option<String>,
     pub before_json: Option<String>,

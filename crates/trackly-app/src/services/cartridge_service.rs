@@ -455,6 +455,7 @@ impl CartridgeService {
             Ok(rows
                 .into_iter()
                 .map(|r| AuditEntryDto {
+                    id: r.id,
                     action: r.action,
                     payload_json: r.payload_json,
                     before_json: r.before_json,
