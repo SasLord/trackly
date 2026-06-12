@@ -64,7 +64,7 @@ export const cartridges = {
   suggestModel: (brand: string, prefix: string) =>
     apiCall<string[]>('cartridges_suggest_model', { brand, prefix }),
 
-  suggestCompatPrinter: (field: 'brand' | 'model', prefix: string) =>
+  suggestCompatPrinter: (field: 'printer_brand' | 'printer_model', prefix: string) =>
     apiCall<string[]>('cartridges_suggest_compat_printer', { field, prefix }),
 
   suggestLocation: (prefix: string) => apiCall<string[]>('cartridges_suggest_location', { prefix }),

@@ -425,8 +425,8 @@
         <CompatibilityEditor
           {compatibility}
           onChange={(pairs) => (compatibility = pairs)}
-          suggestBrandFn={(prefix) => cartridges.suggestCompatPrinter('brand', prefix)}
-          suggestModelFn={(prefix) => cartridges.suggestCompatPrinter('model', prefix)}
+          suggestBrandFn={(prefix) => cartridges.suggestCompatPrinter('printer_brand', prefix)}
+          suggestModelFn={(prefix) => cartridges.suggestCompatPrinter('printer_model', prefix)}
         />
       </div>
     </div>
