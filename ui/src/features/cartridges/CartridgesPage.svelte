@@ -247,6 +247,22 @@
     refreshModels();
     // Auto-select the created/updated cartridge.
     selectedCartridgeId = cart.id;
+    // Force-refresh the detail pane even when the edited cartridge is the one
+    // already selected: assigning the same selectedCartridgeId is a no-op, so
+    // the detail $effect would not re-run and the pane would stay stale
+    // (UAT round 3 №1 — location not updating after edit).
+    const id = cart.id;
+    selectedCartridge = cart;
+    Promise.all([cartridges.get(id), cartridges.getHistory(id)])
+      .then(([dto, history]) => {
+        if (selectedCartridgeId === id) {
+          selectedCartridge = dto;
+          cartridgeHistory = history;
+        }
+      })
+      .catch(() => {
+        // Non-fatal — list already refreshed.
+      });
   }
 
   async function handleConfirmDelete() {
@@ -356,7 +372,15 @@
         {counts}
         {models}
         onStatusChange={(s: number | null) => (statusId = s)}
-        onKindChange={(k: number | null) => (kindId = k)}
+        onKindChange={(k: number | null) => {
+          kindId = k;
+          // Сбрасываем модель на «Все», если она не соответствует новому типу;
+          // сохраняем выбор, если соответствует (UAT round 3 №3).
+          if (k !== null && modelId !== null) {
+            const m = models.find((x) => x.id === modelId);
+            if (!m || m.kind_id !== k) modelId = null;
+          }
+        }}
         onModelChange={(m: number | null) => (modelId = m)}
       />
 
