@@ -33,14 +33,18 @@
 
   // Индикатор заряда по state_id: 1 Полный → зелёный, 2 Частичный → янтарный,
   // 3 Пустой → красный. Подсказка — state_name (UAT round 2, замечание №5).
+  // Списанные (status_id === 4) — всегда серый, чтобы не выделялись как
+  // готовые к работе (UAT round 3, замечание №2).
   const chargeColor = $derived(
-    cartridge.state_id === 1
-      ? 'var(--color-success)'
-      : cartridge.state_id === 2
-        ? 'var(--color-warning)'
-        : cartridge.state_id === 3
-          ? 'var(--color-destructive)'
-          : 'var(--color-border)',
+    cartridge.status_id === 4
+      ? 'var(--color-text-muted)'
+      : cartridge.state_id === 1
+        ? 'var(--color-success)'
+        : cartridge.state_id === 2
+          ? 'var(--color-warning)'
+          : cartridge.state_id === 3
+            ? 'var(--color-destructive)'
+            : 'var(--color-border)',
   );
   const chargeTitle = $derived(
     cartridge.state_name ? `Заряд: ${cartridge.state_name}` : 'Заряд неизвестен',
