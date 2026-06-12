@@ -62,3 +62,29 @@ blocked: 0
 
 Status: fixes applied, backend tests + clippy + svelte-check + lint зелёные.
 Awaiting UAT Round 2 (re-run `cargo tauri dev`).
+
+### UAT Round 2 — 2026-06-12 (паника устранена; 5 замечаний, фиксы применены)
+
+Критическая паника `ReaderPool` устранена — lifecycle работает. Найдено 5 замечаний:
+
+- **R2-1 — Форма модели не очищается при повторном открытии.** `{#key}` ремаунтил
+  только разметку; component-level `$state` не реинициализировался. **Fix:** сброс
+  полей из `target` в open-transition `$effect`. Commit `6ceb2da`.
+- **R2-2 — Метки «Бренд/Модель принтера» дублировались над каждой строкой
+  совместимости.** **Fix:** один header-row сверху; per-row метки → visually-hidden;
+  убран `wrapperEls` bind:this (ушёл console-warning `binding_property_non_reactive`).
+  Commit `a8a8578`.
+- **R2-3 — Поиск и свитч-бар (Картриджи/Модели) распались на 2 строки.** `.search-and-
+  tabs` был column до брейкпоинта 1280px. **Fix:** всегда одна строка (поиск слева,
+  свитч-бар справа). Commit `e0ccfc7`.
+- **R2-4 — В списке моделей всегда «0 шт.».** `instanceCount` был хардкод `0`, DTO не
+  нёс счётчик. **Fix:** `CartridgeModelDto.instance_count` + repo
+  `count_instances_by_model` (GROUP BY model_id, живые) + enrich в сервисе + bind в UI;
+  регресс-тест. Commit `c237224`.
+- **R2-5 — Нет визуального индикатора заряда; столбец статуса избыточен при фильтре по
+  статусу.** **Fix:** цветной charge-dot в строке (Полный→зелёный, Частичный→янтарный,
+  Пустой→красный, title=state_name); бейдж статуса скрывается при `statusFiltered`.
+  Commit `eca481f`.
+
+Status: fixes applied; `cargo test` + `clippy -D warnings` + `svelte-check` (0 errors) +
+`lint` зелёные. Awaiting UAT Round 3.
