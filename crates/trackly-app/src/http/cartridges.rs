@@ -34,7 +34,8 @@ pub struct ListPayload {
 
 #[derive(serde::Deserialize)]
 pub struct GetPayload {
-    pub id: i64,
+    /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
+    pub id: i32,
 }
 
 #[derive(serde::Deserialize)]
@@ -44,16 +45,18 @@ pub struct CreatePayload {
 
 #[derive(serde::Deserialize)]
 pub struct UpdatePayload {
-    pub id: i64,
-    pub version: i64,
+    /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
+    pub id: i32,
+    pub version: i32,
     pub location: Option<String>,
     pub notes: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
 pub struct DeletePayload {
-    pub id: i64,
-    pub version: i64,
+    /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
+    pub id: i32,
+    pub version: i32,
 }
 
 #[derive(serde::Deserialize)]
@@ -114,7 +117,7 @@ pub async fn handler_get(
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
     Ok(Json(
-        build_cartridges_get(&ctx, p.id)
+        build_cartridges_get(&ctx, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -136,7 +139,7 @@ pub async fn handler_update(
     Json(p): Json<UpdatePayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
     Ok(Json(
-        build_cartridges_update(&ctx, p.id, p.version, p.location, p.notes)
+        build_cartridges_update(&ctx, p.id as i64, p.version as i64, p.location, p.notes)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -146,7 +149,7 @@ pub async fn handler_delete(
     State(ctx): State<AppCtx>,
     Json(p): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_cartridges_delete(&ctx, p.id, p.version)
+    build_cartridges_delete(&ctx, p.id as i64, p.version as i64)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -189,7 +192,7 @@ pub async fn handler_get_history(
     Json(p): Json<GetPayload>,
 ) -> Result<Json<Vec<AuditEntryDto>>, AppErrorResponse> {
     Ok(Json(
-        build_cartridges_get_history(&ctx, p.id)
+        build_cartridges_get_history(&ctx, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -220,7 +223,7 @@ pub async fn handler_models_get(
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeModelDto>, AppErrorResponse> {
     Ok(Json(
-        build_cartridge_models_get(&ctx, p.id)
+        build_cartridge_models_get(&ctx, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -252,7 +255,7 @@ pub async fn handler_models_delete(
     State(ctx): State<AppCtx>,
     Json(p): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_cartridge_models_delete(&ctx, p.id, p.version)
+    build_cartridge_models_delete(&ctx, p.id as i64, p.version as i64)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
