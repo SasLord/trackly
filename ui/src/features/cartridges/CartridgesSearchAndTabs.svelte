@@ -80,17 +80,25 @@
 
 <style lang="scss">
   .search-and-tabs {
+    // Поиск (слева) + свитч-бар (справа) всегда в одну строку. Свитч-бар
+    // визуально остаётся на месте при переключении на «Модели» благодаря
+    // .search-spacer, занимающему ту же долю строки, что и поиск.
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     gap: var(--space-md);
     margin-bottom: var(--space-md);
   }
 
   .search-wrap {
+    flex: 1;
     max-width: 480px;
   }
 
   .search-spacer {
+    flex: 1;
+    max-width: 480px;
     height: 36px; // Reserve height to avoid layout shift when switching tabs
   }
 
@@ -127,22 +135,6 @@
       border-color: var(--color-accent);
       color: var(--color-text-primary);
       font-weight: var(--font-weight-semibold);
-    }
-  }
-
-  @media (min-width: 1280px) {
-    .search-and-tabs {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .search-wrap {
-      flex: 1;
-      max-width: 50%;
-    }
-    .search-spacer {
-      flex: 1;
-      max-width: 50%;
     }
   }
 </style>
