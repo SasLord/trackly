@@ -43,14 +43,6 @@
   let openInstanceCounter = $state(0);
   let _wasOpen = $state(false);
 
-  $effect(() => {
-    const isOpen = open;
-    if (isOpen && !_wasOpen) {
-      openInstanceCounter += 1;
-    }
-    _wasOpen = isOpen;
-  });
-
   // --- Form state (внутри {#key openInstanceCounter}) ---
   let kindId = $state<number>(target?.kind_id ?? 1);
   let brand = $state(target?.brand ?? '');
@@ -65,6 +57,34 @@
       printer_model: pm,
     })),
   );
+
+  $effect(() => {
+    const isOpen = open;
+    if (isOpen && !_wasOpen) {
+      openInstanceCounter += 1;
+      // Сброс формы при каждом открытии. {#key} ремаунтит только разметку, но
+      // эти $state живут на уровне компонента и сами не реинициализируются —
+      // поэтому без явного сброса при повторном «Добавить модель» оставались
+      // данные ранее созданной модели (UAT round 2, замечание №1).
+      kindId = target?.kind_id ?? 1;
+      brand = target?.brand ?? '';
+      model = target?.model ?? '';
+      color = target?.color ?? 'Чёрный';
+      notes = target?.notes ?? '';
+      compatibility = (target?.compatibility ?? []).map(([pb, pm]) => ({
+        printer_brand: pb,
+        printer_model: pm,
+      }));
+      brandError = '';
+      modelError = '';
+      conflictError = '';
+      brandSuggestOpen = false;
+      modelSuggestOpen = false;
+      brandSuggestions = [];
+      modelSuggestions = [];
+    }
+    _wasOpen = isOpen;
+  });
 
   // Ошибки валидации
   let brandError = $state('');
