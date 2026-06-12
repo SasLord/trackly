@@ -39,6 +39,10 @@
       : null,
   );
 
+  // Фотобарабан (kind 2): нет заправки; отработанный (state 6) нельзя установить.
+  const isDrum = $derived(cartridge?.model_kind_id === 2);
+  const isWornOut = $derived(cartridge?.state_id === 6);
+
   // Форматирование даты из unix seconds → «ДД.ММ.ГГГГ»
   function formatDate(utcSeconds: number): string {
     const d = new Date(utcSeconds * 1000);
@@ -114,17 +118,22 @@
       </div>
       <div class="actions">
         {#if cartridge.status_id === 1}
-          <!-- На складе: установить, отправить на заправку -->
-          <Button
-            variant="secondary"
-            size="sm"
-            onclick={() => onMenuAction?.('install', cartridge!)}>Установить</Button
-          >
-          <Button
-            variant="secondary"
-            size="sm"
-            onclick={() => onMenuAction?.('to_refill', cartridge!)}>На заправку</Button
-          >
+          <!-- На складе: установить (если не отработанный барабан),
+               отправить на заправку (только картриджи) -->
+          {#if !(isDrum && isWornOut)}
+            <Button
+              variant="secondary"
+              size="sm"
+              onclick={() => onMenuAction?.('install', cartridge!)}>Установить</Button
+            >
+          {/if}
+          {#if !isDrum}
+            <Button
+              variant="secondary"
+              size="sm"
+              onclick={() => onMenuAction?.('to_refill', cartridge!)}>На заправку</Button
+            >
+          {/if}
         {:else if cartridge.status_id === 2}
           <!-- В работе: вернуть на склад -->
           <Button

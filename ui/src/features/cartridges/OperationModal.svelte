@@ -45,11 +45,9 @@
   const isDrum = $derived(cartridge?.model_kind_id === 2);
 
   // D-Op-Fields-01: from_refill → Полный (1), остальные → Пустой (3).
-  // Для фотобарабана при возврате на склад сохраняем текущее состояние
-  // (или «Новый» 4, если неизвестно). install: поле не показывается.
-  const defaultStateId = $derived(
-    isDrum ? (cartridge?.state_id ?? 4) : op === 'from_refill' ? 1 : 3,
-  );
+  // Для фотобарабана при возврате на склад по умолчанию «Отработанный» (6)
+  // (UAT R4 №3). install: поле состояния не показывается.
+  const defaultStateId = $derived(isDrum ? 6 : op === 'from_refill' ? 1 : 3);
 
   // Reset form when modal opens or when `op` changes while modal is already
   // open (WR-03: stateId must track defaultStateId whenever op changes, not

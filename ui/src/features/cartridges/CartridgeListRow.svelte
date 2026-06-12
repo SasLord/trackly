@@ -31,18 +31,19 @@
           : 'default',
   );
 
-  // Индикатор заряда по state_id: 1 Полный → зелёный, 2 Частичный → янтарный,
-  // 3 Пустой → красный. Подсказка — state_name (UAT round 2, замечание №5).
-  // Списанные (status_id === 4) — всегда серый, чтобы не выделялись как
-  // готовые к работе (UAT round 3, замечание №2).
+  // Индикатор состояния по state_id. Картриджи: 1 Полный, 2 Частичный, 3 Пустой.
+  // Фотобарабаны (V017): 4 Новый, 5 Изношенный, 6 Отработанный. Цвет по уровню
+  // «годности»: хорошее → зелёный, среднее → янтарный, плохое → красный.
+  // Списанные (status_id === 4) — всегда серый (UAT R3 №2). Барабаны тоже
+  // должны окрашиваться по состоянию, а не быть серыми (UAT R4 №2).
   const chargeColor = $derived(
     cartridge.status_id === 4
       ? 'var(--color-text-muted)'
-      : cartridge.state_id === 1
+      : cartridge.state_id === 1 || cartridge.state_id === 4
         ? 'var(--color-success)'
-        : cartridge.state_id === 2
+        : cartridge.state_id === 2 || cartridge.state_id === 5
           ? 'var(--color-warning)'
-          : cartridge.state_id === 3
+          : cartridge.state_id === 3 || cartridge.state_id === 6
             ? 'var(--color-destructive)'
             : 'var(--color-border)',
   );
