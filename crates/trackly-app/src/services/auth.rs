@@ -237,23 +237,60 @@ impl AuthService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
-                tx.execute(
-                    "INSERT INTO users \
-                     (login, full_name, password_hash, role, email, \
-                      is_active, created_at_utc, updated_at_utc, version) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, 1)",
-                    rusqlite::params![login, full_name, hash, role, email, now],
-                )
-                .map_err(map_rusqlite)?;
+                // Soft-delete leaves the row (with its login) behind, but the schema
+                // enforces an unconditional UNIQUE(login). Re-creating a login that
+                // belongs to a soft-deleted user must REVIVE that row (reuse its id so
+                // act/history foreign keys stay intact) rather than fail on UNIQUE.
+                let existing: Option<(i64, Option<i64>)> = match tx.query_row(
+                    "SELECT id, deleted_at_utc FROM users WHERE login = ?1",
+                    rusqlite::params![login],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+                ) {
+                    Ok(v) => Some(v),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                    Err(e) => return Err(map_rusqlite(e)),
+                };
 
-                let id = tx.last_insert_rowid();
+                let (id, action): (i64, &str) = match existing {
+                    // Active row already owns this login → genuine conflict.
+                    Some((_, None)) => {
+                        return Err(AppError::Conflict {
+                            reason: format!("Логин '{login}' уже занят"),
+                        });
+                    }
+                    // Soft-deleted row → revive in place.
+                    Some((existing_id, Some(_))) => {
+                        tx.execute(
+                            "UPDATE users SET \
+                               full_name = ?1, password_hash = ?2, role = ?3, email = ?4, \
+                               is_active = 1, deleted_at_utc = NULL, updated_at_utc = ?5, \
+                               version = version + 1 \
+                             WHERE id = ?6",
+                            rusqlite::params![full_name, hash, role, email, now, existing_id],
+                        )
+                        .map_err(map_rusqlite)?;
+                        (existing_id, "revive")
+                    }
+                    // No such login → fresh insert.
+                    None => {
+                        tx.execute(
+                            "INSERT INTO users \
+                             (login, full_name, password_hash, role, email, \
+                              is_active, created_at_utc, updated_at_utc, version) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, 1)",
+                            rusqlite::params![login, full_name, hash, role, email, now],
+                        )
+                        .map_err(map_rusqlite)?;
+                        (tx.last_insert_rowid(), "create")
+                    }
+                };
 
                 // Audit log
                 tx.execute(
                     "INSERT INTO audit_log \
                      (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
-                     VALUES ('user', ?1, 'create', ?2, NULL, NULL, ?3, ?4)",
-                    rusqlite::params![id, caller_id, login, now],
+                     VALUES ('user', ?1, ?2, ?3, NULL, NULL, ?4, ?5)",
+                    rusqlite::params![id, action, caller_id, login, now],
                 )
                 .map_err(map_rusqlite)?;
 

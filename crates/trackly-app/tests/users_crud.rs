@@ -31,6 +31,91 @@ fn admin_new(login: &str) -> UserNew {
 }
 
 // ---------------------------------------------------------------------------
+// delete_then_recreate_revives_same_login
+// ---------------------------------------------------------------------------
+
+/// Regression: soft-delete leaves the row (and its UNIQUE login) behind.
+/// Re-creating the same login must REVIVE the soft-deleted row (reuse its id),
+/// not fail on `UNIQUE constraint failed: users.login`. An ACTIVE duplicate
+/// still yields a Conflict.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_then_recreate_revives_same_login() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_auth_service();
+        let admin = Identity::trusted_admin();
+
+        // A non-admin user so delete is never blocked by the last-admin guard.
+        let bob_new = || UserNew {
+            login: "bob".to_string(),
+            full_name: "Боб Первый".to_string(),
+            password: "password123".to_string(),
+            role: "manager".to_string(),
+            email: None,
+        };
+
+        let original = svc.create_user(bob_new(), &admin).await.expect("create bob");
+
+        // Active duplicate → Conflict (not revive).
+        let conflict = svc
+            .create_user(bob_new(), &admin)
+            .await
+            .expect_err("ожидали Conflict для активного дубликата login");
+        assert!(
+            matches!(conflict, trackly_core::error::AppError::Conflict { .. }),
+            "ожидали Conflict, получили {conflict:?}"
+        );
+
+        // Soft-delete, then recreate with the same login but new attributes.
+        svc.delete_user(original.id, original.version, &admin)
+            .await
+            .expect("delete bob");
+
+        let revived = svc
+            .create_user(
+                UserNew {
+                    login: "bob".to_string(),
+                    full_name: "Боб Второй".to_string(),
+                    password: "password456".to_string(),
+                    role: "employee".to_string(),
+                    email: Some("bob@example.com".to_string()),
+                },
+                &admin,
+            )
+            .await
+            .expect("recreate bob should revive, not fail on UNIQUE");
+
+        // Same row reused (FK references from acts/history stay intact).
+        assert_eq!(revived.id, original.id, "revive должен переиспользовать тот же id");
+        assert!(revived.is_active, "оживлённый пользователь должен быть активен");
+        assert_eq!(revived.login, "bob");
+        assert_eq!(revived.full_name, "Боб Второй", "поля должны обновиться");
+        assert_eq!(revived.role, "employee");
+
+        // Visible in the list again.
+        let list = svc
+            .list_users(
+                UserFilter { search: Some("bob".to_string()) },
+                Pagination { offset: 0, limit: 50 },
+                &admin,
+            )
+            .await
+            .expect("list_users");
+        assert_eq!(list.total, 1, "оживлённый пользователь должен снова быть в списке");
+        assert_eq!(list.items[0].id, original.id);
+
+        // New password works for login; old one does not.
+        svc.login(trackly_app::dto::auth::LoginRequest {
+            login: "bob".to_string(),
+            password: "password456".to_string(),
+        })
+        .await
+        .expect("login с новым паролем");
+    })
+    .await
+    .expect("test exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
 // users_create_read_update_delete
 // ---------------------------------------------------------------------------
 
