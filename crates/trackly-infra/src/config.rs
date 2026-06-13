@@ -47,6 +47,11 @@ pub struct ServerConfig {
     pub port: u16,
     /// Путь к TLS-сертификату. Пусто — генерируется self-signed на первом запуске.
     pub cert_path: String,
+    /// Путь к TLS-приватному ключу (PEM). Пусто — выводится из `cert_path`
+    /// (замена расширения на `.key`). WR-01: явное поле устраняет хрупкую
+    /// эвристику и риск передать сам сертификат как ключ.
+    #[serde(default)]
+    pub key_path: String,
 }
 
 impl Default for ServerConfig {
@@ -57,6 +62,7 @@ impl Default for ServerConfig {
             host: "127.0.0.1".to_string(),
             port: 8443,
             cert_path: String::new(),
+            key_path: String::new(),
         }
     }
 }

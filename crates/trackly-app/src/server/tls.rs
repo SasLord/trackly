@@ -81,6 +81,45 @@ pub fn generate_self_signed(host: &str) -> anyhow::Result<TlsBundle> {
     })
 }
 
+/// Определить путь к приватному ключу для заданного `cert_path` (WR-01).
+///
+/// - Если `key_path` непустой — используется как есть.
+/// - Иначе путь выводится из `cert_path` заменой расширения на `.key`.
+///
+/// Возвращает ошибку, если итоговый путь к ключу совпадает с `cert_path`
+/// (иначе мы попытались бы скормить сертификат функции загрузки ключа —
+/// что давало бы запутанную ошибку «no private key found»).
+pub fn resolve_key_path(cert_path: &str, key_path: &str) -> anyhow::Result<String> {
+    let resolved = if !key_path.is_empty() {
+        key_path.to_string()
+    } else {
+        let p = std::path::Path::new(cert_path);
+        p.with_extension("key").to_string_lossy().into_owned()
+    };
+
+    if resolved == cert_path {
+        anyhow::bail!(
+            "resolve_key_path: путь к ключу совпадает с путём к сертификату ({cert_path}); \
+             укажите server.key_path явно"
+        );
+    }
+    Ok(resolved)
+}
+
+/// Загрузить TLS bundle из cert/key файлов с валидацией путей (WR-01).
+///
+/// Читает сертификат и (выведенный/явный) ключ, проверяя, что это разные
+/// файлы и что ключ парсится. Объединяет логику, ранее дублированную в
+/// HTTP- и Tauri-транспортах.
+pub fn load_from_files(cert_path: &str, key_path: &str) -> anyhow::Result<TlsBundle> {
+    let cert_pem = std::fs::read_to_string(cert_path)
+        .map_err(|e| anyhow::anyhow!("read cert {cert_path}: {e}"))?;
+    let resolved_key = resolve_key_path(cert_path, key_path)?;
+    let key_pem = std::fs::read_to_string(&resolved_key)
+        .map_err(|e| anyhow::anyhow!("read key {resolved_key}: {e}"))?;
+    load_from_pem(&cert_pem, &key_pem)
+}
+
 /// Загрузить TLS bundle из PEM строк (пользовательский cert/key).
 ///
 /// Вычисляет fingerprint из первого сертификата в PEM.

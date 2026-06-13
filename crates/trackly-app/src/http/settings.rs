@@ -119,19 +119,11 @@ pub async fn build_server_toggle(
             source_chain: format!("generate_self_signed: {e}"),
         })?
     } else {
-        let cert_pem = std::fs::read_to_string(&config.cert_path).map_err(|e| {
+        // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).
+        tls::load_from_files(&config.cert_path, &config.key_path).map_err(|e| {
             AppError::Internal {
-                source_chain: format!("read cert: {e}"),
+                source_chain: format!("load_from_files: {e}"),
             }
-        })?;
-        // Предполагаем key_path = cert_path с расширением .key
-        let key_path = config.cert_path.replace(".crt", ".key").replace(".pem", ".key");
-        let key_pem =
-            std::fs::read_to_string(&key_path).map_err(|e| AppError::Internal {
-                source_chain: format!("read key: {e}"),
-            })?;
-        tls::load_from_pem(&cert_pem, &key_pem).map_err(|e| AppError::Internal {
-            source_chain: format!("load_from_pem: {e}"),
         })?
     };
 

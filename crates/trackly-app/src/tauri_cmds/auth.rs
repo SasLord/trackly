@@ -11,7 +11,6 @@ use crate::dto::auth::{AuthStatusDto, LoginRequest, ServerStatusDto, UserDto};
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
 use crate::server::tls;
 use crate::server::{start_server, ServerHandle};
-use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -76,20 +75,11 @@ pub async fn build_server_toggle_tauri(
             source_chain: format!("generate_self_signed: {e}"),
         })?
     } else {
-        let cert_pem = std::fs::read_to_string(&config.cert_path).map_err(|e| {
+        // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).
+        tls::load_from_files(&config.cert_path, &config.key_path).map_err(|e| {
             AppError::Internal {
-                source_chain: format!("read cert: {e}"),
+                source_chain: format!("load_from_files: {e}"),
             }
-        })?;
-        let key_path = config
-            .cert_path
-            .replace(".crt", ".key")
-            .replace(".pem", ".key");
-        let key_pem = std::fs::read_to_string(&key_path).map_err(|e| AppError::Internal {
-            source_chain: format!("read key: {e}"),
-        })?;
-        tls::load_from_pem(&cert_pem, &key_pem).map_err(|e| AppError::Internal {
-            source_chain: format!("load_from_pem: {e}"),
         })?
     };
 
@@ -149,14 +139,28 @@ pub async fn build_server_status_tauri(ctx: &AppCtx) -> Result<ServerStatusDto, 
 
 /// Таури desktop_set_lock: установка флага desktop_lock_enabled.
 ///
-/// Всегда использует trusted_admin — это команда настройки, доступна без входа.
+/// **Безопасность (CR-01):** НЕ использовать hardcoded `trusted_admin()` —
+/// это позволило бы любому неаутентифицированному локальному пользователю
+/// отключить блокировку рабочего стола (полный обход аутентификации, D-Desktop-02).
+///
+/// Разрешаем caller через `resolve_tauri_identity`:
+/// - lock=OFF → trusted_admin (нормально, режим без блокировки).
+/// - lock=ON  → desktop_identity (ровно один admin → Some(id); 0/2+ → trusted_admin).
+///
+/// Когда блокировка ВКЛЮЧЕНА, отключить её может только подлинный
+/// аутентифицированный admin (`user_id = Some(..)`). Синтетический
+/// `trusted_admin` (`user_id = None`), который возвращается при 0/2+ admin'ах,
+/// отклоняется — иначе вебвью могло бы вызвать `desktop_set_lock` до входа.
 pub async fn build_desktop_set_lock_tauri(
     ctx: &AppCtx,
     enabled: bool,
 ) -> Result<(), AppError> {
-    ctx.auth
-        .set_desktop_lock_enabled(enabled, &Identity::trusted_admin())
-        .await
+    let caller =
+        crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    if ctx.auth.get_desktop_lock_enabled().await? && caller.user_id.is_none() {
+        return Err(AppError::Unauthorized);
+    }
+    ctx.auth.set_desktop_lock_enabled(enabled, &caller).await
 }
 
 // ---------------------------------------------------------------------------
