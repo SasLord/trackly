@@ -104,8 +104,12 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         ))
         .layer(SetResponseHeaderLayer::overriding(
             axum::http::header::HeaderName::from_static("content-security-policy"),
+            // WR-07: drop 'unsafe-inline' from script-src — Vite emits external
+            // bundles, so inline scripts are not required and 'unsafe-inline'
+            // would neutralize CSP's XSS protection. Kept on style-src for
+            // Svelte scoped styles.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
             ),
         ));
 
