@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  import UsersPageFeature from '../features/users/UsersPage.svelte';
 </script>
 
-<Placeholder section="Пользователи" phase={5} />
+<UsersPageFeature />
