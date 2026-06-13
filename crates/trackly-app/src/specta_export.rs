@@ -80,5 +80,20 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::cartridges::cartridges_suggest_model,
         crate::tauri_cmds::cartridges::cartridges_suggest_compat_printer,
         crate::tauri_cmds::cartridges::cartridges_suggest_location,
+        // Phase 5 — Auth (Plan 03)
+        crate::tauri_cmds::auth::auth_login,
+        crate::tauri_cmds::auth::auth_logout,
+        crate::tauri_cmds::auth::auth_status,
+        crate::tauri_cmds::auth::auth_me,
+        crate::tauri_cmds::auth::desktop_set_lock,
+        // Phase 5 — Users (Plan 03)
+        crate::tauri_cmds::users::users_list,
+        crate::tauri_cmds::users::users_create,
+        crate::tauri_cmds::users::users_update,
+        crate::tauri_cmds::users::users_delete,
+        crate::tauri_cmds::users::users_change_password,
+        // Phase 5 — Settings / Server (Plan 03)
+        crate::tauri_cmds::auth::server_toggle,
+        crate::tauri_cmds::auth::server_status,
     ])
 }
