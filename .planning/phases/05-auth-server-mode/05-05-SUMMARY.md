@@ -166,9 +166,23 @@ completed: 2026-06-13
 
 None — all UI components are wired to real backend commands. NetworkSettings calls real Tauri/HTTP endpoints. The server URL/fingerprint display shows live data from `server_toggle` response.
 
-## Checkpoint Reached
+## Checkpoint Result — Auto-Approved, Manual UAT Pending
 
-**Task 3: checkpoint:human-verify** — human verification of the complete auth flow (bootstrap wizard, login page, sidebar role filtering, server toggle, desktop lock toggle) is required to close Phase 5.
+**Task 3: checkpoint:human-verify** — was reached and **auto-approved under auto-mode**. The manual desktop UAT (8 steps) has **NOT been executed by a human yet**.
+
+> **IMPORTANT for QA/UAT tracking:** The following 8 manual steps require human verification
+> before Phase 5 can be considered UAT-complete:
+>
+> 1. **BOOTSTRAP:** Fresh DB — FirstRunWizard shown, admin user creation, auto-redirect to main app
+> 2. **USERS PAGE:** Create, edit (full_name), delete a second user; verify role label "Сотрудник"
+> 3. **SIDEBAR ROLE FILTERING:** Login as manager → confirm Пользователи/Настройки hidden; re-login as admin
+> 4. **NETWORK SETTINGS:** Settings → start server → URL https://127.0.0.1:8443 + fingerprint displayed
+> 5. **HTTPS BROWSER LOGIN:** Navigate to https://127.0.0.1:8443, accept self-signed cert, login as admin
+> 6. **EMPLOYEE ROLE:** Create employee, login in browser, confirm restricted sidebar
+> 7. **STOP SERVER:** Click "Остановить сервер" → browser connection refused
+> 8. **D-Desktop-02 DESKTOP LOCK:** Enable toggle → restart app → login screen shown; disable → restart → no login screen
+>
+> Automated suite (cargo test + pnpm svelte-check) is GREEN. Manual UAT above is outstanding.
 
 ## Threat Flags
 
