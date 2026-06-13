@@ -2,8 +2,8 @@
 phase: 5
 slug: auth-server-mode
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: pending
+wave_0_complete: true
 created: 2026-06-13
 ---
 

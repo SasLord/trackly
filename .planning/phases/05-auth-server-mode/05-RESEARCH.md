@@ -882,22 +882,25 @@ let login_router = Router::new()
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **axum-server совместимость с axum 0.8**
    - Что знаем: axum-server 0.8.0 по cargo search существует. По документации он мог обновиться под axum 0.8 — нужна проверка Cargo.toml axum-server при планировании.
    - Что неясно: Точная зависимость axum-server 0.8.0 (axum 0.7 или 0.8?) — сайт crates.io не вернул данные во время research.
    - Рекомендация: Планировщику проверить `cargo add axum-server --dry-run` на совместимость. Если axum-server 0.8.0 зависит от axum 0.8 — можно использовать `axum_server::tls_rustls::RustlsConfig` (более удобный API). Если нет — использовать tokio-rustls напрямую как описано в Pattern 3. [ASSUMED]
+   - **RESOLVED:** axum-server 0.8.0 зависит от axum 0.7 (несовместим). Используем tokio-rustls напрямую как показано в Pattern 3 — ручной accept loop с `tokio::select!`. Это закреплено в Plans 02/03 и 05-PATTERNS.md.
 
 2. **HTTP/2 в TLS сервере**
    - Что знаем: Наш кастомный TLS loop (Pattern 3) использует `hyper::server::conn::http1::Builder`. Современные браузеры предпочитают HTTP/2.
    - Что неясно: Нужен ли HTTP/2 для 20 concurrent LAN users?
    - Рекомендация: HTTP/1.1 достаточен для Phase 5. HTTP/2 можно добавить позже через `hyper::server::conn::http2::Builder` + ALPN в rustls config.
+   - **RESOLVED:** HTTP/1.1 достаточен для целевой нагрузки ~20 concurrent LAN users. Закреплено в Plans 03/05 — используем `hyper::server::conn::http1::Builder` в accept loop. HTTP/2 — опциональное улучшение в будущей фазе.
 
 3. **rmp-serde vs serde_json для session data**
    - Что знаем: tower-sessions-sqlx-store использует `rmp_serde` (MessagePack). BLOB в SQLite. Компактнее JSON.
    - Альтернатива: использовать `serde_json` + TEXT column (наша V010 имеет `data BLOB`).
    - Рекомендация: `rmp_serde` + BLOB consistent с существующей схемой V010 и паттерном tower-sessions-sqlx-store. [ASSUMED: небольшой риск если tower-sessions внутренне ожидает определённый формат Record serialization]
+   - **RESOLVED:** `rmp_serde` + BLOB подтверждён. V010 schema хранит `data BLOB` — бинарный MessagePack совместим. Plan 02 содержит полный RusqliteSessionStore impl с `rmp_serde::to_vec` / `rmp_serde::from_slice`. Закреплено в Common Pitfalls Pitfall 3.
 
 ---
 
