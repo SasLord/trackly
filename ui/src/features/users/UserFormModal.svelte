@@ -23,7 +23,7 @@
   const { open, mode, user = null, onSave, onCancel }: Props = $props();
 
   const roleOptions = [
-    { value: 'admin', label: 'Администра��ор' },
+    { value: 'admin', label: 'Администратор' },
     { value: 'manager', label: 'Специалист' },
     { value: 'employee', label: 'Сотрудник' },
   ];
@@ -153,7 +153,7 @@
 
     <div class="form-field">
       <label class="form-label" for="uf-password">
-        {mode === 'create' ? 'Пар��ль' : 'Новый пароль (оставьте пустым, чтобы не менять)'}
+        {mode === 'create' ? 'Пароль' : 'Новый пароль (оставьте пустым, чтобы не менять)'}
       </label>
       <input
         id="uf-password"
@@ -162,7 +162,7 @@
         type="password"
         bind:value={form.password}
         disabled={saving}
-        placeholder={mode === 'create' ? 'Не мен��е 8 символов' : 'Оставьте пустым'}
+        placeholder={mode === 'create' ? 'Не менее 8 символов' : 'Оставьте пустым'}
         autocomplete="new-password"
       />
       {#if passwordErr}
@@ -171,7 +171,7 @@
     </div>
 
     <div class="form-field">
-      <label class="form-label" for="uf-role">Рол��</label>
+      <label class="form-label" for="uf-role">Роль</label>
       <select
         id="uf-role"
         class="form-select"
