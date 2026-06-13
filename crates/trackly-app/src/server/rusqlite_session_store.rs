@@ -138,9 +138,20 @@ impl SessionStore for RusqliteSessionStore {
         match data_opt {
             None => Ok(None),
             Some(bytes) => {
-                let record = rmp_serde::from_slice::<Record>(&bytes)
-                    .map_err(|e| session_store::Error::Decode(e.to_string()))?;
-                Ok(Some(record))
+                match rmp_serde::from_slice::<Record>(&bytes) {
+                    Ok(record) => Ok(Some(record)),
+                    // WR-05: a corrupt / version-skewed session row must not 500
+                    // every request carrying that cookie. Treat it as "no session":
+                    // log, best-effort delete the row, and return Ok(None) so the
+                    // client is simply re-authenticated.
+                    Err(e) => {
+                        tracing::warn!(
+                            "session decode failed, dropping session row: {e}"
+                        );
+                        let _ = self.delete(session_id).await;
+                        Ok(None)
+                    }
+                }
             }
         }
     }
