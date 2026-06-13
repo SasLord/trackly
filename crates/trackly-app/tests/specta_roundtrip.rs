@@ -56,6 +56,11 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         readers.clone(),
         clock.clone(),
     ));
+    let auth = Arc::new(trackly_app::services::AuthService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
@@ -71,6 +76,8 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         templates,
         pdf,
         cartridges,
+        auth,
+        server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
     };
     (ctx, dir)
 }

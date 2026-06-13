@@ -87,8 +87,12 @@ async fn appctx_build_rejects_newer_db_and_leaves_file_byte_identical() {
         .expect("error should be AppError");
     match app_err {
         AppError::DatabaseFromNewerVersion { binary, file } => {
-            // V016 was added in plan 04-01 (cartridge tables); max_known_version is now 16.
-            assert_eq!(*binary, 17, "binary should be 17 (max_known_version)");
+            // binary must match the current max_known_version (updated dynamically).
+            let expected_binary = migrations::max_known_version();
+            assert_eq!(
+                *binary, expected_binary,
+                "binary should be max_known_version()={expected_binary}"
+            );
             assert_eq!(*file, 999, "file should be 999 (forced user_version)");
         }
         other => panic!("expected DatabaseFromNewerVersion, got {other:?}"),

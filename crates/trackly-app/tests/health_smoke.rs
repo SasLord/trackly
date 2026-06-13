@@ -30,10 +30,12 @@ async fn health_smoke_end_to_end_against_real_app_ctx() -> anyhow::Result<()> {
 
     // Tauri-path.
     let dto_tauri = build_health(&ctx).await;
-    // V016 was added in plan 04-01 (cartridge tables); max_known_version is now 16.
+    // Use dynamic max_known_version() to avoid hardcoding the migration count.
+    let expected_schema = trackly_infra::db::migrations::max_known_version();
     assert_eq!(
-        dto_tauri.schema_version, 17,
-        "schema_version after migrations"
+        dto_tauri.schema_version, expected_schema,
+        "schema_version after migrations (expected {})",
+        expected_schema
     );
     assert!(dto_tauri.db_ready, "db_ready after build");
     assert_eq!(dto_tauri.version, env!("CARGO_PKG_VERSION"));

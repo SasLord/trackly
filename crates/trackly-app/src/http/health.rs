@@ -68,6 +68,11 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let auth = Arc::new(crate::services::AuthService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -83,6 +88,8 @@ mod tests {
             templates,
             pdf,
             cartridges,
+            auth,
+            server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
         };
         (ctx, dir)
     }
