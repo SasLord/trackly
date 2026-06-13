@@ -104,9 +104,9 @@ pub async fn users_list(
 #[specta::specta]
 pub async fn users_create(
     state: tauri::State<'_, AppCtx>,
-    new: UserNew,
+    user_new: UserNew,
 ) -> Result<UserDto, AppError> {
-    build_users_create_tauri(state.inner(), new).await
+    build_users_create_tauri(state.inner(), user_new).await
 }
 
 #[tauri::command]

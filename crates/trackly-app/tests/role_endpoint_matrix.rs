@@ -213,7 +213,7 @@ async fn role_endpoint_matrix_test() {
         });
 
         let user_create_payload = json!({
-            "new": {
+            "user_new": {
                 "login": "newuser_test",
                 "full_name": "New Test User",
                 "password": "password123",

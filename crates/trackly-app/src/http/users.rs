@@ -31,7 +31,9 @@ pub struct ListPayload {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePayload {
-    pub new: UserNew,
+    // Renamed from `new` to `user_new` to match Tauri command parameter name
+    // (TypeScript reserves `new` as a keyword — same payload shape on both transports).
+    pub user_new: UserNew,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,7 +144,7 @@ pub async fn handler_create(
     Json(payload): Json<CreatePayload>,
 ) -> Result<Json<UserDto>, AppErrorResponse> {
     Ok(Json(
-        build_users_create(&ctx, &session, payload.new)
+        build_users_create(&ctx, &session, payload.user_new)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
