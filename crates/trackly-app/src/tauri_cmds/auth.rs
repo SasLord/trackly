@@ -7,7 +7,7 @@
 //! `#[specta::specta]` ПОСЛЕ `#[tauri::command]` — требование tauri-specta v2 rc.21.
 
 use crate::context::AppCtx;
-use crate::dto::auth::{AuthStatusDto, LoginRequest, ServerStatusDto, UserDto};
+use crate::dto::auth::{AuthStatusDto, LoginRequest, NetworkSettingsDto, ServerStatusDto, UserDto};
 use crate::http::settings::NetworkPatch;
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
 use crate::server::tls;
@@ -283,4 +283,49 @@ pub async fn settings_set_network(
     patch: NetworkPatch,
 ) -> Result<(), AppError> {
     build_settings_set_network_tauri(state.inner(), patch).await
+}
+
+/// Tauri-вариант чтения сетевых настроек + статуса сервера.
+///
+/// Зеркалит HTTP `build_settings_get_network`, но caller определяется через
+/// `resolve_tauri_identity` (trusted_admin в unlock-режиме, desktop_identity в
+/// lock-режиме) вместо session. `desktop_lock_enabled` читается из БД (live),
+/// host/port/cert_path — из стартового config (D-Desktop-02).
+pub async fn build_settings_get_network_tauri(
+    ctx: &AppCtx,
+) -> Result<NetworkSettingsDto, AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    let config = &ctx.config.server;
+    let desktop_lock_enabled = ctx.auth.get_desktop_lock_enabled().await?;
+
+    let running = {
+        let guard = ctx.server_ctl.lock().await;
+        guard.is_some()
+    };
+
+    let server_url = if running {
+        Some(format!("https://{}:{}", config.host, config.port))
+    } else {
+        None
+    };
+
+    Ok(NetworkSettingsDto {
+        enabled: config.enabled,
+        host: config.host.clone(),
+        port: config.port as i64,
+        cert_path: config.cert_path.clone(),
+        server_url,
+        fingerprint: None,
+        desktop_lock_enabled,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get_network(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<NetworkSettingsDto, AppError> {
+    build_settings_get_network_tauri(state.inner()).await
 }

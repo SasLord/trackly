@@ -97,5 +97,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::auth::server_status,
         // Phase 5 — Settings set network (Plan 05-06, gap closure)
         crate::tauri_cmds::auth::settings_set_network,
+        // Phase 5 — Settings get network (gap fix: Tauri command was missing,
+        // only the HTTP route existed → desktop Settings page failed to load)
+        crate::tauri_cmds::auth::settings_get_network,
     ])
 }
