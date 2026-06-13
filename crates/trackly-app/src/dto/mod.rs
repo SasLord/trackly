@@ -7,6 +7,7 @@
 //! DTOs, на которые ссылаются зарегистрированные команды).
 
 pub mod act;
+pub mod auth;
 pub mod cartridge;
 pub mod device;
 pub mod health;

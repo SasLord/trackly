@@ -52,6 +52,17 @@ regex = "1.12.3"
 # G-9 (Phase 3.1 Plan 05): logo aspect-ratio — parse intrinsic dimensions
 # without re-encoding image data. krilla still handles actual rendering.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Phase 5: auth, server mode, TLS
+argon2 = { workspace = true }
+tower-sessions = { workspace = true }
+tokio-rustls = { workspace = true }
+rcgen = { workspace = true }
+rustls-pemfile = { workspace = true }
+tower_governor = { workspace = true }
+rmp-serde = { workspace = true }
+sha2 = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
 
 [build-dependencies]
 tauri-build = { workspace = true }
@@ -60,6 +71,5 @@ tauri-build = { workspace = true }
 specta-typescript = { workspace = true }
 tempfile = { workspace = true }
 anyhow = { workspace = true }
-sha2 = "0.10"
 tracing-appender = { workspace = true }
 pdf-extract = "^0.10"

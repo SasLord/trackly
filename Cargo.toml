@@ -42,7 +42,17 @@ tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript", "derive"] }
 specta-typescript = "0.0.9"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "macros"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "set-header"] }
+argon2 = { version = "0.5", features = ["std"] }
+tower-sessions = "0.15"
+tokio-rustls = "0.26"
+rcgen = "0.14"
+rustls-pemfile = "2"
+tower_governor = "0.8"
+rmp-serde = "1"
+sha2 = "0.10"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 chardetng = "0.1"
 encoding_rs = "0.8"
 csv = "1.3"
