@@ -8,10 +8,13 @@
 
 use crate::context::AppCtx;
 use crate::dto::auth::{AuthStatusDto, LoginRequest, ServerStatusDto, UserDto};
+use crate::http::settings::NetworkPatch;
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
 use crate::server::tls;
 use crate::server::{start_server, ServerHandle};
+use trackly_core::auth::Action;
 use trackly_core::error::AppError;
+use trackly_infra::error_conversions::map_rusqlite;
 
 // ---------------------------------------------------------------------------
 // build_* helpers
@@ -225,4 +228,59 @@ pub async fn desktop_set_lock(
     enabled: bool,
 ) -> Result<(), AppError> {
     build_desktop_set_lock_tauri(state.inner(), enabled).await
+}
+
+/// Tauri-вариант сохранения сетевых настроек.
+///
+/// **Безопасность (T-05-SN-01/T-05-SN-02):** resolve_tauri_identity возвращает
+/// trusted_admin при unlock-режиме, desktop_identity при lock-режиме.
+/// authorize(&caller, ManageSettings) проверяет роль.
+pub async fn build_settings_set_network_tauri(
+    ctx: &AppCtx,
+    patch: NetworkPatch,
+) -> Result<(), AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    // T-05-SN-03: validate port range.
+    if patch.port < 1 || patch.port > 65535 {
+        return Err(AppError::Validation {
+            field: "port".to_string(),
+            message: format!("Порт должен быть в диапазоне 1..=65535, получено {}", patch.port),
+        });
+    }
+
+    let host = patch.host.clone();
+    let port_str = patch.port.to_string();
+    let cert_path = patch.cert_path.clone();
+    let now = ctx.clock.unix_seconds();
+
+    ctx.writer
+        .execute(move |conn| {
+            let upsert_sql = "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                              VALUES (?1, ?2, ?3, ?3) \
+                              ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at_utc = ?3";
+
+            conn.execute(upsert_sql, rusqlite::params!["server_host", host, now])
+                .map(|_| ())
+                .map_err(map_rusqlite)?;
+
+            conn.execute(upsert_sql, rusqlite::params!["server_port", port_str, now])
+                .map(|_| ())
+                .map_err(map_rusqlite)?;
+
+            conn.execute(upsert_sql, rusqlite::params!["server_cert_path", cert_path, now])
+                .map(|_| ())
+                .map_err(map_rusqlite)
+        })
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_set_network(
+    state: tauri::State<'_, AppCtx>,
+    patch: NetworkPatch,
+) -> Result<(), AppError> {
+    build_settings_set_network_tauri(state.inner(), patch).await
 }

@@ -95,5 +95,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 5 — Settings / Server (Plan 03)
         crate::tauri_cmds::auth::server_toggle,
         crate::tauri_cmds::auth::server_status,
+        // Phase 5 — Settings set network (Plan 05-06, gap closure)
+        crate::tauri_cmds::auth::settings_set_network,
     ])
 }
