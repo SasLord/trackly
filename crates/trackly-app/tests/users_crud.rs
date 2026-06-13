@@ -40,6 +40,13 @@ async fn users_create_read_update_delete() {
         let (svc, _dir) = make_auth_service();
         let admin = Identity::trusted_admin();
 
+        // CR-04: keep a second admin so deactivating/deleting `alice` below is
+        // not blocked by the last-active-admin guard. This test exercises CRUD
+        // mechanics, not the lockout invariant.
+        svc.create_user(admin_new("keeper"), &admin)
+            .await
+            .expect("create keeper admin");
+
         // CREATE
         let dto = svc
             .create_user(admin_new("alice"), &admin)
@@ -58,11 +65,14 @@ async fn users_create_read_update_delete() {
         assert_eq!(fetched.id, dto.id);
         assert_eq!(fetched.login, "alice");
 
-        // LIST
+        // LIST (keeper + alice).
         let list = svc
             .list_users(
-                UserFilter { search: None },
+                UserFilter {
+                    search: Some("alice".to_string()),
+                },
                 Pagination { offset: 0, limit: 50 },
+                &admin,
             )
             .await
             .expect("list_users");
@@ -267,6 +277,7 @@ async fn users_search_filter() {
                     search: Some("ali".to_string()),
                 },
                 Pagination { offset: 0, limit: 50 },
+                &admin,
             )
             .await
             .expect("list filtered");
@@ -278,10 +289,167 @@ async fn users_search_filter() {
             .list_users(
                 UserFilter { search: None },
                 Pagination { offset: 0, limit: 50 },
+                &admin,
             )
             .await
             .expect("list all");
         assert_eq!(all.total, 2);
+    })
+    .await
+    .expect("test exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// users_update_email_clear_vs_keep (WR-02)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn users_update_email_clear_vs_keep() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_auth_service();
+        let admin = Identity::trusted_admin();
+
+        // Create user with an email.
+        let dto = svc
+            .create_user(
+                UserNew {
+                    login: "carol".to_string(),
+                    full_name: "Carol".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: Some("carol@example.com".to_string()),
+                },
+                &admin,
+            )
+            .await
+            .expect("create user");
+        assert_eq!(dto.email.as_deref(), Some("carol@example.com"));
+
+        // None → email unchanged (still set).
+        let kept = svc
+            .update_user(
+                dto.id,
+                dto.version,
+                UserPatch {
+                    full_name: Some("Carol II".to_string()),
+                    role: None,
+                    email: None,
+                    is_active: None,
+                },
+                &admin,
+            )
+            .await
+            .expect("update keep email");
+        assert_eq!(
+            kept.email.as_deref(),
+            Some("carol@example.com"),
+            "None должно оставлять email без изменений"
+        );
+
+        // Some(None) → email cleared to NULL.
+        let cleared = svc
+            .update_user(
+                kept.id,
+                kept.version,
+                UserPatch {
+                    full_name: None,
+                    role: None,
+                    email: Some(None),
+                    is_active: None,
+                },
+                &admin,
+            )
+            .await
+            .expect("update clear email");
+        assert_eq!(cleared.email, None, "Some(None) должно очищать email в NULL");
+    })
+    .await
+    .expect("test exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// last_admin_protected (CR-04)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn last_admin_cannot_be_demoted_or_deleted() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_auth_service();
+        let admin = Identity::trusted_admin();
+
+        // Single admin in the DB.
+        let only_admin = svc
+            .create_user(admin_new("root"), &admin)
+            .await
+            .expect("create admin");
+
+        // Demote last admin → Conflict.
+        let demote_err = svc
+            .update_user(
+                only_admin.id,
+                only_admin.version,
+                UserPatch {
+                    full_name: None,
+                    role: Some("manager".to_string()),
+                    email: None,
+                    is_active: None,
+                },
+                &admin,
+            )
+            .await
+            .expect_err("ожидали Conflict при понижении последнего admin");
+        assert!(
+            matches!(demote_err, trackly_core::error::AppError::Conflict { .. }),
+            "ожидали Conflict, получили {demote_err:?}"
+        );
+
+        // Deactivate last admin → Conflict.
+        let deact_err = svc
+            .update_user(
+                only_admin.id,
+                only_admin.version,
+                UserPatch {
+                    full_name: None,
+                    role: None,
+                    email: None,
+                    is_active: Some(false),
+                },
+                &admin,
+            )
+            .await
+            .expect_err("ожидали Conflict при деактивации последнего admin");
+        assert!(
+            matches!(deact_err, trackly_core::error::AppError::Conflict { .. }),
+            "ожидали Conflict, получили {deact_err:?}"
+        );
+
+        // Delete last admin → Conflict.
+        let del_err = svc
+            .delete_user(only_admin.id, only_admin.version, &admin)
+            .await
+            .expect_err("ожидали Conflict при удалении последнего admin");
+        assert!(
+            matches!(del_err, trackly_core::error::AppError::Conflict { .. }),
+            "ожидали Conflict, получили {del_err:?}"
+        );
+
+        // With a SECOND admin, demoting the first is allowed.
+        svc.create_user(admin_new("root2"), &admin)
+            .await
+            .expect("create 2nd admin");
+        svc.update_user(
+            only_admin.id,
+            only_admin.version,
+            UserPatch {
+                full_name: None,
+                role: Some("manager".to_string()),
+                email: None,
+                is_active: None,
+            },
+            &admin,
+        )
+        .await
+        .expect("понижение допустимо при наличии второго admin");
     })
     .await
     .expect("test exceeded 30s budget");

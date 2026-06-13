@@ -48,7 +48,9 @@ pub async fn build_users_list_tauri(
     filter: UserFilter,
     pagination: Pagination,
 ) -> Result<UserListResponse, AppError> {
-    ctx.auth.list_users(filter, pagination).await
+    // CR-03: authorize the listing — resolve the desktop identity.
+    let caller = resolve_tauri_identity(ctx).await?;
+    ctx.auth.list_users(filter, pagination, &caller).await
 }
 
 pub async fn build_users_create_tauri(
@@ -80,9 +82,14 @@ pub async fn build_users_delete_tauri(
 
 pub async fn build_users_change_password_tauri(
     ctx: &AppCtx,
-    user_id: i64,
     req: ChangePasswordRequest,
 ) -> Result<(), AppError> {
+    // CR-02: never trust a caller-supplied user_id — derive the subject from
+    // the resolved desktop identity. In unlocked mode (or when admin count is
+    // ambiguous) `resolve_tauri_identity` yields trusted_admin (user_id = None),
+    // which has no concrete account whose own password could be changed.
+    let caller = resolve_tauri_identity(ctx).await?;
+    let user_id = caller.user_id.ok_or(AppError::Unauthorized)?;
     ctx.auth.change_password(user_id, req).await
 }
 
@@ -134,8 +141,8 @@ pub async fn users_delete(
 #[specta::specta]
 pub async fn users_change_password(
     state: tauri::State<'_, AppCtx>,
-    user_id: i32,
     req: ChangePasswordRequest,
 ) -> Result<(), AppError> {
-    build_users_change_password_tauri(state.inner(), user_id as i64, req).await
+    // CR-02: user_id intentionally not accepted from the caller.
+    build_users_change_password_tauri(state.inner(), req).await
 }

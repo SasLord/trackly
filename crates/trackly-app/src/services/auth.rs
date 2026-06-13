@@ -20,6 +20,7 @@ use argon2::{
     },
     Params,
 };
+use rusqlite::OptionalExtension;
 use tracing::warn;
 
 use trackly_core::auth::{Action, Identity, Role, authorize};
@@ -53,6 +54,33 @@ pub fn hash_password(password: &Secret<String>) -> Result<String, AppError> {
             source_chain: format!("argon2 hash: {e}"),
         })?;
     Ok(hash.to_string())
+}
+
+/// Фиксированный argon2id PHC-хэш для «пустой» верификации (CR-05).
+///
+/// Когда логин не найден, `login` всё равно прогоняет `verify_password`
+/// против этого хэша, чтобы время ответа для существующих и несуществующих
+/// аккаунтов было сопоставимо (устраняет user-enumeration timing oracle).
+///
+/// Вычисляется один раз лениво с теми же параметрами argon2id
+/// (m=19456, t=2, p=1), что и реальные хэши — гарантирует одинаковую
+/// CPU-стоимость verify. Salt фиксирован, поэтому строка стабильна.
+fn dummy_password_hash() -> &'static str {
+    use std::sync::OnceLock;
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY
+        .get_or_init(|| {
+            let params = Params::new(19456, 2, 1, None).expect("argon2 dummy params");
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+            // Фиксированный валидный base64-salt (без padding).
+            let salt = SaltString::from_b64("c29tZWZpeGVkc2FsdDEy")
+                .expect("argon2 dummy salt");
+            argon2
+                .hash_password(b"trackly-dummy-password", &salt)
+                .expect("argon2 dummy hash")
+                .to_string()
+        })
+        .as_str()
 }
 
 /// Верифицирует пароль против argon2 hash-строки.
@@ -151,7 +179,16 @@ impl AuthService {
     ///
     /// Верификация argon2 выполняется в `spawn_blocking` (T-05-03).
     pub async fn login(&self, req: LoginRequest) -> Result<UserDto, AppError> {
-        let hash = self.get_password_hash(&req.login).await?;
+        // CR-05: устранение user-enumeration timing oracle.
+        // Если логин не найден (или неактивен), get_password_hash возвращает
+        // Unauthorized. Вместо немедленного отказа мы всё равно прогоняем
+        // argon2-verify против фиксированного dummy-хэша — обе ветки тратят
+        // сопоставимый CPU, после чего возвращаем Unauthorized.
+        let (hash, user_known) = match self.get_password_hash(&req.login).await {
+            Ok(h) => (h, true),
+            Err(AppError::Unauthorized) => (dummy_password_hash().to_string(), false),
+            Err(e) => return Err(e),
+        };
         let password = Secret::new(req.password.clone());
 
         // CPU-bound verify — в spawn_blocking (T-05-03)
@@ -161,7 +198,7 @@ impl AuthService {
                 source_chain: format!("spawn_blocking verify_password: {e}"),
             })?;
 
-        if !verified {
+        if !user_known || !verified {
             return Err(AppError::Unauthorized);
         }
 
@@ -283,11 +320,17 @@ impl AuthService {
     }
 
     /// Список пользователей с опциональным фильтром поиска и пагинацией.
+    ///
+    /// **Безопасность (CR-03):** управление пользователями — Admin only.
+    /// Чтение списка пользователей раскрывает логины, роли, email — требует
+    /// `ManageUsers`, иначе любой Employee мог бы перечислить все аккаунты.
     pub async fn list_users(
         &self,
         filter: UserFilter,
         pagination: Pagination,
+        caller: &Identity,
     ) -> Result<UserListResponse, AppError> {
+        authorize(caller, &Action::ManageUsers)?;
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<UserListResponse, AppError> {
             let conn = readers.acquire();
@@ -418,26 +461,40 @@ impl AuthService {
                     });
                 }
 
-                // Build partial update
-                let mut sets = vec!["updated_at_utc = ?1", "version = version + 1"];
-                let new_version_val = now; // placeholder reuse
+                // CR-04: prevent demoting / deactivating the LAST active admin —
+                // doing so would permanently lock administration out of server mode.
+                let downgrades_role = matches!(
+                    patch.role.as_deref(),
+                    Some("employee") | Some("manager")
+                );
+                let deactivates = patch.is_active == Some(false);
+                if downgrades_role || deactivates {
+                    let active_admins: i64 = tx
+                        .query_row(
+                            "SELECT COUNT(*) FROM users \
+                             WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL",
+                            [],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    let is_target_active_admin: i64 = tx
+                        .query_row(
+                            "SELECT CASE WHEN role = 'admin' AND is_active = 1 THEN 1 ELSE 0 END \
+                             FROM users WHERE id = ?1 AND deleted_at_utc IS NULL",
+                            rusqlite::params![id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    if active_admins <= 1 && is_target_active_admin == 1 {
+                        return Err(AppError::Conflict {
+                            reason: "нельзя понизить или деактивировать последнего администратора"
+                                .to_string(),
+                        });
+                    }
+                }
 
-                if patch.full_name.is_some() {
-                    sets.push("full_name = ?3");
-                }
-                if patch.role.is_some() {
-                    sets.push("role = ?4");
-                }
-                if patch.email.is_some() {
-                    sets.push("email = ?5");
-                }
-                if patch.is_active.is_some() {
-                    sets.push("is_active = ?6");
-                }
-
-                let _ = new_version_val; // suppress unused warning
-
-                // Execute update directly with all fields (simpler than dynamic SQL)
+                // WR-02: explicit UPDATE — COALESCE leaves unset columns untouched;
+                // the email CASE handles Some(None) (clear to NULL) vs None (keep).
                 let rows_changed = tx
                     .execute(
                         "UPDATE users SET \
@@ -460,8 +517,6 @@ impl AuthService {
                         ],
                     )
                     .map_err(map_rusqlite)?;
-
-                let _ = sets; // used above in comment
 
                 if rows_changed == 0 {
                     return Err(AppError::Conflict {
@@ -501,6 +556,31 @@ impl AuthService {
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // CR-04: refuse to soft-delete the LAST active admin.
+                let active_admins: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM users \
+                         WHERE role = 'admin' AND is_active = 1 AND deleted_at_utc IS NULL",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                let is_target_active_admin: i64 = tx
+                    .query_row(
+                        "SELECT CASE WHEN role = 'admin' AND is_active = 1 THEN 1 ELSE 0 END \
+                         FROM users WHERE id = ?1 AND deleted_at_utc IS NULL",
+                        rusqlite::params![id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .unwrap_or(0);
+                if active_admins <= 1 && is_target_active_admin == 1 {
+                    return Err(AppError::Conflict {
+                        reason: "нельзя удалить последнего администратора".to_string(),
+                    });
+                }
 
                 let rows_changed = tx
                     .execute(
@@ -722,9 +802,12 @@ impl AuthService {
 
         self.writer
             .execute(move |conn| {
+                // WR-03: upsert — a security toggle must not silently no-op
+                // (fail open) if the settings row is missing.
                 conn.execute(
-                    "UPDATE app_settings SET value = ?1, updated_at_utc = ?2 \
-                     WHERE key = 'desktop_lock_enabled'",
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('desktop_lock_enabled', ?1, ?2, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
                     rusqlite::params![value, now],
                 )
                 .map(|_| ())

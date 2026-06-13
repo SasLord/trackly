@@ -51,7 +51,8 @@ pub struct DeletePayload {
 
 #[derive(Debug, Deserialize)]
 pub struct ChangePasswordPayload {
-    pub user_id: i64,
+    // CR-02: `user_id` НЕ принимается от клиента — он берётся из сессии,
+    // иначе это IDOR (смена пароля произвольного пользователя).
     pub req: ChangePasswordRequest,
 }
 
@@ -67,11 +68,13 @@ pub struct ResetPasswordPayload {
 
 pub async fn build_users_list(
     ctx: &AppCtx,
-    _session: &Session,
+    session: &Session,
     filter: UserFilter,
     pagination: Pagination,
 ) -> Result<UserListResponse, AppError> {
-    ctx.auth.list_users(filter, pagination).await
+    // CR-03: authorize the listing as a management read — thread the caller.
+    let caller = session_identity(session).await?;
+    ctx.auth.list_users(filter, pagination, &caller).await
 }
 
 pub async fn build_users_create(
@@ -175,9 +178,18 @@ pub async fn handler_delete(
 
 pub async fn handler_change_password(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ChangePasswordPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_users_change_password(&ctx, payload.user_id, payload.req)
+    // CR-02: derive subject from the session, never from the request body.
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let uid = caller
+        .user_id
+        .ok_or(AppError::Unauthorized)
+        .map_err(AppErrorResponse::from)?;
+    build_users_change_password(&ctx, uid, payload.req)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
