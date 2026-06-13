@@ -190,7 +190,7 @@ Plans:
   4. В веб-режиме сотрудник может выйти и войти под другим пользователем; сессия живёт в cookie (`tower-sessions` с rusqlite-store), переживает рестарт сервера, отзывается на logout.
   5. Корректное завершение приложения останавливает axum-сервер (drain in-flight requests, taskTracker.close().await), не оставляет «висящих» портов.
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 **Wave 1**
 
@@ -206,7 +206,7 @@ Plans:
 
 **Wave 4** *(параллельно, blocked on Wave 3)*
 
-- [ ] 05-04-PLAN.md — RBAC enforcement on devices/acts/cartridges HTTP handlers + Tauri commands + role×endpoint CI test matrix (ROADMAP criterion #3)
+- [x] 05-04-PLAN.md — RBAC enforcement on devices/acts/cartridges HTTP handlers + Tauri commands + role×endpoint CI test matrix (ROADMAP criterion #3)
 - [ ] 05-05-PLAN.md — UI: auth store + App.svelte bootstrap guard + LoginPage + FirstRunWizard + UsersPage CRUD + NetworkSettings + sidebar role filter + human-verify checkpoint
 
 **UI hint:** yes
@@ -272,7 +272,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Устройства и базовый UI | 5/5 | Complete    | 2026-05-28 |
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
-| 5. Авторизация, локальные пользователи и серверный режим | 3/5 | In Progress|  |
+| 5. Авторизация, локальные пользователи и серверный режим | 4/5 | In Progress|  |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 0/TBD | Not started | - |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-13T11:09:45.093Z"
+last_updated: "2026-06-13T11:31:47.471Z"
 last_activity: 2026-06-13
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 38
-  completed_plans: 36
+  completed_plans: 37
   percent: 64
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 05 (auth-server-mode) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-06-13
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██████████] 95%
 | Phase 04-cartridges P03 | 19 | 2 tasks | 23 files |
 | Phase 05-auth-server-mode P02 | 95 | 2 tasks | 15 files |
 | Phase 05 P03 | 24 | 2 tasks | 11 files |
+| Phase 05-auth-server-mode P04 | 180 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-02: session store design
 - [Phase ?]: 05-02: server shutdown
 - [Phase ?]: 05-02: auth hashing
+- [Phase ?]: authorize() enforced in build_* helpers — единая точка авторизации для HTTP и Tauri
+- [Phase ?]: GovernorLayer несовместим с tower oneshot тестами: создавать сессии программно через RusqliteSessionStore::create()
+- [Phase ?]: role_endpoint_matrix: macro_rules! new_app! для свежего router на каждый test case (oneshot потребляет router)
 
 ### Pending Todos
 
@@ -172,7 +176,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T11:09:45.085Z
-Stopped at: Phase 5 context gathered
+Last session: 2026-06-13T11:31:47.464Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: 
 None
