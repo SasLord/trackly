@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-13T07:01:53.071Z"
+last_updated: "2026-06-13T10:41:12.752Z"
 last_activity: 2026-06-13
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 38
-  completed_plans: 34
+  completed_plans: 35
   percent: 64
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 05 (auth-server-mode) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-06-13
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [█████████░] 89%
 | Phase 04 P01 | 6 | 2 tasks | 10 files |
 | Phase 04 P02 | 6 min | 2 tasks | 6 files |
 | Phase 04-cartridges P03 | 19 | 2 tasks | 23 files |
+| Phase 05-auth-server-mode P02 | 95 | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,11 @@ Recent decisions affecting current work:
 - [Phase 03.3]: ITEM-2 — нативный title= на всех text-ячейках (не кастомный tooltip-компонент)
 - [Phase 03.3]: ITEM-4 — вторая секция в DeviceAutocompleteField через существующую locations_autocomplete Tauri-команду; HTTP route добавляется в http/devices.rs
 - [Phase ?]: group_by_condition flag design
+- [Phase ?]: 05-02-SUMMARY.md
+- [Phase ?]: 05-02: server API design
+- [Phase ?]: 05-02: session store design
+- [Phase ?]: 05-02: server shutdown
+- [Phase ?]: 05-02: auth hashing
 
 ### Pending Todos
 
@@ -165,7 +171,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-13T07:01:53.064Z
+Last session: 2026-06-13T10:41:12.745Z
 Stopped at: Phase 5 context gathered
 Resume file: 
 None
