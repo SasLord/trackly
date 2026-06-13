@@ -31,7 +31,8 @@ use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::W
 use trackly_infra::{AppConfig, Paths};
 
 use crate::pdf::PdfRenderer;
-use crate::services::{ActService, CartridgeService, DeviceService, OrganizationService, TemplateService};
+use crate::server::ServerHandle;
+use crate::services::{ActService, AuthService, CartridgeService, DeviceService, OrganizationService, TemplateService};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
@@ -74,6 +75,13 @@ pub struct AppCtx {
     /// Cartridge service — lifecycle, models CRUD, low-stock, history.
     /// Added in Phase 4 Plan 03.
     pub cartridges: Arc<CartridgeService>,
+    /// Auth service — login/logout, user CRUD, argon2id hashing, RBAC authorize().
+    /// Added in Phase 5 Plan 02.
+    pub auth: Arc<AuthService>,
+    /// Server lifecycle controller — child CancellationToken + JoinHandle.
+    /// `None` = сервер не запущен. Guarded by Mutex для hot start/stop (D-Server-01).
+    /// Added in Phase 5 Plan 02.
+    pub server_ctl: Arc<tokio::sync::Mutex<Option<ServerHandle>>>,
 }
 
 impl AppCtx {
@@ -189,6 +197,13 @@ impl AppCtx {
             clock.clone(),
         ));
 
+        // Phase 5 Plan 02: auth service + server_ctl.
+        let auth = Arc::new(AuthService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+
         Ok(Self {
             writer,
             readers,
@@ -204,6 +219,8 @@ impl AppCtx {
             templates,
             pdf,
             cartridges,
+            auth,
+            server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
         })
     }
 }

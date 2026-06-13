@@ -25,6 +25,7 @@ pub mod error_axum;
 pub mod http;
 pub mod logging;
 pub mod pdf;
+pub mod server;
 pub mod services;
 pub mod shutdown;
 pub mod specta_export;
