@@ -13,6 +13,8 @@
 //! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
 use trackly_app::context::AppCtx;
+use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::server::{start_server_on_addr, ServerHandle};
 use trackly_app::webview_env;
 use trackly_infra::{AppConfig, Paths};
 
@@ -117,7 +119,58 @@ fn main() -> anyhow::Result<()> {
             return Ok::<(), anyhow::Error>(());
         }
 
-        // Step 8 (Plan 03): UI wired via Tauri Builder.
+        // Step 8a (Plan 05-03): Start axum HTTPS server if config.server.enabled.
+        // Uses child CancellationToken (never cancels master AppCtx.shutdown — D-Server-01).
+        // Server starts BEFORE tauri::Builder so it's ready for LAN connections immediately.
+        if ctx.config.server.enabled {
+            let server_config = &ctx.config.server;
+            let host = server_config.host.clone();
+            let port = server_config.port;
+            let cert_path = server_config.cert_path.clone();
+
+            // Build TLS bundle: load from PEM if cert_path provided, else generate self-signed.
+            let tls_bundle = if cert_path.is_empty() {
+                trackly_app::server::tls::generate_self_signed(&host)?
+            } else {
+                let cert_pem = std::fs::read_to_string(&cert_path)?;
+                let key_path = cert_path.replace(".crt", ".key").replace(".pem", ".key");
+                let key_pem = std::fs::read_to_string(&key_path)?;
+                trackly_app::server::tls::load_from_pem(&cert_pem, &key_pem)?
+            };
+
+            // Save generated cert/key to exe_dir for reuse.
+            if cert_path.is_empty() {
+                let exe_dir = ctx.paths.exe_dir();
+                let _ = std::fs::write(exe_dir.join("server.crt"), &tls_bundle.cert_pem);
+                let _ = std::fs::write(exe_dir.join("server.key"), &tls_bundle.key_pem);
+            }
+
+            // Build session store and router.
+            let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+            if let Err(e) = session_store.background_cleanup().await {
+                tracing::warn!("session cleanup failed: {e}");
+            }
+
+            let router = trackly_app::http::build_router(&ctx, session_store);
+            let addr: std::net::SocketAddr = format!("{host}:{port}").parse()?;
+            let child_token = ctx.shutdown.child_token();
+            let cancel = child_token.clone();
+
+            let task = tokio::spawn(async move {
+                if let Err(e) = start_server_on_addr(router, addr, tls_bundle.acceptor, child_token).await {
+                    tracing::error!("server error: {e}");
+                }
+            });
+
+            {
+                let mut guard = ctx.server_ctl.lock().await;
+                *guard = Some(ServerHandle { cancel, task });
+            }
+
+            tracing::info!("axum HTTPS server started on https://{}:{}", host, port);
+        }
+
+        // Step 8b (Plan 03): UI wired via Tauri Builder.
         // WriterHandle и ReaderPool из AppCtx::build уже инициализированы —
         // writer-worker крутится на dedicated thread, reader-pool использует
         // sync rusqlite::Connection через tokio::task::spawn_blocking.

@@ -30,12 +30,17 @@ use crate::server::rusqlite_session_store::RusqliteSessionStore;
 /// Построить полный axum Router со всеми middleware.
 ///
 /// Топология:
-/// 1. Публичные маршруты (auth_login, auth_status) — без session gate, с rate limit.
-/// 2. Защищённые маршруты — за `SessionManagerLayer`.
-/// 3. Security headers применяются ко всем ответам.
-/// 4. Fallback: статические файлы Svelte SPA.
+/// 1. Все маршруты используют `SessionManagerLayer` — Session extractor работает везде.
+/// 2. Публичные маршруты (auth_login, auth_status) — не требуют наличия identity,
+///    но session layer необходима для Session extractor.
+/// 3. Защищённые маршруты делают проверку identity в handlers (session_identity()).
+/// 4. auth_login дополнительно обёрнут в GovernorLayer (rate limit).
+/// 5. Security headers применяются ко всем ответам.
+/// 6. Fallback: статические файлы Svelte SPA.
 pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router {
-    // --- Session layer ---
+    // --- Session layer (применяется ко всему router) ---
+    // Session extractor требует наличия SessionManagerLayer выше по стеку.
+    // Публичные маршруты (login/status) имеют доступ к session но не требуют identity.
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(true)
         .with_http_only(true)
@@ -43,7 +48,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
     // --- Rate limit config для /api/v1/auth_login ---
-    // burst=5, per_second=1 (строго 1 запрос в секунду, burst до 5).
+    // burst=5, per_second=1 (строго 1 запрос в секунду, burst до 5) — D-Auth-02.
     let governor_conf = Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
             .per_second(1)
@@ -52,13 +57,28 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             .expect("governor config build failed"),
     );
 
-    // --- Публичные маршруты (без session gate) ---
-    // auth_login с rate limit, auth_status без.
-    let public_routes = auth::public_router()
-        .layer(tower_governor::GovernorLayer::new(governor_conf));
+    // --- auth_login route с rate limit (применяется только к этому маршруту) ---
+    // GovernorLayer применяется через .route_layer() — только к /api/v1/auth_login.
+    let login_route = axum::routing::Router::new()
+        .route(
+            "/api/v1/auth_login",
+            axum::routing::post(auth::handler_login),
+        )
+        .route_layer(tower_governor::GovernorLayer::new(governor_conf));
 
-    // --- Защищённые маршруты ---
-    let protected_routes = Router::new()
+    // --- auth_status без rate limit ---
+    let status_route = axum::routing::Router::new()
+        .route(
+            "/api/v1/auth_status",
+            axum::routing::post(auth::handler_status),
+        );
+
+    // --- Весь API Router (public + protected routes) ---
+    // Защита маршрутов реализована на уровне handlers через session_identity().
+    // Session layer применяется ко всем маршрутам (Session extractor требует этого).
+    let api_router = Router::new()
+        .merge(login_route)
+        .merge(status_route)
         .merge(auth::protected_router())
         .merge(users::router())
         .merge(settings::router())
@@ -69,12 +89,8 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(organization::router())
         .merge(templates::router())
         .merge(fs_helpers::router())
+        // Session layer применяется ко всем маршрутам
         .layer(session_layer);
-
-    // --- Объединённый Router ---
-    let api_router = Router::new()
-        .merge(public_routes)
-        .merge(protected_routes);
 
     // --- Security headers (T-05-14, глобально) ---
     let security_headers = ServiceBuilder::new()
