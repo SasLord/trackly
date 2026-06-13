@@ -2,15 +2,45 @@
 //!
 //! Asserts that POST /api/v1/acts_create routed through axum matches the
 //! shape returned by the Tauri build_* helper.
+//!
+//! Phase 5 Plan 04: axum path теперь использует build_router() с session layer.
+//! Тесты создают сессию admin программно для проверки mutation эндпоинтов.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use rusqlite::params;
+use time::{Duration, OffsetDateTime};
 use tower::ServiceExt;
+use tower_sessions::session::{Id, Record};
+use tower_sessions::SessionStore;
 
 use trackly_app::dto::act::{ActCreateDto, ActDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
-use trackly_app::http::acts::router as acts_router;
+use trackly_app::dto::auth::UserNew;
+use trackly_app::http::auth::SessionIdentity;
+use trackly_app::http::build_router;
+use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_core::auth::{Identity, Role};
 use trackly_infra::error_conversions::map_rusqlite;
+
+/// Создать admin сессию в store и вернуть cookie строку.
+async fn create_admin_session(
+    store: &RusqliteSessionStore,
+    user_id: i64,
+) -> anyhow::Result<String> {
+    let session_id = Id::default();
+    let si = SessionIdentity {
+        user_id: Some(user_id),
+        role: Role::Admin.as_str().to_string(),
+    };
+    let mut record = Record {
+        id: session_id,
+        data: Default::default(),
+        expiry_date: OffsetDateTime::now_utc() + Duration::days(1),
+    };
+    record.data.insert("identity".to_string(), serde_json::to_value(&si)?);
+    store.create(&mut record).await?;
+    Ok(format!("id={}", session_id))
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn http_create_act_roundtrip() -> anyhow::Result<()> {
@@ -20,6 +50,18 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
         let config = trackly_infra::AppConfig::default();
         let log_guard = trackly_app::logging::init(&paths, &config)?;
         let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard).await?;
+
+        // Создаём admin пользователя
+        let admin_dto = ctx.auth.create_user(
+            UserNew {
+                login: "admin_acts".to_string(),
+                full_name: "Admin Acts".to_string(),
+                password: "password123".to_string(),
+                role: "admin".to_string(),
+                email: None,
+            },
+            &Identity::trusted_admin(),
+        ).await?;
 
         // Seed 1 device via the writer
         let device_id: i64 = ctx
@@ -55,7 +97,11 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
             }],
         };
 
-        let app = acts_router().with_state(ctx.clone());
+        // Создаём сессию admin
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let admin_cookie = create_admin_session(&session_store, admin_dto.id).await?;
+
+        let app = build_router(&ctx, session_store);
         let body_json = serde_json::json!({ "payload": payload });
         let res = app
             .oneshot(
@@ -63,6 +109,7 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
                     .method("POST")
                     .uri("/api/v1/acts_create")
                     .header("content-type", "application/json")
+                    .header("cookie", &admin_cookie)
                     .body(Body::from(serde_json::to_string(&body_json)?))?,
             )
             .await?;
@@ -91,6 +138,18 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
         let log_guard = trackly_app::logging::init(&paths, &config)?;
         let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard).await?;
 
+        // Создаём admin пользователя
+        let admin_dto = ctx.auth.create_user(
+            UserNew {
+                login: "admin_return".to_string(),
+                full_name: "Admin Return".to_string(),
+                password: "password123".to_string(),
+                role: "admin".to_string(),
+                email: None,
+            },
+            &Identity::trusted_admin(),
+        ).await?;
+
         let device_id: i64 = ctx
             .writer
             .execute(|conn| {
@@ -108,7 +167,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
             })
             .await?;
 
-        // 1. Create handover via service.
+        // 1. Create handover via service (bypass HTTP for setup).
         let handover = ctx
             .acts
             .create(ActCreateDto {
@@ -144,7 +203,12 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                 location_name_override: None,
             }],
         };
-        let app = acts_router().with_state(ctx.clone());
+
+        // Создаём сессию admin
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let admin_cookie = create_admin_session(&session_store, admin_dto.id).await?;
+
+        let app = build_router(&ctx, session_store);
         let body_json = serde_json::json!({
             "act_id": handover.id,
             "payload": return_payload,
@@ -155,6 +219,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                     .method("POST")
                     .uri("/api/v1/acts_return")
                     .header("content-type", "application/json")
+                    .header("cookie", &admin_cookie)
                     .body(Body::from(serde_json::to_string(&body_json)?))?,
             )
             .await?;
