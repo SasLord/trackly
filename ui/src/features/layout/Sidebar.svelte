@@ -1,13 +1,17 @@
 <script lang="ts">
   import { link } from 'svelte-spa-router';
   import active from 'svelte-spa-router/active';
-  import { SIDEBAR_ITEMS } from './sidebar-config';
+  import { getVisibleItems } from './sidebar-config';
+  import { authStore } from '$lib/stores/auth.svelte';
+  import type { UserRole } from '$lib/stores/auth.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+
+  const visibleItems = $derived(getVisibleItems(authStore.user?.role as UserRole | null ?? null));
 </script>
 
 <nav class="sidebar" aria-label="Основная навигация">
   <ul class="nav-list" role="list">
-    {#each SIDEBAR_ITEMS as entry}
+    {#each visibleItems as entry}
       {#if entry.kind === 'divider'}
         <li class="divider" aria-hidden="true" role="separator"></li>
       {:else}

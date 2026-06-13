@@ -9,9 +9,11 @@ import ReportsPage from './pages/ReportsPage.svelte';
 import UsersPage from './pages/UsersPage.svelte';
 import SettingsPage from './pages/SettingsPage.svelte';
 import NotFound from './pages/NotFound.svelte';
+import LoginPage from './features/auth/LoginPage.svelte';
 
 export const routes = {
   '/': Dashboard,
+  '/login': LoginPage,
   '/map': MapPage,
   '/devices': DevicesPage,
   '/acts': ActsPage,
