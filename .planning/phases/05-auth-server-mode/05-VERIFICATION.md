@@ -1,33 +1,18 @@
 ---
 phase: 05-auth-server-mode
 verified: 2026-06-13T16:45:00Z
-status: gaps_found
-score: 12/14
+status: human_needed
+score: 14/14
 overrides_applied: 0
-gaps:
-  - truth: "settings_set_network Tauri command registered in specta_export (plan 03 must_have listed it as command #14 of 14)"
-    status: failed
-    reason: "settings_set_network Tauri command does not exist. The HTTP route POST /api/v1/settings_set_network is absent from the settings router (router() in http/settings.rs registers only get_network, server_toggle, server_status, desktop_set_lock). No tauri_cmds/settings.rs module exists. specta_export.rs registers 13 Phase 5 commands, not 14. The UI NetworkSettings.svelte calls apiCall('settings_set_network', {...}) in saveSettings(), which will fail at runtime in both Tauri and browser modes with 'command not found'. ROADMAP success criterion #2 requires configuring port and bind-address — the server toggle works but persisting port/bind-address changes does not."
-    artifacts:
-      - path: "crates/trackly-app/src/http/settings.rs"
-        issue: "settings_set_network route missing from router(); present only as doc-comment TODO on line 5"
-      - path: "crates/trackly-app/src/specta_export.rs"
-        issue: "Only 13 Phase 5 commands registered; settings_set_network absent"
-      - path: "ui/src/features/settings/NetworkSettings.svelte"
-        issue: "saveSettings() calls apiCall('settings_set_network') at line 64 — will throw at runtime"
-    missing:
-      - "Create build_settings_set_network() helper in http/settings.rs and register POST /api/v1/settings_set_network route"
-      - "Create Tauri command settings_set_network in tauri_cmds/ and register in specta_export.rs"
-
-  - truth: "trackly-infra migration test suite fully green after V018/V019 addition"
-    status: failed
-    reason: "crates/trackly-infra/tests/migration_idempotency.rs still asserts applied_count==17 and schema_version==17 at lines 22-23. The cross-crate fix commit 04579bd only updated crates/trackly-infra/src/test_support/test_db.rs (user_version assertion bumped to 19) but missed the separate integration test file. cargo test -p trackly-infra fails with 'left: 19 right: 17'. This is a Phase 5 regression since V018 and V019 were added by this phase."
-    artifacts:
-      - path: "crates/trackly-infra/tests/migration_idempotency.rs"
-        issue: "Lines 17, 22-23, 28, 43 assert applied_count==17 and schema_version==17; actual values are 19 since V018+V019"
-    missing:
-      - "Update migration_idempotency.rs assertions to expect 19 migrations / schema_version=19"
-
+re_verification:
+  previous_status: gaps_found
+  previous_score: 12/14
+  verified_at: 2026-06-14T00:00:00Z
+  gaps_closed:
+    - "settings_set_network Tauri command registered in specta_export (plan 03 must_have listed it as command #14 of 14)"
+    - "trackly-infra migration test suite fully green after V018/V019 addition"
+  gaps_remaining: []
+  regressions: []
 human_verification:
   - test: "BOOTSTRAP flow on fresh DB"
     expected: "App shows 'Добро пожаловать в Trackly' wizard (FirstRunWizard) on first launch with empty DB. Create admin (login: admin, full_name: Администратор, password: password123). App auto-logs in and navigates to main screen."
@@ -44,6 +29,10 @@ human_verification:
   - test: "Network Settings — server toggle with HTTPS URL and fingerprint"
     expected: "Settings page shows Network tab. Clicking 'Запустить сервер' starts HTTPS server, displays URL https://127.0.0.1:8443 and certificate fingerprint in XX:XX:XX... colon-hex format."
     why_human: "Requires visual confirmation that the fingerprint block appears and the URL is correct"
+
+  - test: "Network Settings — Save network settings (settings_set_network)"
+    expected: "On Network Settings tab, change port to e.g. 8444. Click 'Сохранить настройки'. No error thrown. Reopen settings — server_port persisted in app_settings, value shows 8444."
+    why_human: "Requires live Tauri/browser invocation of the newly implemented settings_set_network command and DB inspection"
 
   - test: "Browser HTTPS access to LAN server"
     expected: "Navigate to https://127.0.0.1:8443 in Chrome/Firefox. Accept self-signed cert warning. Login page loads. Admin login succeeds. App loads in browser with correct sidebar."
@@ -65,13 +54,22 @@ human_verification:
 # Phase 5: Авторизация, локальные пользователи и серверный режим — Verification Report
 
 **Phase Goal:** Включить локальную аутентификацию (argon2id), три роли (Admin/Manager/Employee), HTTPS-сервер axum для доступа из браузера в LAN, единый authorize() для обоих транспортов (Tauri invoke + HTTP); десктоп остаётся unlocked-by-default с опциональным локом (D-Desktop-02).
-**Verified:** 2026-06-13T16:45:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-06-13T16:45:00Z (initial); **Re-verified:** 2026-06-14
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (Plan 05-06, commit 2a88cd9)
+
+## Re-verification Summary (2026-06-14)
+
+Plan 05-06 closed both BLOCKER gaps from the initial 12/14 report:
+
+- **Gap 1 closed:** `settings_set_network` fully implemented on both transports. `build_settings_set_network()` added to `http/settings.rs` with `authorize(&caller, &Action::ManageSettings)` gate and port validation; `build_settings_set_network_tauri()` added to `tauri_cmds/auth.rs` using `resolve_tauri_identity()`; command registered as the 14th Phase 5 command in `specta_export.rs` line 99; `POST /api/v1/settings_set_network` route live in `router()` line 329; `ui/src/bindings.ts` line 552 exports the TypeScript wrapper; `NetworkSettings.svelte` `saveSettings()` wires to it at line 64.
+- **Gap 2 closed:** `migration_idempotency.rs` assertions all read `== 19` (lines 22, 23, 28, 40, 43). `cargo test -p trackly-infra --test migration_idempotency` exits 0 (1 test, 0 failed) — confirmed independently by verifier.
+
+Score advances to **14/14**. Status remains `human_needed` because the 8 (now 9, with the new settings_set_network UAT item) manual desktop UAT items are still outstanding.
 
 ## Context
 
-Phase 5 spans 5 plans (01-05), a post-execution code review (05-REVIEW.md finding 5 critical + 7 warning issues), and a fix pass (05-REVIEW-FIX.md) that closed 10 findings (CR-01..CR-05, WR-01..WR-03, WR-05, WR-07) and deferred 2 (WR-04 performance, WR-06 bootstrap redesign). A cross-crate regression in trackly-infra was partially fixed. The 8-step manual desktop UAT in Plan 05-05 Task 3 was auto-approved under auto-mode and has NOT been manually executed — these appear as human_verification items below.
+Phase 5 spans 5 plans (01-05), a post-execution code review (05-REVIEW.md finding 5 critical + 7 warning issues), a fix pass (05-REVIEW-FIX.md) that closed 10 findings (CR-01..CR-05, WR-01..WR-03, WR-05, WR-07), and a gap-closure plan (05-06) that closed the 2 remaining BLOCKER gaps. The 8-step manual desktop UAT in Plan 05-05 Task 3 was auto-approved under auto-mode and has NOT been manually executed — these appear as human_verification items below, plus one new item for settings_set_network end-to-end.
 
 ## Goal Achievement
 
@@ -91,14 +89,14 @@ Phase 5 spans 5 plans (01-05), a post-execution code review (05-REVIEW.md findin
 | 10 | POST /api/v1/devices_create/acts_create/cartridges_create with employee session → 403; manager session → 200; no session → 401 (role×endpoint matrix) | VERIFIED | role_endpoint_matrix (1 test with 9 assertions GREEN); authorize() present in devices.rs, acts.rs, cartridges.rs |
 | 11 | Tauri devices/acts/cartridges mutation commands use resolve_tauri_identity() (D-Desktop-01/02); no hardcoded trusted_admin in mutation paths | VERIFIED | devices.rs, acts.rs, cartridges.rs tauri_cmds each import and call resolve_tauri_identity; desktop_set_lock (CR-01 fix) also uses it |
 | 12 | Auth store (authStore), App.svelte bootstrap guard (D-Desktop-01/02 aware), LoginPage, FirstRunWizard, sidebar role filtering, UsersPage CRUD, NetworkSettings with desktop lock toggle — all exist with 0 svelte-check errors | VERIFIED | All UI files present; pnpm svelte-check: 0 errors, 30 warnings (pre-existing in Phase 4 code) |
-| 13 | settings_set_network Tauri command registered in specta_export (plan 03 must_have listed it as command #14 of 14) | FAILED | Command absent from specta_export.rs; HTTP route absent from settings router; UI calls it but will fail at runtime |
-| 14 | trackly-infra migration test suite fully green after V018/V019 addition | FAILED | migration_idempotency.rs still asserts applied_count==17; cargo test -p trackly-infra fails with left:19 right:17 |
+| 13 | settings_set_network on both transports: HTTP route POST /api/v1/settings_set_network registered with authorize(ManageSettings); Tauri command registered as 14th Phase 5 command in specta_export; UI payload matches; server_host/server_port/server_cert_path persisted in app_settings | VERIFIED (re-verified 2026-06-14) | `http/settings.rs` line 329: route registered; line 109: `authorize(&caller, &Action::ManageSettings)`; `tauri_cmds/auth.rs` lines 279-285: `#[tauri::command] #[specta::specta] pub async fn settings_set_network`; `specta_export.rs` line 99: registered as 14th Phase 5 command; `ui/src/bindings.ts` line 552: TypeScript wrapper exported; `NetworkSettings.svelte` line 64: `apiCall('settings_set_network', { patch: { host, port, cert_path } })` |
+| 14 | trackly-infra migration test suite fully green after V018/V019 addition | VERIFIED (re-verified 2026-06-14) | `migration_idempotency.rs` lines 22, 23, 28, 40, 43 all assert == 19 (first-run applied_count=19, schema_version=19; no-op runs applied_count=0); `cargo test -p trackly-infra --test migration_idempotency` → 1 passed, 0 failed (confirmed by independent verifier run) |
 
-**Score:** 12/14 truths verified
+**Score:** 14/14 truths verified
 
 ### Deferred Items
 
-None. Both failed truths are actionable Phase 5 gaps, not items scheduled for a later phase.
+None.
 
 ### Required Artifacts
 
@@ -115,18 +113,18 @@ None. Both failed truths are actionable Phase 5 gaps, not items scheduled for a 
 | `crates/trackly-app/src/context.rs` | AppCtx with auth + server_ctl fields | VERIFIED | Lines 80, 84 confirmed |
 | `crates/trackly-app/src/http/auth.rs` | public_router(), protected_router(), session fixation fix | VERIFIED | Present; flush() before insert() at lines 105, 127 |
 | `crates/trackly-app/src/http/users.rs` | users CRUD router; CR-02 fix (session-derived user_id); CR-03 fix (authorize on list) | VERIFIED | Present; ChangePasswordPayload has no user_id; build_users_list calls authorize(ManageUsers) |
-| `crates/trackly-app/src/http/settings.rs` | server_toggle, server_status, settings_get_network, desktop_set_lock | VERIFIED (partial) | Present; fingerprint: None in get_network response (not persisted in server_ctl) is a minor stub; settings_set_network MISSING |
+| `crates/trackly-app/src/http/settings.rs` | server_toggle, server_status, settings_get_network, desktop_set_lock, settings_set_network | VERIFIED | All five routes present; NetworkPatch + SetNetworkPayload + build_settings_set_network + handler_set_network added by Plan 05-06; TODO comment removed; fingerprint: None in get_network response is a minor known stub (fingerprint IS returned from server_toggle response) |
 | `crates/trackly-app/src/http/mod.rs` | build_router() with SessionManagerLayer, security headers, rate limit | VERIFIED | Present; WR-07: script-src 'self' without unsafe-inline |
-| `crates/trackly-app/src/tauri_cmds/auth.rs` | auth_login, auth_logout, auth_status, auth_me, server_toggle, server_status, desktop_set_lock | VERIFIED | Present; CR-01 fix: desktop_set_lock uses resolve_tauri_identity |
+| `crates/trackly-app/src/tauri_cmds/auth.rs` | auth_login, auth_logout, auth_status, auth_me, server_toggle, server_status, desktop_set_lock, settings_set_network | VERIFIED | Present; CR-01 fix: desktop_set_lock uses resolve_tauri_identity; settings_set_network added by Plan 05-06 with correct attribute order |
 | `crates/trackly-app/src/tauri_cmds/users.rs` | users_list/create/update/delete/change_password via resolve_tauri_identity | VERIFIED | Present; CR-02 fix in Tauri path also |
-| `crates/trackly-app/src/specta_export.rs` | 14 Phase 5 commands registered | FAILED | Only 13 commands registered; settings_set_network absent |
+| `crates/trackly-app/src/specta_export.rs` | 14 Phase 5 commands registered | VERIFIED | Line 99: `crate::tauri_cmds::auth::settings_set_network` registered as 14th Phase 5 command |
 | `ui/src/lib/stores/auth.svelte.ts` | authStore Svelte 5 $state singleton | VERIFIED | Present |
 | `ui/src/features/auth/LoginPage.svelte` | Login form with auth_login call | VERIFIED | Present |
 | `ui/src/features/auth/FirstRunWizard.svelte` | First admin creation with admin role | VERIFIED | Present |
 | `ui/src/features/users/UsersPage.svelte` | Users CRUD | VERIFIED | Present |
-| `ui/src/features/settings/NetworkSettings.svelte` | Server toggle + desktop lock toggle (D-Desktop-02) | VERIFIED (partial) | Present; saveSettings() calls missing settings_set_network command |
+| `ui/src/features/settings/NetworkSettings.svelte` | Server toggle + desktop lock toggle (D-Desktop-02) + save network settings | VERIFIED | Present; saveSettings() at line 64 calls `apiCall('settings_set_network', { patch: { host, port, cert_path } })` — now wired |
 | `ui/src/App.svelte` | Bootstrap guard: FirstRunWizard or LoginPage or Layout | VERIFIED | Present; desktop_lock_enabled-aware logic at lines 33-44 |
-| `crates/trackly-infra/tests/migration_idempotency.rs` | Updated assertions for V018+V019 | FAILED | Still asserts 17; fails cargo test -p trackly-infra |
+| `crates/trackly-infra/tests/migration_idempotency.rs` | Updated assertions for V018+V019 | VERIFIED | All assertions use 19; no stale == 17 present; test green |
 
 ### Key Link Verification
 
@@ -140,7 +138,10 @@ None. Both failed truths are actionable Phase 5 gaps, not items scheduled for a 
 | `main.rs` | `server/mod.rs::start_server_on_addr` | if config.server.enabled | VERIFIED | Lines 17, 160 in main.rs |
 | `App.svelte` | `authStore` | auth_status → bootstrap guard → isTauri && desktop_lock_enabled | VERIFIED | Lines 33-44 in App.svelte |
 | `client.ts` | `authStore.user = null` | 401 response → clear + redirect #/login | VERIFIED | Lines 34-36 in client.ts |
-| `NetworkSettings.svelte` | `settings_set_network` Tauri command | saveSettings() calls apiCall | NOT_WIRED | Command does not exist in specta_export or HTTP router |
+| `NetworkSettings.svelte saveSettings()` | `tauri_cmds/auth::settings_set_network` (Tauri) / `POST /api/v1/settings_set_network` (HTTP) | `apiCall('settings_set_network', { patch: { host, port, cert_path } })` | VERIFIED (re-verified 2026-06-14) | NetworkSettings.svelte line 64; command registered in specta_export.rs line 99; HTTP route in settings.rs router() line 329 |
+| `http/settings.rs build_settings_set_network` | `trackly_core::auth::authorize` | `authorize(&caller, &Action::ManageSettings)` | VERIFIED (re-verified 2026-06-14) | settings.rs line 109 |
+| `tauri_cmds/auth.rs build_settings_set_network_tauri` | `resolve_tauri_identity` | `crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?` | VERIFIED (re-verified 2026-06-14) | tauri_cmds/auth.rs line 242 |
+| `http/settings.rs build_settings_set_network` | app_settings table | upsert server_host / server_port / server_cert_path | VERIFIED (re-verified 2026-06-14) | settings.rs lines 130-140: three separate upserts |
 
 ### Data-Flow Trace (Level 4)
 
@@ -149,7 +150,7 @@ None. Both failed truths are actionable Phase 5 gaps, not items scheduled for a 
 | `http/auth.rs:login handler` | UserDto | AuthService::login → argon2 verify → DB query | Yes — real DB row | FLOWING |
 | `server/rusqlite_session_store.rs:load` | Record | SELECT FROM sessions WHERE expiry_date > NOW | Yes — real DB row | FLOWING |
 | `App.svelte:onMount` | status (AuthStatusDto) | auth_status Tauri command → AuthService | Yes — DB-backed | FLOWING |
-| `NetworkSettings.svelte:saveSettings` | void | settings_set_network Tauri command | No — command missing | DISCONNECTED |
+| `NetworkSettings.svelte:saveSettings` | void (upsert) | `settings_set_network` → three upserts in app_settings | Yes — writes server_host/server_port/server_cert_path | FLOWING (re-verified 2026-06-14) |
 
 ### Behavioral Spot-Checks
 
@@ -157,11 +158,11 @@ None. Both failed truths are actionable Phase 5 gaps, not items scheduled for a 
 |----------|---------|--------|--------|
 | role_endpoint_matrix (9-case CI test) | `cargo test -p trackly-app --test role_endpoint_matrix` | 1 test, 9 assertions passed | PASS |
 | Auth unit tests | `cargo test -p trackly-app --test auth_smoke` | 6 tests passed | PASS |
-| Users CRUD tests | `cargo test -p trackly-app --test users_crud` | 4 tests passed | PASS |
+| Users CRUD tests | `cargo test -p trackly-app --test users_crud` | 6 tests passed (updated count) | PASS |
 | Security headers + rate limit | `cargo test -p trackly-app --test security_headers` | 2 tests passed | PASS |
 | Session persistence across restart | `cargo test -p trackly-app --test session_survives_restart` | 4 tests passed | PASS |
 | TLS fingerprint + server lifecycle | `cargo test -p trackly-app --test tls_server_smoke --test server_hot_toggle --test graceful_shutdown_drain` | 7 tests passed | PASS |
-| trackly-infra migration idempotency | `cargo test -p trackly-infra --test migration_idempotency` | FAILED: left:19 right:17 | FAIL |
+| trackly-infra migration idempotency | `cargo test -p trackly-infra --test migration_idempotency` | 1 passed, 0 failed (re-verified 2026-06-14) | PASS |
 | svelte-check | `pnpm svelte-check` (in ui/) | 0 errors, 30 warnings (pre-existing in Phase 4 files) | PASS |
 
 ### Probe Execution
@@ -184,21 +185,21 @@ No probe scripts defined for Phase 5.
 | SRV-03 | 05-02, 05-04 | Tauri и axum используют ОДИН набор сервисов через AppCtx | SATISFIED | AppCtx.auth shared; build_* helpers called by both transports |
 | SRV-04 | 05-02, 05-03 | HTTPS обязателен в server mode | SATISFIED | TLS via tokio-rustls; no plain HTTP listener in start_server |
 | SRV-05 | 05-02 | Корректное завершение axum-сервера | SATISFIED | CancellationToken child_token; biased select!; graceful_shutdown_drain GREEN |
-| SET-08 | 05-03, 05-05 | Настройки сетевого доступа: порт, bind-адрес, toggle | PARTIAL | Toggle (server_toggle) works; GET network settings works. PORT/BIND-ADDRESS SAVE broken: settings_set_network command missing |
+| SET-08 | 05-03, 05-05, 05-06 | Настройки сетевого доступа: порт, bind-адрес, toggle | SATISFIED (re-verified 2026-06-14) | Toggle (server_toggle) works; GET network settings works; SET network settings works: settings_set_network persists server_host/server_port/server_cert_path to app_settings |
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `crates/trackly-app/src/http/settings.rs` | 5 | `// TODO: Phase 5+` (settings_set_network) | BLOCKER | Route listed as TODO in doc comment AND absent from router — UI calls missing endpoint |
-| `crates/trackly-app/src/http/settings.rs` | 74 | `fingerprint: None // TODO: store fingerprint in server_ctl` | WARNING | fingerprint: None returned from settings_get_network (but IS returned correctly from server_toggle response) |
-| `crates/trackly-infra/tests/migration_idempotency.rs` | 17, 22-23, 28, 43 | Hardcoded assertion `== 17` | BLOCKER | cargo test -p trackly-infra FAILS; Phase 5 migrations (V018, V019) were added by this phase |
+| `crates/trackly-app/src/http/settings.rs` | 93 | `fingerprint: None // TODO: store fingerprint in server_ctl` | WARNING | fingerprint: None returned from settings_get_network (but IS returned correctly from server_toggle response). Cosmetic — not a blocker. |
+
+Note: The original BLOCKER anti-patterns (TODO comment on settings_set_network, stale migration_idempotency assertions) were both resolved by Plan 05-06. The remaining WARNING (fingerprint: None in get_network) predates this phase.
 
 ### Human Verification Required
 
-The following 8 items require manual desktop UAT (pnpm tauri dev). They were auto-approved under auto-mode during Plan 05-05 Task 3 (checkpoint:human-verify) and have NOT been executed by a human.
+The following items require manual desktop UAT (pnpm tauri dev). 8 items from Plan 05-05 checkpoint:human-verify were auto-approved under auto-mode and have NOT been executed by a human. One additional item (Network Settings save) is new from Plan 05-06.
 
-**Note: Item #8 (Desktop Lock) is the most security-critical manual test.** D-Desktop-02 (desktop lock toggle) is a locked architectural decision whose end-to-end behavior — DB-flag read at boot drives login screen appearance — can only be verified by restarting the application.
+**Note: Item #9 (Desktop Lock) is the most security-critical manual test.** D-Desktop-02 (desktop lock toggle) is a locked architectural decision whose end-to-end behavior — DB-flag read at boot drives login screen appearance — can only be verified by restarting the application.
 
 ### 1. Bootstrap Flow
 
@@ -224,25 +225,31 @@ The following 8 items require manual desktop UAT (pnpm tauri dev). They were aut
 **Expected:** After a few seconds, UI displays https://127.0.0.1:8443 URL and certificate fingerprint in XX:XX:XX:... colon-hex format. D-Server-04 instruction text visible.
 **Why human:** Requires live server start and visual confirmation of fingerprint display.
 
-### 5. Browser HTTPS Access
+### 5. Network Settings — Save Network Settings (Plan 05-06)
+
+**Test:** On Network Settings tab, change port to e.g. 8444. Click 'Сохранить настройки'.
+**Expected:** No error thrown. Inspect DB (`SELECT value FROM app_settings WHERE key='server_port'`) — value shows '8444'. Optional: verify NetworkSettings reloads the saved value on next open.
+**Why human:** Requires live Tauri invocation of the new settings_set_network command and DB inspection to confirm persistence.
+
+### 6. Browser HTTPS Access
 
 **Test:** While server is running, open Chrome/Firefox and navigate to https://127.0.0.1:8443. Accept self-signed certificate warning.
 **Expected:** Login page loads in browser. Admin login with admin/password123 succeeds. App renders in browser with correct sidebar.
 **Why human:** Requires real browser interaction and self-signed cert acceptance.
 
-### 6. Employee Role in Browser
+### 7. Employee Role in Browser
 
 **Test:** From admin desktop, create an employee user. In browser, logout and login as employee.
 **Expected:** Browser sidebar shows restricted sections. Employee cannot see 'Пользователи' or 'Настройки'.
 **Why human:** Requires browser session with employee role and visual sidebar check.
 
-### 7. Stop Server
+### 8. Stop Server
 
 **Test:** In desktop Settings, click 'Остановить сервер'. Then try to access https://127.0.0.1:8443 in browser.
 **Expected:** Browser shows connection refused within a few seconds.
 **Why human:** Requires live server lifecycle observation.
 
-### 8. Desktop Lock Toggle (D-Desktop-02) — CRITICAL
+### 9. Desktop Lock Toggle (D-Desktop-02) — CRITICAL
 
 **Test:** In Settings → Сеть, locate the 'Требовать вход в десктопе' toggle. Enable it. Close and reopen the desktop app (or run `pnpm tauri dev` again).
 **Expected:** App shows login screen on startup (not direct main screen). Login with admin credentials. Return to Settings → disable lock. Restart again — app goes directly to main screen without login prompt.
@@ -250,15 +257,15 @@ The following 8 items require manual desktop UAT (pnpm tauri dev). They were aut
 
 ## Gaps Summary
 
-Two gaps block the phase from passing:
+No automated gaps remain. Both BLOCKER gaps from the initial verification are confirmed closed:
 
-**Gap 1 (BLOCKER): `settings_set_network` missing.** The plan's must_have (Plan 03) explicitly listed this as the 14th Tauri command and required it in specta_export. The HTTP route was also planned (settings router). Neither exists. The UI's 'Сохранить настройки' button in NetworkSettings.svelte calls `apiCall('settings_set_network', {...})` which will throw at runtime. ROADMAP success criterion #2 covers port/bind-address configuration — the server toggle itself works (server_toggle command exists) but users cannot save changed port or bind-address. Both the HTTP route and Tauri command need to be implemented.
+- **Gap 1 CLOSED (2026-06-14):** `settings_set_network` fully implemented on HTTP (`POST /api/v1/settings_set_network` in router(), `build_settings_set_network()` with `authorize(ManageSettings)`, three upserts to app_settings) and Tauri (`settings_set_network` command in tauri_cmds/auth.rs with `resolve_tauri_identity()` + `authorize(ManageSettings)`, registered as 14th Phase 5 command in specta_export.rs). TypeScript binding generated in ui/src/bindings.ts line 552. NetworkSettings.svelte saveSettings() is now fully wired.
+- **Gap 2 CLOSED (confirmed 2026-06-14, fixed by prior commit 7c26288):** `migration_idempotency.rs` all assertions use 19. `cargo test -p trackly-infra --test migration_idempotency` exits 0.
 
-**Gap 2 (BLOCKER): `trackly-infra/tests/migration_idempotency.rs` stale assertions.** The Phase 5 partial fix (commit 04579bd) updated `test_support/test_db.rs` but missed `tests/migration_idempotency.rs` which asserts 17 migrations and schema_version==17. Since Phase 5 added V018 and V019, this test now fails. A one-line fix is required per assertion line (17, 22-23, 28, 43 → update to 19).
-
-**Human UAT:** 8 desktop test steps from Plan 05-05 checkpoint:human-verify were auto-approved and are outstanding. Item #8 (Desktop Lock) is security-critical. Items #1-7 cover core UI flows.
+**Automated score: 14/14.** Outstanding: 9 manual desktop UAT items (item #9, Desktop Lock, is the most security-critical).
 
 ---
 
-_Verified: 2026-06-13T16:45:00Z_
+_Initial verified: 2026-06-13T16:45:00Z_
+_Re-verified: 2026-06-14_
 _Verifier: Claude (gsd-verifier)_
