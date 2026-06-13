@@ -51,7 +51,7 @@
     try {
       // Create first admin user
       await apiCall<UserDto>('users_create', {
-        user_new: {
+        userNew: {
           login: login.trim(),
           full_name: fullName.trim(),
           password,

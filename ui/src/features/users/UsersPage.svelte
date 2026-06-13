@@ -75,7 +75,7 @@
     } else {
       // Create mode
       await apiCall<UserDto>('users_create', {
-        user_new: {
+        userNew: {
           login: data.login.trim(),
           full_name: data.full_name.trim(),
           password: data.password,

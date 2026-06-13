@@ -53,7 +53,7 @@
 
 {#if appLoading}
   <div class="app-loading">Загрузка...</div>
-{:else if bootstrapNeeded}
+{:else if bootstrapNeeded && !authStore.user}
   <FirstRunWizard />
 {:else if !authStore.user}
   <LoginPage />
