@@ -190,11 +190,11 @@ Plans:
   4. В веб-режиме сотрудник может выйти и войти под другим пользователем; сессия живёт в cookie (`tower-sessions` с rusqlite-store), переживает рестарт сервера, отзывается на logout.
   5. Корректное завершение приложения останавливает axum-сервер (drain in-flight requests, taskTracker.close().await), не оставляет «висящих» портов.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — trackly-core::auth domain types (Identity/Role/Action/authorize()) + auth DTOs + V018 migration + 8 RED test scaffolds
+- [x] 05-01-PLAN.md — trackly-core::auth domain types (Identity/Role/Action/authorize()) + auth DTOs + V018 migration + 8 RED test scaffolds
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -272,7 +272,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Устройства и базовый UI | 5/5 | Complete    | 2026-05-28 |
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
-| 5. Авторизация, локальные пользователи и серверный режим | 0/5 | Not started | - |
+| 5. Авторизация, локальные пользователи и серверный режим | 1/5 | In Progress|  |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 0/TBD | Not started | - |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
