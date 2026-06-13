@@ -14,11 +14,13 @@ use crate::tauri_cmds::fs_helpers::{build_read_file_bytes, build_write_file_byte
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadFileBytesPayload {
     pub path: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteFileBytesPayload {
     pub path: String,
     pub content: String,

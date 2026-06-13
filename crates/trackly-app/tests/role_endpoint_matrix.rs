@@ -212,8 +212,10 @@ async fn role_endpoint_matrix_test() {
             }
         });
 
+        // S-5: HTTP transport receives camelCase top-level arg keys (frontend sends
+        // them verbatim via fetch). `user_new` wrapper field -> `userNew` on the wire.
         let user_create_payload = json!({
-            "user_new": {
+            "userNew": {
                 "login": "newuser_test",
                 "full_name": "New Test User",
                 "password": "password123",

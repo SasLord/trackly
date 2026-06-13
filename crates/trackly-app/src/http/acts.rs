@@ -25,12 +25,14 @@ use crate::tauri_cmds::acts::{
 };
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPayload {
     pub filter: ActFilter,
     pub pagination: Pagination,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchPayload {
     pub query: String,
     pub filter: ActFilter,
@@ -38,39 +40,46 @@ pub struct SearchPayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetPayload {
     pub id: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatePayload {
     pub payload: ActCreateDto,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReturnPayload {
     pub act_id: i64,
     pub payload: ActReturnDto,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderPdfPayload {
     pub act_id: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuggestPersonPayload {
     pub field: SuggestPersonField,
     pub prefix: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderAcceptancePdfPayload {
     pub device_id: i64,
     pub giver_name: String,

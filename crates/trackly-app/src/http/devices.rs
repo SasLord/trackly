@@ -34,22 +34,26 @@ use crate::tauri_cmds::devices::{
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPayload {
     pub filter: DeviceFilter,
     pub pagination: Pagination,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetPayload {
     pub id: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatePayload {
     pub device: DeviceNew,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePayload {
     pub id: i64,
     pub version: i64,
@@ -57,18 +61,21 @@ pub struct UpdatePayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchPayload {
     pub query: String,
     pub pagination: Pagination,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AutocompletePayload {
     pub field: String,
     pub prefix: String,
@@ -78,17 +85,20 @@ pub struct AutocompletePayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListGroupedPayload {
     pub filter: DeviceFilter,
     pub pagination: Pagination,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListByIdsPayload {
     pub ids: Vec<i64>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BulkCreatePayload {
     pub device: DeviceNew,
     pub count: u32,
@@ -97,22 +107,26 @@ pub struct BulkCreatePayload {
 // CSV import / export payloads (Plan 05)
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportCsvPreviewPayload {
     pub bytes: Vec<u8>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportCsvCommitPayload {
     pub token: String,
     pub mapping: HashMap<String, String>,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportCsvPayload {
     pub filter: DeviceFilter,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LocationsAutocompletePayload {
     pub prefix: String,
 }

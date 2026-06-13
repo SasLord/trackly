@@ -9,11 +9,13 @@ use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::templates::{build_templates_get_active, build_templates_render_preview};
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetActivePayload {
     pub kind: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderPreviewPayload {
     pub kind: String,
     pub sample_act_id: i64,

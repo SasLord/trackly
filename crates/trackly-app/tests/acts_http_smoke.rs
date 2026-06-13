@@ -210,7 +210,8 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
 
         let app = build_router(&ctx, session_store);
         let body_json = serde_json::json!({
-            "act_id": handover.id,
+            // S-5: camelCase top-level arg key over HTTP (act_id -> actId).
+            "actId": handover.id,
             "payload": return_payload,
         });
         let res = app

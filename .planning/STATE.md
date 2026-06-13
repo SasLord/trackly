@@ -176,6 +176,12 @@ Items acknowledged and carried forward from previous milestone close:
 |----------|------|--------|-------------|
 | *(none)* | | | |
 
+## Quick Tasks Completed
+
+| Date | Slug | Summary | Status |
+|------|------|---------|--------|
+| 2026-06-14 | http-camelcase-payloads | S-5 parity: `#[serde(rename_all = "camelCase")]` on all axum request payload structs in http/ so browser/HTTP transport accepts the camelCase keys the frontend sends (e.g. `userNew`, `actId`). Fixes latent 422 on multi-word args in server mode. +regression test. | complete ✓ |
+
 ## Session Continuity
 
 Last session: 2026-06-13T20:28:30.590Z

@@ -32,11 +32,13 @@ use crate::server::{start_server, ServerHandle};
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerTogglePayload {
     pub enable: bool,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopSetLockPayload {
     pub enabled: bool,
 }
@@ -54,6 +56,7 @@ pub struct NetworkPatch {
 
 /// Тело запроса POST /api/v1/settings_set_network.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetNetworkPayload {
     pub patch: NetworkPatch,
 }

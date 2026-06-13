@@ -24,12 +24,14 @@ use crate::http::auth::session_identity;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPayload {
     pub filter: UserFilter,
     pub pagination: Pagination,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatePayload {
     // Renamed from `new` to `user_new` to match Tauri command parameter name
     // (TypeScript reserves `new` as a keyword — same payload shape on both transports).
@@ -37,6 +39,7 @@ pub struct CreatePayload {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePayload {
     pub id: i64,
     pub version: i64,
@@ -44,12 +47,14 @@ pub struct UpdatePayload {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeletePayload {
     pub id: i64,
     pub version: i64,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChangePasswordPayload {
     // CR-02: `user_id` НЕ принимается от клиента — он берётся из сессии,
     // иначе это IDOR (смена пароля произвольного пользователя).
@@ -57,6 +62,7 @@ pub struct ChangePasswordPayload {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResetPasswordPayload {
     pub user_id: i64,
     pub new_password: String,

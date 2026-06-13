@@ -32,23 +32,27 @@ use crate::tauri_cmds::cartridges::{
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPayload {
     pub filter: CartridgeFilter,
     pub pagination: Pagination,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetPayload {
     /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
     pub id: i32,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatePayload {
     pub payload: CartridgeCreateDto,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePayload {
     /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
     pub id: i32,
@@ -58,6 +62,7 @@ pub struct UpdatePayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeletePayload {
     /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
     pub id: i32,
@@ -65,38 +70,45 @@ pub struct DeletePayload {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransitionPayload {
     pub payload: CartridgeTransitionPayload,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchPayload {
     pub query: String,
     pub filter: CartridgeFilter,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelCreatePayload {
     pub payload: CartridgeModelCreateDto,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelUpdatePayload {
     pub payload: CartridgeModelPatchDto,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuggestBrandPayload {
     pub prefix: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuggestModelPayload {
     pub brand: String,
     pub prefix: String,
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuggestCompatPayload {
     pub field: String,
     pub prefix: String,

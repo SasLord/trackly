@@ -24,6 +24,7 @@ use crate::error_axum::AppErrorResponse;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoginPayload {
     pub login: String,
     pub password: String,
