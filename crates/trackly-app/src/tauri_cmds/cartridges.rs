@@ -6,6 +6,10 @@
 //!
 //! The `#[specta::specta]` attribute MUST appear AFTER `#[tauri::command]`
 //! — required by tauri-specta v2 rc.21.
+//!
+//! Phase 5 Plan 04: мутации (create, update, delete, transition, model_create,
+//! model_update, model_delete) требуют `caller: &Identity` с правом `MutateCartridges`.
+//! Tauri wrappers resolve identity через `resolve_tauri_identity` (D-Desktop-01/02).
 
 use crate::context::AppCtx;
 use crate::dto::cartridge::{
@@ -13,6 +17,8 @@ use crate::dto::cartridge::{
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
     CartridgeTransitionPayload, LowStockItemDto, Pagination,
 };
+use crate::tauri_cmds::users::resolve_tauri_identity;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -31,35 +37,47 @@ pub async fn build_cartridges_get(ctx: &AppCtx, id: i64) -> Result<CartridgeDto,
     ctx.cartridges.get(id).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges` (Admin | Manager).
 pub async fn build_cartridges_create(
     ctx: &AppCtx,
+    caller: &Identity,
     payload: CartridgeCreateDto,
 ) -> Result<CartridgeDto, AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.create(payload).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridges_update(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
     version: i64,
     location: Option<String>,
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.update(id, version, location, notes).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridges_delete(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
     version: i64,
 ) -> Result<(), AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.delete(id, version).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridges_transition(
     ctx: &AppCtx,
+    caller: &Identity,
     payload: CartridgeTransitionPayload,
 ) -> Result<CartridgeDto, AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.transition(payload).await
 }
 
@@ -103,25 +121,34 @@ pub async fn build_cartridge_models_get(
     ctx.cartridges.model_get(id).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridge_models_create(
     ctx: &AppCtx,
+    caller: &Identity,
     payload: CartridgeModelCreateDto,
 ) -> Result<CartridgeModelDto, AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.model_create(payload).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridge_models_update(
     ctx: &AppCtx,
+    caller: &Identity,
     payload: CartridgeModelPatchDto,
 ) -> Result<CartridgeModelDto, AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.model_update(payload).await
 }
 
+/// Мутация: требует `caller` с правом `MutateCartridges`.
 pub async fn build_cartridge_models_delete(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
     version: i64,
 ) -> Result<(), AppError> {
+    authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.model_delete(id, version).await
 }
 
@@ -184,7 +211,8 @@ pub async fn cartridges_create(
     state: tauri::State<'_, AppCtx>,
     payload: CartridgeCreateDto,
 ) -> Result<CartridgeDto, AppError> {
-    build_cartridges_create(state.inner(), payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_create(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -196,7 +224,9 @@ pub async fn cartridges_update(
     location: Option<String>,
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
-    build_cartridges_update(state.inner(), id as i64, version as i64, location, notes).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_update(state.inner(), &caller, id as i64, version as i64, location, notes)
+        .await
 }
 
 #[tauri::command]
@@ -206,7 +236,8 @@ pub async fn cartridges_delete(
     id: i32,
     version: i32,
 ) -> Result<(), AppError> {
-    build_cartridges_delete(state.inner(), id as i64, version as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_delete(state.inner(), &caller, id as i64, version as i64).await
 }
 
 #[tauri::command]
@@ -215,7 +246,8 @@ pub async fn cartridges_transition(
     state: tauri::State<'_, AppCtx>,
     payload: CartridgeTransitionPayload,
 ) -> Result<CartridgeDto, AppError> {
-    build_cartridges_transition(state.inner(), payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_transition(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -276,7 +308,8 @@ pub async fn cartridge_models_create(
     state: tauri::State<'_, AppCtx>,
     payload: CartridgeModelCreateDto,
 ) -> Result<CartridgeModelDto, AppError> {
-    build_cartridge_models_create(state.inner(), payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_create(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -285,7 +318,8 @@ pub async fn cartridge_models_update(
     state: tauri::State<'_, AppCtx>,
     payload: CartridgeModelPatchDto,
 ) -> Result<CartridgeModelDto, AppError> {
-    build_cartridge_models_update(state.inner(), payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_update(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -295,7 +329,8 @@ pub async fn cartridge_models_delete(
     id: i32,
     version: i32,
 ) -> Result<(), AppError> {
-    build_cartridge_models_delete(state.inner(), id as i64, version as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_delete(state.inner(), &caller, id as i64, version as i64).await
 }
 
 #[tauri::command]

@@ -6,13 +6,19 @@
 //!
 //! The `#[specta::specta]` attribute MUST appear AFTER `#[tauri::command]`
 //! — required by tauri-specta v2 rc.21.
+//!
+//! Phase 5 Plan 04: мутации (create, return, delete, render_pdf, render_acceptance_pdf)
+//! требуют `caller: &Identity` с правом `MutateActs`. Tauri wrappers resolve identity
+//! через `resolve_tauri_identity` (D-Desktop-01/02).
 
 use crate::context::AppCtx;
 use crate::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
+use crate::tauri_cmds::users::resolve_tauri_identity;
 use tauri_plugin_shell::ShellExt;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -40,19 +46,35 @@ pub async fn build_acts_get(ctx: &AppCtx, id: i64) -> Result<ActDto, AppError> {
     ctx.acts.get(id).await
 }
 
-pub async fn build_acts_create(ctx: &AppCtx, payload: ActCreateDto) -> Result<ActDto, AppError> {
+/// Мутация: требует `caller` с правом `MutateActs` (Admin | Manager).
+pub async fn build_acts_create(
+    ctx: &AppCtx,
+    caller: &Identity,
+    payload: ActCreateDto,
+) -> Result<ActDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
     ctx.acts.create(payload).await
 }
 
+/// Мутация: требует `caller` с правом `MutateActs`.
 pub async fn build_acts_return(
     ctx: &AppCtx,
+    caller: &Identity,
     act_id: i64,
     payload: ActReturnDto,
 ) -> Result<ActDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
     ctx.acts.do_return(act_id, payload).await
 }
 
-pub async fn build_acts_delete(ctx: &AppCtx, id: i64, version: i64) -> Result<(), AppError> {
+/// Мутация: требует `caller` с правом `MutateActs`.
+pub async fn build_acts_delete(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+    version: i64,
+) -> Result<(), AppError> {
+    authorize(caller, &Action::MutateActs)?;
     ctx.acts.delete_soft(id, version).await
 }
 
@@ -64,7 +86,13 @@ pub async fn build_acts_peek_next_number(ctx: &AppCtx) -> Result<i64, AppError> 
     ctx.acts.peek_next_number().await
 }
 
-pub async fn build_acts_render_pdf(ctx: &AppCtx, act_id: i64) -> Result<Vec<u8>, AppError> {
+/// Мутация (PDF generation tied to act): требует `caller` с правом `MutateActs`.
+pub async fn build_acts_render_pdf(
+    ctx: &AppCtx,
+    caller: &Identity,
+    act_id: i64,
+) -> Result<Vec<u8>, AppError> {
+    authorize(caller, &Action::MutateActs)?;
     ctx.acts.render_pdf(act_id).await
 }
 
@@ -76,13 +104,16 @@ pub async fn build_acts_suggest_person(
     ctx.acts.suggest_person(field, &prefix, 20).await
 }
 
+/// Мутация (acceptance PDF): требует `caller` с правом `MutateActs`.
 pub async fn build_devices_render_acceptance_pdf(
     ctx: &AppCtx,
+    caller: &Identity,
     device_id: i64,
     giver_name: String,
     receiver_name: String,
     date_utc: i64,
 ) -> Result<Vec<u8>, AppError> {
+    authorize(caller, &Action::MutateActs)?;
     ctx.acts
         .render_acceptance_pdf(device_id, giver_name, receiver_name, date_utc)
         .await
@@ -125,7 +156,8 @@ pub async fn acts_create(
     state: tauri::State<'_, AppCtx>,
     payload: ActCreateDto,
 ) -> Result<ActDto, AppError> {
-    build_acts_create(state.inner(), payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_create(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
@@ -135,7 +167,8 @@ pub async fn acts_return(
     act_id: i32,
     payload: ActReturnDto,
 ) -> Result<ActDto, AppError> {
-    build_acts_return(state.inner(), act_id as i64, payload).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_return(state.inner(), &caller, act_id as i64, payload).await
 }
 
 #[tauri::command]
@@ -145,7 +178,8 @@ pub async fn acts_delete(
     id: i32,
     version: i32,
 ) -> Result<(), AppError> {
-    build_acts_delete(state.inner(), id as i64, version as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_delete(state.inner(), &caller, id as i64, version as i64).await
 }
 
 #[tauri::command]
@@ -167,7 +201,8 @@ pub async fn acts_render_pdf(
     state: tauri::State<'_, AppCtx>,
     act_id: i32,
 ) -> Result<Vec<u8>, AppError> {
-    build_acts_render_pdf(state.inner(), act_id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_render_pdf(state.inner(), &caller, act_id as i64).await
 }
 
 #[tauri::command]
@@ -241,8 +276,10 @@ pub async fn devices_render_acceptance_pdf(
     receiver_name: String,
     date_utc: i32,
 ) -> Result<Vec<u8>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_render_acceptance_pdf(
         state.inner(),
+        &caller,
         device_id as i64,
         giver_name,
         receiver_name,

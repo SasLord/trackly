@@ -4,10 +4,15 @@
 //! Handlers — thin adapters, делегируют `build_*` helpers из tauri_cmds.
 //!
 //! Паттерн из PATTERNS.md §Pattern 1.
+//!
+//! Phase 5 Plan 04: все mutation handlers защищены `authorize(&identity, &Action::MutateDevices)`.
+//! Read handlers требуют только наличия валидной сессии (`session_identity`).
 
 use axum::{extract::State, routing::post, Json, Router};
+use tower_sessions::Session;
 
 use crate::context::AppCtx;
+use crate::http::auth::session_identity;
 use std::collections::HashMap;
 
 use crate::dto::device::{
@@ -113,13 +118,17 @@ pub struct LocationsAutocompletePayload {
 }
 
 // ---------------------------------------------------------------------------
-// Handlers (Plan 03)
+// Handlers (Plan 03) — read handlers require valid session; mutations require MutateDevices
 // ---------------------------------------------------------------------------
 
 pub async fn handler_list(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ListPayload>,
 ) -> Result<Json<DeviceListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_list(&ctx, payload.filter, payload.pagination)
             .await
@@ -129,8 +138,12 @@ pub async fn handler_list(
 
 pub async fn handler_get(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<GetPayload>,
 ) -> Result<Json<DeviceDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_get(&ctx, payload.id)
             .await
@@ -140,10 +153,14 @@ pub async fn handler_get(
 
 pub async fn handler_create(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<CreatePayload>,
 ) -> Result<Json<DeviceDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_create(&ctx, payload.device)
+        build_devices_create(&ctx, &identity, payload.device)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -151,10 +168,14 @@ pub async fn handler_create(
 
 pub async fn handler_update(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<UpdatePayload>,
 ) -> Result<Json<DeviceDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_update(&ctx, payload.id, payload.version, payload.patch)
+        build_devices_update(&ctx, &identity, payload.id, payload.version, payload.patch)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -162,9 +183,13 @@ pub async fn handler_update(
 
 pub async fn handler_delete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_devices_delete(&ctx, payload.id, payload.version)
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_devices_delete(&ctx, &identity, payload.id, payload.version)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -172,7 +197,11 @@ pub async fn handler_delete(
 
 pub async fn handler_state_hints(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_state_hints(&ctx)
             .await
@@ -186,8 +215,12 @@ pub async fn handler_state_hints(
 
 pub async fn handler_search(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<SearchPayload>,
 ) -> Result<Json<DeviceListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_search(&ctx, payload.query, payload.pagination)
             .await
@@ -197,8 +230,12 @@ pub async fn handler_search(
 
 pub async fn handler_autocomplete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<AutocompletePayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_autocomplete(
             &ctx,
@@ -215,8 +252,12 @@ pub async fn handler_autocomplete(
 
 pub async fn handler_list_grouped(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ListGroupedPayload>,
 ) -> Result<Json<Vec<DeviceGroup>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_list_grouped(&ctx, payload.filter, payload.pagination)
             .await
@@ -226,7 +267,11 @@ pub async fn handler_list_grouped(
 
 pub async fn handler_status_counts(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<Vec<StatusCount>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_status_counts(&ctx)
             .await
@@ -236,8 +281,12 @@ pub async fn handler_status_counts(
 
 pub async fn handler_list_by_ids(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ListByIdsPayload>,
 ) -> Result<Json<Vec<DeviceDto>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_list_by_ids(&ctx, payload.ids)
             .await
@@ -247,10 +296,14 @@ pub async fn handler_list_by_ids(
 
 pub async fn handler_bulk_create(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<BulkCreatePayload>,
 ) -> Result<Json<Vec<DeviceDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_bulk_create(&ctx, payload.device, payload.count)
+        build_devices_bulk_create(&ctx, &identity, payload.device, payload.count)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -262,8 +315,12 @@ pub async fn handler_bulk_create(
 
 pub async fn handler_import_csv_preview(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ImportCsvPreviewPayload>,
 ) -> Result<Json<CsvImportPreviewResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_import_csv_preview(&ctx, payload.bytes)
             .await
@@ -273,10 +330,14 @@ pub async fn handler_import_csv_preview(
 
 pub async fn handler_import_csv_commit(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ImportCsvCommitPayload>,
 ) -> Result<Json<CsvImportReport>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_import_csv_commit(&ctx, payload.token, payload.mapping)
+        build_devices_import_csv_commit(&ctx, &identity, payload.token, payload.mapping)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -284,8 +345,12 @@ pub async fn handler_import_csv_commit(
 
 pub async fn handler_export_csv(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<ExportCsvPayload>,
 ) -> Result<Json<String>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_devices_export_csv(&ctx, payload.filter)
             .await
@@ -299,8 +364,12 @@ pub async fn handler_export_csv(
 
 pub async fn handler_locations_autocomplete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(payload): Json<LocationsAutocompletePayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_locations_autocomplete(&ctx, payload.prefix)
             .await

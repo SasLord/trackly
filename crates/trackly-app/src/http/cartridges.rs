@@ -2,8 +2,12 @@
 //!
 //! Mirrors `tauri_cmds::cartridges` via POST endpoints. The router is BUILT in
 //! Plan 03 but NOT bound to a TCP listener — server-mode wiring is Phase 5.
+//!
+//! Phase 5 Plan 04: mutation handlers protected by `authorize(&identity, &Action::MutateCartridges)`.
+//! Read handlers require only a valid session.
 
 use axum::{extract::State, routing::post, Json, Router};
+use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::cartridge::{
@@ -12,6 +16,7 @@ use crate::dto::cartridge::{
     CartridgeTransitionPayload, LowStockItemDto, Pagination,
 };
 use crate::error_axum::AppErrorResponse;
+use crate::http::auth::session_identity;
 use crate::tauri_cmds::cartridges::{
     build_cartridge_models_create, build_cartridge_models_delete, build_cartridge_models_get,
     build_cartridge_models_list, build_cartridge_models_update, build_cartridges_create,
@@ -103,8 +108,12 @@ pub struct SuggestCompatPayload {
 
 pub async fn handler_list(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<CartridgeListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_list(&ctx, p.filter, p.pagination)
             .await
@@ -114,8 +123,12 @@ pub async fn handler_list(
 
 pub async fn handler_get(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_get(&ctx, p.id as i64)
             .await
@@ -125,10 +138,14 @@ pub async fn handler_get(
 
 pub async fn handler_create(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<CreatePayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_create(&ctx, p.payload)
+        build_cartridges_create(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -136,10 +153,14 @@ pub async fn handler_create(
 
 pub async fn handler_update(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<UpdatePayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_update(&ctx, p.id as i64, p.version as i64, p.location, p.notes)
+        build_cartridges_update(&ctx, &identity, p.id as i64, p.version as i64, p.location, p.notes)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -147,9 +168,13 @@ pub async fn handler_update(
 
 pub async fn handler_delete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_cartridges_delete(&ctx, p.id as i64, p.version as i64)
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_cartridges_delete(&ctx, &identity, p.id as i64, p.version as i64)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -157,10 +182,14 @@ pub async fn handler_delete(
 
 pub async fn handler_transition(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<TransitionPayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_transition(&ctx, p.payload)
+        build_cartridges_transition(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -168,8 +197,12 @@ pub async fn handler_transition(
 
 pub async fn handler_search(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SearchPayload>,
 ) -> Result<Json<CartridgeListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_search(&ctx, p.query, p.filter)
             .await
@@ -179,7 +212,11 @@ pub async fn handler_search(
 
 pub async fn handler_status_counts(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<CartridgeCountsDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_status_counts(&ctx)
             .await
@@ -189,8 +226,12 @@ pub async fn handler_status_counts(
 
 pub async fn handler_get_history(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<Vec<AuditEntryDto>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_get_history(&ctx, p.id as i64)
             .await
@@ -200,7 +241,11 @@ pub async fn handler_get_history(
 
 pub async fn handler_low_stock(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<Vec<LowStockItemDto>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_low_stock(&ctx)
             .await
@@ -210,7 +255,11 @@ pub async fn handler_low_stock(
 
 pub async fn handler_models_list(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<Vec<CartridgeModelDto>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridge_models_list(&ctx)
             .await
@@ -220,8 +269,12 @@ pub async fn handler_models_list(
 
 pub async fn handler_models_get(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeModelDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridge_models_get(&ctx, p.id as i64)
             .await
@@ -231,10 +284,14 @@ pub async fn handler_models_get(
 
 pub async fn handler_models_create(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<ModelCreatePayload>,
 ) -> Result<Json<CartridgeModelDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridge_models_create(&ctx, p.payload)
+        build_cartridge_models_create(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -242,10 +299,14 @@ pub async fn handler_models_create(
 
 pub async fn handler_models_update(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<ModelUpdatePayload>,
 ) -> Result<Json<CartridgeModelDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridge_models_update(&ctx, p.payload)
+        build_cartridge_models_update(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -253,9 +314,13 @@ pub async fn handler_models_update(
 
 pub async fn handler_models_delete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_cartridge_models_delete(&ctx, p.id as i64, p.version as i64)
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_cartridge_models_delete(&ctx, &identity, p.id as i64, p.version as i64)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -263,8 +328,12 @@ pub async fn handler_models_delete(
 
 pub async fn handler_suggest_brand(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SuggestBrandPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_suggest_brand(&ctx, p.prefix)
             .await
@@ -274,8 +343,12 @@ pub async fn handler_suggest_brand(
 
 pub async fn handler_suggest_model(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SuggestModelPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_suggest_model(&ctx, p.brand, p.prefix)
             .await
@@ -285,8 +358,12 @@ pub async fn handler_suggest_model(
 
 pub async fn handler_suggest_compat_printer(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SuggestCompatPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_suggest_compat_printer(&ctx, p.field, p.prefix)
             .await
@@ -296,8 +373,12 @@ pub async fn handler_suggest_compat_printer(
 
 pub async fn handler_suggest_location(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SuggestBrandPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_cartridges_suggest_location(&ctx, p.prefix)
             .await

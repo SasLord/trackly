@@ -2,10 +2,14 @@
 //!
 //! Mirrors `tauri_cmds::acts` via POST endpoints. The router is BUILT in
 //! Plan 02 but NOT bound to a TCP listener — server-mode wiring is Phase 5.
+//!
+//! Phase 5 Plan 04: mutation handlers protected by `authorize(&identity, &Action::MutateActs)`.
+//! Read handlers require only a valid session.
 
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::{extract::State, routing::post, Json, Router};
+use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::act::{
@@ -13,6 +17,7 @@ use crate::dto::act::{
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
+use crate::http::auth::session_identity;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
     build_acts_peek_next_number, build_acts_render_pdf, build_acts_return, build_acts_search,
@@ -77,8 +82,12 @@ pub struct RenderAcceptancePdfPayload {
 
 pub async fn handler_list(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<ActListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_list(&ctx, p.filter, p.pagination)
             .await
@@ -88,8 +97,12 @@ pub async fn handler_list(
 
 pub async fn handler_search(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SearchPayload>,
 ) -> Result<Json<ActListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_search(&ctx, p.query, p.filter, p.pagination)
             .await
@@ -99,8 +112,12 @@ pub async fn handler_search(
 
 pub async fn handler_get(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<ActDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_get(&ctx, p.id)
             .await
@@ -110,10 +127,14 @@ pub async fn handler_get(
 
 pub async fn handler_create(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<CreatePayload>,
 ) -> Result<Json<ActDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_create(&ctx, p.payload)
+        build_acts_create(&ctx, &identity, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -121,10 +142,14 @@ pub async fn handler_create(
 
 pub async fn handler_return(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<ReturnPayload>,
 ) -> Result<Json<ActDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_return(&ctx, p.act_id, p.payload)
+        build_acts_return(&ctx, &identity, p.act_id, p.payload)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -132,9 +157,13 @@ pub async fn handler_return(
 
 pub async fn handler_delete(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<DeletePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    build_acts_delete(&ctx, p.id, p.version)
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_acts_delete(&ctx, &identity, p.id, p.version)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -142,7 +171,11 @@ pub async fn handler_delete(
 
 pub async fn handler_counts(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<ActsCountsDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_counts(&ctx)
             .await
@@ -152,7 +185,11 @@ pub async fn handler_counts(
 
 pub async fn handler_peek_next_number(
     State(ctx): State<AppCtx>,
+    session: Session,
 ) -> Result<Json<i64>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_peek_next_number(&ctx)
             .await
@@ -162,9 +199,13 @@ pub async fn handler_peek_next_number(
 
 pub async fn handler_render_pdf(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<RenderPdfPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let bytes = build_acts_render_pdf(&ctx, p.act_id)
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let bytes = build_acts_render_pdf(&ctx, &identity, p.act_id)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((
@@ -176,10 +217,15 @@ pub async fn handler_render_pdf(
 
 pub async fn handler_render_acceptance_pdf(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<RenderAcceptancePdfPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     let bytes = build_devices_render_acceptance_pdf(
         &ctx,
+        &identity,
         p.device_id,
         p.giver_name,
         p.receiver_name,
@@ -196,8 +242,12 @@ pub async fn handler_render_acceptance_pdf(
 
 pub async fn handler_suggest_person(
     State(ctx): State<AppCtx>,
+    session: Session,
     Json(p): Json<SuggestPersonPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_acts_suggest_person(&ctx, p.field, p.prefix)
             .await

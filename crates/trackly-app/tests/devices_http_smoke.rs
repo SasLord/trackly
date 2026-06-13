@@ -4,6 +4,9 @@
 //! Полный `AppCtx::build` + два транспорта → assert PartialEq.
 //!
 //! Каждый тест обёрнут в 30s timeout (PATTERNS.md §Pattern 4).
+//!
+//! Phase 5 Plan 04: axum path теперь использует build_router() с session layer.
+//! Для smoke-теста проверяется только Tauri path (axum path требует аутентифицированной сессии).
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -12,8 +15,10 @@ use tower::ServiceExt;
 use trackly_app::dto::device::{
     DeviceDto, DeviceFilter, DeviceListResponse, DeviceNew, Pagination,
 };
-use trackly_app::http::devices::router as devices_router;
+use trackly_app::http::build_router;
+use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_list};
+use trackly_core::auth::Identity;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
@@ -38,13 +43,19 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
             status_id: 1,
         };
 
-        // Tauri-path.
-        let dto_tauri: DeviceDto = build_devices_create(&ctx, new.clone()).await?;
+        // Tauri-path: trusted_admin — всегда Ok в unlocked desktop mode.
+        let caller = Identity::trusted_admin();
+        let dto_tauri: DeviceDto = build_devices_create(&ctx, &caller, new.clone()).await?;
         assert!(dto_tauri.id > 0, "Tauri path: id > 0");
         assert_eq!(dto_tauri.name, "Ноутбук HP Smoke");
 
-        // axum-path: POST /api/v1/devices_create
-        let app = devices_router().with_state(ctx.clone());
+        // axum-path (без сессии): POST /api/v1/devices_create → 401 Unauthorized.
+        // Phase 5 Plan 04: mutation handlers теперь требуют аутентифицированной сессии.
+        let session_store = RusqliteSessionStore::new(
+            ctx.writer.clone(),
+            ctx.readers.clone(),
+        );
+        let app = build_router(&ctx, session_store);
         let body_json = serde_json::json!({ "device": new });
         let res = app
             .oneshot(
@@ -55,16 +66,18 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
                     .body(Body::from(serde_json::to_string(&body_json)?))?,
             )
             .await?;
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024).await?;
-        let dto_axum: DeviceDto = serde_json::from_slice(&bytes)?;
-        assert!(dto_axum.id > 0, "axum path: id > 0");
+        // Without session → 401 Unauthorized (not 200)
+        assert_eq!(
+            res.status(),
+            StatusCode::UNAUTHORIZED,
+            "devices_create без сессии должен возвращать 401"
+        );
 
         // list — Tauri path
         let filter = DeviceFilter::default();
         let page = Pagination::default();
         let list_tauri: DeviceListResponse = build_devices_list(&ctx, filter.clone(), page).await?;
-        assert!(list_tauri.total >= 2, "должно быть минимум 2 устройства");
+        assert!(list_tauri.total >= 1, "должно быть минимум 1 устройство после create");
 
         ctx.shutdown.cancel();
         Ok::<(), anyhow::Error>(())

@@ -4,14 +4,20 @@
 //! Оба транспорта делегируют одному и тому же `build_*` функции.
 //!
 //! `#[specta::specta]` ПОСЛЕ `#[tauri::command]` — требование tauri-specta v2 rc.21.
+//!
+//! Phase 5 Plan 04: мутации принимают `caller: &Identity` и вызывают
+//! `authorize(caller, &Action::MutateDevices)?` перед выполнением.
+//! Tauri wrappers resolv'ят identity через `resolve_tauri_identity` (D-Desktop-01/02).
 
 use crate::context::AppCtx;
+use crate::tauri_cmds::users::resolve_tauri_identity;
 use std::collections::HashMap;
 
 use crate::dto::device::{
     CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
     DeviceListResponse, DeviceNew, DevicePatch, Pagination, StatusCount,
 };
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -30,20 +36,36 @@ pub async fn build_devices_get(ctx: &AppCtx, id: i64) -> Result<DeviceDto, AppEr
     ctx.devices.get(id).await
 }
 
-pub async fn build_devices_create(ctx: &AppCtx, new: DeviceNew) -> Result<DeviceDto, AppError> {
+/// Мутация: требует `caller` с правом `MutateDevices` (Admin | Manager).
+pub async fn build_devices_create(
+    ctx: &AppCtx,
+    caller: &Identity,
+    new: DeviceNew,
+) -> Result<DeviceDto, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.create(new).await
 }
 
+/// Мутация: требует `caller` с правом `MutateDevices`.
 pub async fn build_devices_update(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
     version: i64,
     patch: DevicePatch,
 ) -> Result<DeviceDto, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.update(id, version, patch).await
 }
 
-pub async fn build_devices_delete(ctx: &AppCtx, id: i64, version: i64) -> Result<(), AppError> {
+/// Мутация: требует `caller` с правом `MutateDevices`.
+pub async fn build_devices_delete(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+    version: i64,
+) -> Result<(), AppError> {
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.delete_soft(id, version).await
 }
 
@@ -98,11 +120,14 @@ pub async fn build_devices_list_by_ids(
     ctx.devices.list_by_ids(ids).await
 }
 
+/// Мутация: требует `caller` с правом `MutateDevices`.
 pub async fn build_devices_bulk_create(
     ctx: &AppCtx,
+    caller: &Identity,
     device: DeviceNew,
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.bulk_create(device, count).await
 }
 
@@ -132,7 +157,8 @@ pub async fn devices_create(
     state: tauri::State<'_, AppCtx>,
     device: DeviceNew,
 ) -> Result<DeviceDto, AppError> {
-    build_devices_create(state.inner(), device).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_create(state.inner(), &caller, device).await
 }
 
 #[tauri::command]
@@ -143,7 +169,8 @@ pub async fn devices_update(
     version: i32,
     patch: DevicePatch,
 ) -> Result<DeviceDto, AppError> {
-    build_devices_update(state.inner(), id as i64, version as i64, patch).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_update(state.inner(), &caller, id as i64, version as i64, patch).await
 }
 
 #[tauri::command]
@@ -153,7 +180,8 @@ pub async fn devices_delete(
     id: i32,
     version: i32,
 ) -> Result<(), AppError> {
-    build_devices_delete(state.inner(), id as i64, version as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_delete(state.inner(), &caller, id as i64, version as i64).await
 }
 
 #[tauri::command]
@@ -244,7 +272,8 @@ pub async fn devices_bulk_create(
     device: DeviceNew,
     count: u32,
 ) -> Result<Vec<DeviceDto>, AppError> {
-    build_devices_bulk_create(state.inner(), device, count).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_bulk_create(state.inner(), &caller, device, count).await
 }
 
 // ---------------------------------------------------------------------------
@@ -258,11 +287,14 @@ pub async fn build_devices_import_csv_preview(
     ctx.devices.import_csv_preview(bytes).await
 }
 
+/// Мутация: требует `caller` с правом `MutateDevices`.
 pub async fn build_devices_import_csv_commit(
     ctx: &AppCtx,
+    caller: &Identity,
     token: String,
     mapping: HashMap<String, String>,
 ) -> Result<CsvImportReport, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
     ctx.devices.import_csv_commit(token, mapping).await
 }
 
@@ -293,7 +325,8 @@ pub async fn devices_import_csv_commit(
     token: String,
     mapping: HashMap<String, String>,
 ) -> Result<CsvImportReport, AppError> {
-    build_devices_import_csv_commit(state.inner(), token, mapping).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_import_csv_commit(state.inner(), &caller, token, mapping).await
 }
 
 #[tauri::command]
