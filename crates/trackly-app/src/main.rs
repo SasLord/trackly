@@ -127,15 +127,18 @@ fn main() -> anyhow::Result<()> {
             let host = server_config.host.clone();
             let port = server_config.port;
             let cert_path = server_config.cert_path.clone();
+            let key_path = server_config.key_path.clone();
 
-            // Build TLS bundle: load from PEM if cert_path provided, else generate self-signed.
+            // Build TLS bundle: load from cert/key files if cert_path provided, else
+            // generate self-signed. Uses the same `tls::load_from_files` contract as
+            // build_server_toggle (WR-01): the key path is resolved via
+            // `Path::with_extension` (correct for .crt/.pem/.cer/.cert) or taken from an
+            // explicit `server.key_path` — not a brittle string `.replace()` that would
+            // silently keep the cert path for unusual extensions and read the wrong file.
             let tls_bundle = if cert_path.is_empty() {
                 trackly_app::server::tls::generate_self_signed(&host)?
             } else {
-                let cert_pem = std::fs::read_to_string(&cert_path)?;
-                let key_path = cert_path.replace(".crt", ".key").replace(".pem", ".key");
-                let key_pem = std::fs::read_to_string(&key_path)?;
-                trackly_app::server::tls::load_from_pem(&cert_pem, &key_pem)?
+                trackly_app::server::tls::load_from_files(&cert_path, &key_path)?
             };
 
             // Save generated cert/key to exe_dir for reuse.

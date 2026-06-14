@@ -70,6 +70,68 @@ fn pem_round_trip() {
 }
 
 // ---------------------------------------------------------------------------
+// key_path_resolution_handles_nonstandard_extensions (WR-01 regression)
+// ---------------------------------------------------------------------------
+
+/// Regression: the key path must be derived via `Path::with_extension`, which
+/// handles ANY cert extension (.crt, .pem, .cer, .cert) — not the old brittle
+/// `.replace(".crt", ".key").replace(".pem", ".key")` that left `.cer`/`.cert`
+/// paths unchanged (→ silently reading the cert file as the key).
+#[test]
+fn key_path_resolution_handles_nonstandard_extensions() {
+    for (cert, expected_key) in [
+        ("/srv/certs/server.crt", "/srv/certs/server.key"),
+        ("/srv/certs/server.pem", "/srv/certs/server.key"),
+        ("/srv/certs/server.cer", "/srv/certs/server.key"),
+        ("/srv/certs/server.cert", "/srv/certs/server.key"),
+    ] {
+        let resolved = tls::resolve_key_path(cert, "").expect("resolve_key_path");
+        assert_eq!(
+            resolved, expected_key,
+            "cert {cert} should resolve to key {expected_key}, got {resolved}"
+        );
+        // The exact failure the old `.replace()` heuristic produced for .cer/.cert.
+        assert_ne!(
+            resolved, cert,
+            "resolved key path must never equal the cert path ({cert})"
+        );
+    }
+
+    // Explicit key_path override wins over extension derivation.
+    let explicit = tls::resolve_key_path("/srv/certs/server.cer", "/srv/certs/custom.key")
+        .expect("explicit key_path");
+    assert_eq!(explicit, "/srv/certs/custom.key");
+}
+
+// ---------------------------------------------------------------------------
+// load_from_files_resolves_key_for_cer_extension (WR-01 end-to-end)
+// ---------------------------------------------------------------------------
+
+/// End-to-end: `load_from_files` loads a cert with a `.cer` extension by
+/// resolving its sibling `.key` — exactly the case the main.rs auto-start path
+/// (config-driven server.enabled) used to break on. Mirrors the
+/// build_server_toggle contract `load_from_files(&cert_path, &key_path)`.
+#[test]
+fn load_from_files_resolves_key_for_cer_extension() {
+    let bundle = tls::generate_self_signed("127.0.0.1").expect("generate_self_signed");
+
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let cert_path = dir.path().join("server.cer");
+    let key_path = dir.path().join("server.key");
+    std::fs::write(&cert_path, &bundle.cert_pem).expect("write cert");
+    std::fs::write(&key_path, &bundle.key_pem).expect("write key");
+
+    // Empty key_path → derived from cert_path via with_extension (.cer → .key).
+    let loaded = tls::load_from_files(&cert_path.to_string_lossy(), "")
+        .expect("load_from_files should resolve .cer → .key and load");
+
+    assert_eq!(
+        loaded.fingerprint_hex, bundle.fingerprint_hex,
+        "loaded fingerprint should match the generated cert"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // tls_server_accepts_tcp_connection (D-TLS-03)
 // ---------------------------------------------------------------------------
 
