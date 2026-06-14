@@ -73,6 +73,25 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let (ws_tx, _) = tokio::sync::broadcast::channel::<crate::dto::printer::WsEvent>(128);
+        let ws_broadcast = Arc::new(ws_tx);
+        let (poll_tx, _poll_rx) = tokio::sync::mpsc::channel::<i64>(64);
+        let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =
+            Arc::new(trackly_infra::snmp::mock::MockSnmpClient::default_fixtures());
+        let printers = Arc::new(crate::services::PrinterService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            snmp_client,
+            poll_tx,
+            ws_broadcast.clone(),
+        ));
+        let requests = Arc::new(crate::services::RequestService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            ws_broadcast.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
@@ -90,6 +109,9 @@ mod tests {
             cartridges,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
+            printers,
+            requests,
+            ws_broadcast,
         };
         (ctx, dir)
     }
