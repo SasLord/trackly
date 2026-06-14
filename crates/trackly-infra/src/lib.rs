@@ -11,6 +11,7 @@ pub mod db;
 pub mod error_conversions;
 pub mod paths;
 pub mod repos;
+pub mod snmp;
 pub mod test_support;
 
 pub use clock_impl::SystemClock;

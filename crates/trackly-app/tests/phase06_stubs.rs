@@ -1,8 +1,9 @@
-//! Phase 6 Wave-0 stub tests — все функции объявлены как `#[ignore]`.
+//! Phase 6 Wave-0 stub tests — trackly-app уровень.
 //!
-//! Цель: Nyquist-compliant скаффолд для Phase 6.
-//! Каждый тест будет реализован в соответствующей волне (Wave 1–5).
-//! Эти заглушки компилируются без зависимостей от Phase-6-кода.
+//! Тесты, помеченные #[ignore], будут реализованы в соответствующих волнах (Wave 2-5).
+//! test_oid_profiles_seeded реализован в Wave 1 (06-01-PLAN.md).
+
+use trackly_infra::test_support::test_db::test_db;
 
 /// PRN-01: parse sysObjectID → vendor + oid_profile match
 #[test]
@@ -16,8 +17,34 @@ fn test_toner_percent() {}
 
 /// PRN-03: SELECT COUNT(*) FROM oid_profiles = 5
 #[test]
-#[ignore]
-fn test_oid_profiles_seeded() {}
+fn test_oid_profiles_seeded() {
+    let (conn, _guard) = test_db();
+
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM oid_profiles", [], |r| r.get(0))
+        .expect("query oid_profiles count");
+    assert_eq!(count, 5, "expected 5 OID profiles: pantum/kyocera/hp/canon/rfc3805");
+
+    // Verify Pantum uses 'percent' encoding (special case — toner value is already %).
+    let pantum_encoding: String = conn
+        .query_row(
+            "SELECT toner_encoding FROM oid_profiles WHERE name = 'pantum'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("query pantum profile");
+    assert_eq!(pantum_encoding, "percent", "pantum must use 'percent' toner_encoding");
+
+    // Verify RFC3805 fallback exists.
+    let rfc3805_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM oid_profiles WHERE name = 'rfc3805'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("check rfc3805");
+    assert_eq!(rfc3805_exists, 1, "rfc3805 fallback profile must exist");
+}
 
 /// PRN-04: printer with usb_host_device_id set + NULL ip_address — get возвращает usb_host_device_id
 #[test]
