@@ -14,18 +14,18 @@ fn migrations_are_idempotent_and_wal_persists_across_reopens() {
     let dir = TempDir::new().expect("tempdir");
     let db_path = dir.path().join("idempotency.db");
 
-    // First open: fresh DB, apply pragmas, run migrations — expect 19 applied.
+    // First open: fresh DB, apply pragmas, run migrations — expect 25 applied (V001..V025).
     {
         let mut conn = Connection::open(&db_path).expect("open 1");
         pragmas::apply_writer_pragmas(&conn).expect("pragmas 1");
         let report = migrations::run(&mut conn).expect("run 1");
-        assert_eq!(report.applied_count, 19, "first run should apply all 19");
-        assert_eq!(report.schema_version, 19);
+        assert_eq!(report.applied_count, 25, "first run should apply all 25");
+        assert_eq!(report.schema_version, 25);
 
         // Second run on the same connection — no-op.
         let report2 = migrations::run(&mut conn).expect("run 2");
         assert_eq!(report2.applied_count, 0, "second run should be no-op");
-        assert_eq!(report2.schema_version, 19);
+        assert_eq!(report2.schema_version, 25);
         // conn dropped at end of this scope.
     }
 
@@ -40,7 +40,7 @@ fn migrations_are_idempotent_and_wal_persists_across_reopens() {
             report3.applied_count, 0,
             "reopened DB already migrated → 0 applied"
         );
-        assert_eq!(report3.schema_version, 19);
+        assert_eq!(report3.schema_version, 25);
 
         let journal_mode: String = conn
             .pragma_query_value(None, "journal_mode", |r| r.get::<_, String>(0))

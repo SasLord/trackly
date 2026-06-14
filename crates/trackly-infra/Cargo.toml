@@ -27,4 +27,5 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 zeroize = { workspace = true }
 async-trait = { workspace = true }
+snmp2 = { workspace = true }
 tempfile = { workspace = true }
