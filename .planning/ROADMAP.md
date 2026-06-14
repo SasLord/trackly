@@ -225,10 +225,10 @@ Plans:
   4. Сотрудник через браузер создаёт заявку одного из двух типов — «Замена картриджа» (со связью к принтеру и модели картриджа в БД) или «Свободная форма» (произвольный текст); специалист видит in-app уведомление о новой заявке.
   5. Специалист переводит заявку «Создана» → «Принять в работу» → «Выполнить» или «Отклонить»; при выполнении заявки на замену картриджа можно сразу запустить операцию установки картриджа (CART-07) из контекста заявки; история заявок и их статусов доступна для просмотра.
 
-**Plans:** 1/7 plans executed
+**Plans:** 2/7 plans executed
 
 Plans:
-- [ ] 06-01-PLAN.md — V020-V024 миграции + snmp2 + SnmpClient trait + MockSnmpClient (PRN-01/03/04/08)
+- [x] 06-01-PLAN.md — V020-V024 миграции + snmp2 + SnmpClient trait + MockSnmpClient (PRN-01/03/04/08)
 - [ ] 06-02-PLAN.md — Repositories + PrinterService (poll loop, discovery, alerts, retention) + RequestService (lifecycle, optimistic lock) + WsEvent (PRN-01..08, REQ-01..04)
 - [ ] 06-03-PLAN.md — Tauri commands + axum HTTP handlers + WebSocket /api/v1/ws + AppCtx wire-up (PRN-01..08, REQ-01..05/07)
 - [ ] 06-04-PLAN.md — Прinters UI: api.ts + ws.ts + 11 компонентов (TonerGauge, DiscoveryModal, PrinterAlertBanner) (PRN-01..08)
@@ -281,7 +281,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
-| 6. Принтеры (SNMP-мониторинг) и Заявки | 1/7 | In Progress|  |
+| 6. Принтеры (SNMP-мониторинг) и Заявки | 2/7 | In Progress|  |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
 
