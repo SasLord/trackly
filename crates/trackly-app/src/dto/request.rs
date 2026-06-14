@@ -33,11 +33,11 @@ pub struct RequestDto {
     pub resolution_notes: Option<String>,
     pub requester_name: Option<String>,
     pub printer_name: Option<String>,
-    #[specta(type = i64)]
+    #[specta(type = i32)]
     pub created_at_utc: i64,
-    #[specta(type = i64)]
+    #[specta(type = i32)]
     pub updated_at_utc: i64,
-    #[specta(type = Option<i64>)]
+    #[specta(type = Option<i32>)]
     pub deleted_at_utc: Option<i64>,
     #[specta(type = i32)]
     pub version: i64,
@@ -163,6 +163,7 @@ pub enum RequestTransitionPayload {
 #[serde(rename_all = "camelCase")]
 pub struct RequestListResponse {
     pub items: Vec<RequestDto>,
+    #[specta(type = i32)]
     pub total: i64,
 }
 
@@ -170,9 +171,14 @@ pub struct RequestListResponse {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestCountsDto {
+    #[specta(type = i32)]
     pub all: i64,
+    #[specta(type = i32)]
     pub open: i64,
+    #[specta(type = i32)]
     pub in_progress: i64,
+    #[specta(type = i32)]
     pub completed: i64,
+    #[specta(type = i32)]
     pub rejected: i64,
 }

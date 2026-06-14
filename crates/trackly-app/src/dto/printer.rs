@@ -25,17 +25,18 @@ pub struct PrinterDto {
     pub vendor: Option<String>,
     #[specta(type = Option<i32>)]
     pub oid_profile_id: Option<i64>,
-    #[specta(type = Option<i64>)]
+    #[specta(type = Option<i32>)]
     pub last_seen_utc: Option<i64>,
     /// community deliberately absent — never serialize to frontend (Pitfall 4).
     pub community_configured: bool,
     pub device_name: Option<String>,
     pub device_location: Option<String>,
-    #[specta(type = Option<i64>)]
+    #[specta(type = Option<i32>)]
     pub usb_host_device_id: Option<i64>,
     /// Latest reading fields (denormalized for card display).
     /// Parsed from toner_levels JSON; None if no reading yet.
     pub toner_levels: Option<serde_json::Value>,
+    #[specta(type = Option<i32>)]
     pub page_count: Option<i64>,
     pub status: Option<String>,
     /// Alert indicator (true if an un-acknowledged alert exists).
@@ -151,6 +152,7 @@ pub struct DiscoveredPrinterDto {
 #[serde(rename_all = "camelCase")]
 pub struct PrinterListResponse {
     pub items: Vec<PrinterDto>,
+    #[specta(type = i32)]
     pub total: i64,
 }
 
