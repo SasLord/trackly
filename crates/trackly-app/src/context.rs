@@ -30,9 +30,14 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{migrations, pools::ReaderPool, pragmas, writer_worker::WriterHandle};
 use trackly_infra::{AppConfig, Paths};
 
+use crate::dto::printer::WsEvent;
 use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
-use crate::services::{ActService, AuthService, CartridgeService, DeviceService, OrganizationService, TemplateService};
+use crate::services::{
+    run_poll_task, ActService, AuthService, CartridgeService, DeviceService, OrganizationService,
+    PrinterService, RequestService, TemplateService,
+};
+use trackly_infra::snmp::{mock::MockSnmpClient, real::RealSnmpClient};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
 #[derive(Clone)]
@@ -82,6 +87,15 @@ pub struct AppCtx {
     /// `None` = сервер не запущен. Guarded by Mutex для hot start/stop (D-Server-01).
     /// Added in Phase 5 Plan 02.
     pub server_ctl: Arc<tokio::sync::Mutex<Option<ServerHandle>>>,
+    /// Printer service — SNMP polling, discovery, alert detection.
+    /// Added in Phase 6 Plan 03.
+    pub printers: Arc<PrinterService>,
+    /// Request service — lifecycle, CART-07 link, WS push.
+    /// Added in Phase 6 Plan 03.
+    pub requests: Arc<RequestService>,
+    /// WebSocket broadcast sender — fan-out to all connected WS clients.
+    /// Capacity 128 (D-Notify-01). Added in Phase 6 Plan 03.
+    pub ws_broadcast: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
 }
 
 impl AppCtx {
@@ -204,13 +218,60 @@ impl AppCtx {
             clock.clone(),
         ));
 
+        // Phase 6 Plan 03: WS broadcast + SNMP client + PrinterService + RequestService +
+        // background poll task.
+
+        // WS broadcast channel (capacity 128 — D-Notify-01).
+        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
+        let ws_broadcast = Arc::new(ws_tx);
+
+        // On-demand poll channel (capacity 64 — D-Poll-01).
+        let (poll_tx, poll_rx) = tokio::sync::mpsc::channel::<i64>(64);
+
+        // Runtime SNMP mock switch (D-Mock-01):
+        // TRACKLY_SNMP_MOCK env var → MockSnmpClient; otherwise → RealSnmpClient.
+        let use_mock = std::env::var("TRACKLY_SNMP_MOCK").is_ok();
+        tracing::info!(
+            snmp_mode = if use_mock { "mock" } else { "real" },
+            "SNMP client selected"
+        );
+        let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =
+            if use_mock {
+                Arc::new(MockSnmpClient::default_fixtures())
+            } else {
+                Arc::new(RealSnmpClient)
+            };
+
+        let printers = Arc::new(PrinterService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            snmp_client,
+            poll_tx,
+            ws_broadcast.clone(),
+        ));
+
+        let requests = Arc::new(RequestService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            ws_broadcast.clone(),
+        ));
+
+        // Spawn poll task with child CancellationToken (D-Arch-01, D-Poll-01).
+        let poll_token = CancellationToken::new();
+        let printers_for_poll = printers.clone();
+        tokio::spawn(run_poll_task(printers_for_poll, poll_rx, poll_token));
+
+        let shutdown = CancellationToken::new();
+
         Ok(Self {
             writer,
             readers,
             paths: paths_arc,
             config: Arc::new(config),
             clock,
-            shutdown: CancellationToken::new(),
+            shutdown,
             log_guard: Arc::new(log_guard),
             schema_version,
             devices,
@@ -221,6 +282,9 @@ impl AppCtx {
             cartridges,
             auth,
             server_ctl: Arc::new(tokio::sync::Mutex::new(None)),
+            printers,
+            requests,
+            ws_broadcast,
         })
     }
 }

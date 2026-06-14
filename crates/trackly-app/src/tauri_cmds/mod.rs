@@ -13,5 +13,7 @@ pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
+pub mod printers;
+pub mod requests;
 pub mod templates;
 pub mod users;

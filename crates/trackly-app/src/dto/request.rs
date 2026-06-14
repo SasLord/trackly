@@ -67,6 +67,51 @@ impl From<RequestRow> for RequestDto {
     }
 }
 
+/// Filter parameters for request list queries.
+///
+/// Used by Tauri commands and axum HTTP handlers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestFilter {
+    pub status: Option<String>,
+    pub request_type: Option<String>,
+    pub assigned_to_user_id: Option<i32>,
+    pub requested_by_user_id: Option<i32>,
+}
+
+impl From<RequestFilter> for trackly_core::domain::requests::RequestFilter {
+    fn from(f: RequestFilter) -> Self {
+        Self {
+            status: f.status,
+            request_type: f.request_type,
+            assigned_to_user_id: f.assigned_to_user_id.map(|id| id as i64),
+            requested_by_user_id: f.requested_by_user_id.map(|id| id as i64),
+        }
+    }
+}
+
+/// Pagination for request list.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Pagination {
+    #[specta(type = u32)]
+    pub offset: u64,
+    #[specta(type = u32)]
+    pub limit: u64,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self { offset: 0, limit: 50 }
+    }
+}
+
+impl From<Pagination> for trackly_core::domain::requests::Pagination {
+    fn from(p: Pagination) -> Self {
+        Self { offset: p.offset, limit: p.limit }
+    }
+}
+
 /// Input DTO for creating a new request.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

@@ -78,6 +78,46 @@ impl From<PrinterRow> for PrinterDto {
     }
 }
 
+/// Filter parameters for printer list queries.
+///
+/// Used by Tauri commands and axum HTTP handlers.
+/// Converts to domain `PrinterFilter` for service calls.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterFilter {
+    /// "ok" | "warning" | "error" | "offline" | "unknown" | null (all)
+    pub status: Option<String>,
+    pub search: Option<String>,
+}
+
+impl From<PrinterFilter> for trackly_core::domain::printers::PrinterFilter {
+    fn from(f: PrinterFilter) -> Self {
+        Self { status: f.status, search: f.search }
+    }
+}
+
+/// Pagination for printer list.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Pagination {
+    #[specta(type = u32)]
+    pub offset: u64,
+    #[specta(type = u32)]
+    pub limit: u64,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self { offset: 0, limit: 50 }
+    }
+}
+
+impl From<Pagination> for trackly_core::domain::printers::Pagination {
+    fn from(p: Pagination) -> Self {
+        Self { offset: p.offset, limit: p.limit }
+    }
+}
+
 /// Input DTO for creating a printer record.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

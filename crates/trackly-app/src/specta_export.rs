@@ -100,5 +100,20 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 5 — Settings get network (gap fix: Tauri command was missing,
         // only the HTTP route existed → desktop Settings page failed to load)
         crate::tauri_cmds::auth::settings_get_network,
+        // Phase 6 — Printers (Plan 03)
+        crate::tauri_cmds::printers::printers_list,
+        crate::tauri_cmds::printers::printers_get,
+        crate::tauri_cmds::printers::printers_create,
+        crate::tauri_cmds::printers::printers_discover,
+        crate::tauri_cmds::printers::printers_admit,
+        crate::tauri_cmds::printers::printers_refresh,
+        crate::tauri_cmds::printers::printers_acknowledge_alert,
+        // Phase 6 — Requests (Plan 03)
+        crate::tauri_cmds::requests::requests_list,
+        crate::tauri_cmds::requests::requests_get,
+        crate::tauri_cmds::requests::requests_create,
+        crate::tauri_cmds::requests::requests_transition,
+        crate::tauri_cmds::requests::requests_counts,
+        crate::tauri_cmds::requests::requests_list_categories,
     ])
 }
