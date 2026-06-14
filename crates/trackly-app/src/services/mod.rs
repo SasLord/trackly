@@ -10,6 +10,8 @@ pub mod auth;
 pub mod cartridge_service;
 pub mod device_service;
 pub mod organization_service;
+pub mod printer_service;
+pub mod request_service;
 pub mod template_service;
 
 pub use act_service::ActService;
@@ -17,4 +19,6 @@ pub use auth::AuthService;
 pub use cartridge_service::CartridgeService;
 pub use device_service::DeviceService;
 pub use organization_service::{OrgData, OrganizationService};
+pub use printer_service::{run_poll_task, PrinterService};
+pub use request_service::RequestService;
 pub use template_service::{TemplateService, DEFAULT_TEMPLATES};

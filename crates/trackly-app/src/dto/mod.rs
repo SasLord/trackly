@@ -12,7 +12,10 @@ pub mod cartridge;
 pub mod device;
 pub mod health;
 pub mod organization;
+pub mod printer;
+pub mod request;
 pub mod suggest;
 
 pub use health::HealthDto;
 pub use organization::OrgDto;
+pub use printer::WsEvent;

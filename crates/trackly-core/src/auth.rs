@@ -102,6 +102,14 @@ pub enum Action {
     ReadData,
     /// Отправка заявки (через браузер). All roles (always Ok).
     CreateRequest,
+    /// SNMP-обнаружение, создание/удаление записей принтеров. Admin | Manager.
+    MutatePrinters,
+    /// Управление заявками (Accept/Reject/Complete). Admin | Manager.
+    TransitionRequests,
+    /// Просмотр принтеров и алертов. Admin | Manager.
+    ReadPrinters,
+    /// Просмотр заявок. All roles (сотрудник видит только свои).
+    ReadRequests,
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +138,15 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         Action::ManageUsers | Action::ManageSettings => {
             matches!(identity.role, Role::Admin)
         }
-        Action::MutateDevices | Action::MutateActs | Action::MutateCartridges => {
+        Action::MutateDevices
+        | Action::MutateActs
+        | Action::MutateCartridges
+        | Action::MutatePrinters
+        | Action::TransitionRequests
+        | Action::ReadPrinters => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
-        Action::ReadData | Action::CreateRequest => true,
+        Action::ReadData | Action::CreateRequest | Action::ReadRequests => true,
     };
 
     if allowed {

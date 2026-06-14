@@ -4,7 +4,7 @@
 //! All SQL is parameterised through `rusqlite::params![...]`. No user input is
 //! ever concatenated into query strings — SQL injection is structurally impossible.
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, Transaction};
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::requests::{
     Pagination, RequestCounts, RequestFilter, RequestNew, RequestRow,
