@@ -205,3 +205,59 @@ async fn login_reaches_handler_with_connect_info_and_req_wrapper() {
     .await
     .expect("login_reaches_handler exceeded 30s budget");
 }
+
+/// Server-mode SPA delivery: GET / must serve the embedded Svelte index.html,
+/// not 404. Guards the portable-build regression where the LAN server had no
+/// SPA to serve (assets are now embedded via rust-embed). Skips gracefully if
+/// ui/dist was not built (e.g. a bare `cargo test` without the prebuild step).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn server_serves_embedded_spa_index() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (router, ctx) = build_test_components()
+            .await
+            .expect("build_test_components failed");
+
+        let res = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("oneshot");
+
+        let status = res.status();
+        let content_type = res
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let body_bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .expect("read body");
+        let body_str = String::from_utf8_lossy(&body_bytes);
+
+        if status == StatusCode::NOT_FOUND {
+            eprintln!("skip server_serves_embedded_spa_index: ui/dist not built");
+            ctx.shutdown.cancel();
+            return;
+        }
+
+        assert_eq!(status, StatusCode::OK, "GET / should serve the SPA index");
+        assert!(
+            content_type.contains("text/html"),
+            "index should be text/html, got {content_type}"
+        );
+        assert!(
+            body_str.contains("<div id=\"app\""),
+            "served body should be the Svelte index.html (mount point missing)"
+        );
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("server_serves_embedded_spa_index exceeded 30s budget");
+}

@@ -113,14 +113,47 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             ),
         ));
 
-    // --- Svelte SPA fallback ---
-    // ServeDir из exe_dir/ui/dist. Если каталог не существует — silently falls back.
-    let ui_dist = ctx.paths.exe_dir().join("ui/dist");
-    let fallback_service = tower_http::services::ServeDir::new(ui_dist)
-        .append_index_html_on_directories(true);
-
+    // --- Svelte SPA fallback (embedded via rust-embed) ---
+    // Assets are baked into the binary in release builds (portable: nothing to
+    // ship beside the .exe) and read from ui/dist on disk in debug builds.
     api_router
-        .fallback_service(fallback_service)
+        .fallback(spa_fallback)
         .layer(security_headers)
         .with_state(ctx.clone())
+}
+
+/// Svelte SPA build, embedded into the binary (release) or read from
+/// `crates/trackly-app/../../ui/dist` on disk (debug). Built by the
+/// `beforeBuildCommand` (`pnpm --dir ../ui build`) before `tauri build`.
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../../ui/dist"]
+struct SpaAssets;
+
+/// Fallback handler that serves the embedded SPA. Serves the requested asset by
+/// path; unknown paths fall back to `index.html` (the SPA uses a hash router, so
+/// every client route is reachable from `/`).
+async fn spa_fallback(uri: axum::http::Uri) -> axum::response::Response {
+    use axum::http::{header, StatusCode};
+    use axum::response::IntoResponse;
+
+    let path = uri.path().trim_start_matches('/');
+    let lookup = if path.is_empty() { "index.html" } else { path };
+
+    if let Some(file) = SpaAssets::get(lookup) {
+        let mime = file.metadata.mimetype().to_string();
+        return ([(header::CONTENT_TYPE, mime)], file.data.into_owned()).into_response();
+    }
+
+    match SpaAssets::get("index.html") {
+        Some(file) => (
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+            file.data.into_owned(),
+        )
+            .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            "UI assets are not bundled (ui/dist was missing at build time)",
+        )
+            .into_response(),
+    }
 }
