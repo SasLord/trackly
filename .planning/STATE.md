@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-14T23:31:44.997Z"
+last_updated: "2026-06-14T23:42:09.703Z"
 last_activity: 2026-06-14
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 46
-  completed_plans: 44
+  completed_plans: 45
   percent: 73
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 06 (snmp) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
 Last activity: 2026-06-14
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [██████████] 96%
 | Phase 05 P06 | 20 min | 3 tasks | 3 files |
 | Phase 06-snmp P01 | 22 | 2 tasks | 21 files |
 | Phase 06-snmp P04 | 8 | 3 tasks | 14 files |
+| Phase 06 P05 | 7 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,7 @@ Recent decisions affecting current work:
 - [Phase ?]: GovernorLayer несовместим с tower oneshot тестами: создавать сессии программно через RusqliteSessionStore::create()
 - [Phase ?]: role_endpoint_matrix: macro_rules! new_app! для свежего router на каждый test case (oneshot потребляет router)
 - [Phase ?]: bindings-phase6.ts: Phase 6 типы вынесены в отдельный файл (не gitignored bindings.ts) для хранения в git без force-add
+- [Phase ?]: specialist role maps to manager in UserRole; isSpecialist = admin || manager in requests portal
 
 ### Pending Todos
 
@@ -188,7 +190,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-14T23:31:39.900Z
-Stopped at: Phase 6 UI-SPEC approved
+Last session: 2026-06-14T23:42:09.698Z
+Stopped at: Completed 06-05-PLAN.md
 Resume file: 
 None
