@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  // Plan 06-04: заменить Placeholder на features/printers/PrintersPage.svelte.
+  import PrintersPage from '../features/printers/PrintersPage.svelte';
 </script>
 
-<Placeholder section="Принтеры" phase={6} />
+<PrintersPage />
