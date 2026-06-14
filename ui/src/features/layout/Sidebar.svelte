@@ -5,8 +5,37 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
+  import { apiCall } from '$lib/api/client';
 
   const visibleItems = $derived(getVisibleItems(authStore.user?.role as UserRole | null ?? null));
+
+  const ROLE_LABELS: Record<UserRole, string> = {
+    admin: 'Администратор',
+    manager: 'Специалист',
+    employee: 'Сотрудник',
+  };
+
+  // D-Desktop-01: unlocked desktop uses a trusted-admin sentinel (id === 0).
+  // Logout is meaningless there (the sentinel auto-restores on next auth_status),
+  // so only show it for a real authenticated session (browser or locked desktop).
+  const canLogout = $derived(authStore.user != null && authStore.user.id !== 0);
+
+  let loggingOut = $state(false);
+
+  async function logout() {
+    if (loggingOut) return;
+    loggingOut = true;
+    try {
+      await apiCall<null>('auth_logout', {});
+    } catch {
+      // Even if the server call fails, drop the local session so the user can
+      // re-authenticate. apiCall already clears authStore on 401.
+    } finally {
+      authStore.user = null;
+      loggingOut = false;
+      window.location.hash = '#/login';
+    }
+  }
 </script>
 
 <nav class="sidebar" aria-label="Основная навигация">
@@ -30,8 +59,26 @@
   </ul>
 
   <div class="sidebar-footer">
-    <span class="theme-label">Тема</span>
-    <ThemeSwitcher />
+    {#if canLogout && authStore.user}
+      <div class="user-block">
+        <div class="user-info">
+          <span class="user-name">{authStore.user.fullName}</span>
+          <span class="user-role">{ROLE_LABELS[authStore.user.role]}</span>
+        </div>
+        <button
+          type="button"
+          class="logout-btn"
+          onclick={logout}
+          disabled={loggingOut}
+        >
+          {loggingOut ? 'Выход…' : 'Выйти'}
+        </button>
+      </div>
+    {/if}
+    <div class="theme-row">
+      <span class="theme-label">Тема</span>
+      <ThemeSwitcher />
+    </div>
   </div>
 </nav>
 
@@ -103,9 +150,72 @@
     gap: var(--space-xs);
   }
 
+  .theme-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
   .theme-label {
     font-size: var(--font-size-label);
     color: var(--color-text-muted);
     font-weight: var(--font-weight-regular);
+  }
+
+  .user-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding-bottom: var(--space-sm);
+    margin-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .user-name {
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .user-role {
+    font-size: var(--font-size-label);
+    color: var(--color-text-muted);
+  }
+
+  .logout-btn {
+    appearance: none;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-label);
+    font-weight: var(--font-weight-medium);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: center;
+
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+      color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--color-accent-focus);
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   }
 </style>
