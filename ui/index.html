@@ -4,16 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trackly</title>
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem('trackly:theme');
-          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var resolved = t === 'light' || t === 'dark' ? t : prefersDark ? 'dark' : 'light';
-          document.documentElement.dataset.theme = resolved;
-        } catch (e) {}
-      })();
-    </script>
+    <!-- External (not inline) so server-mode CSP `script-src 'self'` allows it
+         without 'unsafe-inline'. Blocking in <head> → runs before first paint. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="app"></div>
