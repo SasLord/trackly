@@ -23,11 +23,16 @@ use crate::error_axum::AppErrorResponse;
 // Payload structs
 // ---------------------------------------------------------------------------
 
+/// Тело POST /api/v1/auth_login.
+///
+/// Обёртка `{ req: { login, password } }` — совпадает с формой, которую шлёт
+/// фронтенд через `apiCall('auth_login', { req })` и которую ждёт Tauri-команда
+/// `auth_login(req: LoginRequest)`. Один и тот же `apiCall` отправляет одинаковое
+/// тело в оба транспорта, поэтому HTTP-сторона должна принимать `req`, а не
+/// плоские поля (иначе браузерный логин падает на десериализации).
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LoginPayload {
-    pub login: String,
-    pub password: String,
+    pub req: LoginRequest,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -96,11 +101,7 @@ pub async fn build_auth_login(
     session: Session,
     payload: LoginPayload,
 ) -> Result<UserDto, AppError> {
-    let req = LoginRequest {
-        login: payload.login,
-        password: payload.password,
-    };
-    let user = ctx.auth.login(req).await?;
+    let user = ctx.auth.login(payload.req).await?;
 
     // T-05-SF: flush BEFORE insert (session fixation prevention).
     session.flush().await.map_err(|e| AppError::Internal {

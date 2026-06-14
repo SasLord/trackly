@@ -90,7 +90,14 @@ pub async fn start_server(
                                 Ok(tls_stream) => {
                                     let io = TokioIo::new(tls_stream);
                                     // Use ServiceExt::oneshot to consume Router per-request
-                                    let hyper_service = hyper::service::service_fn(move |req| {
+                                    let hyper_service = hyper::service::service_fn(move |mut req| {
+                                        // Inject ConnectInfo so tower_governor's PeerIpKeyExtractor
+                                        // can derive the client IP for per-IP rate limiting on
+                                        // /auth_login. The manual hyper accept-loop (no axum::serve)
+                                        // otherwise leaves ConnectInfo absent → the extractor fails
+                                        // with "Unable to extract key!" → 500 on every login.
+                                        req.extensions_mut()
+                                            .insert(axum::extract::ConnectInfo(peer_addr));
                                         // Clone Router for each request — Router is cheap Clone
                                         app_clone.clone().oneshot(req)
                                     });
