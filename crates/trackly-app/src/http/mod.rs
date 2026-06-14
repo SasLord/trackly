@@ -14,9 +14,12 @@ pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
+pub mod printers;
+pub mod requests;
 pub mod settings;
 pub mod templates;
 pub mod users;
+pub mod ws;
 
 use axum::{http::HeaderValue, Router};
 use std::sync::Arc;
@@ -89,6 +92,9 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(organization::router())
         .merge(templates::router())
         .merge(fs_helpers::router())
+        .merge(printers::router())
+        .merge(requests::router())
+        .merge(ws::router())
         // Session layer применяется ко всем маршрутам
         .layer(session_layer);
 
@@ -108,8 +114,9 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // bundles, so inline scripts are not required and 'unsafe-inline'
             // would neutralize CSP's XSS protection. Kept on style-src for
             // Svelte scoped styles.
+            // T-06-12-I: connect-src includes wss: for same-origin WebSocket upgrade.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:",
             ),
         ));
 

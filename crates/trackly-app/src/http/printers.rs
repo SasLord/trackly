@@ -1,0 +1,174 @@
+//! Printers axum HTTP routes — Phase 6 Plan 03.
+//!
+//! Mirrors `tauri_cmds::printers` via POST endpoints.
+//!
+//! Pattern (S-2): каждый handler делегирует соответствующему `build_*` helper
+//! из tauri_cmds/printers.rs — один DTO, два транспорта.
+
+use axum::{extract::State, routing::post, Json, Router};
+use tower_sessions::Session;
+
+use crate::context::AppCtx;
+use crate::dto::printer::{
+    DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
+    PrinterListResponse,
+};
+use crate::error_axum::AppErrorResponse;
+use crate::http::auth::session_identity;
+use crate::tauri_cmds::printers::{
+    build_printers_acknowledge_alert, build_printers_create, build_printers_discover,
+    build_printers_get, build_printers_list, build_printers_refresh,
+};
+
+// ---------------------------------------------------------------------------
+// Payload wrappers (camelCase для совместимости с браузером)
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPayload {
+    pub filter: PrinterFilter,
+    pub pagination: Pagination,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPayload {
+    pub id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePayload {
+    pub payload: PrinterCreateDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoverPayload {
+    pub ip_start: String,
+    pub ip_end: String,
+    pub community: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshPayload {
+    pub id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcknowledgeAlertPayload {
+    pub printer_id: i32,
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+pub async fn handler_list(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListPayload>,
+) -> Result<Json<PrinterListResponse>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_list(&ctx, p.filter, p.pagination)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_get(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetPayload>,
+) -> Result<Json<PrinterDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_get(&ctx, p.id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_create(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<CreatePayload>,
+) -> Result<Json<PrinterDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_create(&ctx, &identity, p.payload)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_discover(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<DiscoverPayload>,
+) -> Result<Json<Vec<DiscoveredPrinterDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_discover(&ctx, &identity, p.ip_start, p.ip_end, p.community)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_refresh(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<RefreshPayload>,
+) -> Result<Json<PrinterDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_refresh(&ctx, &identity, p.id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_acknowledge_alert(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<AcknowledgeAlertPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_printers_acknowledge_alert(&ctx, &identity, p.printer_id as i64)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
+}
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
+pub fn router() -> Router<AppCtx> {
+    Router::new()
+        .route("/api/v1/printers_list", post(handler_list))
+        .route("/api/v1/printers_get", post(handler_get))
+        .route("/api/v1/printers_create", post(handler_create))
+        .route("/api/v1/printers_discover", post(handler_discover))
+        .route("/api/v1/printers_refresh", post(handler_refresh))
+        .route(
+            "/api/v1/printers_acknowledge_alert",
+            post(handler_acknowledge_alert),
+        )
+}

@@ -564,7 +564,7 @@ async fn test_snmp_mock_switch() {
         .expect("AppCtx::build with mock");
 
     // Проверяем что snmp_client выбран как MockSnmpClient через type_name на PrinterService.
-    let svc: &PrinterService = &ctx.printers;
+    let _svc: &PrinterService = &ctx.printers;
     let client_name = type_name::<trackly_infra::snmp::mock::MockSnmpClient>();
     let real_name = type_name::<trackly_infra::snmp::real::RealSnmpClient>();
 
@@ -617,16 +617,15 @@ async fn test_ws_unauth_401() {
     let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
     let router = build_router(&ctx, session_store);
 
-    // GET /api/v1/ws без session cookie → 401 BEFORE WebSocket upgrade.
+    // GET /api/v1/ws без session cookie и без WS upgrade заголовков → 401.
+    // Не используем WS upgrade заголовки: axum валидирует WebSocketUpgrade
+    // на этапе экстракции (before handler body) и вернул бы 426.
+    // Option<WebSocketUpgrade> = None для plain GET — auth check проходит первым.
     let res = router
         .oneshot(
             Request::builder()
                 .method("GET")
                 .uri("/api/v1/ws")
-                .header("Connection", "Upgrade")
-                .header("Upgrade", "websocket")
-                .header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-                .header("Sec-WebSocket-Version", "13")
                 .body(Body::empty())
                 .expect("build request"),
         )
