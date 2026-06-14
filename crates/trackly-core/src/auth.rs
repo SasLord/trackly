@@ -30,6 +30,7 @@ impl Role {
     /// # Errors
     ///
     /// Возвращает [`AppError::Validation`] с `field = "role"` если строка не распознана.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, AppError> {
         match s {
             "admin" => Ok(Self::Admin),

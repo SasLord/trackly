@@ -17,7 +17,7 @@ use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 /// Возвращает (Router, AppCtx) — ctx удерживает DB alive на время теста.
 async fn build_test_components() -> anyhow::Result<(axum::Router, trackly_app::context::AppCtx)> {
     let dir = tempfile::TempDir::new()?;
-    let dir_path = dir.into_path(); // не дропаем TempDir — путь нужен живым
+    let dir_path = dir.keep(); // не дропаем TempDir — путь нужен живым
     let paths = trackly_infra::Paths::resolve_for_exe_dir(dir_path)?;
     let config = trackly_infra::AppConfig::default();
     // logging::init может вернуть ошибку если subscriber уже установлен в другом тесте.
