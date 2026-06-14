@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  // Plan 06-05: заменяем Placeholder на полноценный портал заявок.
+  import RequestsPage from '../features/requests/RequestsPage.svelte';
 </script>
 
-<Placeholder section="Заявки" phase={6} />
+<RequestsPage />

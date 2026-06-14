@@ -21,11 +21,13 @@
     open: boolean;
     op: Op;
     cartridge: CartridgeDto | null;
+    /** Pre-fill the «Принтер» context when op='install' is opened from a request (REQ-05). */
+    preFillPrinterId?: number;
     onClose: () => void;
     onSuccess: () => void;
   }
 
-  const { open, op, cartridge, onClose, onSuccess }: Props = $props();
+  const { open, op, cartridge, preFillPrinterId, onClose, onSuccess }: Props = $props();
 
   // --- Form state ---
   let dateIso = $state(''); // ISO YYYY-MM-DD (DatePicker output)
@@ -70,6 +72,15 @@
       givenToError = '';
     }
   });
+
+  // REQ-05: preFillPrinterId is accepted as context when the modal is opened
+  // from a request (RequestDetail). The install form is cartridge-centric;
+  // we show a hint about which printer this cartridge targets when the prop is set.
+  const printerContextHint = $derived(
+    op === 'install' && preFillPrinterId !== undefined
+      ? `Устанавливается в принтер #${preFillPrinterId}`
+      : null,
+  );
 
   // Modal titles (UI-SPEC §Заголовки OperationModal)
   const MODAL_TITLES: Record<Op, string> = {
@@ -233,6 +244,9 @@
     <!-- Поля по op (UI-SPEC §Поля OperationModal) -->
 
     {#if op === 'install' || op === 'to_refill'}
+      {#if printerContextHint}
+        <p class="field-hint">{printerContextHint}</p>
+      {/if}
       <!-- Дата -->
       <div class="field">
         <label class="label" for="op-date">Дата</label>

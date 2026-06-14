@@ -1,0 +1,43 @@
+// Plan 06-05: Requests API wrapper — mirrors tauri commands from 06-03.
+//
+// Frontend args в apiCall — camelCase; tauri-specta конвертирует в snake_case Rust-аргументы.
+// DTO shape — camelCase (RequestDto serde rename_all = "camelCase", S-2).
+
+import { apiCall } from '$lib/api/client';
+import type {
+  RequestCountsDto,
+  RequestCreateDto,
+  RequestDto,
+  RequestFilter,
+  RequestListResponse,
+  RequestTransitionPayload,
+} from '../../bindings-phase6';
+import type { Pagination } from '../../bindings';
+
+export const requests = {
+  list: (filter: RequestFilter, pagination: Pagination) =>
+    apiCall<RequestListResponse>('requests_list', { filter, pagination }),
+
+  get: (id: number) => apiCall<RequestDto>('requests_get', { id }),
+
+  create: (payload: RequestCreateDto) => apiCall<RequestDto>('requests_create', { payload }),
+
+  transition: (payload: RequestTransitionPayload) =>
+    apiCall<RequestDto>('requests_transition', { payload }),
+
+  listCategories: () => apiCall<string[]>('requests_list_categories'),
+
+  statusCounts: (filter: RequestFilter) =>
+    apiCall<RequestCountsDto>('requests_status_counts', { filter }),
+
+  getHistory: (id: number) => apiCall<RequestHistoryEntry[]>('requests_get_history', { id }),
+};
+
+/** Single history entry for a request (audit_log row). */
+export interface RequestHistoryEntry {
+  id: number;
+  action: string;
+  createdAtUtc: number;
+  actorName: string | null;
+  notes: string | null;
+}
