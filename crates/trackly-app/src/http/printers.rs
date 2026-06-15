@@ -16,8 +16,8 @@ use crate::dto::printer::{
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::printers::{
-    build_printers_acknowledge_alert, build_printers_create, build_printers_discover,
-    build_printers_get, build_printers_list, build_printers_refresh,
+    build_printers_acknowledge_alert, build_printers_admit, build_printers_create,
+    build_printers_discover, build_printers_get, build_printers_list, build_printers_refresh,
 };
 
 // ---------------------------------------------------------------------------
@@ -61,6 +61,13 @@ pub struct RefreshPayload {
 #[serde(rename_all = "camelCase")]
 pub struct AcknowledgeAlertPayload {
     pub printer_id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdmitPayload {
+    pub selected_ips: Vec<String>,
+    pub community: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +163,21 @@ pub async fn handler_acknowledge_alert(
     Ok(Json(()))
 }
 
+pub async fn handler_admit(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<AdmitPayload>,
+) -> Result<Json<Vec<PrinterDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_admit(&ctx, &identity, p.selected_ips, p.community)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -166,6 +188,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/printers_get", post(handler_get))
         .route("/api/v1/printers_create", post(handler_create))
         .route("/api/v1/printers_discover", post(handler_discover))
+        .route("/api/v1/printers_admit", post(handler_admit))
         .route("/api/v1/printers_refresh", post(handler_refresh))
         .route(
             "/api/v1/printers_acknowledge_alert",

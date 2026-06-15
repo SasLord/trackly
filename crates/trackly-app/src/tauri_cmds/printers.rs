@@ -6,13 +6,16 @@
 //! `#[specta::specta]` MUST appear AFTER `#[tauri::command]`.
 
 use crate::context::AppCtx;
+use crate::dto::device::DeviceNew;
 use crate::dto::printer::{
     DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
     PrinterListResponse,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::printers::{Pagination as CorePagination, PrinterFilter as CoreFilter};
 use trackly_core::error::AppError;
+use trackly_core::ports::printers::PrinterRepository;
 
 // ---------------------------------------------------------------------------
 // build_* helpers (shared with axum handlers)
@@ -52,7 +55,13 @@ pub async fn build_printers_discover(
     ctx.printers.discover(&ip_start, &ip_end, &community, caller).await
 }
 
-/// Admit: создаёт принтеры из результатов discovery.
+/// Admit: создаёт принтеры из результатов discovery (PRN-01).
+///
+/// Для каждого выбранного IP:
+///   1. Проверяет дубликат по IP в таблице printers — пропускает если уже есть.
+///   2. Probe через SNMP для получения sys_name/model (если probe не ответил — заводит минимальный принтер).
+///   3. Создаёт device (type_id=2, status_id=1) через DeviceService.
+///   4. Создаёт строку printers через PrinterService.create_from_device.
 pub async fn build_printers_admit(
     ctx: &AppCtx,
     caller: &Identity,
@@ -60,30 +69,84 @@ pub async fn build_printers_admit(
     community: String,
 ) -> Result<Vec<PrinterDto>, AppError> {
     authorize(caller, &Action::MutatePrinters)?;
-    // Discover selected IPs one-by-one and create records.
-    // For each selected IP, create a minimal printer record.
-    let results = Vec::new();
+
+    let mut results = Vec::new();
+
     for ip in &selected_ips {
-        // Find discovered device via probe.
-        if let Ok(Some(probed)) = ctx.printers.snmp_client.probe(ip, &community).await {
-            let payload = PrinterCreateDto {
-                device_id: 0, // will be created by UI as a device first
-                ip_address: Some(ip.clone()),
-                community_update: Some(community.clone()),
-                snmp_version: "v2c".to_string(),
-                oid_profile_id: None,
-                usb_host_device_id: None,
-            };
-            // Only admit if we have a valid device_id — UI should send device_id
-            // pre-created. Here we skip if device_id is 0 (placeholder).
-            let _ = probed; // suppress unused warning
-            let _ = payload;
+        // --- Check for duplicate IP in printers table ---
+        let ip_clone = ip.clone();
+        let readers = ctx.printers.readers.clone();
+        let repo = ctx.printers.printer_repo.clone();
+        let is_duplicate = tokio::task::spawn_blocking(move || -> bool {
+            let conn = readers.acquire();
+            let filter = CoreFilter { status: None, search: None };
+            let page = CorePagination { offset: 0, limit: 10_000 };
+            if let Ok((rows, _)) = repo.list(&conn, &filter, &page) {
+                rows.iter().any(|r| r.ip_address.as_deref() == Some(&ip_clone))
+            } else {
+                false
+            }
+        })
+        .await
+        .unwrap_or(false);
+
+        if is_duplicate {
+            continue;
         }
+
+        // --- Probe for device name / model ---
+        let probe_result = ctx.printers.snmp_client.probe(ip, &community).await.ok().flatten();
+        let device_name = probe_result
+            .as_ref()
+            .and_then(|p| {
+                // Prefer sys_name if non-empty, fallback to sys_descr truncated
+                if !p.sys_name.trim().is_empty() {
+                    Some(p.sys_name.clone())
+                } else if !p.sys_descr.trim().is_empty() {
+                    Some(p.sys_descr.chars().take(120).collect())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("Принтер {ip}"));
+
+        // --- Create device type=Принтер (type_id=2, status_id=1) ---
+        let device = ctx
+            .devices
+            .create(DeviceNew {
+                type_id: 2,
+                name: device_name,
+                inventory_no: None,
+                serial_no: None,
+                model: probe_result.as_ref().map(|p| p.sys_descr.chars().take(120).collect()),
+                specs: None,
+                kit: None,
+                state: None,
+                location: None,
+                location_id: None,
+                status_id: 1,
+            })
+            .await?;
+
+        // --- Create printer record linked to the new device ---
+        let printer_dto = ctx
+            .printers
+            .create_from_device(
+                PrinterCreateDto {
+                    device_id: device.id as i32,
+                    ip_address: Some(ip.clone()),
+                    community_update: Some(community.clone()),
+                    snmp_version: "v2c".to_string(),
+                    oid_profile_id: None,
+                    usb_host_device_id: None,
+                },
+                caller,
+            )
+            .await?;
+
+        results.push(printer_dto);
     }
-    // admit is mostly a UI workflow: discover → review → user selects IP → create printer
-    // The actual creation with device_id is done via printers_create separately.
-    // This stub returns empty but compiles correctly.
-    let _ = selected_ips;
+
     Ok(results)
 }
 
