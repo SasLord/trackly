@@ -12,11 +12,10 @@ use axum::{extract::State, routing::post, Json, Router};
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
-use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
-    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter, RequestListResponse,
-    RequestTransitionPayload,
+    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter,
+    RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -164,7 +163,7 @@ pub async fn handler_get_history(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<GetPayload>,
-) -> Result<Json<Vec<AuditEntryDto>>, AppErrorResponse> {
+) -> Result<Json<Vec<RequestHistoryEntryDto>>, AppErrorResponse> {
     let _identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

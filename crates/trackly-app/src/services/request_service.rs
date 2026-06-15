@@ -24,9 +24,9 @@ use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepositor
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
-use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::request::{
-    RequestCountsDto, RequestCreateDto, RequestDto, RequestListResponse, RequestTransitionPayload,
+    RequestCountsDto, RequestCreateDto, RequestDto, RequestHistoryEntryDto, RequestListResponse,
+    RequestTransitionPayload,
 };
 
 /// Application service for request lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -122,21 +122,33 @@ impl RequestService {
     }
 
     /// Request audit history (REQ-07).
-    pub async fn get_history(&self, request_id: i64) -> Result<Vec<AuditEntryDto>, AppError> {
+    pub async fn get_history(
+        &self,
+        request_id: i64,
+    ) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
-        tokio::task::spawn_blocking(move || -> Result<Vec<AuditEntryDto>, AppError> {
+        tokio::task::spawn_blocking(move || -> Result<Vec<RequestHistoryEntryDto>, AppError> {
             let conn = readers.acquire();
             let rows = repo.get_history(&conn, request_id)?;
             Ok(rows
                 .into_iter()
-                .map(|r| AuditEntryDto {
+                .map(|r| RequestHistoryEntryDto {
                     id: r.id,
                     action: r.action,
-                    payload_json: r.payload_json,
-                    before_json: r.before_json,
-                    after_json: r.after_json,
                     created_at_utc: r.created_at_utc,
+                    actor_name: r.actor_name,
+                    // `notes` is carried in payload_json as {"notes": "..."} for
+                    // reject/complete transitions; absent for create/accept.
+                    notes: r.payload_json.as_deref().and_then(|p| {
+                        serde_json::from_str::<serde_json::Value>(p)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("notes")
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                    }),
                 })
                 .collect())
         })
@@ -268,6 +280,16 @@ impl RequestService {
 
         let new_status = op.target_status().to_string();
 
+        // Carry the transition notes into the audit payload so the History
+        // block (REQ-07) can show the reject/complete reason. Create/accept
+        // have no notes → payload stays NULL.
+        let notes_json: Option<String> = match &op {
+            RequestTransitionOp::Reject { notes } => notes.clone(),
+            RequestTransitionOp::Complete { notes, .. } => notes.clone(),
+            RequestTransitionOp::Accept => None,
+        }
+        .map(|n| serde_json::json!({ "notes": n }).to_string());
+
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -289,7 +311,7 @@ impl RequestService {
                         user_id,
                         before_json: None,
                         after_json: None,
-                        payload_json: None,
+                        payload_json: notes_json,
                         created_at_utc: now,
                     },
                 )?;

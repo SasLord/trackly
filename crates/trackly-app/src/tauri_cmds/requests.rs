@@ -9,13 +9,12 @@
 //! WsEvent::RequestStatusChanged через `app.emit("trackly-event", ...)` (D-Notify-01).
 
 use crate::context::AppCtx;
-use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::printer::WsEvent;
 // tauri::Emitter trait is needed for app.emit() in Tauri 2.x.
 use tauri::Emitter;
 use crate::dto::request::{
-    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter, RequestListResponse,
-    RequestTransitionPayload,
+    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter,
+    RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -66,7 +65,7 @@ pub async fn build_requests_counts(ctx: &AppCtx) -> Result<RequestCountsDto, App
 pub async fn build_requests_get_history(
     ctx: &AppCtx,
     id: i64,
-) -> Result<Vec<AuditEntryDto>, AppError> {
+) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
     ctx.requests.get_history(id).await
 }
 
@@ -173,6 +172,6 @@ pub async fn requests_list_categories(
 pub async fn requests_get_history(
     state: tauri::State<'_, AppCtx>,
     id: i32,
-) -> Result<Vec<AuditEntryDto>, AppError> {
+) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
     build_requests_get_history(state.inner(), id as i64).await
 }

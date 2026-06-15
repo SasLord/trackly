@@ -167,6 +167,28 @@ pub struct RequestListResponse {
     pub total: i64,
 }
 
+/// Single audit_log entry for the request History block (REQ-07).
+///
+/// camelCase JSON to match the rest of this module and the frontend
+/// `RequestHistoryEntry` interface (`createdAtUtc`, `actorName`, `notes`).
+/// Distinct from the cartridge `AuditEntryDto` (snake_case) — this one joins
+/// the actor name and surfaces transition notes so the UI can render
+/// `дата — действие; автор; примечание`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestHistoryEntryDto {
+    /// Primary key of the audit_log row — stable unique key for UI list keying.
+    #[specta(type = i32)]
+    pub id: i64,
+    pub action: String,
+    #[specta(type = i32)]
+    pub created_at_utc: i64,
+    /// Full name of the user who performed the action (NULL for system rows).
+    pub actor_name: Option<String>,
+    /// Free-text notes captured with the action (reject/complete reason).
+    pub notes: Option<String>,
+}
+
 /// Aggregate counts for the status switch-bar.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

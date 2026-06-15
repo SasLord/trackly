@@ -13,7 +13,6 @@ use trackly_core::error::AppError;
 use trackly_core::ports::requests::RequestRepository;
 
 use crate::error_conversions::map_rusqlite;
-use crate::repos::cartridges_sqlite::AuditEntryRow;
 
 /// SQLite-backed request repository adapter (zero-sized).
 #[derive(Debug, Default, Clone)]
@@ -321,40 +320,51 @@ impl RequestRepository for SqliteRequestRepository {
     }
 }
 
+/// One row of request history — audit_log joined with the actor's name.
+///
+/// `actor_name` comes from a LEFT JOIN on `users` so a deleted/system actor
+/// yields `None` rather than failing the query. `notes` is carried in
+/// `payload_json` (e.g. `{"notes": "..."}`) for reject/complete transitions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestHistoryRow {
+    pub id: i64,
+    pub action: String,
+    pub actor_name: Option<String>,
+    pub payload_json: Option<String>,
+    pub created_at_utc: i64,
+}
+
 impl SqliteRequestRepository {
     /// Request history from audit_log (REQ-07).
     ///
     /// Returns audit entries for `entity_type = 'request'` and the given
     /// `request_id`, excluding trivial read-ops, ordered newest-first.
+    /// Joins `users` to surface the actor's display name.
     pub fn get_history(
         &self,
         conn: &Connection,
         request_id: i64,
-    ) -> Result<Vec<AuditEntryRow>, AppError> {
+    ) -> Result<Vec<RequestHistoryRow>, AppError> {
         let mut stmt = conn
             .prepare(
-                "SELECT id, entity_type, entity_id, action, user_id, \
-                        before_json, after_json, payload_json, created_at_utc \
-                   FROM audit_log \
-                  WHERE entity_type = 'request' \
-                    AND entity_id = ?1 \
-                    AND action NOT IN ('list', 'get') \
-                  ORDER BY created_at_utc DESC, id DESC",
+                "SELECT a.id, a.action, u.full_name, a.payload_json, a.created_at_utc \
+                   FROM audit_log a \
+                   LEFT JOIN users u ON u.id = a.user_id \
+                  WHERE a.entity_type = 'request' \
+                    AND a.entity_id = ?1 \
+                    AND a.action NOT IN ('list', 'get') \
+                  ORDER BY a.created_at_utc DESC, a.id DESC",
             )
             .map_err(map_rusqlite)?;
 
         let rows = stmt
             .query_map(params![request_id], |r| {
-                Ok(AuditEntryRow {
+                Ok(RequestHistoryRow {
                     id: r.get(0)?,
-                    entity_type: r.get(1)?,
-                    entity_id: r.get(2)?,
-                    action: r.get(3)?,
-                    user_id: r.get(4)?,
-                    before_json: r.get(5)?,
-                    after_json: r.get(6)?,
-                    payload_json: r.get(7)?,
-                    created_at_utc: r.get(8)?,
+                    action: r.get(1)?,
+                    actor_name: r.get(2)?,
+                    payload_json: r.get(3)?,
+                    created_at_utc: r.get(4)?,
                 })
             })
             .map_err(map_rusqlite)?;
@@ -576,7 +586,52 @@ mod tests {
         let history = repo.get_history(&conn, request_id).expect("get_history");
         assert!(!history.is_empty(), "history should have ≥1 entry");
         assert_eq!(history[0].action, "create");
-        assert_eq!(history[0].entity_type, "request");
-        assert_eq!(history[0].entity_id, request_id);
+        // LEFT JOIN users surfaces the actor's display name (REQ-07).
+        assert_eq!(history[0].actor_name.as_deref(), Some("Козлов"));
+        assert_eq!(history[0].created_at_utc, now);
+        // create rows carry no notes payload.
+        assert!(history[0].payload_json.is_none());
+    }
+
+    #[test]
+    fn test_request_get_history_carries_notes_payload() {
+        let (mut conn, _g) = fresh_conn();
+        let user_id = seed_user(&mut conn, "Орлова");
+        let repo = SqliteRequestRepository;
+        let now = 1_700_000_000_i64;
+
+        let new = RequestNew {
+            request_type: "free_form".to_string(),
+            requested_by_user_id: user_id,
+            printer_device_id: None,
+            cartridge_model_id: None,
+            category_id: None,
+            description: Some("Тест notes".to_string()),
+        };
+
+        let request_id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo.insert_in_tx(&tx, &new, now).expect("insert");
+            // Reject transition stores its reason in payload_json (mirrors
+            // RequestService::transition) so History can show it (REQ-07).
+            tx.execute(
+                "INSERT INTO audit_log \
+                 (entity_type, entity_id, action, user_id, before_json, after_json, \
+                  payload_json, created_at_utc) \
+                 VALUES ('request', ?1, 'reject', ?2, NULL, NULL, ?3, ?4)",
+                params![id, user_id, r#"{"notes":"нет картриджа"}"#, now + 10],
+            )
+            .expect("audit insert");
+            tx.commit().expect("commit");
+            id
+        };
+
+        let history = repo.get_history(&conn, request_id).expect("get_history");
+        // Newest-first: reject row is first.
+        assert_eq!(history[0].action, "reject");
+        assert_eq!(
+            history[0].payload_json.as_deref(),
+            Some(r#"{"notes":"нет картриджа"}"#)
+        );
     }
 }
