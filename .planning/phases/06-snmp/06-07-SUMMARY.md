@@ -115,3 +115,22 @@ None — изменения не вводят новых trust boundaries. `requ
 - Commit 734e257: FOUND (feat requests_get_history)
 - Commit fc9c514: FOUND (fix api.ts arg-keys)
 - Commit e73c629: FOUND (fix tablist a11y)
+
+## Post-Checkpoint Fix (human UAT, 2026-06-15)
+
+Human-verify обнаружил баг: блок «История» показывал `NaN.NaN.NaN NaN:NaN`.
+Причина — `requests_get_history` отдавал картриджный `AuditEntryDto`
+(snake_case `created_at_utc`, без `actorName`/`notes`), фронтенд ждёт camelCase
+`createdAtUtc` + `actorName` + `notes` → `new Date(undefined)` = Invalid Date.
+
+Fix (commit 8654f89):
+- Новый `RequestHistoryEntryDto` (camelCase) — отдельный от cartridge DTO.
+- Repo `get_history`: LEFT JOIN users → `actor_name`; `RequestHistoryRow`.
+- `transition()` пишет `notes` в `payload_json` аудита → История показывает
+  причину reject/complete (REQ-07).
+- 2 теста репозитория (actor_name join, notes payload) — зелёные.
+- `svelte-check`: 0 errors. `cargo check`/`clippy` (app+infra): чисто.
+
+Вторая жалоба UAT — «через веб нельзя добавить заявку под Сотрудник/Специалист»
+— НЕ баг 06-07: вход по ролям через браузер отложен до Phase 8 (AD), что
+зафиксировано в 06-VERIFICATION.md (truth 6). Вне scope этой gap-фазы.
