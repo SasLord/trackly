@@ -225,7 +225,7 @@ Plans:
   4. Сотрудник через браузер создаёт заявку одного из двух типов — «Замена картриджа» (со связью к принтеру и модели картриджа в БД) или «Свободная форма» (произвольный текст); специалист видит in-app уведомление о новой заявке.
   5. Специалист переводит заявку «Создана» → «Принять в работу» → «Выполнить» или «Отклонить»; при выполнении заявки на замену картриджа можно сразу запустить операцию установки картриджа (CART-07) из контекста заявки; история заявок и их статусов доступна для просмотра.
 
-**Plans:** 6 base plans complete + 2 gap-closure plans (gaps_found 2026-06-15)
+**Plans:** 8/9 plans executed
 
 Plans:
 - [x] 06-01-PLAN.md — V020-V024 миграции + snmp2 + SnmpClient trait + MockSnmpClient (PRN-01/03/04/08)
@@ -234,7 +234,7 @@ Plans:
 - [x] 06-04-PLAN.md — Прinters UI: api.ts + ws.ts + 11 компонентов (TonerGauge, DiscoveryModal, PrinterAlertBanner) (PRN-01..08)
 - [x] 06-05-PLAN.md — Requests UI: api.ts + 8 компонентов (RequestFormModal, RequestDetail, OperationModal REQ-05 link) (REQ-01..05/07)
 - [x] 06-06-PLAN.md — bindings.ts + nav + cargo check + smoke test checkpoint (все PRN + REQ)
-- [ ] 06-07-PLAN.md — Gap-closure (заявки): arg-key `dto` parity + requests_counts rename + requests_get_history (REQ-07) + a11y tablist + ролевой рендер (REQ-01/02/07)
+- [x] 06-07-PLAN.md — Gap-closure (заявки): arg-key `dto` parity + requests_counts rename + requests_get_history (REQ-07) + a11y tablist + ролевой рендер (REQ-01/02/07)
 - [ ] 06-08-PLAN.md — Gap-closure (принтеры): реализовать discovery admit + ручное «Завести принтер» + select замены картриджа из devices type=Принтер (PRN-01/04, REQ-02)
 **UI hint:** yes
 
@@ -283,7 +283,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Акты приёма-передачи и первая PDF-печать | 5/5 | Complete   | 2026-05-30 |
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
-| 6. Принтеры (SNMP-мониторинг) и Заявки | 7/7 | Gap-closure | 2026-06-15 |
+| 6. Принтеры (SNMP-мониторинг) и Заявки | 8/9 | In Progress|  |
 | 7. Отчёты, Дашборд и Настройки | 0/TBD | Not started | - |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
 
