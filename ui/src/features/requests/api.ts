@@ -20,15 +20,14 @@ export const requests = {
 
   get: (id: number) => apiCall<RequestDto>('requests_get', { id }),
 
-  create: (payload: RequestCreateDto) => apiCall<RequestDto>('requests_create', { payload }),
+  create: (payload: RequestCreateDto) => apiCall<RequestDto>('requests_create', { dto: payload }),
 
   transition: (payload: RequestTransitionPayload) =>
     apiCall<RequestDto>('requests_transition', { payload }),
 
   listCategories: () => apiCall<string[]>('requests_list_categories'),
 
-  statusCounts: (filter: RequestFilter) =>
-    apiCall<RequestCountsDto>('requests_status_counts', { filter }),
+  statusCounts: () => apiCall<RequestCountsDto>('requests_counts'),
 
   getHistory: (id: number) => apiCall<RequestHistoryEntry[]>('requests_get_history', { id }),
 };
