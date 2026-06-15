@@ -24,6 +24,7 @@ use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepositor
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
+use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::request::{
     RequestCountsDto, RequestCreateDto, RequestDto, RequestListResponse, RequestTransitionPayload,
 };
@@ -113,6 +114,31 @@ impl RequestService {
                 completed: c.completed,
                 rejected: c.rejected,
             })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Request audit history (REQ-07).
+    pub async fn get_history(&self, request_id: i64) -> Result<Vec<AuditEntryDto>, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.request_repo.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<AuditEntryDto>, AppError> {
+            let conn = readers.acquire();
+            let rows = repo.get_history(&conn, request_id)?;
+            Ok(rows
+                .into_iter()
+                .map(|r| AuditEntryDto {
+                    id: r.id,
+                    action: r.action,
+                    payload_json: r.payload_json,
+                    before_json: r.before_json,
+                    after_json: r.after_json,
+                    created_at_utc: r.created_at_utc,
+                })
+                .collect())
         })
         .await
         .map_err(|e| AppError::Internal {

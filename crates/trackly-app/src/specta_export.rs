@@ -115,5 +115,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::requests::requests_transition,
         crate::tauri_cmds::requests::requests_counts,
         crate::tauri_cmds::requests::requests_list_categories,
+        crate::tauri_cmds::requests::requests_get_history,
     ])
 }

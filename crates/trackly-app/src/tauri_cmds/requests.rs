@@ -9,6 +9,7 @@
 //! WsEvent::RequestStatusChanged через `app.emit("trackly-event", ...)` (D-Notify-01).
 
 use crate::context::AppCtx;
+use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::printer::WsEvent;
 // tauri::Emitter trait is needed for app.emit() in Tauri 2.x.
 use tauri::Emitter;
@@ -59,6 +60,14 @@ pub async fn build_requests_transition(
 /// Счётчики по статусам (для switch-bar).
 pub async fn build_requests_counts(ctx: &AppCtx) -> Result<RequestCountsDto, AppError> {
     ctx.requests.counts().await
+}
+
+/// История заявки из audit_log (REQ-07).
+pub async fn build_requests_get_history(
+    ctx: &AppCtx,
+    id: i64,
+) -> Result<Vec<AuditEntryDto>, AppError> {
+    ctx.requests.get_history(id).await
 }
 
 /// Список категорий заявок (request_categories).
@@ -157,4 +166,13 @@ pub async fn requests_list_categories(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<String>, AppError> {
     build_requests_list_categories(state.inner()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn requests_get_history(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+) -> Result<Vec<AuditEntryDto>, AppError> {
+    build_requests_get_history(state.inner(), id as i64).await
 }

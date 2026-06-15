@@ -12,6 +12,7 @@ use axum::{extract::State, routing::post, Json, Router};
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
+use crate::dto::cartridge::AuditEntryDto;
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
     Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter, RequestListResponse,
@@ -20,8 +21,8 @@ use crate::dto::request::{
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::requests::{
-    build_requests_counts, build_requests_create, build_requests_get, build_requests_list,
-    build_requests_list_categories, build_requests_transition,
+    build_requests_counts, build_requests_create, build_requests_get, build_requests_get_history,
+    build_requests_list, build_requests_list_categories, build_requests_transition,
 };
 
 // ---------------------------------------------------------------------------
@@ -159,6 +160,21 @@ pub async fn handler_list_categories(
     ))
 }
 
+pub async fn handler_get_history(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetPayload>,
+) -> Result<Json<Vec<AuditEntryDto>>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_requests_get_history(&ctx, p.id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -173,5 +189,9 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/requests_list_categories",
             post(handler_list_categories),
+        )
+        .route(
+            "/api/v1/requests_get_history",
+            post(handler_get_history),
         )
 }

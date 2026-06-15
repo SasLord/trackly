@@ -13,6 +13,7 @@ use trackly_core::error::AppError;
 use trackly_core::ports::requests::RequestRepository;
 
 use crate::error_conversions::map_rusqlite;
+use crate::repos::cartridges_sqlite::AuditEntryRow;
 
 /// SQLite-backed request repository adapter (zero-sized).
 #[derive(Debug, Default, Clone)]
@@ -320,6 +321,52 @@ impl RequestRepository for SqliteRequestRepository {
     }
 }
 
+impl SqliteRequestRepository {
+    /// Request history from audit_log (REQ-07).
+    ///
+    /// Returns audit entries for `entity_type = 'request'` and the given
+    /// `request_id`, excluding trivial read-ops, ordered newest-first.
+    pub fn get_history(
+        &self,
+        conn: &Connection,
+        request_id: i64,
+    ) -> Result<Vec<AuditEntryRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, entity_type, entity_id, action, user_id, \
+                        before_json, after_json, payload_json, created_at_utc \
+                   FROM audit_log \
+                  WHERE entity_type = 'request' \
+                    AND entity_id = ?1 \
+                    AND action NOT IN ('list', 'get') \
+                  ORDER BY created_at_utc DESC, id DESC",
+            )
+            .map_err(map_rusqlite)?;
+
+        let rows = stmt
+            .query_map(params![request_id], |r| {
+                Ok(AuditEntryRow {
+                    id: r.get(0)?,
+                    entity_type: r.get(1)?,
+                    entity_id: r.get(2)?,
+                    action: r.get(3)?,
+                    user_id: r.get(4)?,
+                    before_json: r.get(5)?,
+                    after_json: r.get(6)?,
+                    payload_json: r.get(7)?,
+                    created_at_utc: r.get(8)?,
+                })
+            })
+            .map_err(map_rusqlite)?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -492,5 +539,44 @@ mod tests {
             matches!(err, AppError::Validation { .. }),
             "expected Validation error, got: {err:?}"
         );
+    }
+
+    #[test]
+    fn test_request_get_history_returns_create_entry() {
+        let (mut conn, _g) = fresh_conn();
+        let user_id = seed_user(&mut conn, "Козлов");
+        let repo = SqliteRequestRepository;
+        let now = 1_700_000_000_i64;
+
+        let new = RequestNew {
+            request_type: "free_form".to_string(),
+            requested_by_user_id: user_id,
+            printer_device_id: None,
+            cartridge_model_id: None,
+            category_id: None,
+            description: Some("Тест истории".to_string()),
+        };
+
+        let request_id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo.insert_in_tx(&tx, &new, now).expect("insert");
+            // Manually insert an audit log entry (mirrors RequestService::create).
+            tx.execute(
+                "INSERT INTO audit_log \
+                 (entity_type, entity_id, action, user_id, before_json, after_json, \
+                  payload_json, created_at_utc) \
+                 VALUES ('request', ?1, 'create', ?2, NULL, NULL, NULL, ?3)",
+                params![id, user_id, now],
+            )
+            .expect("audit insert");
+            tx.commit().expect("commit");
+            id
+        };
+
+        let history = repo.get_history(&conn, request_id).expect("get_history");
+        assert!(!history.is_empty(), "history should have ≥1 entry");
+        assert_eq!(history[0].action, "create");
+        assert_eq!(history[0].entity_type, "request");
+        assert_eq!(history[0].entity_id, request_id);
     }
 }
