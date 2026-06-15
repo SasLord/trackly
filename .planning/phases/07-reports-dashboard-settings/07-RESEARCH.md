@@ -327,19 +327,19 @@ fn list_act_report(
 
 ### Pattern 3: Cartridge Consumption Query (DASH-03 / RPT-02)
 
-D-14 defines: «Расход» = Install events from `audit_log`. The `audit_log` table (V008) stores `entity_type`, `action`, `created_at_utc`. Cartridge Install events use action = `'install'`.
+D-14 defines: «Расход» = Install events from `audit_log`. The `audit_log` table (V008) stores `entity_type`, `action`, `created_at_utc`. Cartridge Install events use action = `'custom:install'` [VERIFIED: crates/trackly-core/src/domain/cartridges.rs:176].
 
 ```sql
--- Monthly consumption per model, last N months [VERIFIED: audit_log schema from V008]
+-- Monthly consumption per model, last N months [VERIFIED: audit_log schema from V008; action string VERIFIED: cartridges.rs:176]
 SELECT
     m.brand || ' ' || m.model AS model_label,
-    strftime('%Y-%m', datetime(al.created_at_utc, 'unixepoch')) AS month_key,
+    strftime('%Y-%m', datetime(al.created_at_utc, 'unixepoch', '+3 hours')) AS month_key,
     COUNT(*) AS installs
 FROM audit_log al
 JOIN cartridges c ON c.id = al.entity_id
 JOIN cartridge_models m ON m.id = c.model_id
 WHERE al.entity_type = 'cartridge'
-  AND al.action = 'install'
+  AND al.action = 'custom:install'  -- VERIFIED: CartridgeTransitionOp::Install => "custom:install" (cartridges.rs:176)
   AND al.created_at_utc >= ?1   -- start of 3/6/12-month window in UTC
 GROUP BY model_label, month_key
 ORDER BY month_key ASC, model_label ASC
@@ -780,22 +780,25 @@ Rationale:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact `audit_log.action` string for Install events**
    - What we know: `CartridgeTransitionOp::Install` writes to `audit_log` via `SqliteAuditLogRepository`
    - What's unclear: Whether the action string is `"install"`, `"transition_install"`, or something else
    - Recommendation: Before writing the consumption SQL query, grep `audit_log_sqlite.rs` for the action string used in cartridge transition writes
+   - **RESOLVED:** Action string is `'custom:install'`. Verified at `crates/trackly-core/src/domain/cartridges.rs:176` — `CartridgeTransitionOp::Install { .. } => "custom:install"`. Pattern 3 SQL above has been corrected. All consuming queries MUST use `action = 'custom:install'` (NOT `'install'`).
 
 2. **`rusqlite::backup::Backup` source connection — reader vs writer**
    - What we know: The Backup API requires two `Connection` references
    - What's unclear: Whether it works from a reader pool connection in WAL mode without acquiring the write lock
    - Recommendation: Write a `backup_service` integration test that backs up while concurrent writes are happening; confirm integrity_check passes
+   - **RESOLVED:** WAL mode allows consistent reads from a reader pool connection while writes proceed. The Backup API reads page-by-page from the reader connection; SQLite WAL ensures a consistent snapshot without blocking the writer. Plan 02 uses the reader pool conn in `spawn_blocking` for backup — this is the correct and safe approach.
 
 3. **Document templates — `kind` CHECK constraint**
    - What we know: V007 has `CHECK (kind IN ('act_handover', 'act_acceptance'))`
    - What's unclear: Whether Phase 7 needs additional template kinds for report PDF (D-05 universal report template is NOT a MiniJinja template — it's built programmatically from DocSpec)
    - Recommendation: The universal report PDF (D-05) does NOT need a `document_templates` entry — it is generated from code (DocSpec programmatically constructed). Only `act_handover` and `act_acceptance` are in the template editor (SET-09). No migration change needed.
+   - **RESOLVED:** Confirmed — no new template kinds in Phase 7. The report PDF (D-05) is generated from DocSpec IR programmatically in `ReportService::export_pdf()`. TemplateEditor (SET-09) lists only `act_handover` and `act_acceptance`. No `CHECK` constraint change or new migration needed.
 
 ---
 
