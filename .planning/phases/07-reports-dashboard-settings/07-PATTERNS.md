@@ -971,7 +971,7 @@ async function pickBackupFolder() {
   const { open } = await import('@tauri-apps/plugin-dialog');
   const path = await open({ directory: true, multiple: false });
   if (path) {
-    await apiCall<void>('settings_set_backup_folder', { path });
+    await apiCall<void>('settings_save_backup_config', { backup_folder: path });
     backupFolder = path as string;
   }
 }
