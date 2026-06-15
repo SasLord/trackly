@@ -65,7 +65,7 @@
       oninput={handleInput}
     />
   </div>
-  <nav class="tabs" aria-label="Статус принтеров" role="tablist">
+  <div class="tabs" role="tablist" aria-label="Статус принтеров">
     {#each TABS as tab (String(tab.key))}
       <button
         class="tab"
@@ -78,7 +78,7 @@
         <span class="tab-label">{tab.label}</span>
       </button>
     {/each}
-  </nav>
+  </div>
   {#if isAdmin}
     <Button variant="primary" onclick={onDiscoveryClick}>Найти принтеры</Button>
   {/if}

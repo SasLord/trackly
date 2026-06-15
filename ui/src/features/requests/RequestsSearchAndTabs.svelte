@@ -41,7 +41,7 @@
 </script>
 
 <div class="search-and-tabs">
-  <nav class="tabs" aria-label="Статус заявок" role="tablist">
+  <div class="tabs" role="tablist" aria-label="Статус заявок">
     {#each TABS as tab (String(tab.key))}
       <button
         class="tab"
@@ -54,7 +54,7 @@
         <span class="tab-label">{tab.label}</span>
       </button>
     {/each}
-  </nav>
+  </div>
   {#if canCreate}
     <Button variant="primary" onclick={onCreateClick}>Создать заявку</Button>
   {/if}
