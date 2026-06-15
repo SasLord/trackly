@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-06-14T23:54:18.770Z"
-last_activity: 2026-06-14
+status: gap-closure
+last_updated: "2026-06-15T00:35:00.000Z"
+last_activity: 2026-06-15
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 8
   total_plans: 46
   completed_plans: 46
-  percent: 82
+  percent: 73
 ---
 
 # Project State
@@ -24,12 +24,19 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 ## Current Position
 
-Phase: 06 (snmp) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
-Last activity: 2026-06-14
+Phase: 06 (snmp) — GAP-CLOSURE
+Plan: 7 of 7 executed; human UAT failed (06-VERIFICATION.md, status gaps_found)
+Status: Gaps found in human verification — awaiting /gsd-plan-phase 6 --gaps
+Last activity: 2026-06-15
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90% (код собран и протестирован; runtime-дефекты заявок/discovery)
+
+### Phase 6 gap-closure decisions (2026-06-15)
+
+- D-GAP-Printer-Add: принтер = устройство type=Принтер + опц. SNMP; завести вручную И через discovery; admit починить (PRN-04 USB).
+- D-GAP-Replace-Select: Select принтера в форме замены = устройства type=Принтер (§427), не printers-таблица.
+- D-GAP-Employee-Access: полноценный вход сотрудника → AD Phase 8; сейчас только корректный ролевой рендер.
+- Критические дефекты: requests_create arg `dto` vs `payload`; requests_status_counts/get_history mismatch; printers_admit заглушка.
 
 ## Performance Metrics
 
