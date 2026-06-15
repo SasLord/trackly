@@ -16,7 +16,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 3: Акты приёма-передачи и первая PDF-печать** — Акты, возвраты с под-нумерацией, архив, krilla-PDF с кириллицей, шаблоны документа приёма (completed 2026-05-30)
 - [x] **Phase 4: Картриджи** — Модели и экземпляры картриджей, lifecycle, контекстные действия, баннер низкого остатка (completed 2026-06-07)
 - [x] **Phase 5: Авторизация, локальные пользователи и серверный режим** — Argon2id-логин, роли, HTTPS-сервер axum, единый authorize() для обоих транспортов (completed 2026-06-13)
-- [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure: human UAT 2026-06-15 нашёл дефекты заявок/discovery — см. 06-VERIFICATION.md) (completed 2026-06-15)
+- [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure 06-07/06-08 закрыл дефекты заявок/discovery; human UAT 2026-06-15 — approved; status=verified, см. 06-VERIFICATION.md) (completed 2026-06-15)
 - [ ] **Phase 7: Отчёты, Дашборд и Настройки** — Отчёты с группировкой по месяцам, виджеты дашборда, организация/логотип/бэкапы/шаблоны
 - [ ] **Phase 8: AD-вход и релизный пайплайн** — LDAP simple_bind, заявки на регистрацию, авто-приём, GitHub Actions Release matrix, артефакты с checksums
 
