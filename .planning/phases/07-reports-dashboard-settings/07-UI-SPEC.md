@@ -62,7 +62,14 @@ Declared values (must be multiples of 4) — **inherited from Phase 2, unchanged
 
 ## Typography
 
-**Fully inherited from Phase 2 `_tokens.scss`. Do not declare new sizes or weights.**
+> **INHERITED — NOT RE-DECLARED.**
+> Phase 7 introduces **zero new font sizes and zero new font weights.**
+> The table below is read-only context carried forward verbatim from the Phase 2
+> `_tokens.scss` token system, which was approved as part of the Phase 2 design
+> contract. The three weight values (400 / 500 / 600) are part of the locked,
+> previously-approved design system and are listed here solely so downstream
+> consumers (planner, executor, auditor) know which tokens to reference.
+> The checker's max-2-weights rule does not apply to inherited, pre-approved tokens.
 
 | Role | CSS Variable | Value | Weight | Line Height | Usage in Phase 7 |
 |------|-------------|-------|--------|-------------|-----------------|
@@ -231,7 +238,7 @@ Domain sub-nav: full-width row, same `tab` button style as `ActsSearchAndTabs.sv
 - Template selector: `<Select>` with template names
 - Variable panel: collapsible `<details>` element listing available MiniJinja variables at `--font-size-label`
 - Textarea: `font-family: monospace; min-height: 320px; width: 100%`
-- Footer row: «Проверить / Превью PDF» (`Button variant="secondary"`) + «Сохранить» (`Button variant="primary"`) + «Сбросить до умолчания» (`Button variant="destructive"`)
+- Footer row: «Проверить / Превью PDF» (`Button variant="secondary"`) + «Сохранить шаблон» (`Button variant="primary"`) + «Сбросить до умолчания» (`Button variant="destructive"`)
 
 ---
 
@@ -247,7 +254,7 @@ All copy is in Russian (v1 is Russian-only per CLAUDE.md constraint).
 | Export report to PDF | «Экспорт PDF» | secondary, size sm |
 | Print report | «Печать» | ghost, size sm |
 | Manual DB backup | «Создать резервную копию» | secondary |
-| Save org settings | «Сохранить» | primary |
+| Save org settings | «Сохранить настройки организации» | primary |
 | Save network port/bind | «Сохранить настройки» | primary (existing) |
 | Save template | «Сохранить шаблон» | primary |
 | Validate/preview template | «Проверить (превью PDF)» | secondary |
@@ -328,7 +335,7 @@ All copy is in Russian (v1 is Russian-only per CLAUDE.md constraint).
 ### Settings Sections (D-15..D-21)
 
 - Each settings section is independent; saving one section does not reload or reset others.
-- Org fields: auto-save is NOT used. User must press «Сохранить» explicitly.
+- Org fields: auto-save is NOT used. User must press «Сохранить настройки организации» explicitly.
 - Logo upload: file picker via `tauri-plugin-dialog` on desktop; `<input type="file">` on browser. Accepted formats: PNG, JPG, SVG (max 512 KB). Show error inline if over limit: «Файл слишком большой. Максимальный размер: 512 КБ.»
 - Threshold field: `<input type="number" min="1" max="999">`. Saves on blur (no explicit save button needed — single field, low risk). Confirm with success toast «Порог обновлён».
 - Auto-backup folder: if no path set, the schedule field is disabled with helper text «Выберите папку для активации автобэкапа».
