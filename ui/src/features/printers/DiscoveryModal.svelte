@@ -83,7 +83,8 @@
     if (selectedIps.length === 0) return;
     creating = true;
     try {
-      const count = await printers.admit(selectedIps, community.trim() || 'public');
+      const admitted = await printers.admit(selectedIps, community.trim() || 'public');
+      const count = admitted.length;
       pushToast('success', `Заведено принтеров: ${count}`);
       onSuccess(count);
     } catch (e: unknown) {

@@ -7,11 +7,13 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
+  import Button from '$lib/components/Button.svelte';
   import PrintersMasterDetail from './PrintersMasterDetail.svelte';
   import PrintersSearchAndTabs from './PrintersSearchAndTabs.svelte';
   import PrintersList from './PrintersList.svelte';
   import PrinterDetail from './PrinterDetail.svelte';
   import DiscoveryModal from './DiscoveryModal.svelte';
+  import PrinterCreateModal from './PrinterCreateModal.svelte';
   import { printers } from './api';
   import type { PrinterDto, PrinterFilter } from '../../bindings-phase6';
   import type { WsEvent } from '../../bindings-phase6';
@@ -22,6 +24,7 @@
   let selectedPrinter = $state<PrinterDto | null>(null);
   let detailLoading = $state(false);
   let discoveryOpen = $state(false);
+  let createOpen = $state(false);
 
   let filter = $state<PrinterFilter>({ status: null, search: null });
 
@@ -118,6 +121,11 @@
 <div class="printers-page">
   <header class="page-header">
     <h1 class="page-title">Принтеры</h1>
+    {#if authStore.user?.role === 'admin' || authStore.user?.role === 'manager'}
+      <div class="header-actions">
+        <Button variant="secondary" onclick={() => (createOpen = true)}>Завести принтер</Button>
+      </div>
+    {/if}
   </header>
 
   <div class="page-content">
@@ -167,6 +175,15 @@
   onClose={() => (discoveryOpen = false)}
   onSuccess={(_n) => {
     discoveryOpen = false;
+    void refresh();
+  }}
+/>
+
+<PrinterCreateModal
+  open={createOpen}
+  onClose={() => (createOpen = false)}
+  onSuccess={() => {
+    createOpen = false;
     void refresh();
   }}
 />

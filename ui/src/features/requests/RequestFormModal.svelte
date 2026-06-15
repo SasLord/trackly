@@ -9,8 +9,8 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { requests } from './api';
-  import { printers } from '../printers/api';
-  import type { PrinterDto } from '../../bindings-phase6';
+  import { devices } from '$lib/api/devices';
+  import type { DeviceDto } from '../../bindings';
 
   interface Props {
     open: boolean;
@@ -33,8 +33,8 @@
   let printerError = $state('');
   let descError = $state('');
 
-  // Available printers list
-  let availablePrinters = $state<PrinterDto[]>([]);
+  // Available printers list — all devices with type_id=2 (Принтер), incl. USB/без-SNMP (§427)
+  let availablePrinters = $state<DeviceDto[]>([]);
   let printersLoading = $state(false);
 
   // Fixed category list (D-Req-Categories-01)
@@ -67,9 +67,13 @@
   });
 
   async function loadPrinters() {
+    // Load all devices with type_id=2 (Принтер) — includes USB/без-SNMP (§427, D-GAP-Replace-Select)
     printersLoading = true;
     try {
-      const resp = await printers.list({ status: null, search: null }, { offset: 0, limit: 200 });
+      const resp = await devices.list(
+        { type_id: 2, location_id: null, status_id: null, state: null, name_prefix: null, include_deleted: false, group_by_condition: false },
+        { offset: 0, limit: 200 },
+      );
       availablePrinters = resp.items;
     } catch {
       // Non-fatal — printers list stays empty.
@@ -182,7 +186,7 @@
           >
             <option value="">Выберите принтер</option>
             {#each availablePrinters as p (p.id)}
-              <option value={String(p.id)}>{p.deviceName ?? p.ipAddress ?? `Принтер #${p.id}`}</option>
+              <option value={String(p.id)}>{p.name || `Принтер #${p.id}`}</option>
             {/each}
           </Select>
           {#if printerError}

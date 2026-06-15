@@ -28,7 +28,7 @@ export const printers = {
     apiCall<DiscoveredPrinterDto[]>('printers_discover', { ipStart, ipEnd, community }),
 
   admit: (selectedIps: string[], community: string) =>
-    apiCall<number>('printers_admit', { selectedIps, community }),
+    apiCall<PrinterDto[]>('printers_admit', { selectedIps, community }),
 
   refresh: (id: number) => apiCall<PrinterDto>('printers_refresh', { id }),
 
