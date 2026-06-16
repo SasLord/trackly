@@ -38,7 +38,7 @@ mod tests {
         let user_version: i64 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .expect("read user_version");
-        assert_eq!(user_version, 25);
+        assert_eq!(user_version, 27);
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM device_types", [], |r| r.get(0))

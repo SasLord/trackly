@@ -7,18 +7,24 @@
 
 pub mod act_service;
 pub mod auth;
+pub mod backup_service;
 pub mod cartridge_service;
 pub mod device_service;
+pub mod org_db_service;
 pub mod organization_service;
 pub mod printer_service;
 pub mod request_service;
+pub mod supervisor;
 pub mod template_service;
 
 pub use act_service::ActService;
 pub use auth::AuthService;
+pub use backup_service::{BackupConfigDto, BackupResult, BackupService};
 pub use cartridge_service::CartridgeService;
 pub use device_service::DeviceService;
+pub use org_db_service::OrgDbService;
 pub use organization_service::{OrgData, OrganizationService};
 pub use printer_service::{run_poll_task, PrinterService};
 pub use request_service::RequestService;
+pub use supervisor::{run_supervisor, seed_supervisor_tasks};
 pub use template_service::{TemplateService, DEFAULT_TEMPLATES};

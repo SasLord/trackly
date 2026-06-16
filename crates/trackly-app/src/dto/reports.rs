@@ -246,3 +246,22 @@ pub struct PeriodDto {
     /// ISO date string "YYYY-MM-DD" (e.g. "2026-06-30"), inclusive upper bound.
     pub date_to: Option<String>,
 }
+
+// ---------------------------------------------------------------------------
+// Template editor
+// ---------------------------------------------------------------------------
+
+/// Элемент списка шаблонов для редактора (SET-07).
+///
+/// Возвращается `TemplateService::list_all_for_editor`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TemplateEditorItem {
+    #[specta(type = i32)]
+    pub id: i64,
+    /// Kind discriminator — "act_handover" | "act_acceptance".
+    pub kind: String,
+    /// Текущее тело шаблона (MiniJinja source).
+    pub body: String,
+    /// True если тело совпадает с дефолтным (seeded from binary).
+    pub is_default: bool,
+}

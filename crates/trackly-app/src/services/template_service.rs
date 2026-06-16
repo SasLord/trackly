@@ -14,10 +14,13 @@
 use std::sync::Arc;
 
 use rusqlite::params;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
+
+use crate::dto::reports::TemplateEditorItem;
 
 /// Дефолтные шаблоны, embed'нутые в бинарь (`include_str!`). Сидятся в БД
 /// при первом запуске и при полной soft-delete всех версий kind'а.
@@ -85,6 +88,112 @@ impl TemplateService {
                 }
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
+            })
+            .await
+    }
+
+    /// Возвращает все активные шаблоны для редактора (SET-07).
+    pub async fn list_all_for_editor(&self) -> Result<Vec<TemplateEditorItem>, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<TemplateEditorItem>, AppError> {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, kind, is_default, body_minijinja \
+                     FROM document_templates \
+                     WHERE is_active = 1 AND deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let items: Vec<TemplateEditorItem> = stmt
+                .query_map([], |r| {
+                    Ok(TemplateEditorItem {
+                        id: r.get(0)?,
+                        kind: r.get(1)?,
+                        is_default: r.get::<_, bool>(2)?,
+                        body: r.get(3)?,
+                    })
+                })
+                .map_err(map_rusqlite)?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(items)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_all_for_editor: {e}"),
+        })?
+    }
+
+    /// Обновляет тело шаблона. Требует `ManageSettings`.
+    ///
+    /// Валидирует синтаксис MiniJinja перед записью в БД.
+    pub async fn update_body(
+        &self,
+        caller: &Identity,
+        kind: &str,
+        body: String,
+    ) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+
+        // Валидация синтаксиса MiniJinja
+        {
+            let mut env = minijinja::Environment::new();
+            env.add_template_owned("_validate", body.clone())
+                .map_err(|e| AppError::Validation {
+                    field: "body".to_string(),
+                    message: format!("Синтаксическая ошибка в шаблоне: {e}"),
+                })?;
+        }
+
+        let kind_owned = kind.to_string();
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE document_templates \
+                     SET body_minijinja=?2, is_default=0, \
+                         updated_at_utc=?3, version=version+1 \
+                     WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
+                    params![kind_owned, body, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+    }
+
+    /// Сбрасывает шаблон к встроенному дефолту. Требует `ManageSettings`.
+    pub async fn reset_to_default(
+        &self,
+        caller: &Identity,
+        kind: &str,
+    ) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+
+        // Ищем дефолтный шаблон по kind в DEFAULT_TEMPLATES
+        let default_body = DEFAULT_TEMPLATES
+            .iter()
+            .find(|(k, _, _)| *k == kind)
+            .map(|(_, _, body)| *body)
+            .ok_or(AppError::NotFound {
+                entity: "default_template",
+                id: 0,
+            })?;
+
+        let kind_owned = kind.to_string();
+        let body_owned = default_body.to_string();
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE document_templates \
+                     SET body_minijinja=?2, is_default=1, \
+                         updated_at_utc=?3, version=version+1 \
+                     WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
+                    params![kind_owned, body_owned, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
             })
             .await
     }
