@@ -252,7 +252,7 @@ Plans:
   4. Администратор в Настройках задаёт данные организации (название, реквизиты, адрес) и загружает логотип (хранится как BLOB в БД, переезжает с portable-сборкой); логотип появляется в шапке актов и документа приёма; настраивает порог низкого остатка (по умолчанию 2); открывает папку с БД и при необходимости меняет расположение (с проверкой запрета на SMB-шары).
   5. Ручной бэкап одним кликом через `rusqlite::backup::Backup` (НЕ `fs::copy`); автобэкап по расписанию (ежедневно/еженедельно) с настраиваемой ретенцией; integrity_check на бэкапе после записи; редактируемые MiniJinja-шаблоны Акта и Документа приёма сохраняются с валидацией.
 
-**Plans:** 4/7 plans executed
+**Plans:** 5/7 plans executed
 
 **Wave 1**
 
@@ -266,7 +266,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2)*
 
 - [x] 07-04-PLAN.md — Settings UI: OrgSettings + StorageSettings + BackupSettings + ThresholdSettings + TemplateEditor (Wave 3, parallel)
-- [ ] 07-05-PLAN.md — Dashboard UI: DashboardPage + StatWidget + ChartWidget (SVG, zero npm deps) + PeriodToggle (Wave 3, parallel)
+- [x] 07-05-PLAN.md — Dashboard UI: DashboardPage + StatWidget + ChartWidget (SVG, zero npm deps) + PeriodToggle (Wave 3, parallel)
 - [ ] 07-06-PLAN.md — Reports UI: ReportsPage + ReportSubNav + PeriodSelector + ReportTable + ReportFilters (Wave 3, parallel)
 
 **Wave 4** *(blocked on Wave 3)*
@@ -304,7 +304,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
-| 7. Отчёты, Дашборд и Настройки | 4/7 | In Progress|  |
+| 7. Отчёты, Дашборд и Настройки | 5/7 | In Progress|  |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
 
 ## Coverage
