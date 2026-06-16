@@ -13,9 +13,14 @@ pub mod device;
 pub mod health;
 pub mod organization;
 pub mod printer;
+pub mod reports;
 pub mod request;
 pub mod suggest;
 
 pub use health::HealthDto;
 pub use organization::OrgDto;
 pub use printer::WsEvent;
+pub use reports::{
+    BackupConfigPatch, ConsumptionPoint, DashboardWidgetDto, OrgLogoDto, OrgPatch, OrgSettingsDto,
+    PeriodDto, ReportFilter, ReportResponse, ReportRow, StatusCount,
+};
