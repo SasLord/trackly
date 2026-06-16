@@ -1,5 +1,7 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  // Plan 07-05: Dashboard — главная страница приложения (route '/').
+  // Заменяет Placeholder на DashboardPage с 5 виджетами.
+  import DashboardPage from '../features/dashboard/DashboardPage.svelte';
 </script>
 
-<Placeholder section="Дашборд" phase={7} />
+<DashboardPage />
