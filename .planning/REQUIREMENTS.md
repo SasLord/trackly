@@ -108,7 +108,7 @@
 - [x] **RPT-05**: Поиск внутри отчёта
 - [x] **RPT-06**: Группировка списка по месяцам с визуальным разделителем (заголовок «Сентябрь 2026») при смене месяца
 - [x] **RPT-07**: Экспорт отчёта в CSV (UTF-8 BOM) и в PDF
-- [ ] **RPT-08**: Печать отчёта (через системный диалог печати)
+- [x] **RPT-08**: Печать отчёта (через системный диалог печати)
 
 ### Users & Roles (USR)
 
@@ -314,7 +314,7 @@
 | RPT-05 | Phase 7 | Complete |
 | RPT-06 | Phase 7 | Complete |
 | RPT-07 | Phase 7 | Complete |
-| RPT-08 | Phase 7 | Pending |
+| RPT-08 | Phase 7 | Complete |
 | USR-01 | Phase 5 | Complete |
 | USR-02 | Phase 5 | Complete |
 | USR-03 | Phase 5 | Complete |
