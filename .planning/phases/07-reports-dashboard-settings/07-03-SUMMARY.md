@@ -156,3 +156,19 @@ None — no new network endpoints, auth paths, or schema changes introduced.
 ---
 *Phase: 07-reports-dashboard-settings*
 *Completed: 2026-06-16*
+
+## Self-Check: PASSED
+
+- [x] crates/trackly-app/src/services/report_service.rs exists — FOUND
+- [x] crates/trackly-app/src/services/dashboard_service.rs exists — FOUND
+- [x] .planning/phases/07-reports-dashboard-settings/07-03-SUMMARY.md exists — FOUND
+- [x] Commit aa7ca3f exists — FOUND (ReportService)
+- [x] Commit 5c077a4 exists — FOUND (DashboardService)
+- [x] report_acts tests pass — VERIFIED (2/2)
+- [x] report_cartridges tests pass — VERIFIED (2/2)
+- [x] report_period_bounds tests pass — VERIFIED (3/3)
+- [x] report_csv_export tests pass — VERIFIED (2/2)
+- [x] dashboard_widgets tests pass — VERIFIED (2/2)
+- [x] grep custom:install report_service.rs — 2 matches
+- [x] grep custom:install dashboard_service.rs — 3 matches
+- [x] cargo check -p trackly-app exits 0 — VERIFIED
