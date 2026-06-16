@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Placeholder from '$lib/components/Placeholder.svelte';
+  // Plan 07-06 Task 2: Route page — delegates to features/reports/ReportsPage.svelte.
+  import ReportsPage from '../features/reports/ReportsPage.svelte';
 </script>
 
-<Placeholder section="Отчёты" phase={7} />
+<ReportsPage />
