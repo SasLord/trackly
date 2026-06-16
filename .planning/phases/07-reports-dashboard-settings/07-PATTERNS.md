@@ -130,8 +130,8 @@ let mut stmt = conn
           ORDER BY created_at_utc DESC, id DESC",
     )
     .map_err(map_rusqlite)?;
-// For RPT-02 consumption query, filter: action = 'install'
-// (verify exact string in cartridges_lifecycle.rs before writing SQL)
+// For RPT-02 consumption query, filter: action = 'custom:install'
+// (VERIFIED: CartridgeTransitionOp::Install => 'custom:install' in cartridges.rs:176)
 ```
 
 **spawn_blocking read pattern** (template_service.rs lines 94–121):
@@ -186,7 +186,7 @@ FROM audit_log al
 JOIN cartridges c ON c.id = al.entity_id
 JOIN cartridge_models m ON m.id = c.model_id
 WHERE al.entity_type = 'cartridge'
-  AND al.action = 'install'   -- VERIFY exact string in cartridges_lifecycle.rs
+  AND al.action = 'custom:install'   -- VERIFIED: CartridgeTransitionOp::Install => 'custom:install'
   AND al.created_at_utc >= ?1
 GROUP BY model_label, month_key
 ORDER BY month_key ASC, model_label ASC
@@ -585,10 +585,15 @@ pub struct ReportFilter {
 pub struct DashboardWidgetDto {
     pub devices_total: i64,
     pub devices_by_status: Vec<StatusCount>,
-    pub cartridge_counts: CartridgeCountsDto,
-    pub low_stock: Vec<LowStockItemDto>,
-    pub printer_counts: PrinterCountsDto,
-    pub request_counts: RequestCountsDto,
+    pub cartridge_by_status: Vec<StatusCount>,  // flat — matches 07-01 DTO
+    pub low_stock_count: i64,
+    pub low_stock_models: Vec<String>,
+    pub request_counts_open: i64,
+    pub request_counts_in_progress: i64,
+    pub request_counts_completed: i64,
+    pub printer_online: i64,
+    pub printer_offline: i64,
+    pub printer_problematic: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
