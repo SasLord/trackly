@@ -19,6 +19,8 @@ fn spec_with_long_name() -> DocSpec {
             org_kpp: "123456789".into(),
             org_address: "Москва".into(),
             logo_path: None,
+            logo_bytes: None,
+            logo_mime: None,
             act_label: "Акт №1".into(),
             date_label: "31 мая 2026".into(),
         },

@@ -34,8 +34,8 @@ use crate::dto::printer::WsEvent;
 use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
-    run_poll_task, ActService, AuthService, CartridgeService, DeviceService, OrganizationService,
-    PrinterService, RequestService, TemplateService,
+    run_poll_task, seed_supervisor_tasks, ActService, AuthService, CartridgeService, DeviceService,
+    OrgDbService, OrganizationService, PrinterService, RequestService, TemplateService,
 };
 use trackly_infra::snmp::{mock::MockSnmpClient, real::RealSnmpClient};
 
@@ -96,6 +96,10 @@ pub struct AppCtx {
     /// WebSocket broadcast sender — fan-out to all connected WS clients.
     /// Capacity 128 (D-Notify-01). Added in Phase 6 Plan 03.
     pub ws_broadcast: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+    /// Organisation DB service — read/write org_settings table (V026).
+    /// Replaces OrganizationService (org.json) in Phase 7 Plan 02.
+    /// Added in Phase 7 Plan 02 (D-15).
+    pub org_db: Arc<OrgDbService>,
 }
 
 impl AppCtx {
@@ -195,6 +199,18 @@ impl AppCtx {
         // Seed default templates on first run (idempotent).
         templates.seed_defaults_on_startup().await?;
 
+        // Phase 7 Plan 02: OrgDbService (replaces OrganizationService for settings write layer).
+        let org_db = Arc::new(OrgDbService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            paths_arc.clone(),
+        ));
+
+        // Seed supervisor tasks (INSERT OR IGNORE — idempotent).
+        let now_ts = clock.unix_seconds();
+        seed_supervisor_tasks(&writer, now_ts).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+
         // ActService с подключённым PDF pipeline.
         let acts = Arc::new(
             ActService::new(writer.clone(), readers.clone(), clock.clone()).with_pdf_pipeline(
@@ -285,6 +301,7 @@ impl AppCtx {
             printers,
             requests,
             ws_broadcast,
+            org_db,
         })
     }
 }

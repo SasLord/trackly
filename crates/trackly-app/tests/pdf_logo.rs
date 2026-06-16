@@ -29,6 +29,9 @@ fn base_spec(logo_path: Option<String>) -> DocSpec {
             org_kpp: "0".into(),
             org_address: "Москва".into(),
             logo_path,
+            // Phase 7 plan 02 fields — None for backward-compat tests
+            logo_bytes: None,
+            logo_mime: None,
             act_label: "Акт".into(),
             date_label: "1 января 2026 г.".into(),
         },
@@ -93,4 +96,73 @@ fn logo_path_missing_file_is_graceful() {
         .render_docspec(&spec)
         .expect("render must succeed even when logo file is missing");
     assert_eq!(&bytes[..4], b"%PDF", "PDF magic header missing");
+}
+
+/// Phase 7 plan 02: logo_bytes BLOB path takes priority over logo_path.
+/// When logo_bytes is Some and mime is "image/png", the logo is rendered
+/// from in-memory bytes without any filesystem access.
+#[test]
+fn logo_bytes_blob_renders_image_in_pdf() {
+    let spec = DocSpec {
+        title: "Логотип-BLOB-тест".into(),
+        header: HeaderBlock {
+            org_name: "ООО Тест".into(),
+            org_inn: "0".into(),
+            org_kpp: "0".into(),
+            org_address: "Москва".into(),
+            logo_path: None, // intentionally None — logo_bytes takes priority
+            logo_bytes: Some(LOGO_PNG.to_vec()),
+            logo_mime: Some("image/png".into()),
+            act_label: "Акт".into(),
+            date_label: "1 января 2026 г.".into(),
+        },
+        sections: vec![Section::Paragraph {
+            text: "Тело документа с BLOB логотипом".into(),
+            style: trackly_app::pdf::docspec::TextStyle::Regular,
+        }],
+    };
+
+    let renderer = PdfRenderer::new();
+    let bytes = renderer.render_docspec(&spec).expect("render with logo_bytes");
+
+    assert_eq!(&bytes[..4], b"%PDF", "PDF magic header missing");
+    assert!(
+        bytes_contain(&bytes, b"/Subtype /Image") || bytes_contain(&bytes, b"/XObject"),
+        "rendered PDF must contain image XObject when logo_bytes is set; got {} bytes",
+        bytes.len()
+    );
+}
+
+/// Phase 7 plan 02: logo_bytes priority — when both logo_bytes AND logo_path are set,
+/// logo_bytes wins (no filesystem access for logo_path should occur).
+#[test]
+fn logo_bytes_takes_priority_over_logo_path() {
+    // logo_path points to nonexistent file — if logo_bytes is used, render succeeds
+    // and includes the logo; if logo_path is attempted first, it would warn and skip.
+    let spec = DocSpec {
+        title: "Логотип-priority-тест".into(),
+        header: HeaderBlock {
+            org_name: "ООО Тест".into(),
+            org_inn: "0".into(),
+            org_kpp: "0".into(),
+            org_address: "Москва".into(),
+            logo_path: Some("/tmp/__nonexistent_logo_priority_test.png".into()),
+            logo_bytes: Some(LOGO_PNG.to_vec()),
+            logo_mime: Some("image/png".into()),
+            act_label: "Акт".into(),
+            date_label: "1 января 2026 г.".into(),
+        },
+        sections: vec![],
+    };
+
+    let renderer = PdfRenderer::new();
+    let bytes = renderer
+        .render_docspec(&spec)
+        .expect("render must succeed with logo_bytes taking priority");
+
+    // logo_bytes should be used — image XObject present
+    assert!(
+        bytes_contain(&bytes, b"/Subtype /Image") || bytes_contain(&bytes, b"/XObject"),
+        "logo_bytes must take priority — image XObject should be present"
+    );
 }

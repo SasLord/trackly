@@ -167,11 +167,22 @@ impl PdfRenderer {
             // Optional logo in the top-right corner. Graceful — a missing file
             // or unsupported mime is a tracing::warn, never an error: orgs
             // without a logo (or with a misconfigured path) must still print.
-            // ACT-11 / CR-01: previous Phase-3 plans wired `safe_logo_canonical`
-            // up to `spec.header.logo_path`, but the renderer ignored it. This
-            // block consumes it via `std::fs::read` → `Image::from_png/jpeg`
-            // → `surface.draw_image`.
-            if let Some(logo_path_str) = &spec.header.logo_path {
+            // ACT-11 / CR-01: Phase-3 plans wired `safe_logo_canonical` up to
+            // `spec.header.logo_path`; Phase-7 plan-02 adds `logo_bytes` BLOB
+            // path that takes priority (T-07-02-01 mitigation — validated at save).
+            //
+            // Priority (Phase 7 plan 02):
+            //   1. logo_bytes is Some → draw from in-memory bytes + logo_mime
+            //   2. logo_path is Some → read from filesystem (Phase 3 path)
+            //   3. else → no logo
+            if let Some(logo_bytes) = &spec.header.logo_bytes {
+                let mime = spec
+                    .header
+                    .logo_mime
+                    .as_deref()
+                    .unwrap_or("image/png");
+                draw_logo_from_bytes(&mut surface, logo_bytes, mime);
+            } else if let Some(logo_path_str) = &spec.header.logo_path {
                 draw_logo_top_right(&mut surface, logo_path_str);
             }
 
@@ -380,6 +391,85 @@ pub fn scale_logo_dimensions(
     (orig_w * scale, orig_h * scale)
 }
 
+/// Draw a logo from in-memory bytes (Phase 7 plan 02 — BLOB path).
+///
+/// `mime` is used to determine the image format ("image/png", "image/jpeg",
+/// "image/svg+xml"). SVG is not supported by krilla natively, so it is
+/// logged as WARN and skipped (same graceful behavior as logo_path).
+///
+/// Failures are logged at WARN and the function returns silently — rendering
+/// must remain graceful so orgs without a valid logo still get a document.
+fn draw_logo_from_bytes(
+    surface: &mut krilla::surface::Surface<'_>,
+    logo_bytes: &[u8],
+    mime: &str,
+) {
+    // Determine format from mime (T-07-02-01: only png/jpeg/svg allowed at save time)
+    let mime_lower = mime.to_lowercase();
+    let is_png = mime_lower.contains("png");
+    let is_jpeg = mime_lower.contains("jpeg") || mime_lower.contains("jpg");
+
+    if !is_png && !is_jpeg {
+        // SVG not supported in krilla direct rendering; skip gracefully
+        tracing::warn!(mime, "Logo mime not supported by krilla renderer — skipping");
+        return;
+    }
+
+    // Get intrinsic dimensions without consuming bytes
+    let (orig_w, orig_h) =
+        match ImageReader::new(Cursor::new(logo_bytes))
+            .with_guessed_format()
+        {
+            Ok(reader) => match reader.into_dimensions() {
+                Ok((w, h)) => (w as f32, h as f32),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Logo BLOB intrinsic dimensions parse failed — skipping");
+                    return;
+                }
+            },
+            Err(e) => {
+                tracing::warn!(error = %e, "Logo BLOB format guess failed — skipping");
+                return;
+            }
+        };
+
+    let data: krilla::Data = logo_bytes.to_vec().into();
+    let image_result: Result<Image, String> = if is_png {
+        Image::from_png(data, true)
+    } else {
+        Image::from_jpeg(data, true)
+    };
+
+    let image = match image_result {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::warn!(error = %e, "Logo BLOB bytes failed to parse — skipping");
+            return;
+        }
+    };
+
+    let (final_w, final_h) =
+        scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
+    if final_w <= 0.0 || final_h <= 0.0 {
+        tracing::warn!(orig_w, orig_h, "Logo BLOB scaled dimensions non-positive — skipping");
+        return;
+    }
+
+    let size = match Size::from_wh(final_w, final_h) {
+        Some(s) => s,
+        None => {
+            tracing::warn!(final_w, final_h, "Logo BLOB size invalid — skipping");
+            return;
+        }
+    };
+
+    let tx = A4_WIDTH_PT - MARGIN_PT - final_w;
+    let ty = MARGIN_PT;
+    surface.push_transform(&Transform::from_translate(tx, ty));
+    surface.draw_image(image, size);
+    surface.pop();
+}
+
 /// Read a logo image from disk and emit a `draw_image` call into the
 /// top-right corner of the page. Failures (missing file, unsupported mime,
 /// invalid bytes) are logged at WARN and the function returns silently —
@@ -527,6 +617,8 @@ mod tests {
                 org_kpp: "2".into(),
                 org_address: "Addr".into(),
                 logo_path: None,
+                logo_bytes: None,
+                logo_mime: None,
                 act_label: "Hello".into(),
                 date_label: "Today".into(),
             },

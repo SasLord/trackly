@@ -25,13 +25,27 @@ pub struct DocSpec {
 /// `logo_path` is an absolute path the renderer resolves; an `Option<String>`
 /// so templates can render an org without a logo. Phase 3 plan 04 fills this
 /// from `OrganizationService` + `Paths::root()`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+///
+/// Phase 7 plan 02: `logo_bytes` + `logo_mime` added for BLOB logo from org_settings.
+/// Priority: if `logo_bytes` is Some, use them directly; else fall back to `logo_path`.
+/// Both fields have `#[serde(default)]` for backward compat — existing templates that
+/// don't include these fields deserialize correctly with `None` (RESEARCH Pitfall 7).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct HeaderBlock {
     pub org_name: String,
     pub org_inn: String,
     pub org_kpp: String,
     pub org_address: String,
+    /// Filesystem path to logo (backward compat from Phase 3 plan 04).
+    /// Used only when `logo_bytes` is None.
     pub logo_path: Option<String>,
+    /// Logo raw bytes from org_settings BLOB (Phase 7 plan 02).
+    /// Takes priority over `logo_path` when present.
+    #[serde(default)]
+    pub logo_bytes: Option<Vec<u8>>,
+    /// MIME type of the BLOB logo ("image/png" | "image/jpeg" | "image/svg+xml").
+    #[serde(default)]
+    pub logo_mime: Option<String>,
     /// Russian display label for the act, e.g. «Акт приёма-передачи №42».
     pub act_label: String,
     /// Localized human-readable date, e.g. «28 мая 2026 г.».
@@ -104,6 +118,8 @@ mod tests {
                 org_kpp: "770001001".into(),
                 org_address: "г. Москва, ул. Ленина, 1".into(),
                 logo_path: None,
+                logo_bytes: None,
+                logo_mime: None,
                 act_label: "Акт приёма-передачи №42".into(),
                 date_label: "28 мая 2026 г.".into(),
             },
