@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-16T00:23:11.994Z"
-last_activity: 2026-06-16 -- Phase 07 planning complete
+last_updated: "2026-06-16T11:18:00.256Z"
+last_activity: 2026-06-16
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 55
-  completed_plans: 48
+  completed_plans: 49
   percent: 82
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 06 — snmp (VERIFIED — gap-closure 06-07/06-08 + human UAT approved)
+**Current focus:** Phase 07 — reports-dashboard-settings
 
 ## Current Position
 
-Phase: 06 (snmp) — VERIFIED
-Plan: 9 of 9 (все SUMMARY готовы; gap-closure 06-07/06-08 закрыты, human UAT 2026-06-15 approved)
+Phase: 07 (reports-dashboard-settings) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-06-16 -- Phase 07 planning complete
+Last activity: 2026-06-16
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -93,6 +93,7 @@ Progress: [██████████] 100%
 | Phase 06-snmp P06 | 11 | 2 tasks | 2 files |
 | Phase 06-snmp P07 | 25 | 3 tasks | 8 files |
 | Phase 06-snmp P08 | 7 | 2 tasks | 7 files |
+| Phase 07 P01 | 5min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,9 @@ Recent decisions affecting current work:
 - [Phase ?]: bindings-phase6.ts: Phase 6 типы вынесены в отдельный файл (не gitignored bindings.ts) для хранения в git без force-add
 - [Phase ?]: specialist role maps to manager in UserRole; isSpecialist = admin || manager in requests portal
 - [Phase ?]: 06-08: admit returns Vec<PrinterDto>; two-step probe→device→printer in admit; D-GAP-Replace-Select: devices.list(type_id=2) in RequestFormModal
+- [Phase ?]: 07-01: snake_case JSON in Phase 7 DTOs — consistent with existing device.rs, no camelCase rename_all
+- [Phase ?]: 07-01: StatusCount in reports.rs distinct from device.rs StatusCount — different semantic shapes (status_name:String+count:i64 vs status_id:i64+count:u64)
+- [Phase ?]: 07-01: V026 org_settings single-row invariant enforced via CHECK (id = 1) + seed row at migration time
 
 ### Pending Todos
 
@@ -201,7 +205,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T13:24:19.352Z
-Stopped at: Phase 07 UI-SPEC approved
+Last session: 2026-06-16T11:18:00.248Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: 
-.planning/phases/07-reports-dashboard-settings/07-UI-SPEC.md
+None
