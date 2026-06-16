@@ -108,10 +108,17 @@ mod tests {
             clock.clone(),
             ws_broadcast.clone(),
         ));
+        let org_db = Arc::new(crate::services::OrgDbService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            paths_arc.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
             paths: paths_arc,
+            org_db,
             config: Arc::new(config),
             clock,
             shutdown: CancellationToken::new(),
