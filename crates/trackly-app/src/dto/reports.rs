@@ -120,8 +120,11 @@ pub struct ConsumptionPoint {
 // ---------------------------------------------------------------------------
 
 /// Count for a single status bucket (used in dashboard status breakdowns).
+///
+/// Named `DashboardStatusCount` to avoid collision with `device.rs::StatusCount`
+/// (which uses `status_id: i64`). See D-07-01 decision in STATE.md.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct StatusCount {
+pub struct DashboardStatusCount {
     pub status_name: String,
     #[specta(type = i32)]
     pub count: i64,
@@ -136,10 +139,10 @@ pub struct DashboardWidgetDto {
     // --- Devices widget (DASH-01) ---
     #[specta(type = i32)]
     pub devices_total: i64,
-    pub devices_by_status: Vec<StatusCount>,
+    pub devices_by_status: Vec<DashboardStatusCount>,
 
     // --- Cartridges widget (DASH-02) ---
-    pub cartridge_by_status: Vec<StatusCount>,
+    pub cartridge_by_status: Vec<DashboardStatusCount>,
     #[specta(type = i32)]
     pub low_stock_count: i64,
     /// Model labels (human-readable) for low-stock models — shown in tooltip/list.

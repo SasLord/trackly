@@ -322,18 +322,20 @@ pub async fn app_restart(app: tauri::AppHandle) -> Result<(), AppError> {
 #[specta::specta]
 pub async fn settings_get_low_stock_threshold(
     state: tauri::State<'_, AppCtx>,
-) -> Result<i64, AppError> {
-    build_settings_get_low_stock_threshold(state.inner()).await
+) -> Result<i32, AppError> {
+    build_settings_get_low_stock_threshold(state.inner())
+        .await
+        .map(|v| v as i32)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_set_low_stock_threshold(
     state: tauri::State<'_, AppCtx>,
-    threshold: i64,
+    threshold: i32,
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_settings_set_low_stock_threshold(state.inner(), &caller, threshold).await
+    build_settings_set_low_stock_threshold(state.inner(), &caller, threshold as i64).await
 }
 
 #[tauri::command]

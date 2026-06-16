@@ -114,11 +114,33 @@ mod tests {
             clock.clone(),
             paths_arc.clone(),
         ));
+        let reports = Arc::new(crate::services::ReportService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            Arc::new(config.clone()),
+            pdf.clone(),
+        ));
+        let dashboard = Arc::new(crate::services::DashboardService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            Arc::new(config.clone()),
+        ));
+        let backup = Arc::new(crate::services::BackupService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            dir.path().join("trackly.db"),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
             paths: paths_arc,
             org_db,
+            reports,
+            dashboard,
+            backup,
             config: Arc::new(config),
             clock,
             shutdown: CancellationToken::new(),

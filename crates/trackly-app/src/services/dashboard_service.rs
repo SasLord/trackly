@@ -18,7 +18,7 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::AppConfig;
 
-use crate::dto::reports::{ConsumptionPoint, DashboardWidgetDto, PeriodDto, StatusCount};
+use crate::dto::reports::{ConsumptionPoint, DashboardStatusCount, DashboardWidgetDto, PeriodDto};
 use crate::services::report_service::compute_period_utc;
 
 #[derive(Clone)]
@@ -68,7 +68,7 @@ impl DashboardService {
             // ----------------------------------------------------------------
             // DASH-01: Device counts by status
             // ----------------------------------------------------------------
-            let devices_by_status: Vec<StatusCount> = {
+            let devices_by_status: Vec<DashboardStatusCount> = {
                 let mut stmt = conn
                     .prepare(
                         "SELECT s.name, COUNT(d.id) \
@@ -85,7 +85,7 @@ impl DashboardService {
                 let mut out = Vec::new();
                 for row in rows {
                     let (name, count) = row.map_err(map_rusqlite)?;
-                    out.push(StatusCount {
+                    out.push(DashboardStatusCount {
                         status_name: name,
                         count,
                     });
@@ -97,7 +97,7 @@ impl DashboardService {
             // ----------------------------------------------------------------
             // DASH-02: Cartridge counts by status + low-stock
             // ----------------------------------------------------------------
-            let cartridge_by_status: Vec<StatusCount> = {
+            let cartridge_by_status: Vec<DashboardStatusCount> = {
                 let mut stmt = conn
                     .prepare(
                         "SELECT s.name, COUNT(c.id) \
@@ -114,7 +114,7 @@ impl DashboardService {
                 let mut out = Vec::new();
                 for row in rows {
                     let (name, count) = row.map_err(map_rusqlite)?;
-                    out.push(StatusCount {
+                    out.push(DashboardStatusCount {
                         status_name: name,
                         count,
                     });
