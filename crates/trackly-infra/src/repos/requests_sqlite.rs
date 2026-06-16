@@ -101,6 +101,7 @@ impl SqliteRequestRepository {
     ///   1. Fetch current row for optimistic lock + status validation.
     ///   2. Validate the op is allowed from the current status (domain rule).
     ///   3. UPDATE requests (status, resolution_notes, assigned_to, version).
+    #[allow(clippy::too_many_arguments)]
     pub fn transition_in_tx(
         &self,
         tx: &Transaction<'_>,

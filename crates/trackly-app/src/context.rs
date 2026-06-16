@@ -34,8 +34,9 @@ use crate::dto::printer::WsEvent;
 use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
-    run_poll_task, seed_supervisor_tasks, ActService, AuthService, CartridgeService, DeviceService,
-    OrgDbService, OrganizationService, PrinterService, RequestService, TemplateService,
+    run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
+    DashboardService, DeviceService, OrgDbService, OrganizationService, PrinterService,
+    ReportService, RequestService, TemplateService,
 };
 use trackly_infra::snmp::{mock::MockSnmpClient, real::RealSnmpClient};
 
@@ -100,6 +101,12 @@ pub struct AppCtx {
     /// Replaces OrganizationService (org.json) in Phase 7 Plan 02.
     /// Added in Phase 7 Plan 02 (D-15).
     pub org_db: Arc<OrgDbService>,
+    /// Report service — 8 tabular queries + CSV/PDF export. Phase 7 Plan 03.
+    pub reports: Arc<ReportService>,
+    /// Dashboard service — 5 widget aggregates + consumption chart. Phase 7 Plan 03.
+    pub dashboard: Arc<DashboardService>,
+    /// Backup service — rusqlite::backup::Backup + config. Phase 7 Plan 02.
+    pub backup: Arc<BackupService>,
 }
 
 impl AppCtx {
@@ -207,6 +214,32 @@ impl AppCtx {
             paths_arc.clone(),
         ));
 
+        // Phase 7 Plan 03: ReportService + DashboardService.
+        let reports = Arc::new(ReportService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            Arc::new(config.clone()),
+            pdf.clone(),
+        ));
+        let dashboard = Arc::new(DashboardService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            Arc::new(config.clone()),
+        ));
+
+        // Phase 7 Plan 02: BackupService.
+        let backup = Arc::new(BackupService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+            db_path.clone(),
+        ));
+
+        // Phase 7 Plan 02: migrate legacy org.json → org_settings table (one-time hook).
+        org_db.migrate_from_org_json().await;
+
         // Seed supervisor tasks (INSERT OR IGNORE — idempotent).
         let now_ts = clock.unix_seconds();
         seed_supervisor_tasks(&writer, now_ts).await.map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -302,6 +335,9 @@ impl AppCtx {
             requests,
             ws_broadcast,
             org_db,
+            reports,
+            dashboard,
+            backup,
         })
     }
 }

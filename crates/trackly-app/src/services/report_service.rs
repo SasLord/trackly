@@ -429,6 +429,7 @@ impl ReportService {
     // -----------------------------------------------------------------------
 
     /// Export report as PDF bytes via DocSpec IR + krilla.
+    #[allow(clippy::too_many_arguments)]
     pub async fn export_pdf(
         &self,
         rows: &ReportResponse,

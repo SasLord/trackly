@@ -21,6 +21,11 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 
 use crate::dto::reports::TemplateEditorItem;
+use crate::pdf::{
+    docspec::{DocSpec, HeaderBlock, Section},
+    minijinja_env::{build_safe_env, render_with_timeout},
+    PdfRenderer,
+};
 
 /// Дефолтные шаблоны, embed'нутые в бинарь (`include_str!`). Сидятся в БД
 /// при первом запуске и при полной soft-delete всех версий kind'а.
@@ -42,6 +47,7 @@ pub struct TemplateService {
     pub writer: Arc<WriterHandle>,
     pub readers: Arc<ReaderPool>,
     pub clock: Arc<dyn Clock + Send + Sync>,
+    pub pdf: Arc<PdfRenderer>,
 }
 
 impl TemplateService {
@@ -54,6 +60,7 @@ impl TemplateService {
             writer,
             readers,
             clock,
+            pdf: Arc::new(PdfRenderer::new()),
         }
     }
 
@@ -227,5 +234,62 @@ impl TemplateService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking get_active: {e}"),
         })?
+    }
+
+    /// Validate template syntax + render a preview PDF with demo context.
+    ///
+    /// Used by TemplateEditor to let the user see the rendered output before saving.
+    /// The demo context mimics an act_handover document with placeholder data.
+    pub async fn validate_preview(&self, body: &str) -> Result<Vec<u8>, AppError> {
+        let env = build_safe_env();
+
+        // Demo context — mirrors act_handover.minijinja variable names
+        let demo_ctx = serde_json::json!({
+            "act_number": "42",
+            "act_date": "16.06.2026",
+            "org_name": "Ваша организация",
+            "giver_name": "Иванов И.И.",
+            "receiver_name": "Петров П.П.",
+            "items": [
+                {
+                    "device_name": "Принтер HP LaserJet",
+                    "serial_number": "SN-001",
+                    "inventory_number": "ИНВ-001",
+                    "condition": "Рабочее",
+                    "quantity": 1
+                }
+            ],
+            "notes": "",
+            "location_name": "Офис 101"
+        });
+
+        // Render via MiniJinja (validates syntax + fuel)
+        let rendered_json =
+            render_with_timeout(&env, "_preview", body, demo_ctx).await?;
+
+        // Parse rendered JSON into DocSpec and render PDF
+        let spec = serde_json::from_str::<DocSpec>(&rendered_json).unwrap_or_else(|_| {
+            // Fallback if body renders plain text (not DocSpec JSON)
+            DocSpec {
+                title: "Превью шаблона".to_string(),
+                header: HeaderBlock {
+                    org_name: "Организация".to_string(),
+                    org_inn: "".to_string(),
+                    org_kpp: "".to_string(),
+                    org_address: "".to_string(),
+                    logo_path: None,
+                    logo_bytes: None,
+                    logo_mime: None,
+                    act_label: "Превью шаблона".to_string(),
+                    date_label: "16.06.2026".to_string(),
+                },
+                sections: vec![Section::Paragraph {
+                    text: rendered_json.clone(),
+                    style: Default::default(),
+                }],
+            }
+        });
+
+        self.pdf.render_docspec(&spec)
     }
 }

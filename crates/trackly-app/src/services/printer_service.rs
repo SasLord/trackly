@@ -526,7 +526,7 @@ fn map_snmp_status(val: Option<&trackly_core::ports::snmp::OidValue>) -> String 
     match val {
         Some(v) => match &v.value {
             SnmpValue::Integer(n) => match n {
-                3 | 4 | 5 => "ok".to_string(),
+                3..=5 => "ok".to_string(),
                 _ => "unknown".to_string(),
             },
             _ => "ok".to_string(),

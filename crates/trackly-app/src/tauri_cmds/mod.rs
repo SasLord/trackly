@@ -9,11 +9,14 @@
 pub mod acts;
 pub mod auth;
 pub mod cartridges;
+pub mod dashboard;
 pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
 pub mod printers;
+pub mod reports;
 pub mod requests;
+pub mod settings_org;
 pub mod templates;
 pub mod users;

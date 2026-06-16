@@ -10,13 +10,16 @@
 pub mod acts;
 pub mod auth;
 pub mod cartridges;
+pub mod dashboard;
 pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
 pub mod printers;
+pub mod reports;
 pub mod requests;
 pub mod settings;
+pub mod settings_org;
 pub mod templates;
 pub mod users;
 pub mod ws;
@@ -95,6 +98,9 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(printers::router())
         .merge(requests::router())
         .merge(ws::router())
+        .merge(reports::router())
+        .merge(dashboard::router())
+        .merge(settings_org::router())
         // Session layer применяется ко всем маршрутам
         .layer(session_layer);
 

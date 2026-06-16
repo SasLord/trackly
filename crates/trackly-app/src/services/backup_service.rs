@@ -225,7 +225,7 @@ fn run_rusqlite_backup(readers: &ReaderPool, dest_path: &Path) -> Result<(), App
 
         // rusqlite::backup::Backup требует &Connection и &mut Connection
         // SAFETY: acquire() возвращает RAII guard с Deref<Target=Connection>
-        let backup = Backup::new(&*reader_guard, &mut dest_conn).map_err(|e| AppError::Internal {
+        let backup = Backup::new(&reader_guard, &mut dest_conn).map_err(|e| AppError::Internal {
             source_chain: format!("Backup::new failed: {e}"),
         })?;
 

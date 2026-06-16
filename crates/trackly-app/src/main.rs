@@ -13,6 +13,7 @@
 //! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
 use trackly_app::context::AppCtx;
+use trackly_app::services::run_supervisor;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::server::{start_server_on_addr, ServerHandle};
 use trackly_app::webview_env;
@@ -119,6 +120,9 @@ fn main() -> anyhow::Result<()> {
             return Ok::<(), anyhow::Error>(());
         }
 
+        // Phase 7 Plan 07: Spawn supervisor background task.
+        tokio::spawn(run_supervisor(ctx.clone()));
+
         // Step 8a (Plan 05-03): Start axum HTTPS server if config.server.enabled.
         // Uses child CancellationToken (never cancels master AppCtx.shutdown — D-Server-01).
         // Server starts BEFORE tauri::Builder so it's ready for LAN connections immediately.
@@ -189,6 +193,8 @@ fn main() -> anyhow::Result<()> {
             // Phase 3.1 Plan 05 — G-8b PDF preview actions.
             .plugin(tauri_plugin_shell::init())
             .plugin(tauri_plugin_fs::init())
+            // Phase 7 Plan 07 — app_restart command (D-19 DB move workflow).
+            .plugin(tauri_plugin_process::init())
             .manage(ctx)
             .invoke_handler(builder.invoke_handler())
             .setup(move |app| {

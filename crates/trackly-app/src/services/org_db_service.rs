@@ -342,9 +342,12 @@ impl OrgDbService {
 
     /// Читает org_settings для PDF-рендеринга: возвращает `(OrgSettingsDto, Option<Vec<u8>>)`
     /// для передачи в `HeaderBlock`.
-    pub async fn get_for_pdf(&self) -> Result<(OrgSettingsDto, Option<Vec<u8>>, Option<String>), AppError> {
+    pub async fn get_for_pdf(
+        &self,
+    ) -> Result<(OrgSettingsDto, Option<Vec<u8>>, Option<String>), AppError> {
+        type PdfTuple = (OrgSettingsDto, Option<Vec<u8>>, Option<String>);
         let readers = self.readers.clone();
-        tokio::task::spawn_blocking(move || -> Result<(OrgSettingsDto, Option<Vec<u8>>, Option<String>), AppError> {
+        tokio::task::spawn_blocking(move || -> Result<PdfTuple, AppError> {
             let conn = readers.acquire();
             conn.query_row(
                 "SELECT org_name, inn, kpp, address, \
