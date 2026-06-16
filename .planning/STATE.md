@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-16T11:18:00.256Z"
+last_updated: "2026-06-16T11:39:30.745Z"
 last_activity: 2026-06-16
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 55
-  completed_plans: 49
+  completed_plans: 50
   percent: 82
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 07 (reports-dashboard-settings) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-06-16
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 91%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -175,6 +175,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-01: snake_case JSON in Phase 7 DTOs — consistent with existing device.rs, no camelCase rename_all
 - [Phase ?]: 07-01: StatusCount in reports.rs distinct from device.rs StatusCount — different semantic shapes (status_name:String+count:i64 vs status_id:i64+count:u64)
 - [Phase ?]: 07-01: V026 org_settings single-row invariant enforced via CHECK (id = 1) + seed row at migration time
+- [Phase 07]: 07-02: V027 migration for is_default column on document_templates (ALTER TABLE ADD COLUMN NOT NULL DEFAULT 1)
+- [Phase 07]: 07-02: OrgDbService coexists with OrganizationService — new write layer, backward compat preserved for act_service PDF pipeline
+- [Phase 07]: 07-02: rusqlite::backup::Backup scope block pattern — inner block ensures Backup+reader_guard drop before integrity_check on dest_conn (borrow checker)
 
 ### Pending Todos
 
@@ -205,7 +208,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-16T11:18:00.248Z
+Last session: 2026-06-16T11:39:30.737Z
 Stopped at: Completed 07-01-PLAN.md
 Resume file: 
 None
