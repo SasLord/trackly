@@ -303,6 +303,7 @@ impl DashboardService {
                      JOIN cartridge_models m ON m.id = c.model_id \
                      WHERE al.entity_type = 'cartridge' \
                        AND al.action = 'custom:install' \
+                       AND al.created_at_utc IS NOT NULL \
                        AND al.created_at_utc >= ?1 \
                      GROUP BY model_label, month_key \
                      ORDER BY month_key ASC, model_label ASC",
