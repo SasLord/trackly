@@ -252,7 +252,7 @@ Plans:
   4. Администратор в Настройках задаёт данные организации (название, реквизиты, адрес) и загружает логотип (хранится как BLOB в БД, переезжает с portable-сборкой); логотип появляется в шапке актов и документа приёма; настраивает порог низкого остатка (по умолчанию 2); открывает папку с БД и при необходимости меняет расположение (с проверкой запрета на SMB-шары).
   5. Ручной бэкап одним кликом через `rusqlite::backup::Backup` (НЕ `fs::copy`); автобэкап по расписанию (ежедневно/еженедельно) с настраиваемой ретенцией; integrity_check на бэкапе после записи; редактируемые MiniJinja-шаблоны Акта и Документа приёма сохраняются с валидацией.
 
-**Plans:** 11/11 plans complete
+**Plans:** 14 plans (11 main + 3 round-2 gap closure — in progress)
 
 **Wave 1**
 
@@ -279,6 +279,13 @@ Plans:
 - [x] 07-09-PLAN.md — Settings component fixes: DB path load + Tauri detection + threshold load + styling (GAP-S3, GAP-S4, GAP-S5)
 - [x] 07-10-PLAN.md — Reports frontend: export arg fix + switch-bar row layout + date range styling + filter cleanup + badges (GAP-R1..R5)
 - [x] 07-11-PLAN.md — Settings UX: section spacing + sub-section switch-bar (GAP-S1, GAP-S2)
+
+
+**Gap-Closure Round-2 Wave (G2-1..G2-5 — 5 runtime gaps from human re-verify 2026-06-17)**
+
+- [ ] 07-12-PLAN.md — Backend: settings_open_db_folder command + expanded validate_preview demo_ctx for act_acceptance (G2-2 backend, G2-4)
+- [ ] 07-13-PLAN.md — Frontend: OrgSettings logo detection fix (G2-1) + StorageSettings command rename (G2-2 frontend) + BackupSettings arg wrapping (G2-3)
+- [ ] 07-14-PLAN.md — Reports: controls-row flush-right alignment + real per-tab status counts via new reports_get_report_counts command (G2-5a + G2-5b)
 
 **UI hint:** yes
 
@@ -311,7 +318,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
-| 7. Отчёты, Дашборд и Настройки | 11/11 | Complete   | 2026-06-17 |
+| 7. Отчёты, Дашборд и Настройки | 11+3/14 | Gap-closure R2 in progress | 2026-06-17 |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
 
 ## Coverage
