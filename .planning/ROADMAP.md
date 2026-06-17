@@ -252,7 +252,7 @@ Plans:
   4. Администратор в Настройках задаёт данные организации (название, реквизиты, адрес) и загружает логотип (хранится как BLOB в БД, переезжает с portable-сборкой); логотип появляется в шапке актов и документа приёма; настраивает порог низкого остатка (по умолчанию 2); открывает папку с БД и при необходимости меняет расположение (с проверкой запрета на SMB-шары).
   5. Ручной бэкап одним кликом через `rusqlite::backup::Backup` (НЕ `fs::copy`); автобэкап по расписанию (ежедневно/еженедельно) с настраиваемой ретенцией; integrity_check на бэкапе после записи; редактируемые MiniJinja-шаблоны Акта и Документа приёма сохраняются с валидацией.
 
-**Plans:** 9/11 plans executed
+**Plans:** 10/11 plans executed
 
 **Wave 1**
 
@@ -277,7 +277,7 @@ Plans:
 
 - [x] 07-08-PLAN.md — Backend gaps: consumption chart runtime error (GAP-D1) + template preview undefined context (GAP-S6)
 - [x] 07-09-PLAN.md — Settings component fixes: DB path load + Tauri detection + threshold load + styling (GAP-S3, GAP-S4, GAP-S5)
-- [ ] 07-10-PLAN.md — Reports frontend: export arg fix + switch-bar row layout + date range styling + filter cleanup + badges (GAP-R1..R5)
+- [x] 07-10-PLAN.md — Reports frontend: export arg fix + switch-bar row layout + date range styling + filter cleanup + badges (GAP-R1..R5)
 - [ ] 07-11-PLAN.md — Settings UX: section spacing + sub-section switch-bar (GAP-S1, GAP-S2)
 
 **UI hint:** yes
@@ -311,7 +311,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Картриджи | 6/6 | Complete    | 2026-06-12 |
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
-| 7. Отчёты, Дашборд и Настройки | 9/11 | In Progress|  |
+| 7. Отчёты, Дашборд и Настройки | 10/11 | In Progress|  |
 | 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
 
 ## Coverage
