@@ -12,8 +12,7 @@
 
   async function loadDbPath() {
     try {
-      const result = await apiCall<{ path: string }>('settings_get_db_path', {});
-      dbPath = result.path;
+      dbPath = await apiCall<string>('settings_get_db_path', {});
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -40,9 +39,7 @@
   }
 
   async function proceedWithMove() {
-    const isTauri =
-      typeof window !== 'undefined' &&
-      !!(window as unknown as Record<string, unknown>).__TAURI__;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
     if (!isTauri) {
       pushToast('error', 'Смена расположения БД доступна только в десктоп-приложении.');
