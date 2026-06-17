@@ -5,6 +5,10 @@
   import BackupSettings from '../features/settings/BackupSettings.svelte';
   import ThresholdSettings from '../features/settings/ThresholdSettings.svelte';
   import TemplateEditor from '../features/settings/TemplateEditor.svelte';
+  import SettingsSubNav from '../features/settings/SettingsSubNav.svelte';
+
+  // GAP-S2: track active subsection; default to 'network' (first tab)
+  let activeSection = $state('network');
 </script>
 
 <div class="settings-page">
@@ -12,19 +16,29 @@
     <h1 class="page-title">Настройки</h1>
   </header>
   <div class="settings-content">
-    <!-- Section order per UI-SPEC §Settings Layout -->
-    <!-- 1. Серверный режим + Безопасность рабочего стола -->
-    <NetworkSettings />
-    <!-- 2. Организация (SET-01, SET-02) -->
-    <OrgSettings />
-    <!-- 3. Хранилище данных (SET-03) -->
-    <StorageSettings />
-    <!-- 4. Бэкапы (SET-05, SET-06, SET-07) -->
-    <BackupSettings />
-    <!-- 5. Порог низкого остатка (SET-04) -->
-    <ThresholdSettings />
-    <!-- 6. Шаблоны документов (SET-09) — full-width -->
-    <TemplateEditor />
+    <!-- GAP-S2: sub-section switch-bar -->
+    <SettingsSubNav {activeSection} onSectionChange={(s) => (activeSection = s)} />
+
+    <!-- GAP-S2: show only the active subsection -->
+    {#if activeSection === 'network'}
+      <!-- Серверный режим + Безопасность рабочего стола -->
+      <NetworkSettings />
+    {:else if activeSection === 'org'}
+      <!-- Организация (SET-01, SET-02) -->
+      <OrgSettings />
+    {:else if activeSection === 'storage'}
+      <!-- Хранилище данных (SET-03) -->
+      <StorageSettings />
+    {:else if activeSection === 'backup'}
+      <!-- Бэкапы (SET-05, SET-06, SET-07) -->
+      <BackupSettings />
+    {:else if activeSection === 'threshold'}
+      <!-- Порог низкого остатка (SET-04) -->
+      <ThresholdSettings />
+    {:else if activeSection === 'templates'}
+      <!-- Шаблоны документов (SET-09) — full-width -->
+      <TemplateEditor />
+    {/if}
   </div>
 </div>
 
@@ -52,5 +66,8 @@
     flex: 1;
     overflow: auto;
     padding: var(--space-lg) var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
   }
 </style>
