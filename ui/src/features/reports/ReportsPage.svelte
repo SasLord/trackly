@@ -452,37 +452,39 @@
       }}
     />
 
-    <ReportFilters
-      reportDomain={activeDomain}
-      reportType={activeReport}
-      locationName={filter.location_name ?? null}
-      statusId={filter.status_id ?? null}
-      typeId={filter.type_id ?? null}
-      modelId={filter.model_id ?? null}
-      color={filter.color ?? null}
-      search={filter.search ?? ''}
-      locations={filterLocations}
-      deviceTypes={filterDeviceTypes}
-      cartridgeModels={filterCartridgeModels}
-      cartridgeStatuses={filterCartridgeStatuses}
-      cartridgeColors={filterCartridgeColors}
-      onFilterChange={(f) => {
-        filter = { ...filter, ...f };
-      }}
-      onExportCsv={exportCsv}
-      onExportPdf={exportPdf}
-      onPrint={printReport}
-      {csvExporting}
-      {pdfExporting}
-    />
-
-    <PeriodSelector
-      {period}
-      isSnapshot={isSnapshot()}
-      onPeriodChange={(p) => {
-        period = p;
-      }}
-    />
+    <!-- GAP-R4: controls row — PeriodSelector left, export buttons right -->
+    <div class="controls-row">
+      <PeriodSelector
+        {period}
+        isSnapshot={isSnapshot()}
+        onPeriodChange={(p) => {
+          period = p;
+        }}
+      />
+      <ReportFilters
+        reportDomain={activeDomain}
+        reportType={activeReport}
+        locationName={filter.location_name ?? null}
+        statusId={filter.status_id ?? null}
+        typeId={filter.type_id ?? null}
+        modelId={filter.model_id ?? null}
+        color={filter.color ?? null}
+        search={filter.search ?? ''}
+        locations={filterLocations}
+        deviceTypes={filterDeviceTypes}
+        cartridgeModels={filterCartridgeModels}
+        cartridgeStatuses={filterCartridgeStatuses}
+        cartridgeColors={filterCartridgeColors}
+        onFilterChange={(f) => {
+          filter = { ...filter, ...f };
+        }}
+        onExportCsv={exportCsv}
+        onExportPdf={exportPdf}
+        onPrint={printReport}
+        {csvExporting}
+        {pdfExporting}
+      />
+    </div>
 
     <ReportTable
       rows={rows?.rows ?? []}
@@ -522,5 +524,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
+  }
+
+  // GAP-R4: period selector (left) + export buttons (right) on one row
+  .controls-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    padding: var(--space-xs) 0;
   }
 </style>

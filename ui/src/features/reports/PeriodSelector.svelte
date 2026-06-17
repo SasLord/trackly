@@ -235,8 +235,9 @@
     flex-wrap: wrap;
   }
 
+  // GAP-R3: date inputs in range mode must be same height as other filter controls (28px)
   .period-range {
-    align-items: flex-start;
+    align-items: center;
     flex-wrap: wrap;
   }
 
@@ -262,6 +263,14 @@
     display: flex;
     align-items: center;
     gap: var(--space-xs);
+
+    // GAP-R3: constrain DatePicker to match other filter-row controls (28px height)
+    :global(.date-picker) {
+      height: 28px;
+      font-size: var(--font-size-label);
+      width: auto;
+      min-width: 130px;
+    }
   }
 
   .range-text {

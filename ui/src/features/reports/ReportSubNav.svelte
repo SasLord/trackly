@@ -1,6 +1,8 @@
 <script lang="ts">
   // Plan 07-06 Task 1: Two-level navigation for Reports page.
   // Domain sub-nav (Устройства / Картриджи) + report type switch-bar.
+  // Plan 07-10 Task 2: GAP-R2 — both navs share one row on desktop.
+  //                    GAP-R5 — badges on ALL tabs (active: real count; inactive: –).
   import Badge from '$lib/components/Badge.svelte';
 
   type DomainKey = 'devices' | 'cartridges';
@@ -64,6 +66,7 @@
   const activeReports = $derived(activeDomain === 'devices' ? DEVICE_REPORTS : CARTRIDGE_REPORTS);
 </script>
 
+<!-- GAP-R2: domain-nav (left) and report-nav (right) on the same flex row on desktop -->
 <div class="report-sub-nav">
   <nav class="domain-nav" aria-label="Домен отчётов">
     {#each DOMAINS as d}
@@ -90,8 +93,11 @@
         onclick={() => onReportChange(r.key)}
       >
         {r.label}
+        <!-- GAP-R5: badge on ALL tabs; active tab shows real count, inactive shows – -->
         {#if r.key === activeReport}
           <Badge variant="accent" size="sm">{rowCount}</Badge>
+        {:else}
+          <Badge variant="default" size="sm">–</Badge>
         {/if}
       </button>
     {/each}
@@ -99,25 +105,31 @@
 </div>
 
 <style lang="scss">
+  // GAP-R2: single flex row on desktop; wraps on narrow screens
   .report-sub-nav {
     display: flex;
-    flex-direction: column;
-    gap: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-md);
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
+    flex-wrap: wrap;
   }
 
   .domain-nav {
     display: flex;
     gap: var(--space-xs);
-    padding: var(--space-sm) 0 var(--space-sm);
-    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-sm) 0;
+    flex-shrink: 0;
+    // No border-bottom here — parent .report-sub-nav owns the single bottom border
   }
 
   .report-nav {
     display: flex;
     gap: var(--space-xs);
-    padding: var(--space-sm) 0 var(--space-sm);
+    padding: var(--space-sm) 0;
+    flex: 1;
+    justify-content: flex-end;
     flex-wrap: wrap;
     // role=tablist is valid on div
   }
