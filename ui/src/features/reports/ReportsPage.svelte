@@ -225,6 +225,27 @@
     return found?.cmd ?? 'reports_list_device_acts';
   }
 
+  // GAP-R1: Maps domain + activeReport → backend report_type key expected by
+  // reports_export_csv / reports_export_pdf (NOT the full Tauri command name).
+  function reportTypeKey(): string {
+    if (activeDomain === 'devices') {
+      switch (activeReport) {
+        case 'acts': return 'device_acts';
+        case 'returns': return 'device_returns';
+        case 'in_use': return 'device_in_use';
+        case 'in_stock': return 'device_in_stock';
+      }
+    } else {
+      switch (activeReport) {
+        case 'consumption': return 'cartridge_consumption';
+        case 'refills': return 'cartridge_refills';
+        case 'in_use': return 'cartridge_in_use';
+        case 'in_stock': return 'cartridge_in_stock';
+      }
+    }
+    return 'device_acts'; // fallback
+  }
+
   function currentColumns(): Column[] {
     // For cartridge domain, use prefixed keys to differentiate from device in_use/in_stock
     if (activeDomain === 'cartridges' && (activeReport === 'in_use' || activeReport === 'in_stock')) {
@@ -277,9 +298,9 @@
   function exportCsv() {
     csvExporting = true;
     apiCall<number[]>('reports_export_csv', {
-      report_type: currentCmd(),
+      reportType: reportTypeKey(),
       filter,
-      period,
+      period: isSnapshot() ? undefined : period,
     })
       .then((bytes) => {
         const blob = new Blob([new Uint8Array(bytes)], { type: 'text/csv;charset=utf-8' });
@@ -301,9 +322,9 @@
   function exportPdf() {
     pdfExporting = true;
     apiCall<number[]>('reports_export_pdf', {
-      report_type: currentCmd(),
+      reportType: reportTypeKey(),
       filter,
-      period,
+      period: isSnapshot() ? undefined : period,
     })
       .then(async (bytes) => {
         const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -357,9 +378,9 @@
       pdfExporting = true;
       try {
         const bytes = await apiCall<number[]>('reports_export_pdf', {
-          report_type: currentCmd(),
+          reportType: reportTypeKey(),
           filter,
-          period,
+          period: isSnapshot() ? undefined : period,
         });
         const { save } = await import('@tauri-apps/plugin-dialog');
         const { writeFile } = await import('@tauri-apps/plugin-fs');
