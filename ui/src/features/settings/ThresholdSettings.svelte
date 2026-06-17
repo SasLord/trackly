@@ -7,8 +7,7 @@
 
   onMount(async () => {
     try {
-      const result = await apiCall<{ threshold: number }>('settings_get_low_stock_threshold', {});
-      threshold = result.threshold;
+      threshold = await apiCall<number>('settings_get_low_stock_threshold', {});
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -93,13 +92,14 @@
 
   .form-input {
     width: 80px;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-xs) 2px var(--space-xs) var(--space-sm);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
     background: var(--color-bg);
     color: var(--color-text-primary);
     text-align: right;
+    appearance: auto;
 
     &:focus {
       outline: none;

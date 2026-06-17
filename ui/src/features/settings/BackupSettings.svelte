@@ -61,9 +61,7 @@
   }
 
   async function pickFolder() {
-    const isTauri =
-      typeof window !== 'undefined' &&
-      !!(window as unknown as Record<string, unknown>).__TAURI__;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
     if (!isTauri) {
       pushToast('error', 'Выбор папки доступен только в десктоп-приложении.');
