@@ -1,8 +1,9 @@
 ---
 phase: 07-reports-dashboard-settings
 verified: 2026-06-17T15:00:00Z
-status: human_needed
-score: 12/12 gap-closure must-haves verified (code), 12 require runtime confirmation
+status: gaps_found
+score: human re-verify (cargo tauri dev) closed 7/12 round-1 gaps; 5 round-2 gaps found (G2-*)
+round2_source: [user human-verify 2026-06-17, cargo tauri dev macOS desktop]
 re_verification:
   previous_status: gaps_found
   previous_score: 19/31
@@ -381,3 +382,75 @@ All requirement IDs declared for this phase (RPT-01..RPT-08, DASH-01..DASH-05, S
 
 _Verified: 2026-06-17T15:00:00Z_
 _Verifier: Claude (gsd-verifier) — re-verification after gap closure (plans 07-08..07-11)_
+
+---
+
+## Round 2 Gaps (human re-verify via `cargo tauri dev`, 2026-06-17)
+
+Round-1 fixes that hold up: dashboard chart, reports CSV/PDF export, reports layout/filters,
+threshold load, settings spacing/sub-nav, DB-path display. Five new gaps found at runtime.
+Root causes were investigated against the source — most share one systemic cause: **the new
+Settings UI calls Tauri commands via raw `apiCall('name', {hand-written args})` whose argument
+names/shapes do not match the Rust command parameters.** Tauri deserializes invoke args by exact
+parameter name, so a mismatch throws a raw (non-`AppError`) error, which `parseAppError`
+(ui/src/lib/api/errors.ts) renders as the generic "Не удалось связаться с приложением.
+Попробуйте перезапустить." That generic message is why #1–#3 look identical.
+
+Note: `dialog:default` DOES grant `allow-open`/`allow-save` (verified in gen/schemas), and
+plugin-dialog already works elsewhere (DeviceImportCsvModal, PdfPreviewModal). The dialogs are
+NOT the failure — the surrounding commands are.
+
+### G2-1 — Settings/Организация: logo upload fails (re-add)
+status: failed
+area: settings
+severity: high
+type: both
+symptom: Deleting the logo works, but adding a new PNG fails with "Не удалось связаться с приложением".
+root_cause:
+- `OrgSettings.svelte:105` (`uploadLogo`) STILL uses Tauri-1 detection `!!window.__TAURI__` (round-1 GAP-S3/S4 fixed the other two components but missed this one). In Tauri 2 `window.__TAURI__` is undefined → wrong code path.
+- The Tauri path then reads the picked file with `@tauri-apps/plugin-fs` `readFile(filePath)`, but the capability set (capabilities/main.json) grants no `fs:allow-read-file` scope for arbitrary image paths.
+expected: In desktop, picking a PNG/JPG/SVG reads the bytes and calls `settings_save_org_logo`, logo appears.
+fix_hint: Use `'__TAURI_INTERNALS__' in window` for detection (match StorageSettings/BackupSettings). Read the picked file via the registered backend command `read_file_bytes` (the pattern DeviceImportCsvModal.svelte:123 already uses: `apiCall<number[]>('read_file_bytes', { path: filePath })`) instead of plugin-fs `readFile`, to avoid fs-scope denial.
+
+### G2-2 — Settings/Хранилище: "Открыть папку с базой данных" + "Сменить расположение" fail
+status: failed
+area: settings
+severity: high
+type: both
+symptom: Both buttons error "Не удалось связаться с приложением".
+root_cause:
+- "Открыть папку с базой данных" calls command `fs_open_folder` (StorageSettings.svelte:31) which DOES NOT EXIST in Rust and is not in specta_export.rs / bindings.ts → invoke fails.
+- "Сменить расположение" likely fails on the same systemic arg-shape issue or a runtime error in `settings_move_db`; needs a runtime check after the open-folder command exists. `settings_move_db` and `app_restart` ARE registered.
+expected: "Открыть папку" opens the DB folder in the OS file manager; "Сменить расположение" opens the save dialog and moves the DB then restarts.
+fix_hint: Add a backend command (e.g. `settings_open_db_folder` / `fs_open_folder`) that opens the containing folder via `tauri_plugin_shell` — reuse the secure wrapper pattern of `acts::acts_open_pdf_in_system` (path-guarded shell open). Register it in specta_export.rs, regenerate bindings, point the UI at the correct name. Then verify the move-db flow end-to-end at runtime.
+
+### G2-3 — Settings/Бэкапы: folder picker fails to save selection
+status: failed
+area: settings
+severity: high
+type: frontend
+symptom: Selecting a backup folder errors "Не удалось связаться с приложением".
+root_cause: CONFIRMED arg-shape mismatch. `settings_save_backup_config(patch: BackupConfigPatch)` expects `{ patch: { backupFolder?, schedule?, retention? } }`. The UI calls `apiCall('settings_save_backup_config', { backup_folder: selected })` (BackupSettings.svelte:80) and `apiCall('settings_save_backup_config', { schedule, retention })` (saveConfig) — flat args, wrong names → serde error.
+expected: Picking a folder persists it; saving schedule/retention persists those.
+fix_hint: Wrap args as `{ patch: { backupFolder, schedule, retention } }` matching `BackupConfigPatch` (dto/reports.rs:221). Prefer the generated typed binding over raw `apiCall` to prevent recurrence. Audit ALL new Settings `apiCall` sites for the same flat-vs-nested mismatch.
+
+### G2-4 — Settings/Шаблоны: "Проверить (превью PDF)" does nothing
+status: failed
+area: settings
+severity: high
+type: backend
+symptom: Clicking "Проверить" briefly flips the button label then reverts; no preview opens.
+root_cause: The UI args ARE correct (`{ kind, body }` match `templates_validate_preview(kind, body)`), so the call reaches the backend and the render THROWS at runtime (caught → label reverts, no blobUrl). Round-1 GAP-S6 fixed `validate_preview`'s demo_ctx for the DEFAULT template and the unit test passes, but the live act template body the user previews still hits an undefined/զrender error (likely a variable used by the real template that the preview demo context still does not supply, or a `_preview` wrapper var).
+expected: Preview renders the current template body to a PDF shown in the iframe.
+fix_hint: Reproduce with the actual default act template body in `cargo tauri dev`; capture the exact MiniJinja error. Add the missing context variable(s) to the preview demo_ctx (or guard undefined access), and extend the unit test to render the real act template body (not just the trimmed default) so the regression is caught.
+
+### G2-5 — Reports: export-button block alignment + status badges show real counts
+status: failed
+area: reports
+severity: medium
+type: frontend
+symptom: (a) The export/print button block is not aligned to the page's right edge nor vertically aligned with the period-selector block. (b) Status switch-bar (Акты/Расходы…) shows "–" on non-selected statuses.
+expected:
+- Export/print buttons block: right-aligned to the page edge and vertically centered/aligned with the period-selector block on the same row.
+- Status badges: **show the real count for every status tab simultaneously** (user decision 2026-06-17) — not "–". Requires fetching counts for all statuses at once.
+fix_hint: (a) Adjust the `.controls-row` flex layout in ReportsPage.svelte so the export block sits flush-right and baseline/center-aligns with PeriodSelector. (b) Replace the inactive-tab "–" placeholder in ReportSubNav with real per-status counts — surface an all-statuses count map from the backend (extend/ös reuse an existing status-counts query like `*_status_counts`) rather than only the active status's rowCount.
