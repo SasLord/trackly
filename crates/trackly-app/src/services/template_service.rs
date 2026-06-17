@@ -243,24 +243,45 @@ impl TemplateService {
     pub async fn validate_preview(&self, body: &str) -> Result<Vec<u8>, AppError> {
         let env = build_safe_env();
 
-        // Demo context — mirrors act_handover.minijinja variable names
+        // Demo context — mirrors act_handover.minijinja nested variable schema:
+        //   org.{name,inn,kpp,address,logo_path}
+        //   act.{number,suffix,date,date_human,giver_name,receiver_name,
+        //        location_name,deadline,deadline_human,parent,items[]}
+        //   act.items[].{name,inventory_no,serial_no,model,quantity}
+        // UndefinedBehavior::Strict requires every referenced variable to be present.
         let demo_ctx = serde_json::json!({
-            "act_number": "42",
-            "act_date": "16.06.2026",
-            "org_name": "Ваша организация",
-            "giver_name": "Иванов И.И.",
-            "receiver_name": "Петров П.П.",
-            "items": [
-                {
-                    "device_name": "Принтер HP LaserJet",
-                    "serial_number": "SN-001",
-                    "inventory_number": "ИНВ-001",
-                    "condition": "Рабочее",
-                    "quantity": 1
-                }
-            ],
-            "notes": "",
-            "location_name": "Офис 101"
+            "org": {
+                "name": "ООО Демо Организация",
+                "inn": "7700000000",
+                "kpp": "770000000",
+                "address": "г. Москва, ул. Примерная, д. 1",
+                "logo_path": null
+            },
+            "act": {
+                "number": "42",
+                "suffix": null,
+                "date": "2026-06-17",
+                "date_human": "17 июня 2026",
+                "giver_name": "Иванов И.И.",
+                "receiver_name": "Петров П.П.",
+                "location_name": "Офис 101",
+                "deadline": null,
+                "deadline_human": null,
+                "parent": null,
+                "items": [
+                    {
+                        "name": "HP LaserJet Pro M404n",
+                        "inventory_no": "ИНВ-001",
+                        "serial_no": "SN-001",
+                        "model": "LaserJet Pro M404n",
+                        "quantity": 1
+                    }
+                ]
+            },
+            "return": {
+                "condition_default": "Рабочее",
+                "location_default": "Склад"
+            }
         });
 
         // Render via MiniJinja (validates syntax + fuel)
@@ -291,5 +312,57 @@ impl TemplateService {
         });
 
         self.pdf.render_docspec(&spec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use trackly_infra::{
+        clock_impl::SystemClock,
+        db::{pools::ReaderPool, writer_worker::WriterHandle},
+    };
+
+    fn build_test_db() -> (Arc<WriterHandle>, Arc<ReaderPool>) {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let db_path = tmp.path().to_path_buf();
+        std::mem::forget(tmp);
+        let mut conn = rusqlite::Connection::open(&db_path).unwrap();
+        trackly_infra::db::pragmas::apply_writer_pragmas(&conn).unwrap();
+        trackly_infra::db::migrations::run(&mut conn).unwrap();
+        let writer = Arc::new(WriterHandle::spawn(conn));
+        let readers = Arc::new(ReaderPool::new(&db_path, 2).unwrap());
+        (writer, readers)
+    }
+
+    /// GAP-S6: validate_preview with the default act_handover template must return
+    /// valid PDF bytes (len > 0). Previously failed with "undefined value" because
+    /// demo_ctx used flat keys instead of nested org/act objects.
+    #[tokio::test]
+    async fn validate_preview_returns_pdf_bytes() {
+        let (writer, readers) = build_test_db();
+        let clock = Arc::new(SystemClock)
+            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer, readers, clock);
+
+        // Use the embedded default act_handover template body.
+        let (_, _, body) = DEFAULT_TEMPLATES
+            .iter()
+            .find(|(k, _, _)| *k == "act_handover")
+            .expect("act_handover default template must exist");
+
+        let result = svc.validate_preview(body).await;
+        match result {
+            Ok(bytes) => {
+                assert!(bytes.len() > 0, "PDF bytes must be non-empty");
+                // PDF magic bytes: %PDF
+                assert!(
+                    bytes.starts_with(b"%PDF"),
+                    "output must be a valid PDF (starts with %PDF)"
+                );
+            }
+            Err(e) => panic!("validate_preview failed: {e:?}"),
+        }
     }
 }
