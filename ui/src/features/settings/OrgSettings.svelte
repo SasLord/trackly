@@ -102,7 +102,7 @@
 
   async function uploadLogo() {
     logoError = null;
-    const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI__;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
     if (isTauri) {
       uploading = true;
       try {
