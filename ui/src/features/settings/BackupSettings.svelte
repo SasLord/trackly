@@ -8,11 +8,11 @@
     backup_folder: string | null;
     schedule: string;
     retention: number;
-    last_backup_time: string | null;
   }
 
   interface BackupResult {
-    timestamp: number;
+    timestamp_utc: number;
+    file_path: string;
   }
 
   let backupFolder = $state<string | null>(null);
@@ -27,9 +27,8 @@
     try {
       const cfg = await apiCall<BackupConfigDto>('settings_get_backup_config', {});
       backupFolder = cfg.backup_folder;
-      schedule = cfg.schedule ?? '';
+      schedule = cfg.schedule === 'disabled' ? '' : (cfg.schedule ?? '');
       retention = cfg.retention ?? 7;
-      lastBackupTime = cfg.last_backup_time;
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -47,7 +46,7 @@
     backingUp = true;
     try {
       const result = await apiCall<BackupResult>('backup_run_manual', {});
-      lastBackupTime = new Date(result.timestamp * 1000).toLocaleString('ru-RU');
+      lastBackupTime = new Date(result.timestamp_utc * 1000).toLocaleString('ru-RU');
       pushToast('success', 'Резервная копия создана');
     } catch (e: unknown) {
       const msg =
@@ -91,7 +90,9 @@
   async function saveConfig() {
     savingConfig = true;
     try {
-      await apiCall<void>('settings_save_backup_config', { patch: { schedule, retention } });
+      await apiCall<void>('settings_save_backup_config', {
+        patch: { schedule: schedule === '' ? 'disabled' : schedule, retention },
+      });
       pushToast('success', 'Настройки бэкапа сохранены');
     } catch (e: unknown) {
       const msg =
