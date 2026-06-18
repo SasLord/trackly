@@ -336,6 +336,34 @@ mod tests {
         (writer, readers)
     }
 
+    /// G2-4: validate_preview with the default act_acceptance template must return
+    /// valid PDF bytes. Previously failed because demo_ctx lacked device/document keys.
+    #[tokio::test]
+    async fn validate_preview_act_acceptance_returns_pdf_bytes() {
+        let (writer, readers) = build_test_db();
+        let clock = Arc::new(SystemClock)
+            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer, readers, clock);
+
+        // Use the embedded default act_acceptance template body.
+        let (_, _, body) = DEFAULT_TEMPLATES
+            .iter()
+            .find(|(k, _, _)| *k == "act_acceptance")
+            .expect("act_acceptance default template must exist");
+
+        let result = svc.validate_preview(body).await;
+        match result {
+            Ok(bytes) => {
+                assert!(bytes.len() > 0, "PDF bytes must be non-empty");
+                assert!(
+                    bytes.starts_with(b"%PDF"),
+                    "output must be a valid PDF (starts with %PDF)"
+                );
+            }
+            Err(e) => panic!("validate_preview failed for act_acceptance: {e:?}"),
+        }
+    }
+
     /// GAP-S6: validate_preview with the default act_handover template must return
     /// valid PDF bytes (len > 0). Previously failed with "undefined value" because
     /// demo_ctx used flat keys instead of nested org/act objects.
