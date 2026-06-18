@@ -18,7 +18,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 5: Авторизация, локальные пользователи и серверный режим** — Argon2id-логин, роли, HTTPS-сервер axum, единый authorize() для обоих транспортов (completed 2026-06-13)
 - [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure 06-07/06-08 закрыл дефекты заявок/discovery; human UAT 2026-06-15 — approved; status=verified, см. 06-VERIFICATION.md) (completed 2026-06-15)
 - [x] **Phase 7: Отчёты, Дашборд и Настройки** — Отчёты с группировкой по месяцам, виджеты дашборда, организация/логотип/бэкапы/шаблоны (completed 2026-06-16)
-- [ ] **Phase 8: AD-вход и релизный пайплайн** — LDAP simple_bind, заявки на регистрацию, авто-приём, GitHub Actions Release matrix, артефакты с checksums
+- [ ] **Phase 8: Релизный пайплайн (Windows/macOS/Linux)** — GitHub Actions Release matrix по push тега, NSIS + portable ZIP, .dmg, .AppImage/.deb, артефакты с SHA256-checksums, README на русском
 
 ## Phase Details
 
@@ -289,19 +289,16 @@ Plans:
 
 **UI hint:** yes
 
-### Phase 8: AD-вход и релизный пайплайн
+### Phase 8: Релизный пайплайн (Windows/macOS/Linux)
 
-**Goal:** Включить вход доменных пользователей через LDAP simple_bind, заявки на регистрацию с настройкой авто-приёма, плюс GitHub Actions Release matrix для Windows/macOS/Linux с подписанными артефактами.
+**Goal:** As a мейнтейнер Trackly, I want to собирать релизы в GitHub Actions для Windows (приоритет), macOS и Linux по push тега, so that пользователи получают готовые артефакты с checksums для своей ОС.
 **Mode:** mvp
-**Depends on:** Phase 7 (нужна стабильная база перед release-пайплайном; нужна заявка-сущность Phase 6 для подтипа «регистрация»)
-**Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10, BLD-02, BLD-03, BLD-04, BLD-05
+**Depends on:** Phase 7 (нужна стабильная база перед release-пайплайном)
+**Requirements:** BLD-02, BLD-03, BLD-04, BLD-05
 **Success Criteria** (what must be TRUE):
 
-  1. Доменный пользователь (например, `us100`) входит через браузер по AD-логину/AD-паролю; bind идёт через `ldap3 0.12` simple_bind по UPN (`us100@corp.local`) поверх `ldaps://636` с rustls; AD-пароль НИКОГДА не сохраняется (используется только для bind и сразу зануляется через `Secret<String>` Drop); полное ФИО (`displayName` или `cn`) подтягивается из AD.
-  2. Незарегистрированный AD-пользователь автоматически создаёт заявку на регистрацию (REQ-06, подтип, видимый только администратору); администратор подтверждает и назначает роль; при включённой настройке «Автоприём заявок на регистрацию» (SET-10, по умолчанию OFF, с предупреждением) AD-пользователь создаётся автоматически с ролью «Сотрудник».
-  3. Mock-AD-клиент работает на macOS для локальной разработки (без реального DC); production-проверка идёт против реального Windows Server 2022 с LDAP signing + channel binding enforced.
-  4. При push-тега `v*.*.*` GitHub Actions Release собирает: Windows 64-bit (NSIS installer + portable ZIP с маркером `portable.txt` и без updater'а), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb); артефакты содержат SHA256-checksums и, где возможно, подписи.
-  5. README.md на русском содержит инструкции по запуску для каждой ОС, включая portable-режим, требования к WebView2 на Windows и описание серверного режима с подсказками по доверию self-signed сертификату в локальной сети.
+  1. При push-тега `v*.*.*` GitHub Actions Release собирает: Windows 64-bit (NSIS installer + portable ZIP с маркером `portable.txt` и без updater'а), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb); артефакты содержат SHA256-checksums и, где возможно, подписи.
+  2. README.md на русском содержит инструкции по запуску для каждой ОС, включая portable-режим, требования к WebView2 на Windows и описание серверного режима с подсказками по доверию self-signed сертификату в локальной сети.
 
 **Plans:** TBD
 
@@ -319,7 +316,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
-| 8. AD-вход и релизный пайплайн | 0/TBD | Not started | - |
+| 8. Релизный пайплайн (Windows/macOS/Linux) | 0/TBD | Not started | - |
 
 ## Coverage
 
