@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
@@ -76,11 +76,16 @@
     if (found) {
       body = found.body;
       originalBody = found.body;
-      // Clear preview when switching templates
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-        blobUrl = null;
-      }
+      // Clear preview when switching templates. untrack so blobUrl is NOT a
+      // dependency of this effect — otherwise validateAndPreview() setting
+      // blobUrl re-triggers this effect, which immediately nulls it again and
+      // the preview never renders (G2-4).
+      untrack(() => {
+        if (blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+          blobUrl = null;
+        }
+      });
     }
   });
 

@@ -60,7 +60,16 @@ pub async fn build_settings_remove_org_logo(
 // ---------------------------------------------------------------------------
 
 pub async fn build_settings_get_db_path(ctx: &AppCtx) -> Result<String, AppError> {
-    Ok(ctx.paths.db_path().to_string_lossy().to_string())
+    // Return the RESOLVED db path: config override ([paths].db_path) if set,
+    // otherwise the portable default. Mirrors the resolution in AppCtx::new so
+    // the Settings UI shows the DB the app actually opened — not always the
+    // exe-dir default — after a settings_move_db relocation (G2-2).
+    let resolved = if !ctx.config.paths.db_path.is_empty() {
+        ctx.config.paths.db_path.clone()
+    } else {
+        ctx.paths.db_path().to_string_lossy().to_string()
+    };
+    Ok(resolved)
 }
 
 /// Open the directory containing the DB file in the system file manager.
