@@ -372,6 +372,28 @@ mod tests {
         }
     }
 
+    /// R3-3 / CR-02: update_body on a kind with no active row must return
+    /// AppError::NotFound instead of silently Ok(()) on 0 rows_affected.
+    #[tokio::test]
+    async fn update_body_unknown_kind_returns_not_found() {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer, readers, clock);
+        let admin = Identity::trusted_admin();
+
+        let result = svc
+            .update_body(&admin, "nonexistent_kind", "{}".to_string())
+            .await;
+
+        match result {
+            Err(AppError::NotFound { entity, .. }) => {
+                assert_eq!(entity, "document_template");
+            }
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
     /// GAP-S6: validate_preview with the default act_handover template must return
     /// valid PDF bytes (len > 0). Previously failed with "undefined value" because
     /// demo_ctx used flat keys instead of nested org/act objects.
