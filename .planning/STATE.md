@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T00:17:09.446Z"
+last_updated: "2026-06-18T00:23:45.859Z"
 last_activity: 2026-06-18
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 62
-  completed_plans: 61
-  percent: 82
+  completed_plans: 62
+  percent: 91
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 07 (reports-dashboard-settings) — EXECUTING
-Plan: 7 of 11
+Plan: 8 of 11
 Status: Ready to execute
 Last activity: 2026-06-18
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -101,6 +101,7 @@ Progress: [██████████] 98%
 | Phase 07 P10 | 176 | 2 tasks | 4 files |
 | Phase 07-reports-dashboard-settings P11 | 8 | 1 tasks | 2 files |
 | Phase 07 P13 | 2 | 2 tasks | 4 files |
+| Phase 07 P14 | 15 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -189,6 +190,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-04: Logo served as img src=data:... not raw SVG injection — scripts blocked in img context (T-07-04-05 mitigated)
 - [Phase ?]: DashboardStatusCount: renamed from StatusCount in dto/reports.rs to avoid TypeScript collision with device.rs StatusCount
 - [Phase ?]: settings_move_db and app_restart Tauri-only: not exposed in HTTP router (T-07-07-03, D-19)
+- [Phase ?]: 07-14: Vec<ReportCountEntry> for ReportCountsDto (no HashMap) — consistent with all existing DTOs in reports.rs; specta derives cleanly; TypeScript gets Array not Record
 
 ### Pending Todos
 
@@ -219,7 +221,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-18T00:17:09.439Z
+Last session: 2026-06-18T00:23:39.582Z
 Stopped at: Completed 07-07-PLAN.md, pending human-verify checkpoint
 Resume file: 
 None
