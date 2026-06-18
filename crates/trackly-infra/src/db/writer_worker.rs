@@ -59,6 +59,12 @@ impl WriterHandle {
                 job(&mut conn);
             }
             // rx closed -> все WriterHandle drop'нуты -> graceful shutdown.
+            // Закрываем writer-conn под process-global close-guard'ом: иначе
+            // одновременный teardown writer + reader-пулов из разных тестовых
+            // потоков вис в unix VFS mutex SQLite 3.45.3 (lock-order инверсия).
+            // См. crate::db::close_serializer.
+            let _close = crate::db::close_serializer::close_guard();
+            drop(conn);
         });
         Self {
             tx,

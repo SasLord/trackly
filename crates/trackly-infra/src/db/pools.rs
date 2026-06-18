@@ -97,6 +97,28 @@ impl ReaderPool {
     }
 }
 
+impl Drop for ReaderPool {
+    /// Закрываем все reader-connections под process-global close-guard'ом.
+    ///
+    /// Без сериализации одновременный teardown нескольких WAL-пулов из разных
+    /// потоков детерминированно вис в `sqlite3_close → unixEnterMutex`
+    /// (lock-order инверсия в unix VFS SQLite 3.45.3). См.
+    /// [`crate::db::close_serializer`]. В проде пул живёт от старта до
+    /// shutdown'а (закрытие однократно, без contention); в тестах множество
+    /// `#[tokio::test]` роняют свои ctx параллельно — guard их выстраивает в
+    /// очередь.
+    fn drop(&mut self) {
+        let _close = crate::db::close_serializer::close_guard();
+        let mut conns = self
+            .conns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // `clear()` дропает (= sqlite3_close) каждое соединение прямо здесь,
+        // пока guard удержан. drop(conns) ниже релизит наш Mutex, не connections.
+        conns.clear();
+    }
+}
+
 /// RAII-guard над одолженным reader-connection. На drop'е возвращает
 /// connection в пул.
 pub struct ReaderHandle<'a> {

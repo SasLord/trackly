@@ -1,6 +1,7 @@
 //! `db` — SQLite connection lifecycle, PRAGMA discipline, single-writer worker,
 //! reader pool, refinery migrations.
 
+pub mod close_serializer;
 pub mod migrations;
 pub mod pools;
 pub mod pragmas;
