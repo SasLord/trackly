@@ -112,3 +112,31 @@ result: [passed]
 ### R2-6. Отчёты: export block alignment + real status counts (G2-5)
 expected: Export/print buttons block is flush-right and vertically aligned with the period selector; every status tab shows a REAL numeric count simultaneously (not "–").
 result: [passed]
+
+---
+
+## Round 3 — follow-up backlog (found 2026-06-18, fix in a fresh /gsd-quick session)
+
+Phase 07 is closed/passed; these are small post-close fixes. All four live in
+BackupSettings.svelte / settings_org.rs / template_service.rs — one /gsd-quick pass.
+
+### R3-1. Бэкапы: "Последний бэкап: Invalid Date" (frontend/DTO)
+symptom: After "Создать резервную копию", the info text shows "Последний бэкап: Invalid Date".
+suspect: backend returns last-backup time in a format JS `new Date()` can't parse (Unix seconds
+or non-ISO), or a snake_case↔camelCase field mismatch (last_backup_time vs lastBackupTime) in
+BackupResult / BackupConfigDto. Fix the value format or the field mapping + the date render.
+
+### R3-2. Бэкапы: schedule empty after restart (same class as GAP-S5)
+symptom: Auto-backup schedule is saved but the field is blank after restarting the app.
+suspect: settings_get_backup_config value not bound into the schedule field on mount (load-on-mount
+gap), or the field isn't mapped from the returned DTO.
+
+### R3-3. CR-02: template update_body/reset_to_default swallow rows_affected
+symptom: latent — update/reset returns Ok(()) even when 0 rows matched (wrong kind / soft-deleted).
+fix: check rows_affected > 0 in template_service.rs update_body() and reset_to_default(); return a
+NotFound/Validation AppError on 0 rows.
+
+### R3-4. CR-01 (optional, likely WONTFIX for v1)
+get_consumption_chart() hardcodes '+3 hours' instead of reading config.organization.timezone.
+Correct for RU-only fixed UTC+3 v1; only an inconsistency with get_all_widgets. Skip unless
+multi-timezone is ever needed.
