@@ -228,6 +228,7 @@ Plans:
 **Plans:** 9/9 plans complete
 
 Plans:
+
 - [x] 06-01-PLAN.md — V020-V024 миграции + snmp2 + SnmpClient trait + MockSnmpClient (PRN-01/03/04/08)
 - [x] 06-02-PLAN.md — Repositories + PrinterService (poll loop, discovery, alerts, retention) + RequestService (lifecycle, optimistic lock) + WsEvent (PRN-01..08, REQ-01..04)
 - [x] 06-03-PLAN.md — Tauri commands + axum HTTP handlers + WebSocket /api/v1/ws + AppCtx wire-up (PRN-01..08, REQ-01..05/07)
@@ -236,6 +237,7 @@ Plans:
 - [x] 06-06-PLAN.md — bindings.ts + nav + cargo check + smoke test checkpoint (все PRN + REQ)
 - [x] 06-07-PLAN.md — Gap-closure (заявки): arg-key `dto` parity + requests_counts rename + requests_get_history (REQ-07) + a11y tablist + ролевой рендер (REQ-01/02/07)
 - [x] 06-08-PLAN.md — Gap-closure (принтеры): реализовать discovery admit + ручное «Завести принтер» + select замены картриджа из devices type=Принтер (PRN-01/04, REQ-02)
+
 **UI hint:** yes
 
 ### Phase 7: Отчёты, Дашборд и Настройки
@@ -280,7 +282,6 @@ Plans:
 - [x] 07-10-PLAN.md — Reports frontend: export arg fix + switch-bar row layout + date range styling + filter cleanup + badges (GAP-R1..R5)
 - [x] 07-11-PLAN.md — Settings UX: section spacing + sub-section switch-bar (GAP-S1, GAP-S2)
 
-
 **Gap-Closure Round-2 Wave (G2-1..G2-5 — 5 runtime gaps from human re-verify 2026-06-17)**
 
 - [x] 07-12-PLAN.md — Backend: settings_open_db_folder command + expanded validate_preview demo_ctx for act_acceptance (G2-2 backend, G2-4)
@@ -300,9 +301,13 @@ Plans:
   1. При push-тега `v*.*.*` GitHub Actions Release собирает: Windows 64-bit (NSIS installer + portable ZIP с маркером `portable.txt` и без updater'а), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb); артефакты содержат SHA256-checksums и, где возможно, подписи.
   2. README.md на русском содержит инструкции по запуску для каждой ОС, включая portable-режим, требования к WebView2 на Windows и описание серверного режима с подсказками по доверию self-signed сертификату в локальной сети.
 
-**Plans:** 2 plans
-Plans:
+**Plans:** 2 plansPlans:
+**Wave 1**
+
 - [ ] 08-01-PLAN.md — Tauri bundle config (active:true, icons, macOS ad-hoc), README.md (BLD-05), portable ZIP staging files
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 08-02-PLAN.md — GitHub Actions release.yml: three-job pipeline (create-release → build matrix → checksums), portable ZIP assembly, SHA256SUMS (BLD-02, BLD-03, BLD-04)
 
 ## Progress
