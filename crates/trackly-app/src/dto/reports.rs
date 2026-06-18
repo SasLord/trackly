@@ -268,3 +268,28 @@ pub struct TemplateEditorItem {
     /// True если тело совпадает с дефолтным (seeded from binary).
     pub is_default: bool,
 }
+
+// ---------------------------------------------------------------------------
+// Report tab counts (G2-5b)
+// ---------------------------------------------------------------------------
+
+/// A single entry in the per-tab report count response.
+///
+/// Vec-based (not HashMap) so specta::Type derives without feature flags and the
+/// TypeScript binding types it as `Array<{ key: string; count: number }>`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ReportCountEntry {
+    pub key: String,
+    #[specta(type = i32)]
+    pub count: i64,
+}
+
+/// Response for `reports_get_report_counts` — one entry per report-type tab.
+///
+/// `counts` order matches the UI tab order for the active domain.
+/// Uses `Vec<ReportCountEntry>` (not HashMap) consistent with all other DTOs
+/// in this file — see file-level doc comment.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ReportCountsDto {
+    pub counts: Vec<ReportCountEntry>,
+}

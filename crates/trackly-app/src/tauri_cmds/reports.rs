@@ -7,7 +7,7 @@
 //! HTTP handlers add session_identity check in http/reports.rs.
 
 use crate::context::AppCtx;
-use crate::dto::reports::{PeriodDto, ReportFilter, ReportResponse};
+use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -302,4 +302,33 @@ pub async fn reports_export_pdf(
     period: Option<PeriodDto>,
 ) -> Result<Vec<u8>, AppError> {
     build_reports_export_pdf(state.inner(), report_type, filter, period).await
+}
+
+// ---------------------------------------------------------------------------
+// reports_get_report_counts (G2-5b)
+// ---------------------------------------------------------------------------
+
+/// Build helper for reports_get_report_counts — callable from both Tauri and HTTP.
+pub async fn build_reports_get_report_counts(
+    ctx: &AppCtx,
+    domain: String,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportCountsDto, AppError> {
+    ctx.reports.get_report_counts(&domain, filter, period).await
+}
+
+/// Return per-tab row counts for ALL report-type tabs in the active domain.
+///
+/// Runs COUNT(*)-only SQL (no row collection) for all 4 tabs in a single
+/// spawn_blocking task.  Non-fatal per-tab errors return count = 0.
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_get_report_counts(
+    state: tauri::State<'_, AppCtx>,
+    domain: String,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportCountsDto, AppError> {
+    build_reports_get_report_counts(state.inner(), domain, filter, period).await
 }

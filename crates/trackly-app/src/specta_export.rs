@@ -127,6 +127,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::reports::reports_list_cartridge_in_stock,
         crate::tauri_cmds::reports::reports_export_csv,
         crate::tauri_cmds::reports::reports_export_pdf,
+        crate::tauri_cmds::reports::reports_get_report_counts,
         // Phase 7 — Dashboard (Plan 07)
         crate::tauri_cmds::dashboard::dashboard_get_all_widgets,
         crate::tauri_cmds::dashboard::dashboard_get_consumption_chart,

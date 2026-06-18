@@ -20,7 +20,8 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::AppConfig;
 
 use crate::dto::reports::{
-    OrgSettingsDto, PeriodDto, ReportFilter, ReportResponse, ReportRow,
+    OrgSettingsDto, PeriodDto, ReportCountEntry, ReportCountsDto, ReportFilter, ReportResponse,
+    ReportRow,
 };
 use crate::pdf::{
     docspec::{DocSpec, HeaderBlock, Section},
@@ -374,6 +375,94 @@ impl ReportService {
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking list_cartridge_in_stock: {e}"),
+        })?
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-tab count query (G2-5b)
+    // -----------------------------------------------------------------------
+
+    /// Return COUNT(*)-only totals for every report-type tab in the active domain.
+    ///
+    /// All 4 counts run inside a single `spawn_blocking` task so there is only
+    /// one round-trip to the reader pool.  Individual count failures return 0
+    /// (non-fatal — badge shows 0 rather than breaking the page).
+    pub async fn get_report_counts(
+        &self,
+        domain: &str,
+        filter: ReportFilter,
+        period: PeriodDto,
+    ) -> Result<ReportCountsDto, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        let domain = domain.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let counts = if domain == "devices" {
+                vec![
+                    ReportCountEntry {
+                        key: "acts".into(),
+                        count: count_acts_inner(&conn, &filter, ts_from, ts_to, "handover")
+                            .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "returns".into(),
+                        count: count_acts_inner(&conn, &filter, ts_from, ts_to, "return")
+                            .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "in_use".into(),
+                        count: count_device_snapshot(&conn, &filter, "В работе").unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "in_stock".into(),
+                        count: count_device_snapshot(&conn, &filter, "На складе").unwrap_or(0),
+                    },
+                ]
+            } else if domain == "cartridges" {
+                vec![
+                    ReportCountEntry {
+                        key: "consumption".into(),
+                        count: count_cartridge_audit_inner(
+                            &conn,
+                            &filter,
+                            ts_from,
+                            ts_to,
+                            &["custom:install"],
+                        )
+                        .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "refills".into(),
+                        count: count_cartridge_audit_inner(
+                            &conn,
+                            &filter,
+                            ts_from,
+                            ts_to,
+                            &["custom:to_refill", "custom:from_refill"],
+                        )
+                        .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "in_use".into(),
+                        count: count_cartridge_snapshot_inner(&conn, &filter, "В работе")
+                            .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "in_stock".into(),
+                        count: count_cartridge_snapshot_inner(&conn, &filter, "На складе")
+                            .unwrap_or(0),
+                    },
+                ]
+            } else {
+                Vec::new()
+            };
+            Ok::<ReportCountsDto, AppError>(ReportCountsDto { counts })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking get_report_counts: {e}"),
         })?
     }
 
@@ -863,6 +952,211 @@ fn query_cartridge_snapshot(
     }
     let total = rows.len() as i64;
     Ok(ReportResponse { rows, total })
+}
+
+// ---------------------------------------------------------------------------
+// COUNT(*)-only helpers (used by get_report_counts — G2-5b)
+// ---------------------------------------------------------------------------
+
+/// COUNT(*) variant of query_acts_inner — same WHERE clauses, no row collection.
+fn count_acts_inner(
+    conn: &rusqlite::Connection,
+    filter: &ReportFilter,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+    act_type: &str,
+) -> Result<i64, AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    clauses.push(format!("a.act_type = ?{}", next_idx(&owned_params)));
+    owned_params.push(Box::new(act_type.to_string()));
+
+    clauses.push("a.deleted_at_utc IS NULL".to_string());
+
+    if let Some(from) = ts_from {
+        clauses.push(format!("a.handover_date_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("a.handover_date_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+    if let Some(loc) = filter.location_id {
+        clauses.push(format!("a.location_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(loc));
+    }
+    if let Some(type_id) = filter.type_id {
+        clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(type_id));
+    }
+    if let Some(ref search) = filter.search {
+        let idx = next_idx(&owned_params);
+        let like_val = format!("%{search}%");
+        clauses.push(format!(
+            "(a.number LIKE ?{idx} OR a.giver_name LIKE ?{idx} OR a.receiver_name LIKE ?{idx})"
+        ));
+        owned_params.push(Box::new(like_val));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!(
+        "SELECT COUNT(DISTINCT a.id) \
+         FROM acts a \
+         LEFT JOIN locations l ON a.location_id = l.id \
+         LEFT JOIN act_items ai ON ai.act_id = a.id \
+         LEFT JOIN devices d ON d.id = ai.device_id \
+         WHERE {where_clause}"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
+        .map_err(map_rusqlite)
+}
+
+/// COUNT(*) variant of query_device_snapshot — same WHERE clauses, no row collection.
+fn count_device_snapshot(
+    conn: &rusqlite::Connection,
+    filter: &ReportFilter,
+    default_status_name: &str,
+) -> Result<i64, AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    clauses.push("d.deleted_at_utc IS NULL".to_string());
+
+    if let Some(status_id) = filter.status_id {
+        clauses.push(format!("d.status_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(status_id));
+    } else {
+        clauses.push(format!(
+            "d.status_id = (SELECT id FROM device_statuses WHERE name = ?{} LIMIT 1)",
+            next_idx(&owned_params)
+        ));
+        owned_params.push(Box::new(default_status_name.to_string()));
+    }
+    if let Some(loc) = filter.location_id {
+        clauses.push(format!("d.location_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(loc));
+    }
+    if let Some(type_id) = filter.type_id {
+        clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(type_id));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!(
+        "SELECT COUNT(*) FROM devices d \
+         LEFT JOIN locations l ON d.location_id = l.id \
+         LEFT JOIN device_statuses s ON d.status_id = s.id \
+         WHERE {where_clause}"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
+        .map_err(map_rusqlite)
+}
+
+/// COUNT(*) variant of query_cartridge_audit — same WHERE clauses, no row collection.
+fn count_cartridge_audit_inner(
+    conn: &rusqlite::Connection,
+    filter: &ReportFilter,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+    actions: &[&str],
+) -> Result<i64, AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    clauses.push("al.entity_type = 'cartridge'".to_string());
+
+    let action_placeholders: Vec<String> = actions
+        .iter()
+        .map(|action| {
+            let placeholder = format!("?{}", next_idx(&owned_params));
+            owned_params.push(Box::new(action.to_string()));
+            placeholder
+        })
+        .collect();
+    clauses.push(format!("al.action IN ({})", action_placeholders.join(", ")));
+
+    if let Some(from) = ts_from {
+        clauses.push(format!("al.created_at_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("al.created_at_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+    if let Some(model_id) = filter.model_id {
+        clauses.push(format!("m.id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(model_id));
+    }
+    if let Some(ref color) = filter.color {
+        clauses.push(format!("m.color = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(color.clone()));
+    }
+    if let Some(status_id) = filter.status_id {
+        clauses.push(format!("c.status_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(status_id));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!(
+        "SELECT COUNT(*) \
+         FROM audit_log al \
+         JOIN cartridges c ON c.id = al.entity_id \
+         JOIN cartridge_models m ON m.id = c.model_id \
+         WHERE {where_clause}"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
+        .map_err(map_rusqlite)
+}
+
+/// COUNT(*) variant of query_cartridge_snapshot — same WHERE clauses, no row collection.
+fn count_cartridge_snapshot_inner(
+    conn: &rusqlite::Connection,
+    filter: &ReportFilter,
+    default_status_name: &str,
+) -> Result<i64, AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    clauses.push("c.deleted_at_utc IS NULL".to_string());
+
+    if let Some(status_id) = filter.status_id {
+        clauses.push(format!("c.status_id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(status_id));
+    } else {
+        clauses.push(format!(
+            "c.status_id = (SELECT id FROM cartridge_statuses WHERE name = ?{} LIMIT 1)",
+            next_idx(&owned_params)
+        ));
+        owned_params.push(Box::new(default_status_name.to_string()));
+    }
+    if let Some(model_id) = filter.model_id {
+        clauses.push(format!("m.id = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(model_id));
+    }
+    if let Some(ref color) = filter.color {
+        clauses.push(format!("m.color = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(color.clone()));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!(
+        "SELECT COUNT(*) \
+         FROM cartridges c \
+         JOIN cartridge_models m ON m.id = c.model_id \
+         LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id \
+         WHERE {where_clause}"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
+        .map_err(map_rusqlite)
 }
 
 // ---------------------------------------------------------------------------
