@@ -28,7 +28,7 @@
 
   async function openFolder() {
     try {
-      await apiCall<void>('fs_open_folder', { path: dbPath });
+      await apiCall<void>('settings_open_db_folder', {});
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e

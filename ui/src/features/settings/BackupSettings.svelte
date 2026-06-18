@@ -75,7 +75,7 @@
       if (!path) return;
       const selected = typeof path === 'string' ? path : (path as string[])[0];
       // Persist folder selection immediately
-      await apiCall<void>('settings_save_backup_config', { backup_folder: selected });
+      await apiCall<void>('settings_save_backup_config', { patch: { backup_folder: selected } });
       backupFolder = selected;
     } catch (e: unknown) {
       const msg =
@@ -91,7 +91,7 @@
   async function saveConfig() {
     savingConfig = true;
     try {
-      await apiCall<void>('settings_save_backup_config', { schedule, retention });
+      await apiCall<void>('settings_save_backup_config', { patch: { schedule, retention } });
       pushToast('success', 'Настройки бэкапа сохранены');
     } catch (e: unknown) {
       const msg =
