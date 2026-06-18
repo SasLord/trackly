@@ -38,11 +38,10 @@ async fn make_test_ctx() -> anyhow::Result<(AppCtx, tempfile::TempDir)> {
     let dir_path = dir.path().to_path_buf();
     let paths = trackly_infra::Paths::resolve_for_exe_dir(dir_path)?;
     let config = trackly_infra::AppConfig::default();
-    let log_guard = trackly_app::logging::init(&paths, &config)
-        .or_else(|_| {
-            let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
-            Ok::<_, anyhow::Error>(guard)
-        })?;
+    let log_guard = trackly_app::logging::init(&paths, &config).or_else(|_| {
+        let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+        Ok::<_, anyhow::Error>(guard)
+    })?;
     let ctx = AppCtx::build(paths, config, log_guard).await?;
     Ok((ctx, dir))
 }
@@ -70,10 +69,9 @@ async fn create_session_cookie(
         data: Default::default(),
         expiry_date: OffsetDateTime::now_utc() + Duration::days(1),
     };
-    record.data.insert(
-        "identity".to_string(),
-        serde_json::to_value(&si)?,
-    );
+    record
+        .data
+        .insert("identity".to_string(), serde_json::to_value(&si)?);
 
     store.create(&mut record).await?;
 
@@ -116,7 +114,8 @@ async fn role_endpoint_matrix_test() {
         // --- Создаём тестовых пользователей ---
         let admin_identity = Identity::trusted_admin();
 
-        let admin_dto = ctx.auth
+        let admin_dto = ctx
+            .auth
             .create_user(
                 UserNew {
                     login: "admin_user".to_string(),
@@ -130,7 +129,8 @@ async fn role_endpoint_matrix_test() {
             .await
             .expect("create admin_user");
 
-        let manager_dto = ctx.auth
+        let manager_dto = ctx
+            .auth
             .create_user(
                 UserNew {
                     login: "manager_user".to_string(),
@@ -144,7 +144,8 @@ async fn role_endpoint_matrix_test() {
             .await
             .expect("create manager_user");
 
-        let employee_dto = ctx.auth
+        let employee_dto = ctx
+            .auth
             .create_user(
                 UserNew {
                     login: "employee_user".to_string(),
@@ -169,9 +170,10 @@ async fn role_endpoint_matrix_test() {
             .await
             .expect("create manager session");
 
-        let employee_cookie = create_session_cookie(&session_store, employee_dto.id, Role::Employee)
-            .await
-            .expect("create employee session");
+        let employee_cookie =
+            create_session_cookie(&session_store, employee_dto.id, Role::Employee)
+                .await
+                .expect("create employee session");
 
         // --- Payloads ---
         let device_payload = json!({
@@ -249,7 +251,13 @@ async fn role_endpoint_matrix_test() {
         // Case 1: No session → POST /api/v1/devices_create → 401 Unauthorized
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/devices_create", device_payload.clone(), None).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create",
+                device_payload.clone(),
+                None,
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::UNAUTHORIZED,
@@ -261,7 +269,13 @@ async fn role_endpoint_matrix_test() {
         // Case 2: Employee session → POST /api/v1/devices_create → 403 Forbidden
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/devices_create", device_payload.clone(), Some(&employee_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create",
+                device_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
@@ -273,7 +287,13 @@ async fn role_endpoint_matrix_test() {
         // Case 3: Manager session → POST /api/v1/devices_create → not 401/403
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/devices_create", device_payload.clone(), Some(&manager_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create",
+                device_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
             assert!(
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
                 "Case 3: Manager → devices_create → expected not 401/403, got {status}"
@@ -284,7 +304,13 @@ async fn role_endpoint_matrix_test() {
         // Case 4: Employee session → POST /api/v1/acts_create → 403 Forbidden
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/acts_create", act_payload.clone(), Some(&employee_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/acts_create",
+                act_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
@@ -296,7 +322,13 @@ async fn role_endpoint_matrix_test() {
         // Case 5: Employee session → POST /api/v1/cartridges_create → 403 Forbidden
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/cartridges_create", cartridge_payload.clone(), Some(&employee_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_create",
+                cartridge_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
@@ -308,7 +340,13 @@ async fn role_endpoint_matrix_test() {
         // Case 6: Employee session → POST /api/v1/users_create → 403 Forbidden
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/users_create", user_create_payload.clone(), Some(&employee_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/users_create",
+                user_create_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
@@ -320,7 +358,13 @@ async fn role_endpoint_matrix_test() {
         // Case 7: Manager session → POST /api/v1/users_create → 403 Forbidden
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/users_create", user_create_payload.clone(), Some(&manager_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/users_create",
+                user_create_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::FORBIDDEN,
@@ -332,7 +376,13 @@ async fn role_endpoint_matrix_test() {
         // Case 8: Admin session → POST /api/v1/users_create → not 401/403
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/users_create", user_create_payload.clone(), Some(&admin_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/users_create",
+                user_create_payload.clone(),
+                Some(&admin_cookie),
+            )
+            .await;
             assert!(
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
                 "Case 8: Admin → users_create → expected not 401/403, got {status}"
@@ -343,7 +393,13 @@ async fn role_endpoint_matrix_test() {
         // Case 9: Employee session → GET-like POST /api/v1/devices_list → 200 OK
         // =====================================================================
         {
-            let status = post_with_cookie(new_app!(), "/api/v1/devices_list", device_list_payload.clone(), Some(&employee_cookie)).await;
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_list",
+                device_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
             assert_eq!(
                 status,
                 StatusCode::OK,

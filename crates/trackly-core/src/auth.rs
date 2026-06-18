@@ -205,7 +205,10 @@ mod tests {
 
     #[test]
     fn authorize_admin_manage_users_ok() {
-        let id = Identity { user_id: Some(1), role: Role::Admin };
+        let id = Identity {
+            user_id: Some(1),
+            role: Role::Admin,
+        };
         assert!(authorize(&id, &Action::ManageUsers).is_ok());
     }
 
@@ -213,35 +216,59 @@ mod tests {
 
     #[test]
     fn authorize_manager_manage_users_forbidden() {
-        let id = Identity { user_id: Some(2), role: Role::Manager };
-        assert!(matches!(authorize(&id, &Action::ManageUsers), Err(AppError::Forbidden)));
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::ManageUsers),
+            Err(AppError::Forbidden)
+        ));
     }
 
     #[test]
     fn authorize_employee_manage_users_forbidden() {
-        let id = Identity { user_id: Some(3), role: Role::Employee };
-        assert!(matches!(authorize(&id, &Action::ManageUsers), Err(AppError::Forbidden)));
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::ManageUsers),
+            Err(AppError::Forbidden)
+        ));
     }
 
     // authorize — Manager mutations
 
     #[test]
     fn authorize_manager_mutate_devices_ok() {
-        let id = Identity { user_id: Some(2), role: Role::Manager };
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
+        };
         assert!(authorize(&id, &Action::MutateDevices).is_ok());
     }
 
     #[test]
     fn authorize_employee_mutate_devices_forbidden() {
-        let id = Identity { user_id: Some(3), role: Role::Employee };
-        assert!(matches!(authorize(&id, &Action::MutateDevices), Err(AppError::Forbidden)));
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::MutateDevices),
+            Err(AppError::Forbidden)
+        ));
     }
 
     // authorize — ReadData (all roles)
 
     #[test]
     fn authorize_employee_read_data_ok() {
-        let id = Identity { user_id: Some(3), role: Role::Employee };
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
         assert!(authorize(&id, &Action::ReadData).is_ok());
     }
 

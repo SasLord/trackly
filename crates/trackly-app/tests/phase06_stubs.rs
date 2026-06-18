@@ -12,7 +12,10 @@ fn test_oid_profiles_seeded() {
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM oid_profiles", [], |r| r.get(0))
         .expect("query oid_profiles count");
-    assert_eq!(count, 5, "expected 5 OID profiles: pantum/kyocera/hp/canon/rfc3805");
+    assert_eq!(
+        count, 5,
+        "expected 5 OID profiles: pantum/kyocera/hp/canon/rfc3805"
+    );
 
     let pantum_encoding: String = conn
         .query_row(
@@ -21,7 +24,10 @@ fn test_oid_profiles_seeded() {
             |r| r.get(0),
         )
         .expect("query pantum profile");
-    assert_eq!(pantum_encoding, "percent", "pantum must use 'percent' toner_encoding");
+    assert_eq!(
+        pantum_encoding, "percent",
+        "pantum must use 'percent' toner_encoding"
+    );
 
     let rfc3805_exists: i64 = conn
         .query_row(
@@ -100,7 +106,10 @@ fn test_printer_usb_only() {
     };
 
     let row = repo.get(&conn, printer_id).expect("get printer");
-    assert!(row.ip_address.is_none(), "IP must be None for USB-only printer");
+    assert!(
+        row.ip_address.is_none(),
+        "IP must be None for USB-only printer"
+    );
     assert_eq!(row.usb_host_device_id, Some(host_device_id));
 }
 
@@ -145,13 +154,15 @@ fn test_alert_detection() {
 
     {
         let tx = conn.transaction().expect("tx");
-        repo.upsert_alert_in_tx(&tx, printer_id, "error", now).expect("first upsert");
+        repo.upsert_alert_in_tx(&tx, printer_id, "error", now)
+            .expect("first upsert");
         tx.commit().expect("commit");
     }
 
     {
         let tx = conn.transaction().expect("tx");
-        repo.upsert_alert_in_tx(&tx, printer_id, "offline", now + 60).expect("second upsert");
+        repo.upsert_alert_in_tx(&tx, printer_id, "offline", now + 60)
+            .expect("second upsert");
         tx.commit().expect("commit");
     }
 
@@ -201,7 +212,10 @@ async fn test_request_create() {
         .await
         .expect("seed user");
 
-    let caller = Identity { user_id: Some(1), role: Role::Admin };
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
 
     let dto = svc
         .create(
@@ -259,7 +273,10 @@ async fn test_request_lifecycle() {
         .await
         .expect("seed user");
 
-    let caller = Identity { user_id: Some(1), role: Role::Admin };
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
 
     let created = svc
         .create(
@@ -360,7 +377,10 @@ async fn test_ws_event_sent() {
         .await
         .expect("seed user");
 
-    let caller = Identity { user_id: Some(1), role: Role::Employee };
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Employee,
+    };
 
     svc.create(
         RequestCreateDto {
@@ -375,7 +395,9 @@ async fn test_ws_event_sent() {
     .await
     .expect("create");
 
-    let event = ws_rx.try_recv().expect("WsEvent must be received after create");
+    let event = ws_rx
+        .try_recv()
+        .expect("WsEvent must be received after create");
     assert!(
         matches!(event, WsEvent::NewRequest { .. }),
         "expected WsEvent::NewRequest, got: {event:?}"
@@ -441,9 +463,8 @@ fn test_readings_prune() {
 
     {
         let tx = conn.transaction().expect("tx");
-        let deleted =
-            SqlitePrinterRepository::prune_old_readings_in_tx(&tx, now - 1, now - 100)
-                .expect("prune");
+        let deleted = SqlitePrinterRepository::prune_old_readings_in_tx(&tx, now - 1, now - 100)
+            .expect("prune");
         tx.commit().expect("commit");
         assert!(deleted >= 3, "deleted {deleted}");
     }
@@ -509,17 +530,26 @@ fn test_current_cartridge_for_printer() {
     .expect("insert cartridge");
     let cartridge_id = conn.last_insert_rowid();
 
-    let initial = repo.current_cartridge_for_printer(&conn, device_id).expect("query");
+    let initial = repo
+        .current_cartridge_for_printer(&conn, device_id)
+        .expect("query");
     assert!(initial.is_none());
 
     {
         let tx = conn.transaction().expect("tx");
-        SqlitePrinterRepository::set_current_cartridge_in_tx(&tx, cartridge_id, Some(device_id), now)
-            .expect("link");
+        SqlitePrinterRepository::set_current_cartridge_in_tx(
+            &tx,
+            cartridge_id,
+            Some(device_id),
+            now,
+        )
+        .expect("link");
         tx.commit().expect("commit");
     }
 
-    let result = repo.current_cartridge_for_printer(&conn, device_id).expect("query after link");
+    let result = repo
+        .current_cartridge_for_printer(&conn, device_id)
+        .expect("query after link");
     assert_eq!(result, Some(cartridge_id));
 }
 
@@ -530,7 +560,10 @@ fn test_secret_debug() {
 
     let s = Secret::new("secret_community".to_string());
     let debug_str = format!("{s:?}");
-    assert!(debug_str.contains("***"), "Secret Debug must mask value, got: {debug_str}");
+    assert!(
+        debug_str.contains("***"),
+        "Secret Debug must mask value, got: {debug_str}"
+    );
     assert!(
         !debug_str.contains("secret_community"),
         "Secret Debug must not leak value, got: {debug_str}"

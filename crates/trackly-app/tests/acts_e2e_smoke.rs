@@ -184,7 +184,7 @@ async fn full_lifecycle_then_undo() {
                 .map(|&(item_id, dev_id)| ActReturnItemDto {
                     act_item_id: item_id,
                     device_id: dev_id,
-                device_ids: vec![dev_id],
+                    device_ids: vec![dev_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,

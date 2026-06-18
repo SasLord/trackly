@@ -170,11 +170,7 @@ impl TemplateService {
     }
 
     /// Сбрасывает шаблон к встроенному дефолту. Требует `ManageSettings`.
-    pub async fn reset_to_default(
-        &self,
-        caller: &Identity,
-        kind: &str,
-    ) -> Result<(), AppError> {
+    pub async fn reset_to_default(&self, caller: &Identity, kind: &str) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
 
         // Ищем дефолтный шаблон по kind в DEFAULT_TEMPLATES
@@ -298,8 +294,7 @@ impl TemplateService {
         });
 
         // Render via MiniJinja (validates syntax + fuel)
-        let rendered_json =
-            render_with_timeout(&env, "_preview", body, demo_ctx).await?;
+        let rendered_json = render_with_timeout(&env, "_preview", body, demo_ctx).await?;
 
         // Parse rendered JSON into DocSpec and render PDF
         let spec = serde_json::from_str::<DocSpec>(&rendered_json).unwrap_or_else(|_| {
@@ -354,8 +349,8 @@ mod tests {
     #[tokio::test]
     async fn validate_preview_act_acceptance_returns_pdf_bytes() {
         let (writer, readers) = build_test_db();
-        let clock = Arc::new(SystemClock)
-            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
         let svc = TemplateService::new(writer, readers, clock);
 
         // Use the embedded default act_acceptance template body.
@@ -383,8 +378,8 @@ mod tests {
     #[tokio::test]
     async fn validate_preview_returns_pdf_bytes() {
         let (writer, readers) = build_test_db();
-        let clock = Arc::new(SystemClock)
-            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
         let svc = TemplateService::new(writer, readers, clock);
 
         // Use the embedded default act_handover template body.

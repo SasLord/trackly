@@ -42,8 +42,8 @@ fn build_test_db() -> (Arc<WriterHandle>, Arc<ReaderPool>) {
 async fn dashboard_widget_counts_match_db_state() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (writer, readers) = build_test_db();
-        let clock = Arc::new(SystemClock)
-            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
         let config = Arc::new(AppConfig::default());
 
         let svc = DashboardService::new(writer, readers, clock, config);
@@ -75,15 +75,18 @@ async fn dashboard_widget_counts_match_db_state() {
 async fn dashboard_low_stock_reflects_cartridge_state() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (writer, readers) = build_test_db();
-        let clock = Arc::new(SystemClock)
-            as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
         let config = Arc::new(AppConfig::default());
 
         let svc = DashboardService::new(writer, readers, clock, config);
         let dto = svc.get_all_widgets(None).await.unwrap();
 
         // Empty DB has no cartridge models, so low_stock_count = 0.
-        assert_eq!(dto.low_stock_count, 0, "no cartridge models → low_stock_count = 0");
+        assert_eq!(
+            dto.low_stock_count, 0,
+            "no cartridge models → low_stock_count = 0"
+        );
         assert!(
             dto.low_stock_models.is_empty(),
             "no cartridge models → low_stock_models empty"

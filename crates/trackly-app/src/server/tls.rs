@@ -8,8 +8,8 @@
 use std::sync::Arc;
 
 use rcgen::generate_simple_self_signed;
-use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::ServerConfig;
 use sha2::{Digest, Sha256};
 use tokio_rustls::TlsAcceptor;
 
@@ -41,10 +41,7 @@ fn compute_fingerprint(der_bytes: &[u8]) -> String {
 }
 
 /// Создать `rustls::ServerConfig` из сертификата и ключа в DER.
-fn build_server_config(
-    cert_der: Vec<u8>,
-    key_der: Vec<u8>,
-) -> anyhow::Result<ServerConfig> {
+fn build_server_config(cert_der: Vec<u8>, key_der: Vec<u8>) -> anyhow::Result<ServerConfig> {
     let certs = vec![CertificateDer::from(cert_der)];
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der));
     let config = ServerConfig::builder()
@@ -61,8 +58,7 @@ fn build_server_config(
 /// Используется при первом включении server mode (D-Server-04).
 pub fn generate_self_signed(host: &str) -> anyhow::Result<TlsBundle> {
     let subject_alt_names = vec![host.to_string(), "localhost".to_string()];
-    let rcgen::CertifiedKey { cert, signing_key } =
-        generate_simple_self_signed(subject_alt_names)?;
+    let rcgen::CertifiedKey { cert, signing_key } = generate_simple_self_signed(subject_alt_names)?;
 
     let cert_der = cert.der().to_vec();
     let key_der = signing_key.serialize_der();
@@ -129,8 +125,8 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
     // Parse certificates
     let cert_bytes = cert_pem.as_bytes();
     let mut cert_reader = std::io::BufReader::new(cert_bytes);
-    let cert_ders: Vec<CertificateDer<'static>> = certs(&mut cert_reader)
-        .collect::<Result<Vec<_>, _>>()?;
+    let cert_ders: Vec<CertificateDer<'static>> =
+        certs(&mut cert_reader).collect::<Result<Vec<_>, _>>()?;
 
     if cert_ders.is_empty() {
         anyhow::bail!("load_from_pem: no certificates found in cert_pem");

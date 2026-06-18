@@ -202,13 +202,20 @@ mod tests {
 
     #[test]
     fn transition_accept_validates_open_only() {
-        assert!(RequestTransitionOp::Accept.validate_from_status("open").is_ok());
-        assert!(RequestTransitionOp::Accept.validate_from_status("in_progress").is_err());
+        assert!(RequestTransitionOp::Accept
+            .validate_from_status("open")
+            .is_ok());
+        assert!(RequestTransitionOp::Accept
+            .validate_from_status("in_progress")
+            .is_err());
     }
 
     #[test]
     fn transition_complete_validates_in_progress_only() {
-        let op = RequestTransitionOp::Complete { notes: None, linked_cartridge_id: None };
+        let op = RequestTransitionOp::Complete {
+            notes: None,
+            linked_cartridge_id: None,
+        };
         assert!(op.validate_from_status("in_progress").is_ok());
         assert!(op.validate_from_status("open").is_err());
     }
@@ -216,9 +223,16 @@ mod tests {
     #[test]
     fn transition_target_status() {
         assert_eq!(RequestTransitionOp::Accept.target_status(), "in_progress");
-        assert_eq!(RequestTransitionOp::Reject { notes: None }.target_status(), "rejected");
         assert_eq!(
-            RequestTransitionOp::Complete { notes: None, linked_cartridge_id: None }.target_status(),
+            RequestTransitionOp::Reject { notes: None }.target_status(),
+            "rejected"
+        );
+        assert_eq!(
+            RequestTransitionOp::Complete {
+                notes: None,
+                linked_cartridge_id: None
+            }
+            .target_status(),
             "completed"
         );
     }

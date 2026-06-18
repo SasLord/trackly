@@ -266,9 +266,7 @@ impl CartridgeTransitionPayload {
 }
 
 /// Convert DTO payload into the domain enum for service/infra use.
-impl From<CartridgeTransitionPayload>
-    for trackly_core::domain::cartridges::CartridgeTransitionOp
-{
+impl From<CartridgeTransitionPayload> for trackly_core::domain::cartridges::CartridgeTransitionOp {
     fn from(p: CartridgeTransitionPayload) -> Self {
         use trackly_core::domain::cartridges::CartridgeTransitionOp;
         match p {

@@ -53,10 +53,7 @@ pub async fn build_users_list_tauri(
     ctx.auth.list_users(filter, pagination, &caller).await
 }
 
-pub async fn build_users_create_tauri(
-    ctx: &AppCtx,
-    new: UserNew,
-) -> Result<UserDto, AppError> {
+pub async fn build_users_create_tauri(ctx: &AppCtx, new: UserNew) -> Result<UserDto, AppError> {
     let caller = resolve_tauri_identity(ctx).await?;
     ctx.auth.create_user(new, &caller).await
 }
@@ -71,11 +68,7 @@ pub async fn build_users_update_tauri(
     ctx.auth.update_user(id, version, patch, &caller).await
 }
 
-pub async fn build_users_delete_tauri(
-    ctx: &AppCtx,
-    id: i64,
-    version: i64,
-) -> Result<(), AppError> {
+pub async fn build_users_delete_tauri(ctx: &AppCtx, id: i64, version: i64) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(ctx).await?;
     ctx.auth.delete_user(id, version, &caller).await
 }

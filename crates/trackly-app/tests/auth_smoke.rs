@@ -5,9 +5,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use trackly_app::dto::auth::UserFilter;
 use trackly_app::dto::auth::{LoginRequest, UserNew};
 use trackly_app::dto::device::Pagination;
-use trackly_app::dto::auth::UserFilter;
 use trackly_app::services::AuthService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -56,7 +56,10 @@ async fn bootstrap_creates_admin() {
 
         // After creating admin: needs_bootstrap = false
         let needs_after = svc.needs_bootstrap().await.expect("needs_bootstrap after");
-        assert!(!needs_after, "needs_bootstrap должен быть false после создания admin");
+        assert!(
+            !needs_after,
+            "needs_bootstrap должен быть false после создания admin"
+        );
     })
     .await
     .expect("test exceeded 30s budget");
@@ -170,10 +173,7 @@ async fn desktop_lock_enabled_read_write() {
         let admin = Identity::trusted_admin();
 
         // Default: false (seeded as '0' in V018)
-        let initial = svc
-            .get_desktop_lock_enabled()
-            .await
-            .expect("get initial");
+        let initial = svc.get_desktop_lock_enabled().await.expect("get initial");
         assert!(!initial, "начальное значение должно быть false");
 
         // Set to true
@@ -290,6 +290,9 @@ async fn set_desktop_lock_requires_admin() {
 // Suppress unused import warnings for list_users (used indirectly)
 #[allow(dead_code)]
 fn _use_pagination() {
-    let _ = Pagination { offset: 0, limit: 50 };
+    let _ = Pagination {
+        offset: 0,
+        limit: 50,
+    };
     let _ = UserFilter { search: None };
 }

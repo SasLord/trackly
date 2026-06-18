@@ -53,7 +53,10 @@ async fn delete_then_recreate_revives_same_login() {
             email: None,
         };
 
-        let original = svc.create_user(bob_new(), &admin).await.expect("create bob");
+        let original = svc
+            .create_user(bob_new(), &admin)
+            .await
+            .expect("create bob");
 
         // Active duplicate → Conflict (not revive).
         let conflict = svc
@@ -85,8 +88,14 @@ async fn delete_then_recreate_revives_same_login() {
             .expect("recreate bob should revive, not fail on UNIQUE");
 
         // Same row reused (FK references from acts/history stay intact).
-        assert_eq!(revived.id, original.id, "revive должен переиспользовать тот же id");
-        assert!(revived.is_active, "оживлённый пользователь должен быть активен");
+        assert_eq!(
+            revived.id, original.id,
+            "revive должен переиспользовать тот же id"
+        );
+        assert!(
+            revived.is_active,
+            "оживлённый пользователь должен быть активен"
+        );
         assert_eq!(revived.login, "bob");
         assert_eq!(revived.full_name, "Боб Второй", "поля должны обновиться");
         assert_eq!(revived.role, "employee");
@@ -94,13 +103,21 @@ async fn delete_then_recreate_revives_same_login() {
         // Visible in the list again.
         let list = svc
             .list_users(
-                UserFilter { search: Some("bob".to_string()) },
-                Pagination { offset: 0, limit: 50 },
+                UserFilter {
+                    search: Some("bob".to_string()),
+                },
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
                 &admin,
             )
             .await
             .expect("list_users");
-        assert_eq!(list.total, 1, "оживлённый пользователь должен снова быть в списке");
+        assert_eq!(
+            list.total, 1,
+            "оживлённый пользователь должен снова быть в списке"
+        );
         assert_eq!(list.items[0].id, original.id);
 
         // New password works for login; old one does not.
@@ -143,10 +160,7 @@ async fn users_create_read_update_delete() {
         assert!(dto.is_active);
 
         // READ by ID
-        let fetched = svc
-            .get_user_by_id(dto.id)
-            .await
-            .expect("get_user_by_id");
+        let fetched = svc.get_user_by_id(dto.id).await.expect("get_user_by_id");
         assert_eq!(fetched.id, dto.id);
         assert_eq!(fetched.login, "alice");
 
@@ -156,7 +170,10 @@ async fn users_create_read_update_delete() {
                 UserFilter {
                     search: Some("alice".to_string()),
                 },
-                Pagination { offset: 0, limit: 50 },
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
                 &admin,
             )
             .await
@@ -181,7 +198,11 @@ async fn users_create_read_update_delete() {
             .await
             .expect("update_user");
         assert!(!patched.is_active, "пользователь должен быть деактивирован");
-        assert_eq!(patched.version, dto.version + 1, "версия должна инкрементироваться");
+        assert_eq!(
+            patched.version,
+            dto.version + 1,
+            "версия должна инкрементироваться"
+        );
 
         // DELETE (soft)
         svc.delete_user(patched.id, patched.version, &admin)
@@ -361,7 +382,10 @@ async fn users_search_filter() {
                 UserFilter {
                     search: Some("ali".to_string()),
                 },
-                Pagination { offset: 0, limit: 50 },
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
                 &admin,
             )
             .await
@@ -373,7 +397,10 @@ async fn users_search_filter() {
         let all = svc
             .list_users(
                 UserFilter { search: None },
-                Pagination { offset: 0, limit: 50 },
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
                 &admin,
             )
             .await
@@ -446,7 +473,10 @@ async fn users_update_email_clear_vs_keep() {
             )
             .await
             .expect("update clear email");
-        assert_eq!(cleared.email, None, "Some(None) должно очищать email в NULL");
+        assert_eq!(
+            cleared.email, None,
+            "Some(None) должно очищать email в NULL"
+        );
     })
     .await
     .expect("test exceeded 30s budget");

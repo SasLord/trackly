@@ -45,7 +45,10 @@ async fn session_persists_across_store_recreate() {
 
         // Load from new store — must still find it (D-Session-01 survives restart)
         let loaded = store2.load(&original_id).await.expect("load session");
-        assert!(loaded.is_some(), "session должна переживать пересоздание store");
+        assert!(
+            loaded.is_some(),
+            "session должна переживать пересоздание store"
+        );
         assert_eq!(loaded.unwrap().id, original_id);
     })
     .await

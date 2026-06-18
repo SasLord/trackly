@@ -13,9 +13,9 @@
 //! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
 use trackly_app::context::AppCtx;
-use trackly_app::services::run_supervisor;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::server::{start_server_on_addr, ServerHandle};
+use trackly_app::services::run_supervisor;
 use trackly_app::webview_env;
 use trackly_infra::{AppConfig, Paths};
 

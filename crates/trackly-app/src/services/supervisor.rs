@@ -90,7 +90,9 @@ async fn tick(ctx: &AppCtx, now: i64) {
     for task_name in overdue_names {
         let claimed = claim_task(ctx, &task_name, now).await;
         if !claimed {
-            tracing::debug!("Supervisor: task {task_name} already claimed by another worker — skip");
+            tracing::debug!(
+                "Supervisor: task {task_name} already claimed by another worker — skip"
+            );
             continue;
         }
         dispatch_task(ctx, &task_name, now).await;
@@ -248,10 +250,7 @@ async fn run_log_retention(ctx: &AppCtx, now: i64) {
             let path = entry.path();
             // Пропускаем текущий лог (без timestamp-суффикса, просто .log)
             // Ротированные файлы имеют вид `trackly.YYYY-MM-DD` или аналогичный
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
 
             // Пропускаем текущий активный файл
             if name == "trackly.log" {
@@ -268,17 +267,11 @@ async fn run_log_retention(ctx: &AppCtx, now: i64) {
                 Err(_) => continue,
             };
 
-            let age_secs = modified
-                .elapsed()
-                .unwrap_or(Duration::ZERO)
-                .as_secs();
+            let age_secs = modified.elapsed().unwrap_or(Duration::ZERO).as_secs();
 
             if age_secs > cutoff_secs {
                 if let Err(e) = std::fs::remove_file(&path) {
-                    tracing::warn!(
-                        "log_retention: failed to delete {}: {e}",
-                        path.display()
-                    );
+                    tracing::warn!("log_retention: failed to delete {}: {e}", path.display());
                 } else {
                     tracing::info!(
                         "log_retention: deleted old log file {} (age {}d)",

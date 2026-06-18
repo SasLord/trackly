@@ -390,7 +390,11 @@ impl SqliteCartridgeRepository {
                 location,
                 given_to_name,
                 ..
-            } => (current.state_id, Some(location.as_str()), Some(given_to_name.as_str())),
+            } => (
+                current.state_id,
+                Some(location.as_str()),
+                Some(given_to_name.as_str()),
+            ),
             CartridgeTransitionOp::ReturnToStock {
                 state_id, location, ..
             } => (Some(*state_id), Some(location.as_str()), None),
@@ -398,7 +402,11 @@ impl SqliteCartridgeRepository {
                 location,
                 given_to_name,
                 ..
-            } => (current.state_id, Some(location.as_str()), Some(given_to_name.as_str())),
+            } => (
+                current.state_id,
+                Some(location.as_str()),
+                Some(given_to_name.as_str()),
+            ),
             CartridgeTransitionOp::FromRefill {
                 state_id, location, ..
             } => (Some(*state_id), Some(location.as_str()), None),
@@ -531,11 +539,7 @@ impl SqliteCartridgeRepository {
 
     /// Fetch a cartridge row inside an open transaction.
     /// Used to capture the before-snapshot and do optimistic lock validation.
-    pub fn fetch_in_tx(
-        &self,
-        tx: &Transaction<'_>,
-        id: i64,
-    ) -> Result<CartridgeRow, AppError> {
+    pub fn fetch_in_tx(&self, tx: &Transaction<'_>, id: i64) -> Result<CartridgeRow, AppError> {
         tx.query_row(
             &format!("{SELECT_CARTRIDGES} WHERE c.id = ?1"),
             params![id],
@@ -773,11 +777,7 @@ impl SqliteCartridgeRepository {
     // -----------------------------------------------------------------------
 
     /// Fetch a single cartridge model by ID.
-    pub fn get_model(
-        &self,
-        conn: &Connection,
-        id: i64,
-    ) -> Result<CartridgeModelRow, AppError> {
+    pub fn get_model(&self, conn: &Connection, id: i64) -> Result<CartridgeModelRow, AppError> {
         conn.query_row(
             "SELECT id, brand, model, kind_id, color, notes, \
                     created_at_utc, updated_at_utc, deleted_at_utc, version \
@@ -796,10 +796,7 @@ impl SqliteCartridgeRepository {
     }
 
     /// List all non-deleted cartridge models.
-    pub fn list_models(
-        &self,
-        conn: &Connection,
-    ) -> Result<Vec<CartridgeModelRow>, AppError> {
+    pub fn list_models(&self, conn: &Connection) -> Result<Vec<CartridgeModelRow>, AppError> {
         let mut stmt = conn
             .prepare(
                 "SELECT id, brand, model, kind_id, color, notes, \
@@ -1085,9 +1082,11 @@ impl CartridgeRepository for SqliteCartridgeRepository {
 
         if affected == 0 {
             let actual: Option<i64> = tx
-                .query_row("SELECT version FROM cartridges WHERE id = ?1", params![id], |r| {
-                    r.get(0)
-                })
+                .query_row(
+                    "SELECT version FROM cartridges WHERE id = ?1",
+                    params![id],
+                    |r| r.get(0),
+                )
                 .optional()
                 .map_err(map_rusqlite)?;
             return match actual {
@@ -1214,7 +1213,17 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
-                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), Some("Склад"), None, None, now)
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    model_id,
+                    1,
+                    Some(1),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
                 .expect("insert");
             tx.commit().expect("commit");
             id
@@ -1313,7 +1322,17 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
-                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), Some("Склад"), None, None, now)
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    model_id,
+                    1,
+                    Some(1),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
                 .expect("insert");
             tx.commit().expect("commit");
             id

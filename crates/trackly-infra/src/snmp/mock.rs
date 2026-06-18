@@ -114,7 +114,11 @@ impl SnmpClient for MockSnmpClient {
         Ok(Some(values))
     }
 
-    async fn probe(&self, target: &str, _community: &str) -> Result<Option<ProbedDevice>, AppError> {
+    async fn probe(
+        &self,
+        target: &str,
+        _community: &str,
+    ) -> Result<Option<ProbedDevice>, AppError> {
         let ip = Self::ip_from_target(target);
         let Some(fixture) = self.fixtures.get(ip) else {
             return Ok(None);
@@ -156,8 +160,7 @@ fn mock_value_for_oid(oid: &str, fixture: &PrinterFixture) -> SnmpValue {
     // sysDescr
     if oid == "1.3.6.1.2.1.1.1.0" {
         return SnmpValue::OctetString(
-            format!("{} {}", fixture.vendor, fixture.model)
-                .into_bytes(),
+            format!("{} {}", fixture.vendor, fixture.model).into_bytes(),
         );
     }
     // sysObjectID

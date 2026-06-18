@@ -166,7 +166,7 @@ async fn full_return_archives_handover() {
                 .map(|it| ActReturnItemDto {
                     act_item_id: it.id,
                     device_id: it.device_id,
-                device_ids: vec![it.device_id],
+                    device_ids: vec![it.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -215,7 +215,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
                         device_id: it0.device_id,
-                device_ids: vec![it0.device_id],
+                        device_ids: vec![it0.device_id],
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
@@ -241,7 +241,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                         .map(|it| ActReturnItemDto {
                             act_item_id: it.id,
                             device_id: it.device_id,
-                device_ids: vec![it.device_id],
+                            device_ids: vec![it.device_id],
                             quantity: 1,
                             condition_override: None,
                             location_id_override: None,
@@ -315,7 +315,7 @@ async fn bulk_apply_with_per_row_override() {
                 ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
-                device_ids: vec![handover.items[0].device_id],
+                    device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -324,7 +324,7 @@ async fn bulk_apply_with_per_row_override() {
                 ActReturnItemDto {
                     act_item_id: handover.items[1].id,
                     device_id: handover.items[1].device_id,
-                device_ids: vec![handover.items[1].device_id],
+                    device_ids: vec![handover.items[1].device_id],
                     quantity: 1,
                     condition_override: Some("Б/У".into()),
                     location_id_override: None,
@@ -448,7 +448,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
                         device_id: it0.device_id,
-                device_ids: vec![it0.device_id],
+                        device_ids: vec![it0.device_id],
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
@@ -469,7 +469,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                     items: vec![ActReturnItemDto {
                         act_item_id: it1.id,
                         device_id: it1.device_id,
-                device_ids: vec![it1.device_id],
+                        device_ids: vec![it1.device_id],
                         quantity: 1,
                         condition_override: None,
                         location_id_override: None,
@@ -525,7 +525,7 @@ async fn return_does_not_increment_act_counter() {
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
-                device_ids: vec![handover.items[0].device_id],
+                    device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -596,7 +596,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
-                device_ids: vec![handover.items[0].device_id],
+                    device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: Some("Хорошее".into()),
                     location_id_override: Some(loc_id),
@@ -706,7 +706,7 @@ async fn return_with_duplicate_act_item_id_rejected() {
         let dup_item = ActReturnItemDto {
             act_item_id: item.id,
             device_id: item.device_id,
-                device_ids: vec![item.device_id],
+            device_ids: vec![item.device_id],
             quantity: 1,
             condition_override: None,
             location_id_override: None,
@@ -766,7 +766,7 @@ async fn return_with_duplicate_device_id_rejected() {
                 ActReturnItemDto {
                     act_item_id: item.id,
                     device_id: item.device_id,
-                device_ids: vec![item.device_id],
+                    device_ids: vec![item.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -775,7 +775,7 @@ async fn return_with_duplicate_device_id_rejected() {
                 ActReturnItemDto {
                     act_item_id: 999_999,
                     device_id: item.device_id,
-                device_ids: vec![item.device_id],
+                    device_ids: vec![item.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,

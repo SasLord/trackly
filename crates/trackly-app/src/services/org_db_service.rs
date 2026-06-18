@@ -90,7 +90,14 @@ impl OrgDbService {
                      SET org_name=?2, inn=?3, kpp=?4, address=?5, \
                          updated_at_utc=?6, version=version+1 \
                      WHERE id=1",
-                    params![1i64, patch.org_name, patch.inn, patch.kpp, patch.address, now],
+                    params![
+                        1i64,
+                        patch.org_name,
+                        patch.inn,
+                        patch.kpp,
+                        patch.address,
+                        now
+                    ],
                 )
                 .map(|_| ())
                 .map_err(map_rusqlite)
@@ -171,11 +178,10 @@ impl OrgDbService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<Option<Vec<u8>>, AppError> {
             let conn = readers.acquire();
-            let result: rusqlite::Result<Option<Vec<u8>>> = conn.query_row(
-                "SELECT logo_blob FROM org_settings WHERE id = 1",
-                [],
-                |r| r.get(0),
-            );
+            let result: rusqlite::Result<Option<Vec<u8>>> =
+                conn.query_row("SELECT logo_blob FROM org_settings WHERE id = 1", [], |r| {
+                    r.get(0)
+                });
             result.map_err(map_rusqlite)
         })
         .await

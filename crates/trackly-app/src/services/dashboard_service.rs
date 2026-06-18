@@ -229,11 +229,7 @@ impl DashboardService {
             // ----------------------------------------------------------------
             // printers table has no deleted_at_utc — count all rows.
             let printer_total: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM printers",
-                    [],
-                    |r| r.get(0),
-                )
+                .query_row("SELECT COUNT(*) FROM printers", [], |r| r.get(0))
                 .map_err(map_rusqlite)?;
 
             // Offline count: printers with active 'offline' alert (unacknowledged = active).

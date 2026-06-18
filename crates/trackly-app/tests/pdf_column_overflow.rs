@@ -53,7 +53,10 @@ fn truncate_to_width_adds_ellipsis_for_long_text() {
     // помещается 10 chars → ellipsis должен появиться, и result.chars()=10.
     let long = "X".repeat(100);
     let result = truncate_to_width(&long, 10.0, 50.0);
-    assert!(result.ends_with('…'), "truncated text must end with ellipsis");
+    assert!(
+        result.ends_with('…'),
+        "truncated text must end with ellipsis"
+    );
     assert_eq!(result.chars().count(), 10, "result must fit max_chars=10");
 }
 

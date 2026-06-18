@@ -497,7 +497,10 @@ mod tests {
                 &tx,
                 request_id,
                 2, // version after accept
-                &RequestTransitionOp::Complete { notes: None, linked_cartridge_id: None },
+                &RequestTransitionOp::Complete {
+                    notes: None,
+                    linked_cartridge_id: None,
+                },
                 None,
                 None,
                 now + 2,
@@ -540,7 +543,10 @@ mod tests {
                 &tx,
                 request_id,
                 1,
-                &RequestTransitionOp::Complete { notes: None, linked_cartridge_id: None },
+                &RequestTransitionOp::Complete {
+                    notes: None,
+                    linked_cartridge_id: None,
+                },
                 None,
                 None,
                 now + 1,

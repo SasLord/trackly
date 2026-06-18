@@ -262,8 +262,8 @@ mod tests {
         // panicked *under the held lock*, poisoning the Mutex and killing the pool
         // for the whole process. New behaviour: acquire() blocks until a handle is
         // dropped, so N >> size acquirers all complete and the pool stays healthy.
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         use std::thread;
         use std::time::Duration;
 

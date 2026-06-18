@@ -115,7 +115,10 @@ pub async fn build_settings_set_network(
     if patch.port < 1 || patch.port > 65535 {
         return Err(AppError::Validation {
             field: "port".to_string(),
-            message: format!("Порт должен быть в диапазоне 1..=65535, получено {}", patch.port),
+            message: format!(
+                "Порт должен быть в диапазоне 1..=65535, получено {}",
+                patch.port
+            ),
         });
     }
 
@@ -126,7 +129,8 @@ pub async fn build_settings_set_network(
 
     ctx.writer
         .execute(move |conn| {
-            let upsert_sql = "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+            let upsert_sql =
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
                               VALUES (?1, ?2, ?3, ?3) \
                               ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at_utc = ?3";
 
@@ -138,9 +142,12 @@ pub async fn build_settings_set_network(
                 .map(|_| ())
                 .map_err(map_rusqlite)?;
 
-            conn.execute(upsert_sql, rusqlite::params!["server_cert_path", cert_path, now])
-                .map(|_| ())
-                .map_err(map_rusqlite)
+            conn.execute(
+                upsert_sql,
+                rusqlite::params!["server_cert_path", cert_path, now],
+            )
+            .map(|_| ())
+            .map_err(map_rusqlite)
         })
         .await
 }
@@ -201,12 +208,13 @@ pub async fn build_server_toggle(
     let port = config.port;
     let url = format!("https://{}:{}", host, port);
 
-    let addr: SocketAddr = format!("{}:{}", host, port).parse().map_err(|e| {
-        AppError::Validation {
-            field: "server.host".to_string(),
-            message: format!("invalid bind address: {e}"),
-        }
-    })?;
+    let addr: SocketAddr =
+        format!("{}:{}", host, port)
+            .parse()
+            .map_err(|e| AppError::Validation {
+                field: "server.host".to_string(),
+                message: format!("invalid bind address: {e}"),
+            })?;
 
     // Построить Router.
     let router = crate::http::build_router(ctx, session_store);

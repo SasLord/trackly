@@ -89,9 +89,7 @@ pub async fn build_cartridges_search(
     ctx.cartridges.search(query, filter).await
 }
 
-pub async fn build_cartridges_status_counts(
-    ctx: &AppCtx,
-) -> Result<CartridgeCountsDto, AppError> {
+pub async fn build_cartridges_status_counts(ctx: &AppCtx) -> Result<CartridgeCountsDto, AppError> {
     ctx.cartridges.status_counts().await
 }
 
@@ -102,15 +100,11 @@ pub async fn build_cartridges_get_history(
     ctx.cartridges.get_history(id).await
 }
 
-pub async fn build_cartridges_low_stock(
-    ctx: &AppCtx,
-) -> Result<Vec<LowStockItemDto>, AppError> {
+pub async fn build_cartridges_low_stock(ctx: &AppCtx) -> Result<Vec<LowStockItemDto>, AppError> {
     ctx.cartridges.low_stock().await
 }
 
-pub async fn build_cartridge_models_list(
-    ctx: &AppCtx,
-) -> Result<Vec<CartridgeModelDto>, AppError> {
+pub async fn build_cartridge_models_list(ctx: &AppCtx) -> Result<Vec<CartridgeModelDto>, AppError> {
     ctx.cartridges.model_list().await
 }
 
@@ -225,8 +219,15 @@ pub async fn cartridges_update(
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_cartridges_update(state.inner(), &caller, id as i64, version as i64, location, notes)
-        .await
+    build_cartridges_update(
+        state.inner(),
+        &caller,
+        id as i64,
+        version as i64,
+        location,
+        notes,
+    )
+    .await
 }
 
 #[tauri::command]

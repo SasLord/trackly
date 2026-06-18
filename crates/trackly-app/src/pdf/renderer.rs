@@ -26,10 +26,9 @@
 
 use std::sync::Arc;
 
-use krilla::geom::{Point, Size, Transform};
 use image::ImageReader;
+use krilla::geom::{Point, Size, Transform};
 use krilla::image::Image;
-use std::io::Cursor;
 use krilla::metadata::{DateTime as KrillaDateTime, Metadata};
 use krilla::page::PageSettings;
 use krilla::text::{Font, TextDirection};
@@ -37,6 +36,7 @@ use krilla::Document;
 use krilla::SerializeSettings;
 use minijinja::Environment;
 use regex::bytes::Regex;
+use std::io::Cursor;
 use trackly_core::error::AppError;
 
 use super::docspec::{DocSpec, KvRow, Section, TextStyle};
@@ -176,11 +176,7 @@ impl PdfRenderer {
             //   2. logo_path is Some → read from filesystem (Phase 3 path)
             //   3. else → no logo
             if let Some(logo_bytes) = &spec.header.logo_bytes {
-                let mime = spec
-                    .header
-                    .logo_mime
-                    .as_deref()
-                    .unwrap_or("image/png");
+                let mime = spec.header.logo_mime.as_deref().unwrap_or("image/png");
                 draw_logo_from_bytes(&mut surface, logo_bytes, mime);
             } else if let Some(logo_path_str) = &spec.header.logo_path {
                 draw_logo_top_right(&mut surface, logo_path_str);
@@ -378,12 +374,7 @@ pub fn truncate_to_width(text: &str, font_size: f32, max_width: f32) -> String {
 /// - scale > 1 (image smaller than max) → НЕ масштабируем вверх (keep orig);
 ///   практически — для очень маленьких логотипов на PDF лучше показать их в
 ///   натуральном размере, чем растянуть.
-pub fn scale_logo_dimensions(
-    orig_w: f32,
-    orig_h: f32,
-    max_w: f32,
-    max_h: f32,
-) -> (f32, f32) {
+pub fn scale_logo_dimensions(orig_w: f32, orig_h: f32, max_w: f32, max_h: f32) -> (f32, f32) {
     if orig_w <= 0.0 || orig_h <= 0.0 || max_w <= 0.0 || max_h <= 0.0 {
         return (0.0, 0.0);
     }
@@ -399,11 +390,7 @@ pub fn scale_logo_dimensions(
 ///
 /// Failures are logged at WARN and the function returns silently — rendering
 /// must remain graceful so orgs without a valid logo still get a document.
-fn draw_logo_from_bytes(
-    surface: &mut krilla::surface::Surface<'_>,
-    logo_bytes: &[u8],
-    mime: &str,
-) {
+fn draw_logo_from_bytes(surface: &mut krilla::surface::Surface<'_>, logo_bytes: &[u8], mime: &str) {
     // Determine format from mime (T-07-02-01: only png/jpeg/svg allowed at save time)
     let mime_lower = mime.to_lowercase();
     let is_png = mime_lower.contains("png");
@@ -411,27 +398,27 @@ fn draw_logo_from_bytes(
 
     if !is_png && !is_jpeg {
         // SVG not supported in krilla direct rendering; skip gracefully
-        tracing::warn!(mime, "Logo mime not supported by krilla renderer — skipping");
+        tracing::warn!(
+            mime,
+            "Logo mime not supported by krilla renderer — skipping"
+        );
         return;
     }
 
     // Get intrinsic dimensions without consuming bytes
-    let (orig_w, orig_h) =
-        match ImageReader::new(Cursor::new(logo_bytes))
-            .with_guessed_format()
-        {
-            Ok(reader) => match reader.into_dimensions() {
-                Ok((w, h)) => (w as f32, h as f32),
-                Err(e) => {
-                    tracing::warn!(error = %e, "Logo BLOB intrinsic dimensions parse failed — skipping");
-                    return;
-                }
-            },
+    let (orig_w, orig_h) = match ImageReader::new(Cursor::new(logo_bytes)).with_guessed_format() {
+        Ok(reader) => match reader.into_dimensions() {
+            Ok((w, h)) => (w as f32, h as f32),
             Err(e) => {
-                tracing::warn!(error = %e, "Logo BLOB format guess failed — skipping");
+                tracing::warn!(error = %e, "Logo BLOB intrinsic dimensions parse failed — skipping");
                 return;
             }
-        };
+        },
+        Err(e) => {
+            tracing::warn!(error = %e, "Logo BLOB format guess failed — skipping");
+            return;
+        }
+    };
 
     let data: krilla::Data = logo_bytes.to_vec().into();
     let image_result: Result<Image, String> = if is_png {
@@ -448,10 +435,13 @@ fn draw_logo_from_bytes(
         }
     };
 
-    let (final_w, final_h) =
-        scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
+    let (final_w, final_h) = scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
     if final_w <= 0.0 || final_h <= 0.0 {
-        tracing::warn!(orig_w, orig_h, "Logo BLOB scaled dimensions non-positive — skipping");
+        tracing::warn!(
+            orig_w,
+            orig_h,
+            "Logo BLOB scaled dimensions non-positive — skipping"
+        );
         return;
     }
 
@@ -491,29 +481,28 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
     // G-9 (Phase 3.1): parse intrinsic dimensions BEFORE moving `bytes`
     // into krilla. image crate returns u32 для w/h без фактического decoding
     // pixel data — копировать bytes не нужно (ImageReader работает по &[u8]).
-    let (orig_w, orig_h) = match ImageReader::new(Cursor::new(bytes.as_slice()))
-        .with_guessed_format()
-    {
-        Ok(reader) => match reader.into_dimensions() {
-            Ok((w, h)) => (w as f32, h as f32),
+    let (orig_w, orig_h) =
+        match ImageReader::new(Cursor::new(bytes.as_slice())).with_guessed_format() {
+            Ok(reader) => match reader.into_dimensions() {
+                Ok((w, h)) => (w as f32, h as f32),
+                Err(e) => {
+                    tracing::warn!(
+                        path = %logo_path_str,
+                        error = %e,
+                        "Logo intrinsic dimensions parse failed — skipping"
+                    );
+                    return;
+                }
+            },
             Err(e) => {
                 tracing::warn!(
                     path = %logo_path_str,
                     error = %e,
-                    "Logo intrinsic dimensions parse failed — skipping"
+                    "Logo format guess failed — skipping"
                 );
                 return;
             }
-        },
-        Err(e) => {
-            tracing::warn!(
-                path = %logo_path_str,
-                error = %e,
-                "Logo format guess failed — skipping"
-            );
-            return;
-        }
-    };
+        };
 
     // krilla::image::Image::from_png / from_jpeg expect `krilla::Data` (a
     // ref-counted byte container) — convert via `Into`. `interpolate = true`
@@ -543,8 +532,7 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
         }
     };
 
-    let (final_w, final_h) =
-        scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
+    let (final_w, final_h) = scale_logo_dimensions(orig_w, orig_h, LOGO_WIDTH_PT, LOGO_HEIGHT_PT);
     if final_w <= 0.0 || final_h <= 0.0 {
         tracing::warn!(
             path = %logo_path_str,

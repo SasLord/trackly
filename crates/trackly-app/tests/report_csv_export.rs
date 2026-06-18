@@ -14,10 +14,13 @@ use trackly_app::dto::reports::{ReportResponse, ReportRow};
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn csv_export_has_utf8_bom_and_semicolon() {
     use std::sync::Arc;
-    use trackly_infra::{AppConfig, db::{pools::ReaderPool, writer_worker::WriterHandle}};
-    use trackly_infra::clock_impl::SystemClock;
-    use trackly_app::services::report_service::ReportService;
     use trackly_app::pdf::PdfRenderer;
+    use trackly_app::services::report_service::ReportService;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::{
+        db::{pools::ReaderPool, writer_worker::WriterHandle},
+        AppConfig,
+    };
 
     // Build an in-memory SQLite DB for the service.
     let tmp = tempfile::NamedTempFile::new().unwrap();
@@ -30,7 +33,8 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
 
     let writer = Arc::new(WriterHandle::spawn(conn));
     let readers = Arc::new(ReaderPool::new(&db_path, 2).unwrap());
-    let clock = Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+    let clock =
+        Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
     let config = Arc::new(AppConfig::default());
     let pdf = Arc::new(PdfRenderer::new());
 
@@ -86,10 +90,13 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn csv_export_guards_formula_injection() {
     use std::sync::Arc;
-    use trackly_infra::{AppConfig, db::{pools::ReaderPool, writer_worker::WriterHandle}};
-    use trackly_infra::clock_impl::SystemClock;
-    use trackly_app::services::report_service::ReportService;
     use trackly_app::pdf::PdfRenderer;
+    use trackly_app::services::report_service::ReportService;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::{
+        db::{pools::ReaderPool, writer_worker::WriterHandle},
+        AppConfig,
+    };
 
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let db_path = tmp.path().to_path_buf();
@@ -99,7 +106,8 @@ async fn csv_export_guards_formula_injection() {
 
     let writer = Arc::new(WriterHandle::spawn(conn));
     let readers = Arc::new(ReaderPool::new(&db_path, 2).unwrap());
-    let clock = Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+    let clock =
+        Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
     let config = Arc::new(AppConfig::default());
     let pdf = Arc::new(PdfRenderer::new());
     let svc = ReportService::new(writer, readers, clock, config, pdf);

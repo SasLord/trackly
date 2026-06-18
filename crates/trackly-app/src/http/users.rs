@@ -128,7 +128,9 @@ pub async fn build_users_reset_password(
     new_password: String,
 ) -> Result<(), AppError> {
     let caller = session_identity(session).await?;
-    ctx.auth.reset_password(user_id, new_password, &caller).await
+    ctx.auth
+        .reset_password(user_id, new_password, &caller)
+        .await
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +224,9 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/users_create", post(handler_create))
         .route("/api/v1/users_update", post(handler_update))
         .route("/api/v1/users_delete", post(handler_delete))
-        .route("/api/v1/users_change_password", post(handler_change_password))
+        .route(
+            "/api/v1/users_change_password",
+            post(handler_change_password),
+        )
         .route("/api/v1/users_reset_password", post(handler_reset_password))
 }

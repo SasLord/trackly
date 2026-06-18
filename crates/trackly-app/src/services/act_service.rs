@@ -137,9 +137,7 @@ impl ActService {
                 });
             }
             // UAT Fix #4: when device_ids[] supplied, quantity must match its length.
-            if !it.device_ids.is_empty()
-                && it.device_ids.len() as i64 != it.quantity
-            {
+            if !it.device_ids.is_empty() && it.device_ids.len() as i64 != it.quantity {
                 return Err(AppError::Validation {
                     field: format!("items[{idx}].device_ids"),
                     message: format!(
@@ -159,10 +157,7 @@ impl ActService {
                 if !seen_device_ids.insert(*did) {
                     return Err(AppError::Validation {
                         field: format!("items[{idx}].device_ids"),
-                        message: format!(
-                            "Устройство id={} включено в акт более одного раза",
-                            did
-                        ),
+                        message: format!("Устройство id={} включено в акт более одного раза", did),
                     });
                 }
             }
@@ -354,9 +349,11 @@ impl ActService {
                                 devices_repo.clone_device_in_tx(&tx, item.device_id, now)?;
                             // Audit the clone-creation (T-03.1-04 repudiation).
                             let clone_after = devices_repo.get_in_tx(&tx, clone_id)?;
-                            let clone_after_json = device_snapshot_json(&clone_after)
-                                .map_err(|e| AppError::Internal {
-                                    source_chain: format!("clone after_json: {e}"),
+                            let clone_after_json =
+                                device_snapshot_json(&clone_after).map_err(|e| {
+                                    AppError::Internal {
+                                        source_chain: format!("clone after_json: {e}"),
+                                    }
                                 })?;
                             let clone_payload_json = serde_json::json!({
                                 "source_device_id": item.device_id,
@@ -411,11 +408,10 @@ impl ActService {
                     // clones: just after creation, before status update).
                     for &dev_id in &effective_device_ids {
                         let before = devices_repo.get_in_tx(&tx, dev_id)?;
-                        let before_json = device_snapshot_json(&before).map_err(
-                            |e| AppError::Internal {
+                        let before_json =
+                            device_snapshot_json(&before).map_err(|e| AppError::Internal {
                                 source_chain: format!("before_json: {e}"),
-                            },
-                        )?;
+                            })?;
 
                         // DEF-3: передавать resolved_location_id (вычисленный из
                         // location_name на строке ~258), а не payload.location_id.
@@ -429,11 +425,10 @@ impl ActService {
                             resolved_location_id,
                             now,
                         )?;
-                        let after_json = device_snapshot_json(&after).map_err(
-                            |e| AppError::Internal {
+                        let after_json =
+                            device_snapshot_json(&after).map_err(|e| AppError::Internal {
                                 source_chain: format!("after_json: {e}"),
-                            },
-                        )?;
+                            })?;
 
                         let payload_json = serde_json::json!({
                             "act_id": act_id,

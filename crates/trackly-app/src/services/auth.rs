@@ -13,17 +13,13 @@
 use std::sync::Arc;
 
 use argon2::{
-    Argon2, Algorithm, Version,
-    password_hash::{
-        PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
-        rand_core::OsRng,
-    },
-    Params,
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Algorithm, Argon2, Params, Version,
 };
 use rusqlite::OptionalExtension;
 use tracing::warn;
 
-use trackly_core::auth::{Action, Identity, Role, authorize};
+use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_core::primitives::secret::Secret;
@@ -73,8 +69,7 @@ fn dummy_password_hash() -> &'static str {
             let params = Params::new(19456, 2, 1, None).expect("argon2 dummy params");
             let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
             // Фиксированный валидный base64-salt (без padding).
-            let salt = SaltString::from_b64("c29tZWZpeGVkc2FsdDEy")
-                .expect("argon2 dummy salt");
+            let salt = SaltString::from_b64("c29tZWZpeGVkc2FsdDEy").expect("argon2 dummy salt");
             argon2
                 .hash_password(b"trackly-dummy-password", &salt)
                 .expect("argon2 dummy hash")
@@ -117,7 +112,11 @@ impl AuthService {
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
     ) -> Self {
-        Self { writer, readers, clock }
+        Self {
+            writer,
+            readers,
+            clock,
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -317,10 +316,9 @@ impl AuthService {
             );
             match result {
                 Ok(dto) => Ok(dto),
-                Err(rusqlite::Error::QueryReturnedNoRows) => Err(AppError::NotFound {
-                    entity: "user",
-                    id,
-                }),
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    Err(AppError::NotFound { entity: "user", id })
+                }
                 Err(e) => Err(map_rusqlite(e)),
             }
         })
@@ -399,10 +397,7 @@ impl AuthService {
                 let limit = pagination.limit as i64;
                 let offset = pagination.offset as i64;
                 let rows: Vec<UserDto> = stmt
-                    .query_map(
-                        rusqlite::params![pattern, limit, offset],
-                        row_to_user_dto,
-                    )
+                    .query_map(rusqlite::params![pattern, limit, offset], row_to_user_dto)
                     .map_err(map_rusqlite)?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(map_rusqlite)?;
@@ -431,10 +426,7 @@ impl AuthService {
                 let limit = pagination.limit as i64;
                 let offset = pagination.offset as i64;
                 let rows: Vec<UserDto> = stmt
-                    .query_map(
-                        rusqlite::params![limit, offset],
-                        row_to_user_dto,
-                    )
+                    .query_map(rusqlite::params![limit, offset], row_to_user_dto)
                     .map_err(map_rusqlite)?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(map_rusqlite)?;
@@ -689,11 +681,12 @@ impl AuthService {
         // Verify old password (T-05-03)
         let old_password = Secret::new(req.old_password.clone());
         let hash_clone = current_hash.clone();
-        let verified = tokio::task::spawn_blocking(move || verify_password(&old_password, &hash_clone))
-            .await
-            .map_err(|e| AppError::Internal {
-                source_chain: format!("spawn_blocking verify old: {e}"),
-            })?;
+        let verified =
+            tokio::task::spawn_blocking(move || verify_password(&old_password, &hash_clone))
+                .await
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("spawn_blocking verify old: {e}"),
+                })?;
 
         if !verified {
             return Err(AppError::Unauthorized);

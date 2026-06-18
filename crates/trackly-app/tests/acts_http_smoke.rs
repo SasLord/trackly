@@ -37,7 +37,9 @@ async fn create_admin_session(
         data: Default::default(),
         expiry_date: OffsetDateTime::now_utc() + Duration::days(1),
     };
-    record.data.insert("identity".to_string(), serde_json::to_value(&si)?);
+    record
+        .data
+        .insert("identity".to_string(), serde_json::to_value(&si)?);
     store.create(&mut record).await?;
     Ok(format!("id={}", session_id))
 }
@@ -52,16 +54,19 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
         let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard).await?;
 
         // Создаём admin пользователя
-        let admin_dto = ctx.auth.create_user(
-            UserNew {
-                login: "admin_acts".to_string(),
-                full_name: "Admin Acts".to_string(),
-                password: "password123".to_string(),
-                role: "admin".to_string(),
-                email: None,
-            },
-            &Identity::trusted_admin(),
-        ).await?;
+        let admin_dto = ctx
+            .auth
+            .create_user(
+                UserNew {
+                    login: "admin_acts".to_string(),
+                    full_name: "Admin Acts".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: None,
+                },
+                &Identity::trusted_admin(),
+            )
+            .await?;
 
         // Seed 1 device via the writer
         let device_id: i64 = ctx
@@ -139,16 +144,19 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
         let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard).await?;
 
         // Создаём admin пользователя
-        let admin_dto = ctx.auth.create_user(
-            UserNew {
-                login: "admin_return".to_string(),
-                full_name: "Admin Return".to_string(),
-                password: "password123".to_string(),
-                role: "admin".to_string(),
-                email: None,
-            },
-            &Identity::trusted_admin(),
-        ).await?;
+        let admin_dto = ctx
+            .auth
+            .create_user(
+                UserNew {
+                    login: "admin_return".to_string(),
+                    full_name: "Admin Return".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: None,
+                },
+                &Identity::trusted_admin(),
+            )
+            .await?;
 
         let device_id: i64 = ctx
             .writer

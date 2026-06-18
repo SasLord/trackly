@@ -10,9 +10,7 @@ use std::path::Path;
 use tauri_plugin_shell::ShellExt;
 
 use crate::context::AppCtx;
-use crate::dto::reports::{
-    BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem,
-};
+use crate::dto::reports::{BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem};
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};
@@ -45,7 +43,9 @@ pub async fn build_settings_save_org_logo(
     logo_bytes: Vec<u8>,
     logo_mime: String,
 ) -> Result<(), AppError> {
-    ctx.org_db.save_logo(caller_identity, logo_bytes, logo_mime).await
+    ctx.org_db
+        .save_logo(caller_identity, logo_bytes, logo_mime)
+        .await
 }
 
 pub async fn build_settings_remove_org_logo(
@@ -205,9 +205,7 @@ pub async fn build_settings_set_low_stock_threshold(
     if !(1..=999).contains(&threshold) {
         return Err(AppError::Validation {
             field: "threshold".to_string(),
-            message: format!(
-                "Порог должен быть в диапазоне 1..=999, получено {threshold}"
-            ),
+            message: format!("Порог должен быть в диапазоне 1..=999, получено {threshold}"),
         });
     }
 
@@ -267,7 +265,9 @@ pub async fn build_templates_update_body(
     kind: String,
     body: String,
 ) -> Result<(), AppError> {
-    ctx.templates.update_body(caller_identity, &kind, body).await
+    ctx.templates
+        .update_body(caller_identity, &kind, body)
+        .await
 }
 
 pub async fn build_templates_reset_to_default(
@@ -296,9 +296,7 @@ pub async fn build_templates_validate_preview(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn settings_get_org(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<OrgSettingsDto, AppError> {
+pub async fn settings_get_org(state: tauri::State<'_, AppCtx>) -> Result<OrgSettingsDto, AppError> {
     build_settings_get_org(state.inner()).await
 }
 
@@ -314,9 +312,7 @@ pub async fn settings_save_org_fields(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn settings_get_org_logo(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<Vec<u8>, AppError> {
+pub async fn settings_get_org_logo(state: tauri::State<'_, AppCtx>) -> Result<Vec<u8>, AppError> {
     build_settings_get_org_logo(state.inner()).await
 }
 
@@ -333,18 +329,14 @@ pub async fn settings_save_org_logo(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn settings_remove_org_logo(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<(), AppError> {
+pub async fn settings_remove_org_logo(state: tauri::State<'_, AppCtx>) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_settings_remove_org_logo(state.inner(), &caller).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn settings_get_db_path(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<String, AppError> {
+pub async fn settings_get_db_path(state: tauri::State<'_, AppCtx>) -> Result<String, AppError> {
     build_settings_get_db_path(state.inner()).await
 }
 
@@ -419,9 +411,7 @@ pub async fn settings_save_backup_config(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn backup_run_manual(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<BackupResult, AppError> {
+pub async fn backup_run_manual(state: tauri::State<'_, AppCtx>) -> Result<BackupResult, AppError> {
     build_backup_run_manual(state.inner()).await
 }
 

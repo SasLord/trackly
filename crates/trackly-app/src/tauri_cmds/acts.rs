@@ -224,21 +224,17 @@ pub async fn acts_suggest_person(
 /// Только при passing all guards path передаётся в tauri_plugin_shell::open.
 #[tauri::command]
 #[specta::specta]
-pub async fn acts_open_pdf_in_system(
-    app: tauri::AppHandle,
-    path: String,
-) -> Result<(), AppError> {
+pub async fn acts_open_pdf_in_system(app: tauri::AppHandle, path: String) -> Result<(), AppError> {
     let candidate = std::path::PathBuf::from(&path);
     let canonical = candidate.canonicalize().map_err(|e| AppError::Validation {
         field: "path".into(),
         message: format!("invalid path: {e}"),
     })?;
-    let temp_dir =
-        std::env::temp_dir()
-            .canonicalize()
-            .map_err(|e| AppError::Internal {
-                source_chain: format!("temp_dir canonicalize: {e}"),
-            })?;
+    let temp_dir = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("temp_dir canonicalize: {e}"),
+        })?;
     if !canonical.starts_with(&temp_dir) {
         return Err(AppError::Validation {
             field: "path".into(),

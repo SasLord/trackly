@@ -177,7 +177,9 @@ impl PrinterService {
                 dto.status = Some(reading.status.clone());
                 dto.page_count = reading.page_count;
                 // Parse toner_levels JSON.
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&reading.toner_levels_json) {
+                if let Ok(val) =
+                    serde_json::from_str::<serde_json::Value>(&reading.toner_levels_json)
+                {
                     if !val.is_null() {
                         dto.toner_levels = Some(val);
                     }
@@ -431,7 +433,10 @@ impl PrinterService {
         let printer_ids: Vec<i64> = tokio::task::spawn_blocking(move || {
             let c = readers.acquire();
             let filter = PrinterFilter::default();
-            let page = Pagination { offset: 0, limit: 1000 };
+            let page = Pagination {
+                offset: 0,
+                limit: 1000,
+            };
             repo.list(&c, &filter, &page)
                 .map(|(rows, _)| rows.into_iter().map(|r| r.id).collect::<Vec<_>>())
                 .unwrap_or_default()
@@ -455,18 +460,18 @@ impl PrinterService {
         authorize(caller, &Action::MutatePrinters)?;
 
         // Parse IP range.
-        let start = ip_start.parse::<std::net::Ipv4Addr>().map_err(|_| {
-            AppError::Validation {
+        let start = ip_start
+            .parse::<std::net::Ipv4Addr>()
+            .map_err(|_| AppError::Validation {
                 field: "ip_start".into(),
                 message: "Некорректный IPv4-адрес".into(),
-            }
-        })?;
-        let end = ip_end.parse::<std::net::Ipv4Addr>().map_err(|_| {
-            AppError::Validation {
+            })?;
+        let end = ip_end
+            .parse::<std::net::Ipv4Addr>()
+            .map_err(|_| AppError::Validation {
                 field: "ip_end".into(),
                 message: "Некорректный IPv4-адрес".into(),
-            }
-        })?;
+            })?;
 
         let snmp = self.snmp_client.clone();
         let community = community.to_string();
@@ -489,19 +494,25 @@ impl PrinterService {
                 let ip_clone = ip.clone();
                 let readers_clone = readers.clone();
                 let repo_clone = repo.clone();
-                let is_duplicate =
-                    tokio::task::spawn_blocking(move || -> bool {
-                        let conn = readers_clone.acquire();
-                        let filter = PrinterFilter { status: None, search: None };
-                        let page = Pagination { offset: 0, limit: 1000 };
-                        if let Ok((rows, _)) = repo_clone.list(&conn, &filter, &page) {
-                            rows.iter().any(|r| r.ip_address.as_deref() == Some(&ip_clone))
-                        } else {
-                            false
-                        }
-                    })
-                    .await
-                    .unwrap_or(false);
+                let is_duplicate = tokio::task::spawn_blocking(move || -> bool {
+                    let conn = readers_clone.acquire();
+                    let filter = PrinterFilter {
+                        status: None,
+                        search: None,
+                    };
+                    let page = Pagination {
+                        offset: 0,
+                        limit: 1000,
+                    };
+                    if let Ok((rows, _)) = repo_clone.list(&conn, &filter, &page) {
+                        rows.iter()
+                            .any(|r| r.ip_address.as_deref() == Some(&ip_clone))
+                    } else {
+                        false
+                    }
+                })
+                .await
+                .unwrap_or(false);
 
                 results.push(DiscoveredPrinterDto {
                     ip,
@@ -550,8 +561,7 @@ pub async fn run_poll_task(
 ) {
     // Default poll interval: 5 minutes.
     let poll_interval_secs = 300u64;
-    let mut interval =
-        tokio::time::interval(std::time::Duration::from_secs(poll_interval_secs));
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(poll_interval_secs));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -620,7 +630,10 @@ mod tests {
         use trackly_core::primitives::secret::Secret;
         let s = Secret::new("secret_community".to_string());
         let debug_str = format!("{s:?}");
-        assert!(debug_str.contains("***"), "Secret Debug must mask value, got: {debug_str}");
+        assert!(
+            debug_str.contains("***"),
+            "Secret Debug must mask value, got: {debug_str}"
+        );
         assert!(
             !debug_str.contains("secret_community"),
             "Secret Debug must not leak value, got: {debug_str}"

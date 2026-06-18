@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use trackly_app::server::start_server;
@@ -24,9 +24,7 @@ async fn graceful_shutdown_exits_within_timeout() {
         let shutdown = CancellationToken::new();
         let shutdown_clone = shutdown.clone();
 
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind port");
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind port");
 
         let app = Router::new().route("/", get(|| async { "ok" }));
         let server_task = tokio::spawn(async move {
@@ -52,9 +50,7 @@ async fn graceful_shutdown_exits_within_timeout() {
         );
 
         // Server task should not have panicked
-        result
-            .unwrap()
-            .expect("server task не должен паниковать");
+        result.unwrap().expect("server task не должен паниковать");
 
         tracing::info!("shutdown завершился за {elapsed:?}");
     })
@@ -77,9 +73,7 @@ async fn shutdown_before_server_starts_is_noop() {
         // Pre-cancel before spawning
         shutdown.cancel();
 
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind port");
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind port");
 
         let app = Router::new().route("/", get(|| async { "ok" }));
         let server_task = tokio::spawn({
@@ -93,10 +87,7 @@ async fn shutdown_before_server_starts_is_noop() {
             result.is_ok(),
             "сервер с pre-cancelled token должен немедленно завершиться"
         );
-        result
-            .unwrap()
-            .expect("no panic")
-            .expect("no error");
+        result.unwrap().expect("no panic").expect("no error");
     })
     .await
     .expect("test exceeded 10s budget");

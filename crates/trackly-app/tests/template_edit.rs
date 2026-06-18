@@ -51,7 +51,10 @@ async fn template_update_and_render_uses_new_body() {
         );
 
         // Проверяем через list_all_for_editor
-        let items = svc.list_all_for_editor().await.expect("list_all_for_editor");
+        let items = svc
+            .list_all_for_editor()
+            .await
+            .expect("list_all_for_editor");
         let handover = items
             .iter()
             .find(|i| i.kind == "act_handover")
@@ -78,9 +81,7 @@ async fn template_invalid_syntax_rejected() {
 
         // Шаблон с синтаксической ошибкой MiniJinja
         let invalid_body = "{{ незакрытый тег {% for".to_string();
-        let result = svc
-            .update_body(&caller, "act_handover", invalid_body)
-            .await;
+        let result = svc.update_body(&caller, "act_handover", invalid_body).await;
 
         assert!(
             result.is_err(),
@@ -140,7 +141,10 @@ async fn template_reset_to_default_restores_builtin() {
         );
 
         // is_default должен быть true
-        let items = svc.list_all_for_editor().await.expect("list_all_for_editor");
+        let items = svc
+            .list_all_for_editor()
+            .await
+            .expect("list_all_for_editor");
         let handover = items
             .iter()
             .find(|i| i.kind == "act_handover")

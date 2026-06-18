@@ -21,10 +21,7 @@ use trackly_infra::error_conversions::map_rusqlite;
 // ---------------------------------------------------------------------------
 
 /// Таури-логин: аутентификация без Session.
-pub async fn build_auth_login_tauri(
-    ctx: &AppCtx,
-    req: LoginRequest,
-) -> Result<UserDto, AppError> {
+pub async fn build_auth_login_tauri(ctx: &AppCtx, req: LoginRequest) -> Result<UserDto, AppError> {
     ctx.auth.login(req).await
 }
 
@@ -91,12 +88,13 @@ pub async fn build_server_toggle_tauri(
     let port = config.port;
     let url = format!("https://{}:{}", host, port);
 
-    let addr: std::net::SocketAddr = format!("{}:{}", host, port).parse().map_err(|e| {
-        AppError::Validation {
-            field: "server.host".to_string(),
-            message: format!("invalid bind address: {e}"),
-        }
-    })?;
+    let addr: std::net::SocketAddr =
+        format!("{}:{}", host, port)
+            .parse()
+            .map_err(|e| AppError::Validation {
+                field: "server.host".to_string(),
+                message: format!("invalid bind address: {e}"),
+            })?;
 
     let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
     let router = crate::http::build_router(ctx, session_store);
@@ -154,12 +152,8 @@ pub async fn build_server_status_tauri(ctx: &AppCtx) -> Result<ServerStatusDto, 
 /// аутентифицированный admin (`user_id = Some(..)`). Синтетический
 /// `trusted_admin` (`user_id = None`), который возвращается при 0/2+ admin'ах,
 /// отклоняется — иначе вебвью могло бы вызвать `desktop_set_lock` до входа.
-pub async fn build_desktop_set_lock_tauri(
-    ctx: &AppCtx,
-    enabled: bool,
-) -> Result<(), AppError> {
-    let caller =
-        crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+pub async fn build_desktop_set_lock_tauri(ctx: &AppCtx, enabled: bool) -> Result<(), AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
     if ctx.auth.get_desktop_lock_enabled().await? && caller.user_id.is_none() {
         return Err(AppError::Unauthorized);
     }
@@ -188,9 +182,7 @@ pub async fn auth_logout(_state: tauri::State<'_, AppCtx>) -> Result<(), AppErro
 
 #[tauri::command]
 #[specta::specta]
-pub async fn auth_status(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<AuthStatusDto, AppError> {
+pub async fn auth_status(state: tauri::State<'_, AppCtx>) -> Result<AuthStatusDto, AppError> {
     build_auth_status_tauri(state.inner()).await
 }
 
@@ -215,9 +207,7 @@ pub async fn server_toggle(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn server_status(
-    state: tauri::State<'_, AppCtx>,
-) -> Result<ServerStatusDto, AppError> {
+pub async fn server_status(state: tauri::State<'_, AppCtx>) -> Result<ServerStatusDto, AppError> {
     build_server_status_tauri(state.inner()).await
 }
 
@@ -246,7 +236,10 @@ pub async fn build_settings_set_network_tauri(
     if patch.port < 1 || patch.port > 65535 {
         return Err(AppError::Validation {
             field: "port".to_string(),
-            message: format!("Порт должен быть в диапазоне 1..=65535, получено {}", patch.port),
+            message: format!(
+                "Порт должен быть в диапазоне 1..=65535, получено {}",
+                patch.port
+            ),
         });
     }
 
@@ -257,7 +250,8 @@ pub async fn build_settings_set_network_tauri(
 
     ctx.writer
         .execute(move |conn| {
-            let upsert_sql = "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+            let upsert_sql =
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
                               VALUES (?1, ?2, ?3, ?3) \
                               ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at_utc = ?3";
 
@@ -269,9 +263,12 @@ pub async fn build_settings_set_network_tauri(
                 .map(|_| ())
                 .map_err(map_rusqlite)?;
 
-            conn.execute(upsert_sql, rusqlite::params!["server_cert_path", cert_path, now])
-                .map(|_| ())
-                .map_err(map_rusqlite)
+            conn.execute(
+                upsert_sql,
+                rusqlite::params!["server_cert_path", cert_path, now],
+            )
+            .map(|_| ())
+            .map_err(map_rusqlite)
         })
         .await
 }

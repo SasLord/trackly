@@ -45,11 +45,7 @@ use trackly_core::auth::Identity;
 ///
 /// Успешно прошедший auth identity передаётся через `Extension<Identity>`
 /// в `ws_handler` без повторной проверки.
-pub async fn ws_auth_middleware(
-    session: Session,
-    mut req: Request,
-    next: Next,
-) -> Response {
+pub async fn ws_auth_middleware(session: Session, mut req: Request, next: Next) -> Response {
     match session_identity(&session).await {
         Ok(identity) => {
             req.extensions_mut().insert(identity);

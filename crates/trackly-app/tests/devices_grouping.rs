@@ -778,10 +778,7 @@ async fn condition_key_same_condition_collapses() {
             "одинаковый condition → одна группа, получили {} групп",
             groups.len()
         );
-        assert_eq!(
-            groups[0].count, 2,
-            "count группы должен быть 2"
-        );
+        assert_eq!(groups[0].count, 2, "count группы должен быть 2");
     })
     .await
     .expect("condition_key_same_condition_collapses exceeded 30s");

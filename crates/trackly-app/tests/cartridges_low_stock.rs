@@ -118,7 +118,10 @@ async fn threshold_read_from_app_settings() {
         assert!(item.is_some(), "model must be in low_stock");
         let item = item.unwrap();
         assert_eq!(item.count, 1, "count must be 1");
-        assert_eq!(item.threshold, 2, "threshold must be 2 (from app_settings V016 seed)");
+        assert_eq!(
+            item.threshold, 2,
+            "threshold must be 2 (from app_settings V016 seed)"
+        );
 
         let _ = cart;
     })

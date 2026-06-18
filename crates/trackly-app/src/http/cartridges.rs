@@ -172,9 +172,16 @@ pub async fn handler_update(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_update(&ctx, &identity, p.id as i64, p.version as i64, p.location, p.notes)
-            .await
-            .map_err(AppErrorResponse::from)?,
+        build_cartridges_update(
+            &ctx,
+            &identity,
+            p.id as i64,
+            p.version as i64,
+            p.location,
+            p.notes,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -415,10 +422,7 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/cartridges_status_counts",
             post(handler_status_counts),
         )
-        .route(
-            "/api/v1/cartridges_get_history",
-            post(handler_get_history),
-        )
+        .route("/api/v1/cartridges_get_history", post(handler_get_history))
         .route("/api/v1/cartridges_low_stock", post(handler_low_stock))
         .route("/api/v1/cartridge_models_list", post(handler_models_list))
         .route("/api/v1/cartridge_models_get", post(handler_models_get))

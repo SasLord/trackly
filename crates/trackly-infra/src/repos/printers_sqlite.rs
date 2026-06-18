@@ -275,7 +275,10 @@ impl PrinterRepository for SqlitePrinterRepository {
             .map_err(map_rusqlite)?;
 
         let rows = stmt
-            .query_map(params![filter.status.as_deref(), limit, offset], map_row_printer)
+            .query_map(
+                params![filter.status.as_deref(), limit, offset],
+                map_row_printer,
+            )
             .map_err(map_rusqlite)?;
 
         let mut out = Vec::new();
@@ -503,13 +506,18 @@ mod tests {
 
         let id = {
             let tx = conn.transaction().expect("tx");
-            let id = repo.create_in_tx(&tx, &printer_new, now).expect("create usb printer");
+            let id = repo
+                .create_in_tx(&tx, &printer_new, now)
+                .expect("create usb printer");
             tx.commit().expect("commit");
             id
         };
 
         let row = repo.get(&conn, id).expect("get usb printer");
-        assert!(row.ip_address.is_none(), "IP should be None for USB-only printer");
+        assert!(
+            row.ip_address.is_none(),
+            "IP should be None for USB-only printer"
+        );
         assert_eq!(
             row.usb_host_device_id,
             Some(host_device_id),
@@ -570,9 +578,8 @@ mod tests {
         // Prune with cutoff = now - 1 (should delete old_ts row)
         {
             let tx = conn.transaction().expect("tx");
-            let deleted =
-                SqlitePrinterRepository::prune_old_readings_in_tx(&tx, now - 1, now - 50)
-                    .expect("prune");
+            let deleted = SqlitePrinterRepository::prune_old_readings_in_tx(&tx, now - 1, now - 50)
+                .expect("prune");
             tx.commit().expect("commit");
             assert!(deleted >= 1, "should have deleted at least 1 row");
         }
@@ -580,7 +587,10 @@ mod tests {
         let count_after: i64 = conn
             .query_row("SELECT COUNT(*) FROM printer_readings", [], |r| r.get(0))
             .expect("count after");
-        assert!(count_after < count_before, "should have fewer readings after prune");
+        assert!(
+            count_after < count_before,
+            "should have fewer readings after prune"
+        );
     }
 
     #[test]
@@ -633,7 +643,10 @@ mod tests {
                 |r| r.get(0),
             )
             .expect("count alerts");
-        assert_eq!(alert_count, 1, "UNIQUE(printer_id) — must be exactly 1 alert row");
+        assert_eq!(
+            alert_count, 1,
+            "UNIQUE(printer_id) — must be exactly 1 alert row"
+        );
     }
 
     #[test]
@@ -707,7 +720,11 @@ mod tests {
         let result2 = repo
             .current_cartridge_for_printer(&conn, device_id)
             .expect("query after link");
-        assert_eq!(result2, Some(cartridge_id), "should find the linked cartridge");
+        assert_eq!(
+            result2,
+            Some(cartridge_id),
+            "should find the linked cartridge"
+        );
 
         // Unlink
         {

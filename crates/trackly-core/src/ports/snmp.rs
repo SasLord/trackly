@@ -67,9 +67,5 @@ pub trait SnmpClient: Send + Sync {
     /// Discovery probe: fetch sysObjectID + sysDescr + sysName.
     ///
     /// Returns `None` if unreachable/timeout. Used during subnet scan (D-Discovery-01).
-    async fn probe(
-        &self,
-        target: &str,
-        community: &str,
-    ) -> Result<Option<ProbedDevice>, AppError>;
+    async fn probe(&self, target: &str, community: &str) -> Result<Option<ProbedDevice>, AppError>;
 }

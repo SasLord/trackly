@@ -17,7 +17,13 @@ use trackly_core::error::AppError;
 fn columns_for(report_type: &str) -> Vec<&'static str> {
     match report_type {
         "device_acts" | "device_returns" => {
-            vec!["number", "device_name", "giver_name", "receiver_name", "location_name"]
+            vec![
+                "number",
+                "device_name",
+                "giver_name",
+                "receiver_name",
+                "location_name",
+            ]
         }
         "device_in_use" | "device_in_stock" => {
             vec!["device_name", "status_name", "location_name"]
@@ -138,11 +144,9 @@ pub async fn build_reports_export_pdf(
         let readers = ctx.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
             let conn = readers.acquire();
-            conn.query_row(
-                "SELECT logo_mime FROM org_settings WHERE id = 1",
-                [],
-                |r| r.get(0),
-            )
+            conn.query_row("SELECT logo_mime FROM org_settings WHERE id = 1", [], |r| {
+                r.get(0)
+            })
             .map_err(trackly_infra::error_conversions::map_rusqlite)
         })
         .await
@@ -159,7 +163,15 @@ pub async fn build_reports_export_pdf(
         .map(|p| format!("{} {}", p.mode, p.year.unwrap_or(0)))
         .unwrap_or_default();
     ctx.reports
-        .export_pdf(&rows, report_name, &period_label, &org, logo_bytes, logo_mime, &cols)
+        .export_pdf(
+            &rows,
+            report_name,
+            &period_label,
+            &org,
+            logo_bytes,
+            logo_mime,
+            &cols,
+        )
         .await
 }
 
@@ -180,7 +192,11 @@ async fn fetch_report(
 
     match report_type {
         "device_acts" => ctx.reports.list_device_acts(filter, default_period).await,
-        "device_returns" => ctx.reports.list_device_returns(filter, default_period).await,
+        "device_returns" => {
+            ctx.reports
+                .list_device_returns(filter, default_period)
+                .await
+        }
         "device_in_use" => ctx.reports.list_device_in_use(filter).await,
         "device_in_stock" => ctx.reports.list_device_in_stock(filter).await,
         "cartridge_consumption" => {

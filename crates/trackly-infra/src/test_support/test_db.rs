@@ -49,7 +49,10 @@ mod tests {
         let oid_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM oid_profiles", [], |r| r.get(0))
             .expect("count oid_profiles");
-        assert_eq!(oid_count, 5, "expected 5 seeded oid_profiles (pantum/kyocera/hp/canon/rfc3805)");
+        assert_eq!(
+            oid_count, 5,
+            "expected 5 seeded oid_profiles (pantum/kyocera/hp/canon/rfc3805)"
+        );
 
         // Phase 6: cartridges.current_printer_device_id added by V025
         let col_exists: i64 = conn
@@ -59,6 +62,9 @@ mod tests {
                 |r| r.get(0),
             )
             .expect("check cartridges column");
-        assert_eq!(col_exists, 1, "cartridges.current_printer_device_id column must exist (V025)");
+        assert_eq!(
+            col_exists, 1,
+            "cartridges.current_printer_device_id column must exist (V025)"
+        );
     }
 }

@@ -102,13 +102,19 @@ pub struct Pagination {
 
 impl Default for Pagination {
     fn default() -> Self {
-        Self { offset: 0, limit: 50 }
+        Self {
+            offset: 0,
+            limit: 50,
+        }
     }
 }
 
 impl From<Pagination> for trackly_core::domain::requests::Pagination {
     fn from(p: Pagination) -> Self {
-        Self { offset: p.offset, limit: p.limit }
+        Self {
+            offset: p.offset,
+            limit: p.limit,
+        }
     }
 }
 

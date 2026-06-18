@@ -56,7 +56,10 @@ async fn history_returns_audit_entries_for_cartridge() {
         let cart = seed_and_create(&svc).await;
 
         // Create action produces an audit entry.
-        let history_after_create = svc.get_history(cart.id).await.expect("history after create");
+        let history_after_create = svc
+            .get_history(cart.id)
+            .await
+            .expect("history after create");
         assert!(
             !history_after_create.is_empty(),
             "history must not be empty after create"
@@ -75,7 +78,10 @@ async fn history_returns_audit_entries_for_cartridge() {
             .await
             .expect("install");
 
-        let history_after_install = svc.get_history(cart.id).await.expect("history after install");
+        let history_after_install = svc
+            .get_history(cart.id)
+            .await
+            .expect("history after install");
         assert!(
             history_after_install.len() > history_after_create.len(),
             "history must grow after transition"
@@ -126,7 +132,10 @@ async fn history_is_chronological() {
             .expect("return to stock");
 
         let history = svc.get_history(cart.id).await.expect("history");
-        assert!(history.len() >= 2, "need at least 2 entries for chronological check");
+        assert!(
+            history.len() >= 2,
+            "need at least 2 entries for chronological check"
+        );
 
         // Entries must be ordered newest first (created_at_utc DESC).
         for window in history.windows(2) {

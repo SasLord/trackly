@@ -17,6 +17,6 @@ pub mod error;
 pub mod ports;
 pub mod primitives;
 
-pub use auth::{Action, Identity, Role, authorize};
+pub use auth::{authorize, Action, Identity, Role};
 pub use error::AppError;
 pub use primitives::{Clock, Secret};

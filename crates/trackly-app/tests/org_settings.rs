@@ -25,8 +25,7 @@ fn make_org_service() -> (OrgDbService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let paths = Arc::new(
-        Paths::resolve_for_exe_dir(dir.path().to_path_buf())
-            .expect("Paths::resolve_for_exe_dir"),
+        Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("Paths::resolve_for_exe_dir"),
     );
     let svc = OrgDbService::new(writer, readers, clock, paths);
     (svc, dir)
@@ -63,7 +62,10 @@ async fn org_settings_save_and_load_round_trip() {
         assert_eq!(updated.inn, "7712345678");
         assert_eq!(updated.kpp, "771001001");
         assert_eq!(updated.address, "г. Москва, ул. Тестовая, 42");
-        assert!(!updated.has_logo, "has_logo должен быть false — лого не загружали");
+        assert!(
+            !updated.has_logo,
+            "has_logo должен быть false — лого не загружали"
+        );
     })
     .await
     .expect("org_settings_save_and_load_round_trip budget")
@@ -87,9 +89,8 @@ async fn org_logo_save_and_delete() {
             0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1 px
             0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, // 8bit RGB
             0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
-            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-            0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
-            0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
+            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2,
+            0x21, 0xBC, 0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
             0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         svc.save_logo(&caller, png_bytes.clone(), "image/png".to_string())
@@ -98,7 +99,10 @@ async fn org_logo_save_and_delete() {
 
         // Проверяем has_logo = true
         let with_logo = svc.get().await.expect("get with logo");
-        assert!(with_logo.has_logo, "has_logo должен быть true после save_logo");
+        assert!(
+            with_logo.has_logo,
+            "has_logo должен быть true после save_logo"
+        );
 
         // Получаем байты лого
         let logo_bytes = svc
@@ -123,7 +127,10 @@ async fn org_logo_save_and_delete() {
             .get_logo_bytes()
             .await
             .expect("get_logo_bytes after remove");
-        assert!(logo_after_remove.is_none(), "лого должно быть None после remove_logo");
+        assert!(
+            logo_after_remove.is_none(),
+            "лого должно быть None после remove_logo"
+        );
     })
     .await
     .expect("org_logo_save_and_delete budget")
@@ -141,7 +148,10 @@ async fn org_logo_size_limit_enforced() {
         let result = svc
             .save_logo(&caller, big_bytes, "image/png".to_string())
             .await;
-        assert!(result.is_err(), "должна быть ошибка при превышении размера лого");
+        assert!(
+            result.is_err(),
+            "должна быть ошибка при превышении размера лого"
+        );
         match result {
             Err(trackly_core::error::AppError::Validation { field, .. }) => {
                 assert_eq!(field, "logo");
@@ -163,7 +173,10 @@ async fn org_logo_invalid_mime_rejected() {
         let result = svc
             .save_logo(&caller, vec![1, 2, 3], "application/pdf".to_string())
             .await;
-        assert!(result.is_err(), "должна быть ошибка при неподдерживаемом mime");
+        assert!(
+            result.is_err(),
+            "должна быть ошибка при неподдерживаемом mime"
+        );
         match result {
             Err(trackly_core::error::AppError::Validation { field, .. }) => {
                 assert_eq!(field, "logo_mime");

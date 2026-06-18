@@ -4,13 +4,13 @@
 //! Authentication: session_identity required for all handlers (any authenticated user).
 //! CSV export returns text/csv + UTF-8 BOM. PDF export returns application/pdf.
 
+use axum::extract::State;
 use axum::{
     http::{header, StatusCode},
     response::IntoResponse,
     routing::post,
     Json, Router,
 };
-use axum::extract::State;
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
@@ -59,7 +59,9 @@ pub async fn handler_list_device_acts(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_device_acts(&ctx, p.filter, p.period)
             .await
@@ -72,7 +74,9 @@ pub async fn handler_list_device_returns(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_device_returns(&ctx, p.filter, p.period)
             .await
@@ -85,7 +89,9 @@ pub async fn handler_list_device_in_use(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_device_in_use(&ctx, p.filter)
             .await
@@ -98,7 +104,9 @@ pub async fn handler_list_device_in_stock(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_device_in_stock(&ctx, p.filter)
             .await
@@ -111,7 +119,9 @@ pub async fn handler_list_cartridge_consumption(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_cartridge_consumption(&ctx, p.filter, p.period)
             .await
@@ -124,7 +134,9 @@ pub async fn handler_list_cartridge_refills(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_cartridge_refills(&ctx, p.filter, p.period)
             .await
@@ -137,7 +149,9 @@ pub async fn handler_list_cartridge_in_use(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_cartridge_in_use(&ctx, p.filter)
             .await
@@ -150,7 +164,9 @@ pub async fn handler_list_cartridge_in_stock(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_reports_list_cartridge_in_stock(&ctx, p.filter)
             .await
@@ -164,7 +180,9 @@ pub async fn handler_export_csv(
     session: Session,
     Json(p): Json<ExportPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     let bytes = build_reports_export_csv(&ctx, p.report_type, p.filter, p.period)
         .await
         .map_err(AppErrorResponse::from)?;
@@ -187,7 +205,9 @@ pub async fn handler_export_pdf(
     session: Session,
     Json(p): Json<ExportPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     let bytes = build_reports_export_pdf(&ctx, p.report_type, p.filter, p.period)
         .await
         .map_err(AppErrorResponse::from)?;
@@ -200,7 +220,10 @@ pub async fn handler_export_pdf(
 
 pub fn router() -> Router<AppCtx> {
     Router::new()
-        .route("/api/v1/reports_list_device_acts", post(handler_list_device_acts))
+        .route(
+            "/api/v1/reports_list_device_acts",
+            post(handler_list_device_acts),
+        )
         .route(
             "/api/v1/reports_list_device_returns",
             post(handler_list_device_returns),

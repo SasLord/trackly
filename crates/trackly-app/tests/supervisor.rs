@@ -97,12 +97,8 @@ async fn supervisor_seed_is_idempotent() {
         let now = clock.unix_seconds();
 
         // Вызываем seed дважды — не должно быть дублирования
-        seed_supervisor_tasks(&writer, now)
-            .await
-            .expect("seed 1");
-        seed_supervisor_tasks(&writer, now)
-            .await
-            .expect("seed 2");
+        seed_supervisor_tasks(&writer, now).await.expect("seed 1");
+        seed_supervisor_tasks(&writer, now).await.expect("seed 2");
 
         // Проверяем что ровно по одной строке
         let readers_clone = readers.clone();
@@ -137,17 +133,18 @@ async fn supervisor_overdue_task_fires_on_startup() {
 
         // Вставляем задачу с просроченным next_run_at_utc (в прошлом)
         let past_time = now - 3600; // 1 час назад
-        writer.execute(move |conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO scheduled_tasks (name, status, next_run_at_utc) \
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT OR REPLACE INTO scheduled_tasks (name, status, next_run_at_utc) \
                  VALUES ('test_overdue_task', 'idle', ?1)",
-                params![past_time],
-            )
-            .map(|_| ())
-            .map_err(map_rusqlite)
-        })
-        .await
-        .expect("insert overdue task");
+                    params![past_time],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("insert overdue task");
 
         // Задача должна быть видна в запросе «overdue»
         let readers_clone = readers.clone();
@@ -188,17 +185,18 @@ async fn supervisor_future_task_does_not_fire_early() {
 
         // Вставляем задачу с future next_run_at_utc (в будущем)
         let future_time = now + 86400; // через сутки
-        writer.execute(move |conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO scheduled_tasks (name, status, next_run_at_utc) \
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT OR REPLACE INTO scheduled_tasks (name, status, next_run_at_utc) \
                  VALUES ('test_future_task', 'idle', ?1)",
-                params![future_time],
-            )
-            .map(|_| ())
-            .map_err(map_rusqlite)
-        })
-        .await
-        .expect("insert future task");
+                    params![future_time],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("insert future task");
 
         // Задача НЕ должна быть видна в запросе «overdue»
         let readers_clone = readers.clone();

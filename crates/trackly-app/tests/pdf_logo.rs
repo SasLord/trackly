@@ -123,7 +123,9 @@ fn logo_bytes_blob_renders_image_in_pdf() {
     };
 
     let renderer = PdfRenderer::new();
-    let bytes = renderer.render_docspec(&spec).expect("render with logo_bytes");
+    let bytes = renderer
+        .render_docspec(&spec)
+        .expect("render with logo_bytes");
 
     assert_eq!(&bytes[..4], b"%PDF", "PDF magic header missing");
     assert!(

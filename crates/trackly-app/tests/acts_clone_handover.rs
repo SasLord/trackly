@@ -129,9 +129,21 @@ async fn recompute_parent_archived_count_based() {
             deadline_utc: None,
             handover_date_utc: None,
             items: vec![
-                ActItemNewDto { device_id: d1, device_ids: Vec::new(), quantity: 1 },
-                ActItemNewDto { device_id: d2, device_ids: Vec::new(), quantity: 1 },
-                ActItemNewDto { device_id: d3, device_ids: Vec::new(), quantity: 1 },
+                ActItemNewDto {
+                    device_id: d1,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                },
+                ActItemNewDto {
+                    device_id: d2,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                },
+                ActItemNewDto {
+                    device_id: d3,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                },
             ],
         };
         let handover = svc.create(payload).await.expect("create handover");
@@ -150,7 +162,7 @@ async fn recompute_parent_archived_count_based() {
                 ActReturnItemDto {
                     act_item_id: it0.id,
                     device_id: it0.device_id,
-                device_ids: vec![it0.device_id],
+                    device_ids: vec![it0.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -159,7 +171,7 @@ async fn recompute_parent_archived_count_based() {
                 ActReturnItemDto {
                     act_item_id: it1.id,
                     device_id: it1.device_id,
-                device_ids: vec![it1.device_id],
+                    device_ids: vec![it1.device_id],
                     quantity: 1,
                     condition_override: None,
                     location_id_override: None,
@@ -623,7 +635,10 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
             .iter()
             .map(|i| i.outstanding_device_ids.len())
             .sum();
-        assert_eq!(outstanding_total, 2, "после возврата 1/3 outstanding total = 2");
+        assert_eq!(
+            outstanding_total, 2,
+            "после возврата 1/3 outstanding total = 2"
+        );
 
         // Find the returned item — outstanding должен быть [].
         let returned_item = parent_after
@@ -820,7 +835,10 @@ async fn clones_have_null_serial_number_per_w5() {
             assert!(s.is_none(), "clone serial_number must be NULL (W-5)");
         }
         for inv in &clone_inventories {
-            assert!(inv.is_none(), "clone inventory_number must be NULL (G-12 b)");
+            assert!(
+                inv.is_none(),
+                "clone inventory_number must be NULL (G-12 b)"
+            );
         }
     })
     .await

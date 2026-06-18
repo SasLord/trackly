@@ -40,7 +40,10 @@ async fn seed_model(svc: &CartridgeService) -> i64 {
     .id
 }
 
-async fn create_stock_cartridge(svc: &CartridgeService, model_id: i64) -> trackly_app::dto::cartridge::CartridgeDto {
+async fn create_stock_cartridge(
+    svc: &CartridgeService,
+    model_id: i64,
+) -> trackly_app::dto::cartridge::CartridgeDto {
     svc.create(CartridgeCreateDto {
         model_id,
         code_override: None,
@@ -116,7 +119,10 @@ async fn return_to_stock_sets_default_empty_state() {
 
         assert_eq!(returned.status_id, 1, "status must be На складе (1)");
         assert_eq!(returned.state_id, Some(3), "state must be Пустой (3)");
-        assert!(returned.holder_name.is_none(), "holder_name must be cleared");
+        assert!(
+            returned.holder_name.is_none(),
+            "holder_name must be cleared"
+        );
     })
     .await
     .expect("return_to_stock_sets_default_empty_state budget")
@@ -231,11 +237,18 @@ async fn all_transitions_write_audit_log() {
             .expect("install");
 
         let history = svc.get_history(cart.id).await.expect("history");
-        assert!(!history.is_empty(), "history must not be empty after transition");
+        assert!(
+            !history.is_empty(),
+            "history must not be empty after transition"
+        );
 
         // At least one entry has action containing "custom:" (transition action pattern)
         let has_custom = history.iter().any(|e| e.action.contains("custom:"));
-        assert!(has_custom, "transition audit entry must contain 'custom:': {:?}", history);
+        assert!(
+            has_custom,
+            "transition audit entry must contain 'custom:': {:?}",
+            history
+        );
 
         // Return to stock
         let _returned = svc
@@ -250,7 +263,10 @@ async fn all_transitions_write_audit_log() {
             .expect("return_to_stock");
 
         let history2 = svc.get_history(cart.id).await.expect("history2");
-        assert!(history2.len() > history.len(), "history must grow after each transition");
+        assert!(
+            history2.len() > history.len(),
+            "history must grow after each transition"
+        );
     })
     .await
     .expect("all_transitions_write_audit_log budget")

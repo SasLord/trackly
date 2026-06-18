@@ -160,14 +160,10 @@ impl BackupService {
             let conn = readers.acquire();
 
             let backup_folder = read_setting(&conn, "backup_folder")?;
-            let schedule = read_setting(&conn, "backup_schedule")?
-                .unwrap_or_else(|| "disabled".to_string());
+            let schedule =
+                read_setting(&conn, "backup_schedule")?.unwrap_or_else(|| "disabled".to_string());
             let retention_str = read_setting(&conn, "backup_retention")?;
-            let retention: i64 = retention_str
-                .as_deref()
-                .unwrap_or("7")
-                .parse()
-                .unwrap_or(7);
+            let retention: i64 = retention_str.as_deref().unwrap_or("7").parse().unwrap_or(7);
 
             Ok(BackupConfigDto {
                 backup_folder,
@@ -225,9 +221,10 @@ fn run_rusqlite_backup(readers: &ReaderPool, dest_path: &Path) -> Result<(), App
 
         // rusqlite::backup::Backup требует &Connection и &mut Connection
         // SAFETY: acquire() возвращает RAII guard с Deref<Target=Connection>
-        let backup = Backup::new(&reader_guard, &mut dest_conn).map_err(|e| AppError::Internal {
-            source_chain: format!("Backup::new failed: {e}"),
-        })?;
+        let backup =
+            Backup::new(&reader_guard, &mut dest_conn).map_err(|e| AppError::Internal {
+                source_chain: format!("Backup::new failed: {e}"),
+            })?;
 
         backup
             .run_to_completion(500, Duration::from_millis(250), None)
@@ -286,7 +283,10 @@ fn apply_retention(folder: &Path, retention: i64) -> Result<(), AppError> {
                 path.display()
             );
         } else {
-            tracing::info!("BackupService retention: deleted old backup {}", path.display());
+            tracing::info!(
+                "BackupService retention: deleted old backup {}",
+                path.display()
+            );
         }
     }
 
@@ -308,12 +308,7 @@ fn read_setting(conn: &Connection, key: &str) -> Result<Option<String>, AppError
 }
 
 /// Upsert значения в `app_settings` (pattern из V016 migration).
-fn upsert_setting(
-    conn: &Connection,
-    key: &str,
-    value: &str,
-    now: i64,
-) -> Result<(), AppError> {
+fn upsert_setting(conn: &Connection, key: &str, value: &str, now: i64) -> Result<(), AppError> {
     conn.execute(
         "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
          VALUES (?1, ?2, ?3, ?3) \

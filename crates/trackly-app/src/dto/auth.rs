@@ -235,7 +235,10 @@ mod tests {
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("full_name"), "snake_case: full_name");
         assert!(json.contains("is_active"), "snake_case: is_active");
-        assert!(json.contains("created_at_utc"), "snake_case: created_at_utc");
+        assert!(
+            json.contains("created_at_utc"),
+            "snake_case: created_at_utc"
+        );
         assert!(!json.contains("fullName"), "НЕ camelCase");
     }
 }

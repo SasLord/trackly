@@ -73,11 +73,10 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .route_layer(tower_governor::GovernorLayer::new(governor_conf));
 
     // --- auth_status без rate limit ---
-    let status_route = axum::routing::Router::new()
-        .route(
-            "/api/v1/auth_status",
-            axum::routing::post(auth::handler_status),
-        );
+    let status_route = axum::routing::Router::new().route(
+        "/api/v1/auth_status",
+        axum::routing::post(auth::handler_status),
+    );
 
     // --- Весь API Router (public + protected routes) ---
     // Защита маршрутов реализована на уровне handlers через session_identity().

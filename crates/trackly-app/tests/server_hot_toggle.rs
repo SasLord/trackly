@@ -5,8 +5,8 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
@@ -29,9 +29,7 @@ async fn server_starts_stops_port_freed() {
         let shutdown_clone = shutdown.clone();
 
         // Pre-bind to get a random port
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind port");
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind port");
         let addr: SocketAddr = listener.local_addr().expect("local_addr");
 
         let app = Router::new().route("/", get(|| async { "ok" }));
@@ -45,7 +43,9 @@ async fn server_starts_stops_port_freed() {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Verify server is listening: TCP connect succeeds
-        TcpStream::connect(addr).await.expect("should connect while server is up");
+        TcpStream::connect(addr)
+            .await
+            .expect("should connect while server is up");
 
         // Stop server
         shutdown.cancel();
@@ -79,9 +79,7 @@ async fn server_hot_toggle() {
         // First run
         let bundle1 = tls::generate_self_signed("127.0.0.1").expect("tls bundle 1");
         let shutdown1 = CancellationToken::new();
-        let listener1 = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind port 1");
+        let listener1 = TcpListener::bind("127.0.0.1:0").await.expect("bind port 1");
         let addr = listener1.local_addr().expect("local_addr");
 
         let app = Router::new().route("/", get(|| async { "ok" }));
@@ -90,7 +88,9 @@ async fn server_hot_toggle() {
             async move { start_server(app.clone(), listener1, bundle1.acceptor, s).await }
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
-        TcpStream::connect(addr).await.expect("first run: should connect");
+        TcpStream::connect(addr)
+            .await
+            .expect("first run: should connect");
 
         // Stop first run
         shutdown1.cancel();

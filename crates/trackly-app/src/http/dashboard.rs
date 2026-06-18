@@ -39,7 +39,9 @@ pub async fn handler_get_all_widgets(
     session: Session,
     Json(p): Json<GetAllWidgetsPayload>,
 ) -> Result<Json<DashboardWidgetDto>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_dashboard_get_all_widgets(&ctx, p.period)
             .await
@@ -52,7 +54,9 @@ pub async fn handler_get_consumption_chart(
     session: Session,
     Json(p): Json<GetConsumptionChartPayload>,
 ) -> Result<Json<Vec<ConsumptionPoint>>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_dashboard_get_consumption_chart(&ctx, p.window_months)
             .await

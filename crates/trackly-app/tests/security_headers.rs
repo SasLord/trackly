@@ -21,11 +21,10 @@ async fn build_test_components() -> anyhow::Result<(axum::Router, trackly_app::c
     let paths = trackly_infra::Paths::resolve_for_exe_dir(dir_path)?;
     let config = trackly_infra::AppConfig::default();
     // logging::init может вернуть ошибку если subscriber уже установлен в другом тесте.
-    let log_guard = trackly_app::logging::init(&paths, &config)
-        .or_else(|_| {
-            let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
-            Ok::<_, anyhow::Error>(guard)
-        })?;
+    let log_guard = trackly_app::logging::init(&paths, &config).or_else(|_| {
+        let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+        Ok::<_, anyhow::Error>(guard)
+    })?;
     let ctx = trackly_app::context::AppCtx::build(paths, config, log_guard).await?;
 
     let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
@@ -163,8 +162,9 @@ async fn login_reaches_handler_with_connect_info_and_req_wrapper() {
             .expect("build_test_components failed");
 
         let addr: std::net::SocketAddr = "203.0.113.7:54321".parse().unwrap();
-        let body = serde_json::json!({ "req": { "login": "nonexistent", "password": "wrongpass" } })
-            .to_string();
+        let body =
+            serde_json::json!({ "req": { "login": "nonexistent", "password": "wrongpass" } })
+                .to_string();
 
         let res = router
             .oneshot(

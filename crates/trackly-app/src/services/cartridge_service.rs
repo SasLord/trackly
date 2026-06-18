@@ -132,7 +132,7 @@ impl CartridgeService {
                     1, // status_id: На складе
                     payload.state_id,
                     payload.location.as_deref(),
-                    None,    // holder_name — empty on creation
+                    None, // holder_name — empty on creation
                     payload.notes.as_deref(),
                     now,
                 )?;
@@ -352,21 +352,16 @@ impl CartridgeService {
         let readers = self.readers.clone();
         let repo = self.cart_repo.clone();
         let (rows, total) =
-            tokio::task::spawn_blocking(
-                move || -> Result<(Vec<CartridgeDto>, u64), AppError> {
-                    let conn = readers.acquire();
-                    let (rows, total) = repo.list(&conn, &domain_filter, &domain_page)?;
-                    Ok((rows.into_iter().map(CartridgeDto::from).collect(), total))
-                },
-            )
+            tokio::task::spawn_blocking(move || -> Result<(Vec<CartridgeDto>, u64), AppError> {
+                let conn = readers.acquire();
+                let (rows, total) = repo.list(&conn, &domain_filter, &domain_page)?;
+                Ok((rows.into_iter().map(CartridgeDto::from).collect(), total))
+            })
             .await
             .map_err(|e| AppError::Internal {
                 source_chain: format!("spawn_blocking: {e}"),
             })??;
-        Ok(CartridgeListResponse {
-            items: rows,
-            total,
-        })
+        Ok(CartridgeListResponse { items: rows, total })
     }
 
     pub async fn status_counts(&self) -> Result<CartridgeCountsDto, AppError> {
@@ -420,23 +415,20 @@ impl CartridgeService {
     ) -> Result<CartridgeListResponse, AppError> {
         let trimmed = query.trim().to_string();
         if trimmed.is_empty() {
-            return self
-                .list(filter, Pagination::default())
-                .await;
+            return self.list(filter, Pagination::default()).await;
         }
         let domain_filter = filter.into_domain();
         let readers = self.readers.clone();
         let repo = self.cart_repo.clone();
-        let rows =
-            tokio::task::spawn_blocking(move || -> Result<Vec<CartridgeDto>, AppError> {
-                let conn = readers.acquire();
-                let rows = repo.search(&conn, &trimmed, &domain_filter)?;
-                Ok(rows.into_iter().map(CartridgeDto::from).collect())
-            })
-            .await
-            .map_err(|e| AppError::Internal {
-                source_chain: format!("spawn_blocking: {e}"),
-            })??;
+        let rows = tokio::task::spawn_blocking(move || -> Result<Vec<CartridgeDto>, AppError> {
+            let conn = readers.acquire();
+            let rows = repo.search(&conn, &trimmed, &domain_filter)?;
+            Ok(rows.into_iter().map(CartridgeDto::from).collect())
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
         let total = rows.len() as u64;
         Ok(CartridgeListResponse { items: rows, total })
     }
@@ -519,7 +511,11 @@ impl CartridgeService {
             let conn = readers.acquire();
             let row = repo.get_model(&conn, id)?;
             let compat = repo.get_compatibility(&conn, row.id)?;
-            let instances = repo.count_instances_by_model(&conn)?.get(&id).copied().unwrap_or(0);
+            let instances = repo
+                .count_instances_by_model(&conn)?
+                .get(&id)
+                .copied()
+                .unwrap_or(0);
             Ok(CartridgeModelDto::from_row(row, compat).with_instance_count(instances))
         })
         .await

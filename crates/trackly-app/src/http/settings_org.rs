@@ -6,21 +6,19 @@
 //! IMPORTANT: settings_move_db is NOT exposed here — it is Tauri-only (T-07-07-03).
 //! app_restart is also Tauri-only (D-19).
 
+use axum::extract::State;
 use axum::{
     http::{header, StatusCode},
     response::IntoResponse,
     routing::post,
     Json, Router,
 };
-use axum::extract::State;
 use tower_sessions::Session;
 
 use trackly_core::auth::{authorize, Action};
 
 use crate::context::AppCtx;
-use crate::dto::reports::{
-    BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem,
-};
+use crate::dto::reports::{BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem};
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
@@ -91,9 +89,13 @@ pub async fn handler_get_org(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<OrgSettingsDto>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_org(&ctx).await.map_err(AppErrorResponse::from)?,
+        build_settings_get_org(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -101,9 +103,13 @@ pub async fn handler_get_org_logo(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<Vec<u8>>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_org_logo(&ctx).await.map_err(AppErrorResponse::from)?,
+        build_settings_get_org_logo(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -111,9 +117,13 @@ pub async fn handler_get_db_path(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<String>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_settings_get_db_path(&ctx).await.map_err(AppErrorResponse::from)?,
+        build_settings_get_db_path(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -121,7 +131,9 @@ pub async fn handler_get_low_stock_threshold(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<i64>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_settings_get_low_stock_threshold(&ctx)
             .await
@@ -133,7 +145,9 @@ pub async fn handler_get_backup_config(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<BackupConfigDto>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_settings_get_backup_config(&ctx)
             .await
@@ -145,7 +159,9 @@ pub async fn handler_templates_list_for_editor(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<Vec<TemplateEditorItem>>, AppErrorResponse> {
-    let _identity = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_templates_list_for_editor(&ctx)
             .await
@@ -162,7 +178,9 @@ pub async fn handler_save_org_fields(
     session: Session,
     Json(p): Json<SaveOrgFieldsPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_save_org_fields(&ctx, &caller, p.patch)
         .await
@@ -175,7 +193,9 @@ pub async fn handler_save_org_logo(
     session: Session,
     Json(p): Json<SaveOrgLogoPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_save_org_logo(&ctx, &caller, p.logo_bytes, p.logo_mime)
         .await
@@ -187,7 +207,9 @@ pub async fn handler_remove_org_logo(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_remove_org_logo(&ctx, &caller)
         .await
@@ -200,7 +222,9 @@ pub async fn handler_set_low_stock_threshold(
     session: Session,
     Json(p): Json<SetLowStockPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_set_low_stock_threshold(&ctx, &caller, p.threshold)
         .await
@@ -213,7 +237,9 @@ pub async fn handler_save_backup_config(
     session: Session,
     Json(p): Json<SaveBackupConfigPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_save_backup_config(&ctx, &caller, p.patch)
         .await
@@ -225,7 +251,9 @@ pub async fn handler_backup_run_manual(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<BackupResult>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_backup_run_manual(&ctx)
@@ -239,7 +267,9 @@ pub async fn handler_templates_update_body(
     session: Session,
     Json(p): Json<TemplateUpdatePayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_templates_update_body(&ctx, &caller, p.kind, p.body)
         .await
@@ -252,7 +282,9 @@ pub async fn handler_templates_reset_to_default(
     session: Session,
     Json(p): Json<TemplateKindPayload>,
 ) -> Result<Json<()>, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_templates_reset_to_default(&ctx, &caller, p.kind)
         .await
@@ -265,7 +297,9 @@ pub async fn handler_templates_validate_preview(
     session: Session,
     Json(p): Json<TemplateValidatePayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let caller = session_identity(&session).await.map_err(AppErrorResponse::from)?;
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     let bytes = build_templates_validate_preview(&ctx, &caller, p.kind, p.body)
         .await
@@ -320,10 +354,7 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/settings_save_backup_config",
             post(handler_save_backup_config),
         )
-        .route(
-            "/api/v1/backup_run_manual",
-            post(handler_backup_run_manual),
-        )
+        .route("/api/v1/backup_run_manual", post(handler_backup_run_manual))
         .route(
             "/api/v1/templates_update_body",
             post(handler_templates_update_body),

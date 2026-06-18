@@ -22,5 +22,6 @@ pub use organization::OrgDto;
 pub use printer::WsEvent;
 pub use reports::{
     BackupConfigPatch, ConsumptionPoint, DashboardStatusCount, DashboardWidgetDto, OrgLogoDto,
-    OrgPatch, OrgSettingsDto, PeriodDto, ReportFilter, ReportResponse, ReportRow, TemplateEditorItem,
+    OrgPatch, OrgSettingsDto, PeriodDto, ReportFilter, ReportResponse, ReportRow,
+    TemplateEditorItem,
 };

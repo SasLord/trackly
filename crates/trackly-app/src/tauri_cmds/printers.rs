@@ -52,7 +52,9 @@ pub async fn build_printers_discover(
     community: String,
 ) -> Result<Vec<DiscoveredPrinterDto>, AppError> {
     authorize(caller, &Action::MutatePrinters)?;
-    ctx.printers.discover(&ip_start, &ip_end, &community, caller).await
+    ctx.printers
+        .discover(&ip_start, &ip_end, &community, caller)
+        .await
 }
 
 /// Admit: создаёт принтеры из результатов discovery (PRN-01).
@@ -79,10 +81,17 @@ pub async fn build_printers_admit(
         let repo = ctx.printers.printer_repo.clone();
         let is_duplicate = tokio::task::spawn_blocking(move || -> bool {
             let conn = readers.acquire();
-            let filter = CoreFilter { status: None, search: None };
-            let page = CorePagination { offset: 0, limit: 10_000 };
+            let filter = CoreFilter {
+                status: None,
+                search: None,
+            };
+            let page = CorePagination {
+                offset: 0,
+                limit: 10_000,
+            };
             if let Ok((rows, _)) = repo.list(&conn, &filter, &page) {
-                rows.iter().any(|r| r.ip_address.as_deref() == Some(&ip_clone))
+                rows.iter()
+                    .any(|r| r.ip_address.as_deref() == Some(&ip_clone))
             } else {
                 false
             }
@@ -95,7 +104,13 @@ pub async fn build_printers_admit(
         }
 
         // --- Probe for device name / model ---
-        let probe_result = ctx.printers.snmp_client.probe(ip, &community).await.ok().flatten();
+        let probe_result = ctx
+            .printers
+            .snmp_client
+            .probe(ip, &community)
+            .await
+            .ok()
+            .flatten();
         let device_name = probe_result
             .as_ref()
             .and_then(|p| {
@@ -118,7 +133,9 @@ pub async fn build_printers_admit(
                 name: device_name,
                 inventory_no: None,
                 serial_no: None,
-                model: probe_result.as_ref().map(|p| p.sys_descr.chars().take(120).collect()),
+                model: probe_result
+                    .as_ref()
+                    .map(|p| p.sys_descr.chars().take(120).collect()),
                 specs: None,
                 kit: None,
                 state: None,

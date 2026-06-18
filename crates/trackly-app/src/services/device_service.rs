@@ -365,10 +365,7 @@ impl DeviceService {
     /// UAT-fix: дает АВТОНОМНЫЙ список расположений из таблицы `locations`
     /// (не device-derived) с prefix-фильтрацией. Используется UI для
     /// поля «Расположение» во всех модалах акта.
-    pub async fn locations_autocomplete(
-        &self,
-        prefix: String,
-    ) -> Result<Vec<String>, AppError> {
+    pub async fn locations_autocomplete(&self, prefix: String) -> Result<Vec<String>, AppError> {
         if prefix.chars().count() > 100 {
             return Err(AppError::Validation {
                 field: "prefix".into(),
@@ -377,7 +374,13 @@ impl DeviceService {
         }
         let escaped: String = prefix
             .chars()
-            .map(|c| if c == '%' || c == '_' || c == '\\' { format!("\\{c}") } else { c.to_string() })
+            .map(|c| {
+                if c == '%' || c == '_' || c == '\\' {
+                    format!("\\{c}")
+                } else {
+                    c.to_string()
+                }
+            })
             .collect();
         let pattern = format!("{escaped}%");
         let readers = self.readers.clone();

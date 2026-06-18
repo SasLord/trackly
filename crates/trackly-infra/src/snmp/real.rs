@@ -68,12 +68,7 @@ impl SnmpClient for RealSnmpClient {
         let oid_refs: Vec<&snmp2::Oid<'_>> = parsed.iter().collect();
 
         // ALWAYS wrap in timeout — snmp2 has no built-in timeout (Pitfall 1).
-        let pdu = match timeout(
-            Duration::from_secs(timeout_secs),
-            sess.get_many(&oid_refs),
-        )
-        .await
-        {
+        let pdu = match timeout(Duration::from_secs(timeout_secs), sess.get_many(&oid_refs)).await {
             Ok(Ok(p)) => p,
             _ => return Ok(None), // timeout or SNMP error = unreachable
         };

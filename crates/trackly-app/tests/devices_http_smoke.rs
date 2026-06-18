@@ -51,10 +51,7 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
 
         // axum-path (без сессии): POST /api/v1/devices_create → 401 Unauthorized.
         // Phase 5 Plan 04: mutation handlers теперь требуют аутентифицированной сессии.
-        let session_store = RusqliteSessionStore::new(
-            ctx.writer.clone(),
-            ctx.readers.clone(),
-        );
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
         let app = build_router(&ctx, session_store);
         let body_json = serde_json::json!({ "device": new });
         let res = app
@@ -77,7 +74,10 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
         let filter = DeviceFilter::default();
         let page = Pagination::default();
         let list_tauri: DeviceListResponse = build_devices_list(&ctx, filter.clone(), page).await?;
-        assert!(list_tauri.total >= 1, "должно быть минимум 1 устройство после create");
+        assert!(
+            list_tauri.total >= 1,
+            "должно быть минимум 1 устройство после create"
+        );
 
         ctx.shutdown.cancel();
         Ok::<(), anyhow::Error>(())

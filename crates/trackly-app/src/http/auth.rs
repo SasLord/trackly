@@ -178,9 +178,7 @@ pub async fn handler_login(
     ))
 }
 
-pub async fn handler_logout(
-    session: Session,
-) -> Result<Json<()>, AppErrorResponse> {
+pub async fn handler_logout(session: Session) -> Result<Json<()>, AppErrorResponse> {
     build_auth_logout(session)
         .await
         .map_err(AppErrorResponse::from)?;

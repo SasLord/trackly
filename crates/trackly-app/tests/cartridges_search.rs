@@ -164,14 +164,22 @@ async fn empty_query_returns_all() {
             .search("".to_string(), CartridgeFilter::default())
             .await
             .expect("search empty");
-        assert_eq!(result.items.len(), 3, "empty query must return all 3 cartridges");
+        assert_eq!(
+            result.items.len(),
+            3,
+            "empty query must return all 3 cartridges"
+        );
 
         // Whitespace-only query also falls back.
         let result2 = svc
             .search("   ".to_string(), CartridgeFilter::default())
             .await
             .expect("search whitespace");
-        assert_eq!(result2.items.len(), 3, "whitespace query must return all 3 cartridges");
+        assert_eq!(
+            result2.items.len(),
+            3,
+            "whitespace query must return all 3 cartridges"
+        );
     })
     .await
     .expect("empty_query_returns_all budget")

@@ -11,12 +11,12 @@
 use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 // tauri::Emitter trait is needed for app.emit() in Tauri 2.x.
-use tauri::Emitter;
 use crate::dto::request::{
     Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter,
     RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
+use tauri::Emitter;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 

@@ -85,22 +85,15 @@ pub fn compute_period_utc(dto: &PeriodDto, tz_offset: UtcOffset) -> (Option<i64>
                     Err(_) => return (None, None),
                 }
             } else {
-                match Date::from_calendar_date(
-                    year,
-                    Month::try_from(month_num + 1).unwrap(),
-                    1,
-                ) {
+                match Date::from_calendar_date(year, Month::try_from(month_num + 1).unwrap(), 1) {
                     Ok(d) => d,
                     Err(_) => return (None, None),
                 }
             };
             let last_day = next_month_date.previous_day().unwrap();
-            let end = PrimitiveDateTime::new(
-                last_day,
-                Time::from_hms(23, 59, 59).unwrap(),
-            )
-            .assume_offset(tz_offset)
-            .unix_timestamp();
+            let end = PrimitiveDateTime::new(last_day, Time::from_hms(23, 59, 59).unwrap())
+                .assume_offset(tz_offset)
+                .unix_timestamp();
             (Some(start), Some(end))
         }
         "year" => {
@@ -119,12 +112,9 @@ pub fn compute_period_utc(dto: &PeriodDto, tz_offset: UtcOffset) -> (Option<i64>
             let start = PrimitiveDateTime::new(start_date, Time::MIDNIGHT)
                 .assume_offset(tz_offset)
                 .unix_timestamp();
-            let end = PrimitiveDateTime::new(
-                end_date,
-                Time::from_hms(23, 59, 59).unwrap(),
-            )
-            .assume_offset(tz_offset)
-            .unix_timestamp();
+            let end = PrimitiveDateTime::new(end_date, Time::from_hms(23, 59, 59).unwrap())
+                .assume_offset(tz_offset)
+                .unix_timestamp();
             (Some(start), Some(end))
         }
         "range" => {
@@ -636,11 +626,17 @@ fn query_acts_inner(
     clauses.push("a.deleted_at_utc IS NULL".to_string());
 
     if let Some(from) = ts_from {
-        clauses.push(format!("a.handover_date_utc >= ?{}", next_idx(&owned_params)));
+        clauses.push(format!(
+            "a.handover_date_utc >= ?{}",
+            next_idx(&owned_params)
+        ));
         owned_params.push(Box::new(from));
     }
     if let Some(to) = ts_to {
-        clauses.push(format!("a.handover_date_utc <= ?{}", next_idx(&owned_params)));
+        clauses.push(format!(
+            "a.handover_date_utc <= ?{}",
+            next_idx(&owned_params)
+        ));
         owned_params.push(Box::new(to));
     }
     if let Some(loc) = filter.location_id {
@@ -975,11 +971,17 @@ fn count_acts_inner(
     clauses.push("a.deleted_at_utc IS NULL".to_string());
 
     if let Some(from) = ts_from {
-        clauses.push(format!("a.handover_date_utc >= ?{}", next_idx(&owned_params)));
+        clauses.push(format!(
+            "a.handover_date_utc >= ?{}",
+            next_idx(&owned_params)
+        ));
         owned_params.push(Box::new(from));
     }
     if let Some(to) = ts_to {
-        clauses.push(format!("a.handover_date_utc <= ?{}", next_idx(&owned_params)));
+        clauses.push(format!(
+            "a.handover_date_utc <= ?{}",
+            next_idx(&owned_params)
+        ));
         owned_params.push(Box::new(to));
     }
     if let Some(loc) = filter.location_id {

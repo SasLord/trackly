@@ -189,8 +189,5 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/requests_list_categories",
             post(handler_list_categories),
         )
-        .route(
-            "/api/v1/requests_get_history",
-            post(handler_get_history),
-        )
+        .route("/api/v1/requests_get_history", post(handler_get_history))
 }

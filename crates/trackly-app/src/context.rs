@@ -242,7 +242,9 @@ impl AppCtx {
 
         // Seed supervisor tasks (INSERT OR IGNORE — idempotent).
         let now_ts = clock.unix_seconds();
-        seed_supervisor_tasks(&writer, now_ts).await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        seed_supervisor_tasks(&writer, now_ts)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         // ActService с подключённым PDF pipeline.
         let acts = Arc::new(
@@ -284,12 +286,12 @@ impl AppCtx {
             snmp_mode = if use_mock { "mock" } else { "real" },
             "SNMP client selected"
         );
-        let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =
-            if use_mock {
-                Arc::new(MockSnmpClient::default_fixtures())
-            } else {
-                Arc::new(RealSnmpClient)
-            };
+        let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> = if use_mock
+        {
+            Arc::new(MockSnmpClient::default_fixtures())
+        } else {
+            Arc::new(RealSnmpClient)
+        };
 
         let printers = Arc::new(PrinterService::new(
             writer.clone(),

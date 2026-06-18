@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
@@ -18,8 +18,8 @@ use trackly_app::server::{start_server, tls};
 /// SHA-256 fingerprint формат: 32 байта × 2 hex + 31 двоеточие = 95 символов.
 #[test]
 fn fingerprint_is_95_char_colon_hex() {
-    let bundle = tls::generate_self_signed("localhost")
-        .expect("generate_self_signed should succeed");
+    let bundle =
+        tls::generate_self_signed("localhost").expect("generate_self_signed should succeed");
 
     let fp = &bundle.fingerprint_hex;
 
@@ -39,7 +39,8 @@ fn fingerprint_is_95_char_colon_hex() {
             "группа {i} должна быть 2 символа, получили '{part}'"
         );
         assert!(
-            part.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()),
+            part.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()),
             "группа {i} должна быть uppercase hex, получили '{part}'"
         );
     }
@@ -56,8 +57,7 @@ fn fingerprint_is_95_char_colon_hex() {
 /// Сгенерированный PEM можно загрузить обратно через load_from_pem.
 #[test]
 fn pem_round_trip() {
-    let original = tls::generate_self_signed("test.local")
-        .expect("generate_self_signed");
+    let original = tls::generate_self_signed("test.local").expect("generate_self_signed");
 
     let loaded = tls::load_from_pem(&original.cert_pem, &original.key_pem)
         .expect("load_from_pem should succeed");
@@ -141,8 +141,7 @@ fn load_from_files_resolves_key_for_cer_extension() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn tls_server_accepts_tcp_connection() {
     tokio::time::timeout(Duration::from_secs(30), async {
-        let bundle = tls::generate_self_signed("127.0.0.1")
-            .expect("generate_self_signed");
+        let bundle = tls::generate_self_signed("127.0.0.1").expect("generate_self_signed");
 
         let shutdown = CancellationToken::new();
         let shutdown_clone = shutdown.clone();
@@ -166,7 +165,10 @@ async fn tls_server_accepts_tcp_connection() {
 
         // TCP connect should succeed — server is listening
         let tcp_result = TcpStream::connect(addr).await;
-        assert!(tcp_result.is_ok(), "TCP connect должен успешно подключиться к серверу на {addr}");
+        assert!(
+            tcp_result.is_ok(),
+            "TCP connect должен успешно подключиться к серверу на {addr}"
+        );
         drop(tcp_result);
 
         // Shutdown server

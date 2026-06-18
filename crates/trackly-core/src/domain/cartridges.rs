@@ -184,11 +184,11 @@ impl CartridgeTransitionOp {
     /// Returns the new status_id after the transition.
     pub fn target_status_id(&self) -> i64 {
         match self {
-            CartridgeTransitionOp::Install { .. } => 2,    // В работе
+            CartridgeTransitionOp::Install { .. } => 2, // В работе
             CartridgeTransitionOp::ReturnToStock { .. } => 1, // На складе
-            CartridgeTransitionOp::ToRefill { .. } => 3,  // На заправке
+            CartridgeTransitionOp::ToRefill { .. } => 3, // На заправке
             CartridgeTransitionOp::FromRefill { .. } => 1, // На складе
-            CartridgeTransitionOp::WriteOff { .. } => 4,  // Списано
+            CartridgeTransitionOp::WriteOff { .. } => 4, // Списано
         }
     }
 }
