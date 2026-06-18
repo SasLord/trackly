@@ -82,3 +82,33 @@ blocked: 0
 
 - **OrgSettings.svelte:105** still uses the Tauri 1 `window.__TAURI__` check for the logo file picker — same bug class as GAP-S3/S4. Logo upload via picker will silently fail in the desktop app. Track for next gap-closure pass.
 - **Code review (07-REVIEW.md):** CR-02 — `template_service.rs` `update_body()`/`reset_to_default()` swallow `rows_affected`, returning `Ok(())` on a no-op update (pre-existing, from 07-02). CR-01 — `get_consumption_chart()` hardcodes `+3 hours` instead of reading `config.organization.timezone` (consistent with RU-only fixed UTC+3 for v1, but inconsistent with `get_all_widgets`).
+
+---
+
+## Round 2 re-test (after gap plans 07-12..07-14) — run `cargo tauri dev`
+
+Automated gates for the changed code passed: cargo build ✓, targeted cargo test ✓ (lib 68 + dashboard/reports/org/backup/template/bindings suites, 0 failed), pnpm svelte-check ✓ (0 errors). The following were runtime failures last round — re-confirm in the desktop app:
+
+### R2-1. Организация: logo re-add (G2-1)
+expected: Picking a PNG/JPG/SVG adds the logo (detection now uses __TAURI_INTERNALS__; fs:allow-read-file granted) — no "Не удалось связаться с приложением".
+result: [pending]
+
+### R2-2. Хранилище: "Открыть папку с базой данных" (G2-2)
+expected: Opens the DB's containing folder in the OS file manager (new settings_open_db_folder command, no path arg).
+result: [pending]
+
+### R2-3. Хранилище: "Сменить расположение" (G2-2)
+expected: Opens the native save dialog; moving the DB then restarts. Confirm end-to-end.
+result: [pending]
+
+### R2-4. Бэкапы: folder picker (G2-3)
+expected: Picking a backup folder persists it (args now wrapped as { patch: { backup_folder } }) — no error.
+result: [pending]
+
+### R2-5. Шаблоны: "Проверить (превью PDF)" (G2-4)
+expected: Preview renders the act template to a PDF in the iframe — no "undefined value" / no instant button revert.
+result: [pending]
+
+### R2-6. Отчёты: export block alignment + real status counts (G2-5)
+expected: Export/print buttons block is flush-right and vertically aligned with the period selector; every status tab shows a REAL numeric count simultaneously (not "–").
+result: [pending]
