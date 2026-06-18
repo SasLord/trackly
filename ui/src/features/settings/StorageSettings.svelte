@@ -66,7 +66,7 @@
       restarting = true;
       moving = false;
 
-      await apiCall<void>('settings_move_db', { new_path: newPath });
+      await apiCall<void>('settings_move_db', { newPath });
       await apiCall<void>('app_restart', {});
     } catch (e: unknown) {
       restarting = false;

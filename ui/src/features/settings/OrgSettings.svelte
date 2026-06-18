@@ -117,8 +117,8 @@
         const bytes = await readFile(filePath);
         const mime = detectMime(filePath);
         await apiCall<void>('settings_save_org_logo', {
-          logo_bytes: Array.from(bytes),
-          logo_mime: mime,
+          logoBytes: Array.from(bytes),
+          logoMime: mime,
         });
         hasLogo = true;
         await loadLogo();
@@ -156,8 +156,8 @@
       const buf = await file.arrayBuffer();
       const bytes = Array.from(new Uint8Array(buf));
       await apiCall<void>('settings_save_org_logo', {
-        logo_bytes: bytes,
-        logo_mime: file.type || 'image/png',
+        logoBytes: bytes,
+        logoMime: file.type || 'image/png',
       });
       hasLogo = true;
       await loadLogo();
