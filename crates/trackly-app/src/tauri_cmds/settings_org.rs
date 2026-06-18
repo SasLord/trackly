@@ -7,6 +7,8 @@
 
 use std::path::Path;
 
+use tauri_plugin_shell::ShellExt;
+
 use crate::context::AppCtx;
 use crate::dto::reports::{
     BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem,
@@ -59,6 +61,46 @@ pub async fn build_settings_remove_org_logo(
 
 pub async fn build_settings_get_db_path(ctx: &AppCtx) -> Result<String, AppError> {
     Ok(ctx.paths.db_path().to_string_lossy().to_string())
+}
+
+/// Open the directory containing the DB file in the system file manager.
+///
+/// Security (T-07-12-01): path is derived from `ctx.paths.db_path()` — NOT from
+/// user input. Canonicalized before use; UNC paths rejected.
+pub async fn build_settings_open_db_folder(
+    ctx: &AppCtx,
+    app: tauri::AppHandle,
+) -> Result<(), AppError> {
+    let db_path = ctx.paths.db_path();
+    let dir_path = db_path.parent().ok_or(AppError::Validation {
+        field: "db_path".to_string(),
+        message: "DB path has no parent directory".to_string(),
+    })?;
+
+    let canonical = std::fs::canonicalize(dir_path).map_err(|e| AppError::Validation {
+        field: "db_path".to_string(),
+        message: format!("Каталог БД не существует или недоступен: {e}"),
+    })?;
+
+    let canonical_str = canonical.to_string_lossy().to_string();
+
+    // Reject UNC paths (D-UNC-01)
+    if canonical_str.starts_with("\\\\") || canonical_str.starts_with("//") {
+        return Err(AppError::Validation {
+            field: "db_path".to_string(),
+            message: "UNC-пути не поддерживаются".to_string(),
+        });
+    }
+
+    // TODO(Phase 4): migrate to tauri-plugin-opener (shell::open deprecated в v2.3+).
+    #[allow(deprecated)]
+    app.shell()
+        .open(canonical_str, None)
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("shell::open failed: {e}"),
+        })?;
+
+    Ok(())
 }
 
 /// Move DB to new_path via rusqlite::backup::Backup then update config.
@@ -295,6 +337,16 @@ pub async fn settings_get_db_path(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<String, AppError> {
     build_settings_get_db_path(state.inner()).await
+}
+
+/// Open the DB folder in the system file manager. No auth guard — read-only OS action.
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_open_db_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppCtx>,
+) -> Result<(), AppError> {
+    build_settings_open_db_folder(state.inner(), app).await
 }
 
 /// Move DB to a new location. Tauri-only — NOT registered in HTTP router (T-07-07-03).

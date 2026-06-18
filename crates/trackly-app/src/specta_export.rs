@@ -137,6 +137,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::settings_org::settings_save_org_logo,
         crate::tauri_cmds::settings_org::settings_remove_org_logo,
         crate::tauri_cmds::settings_org::settings_get_db_path,
+        crate::tauri_cmds::settings_org::settings_open_db_folder,
         crate::tauri_cmds::settings_org::settings_move_db,
         crate::tauri_cmds::settings_org::app_restart,
         crate::tauri_cmds::settings_org::settings_get_low_stock_threshold,
