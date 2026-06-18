@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-18T00:23:45.859Z"
+status: ready_to_plan
+last_updated: 2026-06-18T13:39:52.935Z
 last_activity: 2026-06-18
 progress:
   total_phases: 11
@@ -11,6 +11,7 @@ progress:
   total_plans: 62
   completed_plans: 62
   percent: 91
+stopped_at: Phase 07 complete (14/14) — ready to discuss Phase 8
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 07 — reports-dashboard-settings
+**Current focus:** Phase 8 — ad вход и релизный пайплайн
 
 ## Current Position
 
-Phase: 07 (reports-dashboard-settings) — EXECUTING
-Plan: 8 of 11
-Status: Ready to execute
+Phase: 8
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-06-18
 
 Progress: [██████████] 100%
@@ -42,7 +43,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 19
+- Total plans completed: 47
 - Average duration: —
 - Total execution time: —
 
@@ -55,6 +56,7 @@ Progress: [██████████] 100%
 | 03.3 | 2 | - | - |
 | 04 | 6 | - | - |
 | 5 | 6 | - | - |
+| 07 | 14 | - | - |
 
 **Recent Trend:**
 

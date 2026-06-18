@@ -1,9 +1,17 @@
 ---
 phase: 07-reports-dashboard-settings
 verified: 2026-06-17T15:00:00Z
-status: gaps_found
-score: human re-verify (cargo tauri dev) closed 7/12 round-1 gaps; 5 round-2 gaps found (G2-*)
-round2_source: [user human-verify 2026-06-17, cargo tauri dev macOS desktop]
+status: passed
+score: all 12 round-1 + 5 round-2 gaps closed and confirmed by user via cargo tauri dev (2026-06-18)
+round2_source: [user human-verify 2026-06-17/18, cargo tauri dev macOS desktop]
+round2_resolution: >
+  G2-1 logo: camelCase command args (logoBytes/logoMime) — confirmed working.
+  G2-2 move-db: camelCase newPath + settings_get_db_path returns resolved override path — confirmed.
+  G2-3 backup folder: patch arg wrapping — confirmed.
+  G2-4 template preview: untrack() blobUrl in the clear-on-switch effect (self-clear bug) — confirmed.
+  G2-5 reports: alignment + real per-status counts — confirmed.
+  Note: auto-restart blank screen after move-db is a cargo-tauri-dev artifact (Vite exits);
+  expected to work in a bundled portable build. Left as-is per user decision.
 re_verification:
   previous_status: gaps_found
   previous_score: 19/31

@@ -1,5 +1,5 @@
 ---
-status: partial
+status: passed
 phase: 07-reports-dashboard-settings
 source: [07-VERIFICATION.md]
 started: 2026-06-17
@@ -91,24 +91,24 @@ Automated gates for the changed code passed: cargo build ✓, targeted cargo tes
 
 ### R2-1. Организация: logo re-add (G2-1)
 expected: Picking a PNG/JPG/SVG adds the logo (detection now uses __TAURI_INTERNALS__; fs:allow-read-file granted) — no "Не удалось связаться с приложением".
-result: [pending]
+result: [passed]
 
 ### R2-2. Хранилище: "Открыть папку с базой данных" (G2-2)
 expected: Opens the DB's containing folder in the OS file manager (new settings_open_db_folder command, no path arg).
-result: [pending]
+result: [passed]
 
 ### R2-3. Хранилище: "Сменить расположение" (G2-2)
 expected: Opens the native save dialog; moving the DB then restarts. Confirm end-to-end.
-result: [pending]
+result: [passed]
 
 ### R2-4. Бэкапы: folder picker (G2-3)
 expected: Picking a backup folder persists it (args now wrapped as { patch: { backup_folder } }) — no error.
-result: [pending]
+result: [passed]
 
 ### R2-5. Шаблоны: "Проверить (превью PDF)" (G2-4)
 expected: Preview renders the act template to a PDF in the iframe — no "undefined value" / no instant button revert.
-result: [pending]
+result: [passed]
 
 ### R2-6. Отчёты: export block alignment + real status counts (G2-5)
 expected: Export/print buttons block is flush-right and vertically aligned with the period selector; every status tab shows a REAL numeric count simultaneously (not "–").
-result: [pending]
+result: [passed]
