@@ -281,6 +281,19 @@ impl TemplateService {
             "return": {
                 "condition_default": "Рабочее",
                 "location_default": "Склад"
+            },
+            // G2-4: device and document keys required by act_acceptance.minijinja
+            "device": {
+                "name": "HP LaserJet Pro M404n",
+                "inventory_no": "ИНВ-001",
+                "serial_no": "SN-001",
+                "model": "LaserJet Pro M404n",
+                "condition": "Рабочее"
+            },
+            "document": {
+                "giver_name": "Иванов И.И.",
+                "receiver_name": "Петров П.П.",
+                "date_human": "17 июня 2026"
             }
         });
 
