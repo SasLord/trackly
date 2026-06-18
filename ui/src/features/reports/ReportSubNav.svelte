@@ -57,11 +57,15 @@
     activeDomain: DomainKey;
     activeReport: string;
     rowCount: number;
+    /** Real per-tab counts from reports_get_report_counts (G2-5b).
+     *  When provided, all tabs show statusCounts[key] ?? 0.
+     *  When absent, active tab shows rowCount and inactive tabs show '–'. */
+    statusCounts?: Record<string, number>;
     onDomainChange: (_d: DomainKey) => void;
     onReportChange: (_r: string) => void;
   }
 
-  const { activeDomain, activeReport, rowCount, onDomainChange, onReportChange }: Props = $props();
+  const { activeDomain, activeReport, rowCount, statusCounts, onDomainChange, onReportChange }: Props = $props();
 
   const activeReports = $derived(activeDomain === 'devices' ? DEVICE_REPORTS : CARTRIDGE_REPORTS);
 </script>
@@ -93,12 +97,14 @@
         onclick={() => onReportChange(r.key)}
       >
         {r.label}
-        <!-- GAP-R5: badge on ALL tabs; active tab shows real count, inactive shows – -->
-        {#if r.key === activeReport}
-          <Badge variant="accent" size="sm">{rowCount}</Badge>
-        {:else}
-          <Badge variant="default" size="sm">–</Badge>
-        {/if}
+        <!-- G2-5b: when statusCounts provided, show real count for ALL tabs;
+             otherwise fall back to rowCount (active) / '–' (inactive) for compat -->
+        <Badge
+          variant={r.key === activeReport ? 'accent' : 'default'}
+          size="sm"
+        >
+          {statusCounts ? (statusCounts[r.key] ?? 0) : (r.key === activeReport ? rowCount : '–')}
+        </Badge>
       </button>
     {/each}
   </div>

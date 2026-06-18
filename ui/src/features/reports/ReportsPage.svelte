@@ -181,6 +181,12 @@
   let error = $state<string | null>(null);
 
   // ---------------------------------------------------------------------------
+  // Per-tab status counts (G2-5b)
+  // ---------------------------------------------------------------------------
+  let statusCounts = $state<Record<string, number>>({});
+  let countsLoading = $state(false);
+
+  // ---------------------------------------------------------------------------
   // Export state
   // ---------------------------------------------------------------------------
   let csvExporting = $state(false);
@@ -282,6 +288,34 @@
       });
   }
 
+  // ---------------------------------------------------------------------------
+  // Per-tab counts loader (G2-5b)
+  // ---------------------------------------------------------------------------
+
+  function loadStatusCounts() {
+    if (countsLoading) return;
+    countsLoading = true;
+    apiCall<{ counts: Array<{ key: string; count: number }> }>('reports_get_report_counts', {
+      domain: activeDomain,
+      period,
+      filter,
+    })
+      .then((result) => {
+        // Convert Vec<ReportCountEntry> array to Record<string,number> for O(1) tab lookup
+        const map: Record<string, number> = {};
+        for (const entry of result.counts) {
+          map[entry.key] = entry.count;
+        }
+        statusCounts = map;
+      })
+      .catch(() => {
+        // Non-fatal — badges fall back to rowCount / '–'
+      })
+      .finally(() => {
+        countsLoading = false;
+      });
+  }
+
   // Auto-reload when domain / report / period / filter changes
   $effect(() => {
     // Track reactive dependencies
@@ -290,6 +324,7 @@
     void period;
     void filter;
     loadReport();
+    loadStatusCounts();
   });
 
   // ---------------------------------------------------------------------------
@@ -442,6 +477,7 @@
       {activeDomain}
       {activeReport}
       rowCount={rows?.total ?? 0}
+      {statusCounts}
       onDomainChange={(d) => {
         activeDomain = d;
         activeReport = d === 'devices' ? 'acts' : 'consumption';
@@ -527,9 +563,12 @@
   }
 
   // GAP-R4: period selector (left) + export buttons (right) on one row
+  // G2-5a: space-between puts PeriodSelector flush-left and ReportFilters (export block)
+  // flush-right; align-items:center keeps them vertically centered on the same baseline.
   .controls-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
     gap: var(--space-md);
     flex-wrap: wrap;
     padding: var(--space-xs) 0;
