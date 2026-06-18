@@ -156,15 +156,22 @@ impl TemplateService {
         let now = self.clock.unix_seconds();
         self.writer
             .execute(move |conn| {
-                conn.execute(
-                    "UPDATE document_templates \
-                     SET body_minijinja=?2, is_default=0, \
-                         updated_at_utc=?3, version=version+1 \
-                     WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
-                    params![kind_owned, body, now],
-                )
-                .map(|_| ())
-                .map_err(map_rusqlite)
+                let n = conn
+                    .execute(
+                        "UPDATE document_templates \
+                         SET body_minijinja=?2, is_default=0, \
+                             updated_at_utc=?3, version=version+1 \
+                         WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
+                        params![kind_owned, body, now],
+                    )
+                    .map_err(map_rusqlite)?;
+                if n == 0 {
+                    return Err(AppError::NotFound {
+                        entity: "document_template",
+                        id: 0,
+                    });
+                }
+                Ok(())
             })
             .await
     }
@@ -188,15 +195,22 @@ impl TemplateService {
         let now = self.clock.unix_seconds();
         self.writer
             .execute(move |conn| {
-                conn.execute(
-                    "UPDATE document_templates \
-                     SET body_minijinja=?2, is_default=1, \
-                         updated_at_utc=?3, version=version+1 \
-                     WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
-                    params![kind_owned, body_owned, now],
-                )
-                .map(|_| ())
-                .map_err(map_rusqlite)
+                let n = conn
+                    .execute(
+                        "UPDATE document_templates \
+                         SET body_minijinja=?2, is_default=1, \
+                             updated_at_utc=?3, version=version+1 \
+                         WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
+                        params![kind_owned, body_owned, now],
+                    )
+                    .map_err(map_rusqlite)?;
+                if n == 0 {
+                    return Err(AppError::NotFound {
+                        entity: "document_template",
+                        id: 0,
+                    });
+                }
+                Ok(())
             })
             .await
     }
