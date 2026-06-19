@@ -168,3 +168,10 @@ None — no external service configuration required. Continues to work with `TRA
 ---
 *Phase: 09-ad*
 *Completed: 2026-06-19*
+
+## Self-Check: PASSED
+
+All files verified present on disk (crates/trackly-app/tests/ad_register.rs,
+crates/trackly-app/tests/requests_ad_register.rs, crates/trackly-app/src/services/auth.rs,
+crates/trackly-app/src/services/request_service.rs, .planning/phases/09-ad/09-03-SUMMARY.md).
+All commit hashes verified present in git log (419f99b, b39721f, 3a0a647).
