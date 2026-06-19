@@ -546,21 +546,23 @@ impl Default for AdConfig { /* enabled:false, port:636, name_attr:"displayName",
 | A5 | hickory-resolver `srv_lookup` resolves `_ldap._tcp.dc._msdcs.<domain>` on a joined host | Pattern 5 | If SRV blocked, env-domain + manual override fallback covers it |
 | A6 | ldap3 0.12.1 exposes `ldap_escape`, `LdapConnAsync::with_settings`, `LdapConnSettings::set_no_tls_verify/set_conn_timeout` | Pattern 1/2/5, Code Examples | Verified via docs.rs/ldap3 + GitHub Cargo.toml; if an exact name differs, a quick docs check during implementation resolves it |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during planning and implemented by the plans: Q1 → V028 `ad_subtype` (09-02), Q2 → inactive-user attribution (09-03), Q3 → `find_user_any_state` (09-02).
 
 1. **Restoration request: sub-flag vs new request_type (D-REG-03)**
    - What we know: `requests.request_type` CHECK = `('cartridge_replace','free_form','ad_register')`; changing a CHECK requires a table rebuild migration in SQLite.
    - What's unclear: whether restoration deserves its own type for reporting.
-   - **Recommendation: REUSE `ad_register` with a discriminator, no new type.** Cleanest options, in order: (a) reuse the **status/`resolution_notes`** or a `description` marker; or (b) add a single nullable column `ad_subtype TEXT NULL` (values `register`/`restore`) via simple `ALTER TABLE ADD COLUMN` (no CHECK rebuild). Distinguish "register" (no/inactive user) from "restore" (soft-deleted/blocked user exists) by inspecting the `users` row state at creation time. This avoids a CHECK-rebuild migration and keeps the admin «Заявки» filter as `request_type='ad_register'`. The approve handler branches on whether the target user is soft-deleted (revive) vs new (create).
+   - **RESOLVED: REUSE `ad_register` with a discriminator, no new type.** Cleanest options, in order: (a) reuse the **status/`resolution_notes`** or a `description` marker; or (b) add a single nullable column `ad_subtype TEXT NULL` (values `register`/`restore`) via simple `ALTER TABLE ADD COLUMN` (no CHECK rebuild). Distinguish "register" (no/inactive user) from "restore" (soft-deleted/blocked user exists) by inspecting the `users` row state at creation time. This avoids a CHECK-rebuild migration and keeps the admin «Заявки» filter as `request_type='ad_register'`. The approve handler branches on whether the target user is soft-deleted (revive) vs new (create).
 
 2. **Pending-mode user attribution (Pitfall 4)**
    - What we know: `requested_by_user_id` is NOT NULL.
-   - **Recommendation: create an inactive (`is_active=0`) AD user row in pending mode**, request references it, approve flips active + sets role. Reuses V019 `is_active` + the existing revive path. Alternative (attribute to system user) is messier.
+   - **RESOLVED: create an inactive (`is_active=0`) AD user row in pending mode**, request references it, approve flips active + sets role. Reuses V019 `is_active` + the existing revive path. Alternative (attribute to system user) is messier.
 
 3. **Blocked vs unknown distinction in login path**
    - What we know: soft-delete = `deleted_at_utc IS NOT NULL`; blocked = `is_active=0`. Current `get_password_hash`/`get_by_login` filter BOTH out (`deleted_at_utc IS NULL AND is_active=1`), so a blocked/deleted AD user currently looks "unknown."
    - What's unclear: the login path must, after a successful AD bind, look up the user **without** the active/non-deleted filter to detect blocked/soft-deleted and show the BlockedScreen (D-REG-03) instead of re-registering.
-   - **Recommendation:** add an internal lookup `find_user_any_state(login)` returning `{id, role, is_active, deleted}` so post-bind logic can branch: active→session; inactive/deleted→BlockedScreen + restore-request; none→registration mode. This is the key new query; plan it explicitly.
+   - **RESOLVED:** add an internal lookup `find_user_any_state(login)` returning `{id, role, is_active, deleted}` so post-bind logic can branch: active→session; inactive/deleted→BlockedScreen + restore-request; none→registration mode. This is the key new query; plan it explicitly.
 
 ## Environment Availability
 

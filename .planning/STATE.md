@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: planning
-last_updated: "2026-06-19T12:51:49.724Z"
-last_activity: 2026-06-19 — Milestone v1.1 started; reusing existing Phase 9 artifacts (lightweight new-milestone)
+status: executing
+last_updated: "2026-06-19T13:27:11.784Z"
+last_activity: 2026-06-19 -- Phase 09 planning complete
 progress:
   total_phases: 12
   completed_phases: 11
-  total_plans: 64
+  total_plans: 69
   completed_plans: 64
   percent: 92
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 Phase: 9 — AD-аутентификация и заявки на регистрацию пользователей
 Plan: Not started (context ready)
-Status: Ready to plan — requirements (USR-08..12, REQ-06, SET-10), roadmap entry, and 09-CONTEXT.md already exist
-Last activity: 2026-06-19 — Milestone v1.1 started; reusing existing Phase 9 artifacts (lightweight new-milestone)
+Status: Ready to execute
+Last activity: 2026-06-19 -- Phase 09 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
