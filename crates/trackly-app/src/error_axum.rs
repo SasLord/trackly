@@ -4,7 +4,7 @@
 //! HTTP-маппинг:
 //! - NotFound → 404
 //! - Conflict / OptimisticLockMismatch → 409
-//! - WriteQueueBusy → 503
+//! - WriteQueueBusy / ServiceUnavailable → 503
 //! - DatabaseFromNewerVersion / Internal → 500
 //! - Validation → 400
 //! - Unauthorized → 401
@@ -39,6 +39,7 @@ impl IntoResponse for AppErrorResponse {
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
         };
         let body = Json(serde_json::json!({
             "code": self.0.code(),

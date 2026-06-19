@@ -21,6 +21,7 @@ use tracing::warn;
 
 use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::error::AppError;
+use trackly_core::ports::ad::{AdClient, AuthOutcome};
 use trackly_core::primitives::clock::Clock;
 use trackly_core::primitives::secret::Secret;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -91,6 +92,26 @@ pub fn verify_password(password: &Secret<String>, hash: &str) -> bool {
         .is_ok()
 }
 
+/// Внутренний исход `try_local_login` — нужен `login()`, чтобы решить,
+/// делать ли AD fallback (только когда `UnknownLogin`, не `BadPassword` —
+/// иначе локальный пользователь с забытым паролем мог бы случайно
+/// аутентифицироваться через AD bind по тому же login).
+enum LocalLoginOutcome {
+    Success(UserDto),
+    UnknownLogin,
+    BadPassword,
+}
+
+/// Результат `find_user_any_state` — состояние пользователя в БД без
+/// active/non-deleted фильтра (read seam для AD-bind-success branching).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserAnyState {
+    pub id: i64,
+    pub role: String,
+    pub is_active: bool,
+    pub deleted: bool,
+}
+
 // ---------------------------------------------------------------------------
 // AuthService
 // ---------------------------------------------------------------------------
@@ -103,6 +124,9 @@ pub struct AuthService {
     pub writer: Arc<WriterHandle>,
     pub readers: Arc<ReaderPool>,
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
+    /// AD client — `RealAdClient` in prod, `MockAdClient` on dev macOS
+    /// (D-Mock-01). Used by `login()`'s local→AD fallback (USR-08).
+    pub(crate) ad_client: Arc<dyn AdClient + Send + Sync>,
 }
 
 impl AuthService {
@@ -111,11 +135,13 @@ impl AuthService {
         writer: Arc<WriterHandle>,
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
+        ad_client: Arc<dyn AdClient + Send + Sync>,
     ) -> Self {
         Self {
             writer,
             readers,
             clock,
+            ad_client,
         }
     }
 
@@ -176,8 +202,41 @@ impl AuthService {
 
     /// Аутентифицировать пользователя по логину и паролю.
     ///
+    /// Сначала пробует локальный (argon2id) логин. Если локальный логин не
+    /// найден (а не "пароль неверный" — см. `try_local_login`) и AD включён
+    /// (`ad_enabled` в `app_settings`), пробует AD bind как fallback (USR-08).
+    ///
     /// Верификация argon2 выполняется в `spawn_blocking` (T-05-03).
     pub async fn login(&self, req: LoginRequest) -> Result<UserDto, AppError> {
+        match self.try_local_login(&req).await? {
+            LocalLoginOutcome::Success(dto) => Ok(dto),
+            LocalLoginOutcome::UnknownLogin => {
+                // Локальный пользователь с таким login не найден (в отличие
+                // от "пароль неверный для известного login" — см. ниже).
+                // Только в этом случае пробуем AD fallback: если бы мы
+                // пробовали AD и для known-but-wrong-password случая, мы
+                // бы создали оракул (AD bind timing отличается от argon2
+                // timing) — но т.к. для known-login случая мы уже вернули
+                // Unauthorized с потраченным constant-time CPU, branching
+                // здесь безопасен (CR-05 защищает именно ветку "логин
+                // неизвестен локально").
+                if !self.ad_enabled().await? {
+                    return Err(AppError::Unauthorized);
+                }
+                self.try_ad_login(&req).await
+            }
+            LocalLoginOutcome::BadPassword => Err(AppError::Unauthorized),
+        }
+    }
+
+    /// Пробует локальный (argon2id) логин. Не делает constant-time
+    /// различия между "пользователь не найден" и "пароль неверный" по
+    /// времени (CR-05 dummy-hash verify), но возвращает разные исходы
+    /// вызывающей стороне, чтобы `login()` мог решить про AD fallback
+    /// (AD fallback должен срабатывать только когда местный пользователь
+    /// отсутствует — иначе локальный пользователь с забытым паролем мог
+    /// бы случайно аутентифицироваться через AD bind с тем же логином).
+    async fn try_local_login(&self, req: &LoginRequest) -> Result<LocalLoginOutcome, AppError> {
         // CR-05: устранение user-enumeration timing oracle.
         // Если логин не найден (или неактивен), get_password_hash возвращает
         // Unauthorized. Вместо немедленного отказа мы всё равно прогоняем
@@ -197,11 +256,188 @@ impl AuthService {
                 source_chain: format!("spawn_blocking verify_password: {e}"),
             })?;
 
-        if !user_known || !verified {
+        if !user_known {
+            return Ok(LocalLoginOutcome::UnknownLogin);
+        }
+        if !verified {
+            return Ok(LocalLoginOutcome::BadPassword);
+        }
+
+        self.get_by_login(&req.login).await.map(LocalLoginOutcome::Success)
+    }
+
+    /// AD bind fallback (USR-08). Вызывается только когда локальный
+    /// пользователь с этим login не найден и `ad_enabled = true`.
+    async fn try_ad_login(&self, req: &LoginRequest) -> Result<UserDto, AppError> {
+        // Pitfall 1 (CRITICAL, RFC 4513 §5.1.2): пустой/whitespace-only
+        // пароль ДО какого-либо AD bind — LDAP simple bind с пустым
+        // паролем — это anonymous bind, который многие AD-серверы
+        // принимают как "успех" независимо от пароля.
+        if req.password.trim().is_empty() {
             return Err(AppError::Unauthorized);
         }
 
-        self.get_by_login(&req.login).await
+        let password = Secret::new(req.password.clone());
+        let outcome = self.ad_client.authenticate(&req.login, &password).await?;
+
+        match outcome {
+            AuthOutcome::BadCreds => Err(AppError::Unauthorized),
+            AuthOutcome::Unreachable => Err(AppError::ServiceUnavailable { service: "ad" }),
+            AuthOutcome::Ok { display_name } => self.on_ad_bind_success(&req.login, &display_name).await,
+        }
+    }
+
+    /// После успешного AD bind — определяет, что делать с локальной
+    /// учётной записью (read seam: `find_user_any_state`).
+    ///
+    /// **Scope этого плана (09-02):** только active-user case реализован
+    /// полностью. Blocked/soft-deleted/unknown-в-БД ветки возвращают
+    /// типизированную заглушку — write-пути (создание `ad_register`
+    /// заявки на регистрацию/восстановление) реализуются в плане 09-03.
+    async fn on_ad_bind_success(&self, login: &str, display_name: &str) -> Result<UserDto, AppError> {
+        match self.find_user_any_state(login).await? {
+            Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
+            Some(_blocked_or_deleted) => {
+                // TODO(09-03): создать ad_register заявку с ad_subtype='restore'
+                // вместо возврата ошибки — пока просто отказываем.
+                let _ = display_name;
+                Err(AppError::Unauthorized)
+            }
+            None => {
+                // TODO(09-03): создать ad_register заявку с ad_subtype='register'
+                // (или auto-accept путь, если ad_auto_accept=true) вместо
+                // возврата ошибки.
+                let _ = display_name;
+                Err(AppError::Unauthorized)
+            }
+        }
+    }
+
+    /// Читает `ad_enabled` из `app_settings`. По умолчанию `false`
+    /// (AD fallback выключен, пока админ явно не включит).
+    pub async fn ad_enabled(&self) -> Result<bool, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            let conn = readers.acquire();
+            let result: rusqlite::Result<String> = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'ad_enabled'",
+                [],
+                |r| r.get(0),
+            );
+            match result {
+                Ok(v) => Ok(v == "1"),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+                Err(e) => Err(map_rusqlite(e)),
+            }
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking ad_enabled: {e}"),
+        })?
+    }
+
+    /// Устанавливает `ad_enabled` в `app_settings`. Требует `ManageSettings`.
+    pub async fn set_ad_enabled(&self, enabled: bool, caller: &Identity) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+        let value = if enabled { "1" } else { "0" };
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('ad_enabled', ?1, ?2, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                    rusqlite::params![value, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+    }
+
+    /// Читает `ad_auto_accept` из `app_settings`. По умолчанию `false`
+    /// (заявки на регистрацию/восстановление требуют ручного подтверждения
+    /// администратором — auto-accept — explicit opt-in, план 09-03 consumer).
+    pub async fn ad_auto_accept(&self) -> Result<bool, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            let conn = readers.acquire();
+            let result: rusqlite::Result<String> = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'ad_auto_accept'",
+                [],
+                |r| r.get(0),
+            );
+            match result {
+                Ok(v) => Ok(v == "1"),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+                Err(e) => Err(map_rusqlite(e)),
+            }
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking ad_auto_accept: {e}"),
+        })?
+    }
+
+    /// Устанавливает `ad_auto_accept` в `app_settings`. Требует `ManageSettings`.
+    pub async fn set_ad_auto_accept(&self, enabled: bool, caller: &Identity) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+        let value = if enabled { "1" } else { "0" };
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('ad_auto_accept', ?1, ?2, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                    rusqlite::params![value, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+    }
+
+    /// Read seam (Open Question 3, resolved): найти пользователя по login
+    /// БЕЗ фильтра active/non-deleted — возвращает состояние независимо
+    /// от того, активен/удалён ли пользователь, чтобы post-AD-bind логика
+    /// могла различить active / blocked / soft-deleted / unknown.
+    ///
+    /// Возвращает `None`, если такого login вообще нет в таблице `users`
+    /// (включая soft-deleted записи — не путать с "найден, но deleted").
+    pub async fn find_user_any_state(
+        &self,
+        login: &str,
+    ) -> Result<Option<UserAnyState>, AppError> {
+        let readers = self.readers.clone();
+        let login = login.to_string();
+        tokio::task::spawn_blocking(move || -> Result<Option<UserAnyState>, AppError> {
+            let conn = readers.acquire();
+            let result = conn.query_row(
+                "SELECT id, role, is_active, deleted_at_utc IS NOT NULL AS deleted \
+                 FROM users WHERE login = ?1",
+                rusqlite::params![login],
+                |row| {
+                    let is_active_i64: i64 = row.get(2)?;
+                    let deleted_i64: i64 = row.get(3)?;
+                    Ok(UserAnyState {
+                        id: row.get(0)?,
+                        role: row.get(1)?,
+                        is_active: is_active_i64 != 0,
+                        deleted: deleted_i64 != 0,
+                    })
+                },
+            );
+            match result {
+                Ok(found) => Ok(Some(found)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(map_rusqlite(e)),
+            }
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking find_user_any_state: {e}"),
+        })?
     }
 
     // -----------------------------------------------------------------------

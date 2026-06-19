@@ -16,7 +16,9 @@ use trackly_infra::test_support::test_writer_and_readers;
 fn make_auth_service() -> (AuthService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
-    let svc = AuthService::new(writer, readers, clock);
+    let ad_client: Arc<dyn trackly_core::ports::ad::AdClient + Send + Sync> =
+        Arc::new(trackly_infra::ad::mock::MockAdClient::default_fixtures());
+    let svc = AuthService::new(writer, readers, clock, ad_client);
     (svc, dir)
 }
 

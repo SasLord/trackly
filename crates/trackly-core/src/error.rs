@@ -97,6 +97,18 @@ pub enum AppError {
         /// Цепочка причин (обычно отформатированный source error).
         source_chain: String,
     },
+
+    /// Внешний сервис недоступен (например, AD/LDAP сервер не отвечает).
+    ///
+    /// Distinct from `Unauthorized` (Phase 9, AD login fallback): an
+    /// unreachable AD server is an infra fault, not a bad-credentials
+    /// outcome — the UI must show "AD недоступен", not "неверный логин
+    /// или пароль" (no enumeration leak either way, see `AuthOutcome`).
+    #[error("service unavailable: {service}")]
+    ServiceUnavailable {
+        /// Имя недоступного сервиса (например, `"ad"`).
+        service: &'static str,
+    },
 }
 
 impl AppError {
@@ -112,6 +124,7 @@ impl AppError {
             Self::Unauthorized => "UNAUTHORIZED",
             Self::Forbidden => "FORBIDDEN",
             Self::Internal { .. } => "INTERNAL",
+            Self::ServiceUnavailable { .. } => "SERVICE_UNAVAILABLE",
         }
     }
 
@@ -141,6 +154,7 @@ impl AppError {
             Self::Unauthorized => json!({}),
             Self::Forbidden => json!({}),
             Self::Internal { source_chain } => json!({ "source_chain": source_chain }),
+            Self::ServiceUnavailable { service } => json!({ "service": service }),
         }
     }
 }
@@ -252,6 +266,10 @@ mod tests {
             .code(),
             "INTERNAL"
         );
+        assert_eq!(
+            AppError::ServiceUnavailable { service: "ad" }.code(),
+            "SERVICE_UNAVAILABLE"
+        );
     }
 
     #[test]
@@ -338,5 +356,12 @@ mod tests {
         });
         assert_eq!(v["code"], "CONFLICT");
         assert_eq!(v["details"]["reason"], "unique violation");
+    }
+
+    #[test]
+    fn serialize_service_unavailable_details() {
+        let v = ser(&AppError::ServiceUnavailable { service: "ad" });
+        assert_eq!(v["code"], "SERVICE_UNAVAILABLE");
+        assert_eq!(v["details"]["service"], "ad");
     }
 }

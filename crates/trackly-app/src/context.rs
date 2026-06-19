@@ -38,6 +38,7 @@ use crate::services::{
     DashboardService, DeviceService, OrgDbService, OrganizationService, PrinterService,
     ReportService, RequestService, TemplateService,
 };
+use trackly_infra::ad::{mock::MockAdClient, real::RealAdClient};
 use trackly_infra::snmp::{mock::MockSnmpClient, real::RealSnmpClient};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
@@ -262,11 +263,27 @@ impl AppCtx {
             clock.clone(),
         ));
 
+        // Runtime AD mock switch (D-Mock-01, Phase 9 Plan 02):
+        // config.ad.use_mock || TRACKLY_AD_MOCK env var → MockAdClient;
+        // otherwise → RealAdClient (real LDAP bind, used on Windows/AD).
+        let use_ad_mock = config.ad.use_mock || std::env::var("TRACKLY_AD_MOCK").is_ok();
+        tracing::info!(
+            ad_mode = if use_ad_mock { "mock" } else { "real" },
+            "AD client selected"
+        );
+        let ad_client: Arc<dyn trackly_core::ports::ad::AdClient + Send + Sync> = if use_ad_mock {
+            Arc::new(MockAdClient::default_fixtures())
+        } else {
+            Arc::new(RealAdClient::new(config.ad.clone()))
+        };
+
         // Phase 5 Plan 02: auth service + server_ctl.
+        // Phase 9 Plan 02: + ad_client (local→AD login fallback, USR-08).
         let auth = Arc::new(AuthService::new(
             writer.clone(),
             readers.clone(),
             clock.clone(),
+            ad_client,
         ));
 
         // Phase 6 Plan 03: WS broadcast + SNMP client + PrinterService + RequestService +

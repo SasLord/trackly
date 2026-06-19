@@ -1,0 +1,25 @@
+# Deferred Items — Phase 09 (AD auth + registration)
+
+Issues discovered during execution that are out of scope for the current
+plan/task and were NOT auto-fixed (per executor scope-boundary rule).
+
+## 09-02: `graceful_shutdown_drain` test pre-existing failure
+
+- **Discovered during:** Plan 09-02, Task 1 verification (`cargo test -p trackly-app`)
+- **Symptom:** `graceful_shutdown_exits_within_timeout` and
+  `shutdown_before_server_starts_is_noop` both panic with:
+  `Could not automatically determine the process-level CryptoProvider from
+  Rustls crate features. ... install_default() before this point ...`
+- **Root cause (suspected):** rustls 0.23's process-level `CryptoProvider`
+  singleton is never explicitly installed (`rustls::crypto::ring::default_provider().install_default()`
+  or aws-lc-rs equivalent) anywhere in the server/TLS startup path exercised by
+  this test binary. Whether the test passes depends on cargo's test-binary
+  execution order and whether some other test binary in the same `cargo test`
+  invocation happened to initialize a provider first as a side effect.
+- **Verified pre-existing:** reproduced on a clean `git stash` (no Phase 9
+  Plan 2 changes applied) — same two failures, same panic message.
+- **Scope:** unrelated to AD auth (Phase 9). Touches `trackly-app`'s axum/TLS
+  server startup path (likely `crates/trackly-app/src/server.rs` or
+  `rcgen`/rustls cert-loading code from the Phase-7/8 HTTPS server-mode work).
+- **Action:** NOT fixed in this plan. Flagging for a future phase/plan that
+  owns the server-mode TLS bring-up, or a standalone `/gsd-debug` session.
