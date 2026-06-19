@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-19T17:03:54.562Z"
+last_updated: "2026-06-19T17:36:22.552Z"
 last_activity: 2026-06-19
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 69
-  completed_plans: 65
+  completed_plans: 66
   percent: 92
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 09 (ad) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-06-19
 
@@ -105,6 +105,7 @@ Last activity: 2026-06-19
 | Phase 08 P01 | 2 min | 3 tasks | 4 files |
 | Phase 08 P02 | 1 | 3 tasks | 1 files |
 | Phase 09 P01 | 8min | 2 tasks | 9 files |
+| Phase 09 P02 | 75m | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -203,6 +204,9 @@ Recent decisions affecting current work:
 - [Phase ?]: GITHUB_EVENT_NAME fallback
 - [Phase ?]: portable no-updater discipline
 - [Phase 09]: AdClient port + RealAdClient/MockAdClient adapters mirror SnmpClient triad exactly; ldap3 confined to real.rs, hickory-resolver confined to discovery.rs (no OpenSSL pulled in)
+- [Phase 09]: AD fallback only on UnknownLogin (never BadPassword) — avoids a second enumeration oracle for known local logins
+- [Phase 09]: Added AppError::ServiceUnavailable{service} instead of reusing WriteQueueBusy — distinct infra-fault path for AD-unreachable
+- [Phase 09]: on_ad_bind_success scoped to active-user-only this plan; blocked/deleted/unknown branches are typed TODOs for plan 03
 
 ### Pending Todos
 
@@ -234,7 +238,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T17:03:54.556Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-06-19T17:36:22.545Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: 
 None

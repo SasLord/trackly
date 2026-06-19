@@ -320,7 +320,7 @@ Plans:
 **Mode:** mvp
 **Depends on:** Phase 8 (релизная Windows-сборка нужна для теста AD-входа в домене)
 **Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 
@@ -330,7 +330,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 09-02-PLAN.md — AuthService local→AD login fallback (constant-time preserved) + find_user_any_state + ad_* app_settings readers + AppCtx mock/real switch + V028 ad_subtype migration (USR-08, USR-10)
+- [x] 09-02-PLAN.md — AuthService local→AD login fallback (constant-time preserved) + find_user_any_state + ad_* app_settings readers + AppCtx mock/real switch + V028 ad_subtype migration (USR-08, USR-10)
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -361,7 +361,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
 | 8. Релизный пайплайн (Windows/macOS/Linux) | 2/2 | Complete    | 2026-06-19 |
-| 9. AD-аутентификация и заявки на регистрацию пользователей | 1/5 | In Progress|  |
+| 9. AD-аутентификация и заявки на регистрацию пользователей | 2/5 | In Progress|  |
 
 ## Coverage
 
