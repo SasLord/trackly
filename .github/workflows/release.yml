@@ -149,9 +149,14 @@ jobs:
           # Export VERSION for subsequent steps
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-          # Verify both substitutions succeeded
-          grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' Cargo.toml
-          jq .version crates/trackly-app/tauri.conf.json
+          # Verify both substitutions succeeded.
+          # Check the EXACT injected version string, not a rigid X.Y.Z regex — the
+          # latter rejects valid pre-release versions like 0.1.0-test (dry-run) or
+          # 1.2.3-rc1, which broke the step under `bash -e`.
+          grep -Fq "version = \"${VERSION}\"" Cargo.toml \
+            || { echo "ERROR: Cargo.toml version not set to ${VERSION}"; exit 1; }
+          test "$(jq -r .version crates/trackly-app/tauri.conf.json)" = "${VERSION}" \
+            || { echo "ERROR: tauri.conf.json version not set to ${VERSION}"; exit 1; }
 
       # Build and upload installers/bundles to the draft Release.
       # releaseDraft: true is a safety net in case create-release output was lost.
