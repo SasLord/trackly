@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T23:30:57.034Z"
-last_activity: 2026-06-18 -- Phase 08 planning complete
+last_updated: "2026-06-19T00:01:53.119Z"
+last_activity: 2026-06-19
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 62
+  completed_plans: 63
   percent: 91
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 8 — ad вход и релизный пайплайн
+**Current focus:** Phase 08 — windows-macos-linux
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
+Phase: 08 (windows-macos-linux) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-06-18 -- Phase 08 planning complete
+Last activity: 2026-06-19
 
-Progress: [██████████] 100%
+Progress: [██████████] 98%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -103,6 +103,7 @@ Progress: [██████████] 100%
 | Phase 07-reports-dashboard-settings P11 | 8 | 1 tasks | 2 files |
 | Phase 07 P13 | 2 | 2 tasks | 4 files |
 | Phase 07 P14 | 15 | 2 tasks | 6 files |
+| Phase 08 P01 | 2 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -192,6 +193,9 @@ Recent decisions affecting current work:
 - [Phase ?]: DashboardStatusCount: renamed from StatusCount in dto/reports.rs to avoid TypeScript collision with device.rs StatusCount
 - [Phase ?]: settings_move_db and app_restart Tauri-only: not exposed in HTTP router (T-07-07-03, D-19)
 - [Phase ?]: 07-14: Vec<ReportCountEntry> for ReportCountsDto (no HashMap) — consistent with all existing DTOs in reports.rs; specta derives cleanly; TypeScript gets Array not Record
+- [Phase ?]: 08-01: bundle.active=true — Tauri bundler включён для всех ОС (D-14)
+- [Phase ?]: 08-01: bundle.icon расширен до 5 форматов (32x32/128x128/128x128@2x/icns/ico) — Pitfall 3 закрыт
+- [Phase ?]: 08-01: bundle.macOS.signingIdentity='-' — ad-hoc подпись без Apple Developer ID (D-04)
 
 ### Pending Todos
 
@@ -223,7 +227,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-18T17:10:55.567Z
-Stopped at: Phase 8 context gathered
+Last session: 2026-06-19T00:01:53.112Z
+Stopped at: Completed 08-01-PLAN.md — bundle config + portable staging + README
 Resume file: 
-.planning/phases/08-windows-macos-linux/08-CONTEXT.md
+None

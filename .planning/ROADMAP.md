@@ -301,10 +301,10 @@ Plans:
   1. При push-тега `v*.*.*` GitHub Actions Release собирает: Windows 64-bit (NSIS installer + portable ZIP с маркером `portable.txt` и без updater'а), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb); артефакты содержат SHA256-checksums и, где возможно, подписи.
   2. README.md на русском содержит инструкции по запуску для каждой ОС, включая portable-режим, требования к WebView2 на Windows и описание серверного режима с подсказками по доверию self-signed сертификату в локальной сети.
 
-**Plans:** 2 plansPlans:
+**Plans:** 1/2 plans executed
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Tauri bundle config (active:true, icons, macOS ad-hoc), README.md (BLD-05), portable ZIP staging files
+- [x] 08-01-PLAN.md — Tauri bundle config (active:true, icons, macOS ad-hoc), README.md (BLD-05), portable ZIP staging files
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -324,7 +324,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
-| 8. Релизный пайплайн (Windows/macOS/Linux) | 0/2 | In progress | - |
+| 8. Релизный пайплайн (Windows/macOS/Linux) | 1/2 | In Progress|  |
 
 ## Coverage
 
