@@ -1,0 +1,261 @@
+name: release
+
+# Three-job release pipeline: create-release → build (matrix) → checksums
+# Triggers:
+#   - Push of a v*.*.* tag → creates a real draft GitHub Release
+#   - workflow_dispatch → dry-run without an actual tag (creates draft against inputs.version)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 1.2.3)'
+        required: true
+
+permissions:
+  contents: write   # Required for Release creation and artifact upload
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Create draft GitHub Release, output release_id for subsequent jobs
+  # ──────────────────────────────────────────────────────────────────────────
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.result }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create draft release
+        id: create-release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.eventName === 'workflow_dispatch'
+              ? 'v' + context.payload.inputs.version
+              : context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^v/, '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Trackly ${version}`,
+              draft: true,
+              generate_release_notes: true,
+            });
+            return data.id;
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Build matrix — Windows (NSIS + portable ZIP), macOS (dmg), Linux (AppImage + deb)
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: '--bundles nsis'
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin --bundles dmg'
+          - platform: ubuntu-22.04
+            args: '--bundles appimage,deb'
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # MSRV 1.92 — pinned by krilla 0.7 (CLAUDE.md); rust-toolchain.toml sets channel=1.92.0
+      # NOTE: ci-full.yml uses 1.88 but MSRV is 1.92; release build MUST match MSRV.
+      - name: Install Rust toolchain (1.92)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.92'
+          components: clippy, rustfmt
+
+      - name: Cache Cargo registry + build
+        uses: Swatinem/rust-cache@v2
+
+      # Tauri 2 transitively pulls glib-sys / gtk-sys / webkit2gtk-sys on Linux.
+      # macOS + Windows runners have everything they need pre-installed.
+      - name: Install Tauri 2 Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            build-essential curl wget file libssl-dev
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: pnpm install (frozen lockfile)
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      # Version injection: extract from tag (v1.2.3 → 1.2.3) and patch both
+      # Cargo.toml workspace.package.version and tauri.conf.json .version.
+      #
+      # Uses perl -0pi instead of sed -i: BSD sed (macOS runner) does not accept
+      # -i without a suffix argument, making sed -i non-portable. perl -0pi -e
+      # works identically on Linux, macOS, and Windows Git Bash (shell: bash).
+      #
+      # The perl regex replaces ONLY the first occurrence of version = "X.Y.Z"
+      # (the [workspace.package] entry); dependency version pins below it are
+      # untouched because /m anchors to line start and the substitution stops
+      # at the first match thanks to /r absent — first match replaces in place.
+      - name: Extract version and inject into Cargo.toml + tauri.conf.json
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          # Patch workspace version in Cargo.toml (first occurrence only)
+          perl -0pi -e 's/^(version = ")[0-9]+\.[0-9]+\.[0-9]+(")/${1}'"${VERSION}"'${2}/m' Cargo.toml
+
+          # Patch version in tauri.conf.json
+          jq --arg v "$VERSION" '.version = $v' \
+            crates/trackly-app/tauri.conf.json > /tmp/_tauri.conf.json
+          mv /tmp/_tauri.conf.json crates/trackly-app/tauri.conf.json
+
+          # Export VERSION for subsequent steps
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+          # Verify both substitutions succeeded
+          grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' Cargo.toml
+          jq .version crates/trackly-app/tauri.conf.json
+
+      # Build and upload installers/bundles to the draft Release.
+      # releaseDraft: true is a safety net in case create-release output was lost.
+      # uploadUpdaterJson: false — portable discipline: no updater (D-09, CLAUDE.md).
+      # retryAttempts: 1 — mitigates macOS DMG intermittent bundle_dmg.sh failure (Pitfall 4).
+      # APPLE_SIGNING_IDENTITY: '-' — ad-hoc code signing on macOS (D-04); env var is
+      # harmless on Windows/Linux runners.
+      - name: Build and publish with tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: '-'
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          releaseDraft: true
+          uploadUpdaterJson: false
+          retryAttempts: 1
+          projectPath: crates/trackly-app
+          args: ${{ matrix.args }}
+
+      # Assemble portable ZIP on Windows only.
+      # Contents (D-08): trackly.exe + portable.txt (empty marker) + README.md + trackly.config.toml.example
+      # portable.txt activates portable-mode path resolution in trackly_infra::paths (Phase 1 / D-10).
+      # VERSION env var was exported by the "Extract version" step above.
+      - name: Assemble portable ZIP
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $STAGE = "portable-stage"
+          New-Item -ItemType Directory -Force -Path $STAGE
+          Copy-Item "target\release\trackly.exe" "$STAGE\trackly.exe"
+          New-Item -ItemType File -Path "$STAGE\portable.txt" -Force
+          Copy-Item "README-portable.md" "$STAGE\README.md"
+          Copy-Item "trackly.config.toml.example" "$STAGE\trackly.config.toml.example"
+          $ZIP_NAME = "trackly-v${env:VERSION}-windows-x64-portable.zip"
+          Compress-Archive -Path "$STAGE\*" -DestinationPath $ZIP_NAME -Force
+          echo "PORTABLE_ZIP=$ZIP_NAME" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # gh release upload accepts tag_name, not release_id.
+      # On workflow_dispatch GITHUB_REF_NAME equals the branch name (e.g. "main"),
+      # so we must derive the tag from inputs.version instead.
+      - name: Upload portable ZIP to release
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="v${{ github.event.inputs.version }}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          gh release upload "$TAG" "$PORTABLE_ZIP" --repo "${{ github.repository }}"
+
+      # Upload bundles as workflow artifacts so the checksums job can aggregate them.
+      # tauri-action uploads directly to GitHub Release but does NOT save workflow artifacts —
+      # this step is what makes artifacts accessible to the checksums job (Pitfall 8).
+      # Unique name per matrix platform (upload-artifact@v4 does not allow duplicate names).
+      - name: Upload artifacts for checksums job
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ matrix.platform }}
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+            *-portable.zip
+          if-no-files-found: warn
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 3: Aggregate SHA256SUMS from all platforms and upload to Release
+  # ──────────────────────────────────────────────────────────────────────────
+  checksums:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-artifacts-*
+          merge-multiple: true
+          path: ./artifacts
+
+      - name: List downloaded artifacts
+        run: ls -la ./artifacts/
+
+      - name: Generate SHA256SUMS
+        working-directory: ./artifacts
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      # Same TAG derivation as the portable ZIP upload step:
+      # workflow_dispatch uses inputs.version; tag push uses GITHUB_REF_NAME.
+      - name: Upload SHA256SUMS to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="v${{ github.event.inputs.version }}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          gh release upload "$TAG" ./artifacts/SHA256SUMS \
+            --repo "${{ github.repository }}"
