@@ -8,13 +8,33 @@ Trackly — приложение для учёта и отслеживания �
 
 Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
 
+## Current Milestone: v1.1 AD-аутентификация
+
+**Goal:** Доделать AD-вход — доменный пользователь входит через браузер по AD-логину/паролю
+(`ldap3 simple_bind`, пароль не хранится), ФИО подтягивается из AD; незарегистрированный
+пользователь регистрируется через заявку (с подтверждением админом) или автоприёмом; mock
+AD-клиента для разработки на macOS.
+
+**Target features:**
+- AD simple_bind через браузер (USR-08); пароль не сохраняется (`Secret<T>`)
+- Подтягивание ФИО из AD: displayName → cn → login (USR-10)
+- Заявки на регистрацию AD-пользователей (`ad_register`), видимые только админу (USR-09, REQ-06)
+- Два режима: автоприём (auto-register) vs pending-approval (USR-11, SET-10)
+- Flow восстановления доступа (reject→delete→re-request→restore) + blocked-экран
+- Mock AD-клиента по образцу `MockSnmpClient` (USR-12)
+
+**Key context:** AD-вход — только веб (десктоп остаётся trusted-admin); auto-SSO (Kerberos/NTLM,
+вход без пароля) отложен в v2 (ADV-01); архитектура `trait AdClient` оставляет место под SSO.
+Phase 9; контекст — `.planning/phases/09-ad/09-CONTEXT.md`. История v1.0 — `.planning/MILESTONES.md`.
+
 ## Requirements
 
 ### Validated
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+**v1.0 (shipped 2026-06-19, phases 1–8):** учёт устройств / актов / картриджей / принтеров (SNMP) /
+заявок / отчётов / дашборда / настроек; портативный + серверный режим; релизный пайплайн. См. `.planning/MILESTONES.md`.
 
 ### Active
 
@@ -207,4 +227,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 03.3: Device-list UX round 2** (completed 2026-06-07) — флаг `group_by_condition` в `DeviceFilter`/`list_grouped` (раздельная DEF-2B разбивка: выкл для списка устройств, вкл для акт-формы) + `condition_distinct_count` с индикатором «разное»; колонка «Состояние» + native tooltip (`title=`) на text-ячейках; скрытие колонки «Статус» при выбранном статус-фильтре; вторая секция автокомплита «Все расположения» + HTTP route `POST /api/v1/locations_autocomplete`. UAT 5/5 пройден; group-row ячейки усечены до одной строки с ellipsis.
 
 ---
-*Last updated: 2026-06-07 after Phase 03.3 completion*
+*Last updated: 2026-06-19 — milestone v1.0 shipped (phases 1–8); milestone v1.1 (AD-аутентификация, Phase 9) started*

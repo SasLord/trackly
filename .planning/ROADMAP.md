@@ -19,6 +19,9 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure 06-07/06-08 закрыл дефекты заявок/discovery; human UAT 2026-06-15 — approved; status=verified, см. 06-VERIFICATION.md) (completed 2026-06-15)
 - [x] **Phase 7: Отчёты, Дашборд и Настройки** — Отчёты с группировкой по месяцам, виджеты дашборда, организация/логотип/бэкапы/шаблоны (completed 2026-06-16)
 - [x] **Phase 8: Релизный пайплайн (Windows/macOS/Linux)** — GitHub Actions Release matrix по push тега, NSIS + portable ZIP, .dmg, .AppImage/.deb, артефакты с SHA256-checksums, README на русском (completed 2026-06-19)
+
+— *Milestone v1.0 завершён (фазы 1–8). Ниже — milestone v1.1 (см. `.planning/MILESTONES.md`).* —
+
 - [ ] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (not planned)
 
 ## Phase Details
