@@ -12,8 +12,8 @@ use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 // tauri::Emitter trait is needed for app.emit() in Tauri 2.x.
 use crate::dto::request::{
-    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter,
-    RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
+    ApproveAdRegisterDto, Pagination, RequestCountsDto, RequestCreateDto, RequestDto,
+    RequestFilter, RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use tauri::Emitter;
@@ -24,12 +24,17 @@ use trackly_core::error::AppError;
 // build_* helpers (shared with axum handlers)
 // ---------------------------------------------------------------------------
 
+/// Список заявок. REQ-06/T-09-11: `ad_register` заявки видны только Admin —
+/// фильтрация на уровне SQL внутри `RequestService::list`.
 pub async fn build_requests_list(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: RequestFilter,
     pagination: Pagination,
 ) -> Result<RequestListResponse, AppError> {
-    ctx.requests.list(filter.into(), pagination.into()).await
+    ctx.requests
+        .list(filter.into(), pagination.into(), caller)
+        .await
 }
 
 pub async fn build_requests_get(ctx: &AppCtx, id: i64) -> Result<RequestDto, AppError> {
@@ -54,6 +59,16 @@ pub async fn build_requests_transition(
 ) -> Result<RequestDto, AppError> {
     authorize(caller, &Action::TransitionRequests)?;
     ctx.requests.transition(payload, caller).await
+}
+
+/// Approve an `ad_register` request with an admin-selected role — Admin only
+/// (Action::ManageUsers, T-09-12 role-elevation gate).
+pub async fn build_requests_approve_ad_register(
+    ctx: &AppCtx,
+    caller: &Identity,
+    payload: ApproveAdRegisterDto,
+) -> Result<RequestDto, AppError> {
+    ctx.requests.approve_ad_register(payload, caller).await
 }
 
 /// Счётчики по статусам (для switch-bar).
@@ -107,7 +122,8 @@ pub async fn requests_list(
     filter: RequestFilter,
     pagination: Pagination,
 ) -> Result<RequestListResponse, AppError> {
-    build_requests_list(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_list(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
@@ -140,6 +156,27 @@ pub async fn requests_transition(
     let caller = resolve_tauri_identity(state.inner()).await?;
     let result = build_requests_transition(state.inner(), &caller, payload).await?;
     // Desktop push (no WS server needed — Tauri emits to all webview windows).
+    app.emit(
+        "trackly-event",
+        &WsEvent::RequestStatusChanged {
+            request_id: result.id,
+            new_status: result.status.clone(),
+        },
+    )
+    .ok();
+    Ok(result)
+}
+
+/// Approve an `ad_register` request — Admin only. Desktop push on success.
+#[tauri::command]
+#[specta::specta]
+pub async fn requests_approve_ad_register(
+    state: tauri::State<'_, AppCtx>,
+    app: tauri::AppHandle,
+    payload: ApproveAdRegisterDto,
+) -> Result<RequestDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    let result = build_requests_approve_ad_register(state.inner(), &caller, payload).await?;
     app.emit(
         "trackly-event",
         &WsEvent::RequestStatusChanged {

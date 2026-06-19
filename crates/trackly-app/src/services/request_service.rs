@@ -25,8 +25,8 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
-    RequestCountsDto, RequestCreateDto, RequestDto, RequestHistoryEntryDto, RequestListResponse,
-    RequestTransitionPayload,
+    ApproveAdRegisterDto, RequestCountsDto, RequestCreateDto, RequestDto, RequestHistoryEntryDto,
+    RequestListResponse, RequestTransitionPayload,
 };
 
 /// Application service for request lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -78,16 +78,21 @@ impl RequestService {
     }
 
     /// List requests (paginated), optionally filtered.
+    ///
+    /// REQ-06 / T-09-11: `ad_register` rows are excluded at the SQL level for
+    /// non-admin callers — never row-hidden client-side.
     pub async fn list(
         &self,
         filter: RequestFilter,
         page: Pagination,
+        caller: &Identity,
     ) -> Result<RequestListResponse, AppError> {
+        let exclude_ad_register = !matches!(caller.role, trackly_core::auth::Role::Admin);
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            let (rows, total) = repo.list(&conn, &filter, &page)?;
+            let (rows, total) = repo.list(&conn, &filter, &page, exclude_ad_register)?;
             let items = rows.into_iter().map(RequestDto::from).collect();
             Ok(RequestListResponse {
                 items,
@@ -183,6 +188,9 @@ impl RequestService {
             cartridge_model_id: payload.cartridge_model_id.map(|id| id as i64),
             category_id: payload.category_id.map(|id| id as i64),
             description: payload.description.clone(),
+            // User-facing `create()` never originates ad_register requests —
+            // those are written directly by AuthService::on_ad_bind_success.
+            ad_subtype: None,
         };
 
         let request_id = self
@@ -225,12 +233,31 @@ impl RequestService {
     /// - Admin/Manager can Accept, Reject, Complete.
     /// - Domain rule enforced: `validate_from_status()`.
     /// - After successful write, broadcasts `WsEvent::RequestStatusChanged`.
+    ///
+    /// `ad_register` requests being Rejected take a special path (T-09-12/
+    /// T-09-14, D-REG-03): see [`Self::reject_ad_register`]. All other
+    /// request types use the generic transition path below.
     pub async fn transition(
         &self,
         payload: RequestTransitionPayload,
         caller: &Identity,
     ) -> Result<RequestDto, AppError> {
         authorize(caller, &Action::TransitionRequests)?;
+
+        if let RequestTransitionPayload::Reject {
+            request_id,
+            version,
+            notes,
+        } = &payload
+        {
+            let current = self.get(*request_id).await?;
+            if current.request_type == "ad_register" {
+                return self
+                    .reject_ad_register(*request_id, *version, notes.clone(), caller)
+                    .await;
+            }
+        }
+
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
         let request_repo = self.request_repo.clone();
@@ -327,6 +354,257 @@ impl RequestService {
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
             new_status,
+        });
+
+        Ok(dto)
+    }
+
+    /// Approve an `ad_register` request (USR-09/USR-11, D-REG-02, T-09-12).
+    ///
+    /// Admin-only (`Action::ManageUsers` — role elevation is a privileged
+    /// operation, Security V4). Validates `role` via `Role::from_str`,
+    /// defaulting to "employee" if absent (D-REG-02). Branches on
+    /// `ad_subtype`:
+    /// - `"register"` (pending mode, user row `is_active=0`): activates the
+    ///   user and sets the chosen role.
+    /// - `"restore"` (blocked/soft-deleted, user row already exists):
+    ///   revives the user (`deleted_at_utc = NULL, is_active = 1`) and sets
+    ///   the chosen role.
+    ///
+    /// All in one writer transaction + audit_log entries for both the user
+    /// mutation and the request completion (T-09-14).
+    pub async fn approve_ad_register(
+        &self,
+        payload: ApproveAdRegisterDto,
+        caller: &Identity,
+    ) -> Result<RequestDto, AppError> {
+        authorize(caller, &Action::ManageUsers)?;
+
+        let role =
+            trackly_core::auth::Role::from_str(payload.role.as_deref().unwrap_or("employee"))?;
+        let role_str = role.as_str().to_string();
+
+        let current = self.get(payload.request_id).await?;
+        if current.request_type != "ad_register" {
+            return Err(AppError::Validation {
+                field: "request_id".to_string(),
+                message: "request is not an ad_register request".to_string(),
+            });
+        }
+        let ad_subtype = current.ad_subtype.clone().unwrap_or_default();
+        let target_user_id = current.requested_by_user_id;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let request_id = payload.request_id;
+        let version = payload.version;
+        let role_for_tx = role_str.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Activate (register) or revive (restore) the target user,
+                // setting the admin-selected role.
+                if ad_subtype == "restore" {
+                    tx.execute(
+                        "UPDATE users SET role = ?1, is_active = 1, deleted_at_utc = NULL, \
+                         updated_at_utc = ?2, version = version + 1 WHERE id = ?3",
+                        rusqlite::params![role_for_tx, now, target_user_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                } else {
+                    tx.execute(
+                        "UPDATE users SET role = ?1, is_active = 1, \
+                         updated_at_utc = ?2, version = version + 1 WHERE id = ?3",
+                        rusqlite::params![role_for_tx, now, target_user_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_register_approve', ?2, NULL, NULL, ?3, ?4)",
+                    rusqlite::params![
+                        target_user_id,
+                        user_id,
+                        serde_json::json!({ "role": role_for_tx }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                // Mark the request completed directly (open → completed).
+                // NOT `transition_in_tx`/`RequestTransitionOp::Complete` — that
+                // op's domain rule expects the cartridge/printer in_progress →
+                // completed state machine (`validate_from_status`). The
+                // ad_register approve flow is its own state machine: a single
+                // admin decision moves "open" straight to "completed", with
+                // the optimistic-lock check still enforced manually below.
+                let affected = tx
+                    .execute(
+                        "UPDATE requests SET status = 'completed', updated_at_utc = ?1, \
+                         version = version + 1 \
+                         WHERE id = ?2 AND version = ?3 AND status = 'open' \
+                           AND deleted_at_utc IS NULL",
+                        rusqlite::params![now, request_id, version],
+                    )
+                    .map_err(map_rusqlite)?;
+                if affected == 0 {
+                    let current = request_repo.fetch_in_tx(&tx, request_id)?;
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "request",
+                        id: request_id,
+                        expected: version,
+                        actual: current.version,
+                    });
+                }
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "ad_register_approve",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        let dto = self.get(request_id).await?;
+
+        let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
+            request_id,
+            new_status: "completed".to_string(),
+        });
+
+        Ok(dto)
+    }
+
+    /// Reject an `ad_register` request (D-REG-03, T-09-14).
+    ///
+    /// Three branches, keyed on `ad_subtype` + current user state:
+    /// - `"register"` + pending mode (user `is_active=0`, never activated):
+    ///   discard — request rejected, user stays inactive (no access granted).
+    /// - `"register"` + auto-accept mode (user `is_active=1`, already has a
+    ///   session-capable account): soft-delete the auto-created user on reject.
+    /// - `"restore"`: request rejected, existing user stays blocked
+    ///   (no mutation to the user row).
+    ///
+    /// All single-writer + audited.
+    async fn reject_ad_register(
+        &self,
+        request_id: i64,
+        version: i64,
+        notes: Option<String>,
+        caller: &Identity,
+    ) -> Result<RequestDto, AppError> {
+        authorize(caller, &Action::ManageUsers)?;
+
+        let current = self.get(request_id).await?;
+        let ad_subtype = current.ad_subtype.clone().unwrap_or_default();
+        let target_user_id = current.requested_by_user_id;
+
+        // Determine whether the target user row is already active (auto-accept
+        // path) or still inactive (pending path) — drives the soft-delete branch.
+        let readers = self.readers.clone();
+        let user_is_active: bool =
+            tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+                let conn = readers.acquire();
+                let is_active: i64 = conn
+                    .query_row(
+                        "SELECT is_active FROM users WHERE id = ?1",
+                        rusqlite::params![target_user_id],
+                        |r| r.get(0),
+                    )
+                    .map_err(map_rusqlite)?;
+                Ok(is_active != 0)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let notes_json = notes
+            .clone()
+            .map(|n| serde_json::json!({ "notes": n }).to_string());
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // "register" + already-active user = auto-accept path → soft-delete
+                // on reject (T-09-14: revoke access that was already granted).
+                if ad_subtype == "register" && user_is_active {
+                    tx.execute(
+                        "UPDATE users SET deleted_at_utc = ?1, is_active = 0, \
+                         updated_at_utc = ?1, version = version + 1 WHERE id = ?2",
+                        rusqlite::params![now, target_user_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                    tx.execute(
+                        "INSERT INTO audit_log \
+                         (entity_type, entity_id, action, user_id, before_json, after_json, \
+                          payload_json, created_at_utc) \
+                         VALUES ('user', ?1, 'ad_register_reject_softdelete', ?2, NULL, NULL, NULL, ?3)",
+                        rusqlite::params![target_user_id, user_id, now],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
+                // "register" + pending (inactive) user: discard — no user mutation,
+                // user stays inactive with no access.
+                // "restore": no user mutation — user stays blocked as before.
+
+                request_repo.transition_in_tx(
+                    &tx,
+                    request_id,
+                    version,
+                    &RequestTransitionOp::Reject {
+                        notes: notes.clone(),
+                    },
+                    None,
+                    None,
+                    now,
+                )?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: request_id,
+                        action: "custom:reject",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: notes_json,
+                        created_at_utc: now,
+                    },
+                )?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        let dto = self.get(request_id).await?;
+
+        let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
+            request_id,
+            new_status: "rejected".to_string(),
         });
 
         Ok(dto)

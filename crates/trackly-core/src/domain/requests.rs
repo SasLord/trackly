@@ -34,12 +34,17 @@ pub struct RequestRow {
     pub updated_at_utc: i64,
     pub deleted_at_utc: Option<i64>,
     pub version: i64,
+    /// Discriminator for `request_type = 'ad_register'` rows (V028, D-REG-03):
+    /// `Some("register")` — new/unknown AD user; `Some("restore")` —
+    /// blocked/soft-deleted AD user requesting reactivation. `None` for all
+    /// other request types.
+    pub ad_subtype: Option<String>,
 }
 
 /// Data needed to create a new request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestNew {
-    /// "cartridge_replace" | "free_form"
+    /// "cartridge_replace" | "free_form" | "ad_register"
     pub request_type: String,
     pub requested_by_user_id: i64,
     /// Required for cartridge_replace type.
@@ -49,6 +54,8 @@ pub struct RequestNew {
     /// Required for free_form type.
     pub category_id: Option<i64>,
     pub description: Option<String>,
+    /// "register" | "restore" — only set when `request_type = 'ad_register'` (V028).
+    pub ad_subtype: Option<String>,
 }
 
 /// Filter parameters for request list queries.

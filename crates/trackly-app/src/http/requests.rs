@@ -14,14 +14,15 @@ use tower_sessions::Session;
 use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
-    Pagination, RequestCountsDto, RequestCreateDto, RequestDto, RequestFilter,
-    RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
+    ApproveAdRegisterDto, Pagination, RequestCountsDto, RequestCreateDto, RequestDto,
+    RequestFilter, RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::requests::{
-    build_requests_counts, build_requests_create, build_requests_get, build_requests_get_history,
-    build_requests_list, build_requests_list_categories, build_requests_transition,
+    build_requests_approve_ad_register, build_requests_counts, build_requests_create,
+    build_requests_get, build_requests_get_history, build_requests_list,
+    build_requests_list_categories, build_requests_transition,
 };
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,12 @@ pub struct TransitionPayload {
     pub payload: RequestTransitionPayload,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveAdRegisterPayload {
+    pub payload: ApproveAdRegisterDto,
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -62,11 +69,11 @@ pub async fn handler_list(
     session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<RequestListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_requests_list(&ctx, p.filter, p.pagination)
+        build_requests_list(&ctx, &identity, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -131,6 +138,26 @@ pub async fn handler_transition(
     Ok(Json(result))
 }
 
+pub async fn handler_approve_ad_register(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ApproveAdRegisterPayload>,
+) -> Result<Json<RequestDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let result = build_requests_approve_ad_register(&ctx, &identity, p.payload)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    ctx.ws_broadcast
+        .send(WsEvent::RequestStatusChanged {
+            request_id: result.id,
+            new_status: result.status.clone(),
+        })
+        .ok();
+    Ok(Json(result))
+}
+
 pub async fn handler_counts(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -184,6 +211,10 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/requests_get", post(handler_get))
         .route("/api/v1/requests_create", post(handler_create))
         .route("/api/v1/requests_transition", post(handler_transition))
+        .route(
+            "/api/v1/requests_approve_ad_register",
+            post(handler_approve_ad_register),
+        )
         .route("/api/v1/requests_counts", post(handler_counts))
         .route(
             "/api/v1/requests_list_categories",

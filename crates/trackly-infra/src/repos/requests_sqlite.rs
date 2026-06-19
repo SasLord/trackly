@@ -31,7 +31,8 @@ const SELECT_REQUESTS: &str = "
            r.description, r.resolution_notes,
            u.full_name AS requester_name,
            d.name AS printer_name,
-           r.created_at_utc, r.updated_at_utc, r.deleted_at_utc, r.version
+           r.created_at_utc, r.updated_at_utc, r.deleted_at_utc, r.version,
+           r.ad_subtype
       FROM requests r
       LEFT JOIN users u ON u.id = r.requested_by_user_id
       LEFT JOIN devices d ON d.id = r.printer_device_id
@@ -59,6 +60,7 @@ fn map_row_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestRow> {
         updated_at_utc: row.get(14)?,
         deleted_at_utc: row.get(15)?,
         version: row.get(16)?,
+        ad_subtype: row.get(17)?,
     })
 }
 
@@ -78,9 +80,9 @@ impl SqliteRequestRepository {
         tx.execute(
             "INSERT INTO requests \
              (request_type, status, requested_by_user_id, printer_device_id, \
-              cartridge_model_id, category_id, description, \
+              cartridge_model_id, category_id, description, ad_subtype, \
               created_at_utc, updated_at_utc, version) \
-             VALUES (?1, 'open', ?2, ?3, ?4, ?5, ?6, ?7, ?7, 1)",
+             VALUES (?1, 'open', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1)",
             params![
                 new.request_type,
                 new.requested_by_user_id,
@@ -88,6 +90,7 @@ impl SqliteRequestRepository {
                 new.cartridge_model_id,
                 new.category_id,
                 new.description,
+                new.ad_subtype,
                 now_utc,
             ],
         )
@@ -211,9 +214,13 @@ impl RequestRepository for SqliteRequestRepository {
         conn: &Self::Conn,
         filter: &RequestFilter,
         page: &Pagination,
+        exclude_ad_register: bool,
     ) -> Result<(Vec<RequestRow>, u64), AppError> {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
+        // REQ-06 / T-09-11: non-admin callers never see ad_register rows —
+        // enforced here at the SQL level, not row-hidden client-side.
+        let exclude_ad_register_i64: i64 = if exclude_ad_register { 1 } else { 0 };
 
         let total: i64 = conn
             .query_row(
@@ -222,12 +229,14 @@ impl RequestRepository for SqliteRequestRepository {
                    AND (?1 IS NULL OR r.status = ?1) \
                    AND (?2 IS NULL OR r.request_type = ?2) \
                    AND (?3 IS NULL OR r.assigned_to_user_id = ?3) \
-                   AND (?4 IS NULL OR r.requested_by_user_id = ?4)",
+                   AND (?4 IS NULL OR r.requested_by_user_id = ?4) \
+                   AND (?5 = 0 OR r.request_type != 'ad_register')",
                 params![
                     filter.status.as_deref(),
                     filter.request_type.as_deref(),
                     filter.assigned_to_user_id,
                     filter.requested_by_user_id,
+                    exclude_ad_register_i64,
                 ],
                 |r| r.get(0),
             )
@@ -241,8 +250,9 @@ impl RequestRepository for SqliteRequestRepository {
                    AND (?2 IS NULL OR r.request_type = ?2) \
                    AND (?3 IS NULL OR r.assigned_to_user_id = ?3) \
                    AND (?4 IS NULL OR r.requested_by_user_id = ?4) \
+                   AND (?5 = 0 OR r.request_type != 'ad_register') \
                  ORDER BY r.created_at_utc DESC, r.id DESC \
-                 LIMIT ?5 OFFSET ?6"
+                 LIMIT ?6 OFFSET ?7"
             ))
             .map_err(map_rusqlite)?;
 
@@ -253,6 +263,7 @@ impl RequestRepository for SqliteRequestRepository {
                     filter.request_type.as_deref(),
                     filter.assigned_to_user_id,
                     filter.requested_by_user_id,
+                    exclude_ad_register_i64,
                     limit,
                     offset,
                 ],
@@ -424,6 +435,7 @@ mod tests {
             cartridge_model_id: None,
             category_id: None,
             description: Some("Нужна помощь".to_string()),
+            ad_subtype: None,
         };
 
         let request_id = {
@@ -441,7 +453,12 @@ mod tests {
 
         // list also returns the row
         let (rows, total) = repo
-            .list(&conn, &RequestFilter::default(), &Pagination::default())
+            .list(
+                &conn,
+                &RequestFilter::default(),
+                &Pagination::default(),
+                false,
+            )
             .expect("list");
         assert_eq!(total, 1);
         assert_eq!(rows.len(), 1);
@@ -462,6 +479,7 @@ mod tests {
             cartridge_model_id: None,
             category_id: None,
             description: None,
+            ad_subtype: None,
         };
 
         let request_id = {
@@ -527,6 +545,7 @@ mod tests {
             cartridge_model_id: None,
             category_id: None,
             description: None,
+            ad_subtype: None,
         };
 
         let request_id = {
@@ -572,6 +591,7 @@ mod tests {
             cartridge_model_id: None,
             category_id: None,
             description: Some("Тест истории".to_string()),
+            ad_subtype: None,
         };
 
         let request_id = {
@@ -614,6 +634,7 @@ mod tests {
             cartridge_model_id: None,
             category_id: None,
             description: Some("Тест notes".to_string()),
+            ad_subtype: None,
         };
 
         let request_id = {

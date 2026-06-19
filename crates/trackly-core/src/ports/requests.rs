@@ -17,11 +17,17 @@ pub trait RequestRepository {
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<RequestRow, AppError>;
 
     /// Paginated list of requests matching `filter`. Returns `(rows, total)`.
+    ///
+    /// `exclude_ad_register` (REQ-06, T-09-11): when `true`, rows with
+    /// `request_type = 'ad_register'` are excluded at the SQL level —
+    /// enforced by the service for non-admin callers, never row-hidden
+    /// client-side.
     fn list(
         &self,
         conn: &Self::Conn,
         filter: &RequestFilter,
         page: &Pagination,
+        exclude_ad_register: bool,
     ) -> Result<(Vec<RequestRow>, u64), AppError>;
 
     /// Aggregate counts for the status switch-bar.

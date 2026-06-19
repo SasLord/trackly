@@ -41,6 +41,8 @@ pub struct RequestDto {
     pub deleted_at_utc: Option<i64>,
     #[specta(type = i32)]
     pub version: i64,
+    /// "register" | "restore" | null — only set for `request_type = 'ad_register'` (V028).
+    pub ad_subtype: Option<String>,
 }
 
 impl From<RequestRow> for RequestDto {
@@ -63,6 +65,7 @@ impl From<RequestRow> for RequestDto {
             updated_at_utc: r.updated_at_utc,
             deleted_at_utc: r.deleted_at_utc,
             version: r.version,
+            ad_subtype: r.ad_subtype,
         }
     }
 }
@@ -162,6 +165,21 @@ pub enum RequestTransitionPayload {
         /// Links a cartridge installation (REQ-05 / D-Req-CART07-01).
         linked_cartridge_id: Option<i32>,
     },
+}
+
+/// Approve an `ad_register` request — admin selects the role to grant
+/// (defaults to "employee" if absent, D-REG-02). Distinct from
+/// `RequestTransitionPayload` because approve has side effects on the
+/// `users` table (activate or revive) that generic transitions don't have.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveAdRegisterDto {
+    #[specta(type = i32)]
+    pub request_id: i64,
+    #[specta(type = i32)]
+    pub version: i64,
+    /// "admin" | "manager" | "employee" — defaults to "employee" if None (D-REG-02).
+    pub role: Option<String>,
 }
 
 /// Paginated request list response.

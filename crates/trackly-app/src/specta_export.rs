@@ -116,6 +116,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::requests::requests_counts,
         crate::tauri_cmds::requests::requests_list_categories,
         crate::tauri_cmds::requests::requests_get_history,
+        // Phase 9 — AD register requests (Plan 03)
+        crate::tauri_cmds::requests::requests_approve_ad_register,
         // Phase 7 — Reports (Plan 07)
         crate::tauri_cmds::reports::reports_list_device_acts,
         crate::tauri_cmds::reports::reports_list_device_returns,
