@@ -40,9 +40,23 @@ jobs:
               ? 'v' + context.payload.inputs.version
               : context.ref.replace('refs/tags/', '');
             const version = tag.replace(/^v/, '');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // Idempotency: GitHub allows multiple DRAFT releases per tag, so a re-run
+            // (especially a dry-run with the same version) would spawn a second draft
+            // and scatter assets — and `gh release upload <tag>` could then resolve to
+            // the wrong draft, hitting "asset already exists". Delete any prior DRAFT
+            // releases for this tag first (never published ones) so exactly one draft
+            // exists and the tag resolves unambiguously.
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner, repo, per_page: 100,
+            });
+            for (const r of releases.filter((r) => r.tag_name === tag && r.draft)) {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: r.id });
+            }
             const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner,
+              repo,
               tag_name: tag,
               name: `Trackly ${version}`,
               draft: true,
@@ -226,7 +240,7 @@ jobs:
           else
             TAG="$GITHUB_REF_NAME"
           fi
-          gh release upload "$TAG" "$PORTABLE_ZIP" --repo "${{ github.repository }}"
+          gh release upload "$TAG" "$PORTABLE_ZIP" --clobber --repo "${{ github.repository }}"
 
       # Upload bundles as workflow artifacts so the checksums job can aggregate them.
       # tauri-action uploads directly to GitHub Release but does NOT save workflow artifacts —
@@ -295,5 +309,5 @@ jobs:
           else
             TAG="$GITHUB_REF_NAME"
           fi
-          gh release upload "$TAG" ./artifacts/SHA256SUMS \
+          gh release upload "$TAG" ./artifacts/SHA256SUMS --clobber \
             --repo "${{ github.repository }}"
