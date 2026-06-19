@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-19T13:27:11.784Z"
-last_activity: 2026-06-19 -- Phase 09 planning complete
+last_updated: "2026-06-19T17:03:54.562Z"
+last_activity: 2026-06-19
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 69
-  completed_plans: 64
+  completed_plans: 65
   percent: 92
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone v1.1 — AD-аутентификация (Phase 9)
+**Current focus:** Phase 09 — ad
 
 ## Current Position
 
-Phase: 9 — AD-аутентификация и заявки на регистрацию пользователей
-Plan: Not started (context ready)
+Phase: 09 (ad) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-06-19 -- Phase 09 planning complete
+Last activity: 2026-06-19
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -104,6 +104,7 @@ Last activity: 2026-06-19 -- Phase 09 planning complete
 | Phase 07 P14 | 15 | 2 tasks | 6 files |
 | Phase 08 P01 | 2 min | 3 tasks | 4 files |
 | Phase 08 P02 | 1 | 3 tasks | 1 files |
+| Phase 09 P01 | 8min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -201,6 +202,7 @@ Recent decisions affecting current work:
 - [Phase ?]: perl -0pi version injection
 - [Phase ?]: GITHUB_EVENT_NAME fallback
 - [Phase ?]: portable no-updater discipline
+- [Phase 09]: AdClient port + RealAdClient/MockAdClient adapters mirror SnmpClient triad exactly; ldap3 confined to real.rs, hickory-resolver confined to discovery.rs (no OpenSSL pulled in)
 
 ### Pending Todos
 
@@ -232,7 +234,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T12:51:49.717Z
-Stopped at: Phase 9 UI-SPEC approved
+Last session: 2026-06-19T17:03:54.556Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: 
-.planning/phases/09-ad/09-UI-SPEC.md
+None

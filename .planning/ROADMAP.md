@@ -320,13 +320,13 @@ Plans:
 **Mode:** mvp
 **Depends on:** Phase 8 (релизная Windows-сборка нужна для теста AD-входа в домене)
 **Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — AdClient port (trait + AuthOutcome, I/O-free core) + RealAdClient/MockAdClient/discovery (mirror SNMP triad) + AdConfig + ldap3/hickory deps; Wave 0 mock/empty-password/filter-escape/base-DN tests (USR-12)
+- [x] 09-01-PLAN.md — AdClient port (trait + AuthOutcome, I/O-free core) + RealAdClient/MockAdClient/discovery (mirror SNMP triad) + AdConfig + ldap3/hickory deps; Wave 0 mock/empty-password/filter-escape/base-DN tests (USR-12)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -361,7 +361,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
 | 8. Релизный пайплайн (Windows/macOS/Linux) | 2/2 | Complete    | 2026-06-19 |
-| 9. AD-аутентификация и заявки на регистрацию пользователей | 0/0 | Not planned | — |
+| 9. AD-аутентификация и заявки на регистрацию пользователей | 1/5 | In Progress|  |
 
 ## Coverage
 
