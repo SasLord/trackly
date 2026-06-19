@@ -162,3 +162,11 @@ None - no external service configuration required. `TRACKLY_AD_MOCK=1` (or `conf
 ---
 *Phase: 09-ad*
 *Completed: 2026-06-19*
+
+## Self-Check: PASSED
+
+All files verified present on disk (migrations/V028__ad_register_subtype.sql,
+crates/trackly-app/tests/ad_auth.rs, crates/trackly-app/src/services/auth.rs,
+crates/trackly-app/src/context.rs, crates/trackly-core/src/error.rs,
+.planning/phases/09-ad/deferred-items.md, crates/trackly-infra/tests/migration_idempotency.rs).
+All commit hashes verified present in git log (ab6b390, d8bb288, c31bb3c, deca595).
