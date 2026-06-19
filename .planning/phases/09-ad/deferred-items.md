@@ -40,3 +40,21 @@ plan/task and were NOT auto-fixed (per executor scope-boundary rule).
 - **Action:** NOT fixed in this plan (out of scope — pre-existing in a file
   this plan does not touch). One-line fix for a future cleanup pass:
   `bytes.len() > 0` → `!bytes.is_empty()` at both call sites.
+
+## 09-03: `backup_service.rs` clippy::disallowed_methods under `--all-targets`
+
+- **Discovered during:** Plan 09-03, Task 1/2 verification
+  (`cargo clippy -p trackly-app --all-targets -- -D warnings`)
+- **Symptom:** `crates/trackly-app/tests/backup_service.rs:168` uses
+  `std::fs::copy` directly (disallowed-methods lint — project convention
+  requires `rusqlite::backup::Backup` for DB files, though this call copies
+  a fake/placeholder backup file in a test, not a live DB).
+- **Verified pre-existing:** file is untouched by this plan (`git status`
+  shows no changes to `tests/backup_service.rs`); failure is identical
+  before and after this plan's edits.
+- **Scope:** unrelated to AD auth/registration (Phase 9 Plan 03). Plan's
+  specified verify command is `cargo clippy -p trackly-app -- -D warnings`
+  (no `--all-targets`), which IS clean.
+- **Action:** NOT fixed in this plan (out of scope). Future cleanup: add
+  `#[allow(clippy::disallowed_methods)]` on that specific test helper, since
+  the copied file there is a synthetic fixture, not a real SQLite DB file.
