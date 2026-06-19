@@ -166,8 +166,8 @@
 ### Build & Release (BLD)
 
 - [x] **BLD-01**: GitHub Actions CI на каждый push в main и в PR: `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`, `pnpm svelte-check`, `pnpm lint`
-- [ ] **BLD-02**: GitHub Actions Release: при push-тега `v*.*.*` собирать релизы для Windows 64-bit (NSIS installer + portable ZIP), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb)
-- [ ] **BLD-03**: Артефакты релиза включают checksums (SHA256) и подписи (по возможности)
+- [x] **BLD-02**: GitHub Actions Release: при push-тега `v*.*.*` собирать релизы для Windows 64-bit (NSIS installer + portable ZIP), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb)
+- [x] **BLD-03**: Артефакты релиза включают checksums (SHA256) и подписи (по возможности)
 - [x] **BLD-04**: Сборка portable варианта без updater, с включённым маркером `portable.txt`
 - [x] **BLD-05**: Документация по запуску (README на русском) с инструкциями для каждой ОС
 - [x] **BLD-06**: ProcMon тест из FOUND-11 интегрирован в CI matrix (Windows runner)
@@ -354,8 +354,8 @@
 | SRV-04 | Phase 5 | Complete |
 | SRV-05 | Phase 5 | Complete |
 | BLD-01 | Phase 1 | Complete |
-| BLD-02 | Phase 8 | Pending |
-| BLD-03 | Phase 8 | Pending |
+| BLD-02 | Phase 8 | Complete |
+| BLD-03 | Phase 8 | Complete |
 | BLD-04 | Phase 8 | Complete |
 | BLD-05 | Phase 8 | Complete |
 | BLD-06 | Phase 1 | Complete |

@@ -18,7 +18,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 5: Авторизация, локальные пользователи и серверный режим** — Argon2id-логин, роли, HTTPS-сервер axum, единый authorize() для обоих транспортов (completed 2026-06-13)
 - [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure 06-07/06-08 закрыл дефекты заявок/discovery; human UAT 2026-06-15 — approved; status=verified, см. 06-VERIFICATION.md) (completed 2026-06-15)
 - [x] **Phase 7: Отчёты, Дашборд и Настройки** — Отчёты с группировкой по месяцам, виджеты дашборда, организация/логотип/бэкапы/шаблоны (completed 2026-06-16)
-- [ ] **Phase 8: Релизный пайплайн (Windows/macOS/Linux)** — GitHub Actions Release matrix по push тега, NSIS + portable ZIP, .dmg, .AppImage/.deb, артефакты с SHA256-checksums, README на русском
+- [x] **Phase 8: Релизный пайплайн (Windows/macOS/Linux)** — GitHub Actions Release matrix по push тега, NSIS + portable ZIP, .dmg, .AppImage/.deb, артефакты с SHA256-checksums, README на русском (completed 2026-06-19)
 
 ## Phase Details
 
@@ -301,14 +301,14 @@ Plans:
   1. При push-тега `v*.*.*` GitHub Actions Release собирает: Windows 64-bit (NSIS installer + portable ZIP с маркером `portable.txt` и без updater'а), macOS aarch64 (.dmg), Linux x86_64 (.AppImage + .deb); артефакты содержат SHA256-checksums и, где возможно, подписи.
   2. README.md на русском содержит инструкции по запуску для каждой ОС, включая portable-режим, требования к WebView2 на Windows и описание серверного режима с подсказками по доверию self-signed сертификату в локальной сети.
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 **Wave 1**
 
 - [x] 08-01-PLAN.md — Tauri bundle config (active:true, icons, macOS ad-hoc), README.md (BLD-05), portable ZIP staging files
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-02-PLAN.md — GitHub Actions release.yml: three-job pipeline (create-release → build matrix → checksums), portable ZIP assembly, SHA256SUMS (BLD-02, BLD-03, BLD-04)
+- [x] 08-02-PLAN.md — GitHub Actions release.yml: three-job pipeline (create-release → build matrix → checksums), portable ZIP assembly, SHA256SUMS (BLD-02, BLD-03, BLD-04)
 
 ## Progress
 
@@ -324,7 +324,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Авторизация, локальные пользователи и серверный режим | 6/6 | Complete    | 2026-06-14 |
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
-| 8. Релизный пайплайн (Windows/macOS/Linux) | 1/2 | In Progress|  |
+| 8. Релизный пайплайн (Windows/macOS/Linux) | 2/2 | Complete   | 2026-06-19 |
 
 ## Coverage
 

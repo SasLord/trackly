@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-19T00:01:53.119Z"
+status: verifying
+last_updated: "2026-06-19T00:07:22.440Z"
 last_activity: 2026-06-19
 progress:
   total_phases: 11
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 64
-  completed_plans: 63
-  percent: 91
+  completed_plans: 64
+  percent: 100
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 Phase: 08 (windows-macos-linux) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-19
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -104,6 +104,7 @@ Progress: [██████████] 98%
 | Phase 07 P13 | 2 | 2 tasks | 4 files |
 | Phase 07 P14 | 15 | 2 tasks | 6 files |
 | Phase 08 P01 | 2 min | 3 tasks | 4 files |
+| Phase 08 P02 | 1 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -196,6 +197,10 @@ Recent decisions affecting current work:
 - [Phase ?]: 08-01: bundle.active=true — Tauri bundler включён для всех ОС (D-14)
 - [Phase ?]: 08-01: bundle.icon расширен до 5 форматов (32x32/128x128/128x128@2x/icns/ico) — Pitfall 3 закрыт
 - [Phase ?]: 08-01: bundle.macOS.signingIdentity='-' — ad-hoc подпись без Apple Developer ID (D-04)
+- [Phase ?]: MSRV pinned correctly
+- [Phase ?]: perl -0pi version injection
+- [Phase ?]: GITHUB_EVENT_NAME fallback
+- [Phase ?]: portable no-updater discipline
 
 ### Pending Todos
 
@@ -227,7 +232,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T00:01:53.112Z
+Last session: 2026-06-19T00:07:22.432Z
 Stopped at: Completed 08-01-PLAN.md — bundle config + portable staging + README
 Resume file: 
 None
