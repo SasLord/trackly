@@ -277,21 +277,25 @@ impl AppCtx {
             Arc::new(RealAdClient::new(config.ad.clone()))
         };
 
+        // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
+        // Created before AuthService (Phase 9 Plan 03) so on_ad_bind_success's
+        // ad_register write paths can broadcast WsEvent::NewRequest too (REQ-04 reuse).
+        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
+        let ws_broadcast = Arc::new(ws_tx);
+
         // Phase 5 Plan 02: auth service + server_ctl.
         // Phase 9 Plan 02: + ad_client (local→AD login fallback, USR-08).
+        // Phase 9 Plan 03: + ws_tx (ad_register NewRequest broadcast).
         let auth = Arc::new(AuthService::new(
             writer.clone(),
             readers.clone(),
             clock.clone(),
             ad_client,
+            ws_broadcast.clone(),
         ));
 
-        // Phase 6 Plan 03: WS broadcast + SNMP client + PrinterService + RequestService +
+        // Phase 6 Plan 03: SNMP client + PrinterService + RequestService +
         // background poll task.
-
-        // WS broadcast channel (capacity 128 — D-Notify-01).
-        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
-        let ws_broadcast = Arc::new(ws_tx);
 
         // On-demand poll channel (capacity 64 — D-Poll-01).
         let (poll_tx, poll_rx) = tokio::sync::mpsc::channel::<i64>(64);

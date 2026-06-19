@@ -31,6 +31,7 @@ use crate::dto::auth::{
     ChangePasswordRequest, LoginRequest, UserDto, UserFilter, UserListResponse, UserNew, UserPatch,
 };
 use crate::dto::device::Pagination;
+use crate::dto::printer::WsEvent;
 
 // ---------------------------------------------------------------------------
 // Free functions (CPU-bound crypto — always spawn_blocking)
@@ -127,6 +128,10 @@ pub struct AuthService {
     /// AD client — `RealAdClient` in prod, `MockAdClient` on dev macOS
     /// (D-Mock-01). Used by `login()`'s local→AD fallback (USR-08).
     pub(crate) ad_client: Arc<dyn AdClient + Send + Sync>,
+    /// WS broadcast sender — shared with `RequestService` (same `AppCtx`
+    /// channel) so `ad_register` requests created from `on_ad_bind_success`
+    /// emit `WsEvent::NewRequest` to admins too (REQ-04 reuse, Phase 9 Plan 03).
+    pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
 }
 
 impl AuthService {
@@ -136,12 +141,14 @@ impl AuthService {
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
         ad_client: Arc<dyn AdClient + Send + Sync>,
+        ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
     ) -> Self {
         Self {
             writer,
             readers,
             clock,
             ad_client,
+            ws_tx,
         }
     }
 
@@ -302,10 +309,13 @@ impl AuthService {
     /// После успешного AD bind — определяет, что делать с локальной
     /// учётной записью (read seam: `find_user_any_state`).
     ///
-    /// **Scope этого плана (09-02):** только active-user case реализован
-    /// полностью. Blocked/soft-deleted/unknown-в-БД ветки возвращают
-    /// типизированную заглушку — write-пути (создание `ad_register`
-    /// заявки на регистрацию/восстановление) реализуются в плане 09-03.
+    /// Три ветки (Phase 9 Plan 03):
+    /// - active user → обычная сессия.
+    /// - blocked/soft-deleted user → заявка восстановления (`ad_subtype='restore'`),
+    ///   возвращает типизированный `AppError::AccessBlocked` (НЕ сессия).
+    /// - unknown (нет в БД) → auto-accept (создать сразу + info-заявка) или
+    ///   pending (inactive user + заявка, `AppError::RegistrationPending`)
+    ///   в зависимости от `ad_auto_accept`.
     async fn on_ad_bind_success(
         &self,
         login: &str,
@@ -313,20 +323,218 @@ impl AuthService {
     ) -> Result<UserDto, AppError> {
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
-            Some(_blocked_or_deleted) => {
-                // TODO(09-03): создать ad_register заявку с ad_subtype='restore'
-                // вместо возврата ошибки — пока просто отказываем.
-                let _ = display_name;
-                Err(AppError::Unauthorized)
+            Some(blocked_or_deleted) => {
+                self.create_restore_request(blocked_or_deleted.id, login, display_name)
+                    .await
             }
             None => {
-                // TODO(09-03): создать ad_register заявку с ad_subtype='register'
-                // (или auto-accept путь, если ad_auto_accept=true) вместо
-                // возврата ошибки.
-                let _ = display_name;
-                Err(AppError::Unauthorized)
+                if self.ad_auto_accept().await? {
+                    self.auto_register_ad_user(login, display_name).await
+                } else {
+                    self.create_pending_registration(login, display_name).await
+                }
             }
         }
+    }
+
+    /// auto-accept ON, unknown AD user (USR-11/SET-10): создаёт активного
+    /// пользователя СРАЗУ + информационную заявку `ad_register` (ad_subtype='register')
+    /// в ОДНОЙ writer-транзакции, затем возвращает сессию для нового пользователя.
+    ///
+    /// Reject этой заявки в дальнейшем soft-delete'ит пользователя
+    /// (см. `RequestService::approve_ad_register`/reject branching, Task 2).
+    async fn auto_register_ad_user(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let login_owned = login.to_string();
+        let display_name_owned = display_name.to_string();
+
+        let (user_id, request_id) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO users \
+                     (login, full_name, password_hash, role, ad_user, is_active, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, NULL, 'employee', 1, 1, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let user_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_register', ?1, NULL, NULL, NULL, ?2)",
+                    rusqlite::params![user_id, now],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, description, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('ad_register', 'open', ?1, ?2, 'register', ?3, ?3, 1)",
+                    rusqlite::params![user_id, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let request_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('request', ?1, 'create', ?2, NULL, NULL, NULL, ?3)",
+                    rusqlite::params![request_id, user_id, now],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((user_id, request_id))
+            })
+            .await?;
+
+        // WS push (REQ-04 reuse) — admins получают уведомление о новой заявке.
+        let _ = self.ws_tx.send(WsEvent::NewRequest {
+            request_id,
+            request_type: "ad_register".to_string(),
+            requester_name: display_name.to_string(),
+        });
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// auto-accept OFF, unknown AD user (USR-09/USR-11): создаёт НЕактивного
+    /// пользователя (Pitfall 4 — FK-таргет для `requested_by_user_id`) +
+    /// заявку `ad_register` (ad_subtype='register') в ОДНОЙ writer-транзакции.
+    /// Сессия НЕ выдаётся — возвращает `AppError::RegistrationPending`.
+    async fn create_pending_registration(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let login_owned = login.to_string();
+        let display_name_owned = display_name.to_string();
+
+        let (_user_id, request_id) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO users \
+                     (login, full_name, password_hash, role, ad_user, is_active, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let user_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_pending_register', ?1, NULL, NULL, NULL, ?2)",
+                    rusqlite::params![user_id, now],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, description, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('ad_register', 'open', ?1, ?2, 'register', ?3, ?3, 1)",
+                    rusqlite::params![user_id, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let request_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('request', ?1, 'create', ?2, NULL, NULL, NULL, ?3)",
+                    rusqlite::params![request_id, user_id, now],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((user_id, request_id))
+            })
+            .await?;
+
+        let _ = self.ws_tx.send(WsEvent::NewRequest {
+            request_id,
+            request_type: "ad_register".to_string(),
+            requester_name: display_name.to_string(),
+        });
+
+        Err(AppError::RegistrationPending { request_id })
+    }
+
+    /// Blocked/soft-deleted AD user успешно прошёл bind (D-REG-03): создаёт
+    /// заявку восстановления `ad_register`/`ad_subtype='restore'`, ссылающуюся
+    /// на существующего пользователя, в ОДНОЙ writer-транзакции. Сессия НЕ
+    /// выдаётся — возвращает `AppError::AccessBlocked`.
+    async fn create_restore_request(
+        &self,
+        existing_user_id: i64,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let display_name_owned = display_name.to_string();
+        let login_owned = login.to_string();
+
+        let request_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, description, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('ad_register', 'open', ?1, ?2, 'restore', ?3, ?3, 1)",
+                    rusqlite::params![existing_user_id, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let request_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('request', ?1, 'create', ?2, NULL, NULL, ?3, ?4)",
+                    rusqlite::params![
+                        request_id,
+                        existing_user_id,
+                        serde_json::json!({ "login": login_owned }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(request_id)
+            })
+            .await?;
+
+        let _ = self.ws_tx.send(WsEvent::NewRequest {
+            request_id,
+            request_type: "ad_register".to_string(),
+            requester_name: display_name.to_string(),
+        });
+
+        Err(AppError::AccessBlocked { request_id })
     }
 
     /// Читает `ad_enabled` из `app_settings`. По умолчанию `false`

@@ -25,7 +25,8 @@ fn make_auth_service_with_ad(
 ) -> (AuthService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
-    let svc = AuthService::new(writer, readers, clock, ad_client);
+    let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+    let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx));
     (svc, dir)
 }
 

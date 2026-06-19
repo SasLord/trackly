@@ -58,14 +58,15 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
     ));
     let ad_client: Arc<dyn trackly_core::ports::ad::AdClient + Send + Sync> =
         Arc::new(trackly_infra::ad::mock::MockAdClient::default_fixtures());
+    let (ws_tx, _) = tokio::sync::broadcast::channel::<trackly_app::dto::printer::WsEvent>(128);
+    let ws_broadcast = Arc::new(ws_tx);
     let auth = Arc::new(trackly_app::services::AuthService::new(
         writer.clone(),
         readers.clone(),
         clock.clone(),
         ad_client,
+        ws_broadcast.clone(),
     ));
-    let (ws_tx, _) = tokio::sync::broadcast::channel::<trackly_app::dto::printer::WsEvent>(128);
-    let ws_broadcast = Arc::new(ws_tx);
     let (poll_tx, _poll_rx) = tokio::sync::mpsc::channel::<i64>(64);
     let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =
         Arc::new(trackly_infra::snmp::mock::MockSnmpClient::default_fixtures());

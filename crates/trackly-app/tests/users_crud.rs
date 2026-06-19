@@ -18,7 +18,8 @@ fn make_auth_service() -> (AuthService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let ad_client: Arc<dyn trackly_core::ports::ad::AdClient + Send + Sync> =
         Arc::new(trackly_infra::ad::mock::MockAdClient::default_fixtures());
-    let svc = AuthService::new(writer, readers, clock, ad_client);
+    let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+    let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx));
     (svc, dir)
 }
 

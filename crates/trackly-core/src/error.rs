@@ -109,6 +109,31 @@ pub enum AppError {
         /// Имя недоступного сервиса (например, `"ad"`).
         service: &'static str,
     },
+
+    /// AD bind успешен, но учётная запись ещё не создана/активирована —
+    /// заявка `ad_register` создана и ждёт решения администратора
+    /// (Phase 9 Plan 03, USR-09/USR-11/SET-10 "pending" mode).
+    ///
+    /// Не `Unauthorized` — UI должен показать `PendingScreen`, а не форму
+    /// логина с ошибкой (D-REG-01).
+    #[error("registration pending admin approval (request {request_id})")]
+    RegistrationPending {
+        /// ID созданной заявки `ad_register`.
+        request_id: i64,
+    },
+
+    /// AD bind успешен, но локальная учётная запись блокирована
+    /// (`is_active=0`) или soft-deleted — заявка на восстановление
+    /// (`ad_subtype='restore'`) создана и ждёт решения администратора
+    /// (Phase 9 Plan 03, D-REG-03 "blocked" mode).
+    ///
+    /// Не `Unauthorized` — UI должен показать `BlockedScreen`, а не форму
+    /// логина с ошибкой.
+    #[error("account blocked, restore request pending (request {request_id})")]
+    AccessBlocked {
+        /// ID созданной заявки восстановления доступа `ad_register`.
+        request_id: i64,
+    },
 }
 
 impl AppError {
@@ -125,6 +150,8 @@ impl AppError {
             Self::Forbidden => "FORBIDDEN",
             Self::Internal { .. } => "INTERNAL",
             Self::ServiceUnavailable { .. } => "SERVICE_UNAVAILABLE",
+            Self::RegistrationPending { .. } => "REGISTRATION_PENDING",
+            Self::AccessBlocked { .. } => "ACCESS_BLOCKED",
         }
     }
 
@@ -155,6 +182,8 @@ impl AppError {
             Self::Forbidden => json!({}),
             Self::Internal { source_chain } => json!({ "source_chain": source_chain }),
             Self::ServiceUnavailable { service } => json!({ "service": service }),
+            Self::RegistrationPending { request_id } => json!({ "request_id": request_id }),
+            Self::AccessBlocked { request_id } => json!({ "request_id": request_id }),
         }
     }
 }
@@ -270,6 +299,14 @@ mod tests {
             AppError::ServiceUnavailable { service: "ad" }.code(),
             "SERVICE_UNAVAILABLE"
         );
+        assert_eq!(
+            AppError::RegistrationPending { request_id: 5 }.code(),
+            "REGISTRATION_PENDING"
+        );
+        assert_eq!(
+            AppError::AccessBlocked { request_id: 7 }.code(),
+            "ACCESS_BLOCKED"
+        );
     }
 
     #[test]
@@ -363,5 +400,19 @@ mod tests {
         let v = ser(&AppError::ServiceUnavailable { service: "ad" });
         assert_eq!(v["code"], "SERVICE_UNAVAILABLE");
         assert_eq!(v["details"]["service"], "ad");
+    }
+
+    #[test]
+    fn serialize_registration_pending_details() {
+        let v = ser(&AppError::RegistrationPending { request_id: 5 });
+        assert_eq!(v["code"], "REGISTRATION_PENDING");
+        assert_eq!(v["details"]["request_id"], 5);
+    }
+
+    #[test]
+    fn serialize_access_blocked_details() {
+        let v = ser(&AppError::AccessBlocked { request_id: 7 });
+        assert_eq!(v["code"], "ACCESS_BLOCKED");
+        assert_eq!(v["details"]["request_id"], 7);
     }
 }

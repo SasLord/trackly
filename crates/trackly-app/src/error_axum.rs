@@ -8,7 +8,7 @@
 //! - DatabaseFromNewerVersion / Internal → 500
 //! - Validation → 400
 //! - Unauthorized → 401
-//! - Forbidden → 403
+//! - Forbidden / RegistrationPending / AccessBlocked → 403
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -40,6 +40,10 @@ impl IntoResponse for AppErrorResponse {
             AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            // AD bind succeeded but admission is not granted yet — caller must
+            // see PendingScreen/BlockedScreen, not a generic 401 (D-REG-01/D-REG-03).
+            AppError::RegistrationPending { .. } => StatusCode::FORBIDDEN,
+            AppError::AccessBlocked { .. } => StatusCode::FORBIDDEN,
         };
         let body = Json(serde_json::json!({
             "code": self.0.code(),
