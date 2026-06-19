@@ -266,11 +266,22 @@ jobs:
       - name: List downloaded artifacts
         run: ls -la ./artifacts/
 
+      # download-artifact preserves each artifact's path hierarchy, so bundles land
+      # under ./artifacts/target/release/bundle/... while the portable ZIP is at the
+      # root. `sha256sum *` is non-recursive and errors on the `target` directory
+      # (under bash -e). Recurse over real files and emit basenames — release assets
+      # are uploaded flat, so `sha256sum -c SHA256SUMS` must match by filename only.
       - name: Generate SHA256SUMS
         working-directory: ./artifacts
         run: |
-          sha256sum * > SHA256SUMS
+          : > SHA256SUMS
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | while IFS= read -r -d '' f; do
+            sum=$(sha256sum "$f" | cut -d ' ' -f1)
+            printf '%s  %s\n' "$sum" "$(basename "$f")" >> SHA256SUMS
+          done
           cat SHA256SUMS
+          # Fail loudly if no artifacts were collected (upstream upload problem)
+          test -s SHA256SUMS
 
       # Same TAG derivation as the portable ZIP upload step:
       # workflow_dispatch uses inputs.version; tag push uses GITHUB_REF_NAME.
