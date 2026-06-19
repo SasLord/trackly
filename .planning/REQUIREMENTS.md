@@ -305,7 +305,7 @@
 | REQ-03 | Phase 6 | Complete |
 | REQ-04 | Phase 6 | Complete |
 | REQ-05 | Phase 6 | Complete |
-| REQ-06 | Phase 8 | Pending |
+| REQ-06 | Phase 9 | Deferred |
 | REQ-07 | Phase 6 | Complete |
 | RPT-01 | Phase 7 | Complete |
 | RPT-02 | Phase 7 | Complete |
@@ -322,11 +322,11 @@
 | USR-05 | Phase 5 | Complete |
 | USR-06 | Phase 5 | Complete |
 | USR-07 | Phase 5 | Complete |
-| USR-08 | Phase 8 | Pending |
-| USR-09 | Phase 8 | Pending |
-| USR-10 | Phase 8 | Pending |
-| USR-11 | Phase 8 | Pending |
-| USR-12 | Phase 8 | Pending |
+| USR-08 | Phase 9 | Deferred |
+| USR-09 | Phase 9 | Deferred |
+| USR-10 | Phase 9 | Deferred |
+| USR-11 | Phase 9 | Deferred |
+| USR-12 | Phase 9 | Deferred |
 | DASH-01 | Phase 7 | Complete |
 | DASH-02 | Phase 7 | Complete |
 | DASH-03 | Phase 7 | Complete |
@@ -341,7 +341,7 @@
 | SET-07 | Phase 7 | Complete |
 | SET-08 | Phase 5 | Complete |
 | SET-09 | Phase 7 | Complete |
-| SET-10 | Phase 8 | Pending |
+| SET-10 | Phase 9 | Deferred |
 | UI-01 | Phase 2 | Complete |
 | UI-02 | Phase 2 | Complete |
 | UI-03 | Phase 2 | Complete |
@@ -371,7 +371,8 @@
 | Phase 5 | USR-01..07, SRV-01..05, SET-08 | 13 |
 | Phase 6 | PRN-01..08, REQ-01..05, REQ-07 | 14 |
 | Phase 7 | RPT-01..08, DASH-01..05, SET-01..07, SET-09 | 22 |
-| Phase 8 | USR-08..12, REQ-06, SET-10, BLD-02..05 | 10 |
+| Phase 8 | BLD-02..05 | 4 |
+| Phase 9 (deferred) | USR-08..12, REQ-06, SET-10 | 7 |
 | **Total** | | **120** |
 
 **Coverage:**
@@ -383,4 +384,4 @@
 
 ---
 *Requirements defined: 2026-05-24*
-*Last updated: 2026-05-24 — Traceability заполнена gsd-roadmapper после создания ROADMAP.md*
+*Last updated: 2026-06-19 — Traceability: USR-08..12, REQ-06, SET-10 перенесены с Phase 8 на Phase 9 (AD-вход/регистрация/автоприём) после SPIDR-split 2026-06-18; Phase 8 теперь = только релизный пайплайн (BLD-02..05)*

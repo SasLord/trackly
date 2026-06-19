@@ -19,6 +19,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 6: Принтеры (SNMP-мониторинг) и Заявки** — Discovery, SNMP-опрос, Pantum hang detection (alert-only), браузер-портал заявок для сотрудников (gap-closure 06-07/06-08 закрыл дефекты заявок/discovery; human UAT 2026-06-15 — approved; status=verified, см. 06-VERIFICATION.md) (completed 2026-06-15)
 - [x] **Phase 7: Отчёты, Дашборд и Настройки** — Отчёты с группировкой по месяцам, виджеты дашборда, организация/логотип/бэкапы/шаблоны (completed 2026-06-16)
 - [x] **Phase 8: Релизный пайплайн (Windows/macOS/Linux)** — GitHub Actions Release matrix по push тега, NSIS + portable ZIP, .dmg, .AppImage/.deb, артефакты с SHA256-checksums, README на русском (completed 2026-06-19)
+- [ ] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (not planned)
 
 ## Phase Details
 
@@ -310,10 +311,21 @@ Plans:
 
 - [x] 08-02-PLAN.md — GitHub Actions release.yml: three-job pipeline (create-release → build matrix → checksums), portable ZIP assembly, SHA256SUMS (BLD-02, BLD-03, BLD-04)
 
+### Phase 9: AD-аутентификация и заявки на регистрацию пользователей
+
+**Goal:** Включить вход доменных пользователей через Active Directory (вынесено из Phase 8 при SPIDR-split 2026-06-18, чтобы тестировать на реальной Windows-машине в домене после релизного пайплайна): AD-логин через браузер, подтягивание ФИО из AD, заявки на регистрацию незарегистрированных AD-пользователей с подтверждением администратором и опциональным автоприёмом. Пароли AD НИКОГДА не сохраняются. Цель — авто-SSO, а не только `simple_bind` (см. память проекта `phase8_split_ad_sso`).
+**Mode:** mvp
+**Depends on:** Phase 8 (релизная Windows-сборка нужна для теста AD-входа в домене)
+**Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -325,6 +337,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
 | 8. Релизный пайплайн (Windows/macOS/Linux) | 2/2 | Complete    | 2026-06-19 |
+| 9. AD-аутентификация и заявки на регистрацию пользователей | 0/0 | Not planned | — |
 
 ## Coverage
 
