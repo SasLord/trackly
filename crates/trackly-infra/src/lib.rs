@@ -5,6 +5,7 @@
 //! migrations), `clock_impl.rs` (`SystemClock`), `error_conversions.rs`
 //! (free-fn маппинг I/O-ошибок в `AppError`), и `test_support/` helpers.
 
+pub mod ad;
 pub mod clock_impl;
 pub mod config;
 pub mod db;
