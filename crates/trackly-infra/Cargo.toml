@@ -29,3 +29,5 @@ zeroize = { workspace = true }
 async-trait = { workspace = true }
 snmp2 = { workspace = true }
 tempfile = { workspace = true }
+ldap3 = { version = "0.12.1", default-features = false, features = ["tls-rustls-ring"] }
+hickory-resolver = "0.26.1"

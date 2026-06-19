@@ -34,6 +34,13 @@ pub struct AppConfig {
     /// Параметры организации (timezone для UI; в БД всё в UTC).
     #[serde(default)]
     pub organization: OrganizationConfig,
+    /// Параметры Active Directory (Phase 9, D-AD-01). Bootstrap-only:
+    /// `enabled`/`use_mock` читаются отсюда, но live-настройки (вкл/выкл AD,
+    /// автоприём, host/domain/base_dn) администратор редактирует через
+    /// `app_settings` (plan 03 wires that) — TOML задаёт только дефолты на
+    /// первом запуске и dev-переключатель мока.
+    #[serde(default)]
+    pub ad: AdConfig,
 }
 
 /// `[server]` — параметры HTTP/LAN сервера.
@@ -110,6 +117,54 @@ impl Default for OrganizationConfig {
     fn default() -> Self {
         Self {
             timezone: "Europe/Moscow".to_string(),
+        }
+    }
+}
+
+/// `[ad]` — параметры Active Directory (Phase 9, D-AD-01 / D-Config-01).
+///
+/// Все поля, кроме `enabled`/`use_mock`/`port`/`name_attr`/`no_tls_verify`,
+/// допускаются пустыми — пустая строка означает «auto-detect» (см.
+/// `trackly_infra::ad::discovery`): `host`/`base_dn` выводятся из `domain`
+/// или из DNS SRV/env на домен-joined Windows-хосте.
+#[derive(Debug, Deserialize, Clone)]
+pub struct AdConfig {
+    /// Включить ли AD-вход. Live-источник истины — `app_settings`; это поле
+    /// — только bootstrap-дефолт на первом запуске.
+    pub enabled: bool,
+    /// Использовать `MockAdClient` вместо `RealAdClient` (D-Mock-01).
+    /// `TRACKLY_AD_MOCK` env var имеет приоритет при runtime-switch.
+    pub use_mock: bool,
+    /// Хост контроллера домена. Пусто → auto-detect (DNS SRV / env).
+    pub host: String,
+    /// Порт LDAPS. По умолчанию 636.
+    pub port: u16,
+    /// DNS-суффикс домена (например `corp.local`). Пусто → auto-detect
+    /// (`USERDNSDOMAIN`).
+    pub domain: String,
+    /// Base DN для LDAP-поиска (например `dc=corp,dc=local`). Пусто →
+    /// выводится из `domain` (`derive_base_dn`).
+    pub base_dn: String,
+    /// Имя атрибута для ФИО (D-Config-02). По умолчанию `displayName`,
+    /// fallback на `cn`, затем на логин.
+    pub name_attr: String,
+    /// Отключить проверку TLS-сертификата LDAPS (Pitfall 3). По умолчанию
+    /// `false` — включается явно только в «Расширенные» как небезопасный
+    /// opt-in для нестандартных сетей.
+    pub no_tls_verify: bool,
+}
+
+impl Default for AdConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            use_mock: false,
+            host: String::new(),
+            port: 636,
+            domain: String::new(),
+            base_dn: String::new(),
+            name_attr: "displayName".to_string(),
+            no_tls_verify: false,
         }
     }
 }
