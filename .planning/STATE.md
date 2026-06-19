@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: planning
-last_updated: "2026-06-19T12:13:34.289Z"
-last_activity: 2026-06-19
+last_updated: "2026-06-19T12:51:49.724Z"
+last_activity: 2026-06-19 — Milestone v1.1 started; reusing existing Phase 9 artifacts (lightweight new-milestone)
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 12
+  completed_phases: 11
+  total_plans: 64
+  completed_plans: 64
+  percent: 92
 ---
 
 # Project State
@@ -232,7 +232,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T12:06:08.528Z
-Stopped at: Phase 9 context gathered
+Last session: 2026-06-19T12:51:49.717Z
+Stopped at: Phase 9 UI-SPEC approved
 Resume file: 
-.planning/phases/09-ad/09-CONTEXT.md
+.planning/phases/09-ad/09-UI-SPEC.md
