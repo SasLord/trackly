@@ -1,3 +1,9 @@
+// Prevents an extra console window on Windows in release builds (GUI subsystem).
+// Debug builds keep the console so `tracing` stdout is visible during dev.
+// Logs always also go to ./logs/ next to the exe (portable discipline), so no
+// diagnostics are lost when the console is hidden.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! `trackly` binary — Phase 1 full ordered lifecycle (Plan 04).
 //!
 //! Ordering invariant (RESEARCH §Code Example 1 + Pitfall #1):
