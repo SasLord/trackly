@@ -23,3 +23,20 @@ plan/task and were NOT auto-fixed (per executor scope-boundary rule).
   `rcgen`/rustls cert-loading code from the Phase-7/8 HTTPS server-mode work).
 - **Action:** NOT fixed in this plan. Flagging for a future phase/plan that
   owns the server-mode TLS bring-up, or a standalone `/gsd-debug` session.
+
+## 09-02: `template_service.rs` clippy::len_zero under `--tests`
+
+- **Discovered during:** Plan 09-02, Task 2 verification
+  (`cargo clippy -p trackly-app --tests -- -D warnings`)
+- **Symptom:** Two `assert!(bytes.len() > 0, ...)` calls inside
+  `#[cfg(test)]` code in `crates/trackly-app/src/services/template_service.rs`
+  (lines 379, 430) trip `clippy::len_zero` — `-D warnings` turns it into a
+  build failure when running clippy with `--tests`.
+- **Verified pre-existing:** reproduced on `git stash` (no Phase 9 Plan 2
+  changes applied) — same two errors, same lines.
+- **Scope:** unrelated to AD auth. Plan 09-02's specified verification
+  command is `cargo clippy -p trackly-app -- -D warnings` (no `--tests`
+  flag), which IS clean — this only surfaces under `--tests`.
+- **Action:** NOT fixed in this plan (out of scope — pre-existing in a file
+  this plan does not touch). One-line fix for a future cleanup pass:
+  `bytes.len() > 0` → `!bytes.is_empty()` at both call sites.

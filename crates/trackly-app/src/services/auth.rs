@@ -177,6 +177,13 @@ impl AuthService {
     // -----------------------------------------------------------------------
 
     /// Получить хэш пароля для активного пользователя.
+    ///
+    /// `password_hash IS NOT NULL` исключает AD-only пользователей
+    /// (`password_hash = NULL`, см. V002 — "NULL for AD users (bind-only)").
+    /// Без этого условия `r.get::<_, String>(0)` вернул бы
+    /// `InvalidColumnType` для NULL вместо `QueryReturnedNoRows`, и AD
+    /// fallback в `try_local_login` никогда бы не сработал для AD-only
+    /// пользователей (Rule 1 fix, Phase 9 Plan 02).
     async fn get_password_hash(&self, login: &str) -> Result<String, AppError> {
         let readers = self.readers.clone();
         let login = login.to_string();
@@ -184,7 +191,8 @@ impl AuthService {
             let conn = readers.acquire();
             let result: rusqlite::Result<String> = conn.query_row(
                 "SELECT password_hash FROM users \
-                 WHERE login = ?1 AND deleted_at_utc IS NULL AND is_active = 1",
+                 WHERE login = ?1 AND deleted_at_utc IS NULL AND is_active = 1 \
+                   AND password_hash IS NOT NULL",
                 rusqlite::params![login],
                 |r| r.get(0),
             );
@@ -263,7 +271,9 @@ impl AuthService {
             return Ok(LocalLoginOutcome::BadPassword);
         }
 
-        self.get_by_login(&req.login).await.map(LocalLoginOutcome::Success)
+        self.get_by_login(&req.login)
+            .await
+            .map(LocalLoginOutcome::Success)
     }
 
     /// AD bind fallback (USR-08). Вызывается только когда локальный
@@ -283,7 +293,9 @@ impl AuthService {
         match outcome {
             AuthOutcome::BadCreds => Err(AppError::Unauthorized),
             AuthOutcome::Unreachable => Err(AppError::ServiceUnavailable { service: "ad" }),
-            AuthOutcome::Ok { display_name } => self.on_ad_bind_success(&req.login, &display_name).await,
+            AuthOutcome::Ok { display_name } => {
+                self.on_ad_bind_success(&req.login, &display_name).await
+            }
         }
     }
 
@@ -294,7 +306,11 @@ impl AuthService {
     /// полностью. Blocked/soft-deleted/unknown-в-БД ветки возвращают
     /// типизированную заглушку — write-пути (создание `ad_register`
     /// заявки на регистрацию/восстановление) реализуются в плане 09-03.
-    async fn on_ad_bind_success(&self, login: &str, display_name: &str) -> Result<UserDto, AppError> {
+    async fn on_ad_bind_success(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
             Some(_blocked_or_deleted) => {
@@ -380,7 +396,11 @@ impl AuthService {
     }
 
     /// Устанавливает `ad_auto_accept` в `app_settings`. Требует `ManageSettings`.
-    pub async fn set_ad_auto_accept(&self, enabled: bool, caller: &Identity) -> Result<(), AppError> {
+    pub async fn set_ad_auto_accept(
+        &self,
+        enabled: bool,
+        caller: &Identity,
+    ) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
         let value = if enabled { "1" } else { "0" };
         let now = self.clock.unix_seconds();
@@ -405,10 +425,7 @@ impl AuthService {
     ///
     /// Возвращает `None`, если такого login вообще нет в таблице `users`
     /// (включая soft-deleted записи — не путать с "найден, но deleted").
-    pub async fn find_user_any_state(
-        &self,
-        login: &str,
-    ) -> Result<Option<UserAnyState>, AppError> {
+    pub async fn find_user_any_state(&self, login: &str) -> Result<Option<UserAnyState>, AppError> {
         let readers = self.readers.clone();
         let login = login.to_string();
         tokio::task::spawn_blocking(move || -> Result<Option<UserAnyState>, AppError> {
