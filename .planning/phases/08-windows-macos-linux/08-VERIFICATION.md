@@ -1,7 +1,9 @@
 ---
 phase: 08-windows-macos-linux
 verified: 2026-06-19T00:00:00Z
-status: human_needed
+status: passed
+human_verification_completed: 2026-06-19
+human_verification_note: "Dry-run (workflow_dispatch version=0.1.0-test) green on real CI — all 3 OS builds + checksums; portable build runs cleanly on Win10 (console hidden after windows_subsystem fix). 5 real-run-only defects found & fixed in main. Tag-push trigger (#4) and per-OS installs (#5) deferred — see 08-HUMAN-UAT.md."
 score: 5/5 must-haves verified
 overrides_applied: 0
 re_verification: false
