@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-19T17:36:22.552Z"
+last_updated: "2026-06-19T18:11:29.616Z"
 last_activity: 2026-06-19
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 69
-  completed_plans: 66
+  completed_plans: 67
   percent: 92
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 09 (ad) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-06-19
 
@@ -106,6 +106,7 @@ Last activity: 2026-06-19
 | Phase 08 P02 | 1 | 3 tasks | 1 files |
 | Phase 09 P01 | 8min | 2 tasks | 9 files |
 | Phase 09 P02 | 75m | 2 tasks | 14 files |
+| Phase 09 P03 | 110m | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,9 @@ Recent decisions affecting current work:
 - [Phase 09]: AD fallback only on UnknownLogin (never BadPassword) — avoids a second enumeration oracle for known local logins
 - [Phase 09]: Added AppError::ServiceUnavailable{service} instead of reusing WriteQueueBusy — distinct infra-fault path for AD-unreachable
 - [Phase 09]: on_ad_bind_success scoped to active-user-only this plan; blocked/deleted/unknown branches are typed TODOs for plan 03
+- [Phase 09]: approve_ad_register completes the request directly (open->completed) via a manual optimistic-lock UPDATE, not RequestTransitionOp::Complete — that op's state machine requires in_progress as the source state
+- [Phase 09]: ad_register reject semantics check the target user's live is_active flag at reject time, not ad_subtype alone, to distinguish pending-discard from auto-accept-then-rejected
+- [Phase 09]: AppError::RegistrationPending/AccessBlocked map to HTTP 403, not 401 — AD bind succeeded, identity is known, just not yet admitted
 
 ### Pending Todos
 
@@ -238,7 +242,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T17:36:22.545Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-06-19T18:11:29.609Z
+Stopped at: Completed 09-03-PLAN.md
 Resume file: 
 None
