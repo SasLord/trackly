@@ -22,7 +22,7 @@ Trackly — портативное приложение для учёта тех
 
 — *Milestone v1.0 завершён (фазы 1–8). Ниже — milestone v1.1 (см. `.planning/MILESTONES.md`).* —
 
-- [ ] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (not planned)
+- [ ] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (planned — 5 plans, 5 waves)
 
 ## Phase Details
 
@@ -320,10 +320,31 @@ Plans:
 **Mode:** mvp
 **Depends on:** Phase 8 (релизная Windows-сборка нужна для теста AD-входа в домене)
 **Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
+**Wave 1**
+
+- [ ] 09-01-PLAN.md — AdClient port (trait + AuthOutcome, I/O-free core) + RealAdClient/MockAdClient/discovery (mirror SNMP triad) + AdConfig + ldap3/hickory deps; Wave 0 mock/empty-password/filter-escape/base-DN tests (USR-12)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 09-02-PLAN.md — AuthService local→AD login fallback (constant-time preserved) + find_user_any_state + ad_* app_settings readers + AppCtx mock/real switch + V028 ad_subtype migration (USR-08, USR-10)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 09-03-PLAN.md — Registration/restoration write paths: auto-accept vs pending modes + ad_register admin-only filter + approve-with-role + reject branching + restoration (USR-09, USR-11, SET-10, REQ-06)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 09-04-PLAN.md — DTO + transports: LoginRequest.remember + cookie policy + AdSettingsDto/approve DTO + axum & Tauri endpoints + bindings-phase9.ts (USR-08, USR-11, SET-10, REQ-06)
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 09-05-PLAN.md — UI vertical: login redesign (remember/hint/generic errors/reserved SSO) + Pending/Blocked screens + Active Directory settings tab + admin ad_register approve UI + docs/AD-SETUP.md + human-verify (USR-08/09/10/11, SET-10, REQ-06)
+
+**UI hint:** yes
 
 ## Progress
 
