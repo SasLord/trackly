@@ -127,9 +127,13 @@ jobs:
       # at the first match thanks to /r absent — first match replaces in place.
       - name: Extract version and inject into Cargo.toml + tauri.conf.json
         shell: bash
+        # INPUT_VERSION passed via env (not inline ${{ }}) to prevent shell injection:
+        # GitHub interpolates ${{ }} into the script text before bash runs (CR-01).
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
+            VERSION="$INPUT_VERSION"
           else
             VERSION="${GITHUB_REF_NAME#v}"
           fi
@@ -194,9 +198,10 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            TAG="v${{ github.event.inputs.version }}"
+            TAG="v$INPUT_VERSION"
           else
             TAG="$GITHUB_REF_NAME"
           fi
@@ -251,9 +256,10 @@ jobs:
       - name: Upload SHA256SUMS to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            TAG="v${{ github.event.inputs.version }}"
+            TAG="v$INPUT_VERSION"
           else
             TAG="$GITHUB_REF_NAME"
           fi
