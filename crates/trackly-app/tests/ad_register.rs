@@ -206,7 +206,9 @@ async fn pending_creates_inactive_user_and_request() {
     assert_eq!(status, "open");
 
     // Second login attempt while still pending must again return
-    // RegistrationPending (not create a duplicate session, not crash).
+    // RegistrationPending (not AccessBlocked — that subtype is for
+    // blocked/soft-deleted users, not a never-yet-approved registration),
+    // reusing the SAME open request rather than creating a second one.
     let result2 = svc
         .login(LoginRequest {
             login: "us200".to_string(),
@@ -214,10 +216,38 @@ async fn pending_creates_inactive_user_and_request() {
             remember: false,
         })
         .await;
-    assert!(
-        matches!(result2, Err(AppError::AccessBlocked { .. }))
-            || matches!(result2, Err(AppError::RegistrationPending { .. })),
-        "повторный bind для pending-пользователя не должен выдавать сессию, получили {result2:?}"
+    let request_id2 = match result2 {
+        Err(AppError::RegistrationPending { request_id }) => request_id,
+        other => panic!(
+            "повторный bind для pending-пользователя должен вернуть \
+             RegistrationPending (не {other:?}) — пользователь ещё не \
+             одобрен, это не restore-сценарий"
+        ),
+    };
+    assert_eq!(
+        request_id2, request_id,
+        "повторный bind должен вернуть ID той же открытой заявки на регистрацию"
+    );
+
+    // Exactly ONE open ad_register request must exist for this user — no
+    // duplicate "restore" request alongside the original "register" one.
+    let readers3 = svc.readers.clone();
+    let open_count: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers3.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests \
+             WHERE request_type = 'ad_register' AND status = 'open' \
+               AND requested_by_user_id = (SELECT id FROM users WHERE login = 'us200')",
+            [],
+            |r| r.get(0),
+        )
+        .expect("count open ad_register requests")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(
+        open_count, 1,
+        "должна существовать ровно ОДНА открытая заявка после двух bind-попыток pending-пользователя"
     );
 }
 

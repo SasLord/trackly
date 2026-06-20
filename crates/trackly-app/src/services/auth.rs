@@ -111,6 +111,14 @@ pub struct UserAnyState {
     pub role: String,
     pub is_active: bool,
     pub deleted: bool,
+    /// `true` если есть открытая заявка `ad_register`/`ad_subtype='register'`
+    /// для этого пользователя — значит, регистрация ещё ни разу не была
+    /// одобрена (pending). Отличает "pending" (`is_active=0`, никогда не
+    /// активировался) от "blocked" (`is_active=0`, но был одобрен/активен
+    /// ранее и затем заблокирован админом) — обе ветки имеют одинаковые
+    /// `is_active=false, deleted=false`, но требуют разной обработки в
+    /// `on_ad_bind_success` (09-AD-GAPS, lower-priority item).
+    pub has_open_register_request: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +331,22 @@ impl AuthService {
     ) -> Result<UserDto, AppError> {
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
+            // Pending registration (never approved yet): `is_active=0`,
+            // NOT soft-deleted, AND an open 'register'-subtype request still
+            // exists — distinct from blocked (also `is_active=0`, not
+            // deleted, but WAS approved/active before being blocked by an
+            // admin: that user has no open 'register' request because it
+            // was completed at approval time). Re-attempting login here must
+            // stay on the registration-pending path (reuse the existing
+            // 'register' request), not be routed into create_restore_request,
+            // which would create a SECOND ('restore'-subtype) request for a
+            // user who was never approved in the first place.
+            Some(pending)
+                if !pending.is_active && !pending.deleted && pending.has_open_register_request =>
+            {
+                self.reuse_or_create_pending_registration(pending.id, login, display_name)
+                    .await
+            }
             Some(blocked_or_deleted) => {
                 self.create_restore_request(blocked_or_deleted.id, login, display_name)
                     .await
@@ -335,6 +359,90 @@ impl AuthService {
                 }
             }
         }
+    }
+
+    /// Re-attempted bind for a user already in the pending-registration
+    /// state (`is_active=0`, not soft-deleted, an open `ad_register`/
+    /// `ad_subtype='register'` request already exists for them).
+    ///
+    /// Reuses the existing open request instead of calling
+    /// `create_pending_registration` (which always INSERTs a new `users`
+    /// row — wrong here, the row already exists) or `create_restore_request`
+    /// (wrong subtype — this user was never approved, there is nothing to
+    /// "restore").
+    async fn reuse_or_create_pending_registration(
+        &self,
+        existing_user_id: i64,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let display_name_owned = display_name.to_string();
+        let login_owned = login.to_string();
+
+        let (request_id, reused) = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                let existing: Option<i64> = tx
+                    .query_row(
+                        "SELECT id FROM requests \
+                         WHERE request_type = 'ad_register' AND ad_subtype = 'register' \
+                           AND requested_by_user_id = ?1 AND status = 'open' \
+                           AND deleted_at_utc IS NULL",
+                        rusqlite::params![existing_user_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+
+                if let Some(request_id) = existing {
+                    tx.commit().map_err(map_rusqlite)?;
+                    return Ok((request_id, true));
+                }
+
+                // Defensive fallback: user is pending but somehow has no
+                // open 'register' request (shouldn't happen via normal
+                // flow, but don't leave the user stuck with no request).
+                tx.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, description, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('ad_register', 'open', ?1, ?2, 'register', ?3, ?3, 1)",
+                    rusqlite::params![existing_user_id, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let request_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('request', ?1, 'create', ?2, NULL, NULL, ?3, ?4)",
+                    rusqlite::params![
+                        request_id,
+                        existing_user_id,
+                        serde_json::json!({ "login": login_owned }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok((request_id, false))
+            })
+            .await?;
+
+        if !reused {
+            let _ = self.ws_tx.send(WsEvent::NewRequest {
+                request_id,
+                request_type: "ad_register".to_string(),
+                requester_name: display_name.to_string(),
+            });
+        }
+
+        Err(AppError::RegistrationPending { request_id })
     }
 
     /// auto-accept ON, unknown AD user (USR-11/SET-10): создаёт активного
@@ -688,17 +796,25 @@ impl AuthService {
         tokio::task::spawn_blocking(move || -> Result<Option<UserAnyState>, AppError> {
             let conn = readers.acquire();
             let result = conn.query_row(
-                "SELECT id, role, is_active, deleted_at_utc IS NOT NULL AS deleted \
-                 FROM users WHERE login = ?1",
+                "SELECT u.id, u.role, u.is_active, u.deleted_at_utc IS NOT NULL AS deleted, \
+                        EXISTS ( \
+                            SELECT 1 FROM requests r \
+                            WHERE r.request_type = 'ad_register' AND r.ad_subtype = 'register' \
+                              AND r.requested_by_user_id = u.id AND r.status = 'open' \
+                              AND r.deleted_at_utc IS NULL \
+                        ) AS has_open_register_request \
+                 FROM users u WHERE u.login = ?1",
                 rusqlite::params![login],
                 |row| {
                     let is_active_i64: i64 = row.get(2)?;
                     let deleted_i64: i64 = row.get(3)?;
+                    let has_open_register_i64: i64 = row.get(4)?;
                     Ok(UserAnyState {
                         id: row.get(0)?,
                         role: row.get(1)?,
                         is_active: is_active_i64 != 0,
                         deleted: deleted_i64 != 0,
+                        has_open_register_request: has_open_register_i64 != 0,
                     })
                 },
             );
