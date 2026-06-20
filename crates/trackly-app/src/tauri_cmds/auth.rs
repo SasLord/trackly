@@ -7,7 +7,10 @@
 //! `#[specta::specta]` ПОСЛЕ `#[tauri::command]` — требование tauri-specta v2 rc.21.
 
 use crate::context::AppCtx;
-use crate::dto::auth::{AuthStatusDto, LoginRequest, NetworkSettingsDto, ServerStatusDto, UserDto};
+use crate::dto::auth::{
+    AdSettingsDto, AuthStatusDto, LoginRequest, NetworkSettingsDto, ServerStatusDto, UserDto,
+};
+use crate::http::auth::SetAdPayload;
 use crate::http::settings::NetworkPatch;
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
 use crate::server::tls;
@@ -325,4 +328,63 @@ pub async fn settings_get_network(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<NetworkSettingsDto, AppError> {
     build_settings_get_network_tauri(state.inner()).await
+}
+
+/// Tauri-вариант чтения настроек AD: live (`enabled`/`auto_accept`) +
+/// read-only bootstrap (`host`/.../`no_tls_verify` из `ctx.config.ad`).
+///
+/// Зеркалит `build_settings_get_ad` (HTTP), но caller определяется через
+/// `resolve_tauri_identity` вместо session (Phase 9 Plan 04).
+pub async fn build_settings_get_ad_tauri(ctx: &AppCtx) -> Result<AdSettingsDto, AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    let enabled = ctx.auth.ad_enabled().await?;
+    let auto_accept = ctx.auth.ad_auto_accept().await?;
+    let ad_config = &ctx.config.ad;
+
+    Ok(AdSettingsDto {
+        enabled,
+        auto_accept,
+        host: ad_config.host.clone(),
+        port: ad_config.port as i64,
+        domain: ad_config.domain.clone(),
+        base_dn: ad_config.base_dn.clone(),
+        name_attr: ad_config.name_attr.clone(),
+        no_tls_verify: ad_config.no_tls_verify,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get_ad(state: tauri::State<'_, AppCtx>) -> Result<AdSettingsDto, AppError> {
+    build_settings_get_ad_tauri(state.inner()).await
+}
+
+/// Tauri-вариант сохранения `enabled`/`auto_accept` (live AD toggle).
+///
+/// Подключение (host/port/domain/...) read-only — не редактируется здесь
+/// (см. doc-comment `SetAdPayload` в http/auth.rs).
+pub async fn build_settings_set_ad_tauri(
+    ctx: &AppCtx,
+    payload: SetAdPayload,
+) -> Result<(), AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    ctx.auth.set_ad_enabled(payload.enabled, &caller).await?;
+    ctx.auth
+        .set_ad_auto_accept(payload.auto_accept, &caller)
+        .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_set_ad(
+    state: tauri::State<'_, AppCtx>,
+    payload: SetAdPayload,
+) -> Result<(), AppError> {
+    build_settings_set_ad_tauri(state.inner(), payload).await
 }

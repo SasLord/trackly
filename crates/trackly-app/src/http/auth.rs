@@ -12,11 +12,11 @@ use axum::{extract::State, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 
-use trackly_core::auth::{Identity, Role};
+use trackly_core::auth::{Action, Identity, Role};
 use trackly_core::error::AppError;
 
 use crate::context::AppCtx;
-use crate::dto::auth::{AuthStatusDto, LoginRequest, UserDto};
+use crate::dto::auth::{AdSettingsDto, AuthStatusDto, LoginRequest, UserDto};
 use crate::error_axum::AppErrorResponse;
 
 // ---------------------------------------------------------------------------
@@ -184,6 +184,72 @@ pub async fn build_auth_status(ctx: &AppCtx, session: Session) -> Result<AuthSta
     })
 }
 
+/// Тело запроса POST /api/v1/settings_set_ad — общий тип для HTTP body
+/// и Tauri command param (зеркалирует `NetworkPatch` в http/settings.rs).
+///
+/// Только `enabled`/`auto_accept` доступны для записи (live `app_settings`,
+/// ManageSettings-gated). `host`/`port`/`domain`/`base_dn`/`name_attr`/
+/// `no_tls_verify` — read-only TOML bootstrap config (`ctx.config.ad`),
+/// зеркалирует архитектуру `AdSettingsDto` (см. doc-comment в dto/auth.rs).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAdPayload {
+    pub enabled: bool,
+    pub auto_accept: bool,
+}
+
+/// Вернуть текущие настройки AD: live (`enabled`/`auto_accept` из
+/// `app_settings`) + read-only bootstrap (`host`/`port`/.../`no_tls_verify`
+/// из `trackly.config.toml`).
+///
+/// **Безопасность (T-09-15):** require ManageSettings — только admin.
+pub async fn build_settings_get_ad(
+    ctx: &AppCtx,
+    session: &Session,
+) -> Result<AdSettingsDto, AppError> {
+    let caller = session_identity(session).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    let enabled = ctx.auth.ad_enabled().await?;
+    let auto_accept = ctx.auth.ad_auto_accept().await?;
+    let ad_config = &ctx.config.ad;
+
+    Ok(AdSettingsDto {
+        enabled,
+        auto_accept,
+        host: ad_config.host.clone(),
+        port: ad_config.port as i64,
+        domain: ad_config.domain.clone(),
+        base_dn: ad_config.base_dn.clone(),
+        name_attr: ad_config.name_attr.clone(),
+        no_tls_verify: ad_config.no_tls_verify,
+    })
+}
+
+/// Сохранить `enabled`/`auto_accept` в `app_settings` (live AD toggle).
+///
+/// Подключение (host/port/domain/...) НЕ редактируется через этот endpoint —
+/// оно read-only bootstrap config (см. `SetAdPayload` doc-comment).
+///
+/// **Безопасность (T-09-15):** require ManageSettings — только admin.
+/// Неаутентифицированный caller получает 401 от session_identity;
+/// non-admin caller получает 403 от authorize.
+pub async fn build_settings_set_ad(
+    ctx: &AppCtx,
+    session: &Session,
+    payload: SetAdPayload,
+) -> Result<(), AppError> {
+    let caller = session_identity(session).await?;
+    trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
+
+    ctx.auth.set_ad_enabled(payload.enabled, &caller).await?;
+    ctx.auth
+        .set_ad_auto_accept(payload.auto_accept, &caller)
+        .await?;
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -229,6 +295,28 @@ pub async fn handler_status(
     ))
 }
 
+pub async fn handler_get_ad(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<AdSettingsDto>, AppErrorResponse> {
+    Ok(Json(
+        build_settings_get_ad(&ctx, &session)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_set_ad(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<SetAdPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    build_settings_set_ad(&ctx, &session, payload)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
+}
+
 // ---------------------------------------------------------------------------
 // Routers
 // ---------------------------------------------------------------------------
@@ -240,9 +328,11 @@ pub fn public_router() -> Router<AppCtx> {
         .route("/api/v1/auth_status", post(handler_status))
 }
 
-/// Защищённые маршруты (за session middleware): logout, me.
+/// Защищённые маршруты (за session middleware): logout, me, AD settings.
 pub fn protected_router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/auth_logout", post(handler_logout))
         .route("/api/v1/auth_me", post(handler_me))
+        .route("/api/v1/settings_get_ad", post(handler_get_ad))
+        .route("/api/v1/settings_set_ad", post(handler_set_ad))
 }
