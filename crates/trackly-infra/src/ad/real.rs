@@ -46,6 +46,16 @@ impl RealAdClient {
     }
 }
 
+/// Build the user-search filter, escaping the login first (Pitfall 5 /
+/// T-ldap-inj): LDAP filter metacharacters (`(`, `)`, `*`, `\`, NUL) in a
+/// user-supplied login MUST be escaped before interpolation so a crafted
+/// login cannot inject filter clauses. Extracted as a pure fn so the exact
+/// production path is unit-testable without a live LDAPS connection.
+fn build_user_search_filter(login: &str) -> String {
+    let safe_login = ldap_escape(login);
+    format!("(|(sAMAccountName={safe_login})(userPrincipalName={safe_login}))")
+}
+
 #[async_trait]
 impl AdClient for RealAdClient {
     async fn authenticate(
@@ -87,9 +97,9 @@ impl AdClient for RealAdClient {
         }
 
         // Bound OK — search the user's own entry for the display name.
-        // Pitfall 5: escape the login before interpolating into the filter.
-        let safe_login = ldap_escape(login);
-        let filter = format!("(|(sAMAccountName={safe_login})(userPrincipalName={safe_login}))");
+        // Pitfall 5: escape the login before interpolating into the filter
+        // (see `build_user_search_filter`).
+        let filter = build_user_search_filter(login);
         let attrs = vec![self.cfg.name_attr.as_str(), "cn"];
 
         let display_name = match ldap
@@ -161,5 +171,83 @@ impl AdClient for RealAdClient {
         Ok(AuthOutcome::Ok {
             display_name: String::new(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Pitfall 5 / T-ldap-inj: the login is escaped before it is interpolated
+    // into the LDAP search filter. These tests exercise the SAME function the
+    // production `authenticate` path calls, so no live LDAPS connection is
+    // needed to prove the injection guard holds.
+
+    #[test]
+    fn benign_login_builds_expected_filter() {
+        // A plain login has no metacharacters, so it passes through unchanged
+        // and appears in both the sAMAccountName and userPrincipalName branches.
+        assert_eq!(
+            build_user_search_filter("us100"),
+            "(|(sAMAccountName=us100)(userPrincipalName=us100))"
+        );
+    }
+
+    #[test]
+    fn injection_payload_metacharacters_are_escaped() {
+        // Classic LDAP filter-injection payload: without escaping, the raw
+        // `)(` / `*` would close our clause and inject an attacker-controlled
+        // filter. ldap_escape encodes `(`→\28, `)`→\29, `*`→\2a (RFC 4515).
+        let payload = "*)(uid=*))(|(uid=*";
+        let filter = build_user_search_filter(payload);
+
+        // No raw filter metacharacter from the payload survives — the only `(`,
+        // `)`, `*` left in the string are our own structural ones. (The raw
+        // payload had `*`; after escaping there must be zero literal `*`.)
+        assert!(
+            !filter.contains('*'),
+            "no raw `*` may survive escaping: {filter}"
+        );
+        assert!(
+            !filter.contains(payload),
+            "raw payload must not appear verbatim: {filter}"
+        );
+        // Escaped forms are present instead (RFC 4515: `*`→\2a, `(`→\28, `)`→\29).
+        assert!(
+            filter.contains("\\2a"),
+            "`*` must be escaped to \\2a: {filter}"
+        );
+        assert!(
+            filter.contains("\\28"),
+            "`(` must be escaped to \\28: {filter}"
+        );
+        assert!(
+            filter.contains("\\29"),
+            "`)` must be escaped to \\29: {filter}"
+        );
+
+        // The filter still has exactly our two intended attribute clauses and
+        // the single leading OR — the payload could not add another `(|`.
+        assert!(filter.starts_with("(|(sAMAccountName="));
+        assert_eq!(
+            filter.matches("(|").count(),
+            1,
+            "no injected OR clause: {filter}"
+        );
+    }
+
+    #[test]
+    fn backslash_in_login_is_escaped() {
+        // A backslash (e.g. DOMAIN\user typed into the search position) must be
+        // escaped to \5c so it cannot start an escape sequence of its own.
+        let filter = build_user_search_filter("dom\\ain");
+        assert!(
+            !filter.contains("dom\\ain"),
+            "raw backslash must not survive: {filter}"
+        );
+        assert!(
+            filter.contains("\\5c"),
+            "`\\` must be escaped to \\5c: {filter}"
+        );
     }
 }
