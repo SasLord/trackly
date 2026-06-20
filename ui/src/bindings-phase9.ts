@@ -89,3 +89,17 @@ export type ApproveAdRegisterDto = {
  * `on_ad_bind_success`, no dedicated endpoint).
  */
 export type RequestDtoAdSubtype = 'register' | 'restore' | null;
+
+/**
+ * `ad_test_connection` (Phase 9 gap-closure) — POST /api/v1/ad_test_connection
+ * + Tauri `ad_test_connection`. No request body, no response payload: success
+ * is `void` (HTTP 200 / Tauri `Ok(())`), failure is the standard `AppError`
+ * envelope (`code: "SERVICE_UNAVAILABLE"` when AD is unreachable).
+ *
+ * Verifies AD server reachability WITHOUT any end-user credentials (LDAPS
+ * connect + anonymous bind, see `AdClient::test_connection` in
+ * crates/trackly-core/src/ports/ad.rs). ManageSettings-gated, same as
+ * `settings_set_ad` — only an admin can trigger it.
+ *
+ * Call via `apiCall<void>('ad_test_connection', {})`.
+ */

@@ -22,6 +22,8 @@
   });
 
   let saving = $state(false);
+  let testing = $state(false);
+  let testResult = $state<{ ok: boolean; message: string } | null>(null);
 
   async function loadSettings() {
     try {
@@ -57,6 +59,25 @@
       pushToast('error', msg);
     } finally {
       saving = false;
+    }
+  }
+
+  async function testConnection() {
+    testing = true;
+    testResult = null;
+    try {
+      await apiCall<void>('ad_test_connection', {});
+      testResult = { ok: true, message: 'Подключение успешно' };
+      pushToast('success', 'Подключение к Active Directory успешно');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'AD недоступен';
+      testResult = { ok: false, message: msg };
+      pushToast('error', msg);
+    } finally {
+      testing = false;
     }
   }
 </script>
@@ -169,8 +190,21 @@
       <Button variant="primary" loading={saving} onclick={saveSettings}>
         Сохранить настройки
       </Button>
-      <Button variant="secondary" disabled>Проверить подключение</Button>
-      <span class="save-hint">Доступно после сохранения</span>
+      <Button
+        variant="secondary"
+        loading={testing}
+        disabled={!settings.enabled || saving}
+        onclick={testConnection}
+      >
+        Проверить подключение
+      </Button>
+      {#if !settings.enabled}
+        <span class="save-hint">Включите Active Directory, чтобы проверить подключение</span>
+      {:else if testResult}
+        <span class="save-hint" class:is-success={testResult.ok} class:is-error={!testResult.ok}>
+          {testResult.ok ? 'Подключение успешно' : testResult.message}
+        </span>
+      {/if}
     </div>
   </section>
 </div>
@@ -317,5 +351,13 @@
   .save-hint {
     font-size: var(--font-size-label);
     color: var(--color-text-muted);
+
+    &.is-success {
+      color: var(--color-success);
+    }
+
+    &.is-error {
+      color: var(--color-destructive);
+    }
   }
 </style>
