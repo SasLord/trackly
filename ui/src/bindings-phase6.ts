@@ -105,6 +105,12 @@ export type RequestDto = {
   updatedAtUtc: number;
   deletedAtUtc: number | null;
   version: number;
+  /**
+   * Phase 9 (V028 migration): "register" | "restore" | null — only set when
+   * `requestType === 'ad_register'`. See bindings-phase9.ts
+   * RequestDtoAdSubtype doc-comment.
+   */
+  adSubtype: 'register' | 'restore' | null;
 };
 
 /**

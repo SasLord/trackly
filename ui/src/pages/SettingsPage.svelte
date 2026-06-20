@@ -5,6 +5,7 @@
   import BackupSettings from '../features/settings/BackupSettings.svelte';
   import ThresholdSettings from '../features/settings/ThresholdSettings.svelte';
   import TemplateEditor from '../features/settings/TemplateEditor.svelte';
+  import ActiveDirectorySettings from '../features/settings/ActiveDirectorySettings.svelte';
   import SettingsSubNav from '../features/settings/SettingsSubNav.svelte';
 
   // GAP-S2: track active subsection; default to 'network' (first tab)
@@ -38,6 +39,9 @@
     {:else if activeSection === 'templates'}
       <!-- Шаблоны документов (SET-09) — full-width -->
       <TemplateEditor />
+    {:else if activeSection === 'ad'}
+      <!-- Active Directory (SET-10) -->
+      <ActiveDirectorySettings />
     {/if}
   </div>
 </div>

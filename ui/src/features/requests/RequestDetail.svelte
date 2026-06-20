@@ -7,12 +7,15 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
+  import Select from '$lib/components/Select.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { apiCall } from '$lib/api/client';
   import { requests } from './api';
   import type { RequestDto } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
+  import type { AdSettingsDto, ApproveAdRegisterDto } from '../../bindings-phase9';
 
   interface Props {
     request: RequestDto | null;
@@ -33,10 +36,37 @@
   let historyEntries = $state<RequestHistoryEntry[]>([]);
   let historyLoading = $state(false);
 
+  // ad_register approval modal state (Screen 5b, D-REG-02: role defaults to employee).
+  let approveModalOpen = $state(false);
+  let approveRole = $state('employee');
+  let approveSubmitting = $state(false);
+
+  // Current AD registration mode — only used to pick the correct reject
+  // confirmation copy (auto-accept implies the user already has access and
+  // reject must soft-delete; pending implies reject simply discards). The
+  // backend is authoritative regardless of what this flag shows.
+  let adAutoAccept = $state(false);
+
   // Derived visibility — specialist/admin maps to manager/admin in the actual UserRole type.
   const isSpecialist = $derived(
     identity?.role === 'admin' || identity?.role === 'manager',
   );
+
+  // ad_register requests are admin-only (REQ-06, T-09-21) — manager cannot act on them.
+  const isAdmin = $derived(identity?.role === 'admin');
+  const isAdRegister = $derived(request?.requestType === 'ad_register');
+  const isAdRestore = $derived(isAdRegister && request?.adSubtype === 'restore');
+
+  $effect(() => {
+    if (!isAdRegister) return;
+    apiCall<AdSettingsDto>('settings_get_ad', {})
+      .then((s) => {
+        adAutoAccept = s.auto_accept;
+      })
+      .catch(() => {
+        // Non-fatal — falls back to pending-mode copy.
+      });
+  });
 
   type BadgeVariant = 'success' | 'accent' | 'warning' | 'default';
 
@@ -67,9 +97,11 @@
   const typeLabel = $derived(
     !request
       ? ''
-      : request.requestType === 'cartridge_replace'
-        ? 'Замена картриджа'
-        : 'Свободная форма',
+      : request.requestType === 'ad_register'
+        ? 'Регистрация AD'
+        : request.requestType === 'cartridge_replace'
+          ? 'Замена картриджа'
+          : 'Свободная форма',
   );
 
   // Load history when request changes
@@ -180,7 +212,16 @@
         version: request.version,
         notes: rejectNotes.trim() || null,
       });
-      pushToast('success', 'Заявка отклонена');
+      pushToast(
+        'success',
+        isAdRegister
+          ? isAdRestore
+            ? 'Доступ останется закрытым'
+            : adAutoAccept
+              ? 'Пользователь удалён'
+              : 'Заявка отклонена'
+          : 'Заявка отклонена',
+      );
       rejectModalOpen = false;
       rejectNotes = '';
       onTransition();
@@ -194,6 +235,63 @@
       rejectSubmitting = false;
     }
   }
+
+  // --- ad_register approval (Screen 5b, D-REG-02/D-REG-03) ---
+
+  function openApproveModal() {
+    approveRole = 'employee';
+    approveModalOpen = true;
+  }
+
+  async function handleApproveConfirm() {
+    if (!request || approveSubmitting) return;
+    approveSubmitting = true;
+    try {
+      const dto: ApproveAdRegisterDto = {
+        requestId: request.id,
+        version: request.version,
+        role: approveRole,
+      };
+      await requests.approveAdRegister(dto);
+      pushToast('success', isAdRestore ? 'Доступ восстановлен' : 'Пользователь подтверждён');
+      approveModalOpen = false;
+      onTransition();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось выполнить операцию. Повторите попытку.';
+      pushToast('error', msg);
+    } finally {
+      approveSubmitting = false;
+    }
+  }
+
+  // Reject confirm-modal copy depends on ad_register subtype + mode (UI-SPEC
+  // Destructive table). Backend enforces the actual behavior regardless.
+  const rejectModalTitle = $derived(
+    !isAdRegister
+      ? 'Отклонить заявку?'
+      : isAdRestore
+        ? 'Отклонить восстановление?'
+        : adAutoAccept
+          ? 'Отклонить и удалить пользователя?'
+          : 'Отклонить заявку?',
+  );
+
+  const rejectModalBody = $derived(
+    !isAdRegister
+      ? 'Заявка будет закрыта без выполнения. Укажите причину в комментарии.'
+      : isAdRestore
+        ? 'Доступ останется закрытым.'
+        : adAutoAccept
+          ? 'Пользователь уже создан автоматически. Отклонение удалит его учётную запись и закроет доступ.'
+          : 'Заявка на регистрацию будет отклонена, пользователь не получит доступ.',
+  );
+
+  const rejectModalButtonLabel = $derived(
+    isAdRegister && !isAdRestore && adAutoAccept ? 'Удалить пользователя' : 'Отклонить',
+  );
 
   // REQ-05: «Установить картридж» handler — called when OperationModal succeeds.
   // We then complete the request, linking the installed cartridge.
@@ -256,7 +354,22 @@
     <section class="section">
       <h3 class="section-heading">Информация</h3>
       <div class="fields-grid">
-        {#if request.requestType === 'cartridge_replace'}
+        {#if request.requestType === 'ad_register'}
+          <div class="field">
+            <span class="field-label">ФИО</span>
+            <span class="field-value">{request.description ?? request.requesterName ?? '—'}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Логин</span>
+            <span class="field-value">{request.requesterName ?? '—'}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">Тип</span>
+            <span class="field-value">
+              {isAdRestore ? 'Восстановление доступа' : 'Регистрация'}
+            </span>
+          </div>
+        {:else if request.requestType === 'cartridge_replace'}
           <div class="field">
             <span class="field-label">Принтер</span>
             <span class="field-value">{request.printerName ?? '—'}</span>
@@ -284,8 +397,32 @@
       </div>
     </section>
 
-    <!-- Lifecycle кнопки (только specialist/admin) -->
-    {#if isSpecialist}
+    <!-- ad_register действия (только admin, REQ-06/T-09-21) -->
+    {#if isAdRegister}
+      {#if isAdmin}
+        <section class="section">
+          {#if request.status === 'open'}
+            <div class="actions">
+              <Button variant="primary" onclick={openApproveModal}>Подтвердить</Button>
+              <Button
+                variant="destructive"
+                onclick={() => {
+                  rejectNotes = '';
+                  rejectModalOpen = true;
+                }}
+              >
+                Отклонить
+              </Button>
+            </div>
+          {:else if request.resolutionNotes}
+            <div class="resolution">
+              <span class="field-label">Комментарий</span>
+              <span class="field-value">{request.resolutionNotes}</span>
+            </div>
+          {/if}
+        </section>
+      {/if}
+    {:else if isSpecialist}
       <section class="section">
         {#if request.status === 'open'}
           <!-- open: Принять в работу / Отклонить -->
@@ -391,8 +528,8 @@
 </div>
 
 <!-- Confirm-modal «Отклонить» -->
-<Modal open={rejectModalOpen} title="Отклонить заявку?" onClose={() => (rejectModalOpen = false)}>
-  <p class="confirm-body">Заявка будет закрыта без выполнения. Укажите причину в комментарии.</p>
+<Modal open={rejectModalOpen} title={rejectModalTitle} onClose={() => (rejectModalOpen = false)}>
+  <p class="confirm-body">{rejectModalBody}</p>
   <div class="field" style="margin-top: var(--space-md);">
     <label class="label" for="reject-notes">Комментарий специалиста</label>
     <Textarea
@@ -405,10 +542,38 @@
   {#snippet footer()}
     <Button variant="secondary" onclick={() => (rejectModalOpen = false)}>Отмена</Button>
     <Button variant="destructive" loading={rejectSubmitting} onclick={handleRejectConfirm}>
-      Отклонить
+      {rejectModalButtonLabel}
     </Button>
   {/snippet}
 </Modal>
+
+<!-- Approval modal (Screen 5b, D-REG-02) -->
+{#if request !== null}
+  <Modal
+    open={approveModalOpen}
+    title={isAdRestore ? 'Восстановить доступ' : 'Подтвердить регистрацию'}
+    onClose={() => (approveModalOpen = false)}
+  >
+    <p class="confirm-body">
+      Пользователь {request.description ?? request.requesterName ?? ''} получит доступ к системе с
+      выбранной ролью.
+    </p>
+    <div class="field" style="margin-top: var(--space-md);">
+      <label class="label" for="approve-role">Роль</label>
+      <Select value={approveRole} id="approve-role" onchange={(v) => (approveRole = v)}>
+        <option value="employee">Сотрудник</option>
+        <option value="manager">Специалист</option>
+        <option value="admin">Администратор</option>
+      </Select>
+    </div>
+    {#snippet footer()}
+      <Button variant="secondary" onclick={() => (approveModalOpen = false)}>Отмена</Button>
+      <Button variant="primary" loading={approveSubmitting} onclick={handleApproveConfirm}>
+        Подтвердить
+      </Button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <!-- REQ-05: OperationModal для «Установить картридж» -->
 {#if request !== null}

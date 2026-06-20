@@ -36,14 +36,25 @@
   );
 
   const typeLabel = $derived(
-    request.requestType === 'cartridge_replace' ? 'Замена картриджа' : 'Свободная форма',
+    request.requestType === 'ad_register'
+      ? 'Регистрация AD'
+      : request.requestType === 'cartridge_replace'
+        ? 'Замена картриджа'
+        : 'Свободная форма',
   );
 
-  // Краткое описание: для cartridge_replace — принтер, для free_form — description (truncated)
+  // D-REG-03: restore variant of ad_register — distinct chip from first-time register.
+  const isAdRestore = $derived(
+    request.requestType === 'ad_register' && request.adSubtype === 'restore',
+  );
+
+  // Краткое описание: ad_register — запрошенное ФИО; cartridge_replace — принтер; free_form — description (truncated)
   const shortDesc = $derived(
-    request.requestType === 'cartridge_replace'
-      ? (request.printerName ?? 'Принтер не указан')
-      : (request.description ?? ''),
+    request.requestType === 'ad_register'
+      ? (request.description ?? request.requesterName ?? '')
+      : request.requestType === 'cartridge_replace'
+        ? (request.printerName ?? 'Принтер не указан')
+        : (request.description ?? ''),
   );
 
   // Относительная дата
@@ -80,6 +91,11 @@
     <span class="type-badge">
       <Badge variant="default" size="sm">{typeLabel}</Badge>
     </span>
+    {#if isAdRestore}
+      <span class="type-badge">
+        <Badge variant="warning" size="sm">Восстановление доступа</Badge>
+      </span>
+    {/if}
     <span class="desc">{shortDesc}</span>
     <span class="status-badge">
       <Badge variant={statusVariant}>{statusLabel}</Badge>

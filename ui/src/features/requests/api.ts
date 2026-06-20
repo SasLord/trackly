@@ -13,6 +13,7 @@ import type {
   RequestTransitionPayload,
 } from '../../bindings-phase6';
 import type { Pagination } from '../../bindings';
+import type { ApproveAdRegisterDto } from '../../bindings-phase9';
 
 export const requests = {
   list: (filter: RequestFilter, pagination: Pagination) =>
@@ -30,6 +31,10 @@ export const requests = {
   statusCounts: () => apiCall<RequestCountsDto>('requests_counts'),
 
   getHistory: (id: number) => apiCall<RequestHistoryEntry[]>('requests_get_history', { id }),
+
+  // Phase 9 Plan 05: approve an ad_register request (D-REG-02/USR-09/USR-11).
+  approveAdRegister: (payload: ApproveAdRegisterDto) =>
+    apiCall<RequestDto>('requests_approve_ad_register', { payload }),
 };
 
 /** Single history entry for a request (audit_log row). */

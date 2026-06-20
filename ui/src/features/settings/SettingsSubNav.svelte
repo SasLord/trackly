@@ -9,6 +9,7 @@
     { key: 'backup', label: 'Бэкапы' },
     { key: 'threshold', label: 'Порог остатка' },
     { key: 'templates', label: 'Шаблоны' },
+    { key: 'ad', label: 'Active Directory' },
   ] as const;
 
   interface Props {
