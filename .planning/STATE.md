@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-19T18:11:29.616Z"
-last_activity: 2026-06-19
+last_updated: "2026-06-20T06:15:49.046Z"
+last_activity: 2026-06-20
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 69
-  completed_plans: 67
+  completed_plans: 68
   percent: 92
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 09 (ad) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-06-19
+Last activity: 2026-06-20
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -107,6 +107,7 @@ Last activity: 2026-06-19
 | Phase 09 P01 | 8min | 2 tasks | 9 files |
 | Phase 09 P02 | 75m | 2 tasks | 14 files |
 | Phase 09 P03 | 110m | 2 tasks | 18 files |
+| Phase 09-ad P04 | 50min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -211,6 +212,9 @@ Recent decisions affecting current work:
 - [Phase 09]: approve_ad_register completes the request directly (open->completed) via a manual optimistic-lock UPDATE, not RequestTransitionOp::Complete — that op's state machine requires in_progress as the source state
 - [Phase 09]: ad_register reject semantics check the target user's live is_active flag at reject time, not ad_subtype alone, to distinguish pending-discard from auto-accept-then-rejected
 - [Phase 09]: AppError::RegistrationPending/AccessBlocked map to HTTP 403, not 401 — AD bind succeeded, identity is known, just not yet admitted
+- [Phase 09-ad]: remember=true sets persistent 30-day sliding cookie (Expiry::OnInactivity), set after session.insert() so it survives the flush-before-insert sequence
+- [Phase 09-ad]: AdSettingsDto excludes all AD-password fields; connection settings are read-only TOML, only enabled/auto_accept are writable
+- [Phase 09-ad]: bindings-phase9.ts placed at ui/src/ (not ui/src/lib/) matching the real bindings-phase6.ts convention; plan frontmatter path was stale
 
 ### Pending Todos
 
@@ -242,7 +246,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-19T18:11:29.609Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-06-20T06:15:49.039Z
+Stopped at: Completed 09-04-PLAN.md
 Resume file: 
 None
