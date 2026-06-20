@@ -86,6 +86,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::auth::auth_status,
         crate::tauri_cmds::auth::auth_me,
         crate::tauri_cmds::auth::desktop_set_lock,
+        // 09-AD-GAPS restoration-flow UX — explicit restore re-request
+        crate::tauri_cmds::auth::request_ad_restore,
         // Phase 5 — Users (Plan 03)
         crate::tauri_cmds::users::users_list,
         crate::tauri_cmds::users::users_create,

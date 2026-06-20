@@ -45,10 +45,12 @@ impl IntoResponse for AppErrorResponse {
             AppError::RegistrationPending { .. } => StatusCode::FORBIDDEN,
             AppError::AccessBlocked { .. } => StatusCode::FORBIDDEN,
         };
-        let body = Json(serde_json::json!({
-            "code": self.0.code(),
-            "message": self.0.to_string(),
-        }));
+        // Serialize via `AppError`'s own `Serialize` impl (not a hand-rolled
+        // json!{} of code+message) — `AccessBlocked` carries `pending`/
+        // `rejection_reason` in `details` that the BlockedScreen UI needs
+        // (09-AD-GAPS restoration-flow UX). A hand-rolled body would have
+        // silently dropped `details` for every variant, not just this one.
+        let body = Json(&self.0);
         (status, body).into_response()
     }
 }

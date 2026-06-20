@@ -123,16 +123,33 @@ pub enum AppError {
     },
 
     /// AD bind успешен, но локальная учётная запись блокирована
-    /// (`is_active=0`) или soft-deleted — заявка на восстановление
-    /// (`ad_subtype='restore'`) создана и ждёт решения администратора
-    /// (Phase 9 Plan 03, D-REG-03 "blocked" mode).
+    /// (`is_active=0`) или soft-deleted (D-REG-03 "blocked" mode).
     ///
     /// Не `Unauthorized` — UI должен показать `BlockedScreen`, а не форму
     /// логина с ошибкой.
-    #[error("account blocked, restore request pending (request {request_id})")]
+    ///
+    /// **09-AD-GAPS restoration-flow UX:** начиная с gap-closure plan plain
+    /// login НЕ создаёт заявку восстановления (read-only) — он только
+    /// сообщает состояние МОСТ-РЕЦЕНТНОЙ заявки восстановления (если она
+    /// есть), чтобы UI мог показать одно из трёх состояний:
+    /// - нет заявки вообще → `pending=false`, `rejection_reason=None`.
+    /// - есть открытая заявка → `pending=true`, `rejection_reason=None`.
+    /// - последняя заявка отклонена → `pending=false`,
+    ///   `rejection_reason=Some(причина)`.
+    ///
+    /// Явное создание новой заявки — отдельный сервисный метод
+    /// `AuthService::request_ad_restore` (EXPLICIT re-request action).
+    #[error("account blocked (pending={pending}, rejection_reason={rejection_reason:?})")]
     AccessBlocked {
-        /// ID созданной заявки восстановления доступа `ad_register`.
-        request_id: i64,
+        /// `true`, если для пользователя уже существует ОТКРЫТАЯ заявка
+        /// восстановления (никакого нового запроса создавать не нужно).
+        pending: bool,
+        /// Причина отклонения последней заявки восстановления, если
+        /// последняя (по времени) заявка была отклонена и сейчас нет
+        /// открытой заявки. `None`, если заявок не было вообще или
+        /// последняя заявка была одобрена (что не должно приводить
+        /// пользователя на эту ветку, но защищаемся явно).
+        rejection_reason: Option<String>,
     },
 }
 
@@ -183,7 +200,10 @@ impl AppError {
             Self::Internal { source_chain } => json!({ "source_chain": source_chain }),
             Self::ServiceUnavailable { service } => json!({ "service": service }),
             Self::RegistrationPending { request_id } => json!({ "request_id": request_id }),
-            Self::AccessBlocked { request_id } => json!({ "request_id": request_id }),
+            Self::AccessBlocked {
+                pending,
+                rejection_reason,
+            } => json!({ "pending": pending, "rejection_reason": rejection_reason }),
         }
     }
 }
@@ -304,7 +324,11 @@ mod tests {
             "REGISTRATION_PENDING"
         );
         assert_eq!(
-            AppError::AccessBlocked { request_id: 7 }.code(),
+            AppError::AccessBlocked {
+                pending: true,
+                rejection_reason: None
+            }
+            .code(),
             "ACCESS_BLOCKED"
         );
     }
@@ -410,9 +434,35 @@ mod tests {
     }
 
     #[test]
-    fn serialize_access_blocked_details() {
-        let v = ser(&AppError::AccessBlocked { request_id: 7 });
+    fn serialize_access_blocked_pending_details() {
+        let v = ser(&AppError::AccessBlocked {
+            pending: true,
+            rejection_reason: None,
+        });
         assert_eq!(v["code"], "ACCESS_BLOCKED");
-        assert_eq!(v["details"]["request_id"], 7);
+        assert_eq!(v["details"]["pending"], true);
+        assert!(v["details"]["rejection_reason"].is_null());
+    }
+
+    #[test]
+    fn serialize_access_blocked_rejected_details() {
+        let v = ser(&AppError::AccessBlocked {
+            pending: false,
+            rejection_reason: Some("дубликат заявки".to_string()),
+        });
+        assert_eq!(v["code"], "ACCESS_BLOCKED");
+        assert_eq!(v["details"]["pending"], false);
+        assert_eq!(v["details"]["rejection_reason"], "дубликат заявки");
+    }
+
+    #[test]
+    fn serialize_access_blocked_none_details() {
+        let v = ser(&AppError::AccessBlocked {
+            pending: false,
+            rejection_reason: None,
+        });
+        assert_eq!(v["code"], "ACCESS_BLOCKED");
+        assert_eq!(v["details"]["pending"], false);
+        assert!(v["details"]["rejection_reason"].is_null());
     }
 }

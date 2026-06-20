@@ -15,8 +15,9 @@ use std::sync::Arc;
 use rusqlite::params;
 
 use trackly_app::dto::auth::LoginRequest;
-use trackly_app::services::AuthService;
-use trackly_core::auth::Identity;
+use trackly_app::dto::request::RequestTransitionPayload;
+use trackly_app::services::{AuthService, RequestService};
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::ad::mock::MockAdClient;
@@ -35,6 +36,28 @@ fn make_auth_service_with_ad() -> (AuthService, tempfile::TempDir) {
 
 fn admin_caller() -> Identity {
     Identity::trusted_admin()
+}
+
+/// Build a `RequestService` sharing the SAME writer/readers as `svc` — lets
+/// a test reject a restore request created via `AuthService` and then
+/// re-check `AuthService::login`'s read of that rejection (09-AD-GAPS
+/// restoration-flow UX full-lifecycle test).
+fn make_request_service_sharing(svc: &AuthService) -> RequestService {
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    RequestService::new(
+        svc.writer.clone(),
+        svc.readers.clone(),
+        clock,
+        Arc::new(ws_tx),
+    )
+}
+
+fn admin_request_caller() -> Identity {
+    Identity {
+        user_id: None,
+        role: Role::Admin,
+    }
 }
 
 /// Seed a blocked (`is_active=0`) or soft-deleted (`deleted_at_utc` set) local
@@ -252,12 +275,25 @@ async fn pending_creates_inactive_user_and_request() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: blocked (is_active=0, not soft-deleted) AD user binds OK →
-// restore request created, AccessBlocked returned (NOT a session).
+// 09-AD-GAPS restoration-flow UX — plain blocked login is now READ-ONLY: it
+// must NOT create (or touch) any restore request. It only REPORTS the state
+// of the user's most recent restore request via
+// `AppError::AccessBlocked { pending, rejection_reason }`. Three states:
+//
+// 1. No restore request exists yet → pending=false, rejection_reason=None.
+// 2. An OPEN restore request exists → pending=true, rejection_reason=None.
+// 3. Most recent restore request is REJECTED → pending=false,
+//    rejection_reason=Some(reason).
+//
+// The explicit, idempotent create-or-reuse action lives in
+// `AuthService::request_ad_restore` (separate tests below).
 // ---------------------------------------------------------------------------
 
+/// State 1: blocked user with NO restore request yet — login is read-only
+/// and reports `pending=false, rejection_reason=None`. No request row is
+/// created as a side effect of this login attempt.
 #[tokio::test]
-async fn blocked_user_creates_restore_request() {
+async fn blocked_login_is_read_only_no_request_yet() {
     let (svc, _dir) = make_auth_service_with_ad();
     svc.set_ad_enabled(true, &admin_caller())
         .await
@@ -273,45 +309,42 @@ async fn blocked_user_creates_restore_request() {
         })
         .await;
 
-    let request_id = match result {
-        Err(AppError::AccessBlocked { request_id }) => request_id,
+    match result {
+        Err(AppError::AccessBlocked {
+            pending,
+            rejection_reason,
+        }) => {
+            assert!(!pending, "no restore request exists yet → pending=false");
+            assert_eq!(rejection_reason, None);
+        }
         other => panic!("expected AccessBlocked, got {other:?}"),
-    };
+    }
 
+    // Plain login must be a pure read — no requests row created.
     let readers = svc.readers.clone();
-    let (request_type, ad_subtype, requested_by): (String, Option<String>, i64) =
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            conn.query_row(
-                "SELECT request_type, ad_subtype, requested_by_user_id FROM requests \
-                 WHERE id = ?1",
-                params![request_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .expect("query request row")
-        })
-        .await
-        .expect("spawn_blocking");
-    assert_eq!(request_type, "ad_register");
-    assert_eq!(ad_subtype, Some("restore".to_string()));
+    let count: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests WHERE requested_by_user_id = ?1",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("count requests")
+    })
+    .await
+    .expect("spawn_blocking");
     assert_eq!(
-        requested_by, existing_user_id,
-        "restore request должен ссылаться на существующего пользователя"
+        count, 0,
+        "plain blocked login must NOT create a restore request (read-only contract)"
     );
 }
 
-// ---------------------------------------------------------------------------
-// Test (Defect 1 repro): two consecutive blocked-user AD binds must reuse
-// the same OPEN restore request instead of inserting a duplicate.
-//
-// Repro context: a blocked user hits this path twice in a real session —
-// once via the login form, once via BlockedScreen's "Запросить
-// восстановление" button (which re-submits auth_login). Both binds must
-// converge on a SINGLE open `ad_register`/`ad_subtype='restore'` row.
-// ---------------------------------------------------------------------------
-
+/// State 2: blocked user with an OPEN restore request already on file (e.g.
+/// created via an earlier explicit `request_ad_restore` call) — repeated
+/// plain logins must keep reporting `pending=true` and must NOT create a
+/// second request.
 #[tokio::test]
-async fn blocked_user_repeated_bind_reuses_open_restore_request() {
+async fn blocked_login_reports_pending_without_duplicating() {
     let (svc, _dir) = make_auth_service_with_ad();
     svc.set_ad_enabled(true, &admin_caller())
         .await
@@ -319,39 +352,158 @@ async fn blocked_user_repeated_bind_reuses_open_restore_request() {
 
     let existing_user_id = seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
 
-    // First bind — creates the restore request.
-    let result1 = svc
-        .login(LoginRequest {
-            login: "us100".to_string(),
-            password: "Passw0rd!".to_string(),
-            remember: false,
-        })
-        .await;
-    let request_id1 = match result1 {
-        Err(AppError::AccessBlocked { request_id }) => request_id,
-        other => panic!("expected AccessBlocked on first bind, got {other:?}"),
-    };
+    // Explicit request first (creates the open restore request).
+    svc.request_ad_restore("us100", "Passw0rd!")
+        .await
+        .expect("explicit restore request should succeed");
 
-    // Second bind (e.g. user clicks "Запросить восстановление" again, or
-    // retries login) — MUST reuse the same open request, not insert a new one.
-    let result2 = svc
-        .login(LoginRequest {
-            login: "us100".to_string(),
-            password: "Passw0rd!".to_string(),
-            remember: false,
-        })
-        .await;
-    let request_id2 = match result2 {
-        Err(AppError::AccessBlocked { request_id }) => request_id,
-        other => panic!("expected AccessBlocked on second bind, got {other:?}"),
-    };
+    // Now plain login twice — must report pending=true both times, with no
+    // duplicate request rows.
+    for _ in 0..2 {
+        let result = svc
+            .login(LoginRequest {
+                login: "us100".to_string(),
+                password: "Passw0rd!".to_string(),
+                remember: false,
+            })
+            .await;
+        match result {
+            Err(AppError::AccessBlocked {
+                pending,
+                rejection_reason,
+            }) => {
+                assert!(pending, "open restore request exists → pending=true");
+                assert_eq!(rejection_reason, None);
+            }
+            other => panic!("expected AccessBlocked, got {other:?}"),
+        }
+    }
 
+    let readers = svc.readers.clone();
+    let open_count: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests \
+             WHERE request_type = 'ad_register' AND ad_subtype = 'restore' \
+               AND requested_by_user_id = ?1 AND status = 'open' \
+               AND deleted_at_utc IS NULL",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("count open restore requests")
+    })
+    .await
+    .expect("spawn_blocking");
     assert_eq!(
-        request_id1, request_id2,
-        "повторный bind должен возвращать ID того же открытого restore-запроса, а не создавать новый"
+        open_count, 1,
+        "exactly ONE open restore request must exist after repeated read-only logins"
     );
+}
 
-    // Exactly ONE open ad_register/restore request must exist for this user.
+/// Same scenario, but soft-deleted instead of merely blocked — must take the
+/// same read-only reporting path (D-REG-03 treats both as "blocked").
+#[tokio::test]
+async fn soft_deleted_login_is_read_only() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+
+    let existing_user_id =
+        seed_blocked_ad_user(&svc, "us200", "Петрова Анна Сергеевна", true).await;
+
+    let result = svc
+        .login(LoginRequest {
+            login: "us200".to_string(),
+            password: "Secret123".to_string(),
+            remember: false,
+        })
+        .await;
+
+    match result {
+        Err(AppError::AccessBlocked {
+            pending,
+            rejection_reason,
+        }) => {
+            assert!(!pending);
+            assert_eq!(rejection_reason, None);
+        }
+        other => panic!("expected AccessBlocked, got {other:?}"),
+    }
+
+    let readers = svc.readers.clone();
+    let count: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests WHERE requested_by_user_id = ?1",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("count requests")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(count, 0, "soft-deleted plain login must also be read-only");
+}
+
+// ---------------------------------------------------------------------------
+// Explicit `request_ad_restore` — the ONLY path that creates/reuses a
+// restore request. Idempotent: calling it twice must reuse the same open
+// request, never duplicate.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn request_ad_restore_creates_open_request() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+
+    let existing_user_id = seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
+
+    svc.request_ad_restore("us100", "Passw0rd!")
+        .await
+        .expect("explicit restore request should succeed");
+
+    let readers = svc.readers.clone();
+    let (request_type, ad_subtype, status, requested_by): (String, Option<String>, String, i64) =
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT request_type, ad_subtype, status, requested_by_user_id FROM requests \
+                 WHERE requested_by_user_id = ?1 ORDER BY id DESC LIMIT 1",
+                params![existing_user_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .expect("query request row")
+        })
+        .await
+        .expect("spawn_blocking");
+    assert_eq!(request_type, "ad_register");
+    assert_eq!(ad_subtype, Some("restore".to_string()));
+    assert_eq!(status, "open");
+    assert_eq!(requested_by, existing_user_id);
+}
+
+/// Repeated explicit `request_ad_restore` calls must reuse the same OPEN
+/// restore request instead of inserting a duplicate (idempotency preserved
+/// from the original Defect 1 fix, now scoped to the explicit action only).
+#[tokio::test]
+async fn request_ad_restore_is_idempotent() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+
+    let existing_user_id = seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
+
+    svc.request_ad_restore("us100", "Passw0rd!")
+        .await
+        .expect("first explicit restore request");
+    svc.request_ad_restore("us100", "Passw0rd!")
+        .await
+        .expect("second explicit restore request (idempotent)");
+
     let readers = svc.readers.clone();
     let open_restore_count: i64 = tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
@@ -369,50 +521,189 @@ async fn blocked_user_repeated_bind_reuses_open_restore_request() {
     .expect("spawn_blocking");
     assert_eq!(
         open_restore_count, 1,
-        "должна существовать ровно ОДНА открытая restore-заявка после двух bind-попыток"
+        "two explicit calls must converge on a single open restore request"
     );
 }
 
-/// Same scenario, but soft-deleted instead of merely blocked — must take the
-/// same restore-request path (D-REG-03 treats both as "blocked").
+/// Anti-enumeration: wrong password on `request_ad_restore` must return the
+/// same generic `Unauthorized` as a failed plain login — no distinct error
+/// path that would let an attacker probe account existence/state.
 #[tokio::test]
-async fn soft_deleted_user_creates_restore_request() {
+async fn request_ad_restore_wrong_password_is_generic_unauthorized() {
     let (svc, _dir) = make_auth_service_with_ad();
     svc.set_ad_enabled(true, &admin_caller())
         .await
         .expect("enable AD");
 
-    let existing_user_id =
-        seed_blocked_ad_user(&svc, "us200", "Петрова Анна Сергеевна", true).await;
+    let _existing_user_id =
+        seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
 
+    // MockAdClient::default_fixtures() returns BadCreds for any password not
+    // matching the fixture password (see ad_auth.rs for the same pattern).
+    let result = svc.request_ad_restore("us100", "WrongPassword!").await;
+    assert!(
+        matches!(result, Err(AppError::Unauthorized)),
+        "wrong password must return generic Unauthorized, got {result:?}"
+    );
+}
+
+/// Anti-enumeration: `request_ad_restore` on an ACTIVE (non-blocked) user
+/// must also return generic `Unauthorized` — it must not be usable as an
+/// alternate login path or as an oracle for account state.
+#[tokio::test]
+async fn request_ad_restore_active_user_is_generic_unauthorized() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    svc.set_ad_auto_accept(true, &admin_caller())
+        .await
+        .expect("enable auto-accept");
+
+    // Auto-accept login creates an ACTIVE user.
+    svc.login(LoginRequest {
+        login: "us100".to_string(),
+        password: "Passw0rd!".to_string(),
+        remember: false,
+    })
+    .await
+    .expect("auto-accept login should succeed");
+
+    let result = svc.request_ad_restore("us100", "Passw0rd!").await;
+    assert!(
+        matches!(result, Err(AppError::Unauthorized)),
+        "request_ad_restore on an active user must return generic Unauthorized, got {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Full lifecycle (verification item c): reject-with-notes → subsequent
+// blocked login surfaces the reason → explicit re-request creates a FRESH
+// open request (not a reuse of the rejected one).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn reject_then_login_surfaces_reason_then_rerequest_creates_fresh_request() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    let request_svc = make_request_service_sharing(&svc);
+
+    let existing_user_id = seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
+
+    // Step 1: explicit request creates the first open restore request.
+    svc.request_ad_restore("us100", "Passw0rd!")
+        .await
+        .expect("first explicit restore request");
+
+    let readers = svc.readers.clone();
+    let first_request_id: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT id FROM requests \
+             WHERE requested_by_user_id = ?1 AND status = 'open' \
+             ORDER BY id DESC LIMIT 1",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("query first request id")
+    })
+    .await
+    .expect("spawn_blocking");
+
+    // Step 2: admin rejects with a reason.
+    let rejected = request_svc
+        .transition(
+            RequestTransitionPayload::Reject {
+                request_id: first_request_id,
+                version: 1,
+                notes: Some("Учётная запись заблокирована службой безопасности".to_string()),
+            },
+            &admin_request_caller(),
+        )
+        .await
+        .expect("reject restore request");
+    assert_eq!(rejected.status, "rejected");
+
+    // Step 3: plain blocked login must now surface the rejection reason —
+    // read-only, no new request created as a side effect.
     let result = svc
         .login(LoginRequest {
-            login: "us200".to_string(),
-            password: "Secret123".to_string(),
+            login: "us100".to_string(),
+            password: "Passw0rd!".to_string(),
             remember: false,
         })
         .await;
+    match result {
+        Err(AppError::AccessBlocked {
+            pending,
+            rejection_reason,
+        }) => {
+            assert!(!pending, "rejected request is not pending");
+            assert_eq!(
+                rejection_reason,
+                Some("Учётная запись заблокирована службой безопасности".to_string())
+            );
+        }
+        other => panic!("expected AccessBlocked with rejection reason, got {other:?}"),
+    }
 
-    let request_id = match result {
-        Err(AppError::AccessBlocked { request_id }) => request_id,
-        other => panic!("expected AccessBlocked, got {other:?}"),
-    };
+    let readers2 = svc.readers.clone();
+    let total_requests_after_login: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers2.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests WHERE requested_by_user_id = ?1",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("count requests")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(
+        total_requests_after_login, 1,
+        "plain login after rejection must not create a new request (still read-only)"
+    );
 
-    let readers = svc.readers.clone();
-    let (ad_subtype, requested_by): (Option<String>, i64) =
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            conn.query_row(
-                "SELECT ad_subtype, requested_by_user_id FROM requests WHERE id = ?1",
-                params![request_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .expect("query request row")
-        })
+    // Step 4: explicit re-request («Запросить снова») creates a FRESH open
+    // request — distinct from the rejected one.
+    svc.request_ad_restore("us100", "Passw0rd!")
         .await
-        .expect("spawn_blocking");
-    assert_eq!(ad_subtype, Some("restore".to_string()));
-    assert_eq!(requested_by, existing_user_id);
+        .expect("explicit re-request after rejection");
+
+    let readers3 = svc.readers.clone();
+    let (open_count, second_request_id): (i64, i64) = tokio::task::spawn_blocking(move || {
+        let conn = readers3.acquire();
+        let open_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM requests \
+                 WHERE requested_by_user_id = ?1 AND status = 'open'",
+                params![existing_user_id],
+                |r| r.get(0),
+            )
+            .expect("count open requests");
+        let second_request_id: i64 = conn
+            .query_row(
+                "SELECT id FROM requests \
+                 WHERE requested_by_user_id = ?1 AND status = 'open' \
+                 ORDER BY id DESC LIMIT 1",
+                params![existing_user_id],
+                |r| r.get(0),
+            )
+            .expect("query second request id");
+        (open_count, second_request_id)
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(
+        open_count, 1,
+        "exactly one open request must exist after re-request"
+    );
+    assert_ne!(
+        second_request_id, first_request_id,
+        "re-request must create a FRESH request, not resurrect the rejected one"
+    );
 }
 
 // ---------------------------------------------------------------------------

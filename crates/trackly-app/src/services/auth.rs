@@ -103,6 +103,17 @@ enum LocalLoginOutcome {
     BadPassword,
 }
 
+/// Состояние МОСТ-РЕЦЕНТНОЙ заявки восстановления доступа для пользователя
+/// (read seam, 09-AD-GAPS restoration-flow UX) — питает `AppError::AccessBlocked`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct RestoreRequestState {
+    /// `true`, если уже существует открытая заявка восстановления.
+    pending: bool,
+    /// Причина отклонения последней заявки, если последняя заявка была
+    /// отклонена и сейчас нет открытой.
+    rejection_reason: Option<String>,
+}
+
 /// Результат `find_user_any_state` — состояние пользователя в БД без
 /// active/non-deleted фильтра (read seam для AD-bind-success branching).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -319,8 +330,10 @@ impl AuthService {
     ///
     /// Три ветки (Phase 9 Plan 03):
     /// - active user → обычная сессия.
-    /// - blocked/soft-deleted user → заявка восстановления (`ad_subtype='restore'`),
-    ///   возвращает типизированный `AppError::AccessBlocked` (НЕ сессия).
+    /// - blocked/soft-deleted user → READ-ONLY (09-AD-GAPS restoration-flow
+    ///   UX): plain login НЕ создаёт заявку восстановления больше — только
+    ///   читает состояние последней заявки и возвращает обогащённый
+    ///   `AppError::AccessBlocked`. Явное создание — `request_ad_restore`.
     /// - unknown (нет в БД) → auto-accept (создать сразу + info-заявка) или
     ///   pending (inactive user + заявка, `AppError::RegistrationPending`)
     ///   в зависимости от `ad_auto_accept`.
@@ -338,19 +351,16 @@ impl AuthService {
             // admin: that user has no open 'register' request because it
             // was completed at approval time). Re-attempting login here must
             // stay on the registration-pending path (reuse the existing
-            // 'register' request), not be routed into create_restore_request,
-            // which would create a SECOND ('restore'-subtype) request for a
-            // user who was never approved in the first place.
+            // 'register' request), not be routed into the restore branch,
+            // which would surface a SECOND ('restore'-subtype) request state
+            // for a user who was never approved in the first place.
             Some(pending)
                 if !pending.is_active && !pending.deleted && pending.has_open_register_request =>
             {
                 self.reuse_or_create_pending_registration(pending.id, login, display_name)
                     .await
             }
-            Some(blocked_or_deleted) => {
-                self.create_restore_request(blocked_or_deleted.id, login, display_name)
-                    .await
-            }
+            Some(blocked_or_deleted) => self.report_blocked_access(blocked_or_deleted.id).await,
             None => {
                 if self.ad_auto_accept().await? {
                     self.auto_register_ad_user(login, display_name).await
@@ -588,28 +598,160 @@ impl AuthService {
         Err(AppError::RegistrationPending { request_id })
     }
 
-    /// Blocked/soft-deleted AD user успешно прошёл bind (D-REG-03): создаёт
-    /// заявку восстановления `ad_register`/`ad_subtype='restore'`, ссылающуюся
-    /// на существующего пользователя, в ОДНОЙ writer-транзакции. Сессия НЕ
-    /// выдаётся — возвращает `AppError::AccessBlocked`.
-    /// Creates (or reuses) an open `ad_register`/`restore` request for a
-    /// blocked/soft-deleted user attempting an AD bind.
+    /// Blocked/soft-deleted AD user успешно прошёл bind (D-REG-03):
+    /// READ-ONLY (09-AD-GAPS restoration-flow UX) — НЕ создаёт заявку
+    /// восстановления. Только читает состояние МОСТ-РЕЦЕНТНОЙ заявки
+    /// восстановления (`ad_register`/`ad_subtype='restore'`) для этого
+    /// пользователя и возвращает обогащённый `AppError::AccessBlocked`:
+    /// - открытая заявка существует → `pending=true`.
+    /// - нет открытой, но последняя была отклонена → `rejection_reason`.
+    /// - заявок не было вообще → оба поля пустые/false.
     ///
-    /// IDEMPOTENT per user (09-AD-GAPS Defect 1): a blocked user can trigger
-    /// this path repeatedly in one session — once via the login form, again
-    /// via `BlockedScreen`'s "Запросить восстановление" button (which
-    /// re-submits `auth_login`). Before inserting, check inside the SAME
-    /// writer transaction for an existing OPEN restore request for this
-    /// user; if found, reuse its `request_id` instead of inserting a
-    /// duplicate. The check-then-insert happens in one transaction on the
-    /// single writer connection, so there is no race window with a
-    /// concurrent bind for the same user.
-    async fn create_restore_request(
+    /// Явное создание новой заявки — `request_ad_restore` (требует AD bind
+    /// заново, т.к. у блокированного пользователя нет сессии).
+    async fn report_blocked_access(&self, existing_user_id: i64) -> Result<UserDto, AppError> {
+        let state = self.latest_restore_request_state(existing_user_id).await?;
+        Err(AppError::AccessBlocked {
+            pending: state.pending,
+            rejection_reason: state.rejection_reason,
+        })
+    }
+
+    /// Читает состояние МОСТ-РЕЦЕНТНОЙ заявки восстановления
+    /// (`ad_register`/`ad_subtype='restore'`) для пользователя:
+    /// - есть открытая → `{ pending: true, rejection_reason: None }`.
+    /// - последняя (по `id`) — отклонена и сейчас нет открытой →
+    ///   `{ pending: false, rejection_reason: Some(notes) }` (notes из
+    ///   `requests.resolution_notes` — канонического столбца, который
+    ///   `transition_in_tx`/reject записывает, см. requests_sqlite.rs).
+    /// - заявок не было вообще (или последняя была одобрена, что не должно
+    ///   приводить пользователя сюда, но обрабатываем защитно) →
+    ///   `{ pending: false, rejection_reason: None }`.
+    async fn latest_restore_request_state(
+        &self,
+        user_id: i64,
+    ) -> Result<RestoreRequestState, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<RestoreRequestState, AppError> {
+            let conn = readers.acquire();
+
+            let has_open: bool = conn
+                .query_row(
+                    "SELECT EXISTS ( \
+                         SELECT 1 FROM requests \
+                         WHERE request_type = 'ad_register' AND ad_subtype = 'restore' \
+                           AND requested_by_user_id = ?1 AND status = 'open' \
+                           AND deleted_at_utc IS NULL \
+                     )",
+                    rusqlite::params![user_id],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map_err(map_rusqlite)?
+                != 0;
+
+            if has_open {
+                return Ok(RestoreRequestState {
+                    pending: true,
+                    rejection_reason: None,
+                });
+            }
+
+            // No open request — look at the most recent restore request
+            // (any status) for a rejection reason. `resolution_notes` is
+            // the canonical store for reject notes (see
+            // `requests_sqlite.rs::transition_in_tx`'s `UPDATE ... SET
+            // resolution_notes = COALESCE(?2, resolution_notes)`).
+            let latest: Option<(String, Option<String>)> = conn
+                .query_row(
+                    "SELECT status, resolution_notes FROM requests \
+                     WHERE request_type = 'ad_register' AND ad_subtype = 'restore' \
+                       AND requested_by_user_id = ?1 AND deleted_at_utc IS NULL \
+                     ORDER BY id DESC LIMIT 1",
+                    rusqlite::params![user_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()
+                .map_err(map_rusqlite)?;
+
+            let rejection_reason = match latest {
+                Some((status, notes)) if status == "rejected" => notes,
+                _ => None,
+            };
+
+            Ok(RestoreRequestState {
+                pending: false,
+                rejection_reason,
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking latest_restore_request_state: {e}"),
+        })?
+    }
+
+    /// EXPLICIT re-request action (09-AD-GAPS restoration-flow UX):
+    /// блокированный/soft-deleted пользователь явно запрашивает
+    /// восстановление доступа из `BlockedScreen`. Требует ПОВТОРНОГО AD
+    /// bind с логином+паролем (у пользователя нет сессии — это
+    /// неаутентифицированный вызов, который сам несёт credentials, как
+    /// `auth_login`), затем идемпотентно создаёт (или переиспользует)
+    /// открытую заявку восстановления.
+    ///
+    /// **Anti-enumeration:** неверные credentials возвращают тот же
+    /// generic `AppError::Unauthorized`, что и обычный `login()` — не
+    /// раскрывает существование/состояние аккаунта.
+    pub async fn request_ad_restore(&self, login: &str, password: &str) -> Result<(), AppError> {
+        // Pitfall 1 (RFC 4513 §5.1.2): empty/whitespace password is an
+        // anonymous bind trap — reject before any AD bind (mirrors
+        // `try_ad_login`).
+        if password.trim().is_empty() {
+            return Err(AppError::Unauthorized);
+        }
+        if !self.ad_enabled().await? {
+            return Err(AppError::Unauthorized);
+        }
+
+        let secret = Secret::new(password.to_string());
+        let outcome = self.ad_client.authenticate(login, &secret).await?;
+
+        let display_name = match outcome {
+            AuthOutcome::BadCreds => return Err(AppError::Unauthorized),
+            AuthOutcome::Unreachable => return Err(AppError::ServiceUnavailable { service: "ad" }),
+            AuthOutcome::Ok { display_name } => display_name,
+        };
+
+        // Bind succeeded — confirm the user is actually blocked/soft-deleted.
+        // A caller who somehow has valid AD creds for an active/unknown/
+        // pending-registration user gets the SAME generic Unauthorized —
+        // this endpoint exists ONLY for the already-blocked restoration
+        // flow, not as an alternate login path.
+        let target_user_id = match self.find_user_any_state(login).await? {
+            Some(found) if found.is_active && !found.deleted => return Err(AppError::Unauthorized),
+            Some(pending)
+                if !pending.is_active && !pending.deleted && pending.has_open_register_request =>
+            {
+                return Err(AppError::Unauthorized)
+            }
+            Some(blocked_or_deleted) => blocked_or_deleted.id,
+            None => return Err(AppError::Unauthorized),
+        };
+
+        self.ensure_open_restore_request(target_user_id, login, &display_name)
+            .await
+    }
+
+    /// Idempotent INSERT helper (09-AD-GAPS Defect 1 fix, reused by the
+    /// explicit `request_ad_restore` action): check-then-insert inside ONE
+    /// writer transaction for an existing OPEN restore request; if found,
+    /// reuse it instead of inserting a duplicate. No race window with a
+    /// concurrent call for the same user — both run on the single writer
+    /// connection.
+    async fn ensure_open_restore_request(
         &self,
         existing_user_id: i64,
         login: &str,
         display_name: &str,
-    ) -> Result<UserDto, AppError> {
+    ) -> Result<(), AppError> {
         let now = self.clock.unix_seconds();
         let display_name_owned = display_name.to_string();
         let login_owned = login.to_string();
@@ -673,7 +815,7 @@ impl AuthService {
             });
         }
 
-        Err(AppError::AccessBlocked { request_id })
+        Ok(())
     }
 
     /// Читает `ad_enabled` из `app_settings`. По умолчанию `false`

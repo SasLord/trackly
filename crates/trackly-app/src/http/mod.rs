@@ -37,10 +37,12 @@ use crate::server::rusqlite_session_store::RusqliteSessionStore;
 ///
 /// Топология:
 /// 1. Все маршруты используют `SessionManagerLayer` — Session extractor работает везде.
-/// 2. Публичные маршруты (auth_login, auth_status) — не требуют наличия identity,
-///    но session layer необходима для Session extractor.
+/// 2. Публичные маршруты (auth_login, request_ad_restore, auth_status) — не
+///    требуют наличия identity, но session layer необходима для Session
+///    extractor.
 /// 3. Защищённые маршруты делают проверку identity в handlers (session_identity()).
-/// 4. auth_login дополнительно обёрнут в GovernorLayer (rate limit).
+/// 4. auth_login и request_ad_restore дополнительно обёрнуты в GovernorLayer
+///    (rate limit) — оба несут пользовательские AD credentials.
 /// 5. Security headers применяются ко всем ответам.
 /// 6. Fallback: статические файлы Svelte SPA.
 pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router {
@@ -72,6 +74,24 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         )
         .route_layer(tower_governor::GovernorLayer::new(governor_conf));
 
+    // --- /api/v1/request_ad_restore — отдельный governor (та же burst/rate
+    // конфигурация, что и auth_login): этот endpoint ТАКЖЕ выполняет AD bind
+    // с пользовательскими credentials (09-AD-GAPS restoration-flow UX), и
+    // заслуживает той же brute-force защиты.
+    let restore_governor_conf = Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(1)
+            .burst_size(5)
+            .finish()
+            .expect("governor config build failed"),
+    );
+    let restore_route = axum::routing::Router::new()
+        .route(
+            "/api/v1/request_ad_restore",
+            axum::routing::post(auth::handler_request_ad_restore),
+        )
+        .route_layer(tower_governor::GovernorLayer::new(restore_governor_conf));
+
     // --- auth_status без rate limit ---
     let status_route = axum::routing::Router::new().route(
         "/api/v1/auth_status",
@@ -83,6 +103,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
     // Session layer применяется ко всем маршрутам (Session extractor требует этого).
     let api_router = Router::new()
         .merge(login_route)
+        .merge(restore_route)
         .merge(status_route)
         .merge(auth::protected_router())
         .merge(users::router())

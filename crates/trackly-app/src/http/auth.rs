@@ -38,6 +38,25 @@ pub struct LoginPayload {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StatusPayload {}
 
+/// Тело POST /api/v1/request_ad_restore — явный запрос восстановления
+/// доступа (09-AD-GAPS restoration-flow UX). Зеркалит `LoginPayload`'s
+/// `{ req: ... }` envelope (тот же `apiCall('request_ad_restore', { req })`
+/// паттерн фронтенда), но НЕ обёртка над `LoginRequest` — `remember` тут
+/// бессмысленен (это не login, сессия не выдаётся).
+#[derive(Debug, Deserialize, specta::Type)]
+pub struct RequestAdRestorePayload {
+    pub req: RequestAdRestoreRequest,
+}
+
+/// Credentials для явного re-request восстановления доступа. Неавторизованный
+/// эндпойнт (как `auth_login`) — сам несёт credentials, у блокированного
+/// пользователя нет сессии.
+#[derive(Debug, Deserialize, specta::Type)]
+pub struct RequestAdRestoreRequest {
+    pub login: String,
+    pub password: String,
+}
+
 // ---------------------------------------------------------------------------
 // Session identity storage
 // ---------------------------------------------------------------------------
@@ -144,6 +163,19 @@ pub async fn build_auth_login(
     session.set_expiry(Some(expiry));
 
     Ok(user)
+}
+
+/// Явный запрос восстановления доступа (09-AD-GAPS restoration-flow UX).
+/// Неаутентифицированный — несёт собственные credentials (как
+/// `build_auth_login`), не трогает session (никакая сессия не выдаётся
+/// блокированному/soft-deleted пользователю).
+pub async fn build_request_ad_restore(
+    ctx: &AppCtx,
+    payload: RequestAdRestorePayload,
+) -> Result<(), AppError> {
+    ctx.auth
+        .request_ad_restore(&payload.req.login, &payload.req.password)
+        .await
 }
 
 /// Logout — flush session.
@@ -276,6 +308,16 @@ pub async fn handler_login(
             .await
             .map_err(AppErrorResponse::from)?,
     ))
+}
+
+pub async fn handler_request_ad_restore(
+    State(ctx): State<AppCtx>,
+    Json(payload): Json<RequestAdRestorePayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    build_request_ad_restore(&ctx, payload)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
 }
 
 pub async fn handler_logout(session: Session) -> Result<Json<()>, AppErrorResponse> {

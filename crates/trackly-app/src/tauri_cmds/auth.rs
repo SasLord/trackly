@@ -10,7 +10,7 @@ use crate::context::AppCtx;
 use crate::dto::auth::{
     AdSettingsDto, AuthStatusDto, LoginRequest, NetworkSettingsDto, ServerStatusDto, UserDto,
 };
-use crate::http::auth::SetAdPayload;
+use crate::http::auth::{RequestAdRestoreRequest, SetAdPayload};
 use crate::http::settings::NetworkPatch;
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
 use crate::server::tls;
@@ -40,6 +40,17 @@ pub async fn build_auth_status_tauri(ctx: &AppCtx) -> Result<AuthStatusDto, AppE
         desktop_lock_enabled,
         user: None,
     })
+}
+
+/// Таури-вариант явного запроса восстановления доступа (09-AD-GAPS
+/// restoration-flow UX). Зеркалит `build_auth_login_tauri` — несёт
+/// собственные credentials, без Session (у блокированного пользователя нет
+/// сессии в десктоп-режиме).
+pub async fn build_request_ad_restore_tauri(
+    ctx: &AppCtx,
+    req: RequestAdRestoreRequest,
+) -> Result<(), AppError> {
+    ctx.auth.request_ad_restore(&req.login, &req.password).await
 }
 
 /// Таури server_toggle: старт / стоп axum сервера.
@@ -174,6 +185,15 @@ pub async fn auth_login(
     req: LoginRequest,
 ) -> Result<UserDto, AppError> {
     build_auth_login_tauri(state.inner(), req).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn request_ad_restore(
+    state: tauri::State<'_, AppCtx>,
+    req: RequestAdRestoreRequest,
+) -> Result<(), AppError> {
+    build_request_ad_restore_tauri(state.inner(), req).await
 }
 
 /// auth_logout: для Tauri — no-op (нет cookie-сессии).
