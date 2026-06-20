@@ -579,6 +579,24 @@ impl AuthService {
             .await
     }
 
+    /// Проверяет доступность AD-сервера БЕЗ учётных данных пользователя
+    /// (admin-действие "Проверить подключение", Phase 9 gap-closure).
+    ///
+    /// Требует `ManageSettings` (тот же gate, что и `set_ad_enabled`) — это
+    /// admin-only диагностика, не login-путь. Делегирует в `AdClient::
+    /// test_connection`, который выполняет TCP+TLS connect (опционально
+    /// anonymous bind) без пароля конечного пользователя.
+    pub async fn test_ad_connection(&self, caller: &Identity) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+        match self.ad_client.test_connection().await? {
+            AuthOutcome::Ok { .. } => Ok(()),
+            AuthOutcome::Unreachable => Err(AppError::ServiceUnavailable { service: "ad" }),
+            // test_connection never presents credentials, so BadCreds is
+            // not a reachable outcome here — treat defensively as Unreachable.
+            AuthOutcome::BadCreds => Err(AppError::ServiceUnavailable { service: "ad" }),
+        }
+    }
+
     /// Читает `ad_auto_accept` из `app_settings`. По умолчанию `false`
     /// (заявки на регистрацию/восстановление требуют ручного подтверждения
     /// администратором — auto-accept — explicit opt-in, план 09-03 consumer).

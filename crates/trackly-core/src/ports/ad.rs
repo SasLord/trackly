@@ -63,4 +63,17 @@ pub trait AdClient: Send + Sync {
         login: &str,
         password: &Secret<String>,
     ) -> Result<AuthOutcome, AppError>;
+
+    /// Verify AD server reachability WITHOUT any end-user credentials.
+    ///
+    /// This is NOT a credential check — it only confirms the configured AD
+    /// server can be reached (TCP+TLS connect, optionally an anonymous/
+    /// root-DSE probe). Used by the "Проверить подключение" admin action
+    /// (Phase 9 gap-closure) so an admin can validate connectivity before
+    /// any user attempts to log in.
+    ///
+    /// Reuses `AuthOutcome` rather than inventing a parallel result type:
+    /// `Ok { .. }` → reachable, `Unreachable` → not reachable. `BadCreds`
+    /// is never returned here (no credentials are presented).
+    async fn test_connection(&self) -> Result<AuthOutcome, AppError>;
 }

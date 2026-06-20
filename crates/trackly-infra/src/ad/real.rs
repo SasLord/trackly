@@ -121,4 +121,45 @@ impl AdClient for RealAdClient {
         let _ = ldap.unbind().await;
         Ok(AuthOutcome::Ok { display_name })
     }
+
+    /// Reachability probe — connects over LDAPS and issues an anonymous
+    /// bind to confirm the server actually speaks LDAP (not just a TCP
+    /// listener). No end-user credentials are involved.
+    async fn test_connection(&self) -> Result<AuthOutcome, AppError> {
+        let settings = LdapConnSettings::new()
+            .set_conn_timeout(CONN_TIMEOUT)
+            .set_no_tls_verify(self.cfg.no_tls_verify);
+        let url = format!("ldaps://{}:{}", self.cfg.host, self.cfg.port);
+
+        let (conn, mut ldap) = match LdapConnAsync::with_settings(settings, &url).await {
+            Ok(v) => v,
+            Err(_) => return Ok(AuthOutcome::Unreachable),
+        };
+        // Pitfall 7: the connection driver task MUST be driven, or operations hang.
+        ldap3::drive!(conn);
+
+        // Anonymous (unauthenticated) bind — RFC 4513 §5.1.2 allows this
+        // explicitly when no credentials are presented (empty DN + empty
+        // password), distinct from the anonymous-bind TRAP this module
+        // guards against in `authenticate` (non-empty DN + empty password).
+        let bind_result = match ldap.simple_bind("", "").await {
+            Ok(res) => res,
+            Err(_) => return Ok(AuthOutcome::Unreachable),
+        };
+
+        let _ = ldap.unbind().await;
+
+        if bind_result.success().is_err() {
+            // Server responded but rejected the anonymous bind (e.g. AD
+            // configured to refuse unauthenticated binds) — the server IS
+            // reachable, it just won't anonymous-bind. Treat as reachable.
+            return Ok(AuthOutcome::Ok {
+                display_name: String::new(),
+            });
+        }
+
+        Ok(AuthOutcome::Ok {
+            display_name: String::new(),
+        })
+    }
 }

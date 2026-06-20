@@ -388,3 +388,17 @@ pub async fn settings_set_ad(
 ) -> Result<(), AppError> {
     build_settings_set_ad_tauri(state.inner(), payload).await
 }
+
+/// Tauri-вариант проверки доступности AD-сервера ("Проверить подключение",
+/// Phase 9 gap-closure). Caller определяется через `resolve_tauri_identity`
+/// вместо session (зеркалирует `build_settings_set_ad_tauri`).
+pub async fn build_ad_test_connection_tauri(ctx: &AppCtx) -> Result<(), AppError> {
+    let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
+    ctx.auth.test_ad_connection(&caller).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn ad_test_connection(state: tauri::State<'_, AppCtx>) -> Result<(), AppError> {
+    build_ad_test_connection_tauri(state.inner()).await
+}

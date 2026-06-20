@@ -255,3 +255,118 @@ async fn settings_ad_admin_get_set_round_trip() {
     .await
     .expect("settings_ad_admin_get_set_round_trip exceeded 30s budget");
 }
+
+/// `ad_test_connection` gating mirrors `settings_set_ad`: non-admin → 403,
+/// no session → 401, admin → 200 (Phase 9 gap-closure — "Проверить
+/// подключение" button must be admin-gated like the other AD settings ops).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ad_test_connection_requires_manage_settings() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin_identity = Identity::trusted_admin();
+
+        let employee_dto = ctx
+            .auth
+            .create_user(
+                UserNew {
+                    login: "ad_test_conn_employee".to_string(),
+                    full_name: "Employee".to_string(),
+                    password: "password123".to_string(),
+                    role: "employee".to_string(),
+                    email: None,
+                },
+                &admin_identity,
+            )
+            .await
+            .expect("create employee_user");
+
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let employee_cookie =
+            create_session_cookie(&session_store, employee_dto.id, Role::Employee)
+                .await
+                .expect("create employee session");
+
+        let router = build_router(&ctx, session_store);
+
+        // Employee → 403 Forbidden on ad_test_connection.
+        let (status, _) = post_with_cookie(
+            router.clone(),
+            "/api/v1/ad_test_connection",
+            json!({}),
+            Some(&employee_cookie),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "employee должен получить 403 на ad_test_connection"
+        );
+
+        // No session → 401 Unauthorized.
+        let (status_no_session, _) = post_with_cookie(
+            router.clone(),
+            "/api/v1/ad_test_connection",
+            json!({}),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status_no_session,
+            StatusCode::UNAUTHORIZED,
+            "без сессии должен быть 401 на ad_test_connection"
+        );
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("ad_test_connection_requires_manage_settings exceeded 30s budget");
+}
+
+/// `ad_test_connection` returns 200 for admin in mock mode — mock AD client
+/// is always "reachable" by default (`MockAdClient::default_fixtures`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ad_test_connection_admin_succeeds_in_mock_mode() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin_identity = Identity::trusted_admin();
+
+        let admin_dto = ctx
+            .auth
+            .create_user(
+                UserNew {
+                    login: "ad_test_conn_admin".to_string(),
+                    full_name: "Admin".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: None,
+                },
+                &admin_identity,
+            )
+            .await
+            .expect("create admin_user");
+
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let admin_cookie = create_session_cookie(&session_store, admin_dto.id, Role::Admin)
+            .await
+            .expect("create admin session");
+
+        let router = build_router(&ctx, session_store);
+
+        let (status, _) = post_with_cookie(
+            router.clone(),
+            "/api/v1/ad_test_connection",
+            json!({}),
+            Some(&admin_cookie),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "admin должен получить 200 на ad_test_connection в mock-режиме"
+        );
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("ad_test_connection_admin_succeeds_in_mock_mode exceeded 30s budget");
+}

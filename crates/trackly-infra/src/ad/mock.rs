@@ -106,6 +106,17 @@ impl AdClient for MockAdClient {
             None => Ok(AuthOutcome::BadCreds),
         }
     }
+
+    /// Mock reachability probe — honors the same `unreachable` fixture flag
+    /// used by `authenticate` (D-Mock-01 failure-injection convention).
+    async fn test_connection(&self) -> Result<AuthOutcome, AppError> {
+        if self.unreachable {
+            return Ok(AuthOutcome::Unreachable);
+        }
+        Ok(AuthOutcome::Ok {
+            display_name: String::new(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -233,5 +244,24 @@ mod tests {
                 display_name: "Иванов Иван Иванович".to_string()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn test_connection_reachable_by_default() {
+        let mock = MockAdClient::default_fixtures();
+        let result = mock.test_connection().await.expect("no error");
+        assert_eq!(
+            result,
+            AuthOutcome::Ok {
+                display_name: String::new()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connection_unreachable_fixture() {
+        let mock = MockAdClient::unreachable();
+        let result = mock.test_connection().await.expect("no error");
+        assert_eq!(result, AuthOutcome::Unreachable);
     }
 }

@@ -121,6 +121,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 9 — AD settings (Plan 04)
         crate::tauri_cmds::auth::settings_get_ad,
         crate::tauri_cmds::auth::settings_set_ad,
+        // Phase 9 — AD test connection (gap-closure)
+        crate::tauri_cmds::auth::ad_test_connection,
         // Phase 7 — Reports (Plan 07)
         crate::tauri_cmds::reports::reports_list_device_acts,
         crate::tauri_cmds::reports::reports_list_device_returns,

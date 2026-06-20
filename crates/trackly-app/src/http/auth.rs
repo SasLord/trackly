@@ -250,6 +250,18 @@ pub async fn build_settings_set_ad(
     Ok(())
 }
 
+/// Проверить доступность AD-сервера (admin-действие "Проверить подключение",
+/// Phase 9 gap-closure). НЕ требует пароль конечного пользователя — только
+/// сетевая/протокольная доступность сконфигурированного AD-сервера.
+///
+/// **Безопасность:** require ManageSettings — только admin. Неаутентифицированный
+/// caller получает 401 от session_identity; non-admin caller получает 403 от
+/// `AuthService::test_ad_connection`'s internal `authorize` call.
+pub async fn build_ad_test_connection(ctx: &AppCtx, session: &Session) -> Result<(), AppError> {
+    let caller = session_identity(session).await?;
+    ctx.auth.test_ad_connection(&caller).await
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -317,6 +329,16 @@ pub async fn handler_set_ad(
     Ok(Json(()))
 }
 
+pub async fn handler_ad_test_connection(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<()>, AppErrorResponse> {
+    build_ad_test_connection(&ctx, &session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
+}
+
 // ---------------------------------------------------------------------------
 // Routers
 // ---------------------------------------------------------------------------
@@ -335,4 +357,8 @@ pub fn protected_router() -> Router<AppCtx> {
         .route("/api/v1/auth_me", post(handler_me))
         .route("/api/v1/settings_get_ad", post(handler_get_ad))
         .route("/api/v1/settings_set_ad", post(handler_set_ad))
+        .route(
+            "/api/v1/ad_test_connection",
+            post(handler_ad_test_connection),
+        )
 }
