@@ -247,10 +247,11 @@ Items acknowledged and carried forward from previous milestone close:
 | 2026-06-14 | http-camelcase-payloads | S-5 parity: `#[serde(rename_all = "camelCase")]` on all axum request payload structs in http/ so browser/HTTP transport accepts the camelCase keys the frontend sends (e.g. `userNew`, `actId`). Fixes latent 422 on multi-word args in server mode. +regression test. | complete ✓ |
 | 2026-06-18 | backup-date-schedule-template-fixes | Phase-07 round-3 follow-ups. R3-1: fixed Backups «Последний бэкап: Invalid Date» — `BackupSettings.svelte` read wrong DTO field (`timestamp` instead of `timestamp_utc` unix-seconds) + dropped phantom `last_backup_time`. R3-2: schedule blank after restart — normalized `"disabled"↔""` sentinel at load/save boundary (mirrors GAP-S5 load-on-mount). R3-3/CR-02: `template_service.rs` `update_body`/`reset_to_default` now guard on `rows_affected == 0` → `AppError::NotFound` instead of silent `Ok(())` (+TDD test). R3-4/CR-01 intentionally WONTFIX (RU-only UTC+3 v1). | complete ✓ |
 | 2026-06-20 | rustls-crypto-provider-panic | Gap-closure fix discovered during 09-05 end-to-end human-verify: server-mode toggle panicked — both `ring` and `aws-lc-rs` providers in dep graph (ldap3 pulls aws-lc-rs; rcgen/tokio-rustls pull ring), rustls 0.23 can't auto-select. Added `ensure_crypto_provider()` (idempotent `Once`, installs `ring`) called first in `tls::build_server_config`/`load_from_pem` + early in `main.rs`. Enabled `ring` feature on `rustls` dep. Resolves the `graceful_shutdown_drain` pre-existing failure flagged in `09-ad/deferred-items.md` (now marked RESOLVED); +regression test `generate_self_signed_does_not_panic`. `cargo build`/`test`/`clippy -D warnings`/`fmt --check` all clean. | complete ✓ |
+| 2026-06-20 | ad-test-connection | Gap-closure: "Проверить подключение" button on AD settings was a dead stub (hardcoded `disabled`, no backend). Added `AdClient::test_connection` (port + Real/Mock impls — LDAPS connect + anonymous bind, no end-user creds), `AuthService::test_ad_connection` (ManageSettings-gated, mirrors `settings_set_ad`), HTTP route + Tauri command (both registered, bindings regenerated), and wired the UI button (loading state, success/error toast + inline hint, enabled only when AD is on). +4 backend tests (mock reachable/unreachable, HTTP admin-gating 401/403, mock-mode 200). `cargo build`/test/`clippy -D warnings`/`fmt --check` + `pnpm svelte-check` all clean. | complete ✓ |
 
 ## Session Continuity
 
-Last session: 2026-06-20T06:36:12.492Z
-Stopped at: Completed 09-05-PLAN.md Tasks 1-2; final end-to-end human-verify checkpoint pending
+Last session: 2026-06-20T11:00:00.000Z
+Stopped at: Completed ad-test-connection gap-closure (Phase 9 final defect resolved)
 Resume file: 
 None
