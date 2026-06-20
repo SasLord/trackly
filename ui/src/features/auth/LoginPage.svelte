@@ -3,7 +3,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserDto } from '../../bindings';
   import type { UserRole } from '$lib/stores/auth.svelte';
-  import type { AppError } from '$lib/api/errors';
+  import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
   import PendingScreen from './PendingScreen.svelte';
   import BlockedScreen from './BlockedScreen.svelte';
 
@@ -23,6 +23,10 @@
 
   // Screen routing: 'login' (default) | 'pending' | 'blocked' (D-REG / D-REG-03).
   let screen = $state<'login' | 'pending' | 'blocked'>('login');
+  // ACCESS_BLOCKED details (09-AD-GAPS restoration-flow UX) — passed through
+  // to BlockedScreen so it can render the three states (none / pending /
+  // rejected-with-reason) without re-deriving them itself.
+  let blockedDetails = $state<AccessBlockedDetails>({ pending: false, rejection_reason: null });
 
   function backToLogin() {
     screen = 'login';
@@ -64,6 +68,12 @@
       if (code === 'REGISTRATION_PENDING') {
         screen = 'pending';
       } else if (code === 'ACCESS_BLOCKED') {
+        const details = (err && err.details) as Partial<AccessBlockedDetails> | undefined;
+        blockedDetails = {
+          pending: details?.pending === true,
+          rejection_reason:
+            typeof details?.rejection_reason === 'string' ? details.rejection_reason : null,
+        };
         screen = 'blocked';
       } else if (code === 'SERVICE_UNAVAILABLE') {
         serverError = AD_UNREACHABLE_ERROR;
@@ -79,7 +89,7 @@
 {#if screen === 'pending'}
   <PendingScreen onBackToLogin={backToLogin} />
 {:else if screen === 'blocked'}
-  <BlockedScreen {login} {password} onBackToLogin={backToLogin} />
+  <BlockedScreen {login} {password} {blockedDetails} onBackToLogin={backToLogin} />
 {:else}
   <div class="login-container">
     <div class="login-card">

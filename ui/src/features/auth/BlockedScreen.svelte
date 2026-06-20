@@ -1,28 +1,39 @@
 <script lang="ts">
-  // Phase 9 Plan 05 — Screen 3 (UI-SPEC). Shown after `auth_login` returns
+  // Phase 9 Plan 05 — Screen 3 (UI-SPEC), reworked by 09-AD-GAPS
+  // restoration-flow UX gap-closure. Shown after `auth_login` returns
   // AppError code ACCESS_BLOCKED (blocked/soft-deleted AD user, D-REG-03).
-  // No dedicated restoration endpoint exists (09-04-SUMMARY): a successful
-  // AD bind for a blocked/soft-deleted user is what creates the restoration
-  // request server-side, inside AuthService::login → create_restore_request,
-  // which always returns AppError::AccessBlocked (never a session). The
-  // primary CTA re-submits the SAME credentials that produced this screen —
-  // create_restore_request is IDEMPOTENT per user (09-AD-GAPS Defect 1 fix):
-  // repeated bind attempts (login form + this button, or repeated clicks)
-  // all resolve to the SAME open request row server-side, so the explicit
-  // click safely doubles as the user's confirmation action without spawning
-  // duplicate requests.
+  //
+  // Plain login is now READ-ONLY: it no longer creates a restoration
+  // request. `AuthService::on_ad_bind_success`'s blocked branch only
+  // READS the state of the user's most recent restore request and returns
+  // it via `AppError::AccessBlocked { pending, rejection_reason }`
+  // (LoginPage passes those through as `blockedDetails`). This screen
+  // renders one of three states based on that payload:
+  //
+  // - `pending === true` → an open restore request already exists.
+  //   "Запрос на рассмотрении" — no new request, no create button.
+  // - `pending === false` AND `rejection_reason` set → the most recent
+  //   request was rejected. Shows the reason + a «Запросить снова» CTA.
+  // - neither → no restore request exists yet. Shows «Запросить
+  //   восстановление доступа» CTA (first-time request).
+  //
+  // The CTA calls the EXPLICIT `request_ad_restore` endpoint (NOT
+  // `auth_login` — that path is read-only now). `request_ad_restore`
+  // re-binds to AD with the same credentials (proves identity — the user
+  // has no session) and idempotently creates/reuses an open restore
+  // request (09-AD-GAPS Defect 1 fix's idempotent INSERT, reused here).
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import type { AppError } from '$lib/api/errors';
-  import type { UserDto } from '../../bindings';
+  import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
 
   interface Props {
     login: string;
     password: string;
+    blockedDetails: AccessBlockedDetails;
     onBackToLogin: () => void;
   }
 
-  const { login, password, onBackToLogin }: Props = $props();
+  const { login, password, blockedDetails, onBackToLogin }: Props = $props();
 
   let submitted = $state(false);
   let submitting = $state(false);
@@ -32,25 +43,15 @@
     submitting = true;
     serverError = null;
     try {
-      // A successful bind here can only resolve to AppError::AccessBlocked —
-      // it never returns a UserDto for a blocked/soft-deleted account. We
-      // still type the call against UserDto for apiCall's generic; the
-      // success branch is unreachable in practice for this screen.
-      await apiCall<UserDto>('auth_login', { req: { login, password, remember: false } });
+      await apiCall<null>('request_ad_restore', { req: { login, password } });
       submitted = true;
       pushToast('success', 'Запрос на восстановление отправлен');
     } catch (e: unknown) {
       const err = e as Partial<AppError> | undefined;
-      if (err && err.code === 'ACCESS_BLOCKED') {
-        // Expected outcome — the restore request was (re-)created server-side.
-        submitted = true;
-        pushToast('success', 'Запрос на восстановление отправлен');
-      } else {
-        serverError =
-          err && typeof err.message === 'string'
-            ? err.message
-            : 'Не удалось отправить запрос. Попробуйте позже.';
-      }
+      serverError =
+        err && typeof err.message === 'string'
+          ? err.message
+          : 'Не удалось отправить запрос. Попробуйте позже.';
     } finally {
       submitting = false;
     }
@@ -65,6 +66,34 @@
         Запрос на восстановление доступа отправлен администратору. Доступ появится
         после подтверждения.
       </p>
+      <button class="btn-link" type="button" onclick={onBackToLogin}>
+        Войти под другим пользователем
+      </button>
+    {:else if blockedDetails.pending}
+      <h1 class="login-title">Запрос на рассмотрении</h1>
+      <p class="screen-body">
+        Ваш запрос на восстановление доступа уже отправлен администратору и ожидает
+        решения. Повторно отправлять его не нужно.
+      </p>
+      <button class="btn-link" type="button" onclick={onBackToLogin}>
+        Войти под другим пользователем
+      </button>
+    {:else if blockedDetails.rejection_reason}
+      <h1 class="login-title">Запрос отклонён</h1>
+      <p class="screen-body">
+        Запрос на восстановление доступа отклонён. Причина: {blockedDetails.rejection_reason}
+      </p>
+      {#if serverError}
+        <div class="server-error">{serverError}</div>
+      {/if}
+      <button
+        class="btn-submit"
+        type="button"
+        disabled={submitting}
+        onclick={handleRestoreRequest}
+      >
+        {#if submitting}Отправка…{:else}Запросить снова{/if}
+      </button>
       <button class="btn-link" type="button" onclick={onBackToLogin}>
         Войти под другим пользователем
       </button>
