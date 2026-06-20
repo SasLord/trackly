@@ -118,3 +118,7 @@ No blockers. No stubs were introduced — the "Проверить подключ
 ---
 *Phase: 09-ad*
 *Completed: 2026-06-20*
+
+## Self-Check: PASSED
+
+All created files verified present (PendingScreen.svelte, BlockedScreen.svelte, ActiveDirectorySettings.svelte, docs/AD-SETUP.md, this SUMMARY.md). All commit hashes verified present in git log (f909ff0, 5fa9f50, aa49de9).
