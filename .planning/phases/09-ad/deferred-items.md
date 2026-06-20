@@ -3,7 +3,7 @@
 Issues discovered during execution that are out of scope for the current
 plan/task and were NOT auto-fixed (per executor scope-boundary rule).
 
-## 09-02: `graceful_shutdown_drain` test pre-existing failure
+## 09-02: `graceful_shutdown_drain` test pre-existing failure — RESOLVED
 
 - **Discovered during:** Plan 09-02, Task 1 verification (`cargo test -p trackly-app`)
 - **Symptom:** `graceful_shutdown_exits_within_timeout` and
@@ -23,6 +23,21 @@ plan/task and were NOT auto-fixed (per executor scope-boundary rule).
   `rcgen`/rustls cert-loading code from the Phase-7/8 HTTPS server-mode work).
 - **Action:** NOT fixed in this plan. Flagging for a future phase/plan that
   owns the server-mode TLS bring-up, or a standalone `/gsd-debug` session.
+- **Resolution (2026-06-20, gap-closure fix during 09-05 human-verify):**
+  confirmed root cause via `cargo tree` — both `ring` (via `rcgen` +
+  `tokio-rustls`) and `aws-lc-rs` (transitively via `ldap3`) are in the
+  dependency graph, so rustls 0.23 cannot auto-select a provider. Fixed by
+  adding `rustls::crypto::ring::default_provider().install_default()` behind
+  an idempotent `Once` guard in `crates/trackly-app/src/server/tls.rs`
+  (`ensure_crypto_provider()`), called as the first line of
+  `build_server_config()` and `load_from_pem()`, plus an explicit call early
+  in `crates/trackly-app/src/main.rs` startup. Enabled the `ring` feature on
+  the `rustls` dependency in `crates/trackly-app/Cargo.toml` (pure-Rust, no
+  C-toolchain — `aws-lc-rs` was deliberately not chosen, per CLAUDE.md's
+  portable-build constraint). Added a regression test
+  (`server::tls::tests::generate_self_signed_does_not_panic`) and confirmed
+  both `graceful_shutdown_exits_within_timeout` and
+  `shutdown_before_server_starts_is_noop` now pass.
 
 ## 09-02: `template_service.rs` clippy::len_zero under `--tests`
 

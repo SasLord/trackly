@@ -66,7 +66,7 @@ sha2 = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true }
 async-trait = { workspace = true }
-rustls = { version = "0.23", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Server-mode SPA delivery: embed ui/dist into the binary (release) / read from
 # disk (debug) so the LAN axum server can serve the Svelte SPA in a portable
 # build without shipping loose files next to the executable.

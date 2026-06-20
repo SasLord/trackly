@@ -5,13 +5,31 @@
 //!
 //! Portable: pure Rust, без OpenSSL DLL.
 
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 
 use rcgen::generate_simple_self_signed;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use rustls::ServerConfig;
 use sha2::{Digest, Sha256};
 use tokio_rustls::TlsAcceptor;
+
+static CRYPTO_PROVIDER_INIT: Once = Once::new();
+
+/// Установить процесс-level rustls `CryptoProvider` (ring) ровно один раз.
+///
+/// Нужно, потому что в графе зависимостей одновременно присутствуют `ring`
+/// (через `rcgen`/`tokio-rustls`) и `aws-lc-rs` (транзитивно через `ldap3`),
+/// поэтому rustls 0.23 не может автоматически выбрать провайдер — без явного
+/// `install_default()` любой вызов `ServerConfig::builder()` паникует в
+/// runtime. Выбираем pure-Rust `ring`, а не `aws-lc-rs`, чтобы не тащить
+/// C-тулчейн/NASM в portable Windows-сборку (см. CLAUDE.md).
+pub fn ensure_crypto_provider() {
+    CRYPTO_PROVIDER_INIT.call_once(|| {
+        // Игнорируем Result: Err означает, что другой вызывающий уже
+        // установил провайдер — нам достаточно, что хоть какой-то есть.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
 
 /// TLS bundle: готовый acceptor + fingerprint + PEM для сохранения на диск.
 pub struct TlsBundle {
@@ -42,6 +60,7 @@ fn compute_fingerprint(der_bytes: &[u8]) -> String {
 
 /// Создать `rustls::ServerConfig` из сертификата и ключа в DER.
 fn build_server_config(cert_der: Vec<u8>, key_der: Vec<u8>) -> anyhow::Result<ServerConfig> {
+    ensure_crypto_provider();
     let certs = vec![CertificateDer::from(cert_der)];
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der));
     let config = ServerConfig::builder()
@@ -120,6 +139,7 @@ pub fn load_from_files(cert_path: &str, key_path: &str) -> anyhow::Result<TlsBun
 ///
 /// Вычисляет fingerprint из первого сертификата в PEM.
 pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle> {
+    ensure_crypto_provider();
     use rustls_pemfile::{certs, private_key};
 
     // Parse certificates
@@ -151,4 +171,21 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
         cert_pem: cert_pem.to_string(),
         key_pem: key_pem.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Регрессия: `ServerConfig::builder()` ранее паниковал в runtime, потому
+    /// что одновременно в графе зависимостей есть `ring` и `aws-lc-rs`, и
+    /// rustls 0.23 не может автоматически выбрать процесс-level
+    /// `CryptoProvider`. `ensure_crypto_provider()` (вызывается первой строкой
+    /// в `build_server_config`) должен устранить панику.
+    #[test]
+    fn generate_self_signed_does_not_panic() {
+        let bundle = generate_self_signed("127.0.0.1").expect("tls bundle");
+        assert_eq!(bundle.fingerprint_hex.len(), 95);
+        assert!(bundle.cert_pem.contains("BEGIN CERTIFICATE"));
+    }
 }

@@ -29,6 +29,13 @@ fn main() -> anyhow::Result<()> {
     // Step 1: resolve all paths from current_exe().
     let paths = Paths::resolve()?;
 
+    // Step 1b: install the process-level rustls CryptoProvider (ring) before
+    // any TLS path can be reached. Both `ring` and `aws-lc-rs` are present in
+    // the dependency graph (ldap3 pulls aws-lc-rs; rcgen/tokio-rustls pull
+    // ring), so rustls 0.23 cannot auto-select a provider — without this,
+    // `ServerConfig::builder()` panics at runtime (server-mode toggle / startup).
+    trackly_app::server::tls::ensure_crypto_provider();
+
     // Step 2: set WEBVIEW2_USER_DATA_FOLDER — MUST be before any tokio / thread / tauri.
     webview_env::set_webview2_data_folder(paths.webview_data_dir())?;
 
