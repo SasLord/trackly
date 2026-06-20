@@ -81,3 +81,9 @@ tempfile = { workspace = true }
 anyhow = { workspace = true }
 tracing-appender = { workspace = true }
 pdf-extract = "^0.10"
+# WebSocket client for the upgrade-plumbing regression test (Bug A:
+# serve_connection without .with_upgrades() dropped the socket post-101).
+# Pinned to the version already in Cargo.lock (pulled transitively by the
+# Tauri/wry stack) to avoid a new resolver entry.
+tokio-tungstenite = "0.29"
+futures-util = "0.3"

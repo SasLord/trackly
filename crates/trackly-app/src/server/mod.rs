@@ -101,8 +101,20 @@ pub async fn start_server(
                                         // Clone Router for each request — Router is cheap Clone
                                         app_clone.clone().oneshot(req)
                                     });
+                                    // `.with_upgrades()` is REQUIRED for WebSocket support.
+                                    // axum's `WebSocketUpgrade` emits a 101 response and then
+                                    // awaits `hyper::upgrade::on(req)` inside `on_upgrade` to
+                                    // obtain the upgraded stream. That upgrade future only ever
+                                    // resolves when the hyper connection is driven with
+                                    // `.with_upgrades()`. Without it, hyper writes the 101, the
+                                    // connection future completes, and the socket is closed ~1s
+                                    // later — the client sees "101 Switching Protocols" then
+                                    // "network connection was lost", on a reconnect loop, and the
+                                    // server-side `handle_ws_socket` never runs. (See debug
+                                    // session ui-ws-toast-reports-flicker, Bug A.)
                                     if let Err(e) = hyper::server::conn::http1::Builder::new()
                                         .serve_connection(io, hyper_service)
+                                        .with_upgrades()
                                         .await
                                     {
                                         tracing::debug!("HTTP connection error from {peer_addr}: {e}");

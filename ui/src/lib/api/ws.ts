@@ -63,8 +63,15 @@ function connectBrowser(): void {
 
   ws.onclose = () => {
     ws = null;
-    reconnecting = true;
-    showReconnectingToast();
+    // Show the "reconnecting" toast at most once per disconnection episode.
+    // `reconnecting` stays true across the whole backoff sequence and is only
+    // reset on a successful onopen, so a failing connection (e.g. an untrusted
+    // self-signed wss:// cert that closes every ~1s) no longer spams a toast on
+    // every retry. See debug session ui-ws-toast-reports-flicker (Bug A).
+    if (!reconnecting) {
+      reconnecting = true;
+      showReconnectingToast();
+    }
     const delay = reconnectDelay;
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     setTimeout(() => {
