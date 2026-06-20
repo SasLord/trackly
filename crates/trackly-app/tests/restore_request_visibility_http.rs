@@ -149,8 +149,8 @@ async fn seed_soft_deleted_ad_user(ctx: &AppCtx, login: &str, full_name: &str) -
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn blocked_user_restore_request_visible_to_admin_and_marks_pending_http(
-) -> anyhow::Result<()> {
+async fn blocked_user_restore_request_visible_to_admin_and_marks_pending_http() -> anyhow::Result<()>
+{
     tokio::time::timeout(Duration::from_secs(30), async {
         let (ctx, _dir) = make_test_ctx().await?;
         let admin_identity = Identity::trusted_admin();
