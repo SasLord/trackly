@@ -5,18 +5,21 @@
 //!
 //! `#[specta::specta]` MUST appear AFTER `#[tauri::command]`.
 //!
-//! `requests_transition` использует `tauri::AppHandle` для desktop push
-//! WsEvent::RequestStatusChanged через `app.emit("trackly-event", ...)` (D-Notify-01).
+//! Desktop push of `WsEvent::RequestStatusChanged` is handled by the global
+//! `ws_broadcast` → `trackly-event` bridge wired in `main.rs`'s `.setup(...)`
+//! (gap-closure: previously `requests_transition`/`requests_approve_ad_register`
+//! each called `app.emit(...)` directly here — that is now redundant since
+//! `RequestService::transition`/`approve_ad_register` already push the same
+//! `WsEvent` onto `ctx.ws_broadcast`, which the bridge forwards to the
+//! desktop webview. Removing the direct emits avoids double-firing the event
+//! on desktop).
 
 use crate::context::AppCtx;
-use crate::dto::printer::WsEvent;
-// tauri::Emitter trait is needed for app.emit() in Tauri 2.x.
 use crate::dto::request::{
     ApproveAdRegisterDto, Pagination, RequestCountsDto, RequestCreateDto, RequestDto,
     RequestFilter, RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
-use tauri::Emitter;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
@@ -145,47 +148,29 @@ pub async fn requests_create(
     build_requests_create(state.inner(), &caller, dto).await
 }
 
-/// Desktop push: после перехода отправляет `trackly-event` через AppHandle.
+/// Desktop push: `RequestService::transition` pushes `WsEvent::RequestStatusChanged`
+/// onto `ctx.ws_broadcast`; the global bridge in `main.rs` forwards it to the
+/// desktop webview as `trackly-event` (gap-closure — see module doc comment).
 #[tauri::command]
 #[specta::specta]
 pub async fn requests_transition(
     state: tauri::State<'_, AppCtx>,
-    app: tauri::AppHandle,
     payload: RequestTransitionPayload,
 ) -> Result<RequestDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    let result = build_requests_transition(state.inner(), &caller, payload).await?;
-    // Desktop push (no WS server needed — Tauri emits to all webview windows).
-    app.emit(
-        "trackly-event",
-        &WsEvent::RequestStatusChanged {
-            request_id: result.id,
-            new_status: result.status.clone(),
-        },
-    )
-    .ok();
-    Ok(result)
+    build_requests_transition(state.inner(), &caller, payload).await
 }
 
-/// Approve an `ad_register` request — Admin only. Desktop push on success.
+/// Approve an `ad_register` request — Admin only. Desktop push on success via
+/// the `ws_broadcast` bridge (see module doc comment).
 #[tauri::command]
 #[specta::specta]
 pub async fn requests_approve_ad_register(
     state: tauri::State<'_, AppCtx>,
-    app: tauri::AppHandle,
     payload: ApproveAdRegisterDto,
 ) -> Result<RequestDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    let result = build_requests_approve_ad_register(state.inner(), &caller, payload).await?;
-    app.emit(
-        "trackly-event",
-        &WsEvent::RequestStatusChanged {
-            request_id: result.id,
-            new_status: result.status.clone(),
-        },
-    )
-    .ok();
-    Ok(result)
+    build_requests_approve_ad_register(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]

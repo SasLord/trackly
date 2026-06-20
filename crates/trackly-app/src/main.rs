@@ -18,6 +18,7 @@
 //! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
 //! 8. Normal branch: stub message (Plan 05/Phase 2 wires Tauri Builder).
 
+use tauri::Emitter;
 use trackly_app::context::AppCtx;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::server::{start_server_on_addr, ServerHandle};
@@ -197,6 +198,17 @@ fn main() -> anyhow::Result<()> {
         // tauri::Builder использует свой main-thread event loop (Wry/Tao) и
         // НЕ создаёт дополнительный tokio runtime; #[tauri::command] async-функции
         // выполняются на текущем tokio::Runtime через tauri::async_runtime integration.
+        // Gap-closure fix: bridge HTTP/browser-originated WsEvents to the
+        // desktop webview. Without this, the only Tauri `trackly-event` emits
+        // were the direct `app.emit(...)` calls inside Tauri command handlers
+        // themselves (tauri_cmds/requests.rs) — so a browser/LAN user's
+        // mutation (e.g. POST /api/v1/request_ad_restore → service pushes
+        // ws_broadcast) never reached the desktop admin's webview. Clone the
+        // broadcast sender BEFORE `.manage(ctx)` consumes `ctx` (AppCtx is
+        // Arc-based/Clone, so this is a cheap handle clone, not a duplicate
+        // channel).
+        let ws_broadcast = ctx.ws_broadcast.clone();
+
         let builder = trackly_app::specta_export::builder();
         tauri::Builder::default()
             .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
@@ -212,6 +224,39 @@ fn main() -> anyhow::Result<()> {
             .invoke_handler(builder.invoke_handler())
             .setup(move |app| {
                 builder.mount_events(app);
+
+                // ws_broadcast → desktop webview bridge (D-Notify-01 gap-closure).
+                // Mirrors the browser path's `ctx.ws_broadcast.subscribe()` in
+                // http/ws.rs — every WsEvent pushed by any service mutation
+                // (HTTP or Tauri-originated; both transports share the same
+                // service layer) now also reaches the desktop window via the
+                // same `trackly-event` channel the frontend's ws.ts already
+                // listens on. Same serialized WsEvent payload — no
+                // wrap/rename, so existing `event.type === '...'` handlers
+                // keep working unchanged.
+                let app_handle = app.handle().clone();
+                let mut rx = ws_broadcast.subscribe();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        match rx.recv().await {
+                            Ok(event) => {
+                                let _ = app_handle.emit("trackly-event", &event);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                // Slow consumer — skipped n events. Continue,
+                                // don't exit (parity with http/ws.rs Pitfall 5).
+                                tracing::warn!(
+                                    "ws_broadcast->tauri bridge lagged {n} events — continuing"
+                                );
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                // Sender dropped — AppCtx shutting down.
+                                break;
+                            }
+                        }
+                    }
+                });
+
                 Ok(())
             })
             .run(tauri::generate_context!())
