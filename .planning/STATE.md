@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: executing
-last_updated: "2026-06-20T06:15:49.046Z"
+status: verifying
+last_updated: "2026-06-20T06:36:12.499Z"
 last_activity: 2026-06-20
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 69
-  completed_plans: 68
-  percent: 92
+  completed_plans: 69
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 Phase: 09 (ad) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-20
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -108,6 +108,7 @@ Last activity: 2026-06-20
 | Phase 09 P02 | 75m | 2 tasks | 14 files |
 | Phase 09 P03 | 110m | 2 tasks | 18 files |
 | Phase 09-ad P04 | 50min | 2 tasks | 12 files |
+| Phase 09-ad P05 | 55min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,8 @@ Recent decisions affecting current work:
 - [Phase 09-ad]: remember=true sets persistent 30-day sliding cookie (Expiry::OnInactivity), set after session.insert() so it survives the flush-before-insert sequence
 - [Phase 09-ad]: AdSettingsDto excludes all AD-password fields; connection settings are read-only TOML, only enabled/auto_accept are writable
 - [Phase 09-ad]: bindings-phase9.ts placed at ui/src/ (not ui/src/lib/) matching the real bindings-phase6.ts convention; plan frontmatter path was stale
+- [Phase 09-ad]: BlockedScreen restore CTA re-invokes auth_login with retained credentials (no dedicated restoration endpoint) — restoration request is created server-side as a side effect of the blocked AD bind path
+- [Phase 09-ad]: ad_register reject-confirmation copy is keyed on adSubtype + a UI-fetched AdSettingsDto.auto_accept hint; backend reject_ad_register independently re-derives the correct mutation from user.is_active, so UI copy mismatch cannot cause incorrect deletion
 
 ### Pending Todos
 
@@ -246,7 +249,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T06:15:49.039Z
-Stopped at: Completed 09-04-PLAN.md
+Last session: 2026-06-20T06:36:12.492Z
+Stopped at: Completed 09-05-PLAN.md Tasks 1-2; final end-to-end human-verify checkpoint pending
 Resume file: 
 None

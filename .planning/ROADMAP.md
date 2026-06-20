@@ -22,7 +22,7 @@ Trackly — портативное приложение для учёта тех
 
 — *Milestone v1.0 завершён (фазы 1–8). Ниже — milestone v1.1 (см. `.planning/MILESTONES.md`).* —
 
-- [ ] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (planned — 5 plans, 5 waves)
+- [x] **Phase 9: AD-аутентификация и заявки на регистрацию пользователей** — AD-вход через браузер, подтягивание ФИО из AD, заявки на регистрацию с подтверждением админом и опциональным автоприёмом (USR-08..12, REQ-06, SET-10); вынесено из Phase 8 при SPIDR-split 2026-06-18 (planned — 5 plans, 5 waves) (completed 2026-06-20)
 
 ## Phase Details
 
@@ -320,7 +320,7 @@ Plans:
 **Mode:** mvp
 **Depends on:** Phase 8 (релизная Windows-сборка нужна для теста AD-входа в домене)
 **Requirements:** USR-08, USR-09, USR-10, USR-11, USR-12, REQ-06, SET-10
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -342,7 +342,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4)*
 
-- [ ] 09-05-PLAN.md — UI vertical: login redesign (remember/hint/generic errors/reserved SSO) + Pending/Blocked screens + Active Directory settings tab + admin ad_register approve UI + docs/AD-SETUP.md + human-verify (USR-08/09/10/11, SET-10, REQ-06)
+- [x] 09-05-PLAN.md — UI vertical: login redesign (remember/hint/generic errors/reserved SSO) + Pending/Blocked screens + Active Directory settings tab + admin ad_register approve UI + docs/AD-SETUP.md + human-verify (USR-08/09/10/11, SET-10, REQ-06)
 
 **UI hint:** yes
 
@@ -361,7 +361,7 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 | 6. Принтеры (SNMP-мониторинг) и Заявки | 9/9 | Complete   | 2026-06-15 |
 | 7. Отчёты, Дашборд и Настройки | 14/14 | Complete    | 2026-06-18 |
 | 8. Релизный пайплайн (Windows/macOS/Linux) | 2/2 | Complete    | 2026-06-19 |
-| 9. AD-аутентификация и заявки на регистрацию пользователей | 4/5 | In Progress|  |
+| 9. AD-аутентификация и заявки на регистрацию пользователей | 5/5 | Complete   | 2026-06-20 |
 
 ## Coverage
 
