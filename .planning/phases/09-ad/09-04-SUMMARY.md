@@ -145,3 +145,15 @@ None - all new HTTP/Tauri surface (`settings_get_ad`, `settings_set_ad`) was exp
 ---
 *Phase: 09-ad*
 *Completed: 2026-06-20*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/09-ad/09-04-SUMMARY.md`
+- FOUND: `crates/trackly-app/tests/requests_ad_register_http.rs`
+- FOUND: `crates/trackly-app/tests/settings_ad.rs`
+- FOUND: `crates/trackly-app/tests/auth_remember_cookie.rs`
+- FOUND: `ui/src/bindings-phase9.ts`
+- FOUND commit `6665c3d` (Task 1)
+- FOUND commit `f715055` (Task 2)
+- FOUND commit `55c94aa` (Task 2 extension)
+- FOUND commit `b6f09d2` (SUMMARY.md)
