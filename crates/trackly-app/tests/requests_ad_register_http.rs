@@ -91,6 +91,80 @@ async fn post_with_cookie(
     (status, body_json)
 }
 
+/// Seed a "restore" ad_register scenario via raw writer access (mirrors
+/// requests_ad_register.rs's seed_restore_request), returns (ad_user_id, request_id).
+/// User row is blocked (`is_active=0`, `deleted_at_utc` NULL).
+async fn seed_restore_request(ctx: &AppCtx, login: &str, full_name: &str) -> (i64, i64) {
+    let now = SystemClock.unix_seconds();
+    let login = login.to_string();
+    let full_name = full_name.to_string();
+    ctx.writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
+                params![login, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let user_id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO requests \
+                 (request_type, status, requested_by_user_id, description, ad_subtype, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('ad_register', 'open', ?1, ?2, 'restore', ?3, ?3, 1)",
+                params![user_id, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let request_id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok((user_id, request_id))
+        })
+        .await
+        .expect("seed restore request")
+}
+
+/// Seed a SECOND open restore request for an EXISTING user (mirrors the
+/// duplicate-request bug, Defect 1) — same shape as `seed_restore_request`
+/// but reuses `user_id` instead of inserting a new user row.
+async fn seed_second_restore_request(ctx: &AppCtx, user_id: i64, full_name: &str) -> i64 {
+    let now = SystemClock.unix_seconds();
+    let full_name = full_name.to_string();
+    ctx.writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO requests \
+                 (request_type, status, requested_by_user_id, description, ad_subtype, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('ad_register', 'open', ?1, ?2, 'restore', ?3, ?3, 1)",
+                params![user_id, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let request_id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(request_id)
+        })
+        .await
+        .expect("seed second restore request")
+}
+
 /// Seed a "pending" ad_register scenario via raw writer access (mirrors
 /// requests_ad_register.rs's seed_pending_register), returns (ad_user_id, request_id).
 async fn seed_pending_register(ctx: &AppCtx, login: &str, full_name: &str) -> (i64, i64) {
@@ -289,4 +363,125 @@ async fn approve_ad_register_http() {
     })
     .await
     .expect("approve_ad_register_http exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test (Defect 2 repro, HTTP transport): reject a duplicate open restore
+// request for a user whose companion restore request was already approved.
+// Reproduces the real-world flow exactly — over `/api/v1/requests_transition`,
+// not the service layer directly — to catch any axum/session/serde-specific
+// leak that wouldn't surface when calling RequestService in-process.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reject_restore_after_companion_already_approved_http() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin_identity = Identity::trusted_admin();
+
+        let admin_dto = ctx
+            .auth
+            .create_user(
+                UserNew {
+                    login: "reject_admin_http".to_string(),
+                    full_name: "Admin".to_string(),
+                    password: "password123".to_string(),
+                    role: "admin".to_string(),
+                    email: None,
+                },
+                &admin_identity,
+            )
+            .await
+            .expect("create admin_user");
+
+        let (user_id, request_id_a) =
+            seed_restore_request(&ctx, "us200http", "Петрова Анна HTTP").await;
+        let request_id_b =
+            seed_second_restore_request(&ctx, user_id, "Петрова Анна HTTP").await;
+
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let admin_cookie = create_session_cookie(&session_store, admin_dto.id, Role::Admin)
+            .await
+            .expect("admin session");
+
+        let router = build_router(&ctx, session_store);
+
+        // Approve request A over HTTP.
+        let (status_a, body_a) = post_with_cookie(
+            router.clone(),
+            "/api/v1/requests_approve_ad_register",
+            json!({
+                "payload": { "requestId": request_id_a, "version": 1, "role": "employee" }
+            }),
+            Some(&admin_cookie),
+        )
+        .await;
+        assert_eq!(
+            status_a,
+            StatusCode::OK,
+            "approve запроса A должен вернуть 200, body: {body_a}"
+        );
+        assert_eq!(body_a["status"], "completed");
+
+        let activated = ctx
+            .auth
+            .get_user_by_id(user_id)
+            .await
+            .expect("get_user_by_id");
+        assert!(activated.is_active, "пользователь должен быть активирован");
+
+        // Reject request B (companion duplicate, still open) over HTTP — this
+        // is the EXACT real-world repro: admin approves one restore request,
+        // then rejects the other for the same now-active user.
+        let (status_b, body_b) = post_with_cookie(
+            router.clone(),
+            "/api/v1/requests_transition",
+            json!({
+                "payload": {
+                    "op": "reject",
+                    "requestId": request_id_b,
+                    "version": 1,
+                    "notes": "дубликат"
+                }
+            }),
+            Some(&admin_cookie),
+        )
+        .await;
+
+        // The bug report: this call returned a malformed/non-AppError body
+        // that the frontend's parseAppError fallback couldn't parse (generic
+        // "Не удалось связаться с приложением" toast). A correct response is
+        // EITHER a 200 with status="rejected" OR a non-2xx response whose
+        // body still has the `{code, message}` AppError shape — never an
+        // empty body, raw panic text, or a body lacking those two fields.
+        if status_b.is_success() {
+            assert_eq!(
+                body_b["status"], "rejected",
+                "reject запроса B должен перевести его в rejected: {body_b}"
+            );
+        } else {
+            assert!(
+                body_b.get("code").and_then(|v| v.as_str()).is_some()
+                    && body_b.get("message").and_then(|v| v.as_str()).is_some(),
+                "ошибка должна иметь форму AppError {{code, message}}, получено: \
+                 status={status_b}, body={body_b}"
+            );
+        }
+
+        // The already-approved user's active state must be unaffected by the
+        // reject of the companion duplicate.
+        let after = ctx
+            .auth
+            .get_user_by_id(user_id)
+            .await
+            .expect("get_user_by_id");
+        assert!(
+            after.is_active,
+            "reject дубликата не должен деактивировать уже одобренного пользователя"
+        );
+
+        ctx.shutdown.cancel();
+    })
+    .await
+    .expect("reject_restore_after_companion_already_approved_http exceeded 30s budget");
 }

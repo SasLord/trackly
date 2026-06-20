@@ -3,7 +3,9 @@
 //! Snake_case JSON (S-2). All `i64` fields carry `#[specta(type = i32)]`.
 //!
 //! `RequestTransitionPayload` uses `#[serde(tag = "op")]` so the UI sends
-//! `{ "op": "accept", "request_id": 3, "version": 1 }`.
+//! `{ "op": "accept", "requestId": 3, "version": 1 }` — this is one of the
+//! few camelCase exceptions to S-2 (see the doc comment on the enum itself
+//! for why each variant needs its own `rename_all`).
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -139,9 +141,22 @@ pub struct RequestCreateDto {
 /// Lifecycle transition payload — UI sends the op discriminant + params.
 ///
 /// Wire format: `{ "op": "accept", "requestId": 3, "version": 1 }`
+///
+/// `rename_all = "camelCase"` on the enum container only renames the `op`
+/// tag values (variant names) for an internally-tagged enum — it does NOT
+/// cascade to each variant's field names (serde semantics, confirmed via
+/// minimal repro during the 09-AD-GAPS fix). Each variant therefore needs
+/// its OWN `#[serde(rename_all = "camelCase")]` so `requestId` deserializes
+/// into `request_id` etc. Without this, every real JSON call (HTTP body or
+/// Tauri IPC payload — both go through this same `Deserialize` impl) fails
+/// with "missing field `request_id`", which axum's default `Json` rejection
+/// then returns as a plain-text 422 body, not a structured AppError — this
+/// is what surfaced as the generic "Не удалось связаться с приложением"
+/// toast on reject (Defect 2, 09-AD-GAPS).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum RequestTransitionPayload {
+    #[serde(rename_all = "camelCase")]
     Accept {
         #[specta(type = i32)]
         request_id: i64,
@@ -149,6 +164,7 @@ pub enum RequestTransitionPayload {
         version: i64,
         assigned_to_user_id: Option<i32>,
     },
+    #[serde(rename_all = "camelCase")]
     Reject {
         #[specta(type = i32)]
         request_id: i64,
@@ -156,6 +172,7 @@ pub enum RequestTransitionPayload {
         version: i64,
         notes: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     Complete {
         #[specta(type = i32)]
         request_id: i64,
@@ -227,4 +244,75 @@ pub struct RequestCountsDto {
     pub completed: i64,
     #[specta(type = i32)]
     pub rejected: i64,
+}
+
+#[cfg(test)]
+mod wire_contract_tests {
+    //! Locks in the exact JSON wire shape the frontend sends for
+    //! `RequestTransitionPayload` (09-AD-GAPS Defect 2). Every existing
+    //! integration test constructed this enum directly as a Rust value,
+    //! never round-tripping through `serde_json` — which is exactly how a
+    //! per-variant `rename_all` gap on an internally-tagged enum went
+    //! undetected: the enum-level `rename_all = "camelCase"` only renames
+    //! the `op` tag values, not each variant's field names.
+    use super::RequestTransitionPayload;
+
+    #[test]
+    fn reject_deserializes_camel_case_wire_format() {
+        let json = r#"{"op":"reject","requestId":5,"version":1,"notes":"дубликат"}"#;
+        let payload: RequestTransitionPayload =
+            serde_json::from_str(json).expect("camelCase wire format must deserialize");
+        match payload {
+            RequestTransitionPayload::Reject {
+                request_id,
+                version,
+                notes,
+            } => {
+                assert_eq!(request_id, 5);
+                assert_eq!(version, 1);
+                assert_eq!(notes, Some("дубликат".to_string()));
+            }
+            other => panic!("expected Reject, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accept_deserializes_camel_case_wire_format() {
+        let json = r#"{"op":"accept","requestId":7,"version":2,"assignedToUserId":3}"#;
+        let payload: RequestTransitionPayload =
+            serde_json::from_str(json).expect("camelCase wire format must deserialize");
+        match payload {
+            RequestTransitionPayload::Accept {
+                request_id,
+                version,
+                assigned_to_user_id,
+            } => {
+                assert_eq!(request_id, 7);
+                assert_eq!(version, 2);
+                assert_eq!(assigned_to_user_id, Some(3));
+            }
+            other => panic!("expected Accept, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn complete_deserializes_camel_case_wire_format() {
+        let json = r#"{"op":"complete","requestId":9,"version":1,"notes":null,"linkedCartridgeId":42}"#;
+        let payload: RequestTransitionPayload =
+            serde_json::from_str(json).expect("camelCase wire format must deserialize");
+        match payload {
+            RequestTransitionPayload::Complete {
+                request_id,
+                version,
+                notes,
+                linked_cartridge_id,
+            } => {
+                assert_eq!(request_id, 9);
+                assert_eq!(version, 1);
+                assert_eq!(notes, None);
+                assert_eq!(linked_cartridge_id, Some(42));
+            }
+            other => panic!("expected Complete, got {other:?}"),
+        }
+    }
 }

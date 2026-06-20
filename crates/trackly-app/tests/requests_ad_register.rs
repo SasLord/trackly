@@ -440,3 +440,126 @@ async fn approve_restore_revives_user() {
     assert_eq!(deleted_at, None, "restore approve должен снять soft-delete");
     assert_eq!(role, "admin");
 }
+
+// ---------------------------------------------------------------------------
+// Test 7 (Defect 2 repro): rejecting a duplicate open restore request for a
+// user who was ALREADY approved via a companion restore request must return
+// a structured AppError (never panic / never leak a non-AppError to the
+// transport layer).
+//
+// Repro context: Defect 1 (duplicate restore requests) means a blocked user
+// can accumulate TWO open `ad_register`/`ad_subtype='restore'` requests.
+// Admin approves one (user becomes active) then rejects the other.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reject_restore_after_companion_already_approved_returns_app_error() {
+    let (svc, writer, _dir) = make_service();
+    let (user_id, request_id_a) = seed_restore_request(&writer, "us200", "Петрова Анна").await;
+
+    // Seed a SECOND open restore request for the SAME user (mirrors the
+    // duplicate-request bug, Defect 1) — both reference user_id.
+    let now = SystemClock.unix_seconds();
+    let full_name = "Петрова Анна".to_string();
+    let request_id_b: i64 = writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO requests \
+                 (request_type, status, requested_by_user_id, description, ad_subtype, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('ad_register', 'open', ?1, ?2, 'restore', ?3, ?3, 1)",
+                params![user_id, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(id)
+        })
+        .await
+        .expect("seed second restore request");
+
+    // Approve request A → user becomes active.
+    let approved = svc
+        .approve_ad_register(
+            ApproveAdRegisterDto {
+                request_id: request_id_a,
+                version: 1,
+                role: Some("employee".to_string()),
+            },
+            &admin(),
+        )
+        .await
+        .expect("approve request A");
+    assert_eq!(approved.status, "completed");
+
+    let readers = svc.readers.clone();
+    let is_active: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT is_active FROM users WHERE id = ?1",
+            params![user_id],
+            |r| r.get(0),
+        )
+        .expect("query user")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(is_active, 1, "approve должен активировать пользователя");
+
+    // Reject request B (companion duplicate, still open) — MUST return a
+    // structured Ok/Err(AppError), never panic and never produce a
+    // non-AppError result.
+    let reject_result = svc
+        .transition(
+            RequestTransitionPayload::Reject {
+                request_id: request_id_b,
+                version: 1,
+                notes: Some("дубликат".to_string()),
+            },
+            &admin(),
+        )
+        .await;
+
+    match reject_result {
+        Ok(dto) => {
+            assert_eq!(dto.status, "rejected");
+        }
+        Err(app_err) => {
+            // Any AppError variant is acceptable here (e.g. a future
+            // implementation might reject this differently) — the critical
+            // assertion is simply that this is a typed AppError, which the
+            // Rust type system already guarantees for `Err(AppError)`. The
+            // real-world bug manifested as a PANIC unwinding out of the
+            // writer task / a non-{code,message} payload reaching the UI —
+            // reaching this arm at all (vs. the test process aborting on a
+            // panic) is the regression check.
+            let _ = app_err.code();
+        }
+    }
+
+    // Sanity: the already-approved user's active state must be unaffected
+    // by the reject of the companion duplicate.
+    let readers2 = svc.readers.clone();
+    let is_active_after: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers2.acquire();
+        conn.query_row(
+            "SELECT is_active FROM users WHERE id = ?1",
+            params![user_id],
+            |r| r.get(0),
+        )
+        .expect("query user")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(
+        is_active_after, 1,
+        "rejecting the duplicate restore request must not deactivate the already-approved user"
+    );
+}
