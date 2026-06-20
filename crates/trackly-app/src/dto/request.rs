@@ -297,7 +297,8 @@ mod wire_contract_tests {
 
     #[test]
     fn complete_deserializes_camel_case_wire_format() {
-        let json = r#"{"op":"complete","requestId":9,"version":1,"notes":null,"linkedCartridgeId":42}"#;
+        let json =
+            r#"{"op":"complete","requestId":9,"version":1,"notes":null,"linkedCartridgeId":42}"#;
         let payload: RequestTransitionPayload =
             serde_json::from_str(json).expect("camelCase wire format must deserialize");
         match payload {

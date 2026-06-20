@@ -484,6 +484,18 @@ impl AuthService {
     /// заявку восстановления `ad_register`/`ad_subtype='restore'`, ссылающуюся
     /// на существующего пользователя, в ОДНОЙ writer-транзакции. Сессия НЕ
     /// выдаётся — возвращает `AppError::AccessBlocked`.
+    /// Creates (or reuses) an open `ad_register`/`restore` request for a
+    /// blocked/soft-deleted user attempting an AD bind.
+    ///
+    /// IDEMPOTENT per user (09-AD-GAPS Defect 1): a blocked user can trigger
+    /// this path repeatedly in one session — once via the login form, again
+    /// via `BlockedScreen`'s "Запросить восстановление" button (which
+    /// re-submits `auth_login`). Before inserting, check inside the SAME
+    /// writer transaction for an existing OPEN restore request for this
+    /// user; if found, reuse its `request_id` instead of inserting a
+    /// duplicate. The check-then-insert happens in one transaction on the
+    /// single writer connection, so there is no race window with a
+    /// concurrent bind for the same user.
     async fn create_restore_request(
         &self,
         existing_user_id: i64,
@@ -494,10 +506,27 @@ impl AuthService {
         let display_name_owned = display_name.to_string();
         let login_owned = login.to_string();
 
-        let request_id = self
+        let (request_id, reused) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                let existing: Option<i64> = tx
+                    .query_row(
+                        "SELECT id FROM requests \
+                         WHERE request_type = 'ad_register' AND ad_subtype = 'restore' \
+                           AND requested_by_user_id = ?1 AND status = 'open' \
+                           AND deleted_at_utc IS NULL",
+                        rusqlite::params![existing_user_id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+
+                if let Some(request_id) = existing {
+                    tx.commit().map_err(map_rusqlite)?;
+                    return Ok((request_id, true));
+                }
 
                 tx.execute(
                     "INSERT INTO requests \
@@ -524,15 +553,17 @@ impl AuthService {
                 .map_err(map_rusqlite)?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(request_id)
+                Ok((request_id, false))
             })
             .await?;
 
-        let _ = self.ws_tx.send(WsEvent::NewRequest {
-            request_id,
-            request_type: "ad_register".to_string(),
-            requester_name: display_name.to_string(),
-        });
+        if !reused {
+            let _ = self.ws_tx.send(WsEvent::NewRequest {
+                request_id,
+                request_type: "ad_register".to_string(),
+                requester_name: display_name.to_string(),
+            });
+        }
 
         Err(AppError::AccessBlocked { request_id })
     }

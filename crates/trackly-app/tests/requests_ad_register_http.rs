@@ -396,8 +396,7 @@ async fn reject_restore_after_companion_already_approved_http() {
 
         let (user_id, request_id_a) =
             seed_restore_request(&ctx, "us200http", "Петрова Анна HTTP").await;
-        let request_id_b =
-            seed_second_restore_request(&ctx, user_id, "Петрова Анна HTTP").await;
+        let request_id_b = seed_second_restore_request(&ctx, user_id, "Петрова Анна HTTP").await;
 
         let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
         let admin_cookie = create_session_cookie(&session_store, admin_dto.id, Role::Admin)

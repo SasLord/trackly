@@ -6,8 +6,11 @@
   // request server-side, inside AuthService::login → create_restore_request,
   // which always returns AppError::AccessBlocked (never a session). The
   // primary CTA re-submits the SAME credentials that produced this screen —
-  // each bind attempt creates a fresh request row, so the explicit click
-  // doubles as the user's confirmation action.
+  // create_restore_request is IDEMPOTENT per user (09-AD-GAPS Defect 1 fix):
+  // repeated bind attempts (login form + this button, or repeated clicks)
+  // all resolve to the SAME open request row server-side, so the explicit
+  // click safely doubles as the user's confirmation action without spawning
+  // duplicate requests.
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { AppError } from '$lib/api/errors';

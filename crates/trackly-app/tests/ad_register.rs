@@ -270,6 +270,79 @@ async fn blocked_user_creates_restore_request() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Test (Defect 1 repro): two consecutive blocked-user AD binds must reuse
+// the same OPEN restore request instead of inserting a duplicate.
+//
+// Repro context: a blocked user hits this path twice in a real session —
+// once via the login form, once via BlockedScreen's "Запросить
+// восстановление" button (which re-submits auth_login). Both binds must
+// converge on a SINGLE open `ad_register`/`ad_subtype='restore'` row.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn blocked_user_repeated_bind_reuses_open_restore_request() {
+    let (svc, _dir) = make_auth_service_with_ad();
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+
+    let existing_user_id = seed_blocked_ad_user(&svc, "us100", "Иванов Иван Иванович", false).await;
+
+    // First bind — creates the restore request.
+    let result1 = svc
+        .login(LoginRequest {
+            login: "us100".to_string(),
+            password: "Passw0rd!".to_string(),
+            remember: false,
+        })
+        .await;
+    let request_id1 = match result1 {
+        Err(AppError::AccessBlocked { request_id }) => request_id,
+        other => panic!("expected AccessBlocked on first bind, got {other:?}"),
+    };
+
+    // Second bind (e.g. user clicks "Запросить восстановление" again, or
+    // retries login) — MUST reuse the same open request, not insert a new one.
+    let result2 = svc
+        .login(LoginRequest {
+            login: "us100".to_string(),
+            password: "Passw0rd!".to_string(),
+            remember: false,
+        })
+        .await;
+    let request_id2 = match result2 {
+        Err(AppError::AccessBlocked { request_id }) => request_id,
+        other => panic!("expected AccessBlocked on second bind, got {other:?}"),
+    };
+
+    assert_eq!(
+        request_id1, request_id2,
+        "повторный bind должен возвращать ID того же открытого restore-запроса, а не создавать новый"
+    );
+
+    // Exactly ONE open ad_register/restore request must exist for this user.
+    let readers = svc.readers.clone();
+    let open_restore_count: i64 = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT COUNT(*) FROM requests \
+             WHERE request_type = 'ad_register' AND ad_subtype = 'restore' \
+               AND requested_by_user_id = ?1 AND status = 'open' \
+               AND deleted_at_utc IS NULL",
+            params![existing_user_id],
+            |r| r.get(0),
+        )
+        .expect("count open restore requests")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert_eq!(
+        open_restore_count, 1,
+        "должна существовать ровно ОДНА открытая restore-заявка после двух bind-попыток"
+    );
+}
+
 /// Same scenario, but soft-deleted instead of merely blocked — must take the
 /// same restore-request path (D-REG-03 treats both as "blocked").
 #[tokio::test]
