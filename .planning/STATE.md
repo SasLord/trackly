@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: verifying
-last_updated: "2026-06-20T15:00:00.000Z"
+last_updated: "2026-06-20T21:25:07.015Z"
 last_activity: 2026-06-20
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 12
   total_plans: 69
   completed_plans: 69
-  percent: 100
+  percent: 92
 ---
 
 # Project State
@@ -118,6 +118,7 @@ Last activity: 2026-06-20
 - Phase 03.2 inserted after Phase 03.1: gap-closure deferred UAT items DEF-1/2/3 from Phase 03.1 (URGENT)
 - Phase 03.3 inserted after Phase 03.2: Device-list UX round 2 — 4 UAT items after 03.2 (grouping condition column / cell tooltips / status column / location autocomplete) (URGENT)
 - Phase 9 added (2026-06-19): AD-аутентификация и заявки на регистрацию пользователей (USR-08..12, REQ-06, SET-10) — вынесено из Phase 8 при SPIDR-split 2026-06-18; traceability в REQUIREMENTS.md синхронизирована
+- Phase 10 added (2026-06-21): Ограничение роли employee (Сотрудник) — доступ только к Заявкам + отдельный employee-UI; аудит role-gating read-эндпоинтов на бэкенде
 
 ### Decisions
 
@@ -254,7 +255,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T15:00:00.000Z
-Stopped at: Completed 09-ad-gaps-ws-bridge (ws_broadcast→Tauri desktop bridge gap-closure)
+Last session: 2026-06-20T21:25:07.008Z
+Stopped at: Phase 10 context gathered
 Resume file: 
-None
+.planning/phases/10-employee-employee-ui-role-gating-read/10-CONTEXT.md
