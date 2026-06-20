@@ -16,10 +16,17 @@ use specta::Type;
 ///
 /// Пароль хранится здесь как строка — `AuthService` оборачивает его в
 /// `Secret<String>` перед сравнением с хэшем из БД.
+///
+/// `remember` (D-UX-02, «Запомнить меня») — `#[serde(default)]` так старые
+/// клиенты/тела без этого поля продолжают работать (по умолчанию `false` —
+/// сессионная cookie, очищается при закрытии браузера). `true` → постоянная
+/// cookie со скользящим истечением 30 дней (см. `build_auth_login`).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LoginRequest {
     pub login: String,
     pub password: String,
+    #[serde(default)]
+    pub remember: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +145,46 @@ pub struct ServerStatusDto {
 }
 
 // ---------------------------------------------------------------------------
+// AD settings DTO (Phase 9 Plan 04)
+// ---------------------------------------------------------------------------
+
+/// Текущие настройки Active Directory — ответ на `settings_get_ad` и тело
+/// для `settings_set_ad`.
+///
+/// Зеркалирует `NetworkSettingsDto`: `enabled`/`auto_accept` — live-источник
+/// истины `app_settings` (`AuthService::ad_enabled`/`ad_auto_accept`,
+/// ManageSettings-gated); `host`/`port`/`domain`/`base_dn`/`name_attr`/
+/// `no_tls_verify` — bootstrap-конфигурация из `trackly.config.toml`
+/// (`AdConfig`), читаемая через `ctx.config.ad` (read-only TOML source,
+/// аналогично `ServerConfig` для `NetworkSettingsDto`).
+///
+/// T-09-17 (Info Disclosure): пароль AD НИКОГДА не сохраняется и НИКОГДА не
+/// появляется в этом DTO — bind-пароль используется только в момент
+/// `AdClient::authenticate` и оборачивается в `Secret<String>` (D-Sec-01).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AdSettingsDto {
+    /// Включён ли AD-вход (fallback после неудачного локального логина).
+    pub enabled: bool,
+    /// Автоматически создавать активного пользователя при первом успешном
+    /// AD bind неизвестного логина (USR-11/SET-10). `false` — заявка на
+    /// модерацию (`AppError::RegistrationPending`).
+    pub auto_accept: bool,
+    /// Хост контроллера домена. Пустая строка — auto-detect (DNS SRV / env).
+    pub host: String,
+    /// Порт LDAPS.
+    #[specta(type = i32)]
+    pub port: i64,
+    /// DNS-суффикс домена (например `corp.local`).
+    pub domain: String,
+    /// Base DN для LDAP-поиска (например `dc=corp,dc=local`).
+    pub base_dn: String,
+    /// Имя атрибута для ФИО (D-Config-02), по умолчанию `displayName`.
+    pub name_attr: String,
+    /// Отключить проверку TLS-сертификата LDAPS (небезопасный opt-in).
+    pub no_tls_verify: bool,
+}
+
+// ---------------------------------------------------------------------------
 // User list / filter
 // ---------------------------------------------------------------------------
 
@@ -165,11 +212,55 @@ mod tests {
         let req = LoginRequest {
             login: "admin".to_string(),
             password: "secret".to_string(),
+            remember: true,
         };
         let json = serde_json::to_string(&req).unwrap();
         let back: LoginRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.login, req.login);
         assert_eq!(back.password, req.password);
+        assert_eq!(back.remember, req.remember);
+    }
+
+    /// D-UX-02: тела без `remember` (старые клиенты / минимальный JSON)
+    /// должны десериализоваться с `remember = false` — `#[serde(default)]`.
+    #[test]
+    fn login_request_remember_default_false() {
+        let json = r#"{"login":"admin","password":"secret"}"#;
+        let req: LoginRequest = serde_json::from_str(json).unwrap();
+        assert!(!req.remember, "remember должен быть false по умолчанию");
+    }
+
+    /// T-09-17: AdSettingsDto не содержит секретов; snake_case JSON.
+    #[test]
+    fn ad_settings_dto_roundtrip() {
+        let dto = AdSettingsDto {
+            enabled: true,
+            auto_accept: false,
+            host: "dc01.corp.local".to_string(),
+            port: 636,
+            domain: "corp.local".to_string(),
+            base_dn: "dc=corp,dc=local".to_string(),
+            name_attr: "displayName".to_string(),
+            no_tls_verify: false,
+        };
+        let json = serde_json::to_string(&dto).unwrap();
+        let back: AdSettingsDto = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.enabled, dto.enabled);
+        assert_eq!(back.auto_accept, dto.auto_accept);
+        assert_eq!(back.host, dto.host);
+        assert_eq!(back.port, dto.port);
+        assert_eq!(back.domain, dto.domain);
+        assert_eq!(back.base_dn, dto.base_dn);
+        assert_eq!(back.name_attr, dto.name_attr);
+        assert_eq!(back.no_tls_verify, dto.no_tls_verify);
+
+        assert!(json.contains("auto_accept"), "snake_case: auto_accept");
+        assert!(json.contains("base_dn"), "snake_case: base_dn");
+        assert!(json.contains("no_tls_verify"), "snake_case: no_tls_verify");
+        assert!(
+            !json.to_lowercase().contains("password"),
+            "AdSettingsDto не должен содержать пароль, json: {json}"
+        );
     }
 
     #[test]

@@ -127,6 +127,7 @@ async fn delete_then_recreate_revives_same_login() {
         svc.login(trackly_app::dto::auth::LoginRequest {
             login: "bob".to_string(),
             password: "password456".to_string(),
+            remember: false,
         })
         .await
         .expect("login с новым паролем");

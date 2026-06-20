@@ -96,11 +96,24 @@ pub async fn session_identity(session: &Session) -> Result<Identity, AppError> {
 /// 1. Сначала `session.flush()` — уничтожает любую предсуществующую сессию,
 ///    включая ту, что мог предустановить атакующий.
 /// 2. Потом `session.insert("identity", ...)` — создаёт новую сессию с новым ID.
+///
+/// **D-UX-02 («Запомнить меня»):** после `insert()` явно выставляем
+/// per-session expiry в зависимости от `remember`:
+/// - `true` — `Expiry::OnInactivity(30 days)` (постоянная cookie, скользящее
+///   истечение — совпадает с глобальным default из `http::build_router`, но
+///   фиксируется явно на уровне сессии, чтобы не зависеть от global default).
+/// - `false` — `Expiry::OnSessionEnd` (cookie без `Max-Age`/`Expires` —
+///   браузер удаляет её при закрытии).
+///
+/// Expiry выставляется ПОСЛЕ `insert()` (не до) — `flush()` обнуляет
+/// session state, а `set_expiry` после `insert` гарантирует что значение
+/// применится к новой (после flush) сессии, а не будет потеряно при flush.
 pub async fn build_auth_login(
     ctx: &AppCtx,
     session: Session,
     payload: LoginPayload,
 ) -> Result<UserDto, AppError> {
+    let remember = payload.req.remember;
     let user = ctx.auth.login(payload.req).await?;
 
     // T-05-SF: flush BEFORE insert (session fixation prevention).
@@ -120,6 +133,15 @@ pub async fn build_auth_login(
         .map_err(|e| AppError::Internal {
             source_chain: format!("session insert (login): {e}"),
         })?;
+
+    // D-UX-02: remember=true → persistent sliding 30-day cookie;
+    // remember=false → session-only cookie (cleared on browser close).
+    let expiry = if remember {
+        tower_sessions::Expiry::OnInactivity(time::Duration::days(30))
+    } else {
+        tower_sessions::Expiry::OnSessionEnd
+    };
+    session.set_expiry(Some(expiry));
 
     Ok(user)
 }

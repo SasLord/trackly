@@ -87,6 +87,7 @@ async fn login_success_and_failure() {
             .login(LoginRequest {
                 login: "alice".to_string(),
                 password: "password123".to_string(),
+                remember: false,
             })
             .await
             .expect("login должен успешно завершиться");
@@ -97,6 +98,7 @@ async fn login_success_and_failure() {
             .login(LoginRequest {
                 login: "alice".to_string(),
                 password: "wrongpassword".to_string(),
+                remember: false,
             })
             .await
             .expect_err("ожидали ошибку при неверном пароле");
@@ -110,6 +112,7 @@ async fn login_success_and_failure() {
             .login(LoginRequest {
                 login: "nonexistent".to_string(),
                 password: "anything".to_string(),
+                remember: false,
             })
             .await
             .expect_err("ожидали ошибку для несуществующего логина");

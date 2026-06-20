@@ -85,6 +85,7 @@ async fn empty_password_rejected() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "".to_string(),
+            remember: false,
         })
         .await;
     assert!(
@@ -97,6 +98,7 @@ async fn empty_password_rejected() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "   ".to_string(),
+            remember: false,
         })
         .await;
     assert!(
@@ -121,6 +123,7 @@ async fn ad_fallback_active_user() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "Passw0rd!".to_string(),
+            remember: false,
         })
         .await;
 
@@ -143,6 +146,7 @@ async fn ad_disabled_no_fallback() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "Passw0rd!".to_string(),
+            remember: false,
         })
         .await;
 
@@ -156,6 +160,7 @@ async fn ad_disabled_no_fallback() {
         .login(LoginRequest {
             login: "nobody".to_string(),
             password: "whatever".to_string(),
+            remember: false,
         })
         .await;
     assert!(matches!(result, Err(AppError::Unauthorized)));
@@ -176,6 +181,7 @@ async fn ad_unreachable_distinct_error() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "Passw0rd!".to_string(),
+            remember: false,
         })
         .await;
 
@@ -214,6 +220,7 @@ async fn local_user_still_works() {
         .login(LoginRequest {
             login: "localadmin".to_string(),
             password: "localpassword123".to_string(),
+            remember: false,
         })
         .await;
 
@@ -228,6 +235,7 @@ async fn local_user_still_works() {
         .login(LoginRequest {
             login: "localadmin".to_string(),
             password: "wrongpassword".to_string(),
+            remember: false,
         })
         .await;
     assert!(matches!(result, Err(AppError::Unauthorized)));

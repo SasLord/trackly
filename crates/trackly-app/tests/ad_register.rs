@@ -91,6 +91,7 @@ async fn auto_accept_creates_user_and_info_request() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "Passw0rd!".to_string(),
+            remember: false,
         })
         .await
         .expect("auto-accept login должен выдать сессию");
@@ -158,6 +159,7 @@ async fn pending_creates_inactive_user_and_request() {
         .login(LoginRequest {
             login: "us200".to_string(),
             password: "Secret123".to_string(),
+            remember: false,
         })
         .await;
 
@@ -209,6 +211,7 @@ async fn pending_creates_inactive_user_and_request() {
         .login(LoginRequest {
             login: "us200".to_string(),
             password: "Secret123".to_string(),
+            remember: false,
         })
         .await;
     assert!(
@@ -236,6 +239,7 @@ async fn blocked_user_creates_restore_request() {
         .login(LoginRequest {
             login: "us100".to_string(),
             password: "Passw0rd!".to_string(),
+            remember: false,
         })
         .await;
 
@@ -282,6 +286,7 @@ async fn soft_deleted_user_creates_restore_request() {
         .login(LoginRequest {
             login: "us200".to_string(),
             password: "Secret123".to_string(),
+            remember: false,
         })
         .await;
 
@@ -330,6 +335,7 @@ async fn all_writes_single_writer() {
     svc.login(LoginRequest {
         login: "us100".to_string(),
         password: "Passw0rd!".to_string(),
+        remember: false,
     })
     .await
     .expect("auto-accept login should succeed");
