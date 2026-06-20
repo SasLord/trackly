@@ -184,7 +184,12 @@
   // Per-tab status counts (G2-5b)
   // ---------------------------------------------------------------------------
   let statusCounts = $state<Record<string, number>>({});
-  let countsLoading = $state(false);
+  // NON-reactive overlap guard. MUST NOT be $state: loadStatusCounts() is called
+  // synchronously inside the auto-reload $effect, so reading a reactive flag here
+  // would subscribe the effect to it; writing it (true→false) would then re-trigger
+  // the effect, causing an infinite reload loop (see debug session
+  // ui-ws-toast-reports-flicker). A plain let is read/written without reactivity.
+  let countsLoading = false;
 
   // ---------------------------------------------------------------------------
   // Export state
@@ -316,7 +321,14 @@
       });
   }
 
-  // Auto-reload when domain / report / period / filter changes
+  // Auto-reload when domain / report / period / filter changes.
+  //
+  // IMPORTANT: every reactive read performed *synchronously* inside this effect
+  // becomes a dependency. The load helpers below must therefore only read the
+  // intended reactive state (activeDomain/activeReport/period/filter) and must
+  // NOT read any reactive flag they also write (e.g. a loading flag), or the
+  // write re-triggers the effect → infinite reload loop. countsLoading is a
+  // plain (non-reactive) let for exactly this reason.
   $effect(() => {
     // Track reactive dependencies
     void activeDomain;
