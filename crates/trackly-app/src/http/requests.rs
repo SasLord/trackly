@@ -5,14 +5,17 @@
 //! Pattern (S-2): каждый handler делегирует соответствующему `build_*` helper
 //! из tauri_cmds/requests.rs — один DTO, два транспорта.
 //!
-//! WS push: handler_create и handler_transition отправляют WsEvent через
-//! ctx.ws_broadcast после успешной мутации (D-Notify-01).
+//! WS push: НЕ выполняется в этих handler'ах. Единственный владелец
+//! broadcast — слой `RequestService` (create/transition/approve_ad_register
+//! сами шлют WsEvent через свой `ws_tx`, который является тем же
+//! `Arc<broadcast::Sender>`, что и `ctx.ws_broadcast`). Повторная отправка
+//! здесь приводила к двойной доставке события каждому подписчику (CR-01,
+//! симптом «WS toast spam») — удалена.
 
 use axum::{extract::State, routing::post, Json, Router};
 use tower_sessions::Session;
 
 use crate::context::AppCtx;
-use crate::dto::printer::WsEvent;
 use crate::dto::request::{
     ApproveAdRegisterDto, Pagination, RequestCategoryDto, RequestCountsDto, RequestCreateDto,
     RequestDto, RequestFilter, RequestHistoryEntryDto, RequestListResponse,
@@ -106,15 +109,10 @@ pub async fn handler_create(
     let result = build_requests_create(&ctx, &identity, p.dto)
         .await
         .map_err(AppErrorResponse::from)?;
-    // WS push after create (D-Notify-01) — broadcast already done in RequestService::create,
-    // but we re-broadcast from HTTP transport as well for completeness.
-    ctx.ws_broadcast
-        .send(WsEvent::NewRequest {
-            request_id: result.id,
-            request_type: result.request_type.clone(),
-            requester_name: result.requester_name.clone().unwrap_or_default(),
-        })
-        .ok();
+    // WS push is owned by RequestService::create (the single broadcast owner) —
+    // do NOT re-broadcast here. `ctx.ws_broadcast` and `RequestService.ws_tx`
+    // are the SAME Arc<broadcast::Sender>, so a second send is a literal
+    // double-fire to every subscriber (CR-01 / "WS toast spam" fix).
     Ok(Json(result))
 }
 
@@ -129,14 +127,8 @@ pub async fn handler_transition(
     let result = build_requests_transition(&ctx, &identity, p.payload)
         .await
         .map_err(AppErrorResponse::from)?;
-    // WS push after transition (D-Notify-01) — broadcast already done in service layer.
-    ctx.ws_broadcast
-        .send(WsEvent::RequestStatusChanged {
-            request_id: result.id,
-            new_status: result.status.clone(),
-            requested_by_user_id: result.requested_by_user_id,
-        })
-        .ok();
+    // WS push is owned by RequestService::transition (the single broadcast
+    // owner) — do NOT re-broadcast here (CR-01 double-fire fix).
     Ok(Json(result))
 }
 
@@ -151,13 +143,8 @@ pub async fn handler_approve_ad_register(
     let result = build_requests_approve_ad_register(&ctx, &identity, p.payload)
         .await
         .map_err(AppErrorResponse::from)?;
-    ctx.ws_broadcast
-        .send(WsEvent::RequestStatusChanged {
-            request_id: result.id,
-            new_status: result.status.clone(),
-            requested_by_user_id: result.requested_by_user_id,
-        })
-        .ok();
+    // WS push is owned by RequestService::approve_ad_register (the single
+    // broadcast owner) — do NOT re-broadcast here (CR-01 double-fire fix).
     Ok(Json(result))
 }
 
