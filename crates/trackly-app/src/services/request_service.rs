@@ -316,12 +316,19 @@ impl RequestService {
             RequestTransitionPayload::Accept {
                 request_id,
                 version,
-                assigned_to_user_id,
+                // Assignee is resolved server-side from the caller (the acceptor) —
+                // the client-supplied value is ignored. This mirrors the D-REQ-01
+                // server-side-override pattern and prevents a bogus FK write: in
+                // unlocked-desktop mode the UI sends id 0 ("Рабочий стол" sentinel),
+                // which has no users row and previously failed the
+                // requests.assigned_to_user_id → users(id) FK. caller.user_id is
+                // None for trusted-desktop → COALESCE keeps the existing value.
+                assigned_to_user_id: _,
             } => (
                 *request_id,
                 *version,
                 RequestTransitionOp::Accept,
-                assigned_to_user_id.map(|id| id as i64),
+                caller.user_id,
                 None,
             ),
             RequestTransitionPayload::Reject {

@@ -164,7 +164,10 @@
         op: 'accept',
         requestId: request.id,
         version: request.version,
-        assignedToUserId: identity?.id ?? null,
+        // Assignee is resolved server-side from the authenticated caller; do not
+        // send a client id. In unlocked-desktop mode identity.id is the sentinel
+        // 0 ("Рабочий стол"), which has no users row and broke the FK on accept.
+        assignedToUserId: null,
       });
       pushToast('success', 'Заявка принята в работу');
       onTransition();
