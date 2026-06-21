@@ -63,10 +63,15 @@ impl RequestService {
     // -----------------------------------------------------------------------
 
     /// Get a single request by ID.
-    pub async fn get(&self, id: i64) -> Result<RequestDto, AppError> {
+    ///
+    /// D-REQ-01 / BOLA closure: an Employee caller may only fetch a request
+    /// they themselves own — `caller.user_id != dto.requested_by_user_id`
+    /// returns `AppError::Forbidden` rather than the DTO. Admin/Manager
+    /// callers pass through unchanged.
+    pub async fn get(&self, id: i64, caller: &Identity) -> Result<RequestDto, AppError> {
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
-        tokio::task::spawn_blocking(move || {
+        let dto = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             let row = repo.get(&conn, id)?;
             Ok(RequestDto::from(row))
@@ -74,13 +79,29 @@ impl RequestService {
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
-        })?
+        })??;
+
+        if matches!(caller.role, trackly_core::auth::Role::Employee)
+            && dto.requested_by_user_id != caller.user_id.unwrap_or(-1)
+        {
+            return Err(AppError::Forbidden);
+        }
+
+        Ok(dto)
     }
 
     /// List requests (paginated), optionally filtered.
     ///
     /// REQ-06 / T-09-11: `ad_register` rows are excluded at the SQL level for
     /// non-admin callers — never row-hidden client-side.
+    ///
+    /// D-REQ-01: for an Employee caller, `filter.requested_by_user_id` is
+    /// unconditionally overridden to `caller.user_id` — the client-supplied
+    /// value (if any) is discarded, never merged or validated-then-trusted.
+    /// An Employee identity with no `user_id` (should not occur in practice —
+    /// `Identity::trusted_admin()` only ever produces `Role::Admin`) is
+    /// rejected defensively rather than silently falling through to an
+    /// unrestricted `None` filter.
     pub async fn list(
         &self,
         filter: RequestFilter,
@@ -88,6 +109,15 @@ impl RequestService {
         caller: &Identity,
     ) -> Result<RequestListResponse, AppError> {
         let exclude_ad_register = !matches!(caller.role, trackly_core::auth::Role::Admin);
+
+        let mut filter = filter;
+        if matches!(caller.role, trackly_core::auth::Role::Employee) {
+            if caller.user_id.is_none() {
+                return Err(AppError::Forbidden);
+            }
+            filter.requested_by_user_id = caller.user_id;
+        }
+
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
         tokio::task::spawn_blocking(move || {
@@ -106,12 +136,24 @@ impl RequestService {
     }
 
     /// Get aggregate counts for the status switch-bar.
-    pub async fn counts(&self) -> Result<RequestCountsDto, AppError> {
+    ///
+    /// D-REQ-01: for an Employee caller, counts are scoped to
+    /// `requested_by_user_id = caller.user_id` — never the org-wide totals.
+    pub async fn counts(&self, caller: &Identity) -> Result<RequestCountsDto, AppError> {
+        let requested_by_user_id = if matches!(caller.role, trackly_core::auth::Role::Employee) {
+            if caller.user_id.is_none() {
+                return Err(AppError::Forbidden);
+            }
+            caller.user_id
+        } else {
+            None
+        };
+
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            let c = repo.counts(&conn)?;
+            let c = repo.counts(&conn, requested_by_user_id)?;
             Ok(RequestCountsDto {
                 all: c.all,
                 open: c.open,
@@ -127,10 +169,17 @@ impl RequestService {
     }
 
     /// Request audit history (REQ-07).
+    ///
+    /// D-REQ-01 / BOLA closure: reuses [`Self::get`]'s ownership check before
+    /// touching `audit_log` — an Employee who does not own `request_id` gets
+    /// `AppError::Forbidden` and the history query never runs.
     pub async fn get_history(
         &self,
         request_id: i64,
+        caller: &Identity,
     ) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
+        let _ = self.get(request_id, caller).await?;
+
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
         tokio::task::spawn_blocking(move || -> Result<Vec<RequestHistoryEntryDto>, AppError> {
@@ -216,7 +265,7 @@ impl RequestService {
             })
             .await?;
 
-        let dto = self.get(request_id).await?;
+        let dto = self.get(request_id, caller).await?;
 
         // WS push after successful create (D-Notify-01).
         let _ = self.ws_tx.send(WsEvent::NewRequest {
@@ -250,7 +299,7 @@ impl RequestService {
             notes,
         } = &payload
         {
-            let current = self.get(*request_id).await?;
+            let current = self.get(*request_id, caller).await?;
             if current.request_type == "ad_register" {
                 return self
                     .reject_ad_register(*request_id, *version, notes.clone(), caller)
@@ -347,7 +396,7 @@ impl RequestService {
             })
             .await?;
 
-        let dto = self.get(request_id).await?;
+        let dto = self.get(request_id, caller).await?;
 
         // WS push after successful transition (D-Notify-01).
         // NOTE: RequestStatusChanged — NOT RequestUpdated (06-CONTEXT sync).
@@ -384,7 +433,7 @@ impl RequestService {
             trackly_core::auth::Role::from_str(payload.role.as_deref().unwrap_or("employee"))?;
         let role_str = role.as_str().to_string();
 
-        let current = self.get(payload.request_id).await?;
+        let current = self.get(payload.request_id, caller).await?;
         if current.request_type != "ad_register" {
             return Err(AppError::Validation {
                 field: "request_id".to_string(),
@@ -482,7 +531,7 @@ impl RequestService {
             })
             .await?;
 
-        let dto = self.get(request_id).await?;
+        let dto = self.get(request_id, caller).await?;
 
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
@@ -512,7 +561,7 @@ impl RequestService {
     ) -> Result<RequestDto, AppError> {
         authorize(caller, &Action::ManageUsers)?;
 
-        let current = self.get(request_id).await?;
+        let current = self.get(request_id, caller).await?;
         let ad_subtype = current.ad_subtype.clone().unwrap_or_default();
         let target_user_id = current.requested_by_user_id;
 
@@ -600,7 +649,7 @@ impl RequestService {
             })
             .await?;
 
-        let dto = self.get(request_id).await?;
+        let dto = self.get(request_id, caller).await?;
 
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,

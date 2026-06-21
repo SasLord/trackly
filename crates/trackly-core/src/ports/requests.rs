@@ -31,5 +31,13 @@ pub trait RequestRepository {
     ) -> Result<(Vec<RequestRow>, u64), AppError>;
 
     /// Aggregate counts for the status switch-bar.
-    fn counts(&self, conn: &Self::Conn) -> Result<RequestCounts, AppError>;
+    ///
+    /// `requested_by_user_id` (D-REQ-01): when `Some(id)`, counts are scoped
+    /// to requests owned by that user — the Employee-scoped path. `None`
+    /// means unrestricted (Admin/Manager).
+    fn counts(
+        &self,
+        conn: &Self::Conn,
+        requested_by_user_id: Option<i64>,
+    ) -> Result<RequestCounts, AppError>;
 }

@@ -278,19 +278,27 @@ impl RequestRepository for SqliteRequestRepository {
         Ok((out, total as u64))
     }
 
-    fn counts(&self, conn: &Self::Conn) -> Result<RequestCounts, AppError> {
+    fn counts(
+        &self,
+        conn: &Self::Conn,
+        requested_by_user_id: Option<i64>,
+    ) -> Result<RequestCounts, AppError> {
         let all: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests WHERE deleted_at_utc IS NULL",
-                [],
+                "SELECT COUNT(*) FROM requests \
+                 WHERE deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
 
         let open: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests WHERE status = 'open' AND deleted_at_utc IS NULL",
-                [],
+                "SELECT COUNT(*) FROM requests \
+                 WHERE status = 'open' AND deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -298,8 +306,9 @@ impl RequestRepository for SqliteRequestRepository {
         let in_progress: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM requests \
-                 WHERE status = 'in_progress' AND deleted_at_utc IS NULL",
-                [],
+                 WHERE status = 'in_progress' AND deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -307,8 +316,9 @@ impl RequestRepository for SqliteRequestRepository {
         let completed: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM requests \
-                 WHERE status = 'completed' AND deleted_at_utc IS NULL",
-                [],
+                 WHERE status = 'completed' AND deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -316,8 +326,9 @@ impl RequestRepository for SqliteRequestRepository {
         let rejected: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM requests \
-                 WHERE status = 'rejected' AND deleted_at_utc IS NULL",
-                [],
+                 WHERE status = 'rejected' AND deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
