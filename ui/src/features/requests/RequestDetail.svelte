@@ -384,10 +384,10 @@
             </div>
           {/if}
         {:else}
-          {#if request.categoryId !== null}
+          {#if request.categoryName}
             <div class="field">
               <span class="field-label">Категория</span>
-              <span class="field-value">{request.categoryId}</span>
+              <span class="field-value">{request.categoryName}</span>
             </div>
           {/if}
           {#if request.description}

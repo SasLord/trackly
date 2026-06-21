@@ -5,6 +5,7 @@
 
 import { apiCall } from '$lib/api/client';
 import type {
+  RequestCategoryDto,
   RequestCountsDto,
   RequestCreateDto,
   RequestDto,
@@ -26,7 +27,7 @@ export const requests = {
   transition: (payload: RequestTransitionPayload) =>
     apiCall<RequestDto>('requests_transition', { payload }),
 
-  listCategories: () => apiCall<string[]>('requests_list_categories'),
+  listCategories: () => apiCall<RequestCategoryDto[]>('requests_list_categories'),
 
   statusCounts: () => apiCall<RequestCountsDto>('requests_counts'),
 

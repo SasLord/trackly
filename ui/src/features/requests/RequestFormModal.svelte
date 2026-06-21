@@ -11,6 +11,7 @@
   import { requests } from './api';
   import { devices } from '$lib/api/devices';
   import type { DeviceDto } from '../../bindings';
+  import type { RequestCategoryDto } from '../../bindings-phase6';
 
   interface Props {
     open: boolean;
@@ -37,13 +38,11 @@
   let availablePrinters = $state<DeviceDto[]>([]);
   let printersLoading = $state(false);
 
-  // Fixed category list (D-Req-Categories-01)
-  const CATEGORIES = [
-    { id: 1, label: 'Ремонт техники' },
-    { id: 2, label: 'Расходные материалы' },
-    { id: 3, label: 'Программное обеспечение' },
-    { id: 4, label: 'Прочее' },
-  ];
+  // Category list — loaded from the server {id, name} endpoint (D-CAT-01).
+  // No more hardcoded array — request_categories rows can change without a
+  // frontend redeploy.
+  let categories = $state<RequestCategoryDto[]>([]);
+  let categoriesLoading = $state(false);
 
   // Form instance counter — resets form on each open.
   let openInstanceCounter = $state(0);
@@ -60,8 +59,9 @@
       categoryId = null;
       printerError = '';
       descError = '';
-      // Load printers list.
+      // Load printers + categories list.
       loadPrinters();
+      loadCategories();
     }
     _wasOpen = isOpen;
   });
@@ -79,6 +79,18 @@
       // Non-fatal — printers list stays empty.
     } finally {
       printersLoading = false;
+    }
+  }
+
+  async function loadCategories() {
+    // D-CAT-01: server-driven {id, name} list — no hardcoded array.
+    categoriesLoading = true;
+    try {
+      categories = await requests.listCategories();
+    } catch {
+      // Non-fatal — categories list stays empty.
+    } finally {
+      categoriesLoading = false;
     }
   }
 
@@ -219,10 +231,13 @@
             }}
           >
             <option value="">Без категории</option>
-            {#each CATEGORIES as cat (cat.id)}
-              <option value={String(cat.id)}>{cat.label}</option>
+            {#each categories as cat (cat.id)}
+              <option value={String(cat.id)}>{cat.name}</option>
             {/each}
           </Select>
+          {#if categoriesLoading && categories.length === 0}
+            <span class="field-hint">Загрузка категорий…</span>
+          {/if}
         </div>
 
         <!-- Описание (обязательно) -->

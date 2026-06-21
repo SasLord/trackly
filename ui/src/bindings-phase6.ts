@@ -111,6 +111,20 @@ export type RequestDto = {
    * RequestDtoAdSubtype doc-comment.
    */
   adSubtype: 'register' | 'restore' | null;
+  /**
+   * D-CAT-01 (Phase 11): joined `request_categories.name` — display name for
+   * `categoryId`. `null` when the request has no category set.
+   */
+  categoryName: string | null;
+};
+
+/**
+ * A single request category option `{ id, name }` (D-CAT-01).
+ * Synced with crates/trackly-app/src/dto/request.rs RequestCategoryDto.
+ */
+export type RequestCategoryDto = {
+  id: number;
+  name: string;
 };
 
 /**
