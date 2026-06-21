@@ -11,6 +11,7 @@ import type {
   RequestDto,
   RequestFilter,
   RequestListResponse,
+  RequestPrinterOptionDto,
   RequestTransitionPayload,
 } from '../../bindings-phase6';
 import type { Pagination } from '../../bindings';
@@ -28,6 +29,11 @@ export const requests = {
     apiCall<RequestDto>('requests_transition', { payload }),
 
   listCategories: () => apiCall<RequestCategoryDto[]>('requests_list_categories'),
+
+  // D-PRN-01 (Phase 11): minimal printer options for the create-request
+  // form's printer dropdown — CreateRequest-gated, not the closed
+  // ReadData/ReadPrinters actions (Phase 10 BFLA fix).
+  printerOptions: () => apiCall<RequestPrinterOptionDto[]>('request_printer_options'),
 
   statusCounts: () => apiCall<RequestCountsDto>('requests_counts'),
 

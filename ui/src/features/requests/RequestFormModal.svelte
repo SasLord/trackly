@@ -6,12 +6,11 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Select from '$lib/components/Select.svelte';
+  import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { requests } from './api';
-  import { devices } from '$lib/api/devices';
-  import type { DeviceDto } from '../../bindings';
-  import type { RequestCategoryDto } from '../../bindings-phase6';
+  import type { RequestCategoryDto, RequestPrinterOptionDto } from '../../bindings-phase6';
 
   interface Props {
     open: boolean;
@@ -34,8 +33,11 @@
   let printerError = $state('');
   let descError = $state('');
 
-  // Available printers list — all devices with type_id=2 (Принтер), incl. USB/без-SNMP (§427)
-  let availablePrinters = $state<DeviceDto[]>([]);
+  // Available printers list — minimal {id,name,location} DTO from the
+  // CreateRequest-gated request_printer_options endpoint (D-PRN-01). This
+  // replaced the closed devices.list({type_id:2}) call (Phase 10 BFLA fix
+  // emptied this list for Employee since ReadData/ReadPrinters got gated).
+  let availablePrinters = $state<RequestPrinterOptionDto[]>([]);
   let printersLoading = $state(false);
 
   // Category list — loaded from the server {id, name} endpoint (D-CAT-01).
@@ -67,14 +69,12 @@
   });
 
   async function loadPrinters() {
-    // Load all devices with type_id=2 (Принтер) — includes USB/без-SNMP (§427, D-GAP-Replace-Select)
+    // D-PRN-01: minimal {id,name,location} list from the CreateRequest-gated
+    // endpoint — every role (incl. Employee) can call this, unlike the
+    // closed devices.list({type_id:2}) which needs ReadData/ReadPrinters.
     printersLoading = true;
     try {
-      const resp = await devices.list(
-        { type_id: 2, location_id: null, status_id: null, state: null, name_prefix: null, include_deleted: false, group_by_condition: false },
-        { offset: 0, limit: 200 },
-      );
-      availablePrinters = resp.items;
+      availablePrinters = await requests.printerOptions();
     } catch {
       // Non-fatal — printers list stays empty.
     } finally {
@@ -187,7 +187,8 @@
         <!-- Принтер (обязательно) -->
         <div class="field">
           <label class="label" for="req-printer">Принтер</label>
-          <Select
+          <GroupedPrinterSelect
+            options={availablePrinters}
             value={printerDeviceId !== null ? String(printerDeviceId) : ''}
             id="req-printer"
             invalid={!!printerError}
@@ -195,12 +196,7 @@
               printerDeviceId = v ? parseInt(v, 10) : null;
               printerError = '';
             }}
-          >
-            <option value="">Выберите принтер</option>
-            {#each availablePrinters as p (p.id)}
-              <option value={String(p.id)}>{p.name || `Принтер #${p.id}`}</option>
-            {/each}
-          </Select>
+          />
           {#if printerError}
             <span class="field-error">{printerError}</span>
           {/if}

@@ -128,6 +128,21 @@ export type RequestCategoryDto = {
 };
 
 /**
+ * A single printer option `{ id, name, location }` for the create-request
+ * form's printer dropdown (D-PRN-01, Phase 11 Plan 02).
+ * Synced with crates/trackly-app/src/dto/request.rs RequestPrinterOptionDto.
+ *
+ * Deliberately minimal — no SNMP/community/IP/serial fields. This is what
+ * the `request_printer_options` endpoint returns (CreateRequest-gated, NOT
+ * ReadData/ReadPrinters which Phase 10 closed for Employee).
+ */
+export type RequestPrinterOptionDto = {
+  id: number;
+  name: string;
+  location: string | null;
+};
+
+/**
  * Filter parameters for request list queries.
  */
 export type RequestFilter = {
