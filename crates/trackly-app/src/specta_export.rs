@@ -118,6 +118,9 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::requests::requests_counts,
         crate::tauri_cmds::requests::requests_list_categories,
         crate::tauri_cmds::requests::requests_get_history,
+        // Phase 11 — D-PRN-01: employee-facing printer options for the
+        // create-request form (CreateRequest-gated, NOT ReadData/ReadPrinters).
+        crate::tauri_cmds::requests::request_printer_options,
         // Phase 9 — AD register requests (Plan 03)
         crate::tauri_cmds::requests::requests_approve_ad_register,
         // Phase 9 — AD settings (Plan 04)

@@ -16,13 +16,13 @@ use crate::dto::printer::WsEvent;
 use crate::dto::request::{
     ApproveAdRegisterDto, Pagination, RequestCategoryDto, RequestCountsDto, RequestCreateDto,
     RequestDto, RequestFilter, RequestHistoryEntryDto, RequestListResponse,
-    RequestTransitionPayload,
+    RequestPrinterOptionDto, RequestTransitionPayload,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::requests::{
-    build_requests_approve_ad_register, build_requests_counts, build_requests_create,
-    build_requests_get, build_requests_get_history, build_requests_list,
+    build_request_printer_options, build_requests_approve_ad_register, build_requests_counts,
+    build_requests_create, build_requests_get, build_requests_get_history, build_requests_list,
     build_requests_list_categories, build_requests_transition,
 };
 
@@ -202,6 +202,22 @@ pub async fn handler_get_history(
     ))
 }
 
+/// Printer options for the create-request form (D-PRN-01). Read-only —
+/// no `ws_broadcast` push (this is a read, not a mutation).
+pub async fn handler_request_printer_options(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<RequestPrinterOptionDto>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_request_printer_options(&ctx, &identity)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -222,4 +238,8 @@ pub fn router() -> Router<AppCtx> {
             post(handler_list_categories),
         )
         .route("/api/v1/requests_get_history", post(handler_get_history))
+        .route(
+            "/api/v1/request_printer_options",
+            post(handler_request_printer_options),
+        )
 }

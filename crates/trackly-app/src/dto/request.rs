@@ -88,6 +88,25 @@ pub struct RequestCategoryDto {
     pub name: String,
 }
 
+/// A single printer option `{ id, name, location }` for the create-request
+/// form's printer dropdown (D-PRN-01).
+///
+/// Gated behind `Action::CreateRequest` (employee has it) — deliberately NOT
+/// the closed `ReadData`/`ReadPrinters` actions (Phase 10 BFLA closure). The
+/// shape is intentionally minimal: no SNMP/community/IP/serial fields leave
+/// the server, since an Employee caller must not be able to read device
+/// internals through this endpoint (BOLA/BOPLA closure, T-11-02-I).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestPrinterOptionDto {
+    /// Device id — sent back as `printerDeviceId` on `RequestCreateDto`.
+    #[specta(type = i32)]
+    pub id: i64,
+    pub name: String,
+    /// Joined `locations.name` — `None` when the printer has no location set.
+    pub location: Option<String>,
+}
+
 /// Filter parameters for request list queries.
 ///
 /// Used by Tauri commands and axum HTTP handlers.

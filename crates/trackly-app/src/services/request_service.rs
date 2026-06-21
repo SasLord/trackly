@@ -26,7 +26,7 @@ use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
     ApproveAdRegisterDto, RequestCountsDto, RequestCreateDto, RequestDto, RequestHistoryEntryDto,
-    RequestListResponse, RequestTransitionPayload,
+    RequestListResponse, RequestPrinterOptionDto, RequestTransitionPayload,
 };
 
 /// Application service for request lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -205,6 +205,52 @@ impl RequestService {
                     }),
                 })
                 .collect())
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Printer options for the create-request form's printer dropdown
+    /// (D-PRN-01). Gated on `Action::CreateRequest` — every role has it
+    /// (employee included), deliberately NOT `ReadData`/`ReadPrinters`
+    /// (Phase 10 closed those for Employee — this endpoint must not
+    /// regress that closure by reusing either gate).
+    ///
+    /// Returns only `{id, name, location}` — no SNMP/community/IP/serial
+    /// fields leave the server (BOLA/BOPLA closure, T-11-02-I). Sorted by
+    /// location (printers without a location sort last), then by name.
+    pub async fn printer_options(
+        &self,
+        caller: &Identity,
+    ) -> Result<Vec<RequestPrinterOptionDto>, AppError> {
+        authorize(caller, &Action::CreateRequest)?;
+
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<RequestPrinterOptionDto>, AppError> {
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT d.id, d.name, l.name AS location \
+                     FROM devices d \
+                     LEFT JOIN locations l ON d.location_id = l.id \
+                     WHERE d.type_id = 2 AND d.deleted_at_utc IS NULL \
+                     ORDER BY l.name IS NULL, l.name, d.name",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(RequestPrinterOptionDto {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        location: row.get(2)?,
+                    })
+                })
+                .map_err(map_rusqlite)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(map_rusqlite)?;
+            Ok(rows)
         })
         .await
         .map_err(|e| AppError::Internal {

@@ -1067,6 +1067,42 @@ async fn role_endpoint_matrix_test() {
             );
         }
 
+        // =====================================================================
+        // Case 29/30 (D-PRN-01, Plan 11-02): request_printer_options must stay
+        // reachable by Employee (Action::CreateRequest gate, NOT ReadData/
+        // ReadPrinters which Phase 10 closed for Employee) — regression guard
+        // against this narrow read-endpoint accidentally being folded into
+        // the ReadData gate in a future change.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/request_printer_options",
+                json!({}),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 29: Employee → request_printer_options (CreateRequest-gated, D-PRN-01) → expected 200, got {status}"
+            );
+        }
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/request_printer_options",
+                json!({}),
+                None,
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "Case 30: No session → request_printer_options → expected 401, got {status}"
+            );
+        }
+
         ctx.shutdown.cancel();
     })
     .await

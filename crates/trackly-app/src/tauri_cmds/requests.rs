@@ -18,7 +18,7 @@ use crate::context::AppCtx;
 use crate::dto::request::{
     ApproveAdRegisterDto, Pagination, RequestCategoryDto, RequestCountsDto, RequestCreateDto,
     RequestDto, RequestFilter, RequestHistoryEntryDto, RequestListResponse,
-    RequestTransitionPayload,
+    RequestPrinterOptionDto, RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -131,6 +131,18 @@ pub async fn build_requests_list_categories(
     })?
 }
 
+/// Printer options for the create-request form's printer dropdown
+/// (D-PRN-01). Gated on `Action::CreateRequest` — NOT `ReadData`/
+/// `ReadPrinters` (Phase 10 closed those for Employee; this read-only
+/// endpoint must not regress that closure).
+pub async fn build_request_printer_options(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<RequestPrinterOptionDto>, AppError> {
+    authorize(caller, &Action::CreateRequest)?;
+    ctx.requests.printer_options(caller).await
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri wrappers
 // ---------------------------------------------------------------------------
@@ -216,4 +228,15 @@ pub async fn requests_get_history(
 ) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_requests_get_history(state.inner(), &caller, id as i64).await
+}
+
+/// Printer options for the create-request form (D-PRN-01) — `Action::CreateRequest`
+/// gated, available to Employee.
+#[tauri::command]
+#[specta::specta]
+pub async fn request_printer_options(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<Vec<RequestPrinterOptionDto>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_request_printer_options(state.inner(), &caller).await
 }
