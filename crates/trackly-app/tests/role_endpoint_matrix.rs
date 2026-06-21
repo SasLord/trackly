@@ -24,6 +24,25 @@
 //! 18. Manager session → POST /api/v1/reports_list_device_acts → not 401/403 (200 or 422)
 //! 19. Employee session → POST /api/v1/users_list → 403 Forbidden (regression-proof — already gated, CR-03)
 //!
+//! Plan 10-03 adds Cases 16-20 (renumbered 20-24 below to avoid colliding with
+//! 10-02's Cases 16-19 listed above): own-requests override (D-REQ-01), BOLA
+//! closure on requests_get/requests_get_history (D-REQ-01/BOLA), dashboard
+//! scoping (D-GATE-03), Manager/Admin regression.
+//! 20. Employee session → POST /api/v1/requests_list with requestedByUserId
+//!     forged to another user's id → 200 OK, every item's requestedByUserId
+//!     == employee_dto.id (server overrides, not just defaults — D-REQ-01)
+//! 21. Employee session → POST /api/v1/requests_get_history on a
+//!     manager-owned request id → 403 Forbidden (BOLA closure)
+//! 22. Employee session → POST /api/v1/requests_get on a manager-owned
+//!     request id → 403 Forbidden (BOLA closure)
+//! 23. Employee session → POST /api/v1/dashboard_get_all_widgets → 200 OK,
+//!     org-wide fields (devices/cartridges/printers) all zeroed/empty
+//!     (D-GATE-03)
+//! 24. Manager session regression: dashboard_get_all_widgets still returns
+//!     the full org-wide shape; requests_get/requests_get_history against
+//!     the employee-owned request are NOT Forbidden (Manager retains full
+//!     visibility)
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -37,6 +56,7 @@ use tower_sessions::SessionStore;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
@@ -708,6 +728,264 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 19: Employee → users_list (regression-proof, CR-03) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Fixtures for Cases 20-24 (Plan 10-03): two requests with distinct
+        // owners — one belongs to the Employee, one to the Manager.
+        // =====================================================================
+        let employee_identity = Identity {
+            user_id: Some(employee_dto.id),
+            role: Role::Employee,
+        };
+        let manager_identity = Identity {
+            user_id: Some(manager_dto.id),
+            role: Role::Manager,
+        };
+
+        let employee_request = ctx
+            .requests
+            .create(
+                RequestCreateDto {
+                    request_type: "free_form".to_string(),
+                    printer_device_id: None,
+                    cartridge_model_id: None,
+                    category_id: None,
+                    description: Some("employee-owned request".to_string()),
+                },
+                &employee_identity,
+            )
+            .await
+            .expect("create employee-owned request");
+
+        let manager_request = ctx
+            .requests
+            .create(
+                RequestCreateDto {
+                    request_type: "free_form".to_string(),
+                    printer_device_id: None,
+                    cartridge_model_id: None,
+                    category_id: None,
+                    description: Some("manager-owned request".to_string()),
+                },
+                &manager_identity,
+            )
+            .await
+            .expect("create manager-owned request");
+
+        // =====================================================================
+        // Case 20 (D-REQ-01, own-requests override): Employee POSTs
+        // requests_list with requestedByUserId forged to the manager's id —
+        // server must override, not trust, the client-supplied filter.
+        // =====================================================================
+        {
+            let forged_payload = json!({
+                "filter": {
+                    "status": null,
+                    "requestType": null,
+                    "assignedToUserId": null,
+                    "requestedByUserId": manager_dto.id
+                },
+                "pagination": { "offset": 0, "limit": 20 }
+            });
+
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_list",
+                forged_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 20: Employee → requests_list (forged requestedByUserId) → expected 200, got {status}"
+            );
+            let items = body["items"]
+                .as_array()
+                .expect("Case 20: response body missing 'items' array");
+            assert!(
+                !items.is_empty(),
+                "Case 20: requests_list returned an empty items array — assertion below would be \
+                 vacuously true, which would mask a missing override; expected at least the \
+                 employee-owned request fixture"
+            );
+            for item in items {
+                let owner = item["requestedByUserId"]
+                    .as_i64()
+                    .expect("Case 20: item missing requestedByUserId");
+                assert_eq!(
+                    owner, employee_dto.id,
+                    "Case 20: Employee's requests_list returned a request owned by {owner}, \
+                     not the caller ({}) — server-side override failed (D-REQ-01)",
+                    employee_dto.id
+                );
+            }
+        }
+
+        // =====================================================================
+        // Case 21 (BOLA close on get_history): Employee POSTs
+        // requests_get_history for the manager-owned request id.
+        // =====================================================================
+        {
+            let payload = json!({ "id": manager_request.id });
+            let (status, _body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_get_history",
+                payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 21: Employee → requests_get_history (manager-owned id) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 22 (BOLA close on get): Employee POSTs requests_get for the
+        // manager-owned request id.
+        // =====================================================================
+        {
+            let payload = json!({ "id": manager_request.id });
+            let (status, _body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_get",
+                payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 22: Employee → requests_get (manager-owned id) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 23 (D-GATE-03 dashboard body assertion): Employee POSTs
+        // dashboard_get_all_widgets — org-wide fields must be zeroed/empty.
+        // NOTE: snake_case keys — DashboardWidgetDto has no
+        // `#[serde(rename_all = "camelCase")]` (verified by direct read of
+        // dto/reports.rs), unlike RequestDto/RequestFilter which do.
+        // =====================================================================
+        {
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/dashboard_get_all_widgets",
+                json!({ "period": null }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 23: Employee → dashboard_get_all_widgets → expected 200, got {status}"
+            );
+            assert_eq!(
+                body["devices_total"], 0,
+                "Case 23: employee dashboard devices_total must be 0, got {:?}",
+                body["devices_total"]
+            );
+            assert_eq!(
+                body["devices_by_status"].as_array().map(|a| a.len()),
+                Some(0),
+                "Case 23: employee dashboard devices_by_status must be empty, got {:?}",
+                body["devices_by_status"]
+            );
+            assert_eq!(
+                body["cartridge_by_status"].as_array().map(|a| a.len()),
+                Some(0),
+                "Case 23: employee dashboard cartridge_by_status must be empty, got {:?}",
+                body["cartridge_by_status"]
+            );
+            assert_eq!(
+                body["low_stock_count"], 0,
+                "Case 23: employee dashboard low_stock_count must be 0, got {:?}",
+                body["low_stock_count"]
+            );
+            assert_eq!(
+                body["low_stock_models"].as_array().map(|a| a.len()),
+                Some(0),
+                "Case 23: employee dashboard low_stock_models must be empty, got {:?}",
+                body["low_stock_models"]
+            );
+            assert_eq!(
+                body["printer_online"], 0,
+                "Case 23: employee dashboard printer_online must be 0, got {:?}",
+                body["printer_online"]
+            );
+            assert_eq!(
+                body["printer_offline"], 0,
+                "Case 23: employee dashboard printer_offline must be 0, got {:?}",
+                body["printer_offline"]
+            );
+            assert_eq!(
+                body["printer_problematic"], 0,
+                "Case 23: employee dashboard printer_problematic must be 0, got {:?}",
+                body["printer_problematic"]
+            );
+            // request_counts_* are NOT asserted to an exact value here — the
+            // employee-owned request created above affects these counts;
+            // only presence-as-number is implied by the snake_case keys
+            // existing in the deserialized body (any access above would have
+            // panicked on a totally missing/null shape).
+        }
+
+        // =====================================================================
+        // Case 24 (Manager/Admin regression): dashboard_get_all_widgets keeps
+        // the full org-wide shape for Manager; requests_get/get_history
+        // against the employee-owned request are NOT Forbidden for Manager.
+        // =====================================================================
+        {
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/dashboard_get_all_widgets",
+                json!({ "period": null }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 24: Manager → dashboard_get_all_widgets → expected 200, got {status}"
+            );
+            assert!(
+                body.get("devices_by_status").is_some(),
+                "Case 24: Manager dashboard response missing 'devices_by_status' key — \
+                 org-wide shape must be preserved for Manager, got {body:?}"
+            );
+            assert!(
+                body.get("cartridge_by_status").is_some(),
+                "Case 24: Manager dashboard response missing 'cartridge_by_status' key — \
+                 org-wide shape must be preserved for Manager, got {body:?}"
+            );
+
+            let get_payload = json!({ "id": employee_request.id });
+            let (status, _body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_get",
+                get_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 24: Manager → requests_get (employee-owned id) → expected not 401/403, got {status}"
+            );
+
+            let (status, _body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_get_history",
+                get_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 24: Manager → requests_get_history (employee-owned id) → expected not 401/403, got {status}"
             );
         }
 
