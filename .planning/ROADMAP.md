@@ -409,8 +409,15 @@ Plans:
 **Requirements:** D-CAT-01, D-WS-01, D-PRN-01
 **Depends on:** Phase 10
 **Plans:** 3 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 11-01-PLAN.md — D-CAT-01: имя категории через LEFT JOIN в read-DTO + рендер categoryName
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 11-02-PLAN.md — D-PRN-01: CreateRequest-гейтед эндпоинт принтеров + сгруппированный по Расположению дропдаун
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 11-03-PLAN.md — D-WS-01: WS-видимость автору-сотруднику + тост/системная нотификация
