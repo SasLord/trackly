@@ -271,6 +271,54 @@ impl RequestService {
         caller: &Identity,
     ) -> Result<RequestDto, AppError> {
         authorize(caller, &Action::CreateRequest)?;
+
+        // WR-01: the user-facing create endpoint may ONLY originate the two
+        // self-service request types. `ad_register` requests are written
+        // directly by `AuthService::on_ad_bind_success` and must never be
+        // forgeable through this path — an `ad_register` row created here
+        // would enter the admin AD-register approval queue and, if approved,
+        // mutate the forger's own `users` row (is_active/role). The DB CHECK
+        // constraint accepts `ad_register`, so this allowlist is the only
+        // guard. The DTO doc comment already documents this invariant; this
+        // enforces it.
+        if !matches!(
+            payload.request_type.as_str(),
+            "cartridge_replace" | "free_form"
+        ) {
+            return Err(AppError::Validation {
+                field: "request_type".into(),
+                message: "request_type must be cartridge_replace or free_form".into(),
+            });
+        }
+
+        // WR-02: the service is the security boundary — mirror the frontend
+        // type-specific required-field checks here so a direct HTTP/Tauri
+        // caller cannot create a structurally-incomplete request.
+        match payload.request_type.as_str() {
+            "cartridge_replace" => {
+                if payload.printer_device_id.is_none() {
+                    return Err(AppError::Validation {
+                        field: "printer_device_id".into(),
+                        message: "printer_device_id is required for cartridge_replace".into(),
+                    });
+                }
+            }
+            "free_form" => {
+                if payload
+                    .description
+                    .as_deref()
+                    .map(|d| d.trim().is_empty())
+                    .unwrap_or(true)
+                {
+                    return Err(AppError::Validation {
+                        field: "description".into(),
+                        message: "description is required for free_form".into(),
+                    });
+                }
+            }
+            _ => unreachable!("request_type already validated against the allowlist above"),
+        }
+
         let now = self.clock.unix_seconds();
         let user_id = caller.user_id;
         let request_repo = self.request_repo.clone();

@@ -285,7 +285,8 @@ async fn test_request_lifecycle() {
                 printer_device_id: None,
                 cartridge_model_id: None,
                 category_id: None,
-                description: None,
+                // free_form now requires a non-empty description server-side (WR-02).
+                description: Some("Заявка для проверки перехода статусов".to_string()),
             },
             &caller,
         )
@@ -315,7 +316,8 @@ async fn test_request_lifecycle() {
                 printer_device_id: None,
                 cartridge_model_id: None,
                 category_id: None,
-                description: None,
+                // free_form now requires a non-empty description server-side (WR-02).
+                description: Some("Вторая заявка для проверки перехода".to_string()),
             },
             &caller,
         )
