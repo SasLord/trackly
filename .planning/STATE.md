@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-21T05:49:46.682Z"
-last_activity: 2026-06-21 -- Phase 10 planning complete
+last_updated: "2026-06-21T06:04:04.748Z"
+last_activity: 2026-06-21
 progress:
   total_phases: 13
   completed_phases: 12
   total_plans: 73
-  completed_plans: 69
+  completed_plans: 70
   percent: 92
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 09 — ad
+**Current focus:** Phase 10 — employee-employee-ui-role-gating-read
 
 ## Current Position
 
-Phase: 09 (ad) — EXECUTING
-Plan: 5 of 5
+Phase: 10 (employee-employee-ui-role-gating-read) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-21 -- Phase 10 planning complete
+Last activity: 2026-06-21
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -109,6 +109,7 @@ Last activity: 2026-06-21 -- Phase 10 planning complete
 | Phase 09 P03 | 110m | 2 tasks | 18 files |
 | Phase 09-ad P04 | 50min | 2 tasks | 12 files |
 | Phase 09-ad P05 | 55min | 2 tasks | 11 files |
+| Phase 10 P01 | 12min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -219,6 +220,7 @@ Recent decisions affecting current work:
 - [Phase 09-ad]: bindings-phase9.ts placed at ui/src/ (not ui/src/lib/) matching the real bindings-phase6.ts convention; plan frontmatter path was stale
 - [Phase 09-ad]: BlockedScreen restore CTA re-invokes auth_login with retained credentials (no dedicated restoration endpoint) — restoration request is created server-side as a side effect of the blocked AD bind path
 - [Phase 09-ad]: ad_register reject-confirmation copy is keyed on adSubtype + a UI-fetched AdSettingsDto.auto_accept hint; backend reject_ad_register independently re-derives the correct mutation from user.is_active, so UI copy mismatch cannot cause incorrect deletion
+- [Phase 10]: 10-01: Cross-plan RED/GREEN TDD — auth.rs ReadData matrix fix + Case 9 flip land here, intentionally failing (zero authorize(ReadData) call-sites exist yet); Plan 10-02 wires the call sites and turns Case 9 GREEN
 
 ### Pending Todos
 
@@ -255,7 +257,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-20T21:46:14.002Z
-Stopped at: Phase 10 UI-SPEC approved
+Last session: 2026-06-21T06:04:04.741Z
+Stopped at: Completed 10-01-PLAN.md (Case 9 intentionally RED, GREEN expected in 10-02)
 Resume file: 
-.planning/phases/10-employee-employee-ui-role-gating-read/10-UI-SPEC.md
+None

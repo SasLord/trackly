@@ -111,3 +111,10 @@ None — no external service configuration required.
 ---
 *Phase: 10-employee-employee-ui-role-gating-read*
 *Completed: 2026-06-21*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/10-employee-employee-ui-role-gating-read/10-01-SUMMARY.md
+- FOUND: 3cd751a (fix(10-01): move ReadData out of always-true authorize() arm)
+- FOUND: 1f796bd (test(10-01): add post_with_cookie_json, flip Case 9, add Case 10)
+- FOUND: 0ab7813 (docs(10-01): add plan summary)

@@ -385,11 +385,11 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 **Goal:** Роль employee по-настоящему ограничена — отдельный минимальный employee-UI (лендинг на «Заявки», без доступа к навигации на другие разделы), backend закрывает read-эндпоинты devices/acts/cartridges/printers/reports/users от employee, дашборд employee показывает только его собственные заявки, заявки employee видны только свои (server-side override, не клиентский фильтр), экран «Нет доступа» при прямой навигации на запрещённый роут, CI-матрица role×endpoint расширена на read-пути.
 **Requirements**: D-UI-01, D-GATE-01, D-GATE-02, D-GATE-03, D-REQ-01, D-DENY-01, D-TEST-01
 **Depends on:** Phase 9
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Закрыть ReadData для employee в authorize(); добавить post_with_cookie_json helper, флип Case 9 (devices_list 200→403)
+- [x] 10-01-PLAN.md — Закрыть ReadData для employee в authorize(); добавить post_with_cookie_json helper, флип Case 9 (devices_list 200→403)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
