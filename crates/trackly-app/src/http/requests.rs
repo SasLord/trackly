@@ -14,8 +14,9 @@ use tower_sessions::Session;
 use crate::context::AppCtx;
 use crate::dto::printer::WsEvent;
 use crate::dto::request::{
-    ApproveAdRegisterDto, Pagination, RequestCountsDto, RequestCreateDto, RequestDto,
-    RequestFilter, RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
+    ApproveAdRegisterDto, Pagination, RequestCategoryDto, RequestCountsDto, RequestCreateDto,
+    RequestDto, RequestFilter, RequestHistoryEntryDto, RequestListResponse,
+    RequestTransitionPayload,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -175,7 +176,7 @@ pub async fn handler_counts(
 pub async fn handler_list_categories(
     State(ctx): State<AppCtx>,
     session: Session,
-) -> Result<Json<Vec<String>>, AppErrorResponse> {
+) -> Result<Json<Vec<RequestCategoryDto>>, AppErrorResponse> {
     let _identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

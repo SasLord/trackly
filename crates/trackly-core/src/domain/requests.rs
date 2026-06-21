@@ -39,6 +39,10 @@ pub struct RequestRow {
     /// blocked/soft-deleted AD user requesting reactivation. `None` for all
     /// other request types.
     pub ad_subtype: Option<String>,
+    /// Joined: request_categories.name (D-CAT-01). `None` for requests
+    /// without a category (e.g. cartridge_replace, or free_form with no
+    /// category set).
+    pub category_name: Option<String>,
 }
 
 /// Data needed to create a new request.

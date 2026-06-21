@@ -45,6 +45,9 @@ pub struct RequestDto {
     pub version: i64,
     /// "register" | "restore" | null — only set for `request_type = 'ad_register'` (V028).
     pub ad_subtype: Option<String>,
+    /// Joined: request_categories.name (D-CAT-01) — display name for `category_id`.
+    /// `None` when the request has no category (e.g. cartridge_replace).
+    pub category_name: Option<String>,
 }
 
 impl From<RequestRow> for RequestDto {
@@ -68,8 +71,21 @@ impl From<RequestRow> for RequestDto {
             deleted_at_utc: r.deleted_at_utc,
             version: r.version,
             ad_subtype: r.ad_subtype,
+            category_name: r.category_name,
         }
     }
+}
+
+/// A single request category option `{ id, name }` (D-CAT-01).
+///
+/// Replaces the old bare `Vec<String>` shape — the form needs the FK id to
+/// send a correct `category_id`, not just the display name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestCategoryDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    pub name: String,
 }
 
 /// Filter parameters for request list queries.

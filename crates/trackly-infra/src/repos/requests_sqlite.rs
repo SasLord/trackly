@@ -23,6 +23,10 @@ pub struct SqliteRequestRepository;
 /// Joins:
 ///   - `users u` for display_name (requester_name).
 ///   - `devices d` for printer name (for cartridge_replace requests).
+///   - `request_categories rc` for category display name (D-CAT-01, free_form requests).
+///
+/// `category_name` is appended LAST (idx 18) — never insert mid-list, it would
+/// shift every subsequent `row.get(n)` in `map_row_request`.
 const SELECT_REQUESTS: &str = "
     SELECT r.id, r.request_type, r.status,
            r.requested_by_user_id, r.assigned_to_user_id,
@@ -32,10 +36,12 @@ const SELECT_REQUESTS: &str = "
            u.full_name AS requester_name,
            d.name AS printer_name,
            r.created_at_utc, r.updated_at_utc, r.deleted_at_utc, r.version,
-           r.ad_subtype
+           r.ad_subtype,
+           rc.name AS category_name
       FROM requests r
       LEFT JOIN users u ON u.id = r.requested_by_user_id
       LEFT JOIN devices d ON d.id = r.printer_device_id
+      LEFT JOIN request_categories rc ON rc.id = r.category_id
 ";
 // Note: users table uses `full_name` column (V002), not `display_name`.
 // The SELECT alias `requester_name` maps to `RequestRow.requester_name`.
@@ -61,6 +67,7 @@ fn map_row_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestRow> {
         deleted_at_utc: row.get(15)?,
         version: row.get(16)?,
         ad_subtype: row.get(17)?,
+        category_name: row.get(18)?,
     })
 }
 
@@ -461,8 +468,33 @@ mod tests {
         assert_eq!(row.status, "open");
         assert_eq!(row.requested_by_user_id, user_id);
         assert_eq!(row.description.as_deref(), Some("Нужна помощь"));
+        // D-CAT-01: no category set → category_name is None.
+        assert_eq!(row.category_name, None);
 
-        // list also returns the row
+        // D-CAT-01: a request seeded with category_id = Some(3) ("Программное
+        // обеспечение", V024 seed order) must read back with the joined name.
+        let with_category = RequestNew {
+            request_type: "free_form".to_string(),
+            requested_by_user_id: user_id,
+            printer_device_id: None,
+            cartridge_model_id: None,
+            category_id: Some(3),
+            description: Some("Нужно ПО".to_string()),
+            ad_subtype: None,
+        };
+        let with_category_id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo.insert_in_tx(&tx, &with_category, now).expect("insert");
+            tx.commit().expect("commit");
+            id
+        };
+        let category_row = repo.get(&conn, with_category_id).expect("get");
+        assert_eq!(
+            category_row.category_name,
+            Some("Программное обеспечение".to_string())
+        );
+
+        // list returns both rows
         let (rows, total) = repo
             .list(
                 &conn,
@@ -471,9 +503,34 @@ mod tests {
                 false,
             )
             .expect("list");
-        assert_eq!(total, 1);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].id, request_id);
+        assert_eq!(total, 2);
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|r| r.id == request_id));
+        assert!(rows.iter().any(|r| r.id == with_category_id));
+    }
+
+    /// D-CAT-01: the categories-list query must expose `{ id, name }`, not a
+    /// bare list of names — every row must carry a nonzero id and a non-empty
+    /// name (V024 seeds 4 RU category names).
+    #[test]
+    fn test_request_categories_list_has_id_and_name() {
+        let (conn, _g) = fresh_conn();
+        let mut stmt = conn
+            .prepare("SELECT id, name FROM request_categories ORDER BY name")
+            .expect("prepare");
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("query")
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(!rows.is_empty(), "request_categories must be seeded");
+        for (id, name) in &rows {
+            assert!(*id > 0, "category id must be nonzero, got {id}");
+            assert!(!name.is_empty(), "category name must not be empty");
+        }
     }
 
     #[test]

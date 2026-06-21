@@ -16,8 +16,9 @@
 
 use crate::context::AppCtx;
 use crate::dto::request::{
-    ApproveAdRegisterDto, Pagination, RequestCountsDto, RequestCreateDto, RequestDto,
-    RequestFilter, RequestHistoryEntryDto, RequestListResponse, RequestTransitionPayload,
+    ApproveAdRegisterDto, Pagination, RequestCategoryDto, RequestCountsDto, RequestCreateDto,
+    RequestDto, RequestFilter, RequestHistoryEntryDto, RequestListResponse,
+    RequestTransitionPayload,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -95,26 +96,34 @@ pub async fn build_requests_get_history(
     ctx.requests.get_history(id, caller).await
 }
 
-/// Список категорий заявок (request_categories).
-pub async fn build_requests_list_categories(ctx: &AppCtx) -> Result<Vec<String>, AppError> {
-    // In Phase 6 v1: return hardcoded list (V024 migration seeds request_categories).
-    // Phase 7 will wire to a real categories service.
+/// Список категорий заявок (request_categories) — `{ id, name }` (D-CAT-01).
+///
+/// Returns id alongside name so the create-request form can send a correct
+/// `category_id` instead of relying on a hardcoded client-side array.
+pub async fn build_requests_list_categories(
+    ctx: &AppCtx,
+) -> Result<Vec<RequestCategoryDto>, AppError> {
     let readers = ctx.readers.clone();
     tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
         let mut stmt = conn
-            .prepare("SELECT name FROM request_categories ORDER BY name")
+            .prepare("SELECT id, name FROM request_categories ORDER BY name")
             .map_err(|e| trackly_core::error::AppError::Internal {
                 source_chain: format!("prepare: {e}"),
             })?;
-        let names = stmt
-            .query_map([], |row| row.get::<_, String>(0))
+        let categories = stmt
+            .query_map([], |row| {
+                Ok(RequestCategoryDto {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                })
+            })
             .map_err(|e| trackly_core::error::AppError::Internal {
                 source_chain: format!("query: {e}"),
             })?
             .filter_map(|r| r.ok())
             .collect();
-        Ok(names)
+        Ok(categories)
     })
     .await
     .map_err(|e| AppError::Internal {
@@ -195,7 +204,7 @@ pub async fn requests_counts(
 #[specta::specta]
 pub async fn requests_list_categories(
     state: tauri::State<'_, AppCtx>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RequestCategoryDto>, AppError> {
     build_requests_list_categories(state.inner()).await
 }
 
