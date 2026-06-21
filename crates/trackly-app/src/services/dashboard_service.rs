@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use rusqlite::params;
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -48,10 +49,21 @@ impl DashboardService {
     ///
     /// `period` is used only for request counts (DASH-04) — devices and cartridges
     /// always show current snapshot totals.
+    ///
+    /// D-GATE-03: an Employee caller is routed to [`Self::get_employee_widgets`]
+    /// — a structurally separate query path that never touches the
+    /// devices/cartridges/printers tables, not a filtered view of this
+    /// org-wide payload. Admin/Manager callers continue through the
+    /// unchanged body below.
     pub async fn get_all_widgets(
         &self,
+        caller: &Identity,
         period: Option<PeriodDto>,
     ) -> Result<DashboardWidgetDto, AppError> {
+        if matches!(caller.role, trackly_core::auth::Role::Employee) {
+            return self.get_employee_widgets(caller, period).await;
+        }
+
         let readers = self.readers.clone();
         let tz = {
             let tz_name = &self.config.organization.timezone;
@@ -272,6 +284,110 @@ impl DashboardService {
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking get_all_widgets: {e}"),
+        })?
+    }
+
+    /// D-GATE-03: Employee-scoped dashboard widgets.
+    ///
+    /// Structurally separate from [`Self::get_all_widgets`] — this method
+    /// issues exactly one query, against `requests` only, scoped to
+    /// `requested_by_user_id = caller.user_id`. It never queries `devices`,
+    /// `cartridges`, `cartridge_models`, `printers`, or `printer_alerts`.
+    /// All org-wide fields on `DashboardWidgetDto` are returned
+    /// zeroed/empty — not omitted, since the DTO shape is shared across
+    /// roles (one DTO, two transports) — proving to the wire-level CI
+    /// assertion that the employee code path never touched those tables.
+    async fn get_employee_widgets(
+        &self,
+        caller: &Identity,
+        period: Option<PeriodDto>,
+    ) -> Result<DashboardWidgetDto, AppError> {
+        let readers = self.readers.clone();
+        let owner_user_id = caller.user_id;
+        let tz = {
+            let tz_name = &self.config.organization.timezone;
+            if tz_name == "Europe/Moscow" {
+                time::UtcOffset::from_hms(3, 0, 0).unwrap()
+            } else {
+                time::UtcOffset::UTC
+            }
+        };
+
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+
+            let (req_ts_from, req_ts_to) = match &period {
+                Some(p) => compute_period_utc(p, tz),
+                None => (None, None),
+            };
+
+            let (request_counts_open, request_counts_in_progress, request_counts_completed) = {
+                let mut clauses = vec![
+                    "r.deleted_at_utc IS NULL".to_string(),
+                    "r.requested_by_user_id = ?1".to_string(),
+                ];
+                let mut owned: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(owner_user_id)];
+                let mut pidx = 2usize;
+                if let Some(from) = req_ts_from {
+                    clauses.push(format!("r.created_at_utc >= ?{pidx}"));
+                    owned.push(Box::new(from));
+                    pidx += 1;
+                }
+                if let Some(to) = req_ts_to {
+                    clauses.push(format!("r.created_at_utc <= ?{pidx}"));
+                    owned.push(Box::new(to));
+                    pidx += 1;
+                }
+                let _ = pidx;
+
+                let sql = format!(
+                    "SELECT r.status, COUNT(r.id) \
+                     FROM requests r \
+                     WHERE {} \
+                     GROUP BY r.status",
+                    clauses.join(" AND ")
+                );
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    owned.iter().map(|b| b.as_ref()).collect();
+                let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+                let rows = stmt
+                    .query_map(param_refs.as_slice(), |r| {
+                        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                    })
+                    .map_err(map_rusqlite)?;
+
+                let mut open: i64 = 0;
+                let mut in_progress: i64 = 0;
+                let mut completed: i64 = 0;
+                for row in rows {
+                    let (status, count) = row.map_err(map_rusqlite)?;
+                    match status.as_str() {
+                        "open" => open += count,
+                        "in_progress" => in_progress += count,
+                        "completed" => completed += count,
+                        _ => {} // 'rejected' not shown in dashboard
+                    }
+                }
+                (open, in_progress, completed)
+            };
+
+            Ok(DashboardWidgetDto {
+                devices_total: 0,
+                devices_by_status: vec![],
+                cartridge_by_status: vec![],
+                low_stock_count: 0,
+                low_stock_models: vec![],
+                request_counts_open,
+                request_counts_in_progress,
+                request_counts_completed,
+                printer_online: 0,
+                printer_offline: 0,
+                printer_problematic: 0,
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking get_employee_widgets: {e}"),
         })?
     }
 

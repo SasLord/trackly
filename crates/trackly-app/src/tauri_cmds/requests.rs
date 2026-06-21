@@ -40,8 +40,12 @@ pub async fn build_requests_list(
         .await
 }
 
-pub async fn build_requests_get(ctx: &AppCtx, id: i64) -> Result<RequestDto, AppError> {
-    ctx.requests.get(id).await
+pub async fn build_requests_get(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<RequestDto, AppError> {
+    ctx.requests.get(id, caller).await
 }
 
 /// Создание заявки — разрешено всем авторизованным (Action::CreateRequest).
@@ -75,16 +79,20 @@ pub async fn build_requests_approve_ad_register(
 }
 
 /// Счётчики по статусам (для switch-bar).
-pub async fn build_requests_counts(ctx: &AppCtx) -> Result<RequestCountsDto, AppError> {
-    ctx.requests.counts().await
+pub async fn build_requests_counts(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<RequestCountsDto, AppError> {
+    ctx.requests.counts(caller).await
 }
 
 /// История заявки из audit_log (REQ-07).
 pub async fn build_requests_get_history(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
 ) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
-    ctx.requests.get_history(id).await
+    ctx.requests.get_history(id, caller).await
 }
 
 /// Список категорий заявок (request_categories).
@@ -135,7 +143,8 @@ pub async fn requests_get(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<RequestDto, AppError> {
-    build_requests_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -178,7 +187,8 @@ pub async fn requests_approve_ad_register(
 pub async fn requests_counts(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<RequestCountsDto, AppError> {
-    build_requests_counts(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_counts(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -195,5 +205,6 @@ pub async fn requests_get_history(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<Vec<RequestHistoryEntryDto>, AppError> {
-    build_requests_get_history(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_get_history(state.inner(), &caller, id as i64).await
 }

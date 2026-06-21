@@ -39,11 +39,11 @@ pub async fn handler_get_all_widgets(
     session: Session,
     Json(p): Json<GetAllWidgetsPayload>,
 ) -> Result<Json<DashboardWidgetDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_dashboard_get_all_widgets(&ctx, p.period)
+        build_dashboard_get_all_widgets(&ctx, &identity, p.period)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

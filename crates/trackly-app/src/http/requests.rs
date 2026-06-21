@@ -84,11 +84,11 @@ pub async fn handler_get(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<RequestDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_requests_get(&ctx, p.id as i64)
+        build_requests_get(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -162,11 +162,11 @@ pub async fn handler_counts(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<RequestCountsDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_requests_counts(&ctx)
+        build_requests_counts(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -191,11 +191,11 @@ pub async fn handler_get_history(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<Vec<RequestHistoryEntryDto>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_requests_get_history(&ctx, p.id as i64)
+        build_requests_get_history(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
