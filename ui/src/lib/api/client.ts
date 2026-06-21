@@ -1,5 +1,6 @@
 import { parseAppError } from './errors';
 import { authStore } from '$lib/stores/auth.svelte';
+import { pushToast } from '$lib/stores/toast.svelte';
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -16,6 +17,9 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
         if (code === 'UNAUTHORIZED' || code === 'Unauthorized') {
           authStore.user = null;
           if (typeof window !== 'undefined') window.location.hash = '#/login';
+        }
+        if (code === 'FORBIDDEN' || code === 'Forbidden') {
+          pushToast('error', 'Недостаточно прав для этого действия');
         }
       }
       throw err;
@@ -35,7 +39,10 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
       authStore.user = null;
       if (typeof window !== 'undefined') window.location.hash = '#/login';
     }
-    // 403 → throw only (user is authenticated, just forbidden).
+    // 403 → toast (D-DENY-01), no redirect/no authStore mutation — still throws so callers can react if needed
+    if (res.status === 403) {
+      pushToast('error', 'Недостаточно прав для этого действия');
+    }
     throw err;
   }
   return res.json();
