@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-21T06:22:53.887Z"
+last_updated: "2026-06-21T10:12:51.525Z"
 last_activity: 2026-06-21
 progress:
   total_phases: 13
   completed_phases: 12
   total_plans: 73
-  completed_plans: 71
+  completed_plans: 72
   percent: 92
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 10 (employee-employee-ui-role-gating-read) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-21
 
