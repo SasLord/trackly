@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-21T06:04:04.748Z"
+last_updated: "2026-06-21T06:22:53.887Z"
 last_activity: 2026-06-21
 progress:
   total_phases: 13
   completed_phases: 12
   total_plans: 73
-  completed_plans: 70
+  completed_plans: 71
   percent: 92
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 10 (employee-employee-ui-role-gating-read) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-21
 
@@ -110,6 +110,7 @@ Last activity: 2026-06-21
 | Phase 09-ad P04 | 50min | 2 tasks | 12 files |
 | Phase 09-ad P05 | 55min | 2 tasks | 11 files |
 | Phase 10 P01 | 12min | 2 tasks | 2 files |
+| Phase 10 P02 | 45min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,9 @@ Recent decisions affecting current work:
 - [Phase 09-ad]: BlockedScreen restore CTA re-invokes auth_login with retained credentials (no dedicated restoration endpoint) — restoration request is created server-side as a side effect of the blocked AD bind path
 - [Phase 09-ad]: ad_register reject-confirmation copy is keyed on adSubtype + a UI-fetched AdSettingsDto.auto_accept hint; backend reject_ad_register independently re-derives the correct mutation from user.is_active, so UI copy mismatch cannot cause incorrect deletion
 - [Phase 10]: 10-01: Cross-plan RED/GREEN TDD — auth.rs ReadData matrix fix + Case 9 flip land here, intentionally failing (zero authorize(ReadData) call-sites exist yet); Plan 10-02 wires the call sites and turns Case 9 GREEN
+- [Phase 10]: Gated all 5 read-domain resource types (devices/acts/cartridges/printers/reports) with authorize(caller, &Action::ReadData) across both HTTP and Tauri transports — Closes the BFLA gap (API5:2023) left after Plan 10-01's permission-matrix fix; Employee role can no longer read data via list/get/search/status-counts/history/low-stock/suggest endpoints
+- [Phase 10]: Kept build_printers_refresh on its pre-existing Action::ReadPrinters check, untouched by this plan's ReadData gating — ReadPrinters is a separate, intentionally distinct action from ReadData — conflating them would have been an architectural overreach beyond this plan's scope
+- [Phase 10]: Extended role_endpoint_matrix.rs CI test from 10 to 19 cases covering acts_list, cartridges_list, printers_list, reports_list_device_acts, and users_list — Proves the BFLA fix works end-to-end and serves as a regression guard against future endpoint additions in these 5 domains
 
 ### Pending Todos
 
@@ -257,7 +261,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-21T06:04:04.741Z
-Stopped at: Completed 10-01-PLAN.md (Case 9 intentionally RED, GREEN expected in 10-02)
+Last session: 2026-06-21T06:22:53.881Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: 
 None
