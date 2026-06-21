@@ -7,13 +7,16 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { apiCall } from '$lib/api/client';
   import RequestsMasterDetail from './RequestsMasterDetail.svelte';
   import RequestsSearchAndTabs from './RequestsSearchAndTabs.svelte';
   import RequestsList from './RequestsList.svelte';
   import RequestDetail from './RequestDetail.svelte';
   import RequestFormModal from './RequestFormModal.svelte';
+  import StatWidget from '../dashboard/StatWidget.svelte';
   import { requests } from './api';
   import type { RequestDto, RequestFilter, WsEvent } from '../../bindings-phase6';
+  import type { DashboardWidgetDto } from '../../bindings';
 
   let items = $state<RequestDto[]>([]);
   let listLoading = $state(false);
@@ -21,6 +24,12 @@
   let selectedRequest = $state<RequestDto | null>(null);
   let detailLoading = $state(false);
   let formModalOpen = $state(false);
+
+  // D-GATE-03: «Мои заявки» summary card data (employee-scoped dashboard_get_all_widgets
+  // branch built in 10-03) — fetched only for the employee role, see isEmployee effect below.
+  let dashboardWidget: DashboardWidgetDto | null = $state(null);
+  let dashboardLoading = $state(true);
+  let dashboardError: string | null = $state(null);
 
   const identity = $derived(authStore.user);
 
@@ -168,6 +177,24 @@
 
   const isEmployee = $derived(identity?.role === 'employee');
 
+  // D-GATE-03: fetch the employee-scoped dashboard summary once, only for employees.
+  // period: null per UI-SPEC — the card shows an all-time total, not a month-scoped period.
+  $effect(() => {
+    if (!isEmployee) return;
+    dashboardLoading = true;
+    apiCall<DashboardWidgetDto>('dashboard_get_all_widgets', { period: null })
+      .then((dto) => {
+        dashboardWidget = dto;
+        dashboardError = null;
+      })
+      .catch(() => {
+        dashboardError = 'Не удалось загрузить сводку';
+      })
+      .finally(() => {
+        dashboardLoading = false;
+      });
+  });
+
   const emptyConfig = $derived(
     filter.status !== null
       ? {
@@ -198,6 +225,28 @@
   </header>
 
   <div class="page-content">
+    {#if isEmployee}
+      <div class="employee-summary">
+        <StatWidget
+          id="my-requests"
+          title="Мои заявки"
+          mainNumber={dashboardWidget
+            ? dashboardWidget.request_counts_open + dashboardWidget.request_counts_in_progress
+            : null}
+          mainLabel="активных заявок"
+          breakdown={dashboardWidget
+            ? [
+                { label: 'Новые', count: dashboardWidget.request_counts_open },
+                { label: 'В работе', count: dashboardWidget.request_counts_in_progress },
+                { label: 'Выполнено', count: dashboardWidget.request_counts_completed },
+              ]
+            : []}
+          loading={dashboardLoading}
+          error={dashboardError}
+        />
+      </div>
+    {/if}
+
     <RequestsSearchAndTabs
       {filter}
       onFilterChange={handleStatusFilterChange}
@@ -266,5 +315,9 @@
     flex: 1;
     overflow: auto;
     padding: var(--space-lg) var(--space-xl);
+  }
+
+  .employee-summary {
+    margin-bottom: var(--space-lg);
   }
 </style>
