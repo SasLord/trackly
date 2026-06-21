@@ -46,11 +46,7 @@ pub async fn build_acts_search(
     ctx.acts.search(query, filter, pagination).await
 }
 
-pub async fn build_acts_get(
-    ctx: &AppCtx,
-    caller: &Identity,
-    id: i64,
-) -> Result<ActDto, AppError> {
+pub async fn build_acts_get(ctx: &AppCtx, caller: &Identity, id: i64) -> Result<ActDto, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.acts.get(id).await
 }
@@ -87,18 +83,12 @@ pub async fn build_acts_delete(
     ctx.acts.delete_soft(id, version).await
 }
 
-pub async fn build_acts_counts(
-    ctx: &AppCtx,
-    caller: &Identity,
-) -> Result<ActsCountsDto, AppError> {
+pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.acts.counts().await
 }
 
-pub async fn build_acts_peek_next_number(
-    ctx: &AppCtx,
-    caller: &Identity,
-) -> Result<i64, AppError> {
+pub async fn build_acts_peek_next_number(ctx: &AppCtx, caller: &Identity) -> Result<i64, AppError> {
     authorize(caller, &Action::ReadData)?;
     ctx.acts.peek_next_number().await
 }

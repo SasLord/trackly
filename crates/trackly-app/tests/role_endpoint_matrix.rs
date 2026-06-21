@@ -3,7 +3,7 @@
 //! ROADMAP success criterion #3: при попытке через curl дёрнуть mutation-эндпоинт
 //! устройств/актов/картриджей сотрудник получает 403 Forbidden.
 //!
-//! Test matrix (10 cases):
+//! Test matrix (15 cases):
 //! 1. No session → POST /api/v1/devices_create → 401 Unauthorized
 //! 2. Employee session → POST /api/v1/devices_create → 403 Forbidden
 //! 3. Manager session → POST /api/v1/devices_create → not 401/403 (200 or 422)
@@ -14,6 +14,15 @@
 //! 8. Admin session → POST /api/v1/users_create → not 401/403 (200 or 422)
 //! 9. Employee session → POST /api/v1/devices_list → 403 Forbidden (reads now gated — D-GATE-01/02)
 //! 10. Employee session → POST /api/v1/requests_list → 200 OK (own-requests read retained)
+//! 11. Employee session → POST /api/v1/acts_list → 403 Forbidden (reads now gated — D-GATE-01/02)
+//! 12. Manager session → POST /api/v1/acts_list → not 401/403 (200 or 422)
+//! 13. Employee session → POST /api/v1/cartridges_list → 403 Forbidden (reads now gated — D-GATE-01/02)
+//! 14. Manager session → POST /api/v1/cartridges_list → not 401/403 (200 or 422)
+//! 15. Employee session → POST /api/v1/printers_list → 403 Forbidden (reads now gated — D-GATE-01/02)
+//! 16. Manager session → POST /api/v1/printers_list → not 401/403 (200 or 422)
+//! 17. Employee session → POST /api/v1/reports_list_device_acts → 403 Forbidden (reads now gated — D-GATE-01/02)
+//! 18. Manager session → POST /api/v1/reports_list_device_acts → not 401/403 (200 or 422)
+//! 19. Employee session → POST /api/v1/users_list → 403 Forbidden (regression-proof — already gated, CR-03)
 //!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
@@ -286,6 +295,70 @@ async fn role_endpoint_matrix_test() {
             "pagination": { "offset": 0, "limit": 20 }
         });
 
+        // Case 11/12: acts_list — ActFilter (snake_case fields) + Pagination.
+        let acts_list_payload = json!({
+            "filter": {
+                "act_type": null,
+                "archived": null,
+                "search": null,
+                "include_deleted": false
+            },
+            "pagination": { "offset": 0, "limit": 20 }
+        });
+
+        // Case 13/14: cartridges_list — CartridgeFilter (snake_case fields) + Pagination.
+        let cartridges_list_payload = json!({
+            "filter": {
+                "status_id": null,
+                "kind_id": null,
+                "model_id": null,
+                "search": null,
+                "include_deleted": false
+            },
+            "pagination": { "offset": 0, "limit": 20 }
+        });
+
+        // Case 15/16: printers_list — PrinterFilter (camelCase rename_all) + Pagination.
+        let printers_list_payload = json!({
+            "filter": {
+                "status": null,
+                "search": null
+            },
+            "pagination": { "offset": 0, "limit": 20 }
+        });
+
+        // Case 17/18: reports_list_device_acts — ReportFilter + PeriodDto
+        // (both snake_case fields; only the wrapper payload struct is camelCase).
+        let reports_list_device_acts_payload = json!({
+            "filter": {
+                "date_from_utc": null,
+                "date_to_utc": null,
+                "location_id": null,
+                "status_id": null,
+                "type_id": null,
+                "act_type": null,
+                "model_id": null,
+                "color": null,
+                "search": null
+            },
+            "period": {
+                "mode": "year",
+                "year": 2026,
+                "month": null,
+                "date_from": null,
+                "date_to": null
+            }
+        });
+
+        // Case 19: users_list — UserFilter (snake_case fields) + Pagination
+        // (regression-proof, CR-03 — already gated, not part of this plan's fix).
+        let users_list_payload = json!({
+            "filter": {
+                "search": null
+            },
+            "pagination": { "offset": 0, "limit": 20 }
+        });
+
         // Макрос для создания нового router + store на каждый тест (oneshot потребляет роутер).
         macro_rules! new_app {
             () => {{
@@ -472,6 +545,169 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::OK,
                 "Case 10: Employee → requests_list (own-requests read retained) → expected 200, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 11: Employee session → POST /api/v1/acts_list → 403 Forbidden
+        // (reads now gated — D-GATE-01/02)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/acts_list",
+                acts_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 11: Employee → acts_list (reads now gated — D-GATE-01/02) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 12: Manager session → POST /api/v1/acts_list → not 401/403
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/acts_list",
+                acts_list_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 12: Manager → acts_list → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 13: Employee session → POST /api/v1/cartridges_list → 403 Forbidden
+        // (reads now gated — D-GATE-01/02)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_list",
+                cartridges_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 13: Employee → cartridges_list (reads now gated — D-GATE-01/02) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 14: Manager session → POST /api/v1/cartridges_list → not 401/403
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_list",
+                cartridges_list_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 14: Manager → cartridges_list → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 15: Employee session → POST /api/v1/printers_list → 403 Forbidden
+        // (reads now gated — D-GATE-01/02)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_list",
+                printers_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 15: Employee → printers_list (reads now gated — D-GATE-01/02) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 16: Manager session → POST /api/v1/printers_list → not 401/403
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_list",
+                printers_list_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 16: Manager → printers_list → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 17: Employee session → POST /api/v1/reports_list_device_acts → 403 Forbidden
+        // (reads now gated — D-GATE-01/02)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_list_device_acts",
+                reports_list_device_acts_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 17: Employee → reports_list_device_acts (reads now gated — D-GATE-01/02) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 18: Manager session → POST /api/v1/reports_list_device_acts → not 401/403
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_list_device_acts",
+                reports_list_device_acts_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 18: Manager → reports_list_device_acts → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 19: Employee session → POST /api/v1/users_list → 403 Forbidden
+        // (regression-proof — already gated via CR-03, not part of this plan's fix)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/users_list",
+                users_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 19: Employee → users_list (regression-proof, CR-03) → expected 403, got {status}"
             );
         }
 
