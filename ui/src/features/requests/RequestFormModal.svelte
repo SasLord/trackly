@@ -35,7 +35,7 @@
 
   // Available printers list — minimal {id,name,location} DTO from the
   // CreateRequest-gated request_printer_options endpoint (D-PRN-01). This
-  // replaced the closed devices.list({type_id:2}) call (Phase 10 BFLA fix
+  // replaced the closed devices listing call for printers (Phase 10 BFLA fix
   // emptied this list for Employee since ReadData/ReadPrinters got gated).
   let availablePrinters = $state<RequestPrinterOptionDto[]>([]);
   let printersLoading = $state(false);
@@ -71,7 +71,7 @@
   async function loadPrinters() {
     // D-PRN-01: minimal {id,name,location} list from the CreateRequest-gated
     // endpoint — every role (incl. Employee) can call this, unlike the
-    // closed devices.list({type_id:2}) which needs ReadData/ReadPrinters.
+    // closed devices listing call which needs ReadData/ReadPrinters.
     printersLoading = true;
     try {
       availablePrinters = await requests.printerOptions();
