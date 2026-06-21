@@ -98,7 +98,7 @@ pub enum Action {
     MutateActs,
     /// Создание, изменение, удаление операций с картриджами. Admin | Manager.
     MutateCartridges,
-    /// Просмотр любых данных. All roles (always Ok).
+    /// Просмотр любых данных (устройства, акты, картриджи, принтеры). Admin | Manager.
     ReadData,
     /// Отправка заявки (через браузер). All roles (always Ok).
     CreateRequest,
@@ -127,7 +127,7 @@ pub enum Action {
 /// | MutateDevices      | ✓     | ✓       | ✗        |
 /// | MutateActs         | ✓     | ✓       | ✗        |
 /// | MutateCartridges   | ✓     | ✓       | ✗        |
-/// | ReadData           | ✓     | ✓       | ✓        |
+/// | ReadData           | ✓     | ✓       | ✗        |
 /// | CreateRequest      | ✓     | ✓       | ✓        |
 ///
 /// # Errors
@@ -143,10 +143,11 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         | Action::MutateCartridges
         | Action::MutatePrinters
         | Action::TransitionRequests
-        | Action::ReadPrinters => {
+        | Action::ReadPrinters
+        | Action::ReadData => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
-        Action::ReadData | Action::CreateRequest | Action::ReadRequests => true,
+        Action::CreateRequest | Action::ReadRequests => true,
     };
 
     if allowed {
@@ -261,13 +262,25 @@ mod tests {
         ));
     }
 
-    // authorize — ReadData (all roles)
+    // authorize — ReadData (Admin | Manager only — D-GATE-01/D-GATE-02)
 
     #[test]
-    fn authorize_employee_read_data_ok() {
+    fn authorize_employee_read_data_forbidden() {
         let id = Identity {
             user_id: Some(3),
             role: Role::Employee,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::ReadData),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn authorize_manager_read_data_ok() {
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
         };
         assert!(authorize(&id, &Action::ReadData).is_ok());
     }
