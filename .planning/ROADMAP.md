@@ -386,9 +386,19 @@ Phases execute sequentially: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 **Requirements**: D-UI-01, D-GATE-01, D-GATE-02, D-GATE-03, D-REQ-01, D-DENY-01, D-TEST-01
 **Depends on:** Phase 9
 **Plans:** 4 plans
-
 Plans:
-- [x] 10-01-PLAN.md — Закрыть ReadData для employee в authorize(); добавить post_with_cookie_json helper, флип Case 9 (devices_list 200→403)
-- [x] 10-02-PLAN.md — Гейтинг чтения devices/acts/cartridges/printers/reports на обоих транспортах; Cases 11-15
+**Wave 1**
+
+- [ ] 10-01-PLAN.md — Закрыть ReadData для employee в authorize(); добавить post_with_cookie_json helper, флип Case 9 (devices_list 200→403)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 10-02-PLAN.md — Гейтинг чтения devices/acts/cartridges/printers/reports на обоих транспортах; Cases 11-15
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 10-03-PLAN.md — D-REQ-01 (own-requests override) + BOLA-фикс (get/get_history ownership check) + D-GATE-03 (employee-scoped dashboard branch); Cases 16-20
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 10-04-PLAN.md — EmployeeLayout.svelte + AccessDenied.svelte + App.svelte/routes.ts role branch + client.ts 403-обработка (D-UI-01, D-DENY-01)
