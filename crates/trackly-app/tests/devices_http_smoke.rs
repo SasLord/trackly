@@ -73,7 +73,8 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
         // list — Tauri path
         let filter = DeviceFilter::default();
         let page = Pagination::default();
-        let list_tauri: DeviceListResponse = build_devices_list(&ctx, filter.clone(), page).await?;
+        let list_tauri: DeviceListResponse =
+            build_devices_list(&ctx, &caller, filter.clone(), page).await?;
         assert!(
             list_tauri.total >= 1,
             "должно быть минимум 1 устройство после create"

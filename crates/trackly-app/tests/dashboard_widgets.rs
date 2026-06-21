@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_app::services::dashboard_service::DashboardService;
+use trackly_core::auth::Identity;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::AppConfig;
@@ -47,7 +48,10 @@ async fn dashboard_widget_counts_match_db_state() {
         let config = Arc::new(AppConfig::default());
 
         let svc = DashboardService::new(writer, readers, clock, config);
-        let dto = svc.get_all_widgets(None).await.unwrap();
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .unwrap();
 
         // On empty DB: devices_total should be 0.
         assert_eq!(dto.devices_total, 0, "empty DB: devices_total = 0");
@@ -80,7 +84,10 @@ async fn dashboard_low_stock_reflects_cartridge_state() {
         let config = Arc::new(AppConfig::default());
 
         let svc = DashboardService::new(writer, readers, clock, config);
-        let dto = svc.get_all_widgets(None).await.unwrap();
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .unwrap();
 
         // Empty DB has no cartridge models, so low_stock_count = 0.
         assert_eq!(
