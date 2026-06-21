@@ -27,22 +27,31 @@ use trackly_core::error::AppError;
 
 pub async fn build_acts_list(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: ActFilter,
     pagination: Pagination,
 ) -> Result<ActListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.list(filter, pagination).await
 }
 
 pub async fn build_acts_search(
     ctx: &AppCtx,
+    caller: &Identity,
     query: String,
     filter: ActFilter,
     pagination: Pagination,
 ) -> Result<ActListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.search(query, filter, pagination).await
 }
 
-pub async fn build_acts_get(ctx: &AppCtx, id: i64) -> Result<ActDto, AppError> {
+pub async fn build_acts_get(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<ActDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.get(id).await
 }
 
@@ -78,11 +87,19 @@ pub async fn build_acts_delete(
     ctx.acts.delete_soft(id, version).await
 }
 
-pub async fn build_acts_counts(ctx: &AppCtx) -> Result<ActsCountsDto, AppError> {
+pub async fn build_acts_counts(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<ActsCountsDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.counts().await
 }
 
-pub async fn build_acts_peek_next_number(ctx: &AppCtx) -> Result<i64, AppError> {
+pub async fn build_acts_peek_next_number(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<i64, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.peek_next_number().await
 }
 
@@ -98,9 +115,11 @@ pub async fn build_acts_render_pdf(
 
 pub async fn build_acts_suggest_person(
     ctx: &AppCtx,
+    caller: &Identity,
     field: SuggestPersonField,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.acts.suggest_person(field, &prefix, 20).await
 }
 
@@ -130,7 +149,8 @@ pub async fn acts_list(
     filter: ActFilter,
     pagination: Pagination,
 ) -> Result<ActListResponse, AppError> {
-    build_acts_list(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_list(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
@@ -141,13 +161,15 @@ pub async fn acts_search(
     filter: ActFilter,
     pagination: Pagination,
 ) -> Result<ActListResponse, AppError> {
-    build_acts_search(state.inner(), query, filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_search(state.inner(), &caller, query, filter, pagination).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn acts_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<ActDto, AppError> {
-    build_acts_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -185,13 +207,15 @@ pub async fn acts_delete(
 #[tauri::command]
 #[specta::specta]
 pub async fn acts_counts(state: tauri::State<'_, AppCtx>) -> Result<ActsCountsDto, AppError> {
-    build_acts_counts(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_counts(state.inner(), &caller).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn acts_peek_next_number(state: tauri::State<'_, AppCtx>) -> Result<i32, AppError> {
-    let next = build_acts_peek_next_number(state.inner()).await?;
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    let next = build_acts_peek_next_number(state.inner(), &caller).await?;
     Ok(next as i32)
 }
 
@@ -212,7 +236,8 @@ pub async fn acts_suggest_person(
     field: SuggestPersonField,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_acts_suggest_person(state.inner(), field, prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_suggest_person(state.inner(), &caller, field, prefix).await
 }
 
 /// CR-02 (Phase 3.1 code review fix): secure wrapper для shell::open.

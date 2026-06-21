@@ -94,11 +94,11 @@ pub async fn handler_list(
     session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<ActListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_list(&ctx, p.filter, p.pagination)
+        build_acts_list(&ctx, &identity, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -109,11 +109,11 @@ pub async fn handler_search(
     session: Session,
     Json(p): Json<SearchPayload>,
 ) -> Result<Json<ActListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_search(&ctx, p.query, p.filter, p.pagination)
+        build_acts_search(&ctx, &identity, p.query, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -124,11 +124,11 @@ pub async fn handler_get(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<ActDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_get(&ctx, p.id)
+        build_acts_get(&ctx, &identity, p.id)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -182,11 +182,11 @@ pub async fn handler_counts(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<ActsCountsDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_counts(&ctx)
+        build_acts_counts(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -196,11 +196,11 @@ pub async fn handler_peek_next_number(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<i64>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_peek_next_number(&ctx)
+        build_acts_peek_next_number(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -254,11 +254,11 @@ pub async fn handler_suggest_person(
     session: Session,
     Json(p): Json<SuggestPersonPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_acts_suggest_person(&ctx, p.field, p.prefix)
+        build_acts_suggest_person(&ctx, &identity, p.field, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

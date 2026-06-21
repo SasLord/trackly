@@ -26,13 +26,20 @@ use trackly_core::error::AppError;
 
 pub async fn build_devices_list(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: DeviceFilter,
     pagination: Pagination,
 ) -> Result<DeviceListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.list(filter, pagination).await
 }
 
-pub async fn build_devices_get(ctx: &AppCtx, id: i64) -> Result<DeviceDto, AppError> {
+pub async fn build_devices_get(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<DeviceDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.get(id).await
 }
 
@@ -69,33 +76,43 @@ pub async fn build_devices_delete(
     ctx.devices.delete_soft(id, version).await
 }
 
-pub async fn build_devices_state_hints(ctx: &AppCtx) -> Result<Vec<String>, AppError> {
+pub async fn build_devices_state_hints(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     Ok(ctx.devices.state_hints())
 }
 
 pub async fn build_devices_search(
     ctx: &AppCtx,
+    caller: &Identity,
     query: String,
     pagination: Pagination,
 ) -> Result<DeviceListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.search(query, pagination).await
 }
 
 pub async fn build_locations_autocomplete(
     ctx: &AppCtx,
+    caller: &Identity,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.locations_autocomplete(prefix).await
 }
 
 pub async fn build_devices_autocomplete(
     ctx: &AppCtx,
+    caller: &Identity,
     field: String,
     prefix: String,
     ctx_name: Option<String>,
     ctx_status_id: Option<i64>,
     status_in: Option<Vec<String>>,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices
         .autocomplete(field, prefix, ctx_name, ctx_status_id, status_in)
         .await
@@ -103,20 +120,28 @@ pub async fn build_devices_autocomplete(
 
 pub async fn build_devices_list_grouped(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: DeviceFilter,
     pagination: Pagination,
 ) -> Result<Vec<DeviceGroup>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.list_grouped(filter, pagination).await
 }
 
-pub async fn build_devices_status_counts(ctx: &AppCtx) -> Result<Vec<StatusCount>, AppError> {
+pub async fn build_devices_status_counts(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<StatusCount>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.status_counts().await
 }
 
 pub async fn build_devices_list_by_ids(
     ctx: &AppCtx,
+    caller: &Identity,
     ids: Vec<i64>,
 ) -> Result<Vec<DeviceDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.list_by_ids(ids).await
 }
 
@@ -142,13 +167,15 @@ pub async fn devices_list(
     filter: DeviceFilter,
     pagination: Pagination,
 ) -> Result<DeviceListResponse, AppError> {
-    build_devices_list(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_list(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn devices_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<DeviceDto, AppError> {
-    build_devices_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -187,7 +214,8 @@ pub async fn devices_delete(
 #[tauri::command]
 #[specta::specta]
 pub async fn devices_state_hints(state: tauri::State<'_, AppCtx>) -> Result<Vec<String>, AppError> {
-    build_devices_state_hints(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_state_hints(state.inner(), &caller).await
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +229,8 @@ pub async fn devices_search(
     query: String,
     pagination: Pagination,
 ) -> Result<DeviceListResponse, AppError> {
-    build_devices_search(state.inner(), query, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_search(state.inner(), &caller, query, pagination).await
 }
 
 #[tauri::command]
@@ -210,7 +239,8 @@ pub async fn locations_autocomplete(
     state: tauri::State<'_, AppCtx>,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_locations_autocomplete(state.inner(), prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_locations_autocomplete(state.inner(), &caller, prefix).await
 }
 
 #[tauri::command]
@@ -223,8 +253,10 @@ pub async fn devices_autocomplete(
     ctx_status_id: Option<i32>,
     status_in: Option<Vec<String>>,
 ) -> Result<Vec<String>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_autocomplete(
         state.inner(),
+        &caller,
         field,
         prefix,
         ctx_name,
@@ -241,7 +273,8 @@ pub async fn devices_list_grouped(
     filter: DeviceFilter,
     pagination: Pagination,
 ) -> Result<Vec<DeviceGroup>, AppError> {
-    build_devices_list_grouped(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_list_grouped(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
@@ -249,7 +282,8 @@ pub async fn devices_list_grouped(
 pub async fn devices_status_counts(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<StatusCount>, AppError> {
-    build_devices_status_counts(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_status_counts(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -258,7 +292,13 @@ pub async fn devices_list_by_ids(
     state: tauri::State<'_, AppCtx>,
     ids: Vec<i32>,
 ) -> Result<Vec<DeviceDto>, AppError> {
-    build_devices_list_by_ids(state.inner(), ids.into_iter().map(|id| id as i64).collect()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_list_by_ids(
+        state.inner(),
+        &caller,
+        ids.into_iter().map(|id| id as i64).collect(),
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
