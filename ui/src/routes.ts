@@ -10,6 +10,7 @@ import UsersPage from './pages/UsersPage.svelte';
 import SettingsPage from './pages/SettingsPage.svelte';
 import NotFound from './pages/NotFound.svelte';
 import LoginPage from './features/auth/LoginPage.svelte';
+import AccessDenied from './pages/AccessDenied.svelte';
 
 export const routes = {
   '/': Dashboard,
@@ -24,4 +25,14 @@ export const routes = {
   '/users': UsersPage,
   '/settings': SettingsPage,
   '*': NotFound,
+} as const;
+
+// Plan 10-04 (D-UI-01/D-DENY-01): route map for the Employee role — landing is the
+// existing RequestsPage (own requests only, enforced server-side); every other hash
+// resolves to AccessDenied, not the admin/manager target page or a generic 404.
+export const employeeRoutes = {
+  '/': RequestsPage,
+  '/requests': RequestsPage,
+  '/access-denied': AccessDenied,
+  '*': AccessDenied,
 } as const;

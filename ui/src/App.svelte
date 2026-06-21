@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Router from 'svelte-spa-router';
-  import { routes } from './routes';
+  import { routes, employeeRoutes } from './routes';
   import Layout from './features/layout/Layout.svelte';
+  import EmployeeLayout from './features/layout/EmployeeLayout.svelte';
   import ToastHost from '$lib/components/ToastHost.svelte';
   import LoginPage from './features/auth/LoginPage.svelte';
   import FirstRunWizard from './features/auth/FirstRunWizard.svelte';
@@ -57,6 +58,10 @@
   <FirstRunWizard />
 {:else if !authStore.user}
   <LoginPage />
+{:else if authStore.user.role === 'employee'}
+  <EmployeeLayout>
+    <Router routes={employeeRoutes} />
+  </EmployeeLayout>
 {:else}
   <Layout>
     <Router {routes} />
