@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: executing
-last_updated: "2026-06-21T10:12:51.525Z"
+status: verifying
+last_updated: "2026-06-21T10:20:03.140Z"
 last_activity: 2026-06-21
 progress:
   total_phases: 13
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 73
-  completed_plans: 72
-  percent: 92
+  completed_plans: 73
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 Phase: 10 (employee-employee-ui-role-gating-read) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-21
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -111,6 +111,7 @@ Last activity: 2026-06-21
 | Phase 09-ad P05 | 55min | 2 tasks | 11 files |
 | Phase 10 P01 | 12min | 2 tasks | 2 files |
 | Phase 10 P02 | 45min | 3 tasks | 12 files |
+| Phase 10 P04 | 35min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -225,6 +226,8 @@ Recent decisions affecting current work:
 - [Phase 10]: Gated all 5 read-domain resource types (devices/acts/cartridges/printers/reports) with authorize(caller, &Action::ReadData) across both HTTP and Tauri transports — Closes the BFLA gap (API5:2023) left after Plan 10-01's permission-matrix fix; Employee role can no longer read data via list/get/search/status-counts/history/low-stock/suggest endpoints
 - [Phase 10]: Kept build_printers_refresh on its pre-existing Action::ReadPrinters check, untouched by this plan's ReadData gating — ReadPrinters is a separate, intentionally distinct action from ReadData — conflating them would have been an architectural overreach beyond this plan's scope
 - [Phase 10]: Extended role_endpoint_matrix.rs CI test from 10 to 19 cases covering acts_list, cartridges_list, printers_list, reports_list_device_acts, and users_list — Proves the BFLA fix works end-to-end and serves as a regression guard against future endpoint additions in these 5 domains
+- [Phase 10]: 10-04: employeeRoutes implemented as a plain route-map switch in App.svelte's if/else-if chain (not svelte-spa-router wrap() guards) — reuses the existing role-gating pattern already used for shell selection
+- [Phase 10]: 10-04: AccessDenied.svelte destructures empty Props ({}) instead of binding unused 'location' prop — svelte-check flags unused destructured bindings as an error
 
 ### Pending Todos
 
@@ -261,7 +264,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-21T06:22:53.881Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-06-21T10:20:03.133Z
+Stopped at: 10-04 Tasks 1-3 complete; Task 4 checkpoint:human-verify pending
 Resume file: 
 None
