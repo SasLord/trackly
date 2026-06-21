@@ -79,11 +79,11 @@ pub async fn handler_list(
     session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<PrinterListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_printers_list(&ctx, p.filter, p.pagination)
+        build_printers_list(&ctx, &identity, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -94,11 +94,11 @@ pub async fn handler_get(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<PrinterDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_printers_get(&ctx, p.id as i64)
+        build_printers_get(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

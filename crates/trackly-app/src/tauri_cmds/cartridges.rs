@@ -27,13 +27,20 @@ use trackly_core::error::AppError;
 
 pub async fn build_cartridges_list(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: CartridgeFilter,
     pagination: Pagination,
 ) -> Result<CartridgeListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.list(filter, pagination).await
 }
 
-pub async fn build_cartridges_get(ctx: &AppCtx, id: i64) -> Result<CartridgeDto, AppError> {
+pub async fn build_cartridges_get(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<CartridgeDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.get(id).await
 }
 
@@ -83,35 +90,53 @@ pub async fn build_cartridges_transition(
 
 pub async fn build_cartridges_search(
     ctx: &AppCtx,
+    caller: &Identity,
     query: String,
     filter: CartridgeFilter,
 ) -> Result<CartridgeListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.search(query, filter).await
 }
 
-pub async fn build_cartridges_status_counts(ctx: &AppCtx) -> Result<CartridgeCountsDto, AppError> {
+pub async fn build_cartridges_status_counts(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<CartridgeCountsDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.status_counts().await
 }
 
 pub async fn build_cartridges_get_history(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
 ) -> Result<Vec<AuditEntryDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.get_history(id).await
 }
 
-pub async fn build_cartridges_low_stock(ctx: &AppCtx) -> Result<Vec<LowStockItemDto>, AppError> {
+pub async fn build_cartridges_low_stock(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<LowStockItemDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.low_stock().await
 }
 
-pub async fn build_cartridge_models_list(ctx: &AppCtx) -> Result<Vec<CartridgeModelDto>, AppError> {
+pub async fn build_cartridge_models_list(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<Vec<CartridgeModelDto>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.model_list().await
 }
 
 pub async fn build_cartridge_models_get(
     ctx: &AppCtx,
+    caller: &Identity,
     id: i64,
 ) -> Result<CartridgeModelDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.model_get(id).await
 }
 
@@ -148,31 +173,39 @@ pub async fn build_cartridge_models_delete(
 
 pub async fn build_cartridges_suggest_brand(
     ctx: &AppCtx,
+    caller: &Identity,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.suggest_brand(prefix).await
 }
 
 pub async fn build_cartridges_suggest_model(
     ctx: &AppCtx,
+    caller: &Identity,
     brand: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.suggest_model(brand, prefix).await
 }
 
 pub async fn build_cartridges_suggest_compat_printer(
     ctx: &AppCtx,
+    caller: &Identity,
     field: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.suggest_compat_printer(field, prefix).await
 }
 
 pub async fn build_cartridges_suggest_location(
     ctx: &AppCtx,
+    caller: &Identity,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.cartridges.suggest_location(prefix).await
 }
 
@@ -187,7 +220,8 @@ pub async fn cartridges_list(
     filter: CartridgeFilter,
     pagination: Pagination,
 ) -> Result<CartridgeListResponse, AppError> {
-    build_cartridges_list(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_list(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
@@ -196,7 +230,8 @@ pub async fn cartridges_get(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<CartridgeDto, AppError> {
-    build_cartridges_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -258,7 +293,8 @@ pub async fn cartridges_search(
     query: String,
     filter: CartridgeFilter,
 ) -> Result<CartridgeListResponse, AppError> {
-    build_cartridges_search(state.inner(), query, filter).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_search(state.inner(), &caller, query, filter).await
 }
 
 #[tauri::command]
@@ -266,7 +302,8 @@ pub async fn cartridges_search(
 pub async fn cartridges_status_counts(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<CartridgeCountsDto, AppError> {
-    build_cartridges_status_counts(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_status_counts(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -275,7 +312,8 @@ pub async fn cartridges_get_history(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<Vec<AuditEntryDto>, AppError> {
-    build_cartridges_get_history(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_get_history(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -283,7 +321,8 @@ pub async fn cartridges_get_history(
 pub async fn cartridges_low_stock(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<LowStockItemDto>, AppError> {
-    build_cartridges_low_stock(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_low_stock(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -291,7 +330,8 @@ pub async fn cartridges_low_stock(
 pub async fn cartridge_models_list(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<Vec<CartridgeModelDto>, AppError> {
-    build_cartridge_models_list(state.inner()).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_list(state.inner(), &caller).await
 }
 
 #[tauri::command]
@@ -300,7 +340,8 @@ pub async fn cartridge_models_get(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<CartridgeModelDto, AppError> {
-    build_cartridge_models_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
@@ -340,7 +381,8 @@ pub async fn cartridges_suggest_brand(
     state: tauri::State<'_, AppCtx>,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_cartridges_suggest_brand(state.inner(), prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_suggest_brand(state.inner(), &caller, prefix).await
 }
 
 #[tauri::command]
@@ -350,7 +392,8 @@ pub async fn cartridges_suggest_model(
     brand: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_cartridges_suggest_model(state.inner(), brand, prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_suggest_model(state.inner(), &caller, brand, prefix).await
 }
 
 #[tauri::command]
@@ -360,7 +403,8 @@ pub async fn cartridges_suggest_compat_printer(
     field: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_cartridges_suggest_compat_printer(state.inner(), field, prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_suggest_compat_printer(state.inner(), &caller, field, prefix).await
 }
 
 #[tauri::command]
@@ -369,5 +413,6 @@ pub async fn cartridges_suggest_location(
     state: tauri::State<'_, AppCtx>,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
-    build_cartridges_suggest_location(state.inner(), prefix).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_suggest_location(state.inner(), &caller, prefix).await
 }

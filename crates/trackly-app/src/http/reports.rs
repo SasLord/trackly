@@ -59,11 +59,11 @@ pub async fn handler_list_device_acts(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_device_acts(&ctx, p.filter, p.period)
+        build_reports_list_device_acts(&ctx, &identity, p.filter, p.period)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -74,11 +74,11 @@ pub async fn handler_list_device_returns(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_device_returns(&ctx, p.filter, p.period)
+        build_reports_list_device_returns(&ctx, &identity, p.filter, p.period)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -89,11 +89,11 @@ pub async fn handler_list_device_in_use(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_device_in_use(&ctx, p.filter)
+        build_reports_list_device_in_use(&ctx, &identity, p.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -104,11 +104,11 @@ pub async fn handler_list_device_in_stock(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_device_in_stock(&ctx, p.filter)
+        build_reports_list_device_in_stock(&ctx, &identity, p.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -119,11 +119,11 @@ pub async fn handler_list_cartridge_consumption(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_cartridge_consumption(&ctx, p.filter, p.period)
+        build_reports_list_cartridge_consumption(&ctx, &identity, p.filter, p.period)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -134,11 +134,11 @@ pub async fn handler_list_cartridge_refills(
     session: Session,
     Json(p): Json<ListWithPeriodPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_cartridge_refills(&ctx, p.filter, p.period)
+        build_reports_list_cartridge_refills(&ctx, &identity, p.filter, p.period)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -149,11 +149,11 @@ pub async fn handler_list_cartridge_in_use(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_cartridge_in_use(&ctx, p.filter)
+        build_reports_list_cartridge_in_use(&ctx, &identity, p.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -164,11 +164,11 @@ pub async fn handler_list_cartridge_in_stock(
     session: Session,
     Json(p): Json<ListSnapshotPayload>,
 ) -> Result<Json<ReportResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_reports_list_cartridge_in_stock(&ctx, p.filter)
+        build_reports_list_cartridge_in_stock(&ctx, &identity, p.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -180,10 +180,10 @@ pub async fn handler_export_csv(
     session: Session,
     Json(p): Json<ExportPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    let bytes = build_reports_export_csv(&ctx, p.report_type, p.filter, p.period)
+    let bytes = build_reports_export_csv(&ctx, &identity, p.report_type, p.filter, p.period)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((
@@ -205,10 +205,10 @@ pub async fn handler_export_pdf(
     session: Session,
     Json(p): Json<ExportPayload>,
 ) -> Result<impl IntoResponse, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    let bytes = build_reports_export_pdf(&ctx, p.report_type, p.filter, p.period)
+    let bytes = build_reports_export_pdf(&ctx, &identity, p.report_type, p.filter, p.period)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((

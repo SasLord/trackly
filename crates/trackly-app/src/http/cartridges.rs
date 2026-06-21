@@ -123,11 +123,11 @@ pub async fn handler_list(
     session: Session,
     Json(p): Json<ListPayload>,
 ) -> Result<Json<CartridgeListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_list(&ctx, p.filter, p.pagination)
+        build_cartridges_list(&ctx, &identity, p.filter, p.pagination)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -138,11 +138,11 @@ pub async fn handler_get(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_get(&ctx, p.id as i64)
+        build_cartridges_get(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -219,11 +219,11 @@ pub async fn handler_search(
     session: Session,
     Json(p): Json<SearchPayload>,
 ) -> Result<Json<CartridgeListResponse>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_search(&ctx, p.query, p.filter)
+        build_cartridges_search(&ctx, &identity, p.query, p.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -233,11 +233,11 @@ pub async fn handler_status_counts(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<CartridgeCountsDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_status_counts(&ctx)
+        build_cartridges_status_counts(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -248,11 +248,11 @@ pub async fn handler_get_history(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<Vec<AuditEntryDto>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_get_history(&ctx, p.id as i64)
+        build_cartridges_get_history(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -262,11 +262,11 @@ pub async fn handler_low_stock(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<Vec<LowStockItemDto>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_low_stock(&ctx)
+        build_cartridges_low_stock(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -276,11 +276,11 @@ pub async fn handler_models_list(
     State(ctx): State<AppCtx>,
     session: Session,
 ) -> Result<Json<Vec<CartridgeModelDto>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridge_models_list(&ctx)
+        build_cartridge_models_list(&ctx, &identity)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -291,11 +291,11 @@ pub async fn handler_models_get(
     session: Session,
     Json(p): Json<GetPayload>,
 ) -> Result<Json<CartridgeModelDto>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridge_models_get(&ctx, p.id as i64)
+        build_cartridge_models_get(&ctx, &identity, p.id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -350,11 +350,11 @@ pub async fn handler_suggest_brand(
     session: Session,
     Json(p): Json<SuggestBrandPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_suggest_brand(&ctx, p.prefix)
+        build_cartridges_suggest_brand(&ctx, &identity, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -365,11 +365,11 @@ pub async fn handler_suggest_model(
     session: Session,
     Json(p): Json<SuggestModelPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_suggest_model(&ctx, p.brand, p.prefix)
+        build_cartridges_suggest_model(&ctx, &identity, p.brand, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -380,11 +380,11 @@ pub async fn handler_suggest_compat_printer(
     session: Session,
     Json(p): Json<SuggestCompatPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_suggest_compat_printer(&ctx, p.field, p.prefix)
+        build_cartridges_suggest_compat_printer(&ctx, &identity, p.field, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -395,11 +395,11 @@ pub async fn handler_suggest_location(
     session: Session,
     Json(p): Json<SuggestBrandPayload>,
 ) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_suggest_location(&ctx, p.prefix)
+        build_cartridges_suggest_location(&ctx, &identity, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

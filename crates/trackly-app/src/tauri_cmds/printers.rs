@@ -23,13 +23,20 @@ use trackly_core::ports::printers::PrinterRepository;
 
 pub async fn build_printers_list(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: PrinterFilter,
     pagination: Pagination,
 ) -> Result<PrinterListResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.printers.list(filter.into(), pagination.into()).await
 }
 
-pub async fn build_printers_get(ctx: &AppCtx, id: i64) -> Result<PrinterDto, AppError> {
+pub async fn build_printers_get(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+) -> Result<PrinterDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.printers.get(id).await
 }
 
@@ -201,7 +208,8 @@ pub async fn printers_list(
     filter: PrinterFilter,
     pagination: Pagination,
 ) -> Result<PrinterListResponse, AppError> {
-    build_printers_list(state.inner(), filter, pagination).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_list(state.inner(), &caller, filter, pagination).await
 }
 
 #[tauri::command]
@@ -210,7 +218,8 @@ pub async fn printers_get(
     state: tauri::State<'_, AppCtx>,
     id: i32,
 ) -> Result<PrinterDto, AppError> {
-    build_printers_get(state.inner(), id as i64).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_get(state.inner(), &caller, id as i64).await
 }
 
 #[tauri::command]
