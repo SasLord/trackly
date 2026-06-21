@@ -203,5 +203,10 @@ export type RequestCountsDto = {
  */
 export type WsEvent =
   | { type: 'new_request'; requestId: number; requestType: string; requesterName: string }
-  | { type: 'request_status_changed'; requestId: number; newStatus: string }
+  | {
+      type: 'request_status_changed';
+      requestId: number;
+      newStatus: string;
+      requestedByUserId: number;
+    }
   | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string };

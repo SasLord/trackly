@@ -4,11 +4,15 @@
   // нет доступа к разделам, которые отображает Sidebar, поэтому нет смысла переиспользовать
   // sidebar-grid. Реальная граница доступа — backend 403 (10-01/10-02/10-03), этот компонент
   // только формирует честный UX.
+  import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { connectWs, onWsEvent } from '$lib/api/ws';
+  import { pushToast } from '$lib/stores/toast.svelte';
+  import type { WsEvent } from '../../bindings-phase6';
 
   interface Props {
     children?: Snippet;
@@ -17,6 +21,60 @@
   const { children }: Props = $props();
 
   let loggingOut = $state(false);
+
+  // D-WS-01: realtime delivery of the admin's response to the employee's OWN
+  // request — toast while the tab is active, system Notification when the
+  // tab is hidden (Page Visibility) and permission has been granted.
+  // Server-side `is_visible_to` (dto/printer.rs) is the SOLE security
+  // boundary — it only forwards this event to the request's author (or
+  // admin/manager). The client never needs to re-check ownership; this
+  // handler is UX-only (T-11-03-E: never rely on the client as a filter).
+  function statusToastText(newStatus: string): string {
+    switch (newStatus) {
+      case 'in_progress':
+        return 'Ваша заявка принята в работу';
+      case 'completed':
+        return 'Ваша заявка выполнена';
+      case 'rejected':
+        return 'Ваша заявка отклонена';
+      default:
+        return 'Статус вашей заявки изменён';
+    }
+  }
+
+  function handleEmployeeWsEvent(event: WsEvent) {
+    if (event.type !== 'request_status_changed') return;
+
+    const text = statusToastText(event.newStatus);
+    const canNotify =
+      'Notification' in window && window.isSecureContext && Notification.permission === 'granted';
+
+    if (document.hidden && canNotify) {
+      // Plain-text body only — never HTML (T-11-03-T).
+      new Notification('Trackly', { body: text });
+    } else {
+      pushToast(event.newStatus === 'rejected' ? 'info' : 'success', text);
+    }
+  }
+
+  onMount(() => {
+    if (authStore.user?.role !== 'employee') return;
+
+    let unlisten: (() => void) | undefined;
+    connectWs()
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        // WS connection is non-fatal — graceful-degrade, no notifications.
+      });
+    const unsubscribe = onWsEvent(handleEmployeeWsEvent);
+
+    return () => {
+      unsubscribe();
+      unlisten?.();
+    };
+  });
 
   async function logout() {
     if (loggingOut) return;

@@ -113,6 +113,21 @@
     return valid;
   }
 
+  // D-WS-01 / Pitfall 4: ask for Notification permission only off the back of
+  // a genuine user gesture (submitting a request) — never on page load/mount.
+  // 'default' = user has neither granted nor denied yet; asking again after
+  // 'denied' would be a no-op browsers ignore, and asking when already
+  // 'granted' is pointless — so this only fires once, the first time.
+  function maybeRequestNotifyPermission() {
+    if (
+      'Notification' in window &&
+      window.isSecureContext &&
+      Notification.permission === 'default'
+    ) {
+      void Notification.requestPermission();
+    }
+  }
+
   async function handleSubmit() {
     if (submitting) return;
     if (!validate()) return;
@@ -127,6 +142,7 @@
         description: description.trim() || null,
       });
       pushToast('success', 'Заявка отправлена');
+      maybeRequestNotifyPermission();
       onSuccess();
       onClose();
     } catch (e: unknown) {
