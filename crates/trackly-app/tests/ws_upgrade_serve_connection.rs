@@ -73,8 +73,8 @@ async fn spawn_server(with_upgrades: bool) -> std::net::SocketAddr {
                         .insert(axum::extract::ConnectInfo(peer_addr));
                     app_clone.clone().oneshot(req)
                 });
-                let conn = hyper::server::conn::http1::Builder::new()
-                    .serve_connection(io, hyper_service);
+                let conn =
+                    hyper::server::conn::http1::Builder::new().serve_connection(io, hyper_service);
                 if with_upgrades {
                     let _ = conn.with_upgrades().await;
                 } else {
@@ -93,8 +93,7 @@ async fn try_ws_roundtrip(addr: std::net::SocketAddr) -> anyhow::Result<String> 
     let url = format!("ws://{addr}/api/v1/ws");
     // Use a raw TcpStream-based client so we don't depend on connector config.
     let tcp = TcpStream::connect(addr).await?;
-    let (mut ws_stream, _resp) =
-        tokio_tungstenite::client_async(url, tcp).await?;
+    let (mut ws_stream, _resp) = tokio_tungstenite::client_async(url, tcp).await?;
 
     ws_stream.send(TMessage::Text("ping".into())).await?;
 
@@ -103,7 +102,9 @@ async fn try_ws_roundtrip(addr: std::net::SocketAddr) -> anyhow::Result<String> 
     let reply = tokio::time::timeout(Duration::from_secs(3), ws_stream.next())
         .await
         .map_err(|_| anyhow::anyhow!("timed out waiting for echo — socket never carried data"))?
-        .ok_or_else(|| anyhow::anyhow!("stream closed before any echo (socket torn down post-101)"))??;
+        .ok_or_else(|| {
+            anyhow::anyhow!("stream closed before any echo (socket torn down post-101)")
+        })??;
 
     match reply {
         TMessage::Text(t) => Ok(t.to_string()),
