@@ -402,3 +402,13 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 10-04-PLAN.md — EmployeeLayout.svelte + AccessDenied.svelte + App.svelte/routes.ts role branch + client.ts 403-обработка (D-UI-01, D-DENY-01)
+
+### Phase 11: Заявки/employee UX gap-closure (категория текстом, WS-ответ сотруднику + нотификации, дропдаун принтеров)
+
+**Goal:** Закрыть находки UAT после Phase 9/10 по заявкам и опыту сотрудника: (1) категория заявки отображается текстом, а не числом; (2) ответ администратора приходит сотруднику по WebSocket с тостом, а при свёрнутой/неактивной вкладке — системной нотификацией; (3) сотрудник снова может завести заявку на замену картриджа — отдельный доступный ему эндпоинт списка принтеров (read-gating Phase 10 закрыл `devices_list` от employee) + кастомный дропдаун, сгруппированный по Расположению.
+**Requirements:** D-CAT-01, D-WS-01, D-PRN-01
+**Depends on:** Phase 10
+**Plans:** TBD (run /gsd-plan-phase 11 to break down)
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 11)
