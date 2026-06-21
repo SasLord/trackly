@@ -734,6 +734,8 @@ about typical Rust/Tauri/Svelte RBAC patterns.
    - Recommendation: Treat it as in-scope for consistency and defense-in-depth — an employee could
      still guess/enumerate IDs via direct API calls even if the UI never surfaces a foreign ID. Cost
      of adding the same check to `get()` is small (mirrors `get_history()`'s pattern exactly).
+   - **RESOLVED (10-03):** Plan 10-03 applies the ownership check to both `get()` and `get_history()` —
+     the recommendation above was adopted as-is.
 
 2. **Exact Tauri-side error code string for `AppError::Forbidden`, for the frontend D-DENY-01 fix**
    - What we know: HTTP path returns 403 with a JSON body via `AppErrorResponse`; the Tauri path
@@ -747,6 +749,10 @@ about typical Rust/Tauri/Svelte RBAC patterns.
    - Recommendation: Planner should have an early task to grep `AppError::Forbidden`'s serialized
      `code` value (likely in `crates/trackly-core/src/error.rs` and/or generated specta bindings)
      before finalizing the `client.ts` 403-handling code.
+   - **RESOLVED (10-04):** Confirmed by direct read of `crates/trackly-core/src/error.rs` line 167 —
+     `AppError::Forbidden.code()` returns the exact string `"FORBIDDEN"`. 10-04's `client.ts` task
+     checks `code === 'FORBIDDEN' || code === 'Forbidden'` (covering both the confirmed exact string
+     and the existing codebase's defensive-casing convention already used for the `UNAUTHORIZED` check).
 
 3. **Where exactly should the employee 403/access-denied UI navigate to, mechanically?**
    - What we know: D-DENY-01 specifies a "Нет доступа" screen with a "К Заявкам" button, triggered by
@@ -762,6 +768,15 @@ about typical Rust/Tauri/Svelte RBAC patterns.
    - Recommendation: Planner should do a focused doc check (`svelte-spa-router` README/wrap() API) for
      v5.1, since this research confirms the dependency is present but did not verify its guard API
      surface against current docs — flagged here as `[ASSUMED]`-adjacent rather than `[VERIFIED]`.
+   - **PARTIALLY RESOLVED (10-04):** Planner chose the simplest of the listed options — a static
+     `employeeRoutes` map in `routes.ts` (every entry except `/` and `/requests` points at
+     `AccessDenied`, including the `*` catch-all), selected by a role branch in `App.svelte`. This
+     sidesteps `svelte-spa-router`'s `wrap()`/`conditionsFailed` guard API entirely, so the open
+     question about that API's exact v5 surface is now moot for this phase — no guard hook is used.
+     Remains an execution-time verification item only in the sense that `svelte-spa-router`'s static
+     route-map behavior (matching `*` for any path not explicitly listed) should be confirmed during
+     10-04's Task 1 `svelte-check`/manual-verification pass, not because the original guard-API
+     question still blocks anything.
 
 ## Environment Availability
 
