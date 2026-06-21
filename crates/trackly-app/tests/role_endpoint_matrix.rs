@@ -3,7 +3,7 @@
 //! ROADMAP success criterion #3: при попытке через curl дёрнуть mutation-эндпоинт
 //! устройств/актов/картриджей сотрудник получает 403 Forbidden.
 //!
-//! Test matrix (9 cases):
+//! Test matrix (10 cases):
 //! 1. No session → POST /api/v1/devices_create → 401 Unauthorized
 //! 2. Employee session → POST /api/v1/devices_create → 403 Forbidden
 //! 3. Manager session → POST /api/v1/devices_create → not 401/403 (200 or 422)
@@ -12,7 +12,8 @@
 //! 6. Employee session → POST /api/v1/users_create → 403 Forbidden
 //! 7. Manager session → POST /api/v1/users_create → 403 Forbidden (admin only)
 //! 8. Admin session → POST /api/v1/users_create → not 401/403 (200 or 422)
-//! 9. Employee session → POST /api/v1/devices_list → 200 OK (reads allowed)
+//! 9. Employee session → POST /api/v1/devices_list → 403 Forbidden (reads now gated — D-GATE-01/02)
+//! 10. Employee session → POST /api/v1/requests_list → 200 OK (own-requests read retained)
 //!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
@@ -104,6 +105,40 @@ async fn post_with_cookie(
 
     let res = app.oneshot(req).await.unwrap();
     res.status()
+}
+
+/// Выполнить POST запрос с опциональным cookie, вернуть статус И тело (JSON).
+///
+/// Body-aware вариант `post_with_cookie` — используется тестами, которым нужно
+/// проверить не только status code, но и содержимое ответа (например, "только
+/// свои заявки в списке" / "нет org-wide полей в employee-дашборде").
+/// При ошибке парсинга тела (например, пустое тело на 403) возвращает `json!({})`.
+async fn post_with_cookie_json(
+    app: axum::Router,
+    uri: &str,
+    body: serde_json::Value,
+    cookie: Option<&str>,
+) -> (StatusCode, serde_json::Value) {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json");
+
+    if let Some(c) = cookie {
+        builder = builder.header("cookie", c);
+    }
+
+    let req = builder
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_default();
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({}));
+    (status, value)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -235,6 +270,18 @@ async fn role_endpoint_matrix_test() {
                 "name_prefix": null,
                 "include_deleted": false,
                 "group_by_condition": false
+            },
+            "pagination": { "offset": 0, "limit": 20 }
+        });
+
+        // Case 10: Employee's own requests_list — empty filter, ReadRequests
+        // action (separate from ReadData, untouched by the Task 1 matrix fix).
+        let requests_list_payload = json!({
+            "filter": {
+                "status": null,
+                "requestType": null,
+                "assignedToUserId": null,
+                "requestedByUserId": null
             },
             "pagination": { "offset": 0, "limit": 20 }
         });
@@ -390,10 +437,11 @@ async fn role_endpoint_matrix_test() {
         }
 
         // =====================================================================
-        // Case 9: Employee session → GET-like POST /api/v1/devices_list → 200 OK
+        // Case 9: Employee session → POST /api/v1/devices_list → 403 Forbidden
+        // (reads now gated — D-GATE-01/02)
         // =====================================================================
         {
-            let status = post_with_cookie(
+            let (status, _body) = post_with_cookie_json(
                 new_app!(),
                 "/api/v1/devices_list",
                 device_list_payload.clone(),
@@ -402,8 +450,28 @@ async fn role_endpoint_matrix_test() {
             .await;
             assert_eq!(
                 status,
+                StatusCode::FORBIDDEN,
+                "Case 9: Employee → devices_list (reads now gated — D-GATE-01/02) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 10: Employee session → POST /api/v1/requests_list → 200 OK
+        // (own-requests read retained — ReadRequests is unaffected by the
+        // ReadData matrix fix; ownership filtering is wired in Plan 10-03)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/requests_list",
+                requests_list_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
                 StatusCode::OK,
-                "Case 9: Employee → devices_list (read) → expected 200, got {status}"
+                "Case 10: Employee → requests_list (own-requests read retained) → expected 200, got {status}"
             );
         }
 
