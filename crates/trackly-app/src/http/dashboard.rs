@@ -54,11 +54,11 @@ pub async fn handler_get_consumption_chart(
     session: Session,
     Json(p): Json<GetConsumptionChartPayload>,
 ) -> Result<Json<Vec<ConsumptionPoint>>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_dashboard_get_consumption_chart(&ctx, p.window_months)
+        build_dashboard_get_consumption_chart(&ctx, &identity, p.window_months)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

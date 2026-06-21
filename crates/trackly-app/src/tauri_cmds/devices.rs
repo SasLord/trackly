@@ -340,8 +340,10 @@ pub async fn build_devices_import_csv_commit(
 
 pub async fn build_devices_export_csv(
     ctx: &AppCtx,
+    caller: &Identity,
     filter: DeviceFilter,
 ) -> Result<String, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.devices.export_csv(filter).await
 }
 
@@ -375,5 +377,6 @@ pub async fn devices_export_csv(
     state: tauri::State<'_, AppCtx>,
     filter: DeviceFilter,
 ) -> Result<String, AppError> {
-    build_devices_export_csv(state.inner(), filter).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_export_csv(state.inner(), &caller, filter).await
 }

@@ -363,11 +363,11 @@ pub async fn handler_export_csv(
     session: Session,
     Json(payload): Json<ExportCsvPayload>,
 ) -> Result<Json<String>, AppErrorResponse> {
-    let _identity = session_identity(&session)
+    let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_devices_export_csv(&ctx, payload.filter)
+        build_devices_export_csv(&ctx, &identity, payload.filter)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

@@ -6,7 +6,7 @@
 use crate::context::AppCtx;
 use crate::dto::reports::{ConsumptionPoint, DashboardWidgetDto, PeriodDto};
 use crate::tauri_cmds::users::resolve_tauri_identity;
-use trackly_core::auth::Identity;
+use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
 // ---------------------------------------------------------------------------
@@ -23,8 +23,10 @@ pub async fn build_dashboard_get_all_widgets(
 
 pub async fn build_dashboard_get_consumption_chart(
     ctx: &AppCtx,
+    caller: &Identity,
     window_months: u8,
 ) -> Result<Vec<ConsumptionPoint>, AppError> {
+    authorize(caller, &Action::ReadData)?;
     ctx.dashboard.get_consumption_chart(window_months).await
 }
 
@@ -48,5 +50,6 @@ pub async fn dashboard_get_consumption_chart(
     state: tauri::State<'_, AppCtx>,
     window_months: u8,
 ) -> Result<Vec<ConsumptionPoint>, AppError> {
-    build_dashboard_get_consumption_chart(state.inner(), window_months).await
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_dashboard_get_consumption_chart(state.inner(), &caller, window_months).await
 }

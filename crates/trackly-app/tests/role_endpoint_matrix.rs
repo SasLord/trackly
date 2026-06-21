@@ -989,6 +989,84 @@ async fn role_endpoint_matrix_test() {
             );
         }
 
+        // =====================================================================
+        // Case 25/26: devices_export_csv — read-only data export, must be gated
+        // (gap-closure: handler previously discarded _identity — D-GATE-02).
+        // ExportCsvPayload = { filter: DeviceFilter }.
+        // =====================================================================
+        let devices_export_payload = json!({
+            "filter": {
+                "type_id": null,
+                "location_id": null,
+                "status_id": null,
+                "state": null,
+                "name_prefix": null,
+                "include_deleted": false,
+                "group_by_condition": false
+            }
+        });
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_export_csv",
+                devices_export_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 25: Employee → devices_export_csv (read export now gated — D-GATE-02) → expected 403, got {status}"
+            );
+        }
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_export_csv",
+                devices_export_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 26: Manager → devices_export_csv → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 27/28: dashboard_get_consumption_chart — org-wide consumption
+        // analytics, must be gated (gap-closure — D-GATE-02/D-GATE-03).
+        // GetConsumptionChartPayload = { window_months: u8 }.
+        // =====================================================================
+        let consumption_chart_payload = json!({ "windowMonths": 6 });
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/dashboard_get_consumption_chart",
+                consumption_chart_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 27: Employee → dashboard_get_consumption_chart (org analytics gated — D-GATE-02/03) → expected 403, got {status}"
+            );
+        }
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/dashboard_get_consumption_chart",
+                consumption_chart_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 28: Manager → dashboard_get_consumption_chart → expected not 401/403, got {status}"
+            );
+        }
+
         ctx.shutdown.cancel();
     })
     .await
