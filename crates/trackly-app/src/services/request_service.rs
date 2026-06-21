@@ -456,6 +456,7 @@ impl RequestService {
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
             new_status,
+            requested_by_user_id: dto.requested_by_user_id,
         });
 
         Ok(dto)
@@ -589,6 +590,7 @@ impl RequestService {
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
             new_status: "completed".to_string(),
+            requested_by_user_id: dto.requested_by_user_id,
         });
 
         Ok(dto)
@@ -707,6 +709,7 @@ impl RequestService {
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
             new_status: "rejected".to_string(),
+            requested_by_user_id: dto.requested_by_user_id,
         });
 
         Ok(dto)

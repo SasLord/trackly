@@ -184,10 +184,15 @@ pub enum WsEvent {
     },
     /// A request has changed status (Accept/Reject/Complete).
     /// NOTE: must be `RequestStatusChanged` — NOT `RequestUpdated` (06-CONTEXT sync).
+    /// `requested_by_user_id` (D-WS-01) carries the request's author so
+    /// `is_visible_to` can let the employee-author see their own status
+    /// change, without opening the event to every employee (BOLA guard).
     RequestStatusChanged {
         #[specta(type = i32)]
         request_id: i64,
         new_status: String,
+        #[specta(type = i32)]
+        requested_by_user_id: i64,
     },
     /// A printer has an active alert (error or offline).
     PrinterAlert {
@@ -202,16 +207,80 @@ impl WsEvent {
     /// Returns true if this event should be forwarded to `identity`.
     ///
     /// - `PrinterAlert` → Admin | Manager only (T-06-06-I).
-    /// - All other events → Admin | Manager (сотрудник не получает алерты принтеров,
-    ///   но в Phase 6 только admin/manager подключаются к WS).
+    /// - `NewRequest` → Admin | Manager only (сотрудник не должен видеть чужие
+    ///   новые заявки — только админ/менеджер обрабатывают входящие).
+    /// - `RequestStatusChanged` (D-WS-01) → Admin | Manager (видят все, как и
+    ///   раньше) OR the employee who authored the request
+    ///   (`identity.user_id == Some(requested_by_user_id)`) — split arm so the
+    ///   author gets realtime status updates on their OWN request without
+    ///   leaking other employees' request statuses (BOLA guard, T-11-03-I).
     pub fn is_visible_to(&self, identity: &Identity) -> bool {
         match self {
             WsEvent::PrinterAlert { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
             }
-            WsEvent::NewRequest { .. } | WsEvent::RequestStatusChanged { .. } => {
+            WsEvent::NewRequest { .. } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
             }
+            WsEvent::RequestStatusChanged {
+                requested_by_user_id,
+                ..
+            } => {
+                matches!(identity.role, Role::Admin | Role::Manager)
+                    || identity.user_id == Some(*requested_by_user_id)
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity(user_id: Option<i64>, role: Role) -> Identity {
+        Identity { user_id, role }
+    }
+
+    #[test]
+    fn request_status_changed_visible_to_author_employee() {
+        let event = WsEvent::RequestStatusChanged {
+            request_id: 1,
+            new_status: "in_progress".to_string(),
+            requested_by_user_id: 42,
+        };
+        assert!(event.is_visible_to(&identity(Some(42), Role::Employee)));
+    }
+
+    #[test]
+    fn request_status_changed_not_visible_to_other_employee() {
+        let event = WsEvent::RequestStatusChanged {
+            request_id: 1,
+            new_status: "in_progress".to_string(),
+            requested_by_user_id: 42,
+        };
+        assert!(!event.is_visible_to(&identity(Some(7), Role::Employee)));
+    }
+
+    #[test]
+    fn request_status_changed_visible_to_admin_and_manager() {
+        let event = WsEvent::RequestStatusChanged {
+            request_id: 1,
+            new_status: "completed".to_string(),
+            requested_by_user_id: 42,
+        };
+        assert!(event.is_visible_to(&identity(None, Role::Admin)));
+        assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
+    }
+
+    #[test]
+    fn new_request_still_admin_manager_only_after_split() {
+        let event = WsEvent::NewRequest {
+            request_id: 1,
+            request_type: "free_form".to_string(),
+            requester_name: "Иванов И.И.".to_string(),
+        };
+        assert!(!event.is_visible_to(&identity(Some(42), Role::Employee)));
+        assert!(event.is_visible_to(&identity(None, Role::Admin)));
+        assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
     }
 }

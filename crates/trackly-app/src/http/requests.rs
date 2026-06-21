@@ -134,6 +134,7 @@ pub async fn handler_transition(
         .send(WsEvent::RequestStatusChanged {
             request_id: result.id,
             new_status: result.status.clone(),
+            requested_by_user_id: result.requested_by_user_id,
         })
         .ok();
     Ok(Json(result))
@@ -154,6 +155,7 @@ pub async fn handler_approve_ad_register(
         .send(WsEvent::RequestStatusChanged {
             request_id: result.id,
             new_status: result.status.clone(),
+            requested_by_user_id: result.requested_by_user_id,
         })
         .ok();
     Ok(Json(result))

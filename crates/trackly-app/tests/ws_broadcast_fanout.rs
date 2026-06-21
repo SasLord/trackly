@@ -34,6 +34,7 @@ async fn broadcast_fans_out_identical_event_to_every_subscriber() {
     let event = WsEvent::RequestStatusChanged {
         request_id: 42,
         new_status: "completed".to_string(),
+        requested_by_user_id: 7,
     };
 
     let sent = tx.send(event.clone());
@@ -64,16 +65,20 @@ async fn broadcast_fans_out_identical_event_to_every_subscriber() {
             WsEvent::RequestStatusChanged {
                 request_id: rid1,
                 new_status: status1,
+                requested_by_user_id: uid1,
             },
             WsEvent::RequestStatusChanged {
                 request_id: rid2,
                 new_status: status2,
+                requested_by_user_id: uid2,
             },
         ) => {
             assert_eq!(rid1, rid2);
             assert_eq!(status1, status2);
+            assert_eq!(uid1, uid2);
             assert_eq!(*rid1, 42);
             assert_eq!(status1, "completed");
+            assert_eq!(*uid1, 7);
         }
         _ => panic!("expected RequestStatusChanged on both subscribers, got {browser_got:?} / {desktop_got:?}"),
     }
