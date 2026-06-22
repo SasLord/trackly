@@ -206,6 +206,8 @@ pub struct CartridgeFilter {
     pub search: Option<String>,
     /// Include soft-deleted rows.
     pub include_deleted: bool,
+    /// Только статус «На складе» (1) и заряд Полный(1)/Частичный(2) — для селектора установки из заявки (D-01, Phase 12).
+    pub installable_only: bool,
 }
 
 /// Counts for the status switch-bar (D-Filters-01).

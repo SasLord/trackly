@@ -333,6 +333,9 @@ pub struct CartridgeFilter {
     pub search: Option<String>,
     #[serde(default)]
     pub include_deleted: bool,
+    /// Только статус «На складе» (1) и заряд Полный(1)/Частичный(2) — для селектора установки из заявки (D-01, Phase 12).
+    #[serde(default)]
+    pub installable_only: bool,
 }
 
 impl CartridgeFilter {
@@ -344,6 +347,7 @@ impl CartridgeFilter {
             model_id: self.model_id,
             search: self.search,
             include_deleted: self.include_deleted,
+            installable_only: self.installable_only,
         }
     }
 }

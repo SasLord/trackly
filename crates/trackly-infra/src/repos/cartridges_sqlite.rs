@@ -952,6 +952,8 @@ impl CartridgeRepository for SqliteCartridgeRepository {
         let offset = page.offset as i64;
         let include_deleted = filter.include_deleted;
 
+        let installable_only = filter.installable_only as i64;
+
         // COUNT(*)
         let total: i64 = conn
             .query_row(
@@ -960,12 +962,14 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                  WHERE (?1 = 1 OR c.deleted_at_utc IS NULL) \
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
-                   AND (?4 IS NULL OR c.model_id = ?4)",
+                   AND (?4 IS NULL OR c.model_id = ?4) \
+                   AND (?5 = 0 OR c.state_id IN (1, 2))",
                 params![
                     include_deleted as i64,
                     filter.status_id,
                     filter.kind_id,
                     filter.model_id,
+                    installable_only,
                 ],
                 |r| r.get(0),
             )
@@ -978,8 +982,9 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
                    AND (?4 IS NULL OR c.model_id = ?4) \
+                   AND (?5 = 0 OR c.state_id IN (1, 2)) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
-                 LIMIT ?5 OFFSET ?6"
+                 LIMIT ?6 OFFSET ?7"
             ))
             .map_err(map_rusqlite)?;
 
@@ -990,6 +995,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                     filter.status_id,
                     filter.kind_id,
                     filter.model_id,
+                    installable_only,
                     limit,
                     offset,
                 ],
