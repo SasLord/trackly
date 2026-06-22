@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: verifying
-last_updated: "2026-06-22T12:51:01.154Z"
+status: executing
+last_updated: "2026-06-22T23:56:03.710Z"
 last_activity: 2026-06-22
 progress:
   total_phases: 15
-  completed_phases: 15
-  total_plans: 79
-  completed_plans: 79
-  percent: 100
+  completed_phases: 14
+  total_plans: 85
+  completed_plans: 80
+  percent: 93
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Plan: 2 of 9
+Status: Ready to execute
 Last activity: 2026-06-22
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -118,6 +118,7 @@ Last activity: 2026-06-22
 | Phase 12 P01 | 22min | 2 tasks | 8 files |
 | Phase 12 P02 | 35min | 2 tasks | 5 files |
 | Phase 12 P03 | 18min | 3 tasks | 3 files |
+| Phase 12 P04 | 12min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -245,6 +246,7 @@ Recent decisions affecting current work:
 - [Phase 12]: RBAC test cases numbered 31/32 (not plan's stale suggestion of 25/26) — continued from the file's actual existing max case number
 - [Phase 12]: effectiveCartridge derived pattern (cartridge prop ?? selectedCartridge) lets OperationModal serve both cartridge-centric and request-centric install entries off one code path (D-08)
 - [Phase 12]: Checkpoint Task 4 (human-verify, gate=blocking) auto-approved under AUTO_MODE; happy path/DISC-02/D-08 regression confirmed via code review + svelte-check/build, not a live interactive session
+- [Phase 12]: 12-04: suggest_person() UNIONs acts + cartridges.holder_name (both Giver/Receiver map to holder_name identically); frequency merge via outer GROUP BY SUM(freq) over a UNION ALL CTE
 
 ### Pending Todos
 
@@ -282,7 +284,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T12:51:01.148Z
-Stopped at: Phase 12 gap-closure context gathered (GAP-12-01..03)
+Last session: 2026-06-22T23:56:03.703Z
+Stopped at: Completed 12-04-PLAN.md
 Resume file: 
-.planning/phases/12-cartridge-request-interconnection/12-CONTEXT.md
+None
