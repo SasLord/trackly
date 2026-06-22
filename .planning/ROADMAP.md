@@ -427,11 +427,11 @@ Plans:
 **Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется.
 **Requirements**: D-01..D-08 (см. 12-CONTEXT.md — нет формальных REQ-ID, фаза идёт от пользовательских решений)
 **Depends on:** Phase 11
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 12-01-PLAN.md — Backend: CartridgeFilter.installable_only + RequestDto.printer_location (domain/DTO/SQL, RED→GREEN тесты)
+- [x] 12-01-PLAN.md — Backend: CartridgeFilter.installable_only + RequestDto.printer_location (domain/DTO/SQL, RED→GREEN тесты)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
