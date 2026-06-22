@@ -342,3 +342,156 @@ async fn suggest_person_receiver_field_independent() {
     .await
     .expect("budget");
 }
+
+// ---------------------------------------------------------------------------
+// GAP-12-01 / 12-04: suggest_person must also source names from
+// cartridges.holder_name (set by OperationModal install/to_refill via
+// given_to_name), not just acts.{giver_name|receiver_name}.
+// ---------------------------------------------------------------------------
+
+/// Inserts a `cartridge_models` row (kind_id defaults to 1 per V016) and
+/// returns its id — minimal fixture for the cartridges.holder_name tests
+/// below (mirrors the seeding style in `phase06_stubs.rs`).
+async fn seed_cartridge_model(
+    writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    now: i64,
+) -> i64 {
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridge_models (brand, model, created_at_utc, updated_at_utc, version) \
+                 VALUES ('Pantum', 'TL-5120X', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed cartridge model")
+}
+
+/// Inserts a `cartridges` row with the given `holder_name` (and optional
+/// soft-delete), returns nothing — fixture only needs the row to exist for
+/// `suggest_person()`'s UNION arm to find it.
+async fn seed_cartridge_with_holder(
+    writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    model_id: i64,
+    code: &str,
+    holder_name: &str,
+    deleted: bool,
+    now: i64,
+) {
+    let code = code.to_string();
+    let holder_name = holder_name.to_string();
+    writer
+        .execute(move |conn| {
+            if deleted {
+                conn.execute(
+                    "INSERT INTO cartridges \
+                     (code, model_id, status_id, holder_name, created_at_utc, updated_at_utc, deleted_at_utc, version) \
+                     VALUES (?1, ?2, 1, ?3, ?4, ?4, ?4, 1)",
+                    params![code, model_id, holder_name, now],
+                )
+                .map_err(map_rusqlite)?;
+            } else {
+                conn.execute(
+                    "INSERT INTO cartridges \
+                     (code, model_id, status_id, holder_name, created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, 1, ?3, ?4, ?4, 1)",
+                    params![code, model_id, holder_name, now],
+                )
+                .map_err(map_rusqlite)?;
+            }
+            Ok(())
+        })
+        .await
+        .expect("seed cartridge with holder");
+}
+
+/// Test 8 (GAP-12-01): name appearing in both an act AND a cartridge
+/// holder_name is deduplicated — exactly one occurrence in the result, not
+/// two identical rows.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_dedupes_name_present_in_acts_and_cartridges() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+        let d1 = seed_device(&svc.writer, "DA").await;
+        make_handover_with_giver_receiver(&svc, "Иванов И.И.", "X", d1).await;
+
+        let model_id = seed_cartridge_model(&svc.writer, now).await;
+        seed_cartridge_with_holder(&svc.writer, model_id, "C-100001", "Иванов И.И.", false, now)
+            .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Иван", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Иванов И.И.".to_string()],
+            "name present in both acts and cartridges must be deduplicated, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 9 (GAP-12-01): a name that exists ONLY in cartridges.holder_name
+/// (no matching act row at all) must still surface — proves the cartridges
+/// source is reachable independently of acts having any rows.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_finds_name_from_cartridges_only() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        let model_id = seed_cartridge_model(&svc.writer, now).await;
+        seed_cartridge_with_holder(&svc.writer, model_id, "C-100002", "Петров П.П.", false, now)
+            .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Receiver, "Петр", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Петров П.П.".to_string()],
+            "cartridges-only holder name must surface, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 10 (regression guard): soft-deleted cartridges must not leak into
+/// suggestions, mirroring the existing acts `deleted_at_utc IS NULL` guard.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_excludes_soft_deleted_cartridges() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        let model_id = seed_cartridge_model(&svc.writer, now).await;
+        seed_cartridge_with_holder(
+            &svc.writer,
+            model_id,
+            "C-100003",
+            "Скрытый С.С.",
+            true,
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Скрыт", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.is_empty(),
+            "soft-deleted cartridge holder_name must not leak into suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
