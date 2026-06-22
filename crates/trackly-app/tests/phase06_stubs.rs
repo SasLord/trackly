@@ -572,10 +572,382 @@ fn test_secret_debug() {
     );
 }
 
-/// REQ-05: Complete{linked_cartridge_id} записывает completed_cartridge_id
-#[test]
-#[ignore]
-fn test_req_cart_link() {}
+/// Seed a stock cartridge directly via `writer.execute` (known id/code/model)
+/// without standing up a full `CartridgeService` — used by the
+/// `test_req_cart_link*`/`history_*` tests below to keep the fixture small.
+/// Returns `(cartridge_id, code)`.
+async fn seed_cartridge_for_link_tests(
+    writer: &std::sync::Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    model_id: i64,
+    now: i64,
+) -> (i64, String) {
+    use rusqlite::params;
+
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridges (code, model_id, status_id, state_id, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('C-000777', ?1, 1, 1, ?2, ?2, 1)",
+                params![model_id, now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .expect("seed cartridge");
+
+    (1, "C-000777".to_string())
+}
+
+/// Seed a printer device directly (type_id=2, no location), return its id.
+/// `cartridge_replace` requests require a `printer_device_id` (WR-02).
+async fn seed_printer_device_for_link_tests(
+    writer: &std::sync::Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    now: i64,
+) -> i64 {
+    use rusqlite::params;
+
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices (type_id, name, status_id, created_at_utc, updated_at_utc, version) \
+                 VALUES (2, 'Pantum BM5100ADN (cart-link test)', 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed printer device")
+}
+
+/// Seed a `cartridge_models` row directly, return its id.
+async fn seed_cartridge_model_for_link_tests(
+    writer: &std::sync::Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    now: i64,
+) -> i64 {
+    use rusqlite::params;
+
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridge_models (brand, model, kind_id, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('Pantum', 'TL-5120X', 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .expect("seed cartridge_model");
+
+    1
+}
+
+/// REQ-05 / D-06: Complete{linked_cartridge_id} записывает completed_cartridge_id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_req_cart_link() {
+    use rusqlite::params;
+    use std::sync::Arc;
+    use trackly_app::dto::request::{RequestCreateDto, RequestTransitionPayload};
+    use trackly_app::services::RequestService;
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    let (writer, readers, _guard) = test_writer_and_readers();
+    let clock = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    let ws_tx = Arc::new(ws_tx);
+
+    let svc = RequestService::new(writer.clone(), readers, clock.clone(), ws_tx);
+
+    let now = clock.unix_seconds();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, password_hash, role, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('admin_cart_link', 'Admin CartLink', 'hash', 'admin', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .expect("seed user");
+
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
+
+    let printer_device_id = seed_printer_device_for_link_tests(&writer, now).await;
+    let model_id = seed_cartridge_model_for_link_tests(&writer, now).await;
+    let (cartridge_id, _code) = seed_cartridge_for_link_tests(&writer, model_id, now).await;
+
+    let created = svc
+        .create(
+            RequestCreateDto {
+                request_type: "cartridge_replace".to_string(),
+                printer_device_id: Some(printer_device_id as i32),
+                cartridge_model_id: Some(model_id as i32),
+                category_id: None,
+                description: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("create cartridge_replace request");
+
+    let accepted = svc
+        .transition(
+            RequestTransitionPayload::Accept {
+                request_id: created.id,
+                version: created.version,
+                assigned_to_user_id: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("accept");
+
+    let completed = svc
+        .transition(
+            RequestTransitionPayload::Complete {
+                request_id: accepted.id,
+                version: accepted.version,
+                notes: None,
+                linked_cartridge_id: Some(cartridge_id as i32),
+            },
+            &caller,
+        )
+        .await
+        .expect("complete with linked_cartridge_id");
+
+    assert_eq!(
+        completed.completed_cartridge_id,
+        Some(cartridge_id),
+        "completed_cartridge_id must persist the linked cartridge's id (D-06)"
+    );
+}
+
+/// D-07: история заявки показывает человекочитаемый код+модель установленного
+/// картриджа после Complete с linked_cartridge_id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn history_shows_cartridge_snapshot_after_complete() {
+    use rusqlite::params;
+    use std::sync::Arc;
+    use trackly_app::dto::request::{RequestCreateDto, RequestTransitionPayload};
+    use trackly_app::services::RequestService;
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    let (writer, readers, _guard) = test_writer_and_readers();
+    let clock = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    let ws_tx = Arc::new(ws_tx);
+
+    let svc = RequestService::new(writer.clone(), readers, clock.clone(), ws_tx);
+
+    let now = clock.unix_seconds();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, password_hash, role, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('admin_hist_cart', 'Admin HistCart', 'hash', 'admin', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .expect("seed user");
+
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
+
+    let printer_device_id = seed_printer_device_for_link_tests(&writer, now).await;
+    let model_id = seed_cartridge_model_for_link_tests(&writer, now).await;
+    let (cartridge_id, code) = seed_cartridge_for_link_tests(&writer, model_id, now).await;
+
+    let created = svc
+        .create(
+            RequestCreateDto {
+                request_type: "cartridge_replace".to_string(),
+                printer_device_id: Some(printer_device_id as i32),
+                cartridge_model_id: Some(model_id as i32),
+                category_id: None,
+                description: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("create cartridge_replace request");
+
+    let accepted = svc
+        .transition(
+            RequestTransitionPayload::Accept {
+                request_id: created.id,
+                version: created.version,
+                assigned_to_user_id: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("accept");
+
+    svc.transition(
+        RequestTransitionPayload::Complete {
+            request_id: accepted.id,
+            version: accepted.version,
+            notes: None,
+            linked_cartridge_id: Some(cartridge_id as i32),
+        },
+        &caller,
+    )
+    .await
+    .expect("complete with linked_cartridge_id");
+
+    let history = svc
+        .get_history(created.id, &caller)
+        .await
+        .expect("get_history");
+
+    let complete_entry = history
+        .iter()
+        .find(|e| e.action == "custom:complete")
+        .expect("history must contain a custom:complete entry");
+
+    let notes = complete_entry
+        .notes
+        .as_deref()
+        .expect("complete entry notes must be Some after cartridge link");
+    assert!(
+        notes.contains(&code),
+        "history notes must contain the cartridge code {code}, got: {notes}"
+    );
+    assert!(
+        notes.contains("Pantum"),
+        "history notes must contain the cartridge model brand, got: {notes}"
+    );
+}
+
+/// Regression: Complete без linked_cartridge_id (notes-only) сохраняет
+/// исходный текст без обогащения — поведение reject/complete без картриджа
+/// не должно меняться этим планом.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn history_complete_without_cartridge_keeps_plain_notes() {
+    use rusqlite::params;
+    use std::sync::Arc;
+    use trackly_app::dto::request::{RequestCreateDto, RequestTransitionPayload};
+    use trackly_app::services::RequestService;
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    let (writer, readers, _guard) = test_writer_and_readers();
+    let clock = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    let ws_tx = Arc::new(ws_tx);
+
+    let svc = RequestService::new(writer.clone(), readers, clock.clone(), ws_tx);
+
+    let now = clock.unix_seconds();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, password_hash, role, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('admin_plain_notes', 'Admin PlainNotes', 'hash', 'admin', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .expect("seed user");
+
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
+
+    let created = svc
+        .create(
+            RequestCreateDto {
+                request_type: "free_form".to_string(),
+                printer_device_id: None,
+                cartridge_model_id: None,
+                category_id: None,
+                description: Some("Свободная заявка без картриджа".to_string()),
+            },
+            &caller,
+        )
+        .await
+        .expect("create free_form request");
+
+    let accepted = svc
+        .transition(
+            RequestTransitionPayload::Accept {
+                request_id: created.id,
+                version: created.version,
+                assigned_to_user_id: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("accept");
+
+    svc.transition(
+        RequestTransitionPayload::Complete {
+            request_id: accepted.id,
+            version: accepted.version,
+            notes: Some("текст".to_string()),
+            linked_cartridge_id: None,
+        },
+        &caller,
+    )
+    .await
+    .expect("complete without linked_cartridge_id");
+
+    let history = svc
+        .get_history(created.id, &caller)
+        .await
+        .expect("get_history");
+
+    let complete_entry = history
+        .iter()
+        .find(|e| e.action == "custom:complete")
+        .expect("history must contain a custom:complete entry");
+
+    assert_eq!(
+        complete_entry.notes.as_deref(),
+        Some("текст"),
+        "notes must stay plain (no cartridge enrichment) when linked_cartridge_id is None"
+    );
+}
 
 /// D-Mock-01: TRACKLY_SNMP_MOCK=1 → MockSnmpClient; без env → RealSnmpClient.
 ///

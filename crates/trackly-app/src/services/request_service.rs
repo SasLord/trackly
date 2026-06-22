@@ -16,11 +16,13 @@ use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::requests::{Pagination, RequestFilter, RequestNew};
 use trackly_core::error::AppError;
+use trackly_core::ports::cartridges::CartridgeRepository;
 use trackly_core::ports::requests::RequestRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
+use trackly_infra::repos::cartridges_sqlite::SqliteCartridgeRepository;
 use trackly_infra::repos::requests_sqlite::SqliteRequestRepository;
 
 use crate::dto::printer::WsEvent;
@@ -37,6 +39,11 @@ pub struct RequestService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) request_repo: Arc<SqliteRequestRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
+    /// Read-only cartridge lookups for the history-snapshot enrichment
+    /// (D-07) — reads the just-linked cartridge's code/model BEFORE the
+    /// write transaction so `transition()` can fold a human-readable line
+    /// into the audit `notes_json` without changing `get_history()`.
+    pub(crate) cartridge_repo: Arc<SqliteCartridgeRepository>,
     /// WS broadcast sender (D-Notify-01).
     pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
 }
@@ -54,6 +61,7 @@ impl RequestService {
             clock,
             request_repo: Arc::new(SqliteRequestRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
+            cartridge_repo: Arc::new(SqliteCartridgeRepository),
             ws_tx,
         }
     }
@@ -466,13 +474,52 @@ impl RequestService {
 
         let new_status = op.target_status().to_string();
 
+        // D-07: if this is a Complete with a linked cartridge, read the
+        // cartridge's code + model BEFORE entering the writer transaction
+        // (the cartridge_repo.get() reader path needs an async spawn_blocking
+        // context — the writer closure below already runs blocking on its
+        // own dedicated connection and has no access to the reader pool).
+        // NULL-safe: model_brand/model_name may be absent if the model FK
+        // was soft-deleted — never unwrap/expect on joined columns.
+        let cartridge_line: Option<String> = if let Some(cid) = linked_cartridge_id {
+            let readers = self.readers.clone();
+            let cartridge_repo = self.cartridge_repo.clone();
+            let row = tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                cartridge_repo.get(&conn, cid)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??;
+            let model_label = format!(
+                "{} {}",
+                row.model_brand.unwrap_or_default(),
+                row.model_name.unwrap_or_default()
+            );
+            let model_label = model_label.trim();
+            Some(format!("Установлен {} ({model_label})", row.code))
+        } else {
+            None
+        };
+
         // Carry the transition notes into the audit payload so the History
         // block (REQ-07) can show the reject/complete reason. Create/accept
-        // have no notes → payload stays NULL.
-        let notes_json: Option<String> = match &op {
+        // have no notes → payload stays NULL. D-07: when a cartridge was
+        // linked, fold its human-readable line into the same `notes` JSON
+        // key — combined with the operator's free-text notes if present —
+        // rather than introducing a new JSON key (keeps `get_history()`
+        // untouched).
+        let plain_notes: Option<String> = match &op {
             RequestTransitionOp::Reject { notes } => notes.clone(),
             RequestTransitionOp::Complete { notes, .. } => notes.clone(),
             RequestTransitionOp::Accept => None,
+        };
+        let notes_json: Option<String> = match (plain_notes, cartridge_line) {
+            (Some(notes), Some(line)) => Some(format!("{notes}; {line}")),
+            (Some(notes), None) => Some(notes),
+            (None, Some(line)) => Some(line),
+            (None, None) => None,
         }
         .map(|n| serde_json::json!({ "notes": n }).to_string());
 
