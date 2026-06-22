@@ -11,6 +11,7 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { cartridges } from './api';
   import type { CartridgeDto, CartridgeTransitionPayload } from '../../bindings';
@@ -23,11 +24,27 @@
     cartridge: CartridgeDto | null;
     /** Pre-fill the «Принтер» context when op='install' is opened from a request (REQ-05). */
     preFillPrinterId?: number;
+    /** Filter the request-centric cartridge picker to the request's model (D-02). */
+    cartridgeModelId?: number;
+    /** Pre-fill «Расположение» from the request's printer location (D-05). */
+    prefillLocation?: string;
+    /** Pre-fill «Кому отдал» from the requester's name (D-04). */
+    prefillGivenToName?: string;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (_cartridgeId: number) => void;
   }
 
-  const { open, op, cartridge, preFillPrinterId, onClose, onSuccess }: Props = $props();
+  const {
+    open,
+    op,
+    cartridge,
+    preFillPrinterId,
+    cartridgeModelId,
+    prefillLocation,
+    prefillGivenToName,
+    onClose,
+    onSuccess,
+  }: Props = $props();
 
   // --- Form state ---
   let dateIso = $state(''); // ISO YYYY-MM-DD (DatePicker output)
@@ -43,8 +60,20 @@
   let givenByError = $state('');
   let givenToError = $state('');
 
+  // D-01..D-08 (Phase 12 Plan 03): request-centric install flow. When the
+  // caller passes `cartridge={null}` with `op='install'` (RequestDetail),
+  // the modal loads a flat picker of installable stock cartridges instead
+  // of operating on a pre-selected cartridge. The old cartridge-centric
+  // entry (menu → «Установить в принтер», `cartridge` prop set) is
+  // unaffected (D-08) — `effectiveCartridge` simply prefers the prop.
+  let selectedCartridge = $state<CartridgeDto | null>(null);
+  let cartridgeOptions = $state<CartridgeDto[]>([]);
+  let cartridgeListLoading = $state(false);
+
+  const effectiveCartridge = $derived(cartridge ?? selectedCartridge);
+
   // Вид расходника: фотобарабан (kind 2) использует другой набор состояний.
-  const isDrum = $derived(cartridge?.model_kind_id === 2);
+  const isDrum = $derived(effectiveCartridge?.model_kind_id === 2);
 
   // D-Op-Fields-01: from_refill → Полный (1), остальные → Пустой (3).
   // Для фотобарабана при возврате на склад по умолчанию «Отработанный» (6)
@@ -63,10 +92,11 @@
       const d = String(now.getDate()).padStart(2, '0');
       dateIso = `${y}-${m}-${d}`;
       givenByName = '';
-      givenToName = '';
-      location = '';
+      givenToName = prefillGivenToName ?? '';
+      location = prefillLocation ?? '';
       notes = '';
       stateId = defaultStateId;
+      selectedCartridge = null;
       locationError = '';
       givenByError = '';
       givenToError = '';
@@ -81,6 +111,42 @@
       ? `Устанавливается в принтер #${preFillPrinterId}`
       : null,
   );
+
+  // D-01/D-02 (Phase 12 Plan 03): load the installable-stock cartridge list
+  // when the modal is opened for the request-centric install flow
+  // (cartridge prop === null). The cartridge-centric flow (menu →
+  // «Установить в принтер») never triggers this — `cartridge` is non-null
+  // there, so no extra network call is made (D-08 regression guard).
+  $effect(() => {
+    if (!(open && op === 'install' && cartridge === null)) return;
+    cartridgeListLoading = true;
+    cartridges
+      .list(
+        {
+          status_id: 1,
+          installable_only: true,
+          model_id: cartridgeModelId ?? null,
+          kind_id: null,
+          search: null,
+          include_deleted: false,
+        },
+        { offset: 0, limit: 200 },
+      )
+      .then((res) => {
+        cartridgeOptions = res.items;
+      })
+      .catch((e: unknown) => {
+        cartridgeOptions = [];
+        const msg =
+          e && typeof e === 'object' && 'message' in e
+            ? String((e as { message: unknown }).message)
+            : 'Не удалось загрузить список картриджей.';
+        pushToast('error', msg);
+      })
+      .finally(() => {
+        cartridgeListLoading = false;
+      });
+  });
 
   // Modal titles (UI-SPEC §Заголовки OperationModal)
   const MODAL_TITLES: Record<Op, string> = {
@@ -122,8 +188,8 @@
 
   // Build payload from form state
   function buildPayload(): CartridgeTransitionPayload {
-    const id = cartridge!.id;
-    const version = cartridge!.version;
+    const id = effectiveCartridge!.id;
+    const version = effectiveCartridge!.version;
 
     if (op === 'install') {
       return {
@@ -206,13 +272,13 @@
   }
 
   async function handleSubmit() {
-    if (!cartridge || submitting) return;
+    if (!effectiveCartridge || submitting) return;
     if (!validate()) return;
 
     submitting = true;
     try {
       await cartridges.transition(buildPayload());
-      onSuccess();
+      onSuccess(effectiveCartridge.id);
       onClose();
       pushToast('success', `Операция выполнена успешно.`);
     } catch (e: unknown) {
@@ -230,7 +296,7 @@
   const confirmLabel = $derived(CONFIRM_LABELS[op] ?? 'Подтвердить');
 
   // canSubmit — simple check (required validation happens in handleSubmit)
-  const canSubmit = $derived(!submitting && !!cartridge);
+  const canSubmit = $derived(!submitting && !!effectiveCartridge);
 </script>
 
 <Modal {open} title={modalTitle} size="md" {onClose}>
@@ -244,6 +310,23 @@
     <!-- Поля по op (UI-SPEC §Поля OperationModal) -->
 
     {#if op === 'install' || op === 'to_refill'}
+      {#if op === 'install' && cartridge === null}
+        <!-- D-01/D-02/D-03/D-08: request-centric install flow — pick a
+             physical cartridge from the installable-stock list. Not shown
+             when `cartridge` is already set (old cartridge-centric entry). -->
+        <div class="field">
+          <label class="label" for="op-cartridge">Картридж</label>
+          <CartridgeSelect
+            options={cartridgeOptions}
+            value={selectedCartridge ? String(selectedCartridge.id) : ''}
+            disabled={cartridgeListLoading}
+            id="op-cartridge"
+            onchange={(v) => {
+              selectedCartridge = cartridgeOptions.find((c) => String(c.id) === v) ?? null;
+            }}
+          />
+        </div>
+      {/if}
       {#if printerContextHint}
         <p class="field-hint">{printerContextHint}</p>
       {/if}
