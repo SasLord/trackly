@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: executing
-last_updated: "2026-06-22T05:09:53.126Z"
+status: verifying
+last_updated: "2026-06-22T05:21:54.837Z"
 last_activity: 2026-06-22
 progress:
   total_phases: 15
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 79
-  completed_plans: 78
-  percent: 93
+  completed_plans: 79
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-22
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -117,6 +117,7 @@ Last activity: 2026-06-22
 | Phase 11 P02 | 55min | 2 tasks | 11 files |
 | Phase 12 P01 | 22min | 2 tasks | 8 files |
 | Phase 12 P02 | 35min | 2 tasks | 5 files |
+| Phase 12 P03 | 18min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -242,6 +243,8 @@ Recent decisions affecting current work:
 - [Phase 12]: printer_location appended LAST (idx 19) in SELECT_REQUESTS after category_name (idx 18) — preserves append-only convention, single shared mapper across get/list/fetch_in_tx
 - [Phase 12]: History enrichment folds cartridge code+model into the existing notes_json 'notes' key (no new JSON key) to keep get_history()/RequestHistoryEntryDto unchanged
 - [Phase 12]: RBAC test cases numbered 31/32 (not plan's stale suggestion of 25/26) — continued from the file's actual existing max case number
+- [Phase 12]: effectiveCartridge derived pattern (cartridge prop ?? selectedCartridge) lets OperationModal serve both cartridge-centric and request-centric install entries off one code path (D-08)
+- [Phase 12]: Checkpoint Task 4 (human-verify, gate=blocking) auto-approved under AUTO_MODE; happy path/DISC-02/D-08 regression confirmed via code review + svelte-check/build, not a live interactive session
 
 ### Pending Todos
 
@@ -279,7 +282,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T05:09:53.119Z
-Stopped at: Completed 12-02-PLAN.md
+Last session: 2026-06-22T05:21:54.831Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: 
 None
