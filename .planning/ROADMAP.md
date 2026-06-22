@@ -424,10 +424,12 @@ Plans:
 
 ### Phase 12: Взаимосвязь картриджной заявки
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется.
+**Requirements**: D-01..D-08 (см. 12-CONTEXT.md — нет формальных REQ-ID, фаза идёт от пользовательских решений)
 **Depends on:** Phase 11
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 12 to break down)
+- [ ] 12-01-PLAN.md — Backend: CartridgeFilter.installable_only + RequestDto.printer_location (domain/DTO/SQL, RED→GREEN тесты)
+- [ ] 12-02-PLAN.md — Service: cartridge_repo wiring в RequestService.transition() для D-06/D-07 + RBAC employee-deny тесты
+- [ ] 12-03-PLAN.md — Frontend: CartridgeSelect + OperationModal selector/prefill + RequestDetail wiring + human-verify checkpoint

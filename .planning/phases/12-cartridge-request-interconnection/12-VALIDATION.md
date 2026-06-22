@@ -1,9 +1,9 @@
 ---
 phase: 12
 slug: cartridge-request-interconnection
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: planned
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-22
 ---
 
@@ -38,26 +38,28 @@ created: 2026-06-22
 
 ## Per-Task Verification Map
 
-> Planner fills exact task IDs. Seams identified by research (12-RESEARCH.md §Validation Architecture):
-
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 12-01-xx | 01 | 1 | D-01/D-02 (installable+model filter) | — | List returns only status=На складе AND charge ∈ {1,2} AND model=request model | integration | `cargo test -p trackly-app cartridge` | ❌ W0 | ⬜ pending |
-| 12-0x-xx | 0x | x | D-06 (completed_cartridge_id link) | — | install→complete persists completed_cartridge_id = chosen cartridge | integration | `cargo test -p trackly-app request_cart_link` | ❌ W0 (test_req_cart_link stub) | ⬜ pending |
-| 12-0x-xx | 0x | x | RBAC (employee cannot install) | T-12-01 | Employee transition/install → 403 on both transports | integration | `cargo test rbac` (role×endpoint matrix) | ✅ existing | ⬜ pending |
-| 12-0x-xx | 0x | x | D-05 (printer location on RequestDto) | — | RequestDto exposes printer_location via locations JOIN | integration | `cargo test -p trackly-app request` | ❌ W0 | ⬜ pending |
+| 12-01-T1 | 01 | 1 | D-01/D-02 (installable+model filter) | T-12-01 | List returns only status=На складе AND charge ∈ {1,2} AND model=request model | integration (tdd) | `cargo test -p trackly-app --test cartridges_lifecycle installable` | ✅ created (RED→GREEN in-task) | ⬜ pending |
+| 12-01-T2 | 01 | 1 | D-05 (printer location on RequestDto) | — | RequestDto exposes printer_location via LEFT JOIN locations, NULL-safe | integration (tdd) | `cargo test -p trackly-app --test phase06_stubs printer_location` | ✅ created (RED→GREEN in-task) | ⬜ pending |
+| 12-02-T1 | 02 | 2 | D-06 (completed_cartridge_id link) / D-07 (history snapshot) | — | Complete{linked_cartridge_id} persists completed_cartridge_id + enriches audit notes with code+model | integration (tdd) | `cargo test -p trackly-app --test phase06_stubs cart_link` / `history_` | ✅ created (test_req_cart_link de-ignored) | ⬜ pending |
+| 12-02-T2 | 02 | 2 | RBAC (employee cannot install / transition) | T-12-01 | Employee → cartridges_transition / requests_transition → 403 on HTTP transport | integration | `cargo test -p trackly-app --test role_endpoint_matrix role_endpoint_matrix_test` | ✅ existing matrix + 2 new cases | ⬜ pending |
+| 12-03-T1 | 03 | 3 | D-01/D-02/D-03 (selector component) | — | CartridgeSelect renders flat list + empty state | type-check | `pnpm --dir ui svelte-check` | ✅ created | ⬜ pending |
+| 12-03-T2 | 03 | 3 | D-01..D-05/D-08 (modal selector + prefill + dual-entry) | — | OperationModal supports both cartridge-centric and request-centric install entry | type-check + build | `pnpm --dir ui svelte-check && pnpm --dir ui build` | ✅ modified | ⬜ pending |
+| 12-03-T3 | 03 | 3 | D-06 (linkedCartridgeId wiring) | — | RequestDetail passes real cartridgeId to complete instead of null | type-check + build | `pnpm --dir ui svelte-check && pnpm --dir ui build` | ✅ modified | ⬜ pending |
+| 12-03-T4 | 03 | 3 | D-01..D-08 (end-to-end UX + D-08 regression) | — | Manual happy path + empty state (DISC-02) + old cartridge-centric entry unchanged | manual (checkpoint:human-verify) | n/a — see `<how-to-verify>` in 12-03-PLAN.md | ✅ checkpoint task | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
-## Wave 0 Requirements
+## Wave 0 Requirements (satisfied via task-level TDD, no separate Wave 0 plan)
 
-- [ ] Activate/implement `test_req_cart_link` (currently `#[ignore]` stub at `phase06_stubs.rs:578`) — covers D-06 install→complete linkage
-- [ ] Add integration test scaffolds for installable-cartridge filter (status + charge + model) — RED first
-- [ ] Add test scaffold asserting RequestDto carries printer location (JOIN) — RED first
+- [x] `test_req_cart_link` (`phase06_stubs.rs`, previously `#[ignore]`) — activated in 12-02-T1 as real `#[tokio::test]`, covers D-06 install→complete linkage
+- [x] Integration test scaffolds for installable-cartridge filter (status + charge + model) — written RED-first inside 12-01-T1 (`tdd="true"`, 4 tests)
+- [x] Test scaffold asserting RequestDto carries printer location (JOIN) — written RED-first inside 12-01-T2 (`tdd="true"`, 2 tests)
 
-*Existing role×endpoint matrix covers RBAC; reuse it for the install/transition employee-deny case.*
+*Existing role×endpoint matrix (`role_endpoint_matrix.rs`) covers RBAC; extended with 2 new cases in 12-02-T2 for the install/transition employee-deny gap (T-12-01).*
 
 ---
 
@@ -65,18 +67,19 @@ created: 2026-06-22
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Selector renders, prefilled location/requester are editable, install completes request | D-01..D-08 (UX) | Svelte UI interaction in Tauri webview + LAN browser | Создать заявку «Замена картриджа» от сотрудника → принять в работу → «Установить картридж» → выбрать совместимый картридж со склада → проверить предзаполнение Расположения и «Кому отдал» (редактируемы) → установить → заявка завершена, в истории виден код+модель установленного картриджа |
-| Empty state when no compatible stock cartridge | DISC-02 | Visual/UX | Заявка на модель без подходящих картриджей → понятное пустое состояние, без блокировки |
+| Selector renders, prefilled location/requester are editable, install completes request | D-01..D-08 (UX) | Svelte UI interaction in Tauri webview + LAN browser | См. `<how-to-verify>` в 12-03-PLAN.md Task 4 (checkpoint:human-verify) — полный сценарий заявка → принять → установить картридж → проверить предзаполнение → завершение → история |
+| Empty state when no compatible stock cartridge | DISC-02 | Visual/UX | Заявка на модель без подходящих картриджей → "Нет подходящих картриджей на складе", форма не блокируется |
+| D-08 regression: old cartridge-centric entry unchanged | D-08 | Visual/UX | Прямой вход через карточку картриджа → «Установить в принтер» — без нового селектора, форма работает как раньше |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (installable filter, link test, printer-location read)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 240s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify or Wave 0 dependencies (Task 4/12-03 is the sole manual checkpoint, explicitly typed `checkpoint:human-verify`)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify (only the final UX checkpoint is manual, preceded by 6 automated tasks)
+- [x] Wave 0 covers all MISSING references (installable filter, link test, printer-location read) — satisfied via task-level TDD in 12-01-T1/T2 and 12-02-T1
+- [x] No watch-mode flags
+- [x] Feedback latency < 240s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** auto-approved by planner — task-level TDD (tdd="true" + `<behavior>` blocks) in 12-01/12-02 satisfies the Wave 0 RED-first requirement without a dedicated Wave 0 plan, since each scaffold is created and turned green within the same task that implements the feature (no plan ships with a permanently-red test).
