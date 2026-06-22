@@ -1055,14 +1055,25 @@ impl ActService {
         Ok(counts.into())
     }
 
-    /// G-5: autocomplete для полей «Кто сдал» / «Кто принял».
-    /// Источник — DISTINCT `acts.{giver_name|receiver_name}` отсортированные
-    /// по frequency DESC (alpha ASC tiebreak). LIKE-prefix match с
-    /// `escape_like` защитой от SQL injection через `%` / `_` / `\`.
-    /// Soft-deleted акты не учитываются.
+    /// G-5 / GAP-12-01 (12-04): autocomplete для полей «Кто сдал» / «Кто
+    /// принял» (актные модалки) И «Кому выдал» / «Кто выдал» (картриджные
+    /// операции, `OperationModal`) — единый backend-источник подсказок для
+    /// `PersonAutocomplete.svelte` во всех формах.
     ///
-    /// Phase 5 (future): UNION ALL с AD displayName — расширение в SQL без
-    /// изменения сигнатуры / UI contract.
+    /// Источник — UNION ALL двух арм:
+    ///   1. `acts.{giver_name|receiver_name}` (soft-deleted акты исключены)
+    ///   2. `cartridges.holder_name` (soft-deleted картриджи исключены) —
+    ///      обе enum-ветки (`Giver`/`Receiver`) читают `holder_name`
+    ///      одинаково: у cartridges нет различия giver/receiver, это
+    ///      единственная person-name колонка на этой таблице.
+    ///
+    /// Имена дедуплицируются и агрегируются по сумме frequency между обеими
+    /// арками (CTE с `GROUP BY name, SUM(freq)` в внешнем запросе),
+    /// отсортированы по frequency DESC (alpha ASC tiebreak). LIKE-prefix
+    /// match с `escape_like` защитой от SQL injection через `%` / `_` / `\`.
+    ///
+    /// Phase 5 (future): третья UNION ALL арка с AD displayName —
+    /// расширение в SQL без изменения сигнатуры / UI contract.
     pub async fn suggest_person(
         &self,
         field: SuggestPersonField,
@@ -1083,12 +1094,20 @@ impl ActService {
             SuggestPersonField::Receiver => "receiver_name",
         };
         let sql = format!(
-            "SELECT {col} AS name, COUNT(*) AS freq \
-               FROM acts \
-              WHERE {col} LIKE ?1 ESCAPE '\\' \
-                AND deleted_at_utc IS NULL \
-              GROUP BY {col} \
-              ORDER BY freq DESC, {col} ASC \
+            "SELECT name, SUM(freq) AS total_freq FROM ( \
+                 SELECT {col} AS name, COUNT(*) AS freq \
+                   FROM acts \
+                  WHERE {col} LIKE ?1 ESCAPE '\\' \
+                    AND deleted_at_utc IS NULL \
+                  GROUP BY {col} \
+                 UNION ALL \
+                 SELECT holder_name AS name, COUNT(*) AS freq FROM cartridges \
+                  WHERE holder_name LIKE ?1 ESCAPE '\\' \
+                    AND deleted_at_utc IS NULL \
+                  GROUP BY holder_name \
+             ) \
+              GROUP BY name \
+              ORDER BY total_freq DESC, name ASC \
               LIMIT ?2",
             col = column
         );

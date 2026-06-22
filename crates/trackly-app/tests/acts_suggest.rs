@@ -473,15 +473,8 @@ async fn suggest_person_excludes_soft_deleted_cartridges() {
         let now = 1_700_000_000_i64;
 
         let model_id = seed_cartridge_model(&svc.writer, now).await;
-        seed_cartridge_with_holder(
-            &svc.writer,
-            model_id,
-            "C-100003",
-            "Скрытый С.С.",
-            true,
-            now,
-        )
-        .await;
+        seed_cartridge_with_holder(&svc.writer, model_id, "C-100003", "Скрытый С.С.", true, now)
+            .await;
 
         let result = svc
             .suggest_person(SuggestPersonField::Giver, "Скрыт", 20)
