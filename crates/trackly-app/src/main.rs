@@ -234,6 +234,32 @@ fn main() -> anyhow::Result<()> {
                 // listens on. Same serialized WsEvent payload — no
                 // wrap/rename, so existing `event.type === '...'` handlers
                 // keep working unchanged.
+                //
+                // WR-05 (visibility boundary): unlike the browser WS path
+                // (`http/ws.rs`), this bridge does NOT call
+                // `event.is_visible_to(&identity)` per event, and this is
+                // intentional — not an oversight:
+                //
+                //   * The desktop shell only ever operates under an
+                //     admin/manager-tier identity. In unlocked mode it is
+                //     `Identity::trusted_admin()`; in locked mode it is the
+                //     verified desktop admin (`AuthService::desktop_identity`).
+                //     Every arm of `WsEvent::is_visible_to` already passes for
+                //     Admin/Manager, so filtering here would be a no-op today.
+                //
+                //   * The correct desktop identity is resolved *per operation*
+                //     via `resolve_tauri_identity` (it depends on the runtime
+                //     `desktop_lock_enabled` setting and an async DB lookup, and
+                //     can change while the app runs). Snapshotting a single
+                //     identity once here, for the lifetime of this long-lived
+                //     bridge task, would be stale-by-construction and is the
+                //     wrong shape for a per-event gate.
+                //
+                // If the desktop shell is ever allowed to run under a non-admin
+                // identity, OR a future `WsEvent` variant carries data not meant
+                // for the desktop operator, this bridge MUST be changed to
+                // resolve the live identity per event and gate on
+                // `event.is_visible_to(&identity)` to match `http/ws.rs`.
                 let app_handle = app.handle().clone();
                 let mut rx = ws_broadcast.subscribe();
                 tauri::async_runtime::spawn(async move {
