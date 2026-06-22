@@ -112,6 +112,17 @@
       : null,
   );
 
+  // WR-02: when the request-centric install flow (cartridge === null) has no
+  // cartridge_model_id, the picker below cannot scope the list to a model —
+  // it lists every installable cartridge regardless of model/printer fit.
+  // Surface an explicit warning so the operator checks compatibility by hand
+  // instead of silently trusting an unscoped list.
+  const noModelScopeWarning = $derived(
+    op === 'install' && cartridge === null && cartridgeModelId === undefined
+      ? 'Модель не указана — проверьте совместимость вручную'
+      : null,
+  );
+
   // D-01/D-02 (Phase 12 Plan 03): load the installable-stock cartridge list
   // when the modal is opened for the request-centric install flow
   // (cartridge prop === null). The cartridge-centric flow (menu →
@@ -325,6 +336,9 @@
               selectedCartridge = cartridgeOptions.find((c) => String(c.id) === v) ?? null;
             }}
           />
+          {#if noModelScopeWarning}
+            <span class="field-warning">{noModelScopeWarning}</span>
+          {/if}
         </div>
       {/if}
       {#if printerContextHint}
@@ -475,5 +489,10 @@
   .field-error {
     font-size: var(--font-size-label);
     color: var(--color-destructive);
+  }
+
+  .field-warning {
+    font-size: var(--font-size-label);
+    color: var(--color-warning);
   }
 </style>
