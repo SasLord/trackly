@@ -963,7 +963,10 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
                    AND (?4 IS NULL OR c.model_id = ?4) \
-                   AND (?5 = 0 OR c.state_id IN (1, 2))",
+                   AND (?5 = 0 OR (c.status_id = 1 AND (\
+                         (m.kind_id = 1 AND c.state_id IN (1, 2)) \
+                      OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
+                   )))",
                 params![
                     include_deleted as i64,
                     filter.status_id,
@@ -982,7 +985,10 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
                    AND (?4 IS NULL OR c.model_id = ?4) \
-                   AND (?5 = 0 OR c.state_id IN (1, 2)) \
+                   AND (?5 = 0 OR (c.status_id = 1 AND (\
+                         (m.kind_id = 1 AND c.state_id IN (1, 2)) \
+                      OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
+                   ))) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
                  LIMIT ?6 OFFSET ?7"
             ))

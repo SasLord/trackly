@@ -333,7 +333,9 @@ pub struct CartridgeFilter {
     pub search: Option<String>,
     #[serde(default)]
     pub include_deleted: bool,
-    /// Только статус «На складе» (1) и заряд Полный(1)/Частичный(2) — для селектора установки из заявки (D-01, Phase 12).
+    /// Только статус «На складе» (1) и kind-aware заряд: картриджи (kind_id=1) —
+    /// Полный(1)/Частичный(2); фотобарабаны (kind_id=2) — Новый(4)/Изношенный(5).
+    /// Для селектора установки из заявки (D-01, Phase 12; kind-aware fix — CR-01/WR-01).
     #[serde(default)]
     pub installable_only: bool,
 }

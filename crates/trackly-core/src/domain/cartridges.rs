@@ -206,7 +206,10 @@ pub struct CartridgeFilter {
     pub search: Option<String>,
     /// Include soft-deleted rows.
     pub include_deleted: bool,
-    /// Только статус «На складе» (1) и заряд Полный(1)/Частичный(2) — для селектора установки из заявки (D-01, Phase 12).
+    /// Только статус «На складе» (1) и kind-aware заряд: для картриджей (kind_id=1) —
+    /// Полный(1)/Частичный(2); для фотобарабанов (kind_id=2) — Новый(4)/Изношенный(5)
+    /// (Отработанный(6) уже отдельно отбраковывается при установке). Для селектора
+    /// установки из заявки (D-01, Phase 12; kind-aware fix — CR-01/WR-01).
     pub installable_only: bool,
 }
 

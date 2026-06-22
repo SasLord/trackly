@@ -463,3 +463,62 @@ async fn installable_only_empty_result_is_ok_not_error() {
     .await
     .expect("installable_only_empty_result_is_ok_not_error budget")
 }
+
+/// CR-01 regression: `installable_only: true` must be kind-aware. Photo-drums
+/// (kind_id=2) use charge states 4=Новый/5=Изношенный/6=Отработанный, not the
+/// cartridge-only states 1/2. A state_id=4 drum on stock must be returned by
+/// the install picker; a state_id=6 (Отработанный, already refused at install
+/// time) drum must be excluded.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn installable_only_includes_new_drum_excludes_spent_drum() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let drum_model_id = svc
+            .model_create(CartridgeModelCreateDto {
+                brand: "Kyocera".into(),
+                model: "DK-1170".into(),
+                kind_id: 2, // Фотобарабан
+                color: None,
+                notes: None,
+                compatibility: vec![],
+            })
+            .await
+            .expect("seed drum model")
+            .id;
+
+        create_stock_cartridge_with_state(&svc, drum_model_id, 4).await; // Новый
+        create_stock_cartridge_with_state(&svc, drum_model_id, 6).await; // Отработанный
+
+        let result = svc
+            .list(
+                CartridgeFilter {
+                    status_id: Some(1),
+                    installable_only: true,
+                    ..Default::default()
+                },
+                Pagination::default(),
+            )
+            .await
+            .expect("list installable_only=true for drums");
+
+        assert_eq!(
+            result.items.len(),
+            1,
+            "only the state_id=4 (Новый) drum must be installable, got: {:?}",
+            result.items
+        );
+        assert_eq!(
+            result.items[0].state_id,
+            Some(4),
+            "the returned drum must be the Новый (state_id=4) one: {:?}",
+            result.items
+        );
+        assert!(
+            result.items.iter().all(|c| c.state_id != Some(6)),
+            "Отработанный (state_id=6) drum must never be installable: {:?}",
+            result.items
+        );
+    })
+    .await
+    .expect("installable_only_includes_new_drum_excludes_spent_drum budget")
+}
