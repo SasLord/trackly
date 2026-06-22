@@ -114,3 +114,13 @@ None — no external service configuration required. Backend-only SQL change; no
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-22*
+
+## Self-Check: PASSED
+
+- FOUND: `crates/trackly-app/src/services/act_service.rs`
+- FOUND: `crates/trackly-app/tests/acts_suggest.rs`
+- FOUND: `.planning/phases/12-cartridge-request-interconnection/12-04-SUMMARY.md`
+- FOUND: `.planning/phases/12-cartridge-request-interconnection/deferred-items.md`
+- FOUND: commit `139ccd2` (test, RED)
+- FOUND: commit `7b4e966` (feat, GREEN)
+- FOUND: commit `0431867` (docs, summary)
