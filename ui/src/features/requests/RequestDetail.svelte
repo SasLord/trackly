@@ -307,12 +307,21 @@
   async function handleInstallSuccess(cartridgeId: number) {
     if (!request) return;
     operationModalOpen = false;
+    const requestId = request.id;
     // Complete the request after cartridge install.
     try {
+      // WR-04: re-read the current version immediately before completing —
+      // installing the cartridge does not bump the request row, but a
+      // concurrent transition between modal-open and now (another actor
+      // accepts/rejects, or a WS-driven refresh has not yet propagated to
+      // the `request` prop) would otherwise send a stale version and fail
+      // with OptimisticLockMismatch after the cartridge is already
+      // installed.
+      const current = await requests.get(requestId);
       await requests.transition({
         op: 'complete',
-        requestId: request.id,
-        version: request.version,
+        requestId,
+        version: current.version,
         notes: null,
         linkedCartridgeId: cartridgeId,
       });
