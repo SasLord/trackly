@@ -233,6 +233,20 @@ impl WsEvent {
     }
 }
 
+/// Read/write payload for the printer↔cartridge-model compatibility commands
+/// (D-11/D-12, Phase 12 gap closure — GAP-12-02). Deliberately NOT embedded
+/// into `PrinterDto` — fetched/set via dedicated `printers_get_compatible_models`
+/// / `printers_set_compatible_models` commands, used by the printer detail
+/// page and the cartridge-model form modal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterCompatibleModelsDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    #[specta(type = Vec<i32>)]
+    pub model_ids: Vec<i64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

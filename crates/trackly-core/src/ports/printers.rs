@@ -58,4 +58,21 @@ pub trait PrinterRepository {
         conn: &Self::Conn,
         printer_device_id: i64,
     ) -> Result<Option<i64>, AppError>;
+
+    /// Returns cartridge_model_id list linked via `printer_cartridge_models`
+    /// (D-11/D-12, Phase 12 gap closure); empty Vec means "not configured" —
+    /// D-14, caller must not treat empty as a hard filter.
+    fn get_compatible_model_ids(
+        &self,
+        conn: &Self::Conn,
+        device_id: i64,
+    ) -> Result<Vec<i64>, AppError>;
+
+    /// Reverse lookup for the cartridge-model-side editor — devices linked
+    /// to this model via `printer_cartridge_models`.
+    fn get_compatible_device_ids(
+        &self,
+        conn: &Self::Conn,
+        cartridge_model_id: i64,
+    ) -> Result<Vec<i64>, AppError>;
 }

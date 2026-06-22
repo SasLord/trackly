@@ -338,6 +338,11 @@ pub struct CartridgeFilter {
     /// Для селектора установки из заявки (D-01, Phase 12; kind-aware fix — CR-01/WR-01).
     #[serde(default)]
     pub installable_only: bool,
+    /// Когда задан — ограничивает выборку моделями, совместимыми с этим
+    /// устройством-принтером через `printer_cartridge_models`; пустой набор
+    /// связей не сужает выборку (D-13/D-14, Phase 12 gap closure GAP-12-02).
+    #[specta(type = Option<i32>)]
+    pub compatible_with_printer_device_id: Option<i64>,
 }
 
 impl CartridgeFilter {
@@ -350,6 +355,7 @@ impl CartridgeFilter {
             search: self.search,
             include_deleted: self.include_deleted,
             installable_only: self.installable_only,
+            compatible_with_printer_device_id: self.compatible_with_printer_device_id,
         }
     }
 }
