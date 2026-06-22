@@ -421,3 +421,13 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 11-03-PLAN.md — D-WS-01: WS-видимость автору-сотруднику + тост/системная нотификация
+
+### Phase 12: Взаимосвязь картриджной заявки
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 12 to break down)
