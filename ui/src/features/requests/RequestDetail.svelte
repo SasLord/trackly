@@ -297,8 +297,8 @@
   );
 
   // REQ-05: «Установить картридж» handler — called when OperationModal succeeds.
-  // We then complete the request, linking the installed cartridge.
-  async function handleInstallSuccess() {
+  // We then complete the request, linking the installed cartridge (D-06).
+  async function handleInstallSuccess(cartridgeId: number) {
     if (!request) return;
     operationModalOpen = false;
     // Complete the request after cartridge install.
@@ -308,7 +308,7 @@
         requestId: request.id,
         version: request.version,
         notes: null,
-        linkedCartridgeId: null,
+        linkedCartridgeId: cartridgeId,
       });
       pushToast('success', 'Заявка выполнена');
       onTransition();
@@ -585,6 +585,9 @@
     op="install"
     cartridge={null}
     preFillPrinterId={request.printerDeviceId ?? undefined}
+    cartridgeModelId={request.cartridgeModelId ?? undefined}
+    prefillLocation={request.printerLocation ?? undefined}
+    prefillGivenToName={request.requesterName ?? undefined}
     onClose={() => (operationModalOpen = false)}
     onSuccess={handleInstallSuccess}
   />
