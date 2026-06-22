@@ -428,8 +428,15 @@ Plans:
 **Requirements**: D-01..D-08 (см. 12-CONTEXT.md — нет формальных REQ-ID, фаза идёт от пользовательских решений)
 **Depends on:** Phase 11
 **Plans:** 3 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 12-01-PLAN.md — Backend: CartridgeFilter.installable_only + RequestDto.printer_location (domain/DTO/SQL, RED→GREEN тесты)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 12-02-PLAN.md — Service: cartridge_repo wiring в RequestService.transition() для D-06/D-07 + RBAC employee-deny тесты
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 12-03-PLAN.md — Frontend: CartridgeSelect + OperationModal selector/prefill + RequestDetail wiring + human-verify checkpoint
