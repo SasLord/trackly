@@ -31,7 +31,14 @@
     /** Pre-fill «Кому отдал» from the requester's name (D-04). */
     prefillGivenToName?: string;
     onClose: () => void;
-    onSuccess: (_cartridgeId: number) => void;
+    /**
+     * WR-03: may return a Promise (e.g. the request-centric flow awaits a
+     * follow-up `complete` transition). `handleSubmit` awaits this before
+     * showing the modal-level success toast, so a rejected follow-up never
+     * produces a false-positive "Операция выполнена успешно." alongside the
+     * caller's own error toast.
+     */
+    onSuccess: (_cartridgeId: number) => void | Promise<void>;
   }
 
   const {
@@ -289,15 +296,28 @@
     submitting = true;
     try {
       await cartridges.transition(buildPayload());
-      onSuccess(effectiveCartridge.id);
-      onClose();
-      pushToast('success', `Операция выполнена успешно.`);
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
           : 'Не удалось выполнить операцию. Повторите попытку.';
       pushToast('error', msg);
+      submitting = false;
+      return;
+    }
+
+    // WR-03: cartridge transition succeeded — now await the caller's
+    // onSuccess (e.g. RequestDetail's handleInstallSuccess, which completes
+    // the request). Only announce the modal-level success once onSuccess
+    // resolves; if it rejects, the caller is responsible for its own
+    // error toast (it already owns the more specific failure message), so
+    // we just close without adding a duplicate/contradictory toast here.
+    try {
+      await onSuccess(effectiveCartridge.id);
+      onClose();
+      pushToast('success', `Операция выполнена успешно.`);
+    } catch {
+      onClose();
     } finally {
       submitting = false;
     }

@@ -298,6 +298,12 @@
 
   // REQ-05: «Установить картридж» handler — called when OperationModal succeeds.
   // We then complete the request, linking the installed cartridge (D-06).
+  //
+  // WR-03: OperationModal now `await`s this handler and only shows its own
+  // "Операция выполнена успешно." toast if it resolves. We rethrow on
+  // failure so that modal-level toast is suppressed — the user only sees
+  // this handler's own (more specific) error toast, not a false-positive
+  // success alongside it.
   async function handleInstallSuccess(cartridgeId: number) {
     if (!request) return;
     operationModalOpen = false;
@@ -319,6 +325,7 @@
           : 'Не удалось завершить заявку. Проверьте вручную.';
       pushToast('error', msg);
       onTransition(); // Still refresh — cartridge was installed.
+      throw e;
     }
   }
 </script>
