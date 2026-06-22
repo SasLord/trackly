@@ -116,6 +116,12 @@ export type RequestDto = {
    * `categoryId`. `null` when the request has no category set.
    */
   categoryName: string | null;
+  /**
+   * D-05 (Phase 12 Plan 01): joined `locations.name` via the request's
+   * printer device (`devices.location_id`). `null` for `free_form` requests
+   * (no printer) and for printers without a location set.
+   */
+  printerLocation: string | null;
 };
 
 /**

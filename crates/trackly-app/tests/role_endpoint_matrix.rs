@@ -43,6 +43,19 @@
 //!     the employee-owned request are NOT Forbidden (Manager retains full
 //!     visibility)
 //!
+//! Cases 25-30 (devices_export_csv, dashboard_get_consumption_chart,
+//! request_printer_options gating) were added by later quick-tasks/plans
+//! without updating this header — see their inline `// Case N` comments below.
+//!
+//! Plan 12-02 (T-12-01) adds Cases 31-32: closes a test-coverage gap on two
+//! transition endpoints that were already RBAC-gated in the service layer
+//! but never exercised by this matrix.
+//! 31. Employee session → POST /api/v1/cartridges_transition → 403 Forbidden
+//!     (Action::MutateCartridges, Admin|Manager only)
+//! 32. Employee session → POST /api/v1/requests_transition on their OWN
+//!     request → 403 Forbidden (Action::TransitionRequests, Admin|Manager
+//!     only — the gate fires before any ownership check)
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1100,6 +1113,68 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::UNAUTHORIZED,
                 "Case 30: No session → request_printer_options → expected 401, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 31 (T-12-01, Plan 12-02): Employee → cartridges_transition →
+        // 403 Forbidden. RBAC gate (authorize(&Action::MutateCartridges))
+        // fires before any DB read, so cartridge_id: 1 need not exist —
+        // same pattern as Case 5 (cartridges_create not validating model_id).
+        // =====================================================================
+        {
+            let cartridges_transition_payload = json!({
+                "payload": {
+                    "op": "install",
+                    "cartridge_id": 1,
+                    "version": 1,
+                    "date_utc": 1_700_000_000,
+                    "given_by_name": "Тест",
+                    "given_to_name": "Тест2",
+                    "location": "Каб. 1"
+                }
+            });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_transition",
+                cartridges_transition_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 31: Employee → cartridges_transition → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 32 (T-12-01, Plan 12-02): Employee → requests_transition on
+        // their OWN request → 403 Forbidden. authorize(&Action::TransitionRequests)
+        // (Admin|Manager only) fires before any ownership check — Employee is
+        // denied even on a request they own, unlike ReadRequests/CreateRequest
+        // which are scoped-but-allowed for Employee.
+        // =====================================================================
+        {
+            let requests_transition_payload = json!({
+                "payload": {
+                    "op": "accept",
+                    "requestId": employee_request.id,
+                    "version": employee_request.version,
+                    "assignedToUserId": null
+                }
+            });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/requests_transition",
+                requests_transition_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 32: Employee → requests_transition (even on own request) → expected 403, got {status}"
             );
         }
 
