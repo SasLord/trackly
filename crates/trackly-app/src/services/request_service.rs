@@ -230,12 +230,21 @@ impl RequestService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<Vec<RequestPrinterOptionDto>, AppError> {
             let conn = readers.acquire();
+            // WR-04: resolve the "printer" device type by its stable seed name
+            // instead of hardcoding the magic literal `type_id = 2`. The seed
+            // (migrations/V001) defines `(2, 'Принтер')`; the subquery keeps
+            // this query correct even if the lookup ids are ever reseeded, and
+            // removes the lockstep-edit hazard with the test fixtures.
+            // WR-06: `devices.name` is `NOT NULL` (migrations/V003), so mapping
+            // it into the non-Option `RequestPrinterOptionDto.name: String` via
+            // `row.get(1)` cannot hit a NULL-column type error.
             let mut stmt = conn
                 .prepare(
                     "SELECT d.id, d.name, l.name AS location \
                      FROM devices d \
                      LEFT JOIN locations l ON d.location_id = l.id \
-                     WHERE d.type_id = 2 AND d.deleted_at_utc IS NULL \
+                     WHERE d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер') \
+                       AND d.deleted_at_utc IS NULL \
                      ORDER BY l.name IS NULL, l.name, d.name",
                 )
                 .map_err(map_rusqlite)?;
