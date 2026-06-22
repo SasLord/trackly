@@ -103,3 +103,17 @@ None - no external service configuration required.
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-22*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk:
+- ui/src/lib/components/CartridgeSelect.svelte — FOUND
+- ui/src/features/cartridges/OperationModal.svelte — FOUND
+- ui/src/features/requests/RequestDetail.svelte — FOUND
+- .planning/phases/12-cartridge-request-interconnection/12-03-SUMMARY.md — FOUND
+
+All commit hashes verified present in git log:
+- faed70a — FOUND
+- 8f394a3 — FOUND
+- 9e367fd — FOUND
+- d33b271 — FOUND
