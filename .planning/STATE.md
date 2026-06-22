@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-22T04:50:51.781Z"
+last_updated: "2026-06-22T05:09:53.126Z"
 last_activity: 2026-06-22
 progress:
   total_phases: 15
   completed_phases: 14
   total_plans: 79
-  completed_plans: 77
+  completed_plans: 78
   percent: 93
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-06-22
 
@@ -116,6 +116,7 @@ Last activity: 2026-06-22
 | Phase 11 P01 | 50m | 2 tasks | 9 files |
 | Phase 11 P02 | 55min | 2 tasks | 11 files |
 | Phase 12 P01 | 22min | 2 tasks | 8 files |
+| Phase 12 P02 | 35min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,8 @@ Recent decisions affecting current work:
 - [Phase 11]: request_printer_options DTO is strictly {id, name, location} — no SNMP/community/IP/serial fields cross the wire (BOLA/BOPLA closure, API1/API3:2023).
 - [Phase 12]: installable_only implemented as hardcoded SQL state_id IN (1,2), not a parameterized list — D-01/D-02 domain constants, no client-supplied value-set, closes injection surface
 - [Phase 12]: printer_location appended LAST (idx 19) in SELECT_REQUESTS after category_name (idx 18) — preserves append-only convention, single shared mapper across get/list/fetch_in_tx
+- [Phase 12]: History enrichment folds cartridge code+model into the existing notes_json 'notes' key (no new JSON key) to keep get_history()/RequestHistoryEntryDto unchanged
+- [Phase 12]: RBAC test cases numbered 31/32 (not plan's stale suggestion of 25/26) — continued from the file's actual existing max case number
 
 ### Pending Todos
 
@@ -276,7 +279,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T04:50:51.774Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-06-22T05:09:53.119Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: 
 None
