@@ -35,6 +35,10 @@ pub struct RequestDto {
     pub resolution_notes: Option<String>,
     pub requester_name: Option<String>,
     pub printer_name: Option<String>,
+    /// Joined `locations.name` через `devices.location_id` принтера заявки
+    /// (D-05, Phase 12). `None` если принтер не выбран или у него нет
+    /// расположения. Wire name: `printerLocation`.
+    pub printer_location: Option<String>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
     #[specta(type = i32)]
@@ -66,6 +70,7 @@ impl From<RequestRow> for RequestDto {
             resolution_notes: r.resolution_notes,
             requester_name: r.requester_name,
             printer_name: r.printer_name,
+            printer_location: r.printer_location,
             created_at_utc: r.created_at_utc,
             updated_at_utc: r.updated_at_utc,
             deleted_at_utc: r.deleted_at_utc,

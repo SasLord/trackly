@@ -23,10 +23,12 @@ pub struct SqliteRequestRepository;
 /// Joins:
 ///   - `users u` for display_name (requester_name).
 ///   - `devices d` for printer name (for cartridge_replace requests).
+///   - `locations dl` for the printer's location name (D-05, Phase 12).
 ///   - `request_categories rc` for category display name (D-CAT-01, free_form requests).
 ///
-/// `category_name` is appended LAST (idx 18) — never insert mid-list, it would
-/// shift every subsequent `row.get(n)` in `map_row_request`.
+/// `category_name` (idx 18) and `printer_location` (idx 19) are appended
+/// LAST, in append order — never insert mid-list, it would shift every
+/// subsequent `row.get(n)` in `map_row_request`.
 const SELECT_REQUESTS: &str = "
     SELECT r.id, r.request_type, r.status,
            r.requested_by_user_id, r.assigned_to_user_id,
@@ -37,10 +39,12 @@ const SELECT_REQUESTS: &str = "
            d.name AS printer_name,
            r.created_at_utc, r.updated_at_utc, r.deleted_at_utc, r.version,
            r.ad_subtype,
-           rc.name AS category_name
+           rc.name AS category_name,
+           dl.name AS printer_location
       FROM requests r
       LEFT JOIN users u ON u.id = r.requested_by_user_id
       LEFT JOIN devices d ON d.id = r.printer_device_id
+      LEFT JOIN locations dl ON dl.id = d.location_id
       LEFT JOIN request_categories rc ON rc.id = r.category_id
 ";
 // Note: users table uses `full_name` column (V002), not `display_name`.
@@ -68,6 +72,7 @@ fn map_row_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestRow> {
         version: row.get(16)?,
         ad_subtype: row.get(17)?,
         category_name: row.get(18)?,
+        printer_location: row.get(19)?,
     })
 }
 

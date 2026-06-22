@@ -676,3 +676,190 @@ async fn test_ws_unauth_401() {
 
     ctx.shutdown.cancel();
 }
+
+/// Plan 12-01 (D-05): RequestDto.printer_location is joined from
+/// `locations.name` via the request's printer device, not a separate query.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn request_dto_carries_printer_location() {
+    use rusqlite::params;
+    use std::sync::Arc;
+    use trackly_app::dto::request::RequestCreateDto;
+    use trackly_app::services::RequestService;
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    let (writer, readers, _guard) = test_writer_and_readers();
+    let clock = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    let ws_tx = Arc::new(ws_tx);
+
+    let svc = RequestService::new(writer.clone(), readers, clock.clone(), ws_tx);
+
+    let now = clock.unix_seconds();
+    let printer_device_id: i64 = writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, password_hash, role, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('printer_loc_admin', 'Admin', 'hash', 'admin', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+
+            conn.execute(
+                "INSERT INTO locations (name, created_at_utc, updated_at_utc, version) \
+                 VALUES ('Каб. 305', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let location_id = conn.last_insert_rowid();
+
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, location_id, status_id, created_at_utc, updated_at_utc, version) \
+                 VALUES (2, 'Pantum BM5100ADN', ?1, 1, ?2, ?2, 1)",
+                params![location_id, now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed printer device with location");
+
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
+
+    let created = svc
+        .create(
+            RequestCreateDto {
+                request_type: "cartridge_replace".to_string(),
+                printer_device_id: Some(printer_device_id as i32),
+                cartridge_model_id: None,
+                category_id: None,
+                description: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("create cartridge_replace request");
+
+    let fetched = svc.get(created.id, &caller).await.expect("get request");
+
+    assert_eq!(
+        fetched.printer_location.as_deref(),
+        Some("Каб. 305"),
+        "printer_location must be joined from the printer device's location"
+    );
+}
+
+/// Plan 12-01 (D-05): printer_location is None (NULL-safe) when the request
+/// has no printer (free_form) or the printer has no location set.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn request_dto_printer_location_none_when_no_location_or_no_printer() {
+    use rusqlite::params;
+    use std::sync::Arc;
+    use trackly_app::dto::request::RequestCreateDto;
+    use trackly_app::services::RequestService;
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+    let (writer, readers, _guard) = test_writer_and_readers();
+    let clock = Arc::new(SystemClock);
+    let (ws_tx, _rx) = tokio::sync::broadcast::channel(16);
+    let ws_tx = Arc::new(ws_tx);
+
+    let svc = RequestService::new(writer.clone(), readers, clock.clone(), ws_tx);
+
+    let now = clock.unix_seconds();
+    let printer_no_location_id: i64 = writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, password_hash, role, \
+                 created_at_utc, updated_at_utc, version) \
+                 VALUES ('printer_loc_admin2', 'Admin', 'hash', 'admin', ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+
+            // Printer device with location_id = NULL.
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, location_id, status_id, created_at_utc, updated_at_utc, version) \
+                 VALUES (2, 'Kyocera ECOSYS no-location', NULL, 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(|e| trackly_core::error::AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed printer device without location");
+
+    let caller = Identity {
+        user_id: Some(1),
+        role: Role::Admin,
+    };
+
+    // free_form request: no printer at all.
+    let free_form = svc
+        .create(
+            RequestCreateDto {
+                request_type: "free_form".to_string(),
+                printer_device_id: None,
+                cartridge_model_id: None,
+                category_id: None,
+                description: Some("Свободная заявка без принтера".to_string()),
+            },
+            &caller,
+        )
+        .await
+        .expect("create free_form request");
+
+    let fetched_free_form = svc
+        .get(free_form.id, &caller)
+        .await
+        .expect("get free_form request");
+    assert_eq!(
+        fetched_free_form.printer_location, None,
+        "free_form request without printer_device_id must have printer_location = None"
+    );
+
+    // cartridge_replace request: printer set, but printer has no location.
+    let with_printer = svc
+        .create(
+            RequestCreateDto {
+                request_type: "cartridge_replace".to_string(),
+                printer_device_id: Some(printer_no_location_id as i32),
+                cartridge_model_id: None,
+                category_id: None,
+                description: None,
+            },
+            &caller,
+        )
+        .await
+        .expect("create cartridge_replace request");
+
+    let fetched_with_printer = svc
+        .get(with_printer.id, &caller)
+        .await
+        .expect("get cartridge_replace request");
+    assert_eq!(
+        fetched_with_printer.printer_location, None,
+        "printer without location_id must yield printer_location = None (NULL-safe LEFT JOIN)"
+    );
+}
