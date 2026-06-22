@@ -166,11 +166,17 @@ impl SqliteRequestRepository {
             .map_err(map_rusqlite)?;
 
         if affected == 0 {
-            return Err(AppError::OptimisticLockMismatch {
+            // WR-03: `fetch_in_tx` above already validated existence
+            // (deleted_at_utc IS NULL) AND `current.version == version`, and the
+            // UPDATE's WHERE clause uses that same version. Inside this single
+            // transaction the only way the UPDATE can touch 0 rows after the
+            // fetch succeeded is that the row was concurrently soft-deleted
+            // (deleted_at_utc became non-NULL). It is NOT a version mismatch —
+            // reporting `actual: current.version + 1` would fabricate a
+            // non-existent concurrent edit and send a debugger chasing a ghost.
+            return Err(AppError::NotFound {
                 entity: "request",
                 id: request_id,
-                expected: version,
-                actual: current.version + 1,
             });
         }
 
