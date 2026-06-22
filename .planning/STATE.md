@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: executing
-last_updated: "2026-06-21T16:43:55.884Z"
+status: milestone_complete
+last_updated: 2026-06-22T02:19:24.110Z
 last_activity: 2026-06-21
 progress:
   total_phases: 14
   completed_phases: 13
   total_plans: 76
-  completed_plans: 75
+  completed_plans: 76
   percent: 93
+stopped_at: Milestone complete (Phase 11 was final phase)
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 11 — requests-employee-ux-gaps
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 11 (requests-employee-ux-gaps) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-06-21
+Phase: 11
+Plan: Not started
+Status: Milestone complete
+Last activity: 2026-06-22
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +41,7 @@ Last activity: 2026-06-21
 
 **Velocity:**
 
-- Total plans completed: 49
+- Total plans completed: 52
 - Average duration: —
 - Total execution time: —
 
@@ -55,6 +56,7 @@ Last activity: 2026-06-21
 | 5 | 6 | - | - |
 | 07 | 14 | - | - |
 | 08 | 2 | - | - |
+| 11 | 3 | - | - |
 
 **Recent Trend:**
 
