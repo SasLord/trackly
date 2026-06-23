@@ -113,6 +113,12 @@ pub enum CartridgeTransitionOp {
         /// входом (D-08), где принтер не указывается явно — авто-возврат
         /// предыдущего картриджа (D-16) в этом случае не выполняется.
         printer_device_id: Option<i64>,
+        /// Override для D-16: заряд предыдущего картриджа при авто-возврате;
+        /// None = дефолт 3 (Пустой).
+        previous_cartridge_state_id: Option<i64>,
+        /// Override для D-16: расположение предыдущего картриджа при
+        /// авто-возврате; None = дефолт пустая строка.
+        previous_cartridge_location: Option<String>,
     },
     /// Вернуть на склад: В работе → На складе.
     /// holder_name cleared; state_id set to payload value (default: 3=Пустой).
@@ -280,6 +286,8 @@ mod tests {
             given_to_name: "B".into(),
             location: "Каб. 1".into(),
             printer_device_id: None,
+            previous_cartridge_state_id: None,
+            previous_cartridge_location: None,
         };
         assert!(op.validate_from_status(1).is_ok());
         assert!(op.validate_from_status(2).is_err()); // wrong status
@@ -320,6 +328,8 @@ mod tests {
                 given_to_name: "B".into(),
                 location: "X".into(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             }
             .audit_action(),
             "custom:install"
@@ -343,6 +353,8 @@ mod tests {
                 given_to_name: String::new(),
                 location: String::new(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             }
             .target_status_id(),
             2

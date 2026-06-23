@@ -479,9 +479,14 @@ impl SqliteCartridgeRepository {
         // (D-08 legacy cartridge-centric entry) performs no lookup — no regression.
         if let CartridgeTransitionOp::Install {
             printer_device_id: Some(pid),
+            previous_cartridge_state_id,
+            previous_cartridge_location,
             ..
         } = op
         {
+            let resolved_state_id = previous_cartridge_state_id.unwrap_or(3);
+            let resolved_location = previous_cartridge_location.as_deref().unwrap_or("");
+
             let previous: Option<(i64, i64)> = tx
                 .query_row(
                     "SELECT id, version FROM cartridges \
@@ -500,11 +505,17 @@ impl SqliteCartridgeRepository {
 
                 let prev_affected = tx
                     .execute(
-                        "UPDATE cartridges SET status_id=1, state_id=3, location='', \
+                        "UPDATE cartridges SET status_id=1, state_id=?1, location=?2, \
                          holder_name=NULL, current_printer_device_id=NULL, \
-                         updated_at_utc=?1, version=version+1 \
-                         WHERE id=?2 AND version=?3",
-                        params![now_utc, prev_id, prev_version],
+                         updated_at_utc=?3, version=version+1 \
+                         WHERE id=?4 AND version=?5",
+                        params![
+                            resolved_state_id,
+                            resolved_location,
+                            now_utc,
+                            prev_id,
+                            prev_version
+                        ],
                     )
                     .map_err(map_rusqlite)?;
 
@@ -530,8 +541,8 @@ impl SqliteCartridgeRepository {
                 })?;
 
                 let auto_return_op = CartridgeTransitionOp::ReturnToStock {
-                    state_id: 3,
-                    location: String::new(),
+                    state_id: resolved_state_id,
+                    location: resolved_location.to_string(),
                     notes: None,
                 };
                 let prev_payload_json = Self::op_payload_json(&auto_return_op);
@@ -1475,6 +1486,8 @@ mod tests {
             given_to_name: "Петров".into(),
             location: "Каб. 305".into(),
             printer_device_id: None,
+            previous_cartridge_state_id: None,
+            previous_cartridge_location: None,
         };
 
         {

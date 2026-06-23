@@ -160,6 +160,8 @@ async fn install_changes_status_to_in_use() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("transition Install");
@@ -192,6 +194,8 @@ async fn return_to_stock_sets_default_empty_state() {
                 given_to_name: "B".into(),
                 location: "Каб. 1".into(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install");
@@ -324,6 +328,8 @@ async fn all_transitions_write_audit_log() {
                 given_to_name: "B".into(),
                 location: "Каб.1".into(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install");
@@ -619,6 +625,8 @@ async fn install_with_printer_sets_current_printer_device_id() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install with printer");
@@ -659,6 +667,8 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install A");
@@ -674,6 +684,8 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
                 given_to_name: "Кузнецов".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install B into same printer");
@@ -725,6 +737,8 @@ async fn install_into_empty_printer_has_no_side_effects() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 1".into(),
                 printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install C into empty printer");
@@ -764,6 +778,8 @@ async fn install_without_printer_device_id_has_no_side_effects() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: None,
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install without printer_device_id");
@@ -803,6 +819,8 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
                 printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
             })
             .await
             .expect("install A");
@@ -815,6 +833,8 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
             given_to_name: "Кузнецов".into(),
             location: "Каб. 305".into(),
             printer_device_id: Some(printer_id),
+            previous_cartridge_state_id: None,
+            previous_cartridge_location: None,
         })
         .await
         .expect("install B auto-returns A");
@@ -831,4 +851,146 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
     })
     .await
     .expect("auto_return_writes_return_to_stock_audit_entry budget")
+}
+
+// ---------------------------------------------------------------------------
+// Plan 12-09 (D-16, GAP-12-03 frontend close): previous-cartridge overrides.
+// ---------------------------------------------------------------------------
+
+/// Test 1 (D-16 override): installing with explicit
+/// `previous_cartridge_state_id`/`previous_cartridge_location` overrides the
+/// auto-return's hardcoded defaults — the previous cartridge ends up with the
+/// USER-supplied charge state and location, not 3 (Пустой)/"".
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_auto_return_uses_previous_cartridge_overrides_when_present() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Pantum BM5100ADN").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        // Install A into the printer first.
+        let a_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_a.id,
+                version: cart_a.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            })
+            .await
+            .expect("install A");
+
+        // Install B into the SAME printer with explicit overrides for A's
+        // auto-return — state_id=1 (Полный), location="Кабинет 5".
+        let b_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_b.id,
+                version: cart_b.version,
+                date_utc: 1_700_000_100,
+                given_by_name: "Сидоров".into(),
+                given_to_name: "Кузнецов".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: Some(1),
+                previous_cartridge_location: Some("Кабинет 5".into()),
+            })
+            .await
+            .expect("install B into same printer with overrides");
+
+        assert_eq!(b_installed.status_id, 2, "B must be В работе (2)");
+
+        // A was auto-returned with the USER-supplied overrides, not the
+        // hardcoded defaults (state_id=3, location="").
+        let (a_status, a_state, a_location, a_holder, a_printer) =
+            cartridge_snapshot(&svc, a_installed.id).await;
+        assert_eq!(a_status, 1, "A must be На складе (1) after auto-return");
+        assert_eq!(
+            a_state,
+            Some(1),
+            "A's state must be the overridden Полный (1), not the default Пустой (3)"
+        );
+        assert_eq!(
+            a_location.as_deref(),
+            Some("Кабинет 5"),
+            "A's location must be the overridden value, not cleared to empty string"
+        );
+        assert_eq!(a_holder, None, "A's holder_name must still be cleared");
+        assert_eq!(
+            a_printer, None,
+            "A's current_printer_device_id must still be cleared"
+        );
+    })
+    .await
+    .expect("install_auto_return_uses_previous_cartridge_overrides_when_present budget")
+}
+
+/// Test 2 (D-16 backward-compat): when `previous_cartridge_state_id`/
+/// `previous_cartridge_location` are both `None`, the auto-return falls back
+/// to 12-06's original hardcoded defaults (state_id=3 Пустой, location="") —
+/// proves this widening does not regress 12-06's own behavior.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_auto_return_falls_back_to_defaults_when_overrides_absent() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Kyocera ECOSYS").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        let a_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_a.id,
+                version: cart_a.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            })
+            .await
+            .expect("install A");
+
+        let b_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_b.id,
+                version: cart_b.version,
+                date_utc: 1_700_000_100,
+                given_by_name: "Сидоров".into(),
+                given_to_name: "Кузнецов".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            })
+            .await
+            .expect("install B into same printer without overrides");
+
+        assert_eq!(b_installed.status_id, 2);
+
+        let (a_status, a_state, a_location, _a_holder, _a_printer) =
+            cartridge_snapshot(&svc, a_installed.id).await;
+        assert_eq!(a_status, 1, "A must be На складе (1) after auto-return");
+        assert_eq!(
+            a_state,
+            Some(3),
+            "A's state must fall back to the default Пустой (3) when no override given"
+        );
+        assert_eq!(
+            a_location.as_deref(),
+            Some(""),
+            "A's location must fall back to the default empty string when no override given"
+        );
+    })
+    .await
+    .expect("install_auto_return_falls_back_to_defaults_when_overrides_absent budget")
 }

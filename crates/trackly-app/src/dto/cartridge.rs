@@ -196,6 +196,15 @@ pub enum CartridgeTransitionPayload {
         #[specta(type = Option<i32>)]
         #[serde(default)]
         printer_device_id: Option<i64>,
+        /// Override для D-16: заряд предыдущего картриджа при авто-возврате;
+        /// None = дефолт 3 (Пустой).
+        #[specta(type = Option<i32>)]
+        #[serde(default)]
+        previous_cartridge_state_id: Option<i64>,
+        /// Override для D-16: расположение предыдущего картриджа при
+        /// авто-возврате; None = дефолт пустая строка.
+        #[serde(default)]
+        previous_cartridge_location: Option<String>,
     },
     /// Вернуть на склад: В работе (2) → На складе (1).
     #[serde(rename = "return_to_stock")]
@@ -282,6 +291,8 @@ impl From<CartridgeTransitionPayload> for trackly_core::domain::cartridges::Cart
                 given_to_name,
                 location,
                 printer_device_id,
+                previous_cartridge_state_id,
+                previous_cartridge_location,
                 ..
             } => CartridgeTransitionOp::Install {
                 date_utc,
@@ -289,6 +300,8 @@ impl From<CartridgeTransitionPayload> for trackly_core::domain::cartridges::Cart
                 given_to_name,
                 location,
                 printer_device_id,
+                previous_cartridge_state_id,
+                previous_cartridge_location,
             },
             CartridgeTransitionPayload::ReturnToStock {
                 state_id,
@@ -498,6 +511,8 @@ mod tests {
             given_to_name: "Петров".into(),
             location: "Каб. 305".into(),
             printer_device_id: Some(7),
+            previous_cartridge_state_id: None,
+            previous_cartridge_location: None,
         };
 
         let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
@@ -532,6 +547,72 @@ mod tests {
             CartridgeTransitionPayload::Install {
                 printer_device_id, ..
             } => assert_eq!(printer_device_id, None),
+            other => panic!("expected Install variant, got {other:?}"),
+        }
+    }
+
+    /// Plan 12-09 Task 1: `previous_cartridge_state_id`/`previous_cartridge_location`
+    /// round-trip through the DTO → domain `.into()` conversion unchanged.
+    #[test]
+    fn install_payload_into_op_forwards_previous_cartridge_overrides() {
+        let payload = CartridgeTransitionPayload::Install {
+            cartridge_id: 1,
+            version: 1,
+            date_utc: 1_700_000_000,
+            given_by_name: "Иванов".into(),
+            given_to_name: "Петров".into(),
+            location: "Каб. 305".into(),
+            printer_device_id: Some(7),
+            previous_cartridge_state_id: Some(1),
+            previous_cartridge_location: Some("Кабинет 5".into()),
+        };
+
+        let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
+
+        match op {
+            trackly_core::domain::cartridges::CartridgeTransitionOp::Install {
+                previous_cartridge_state_id,
+                previous_cartridge_location,
+                ..
+            } => {
+                assert_eq!(previous_cartridge_state_id, Some(1));
+                assert_eq!(
+                    previous_cartridge_location,
+                    Some("Кабинет 5".to_string())
+                );
+            }
+            other => panic!("expected Install op, got {other:?}"),
+        }
+    }
+
+    /// Backward-compat: `previous_cartridge_state_id`/`previous_cartridge_location`
+    /// omitted from JSON deserialize to `None` (12-06's original payload shape
+    /// keeps working unmodified).
+    #[test]
+    fn install_payload_previous_cartridge_overrides_default_to_none_when_omitted() {
+        let json = r#"{
+            "op": "install",
+            "cartridge_id": 1,
+            "version": 1,
+            "date_utc": 1700000000,
+            "given_by_name": "Иванов",
+            "given_to_name": "Петров",
+            "location": "Каб. 305",
+            "printer_device_id": 7
+        }"#;
+
+        let payload: CartridgeTransitionPayload =
+            serde_json::from_str(json).expect("deserialize without previous_cartridge overrides");
+
+        match payload {
+            CartridgeTransitionPayload::Install {
+                previous_cartridge_state_id,
+                previous_cartridge_location,
+                ..
+            } => {
+                assert_eq!(previous_cartridge_state_id, None);
+                assert_eq!(previous_cartridge_location, None);
+            }
             other => panic!("expected Install variant, got {other:?}"),
         }
     }
