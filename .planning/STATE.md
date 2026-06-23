@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-24T00:51:00.000Z"
+last_updated: "2026-06-23T18:00:21.884Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 15
-  completed_phases: 14
-  total_plans: 92
+  completed_phases: 15
+  total_plans: 91
   completed_plans: 91
-  percent: 99
+  percent: 100
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 12-12 complete, next: 12-15
+Plan: 12-15 complete, next: TBD (gap-closure Round 2 plans pending)
 Status: Ready to execute
 Last activity: 2026-06-24
 
@@ -129,6 +129,7 @@ Last activity: 2026-06-24
 | Phase 12 P13 | 12min | 1 tasks | 2 files |
 | Phase 12 P14 | 45m | 3 tasks | 9 files |
 | Phase 12 P12 | 12min | 2 tasks | 1 files |
+| Phase 12 P15 | 5min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -273,6 +274,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 12-14: cancel() реализован как отдельный сервисный метод/эндпоинт, не вариант RequestTransitionPayload — избегает протаскивания Employee через transition()'s безусловный authorize(TransitionRequests)
 - [Phase ?]: 12-14: V031 миграция (CHECK requests.status += 'cancelled') добавлена как Rule 2 auto-fix — без неё cancel() падал с CHECK constraint failed
 - [Phase 12]: 12-12: printerContext: $state<PrinterDto | null> populated inside the existing printers.get(preFillPrinterId) $effect (no second API call) — printerContextHint shows deviceName+ipAddress instead of raw #id, rendered first in the install form, before the cartridge-select picker
+- [Phase ?]: Plan 12-15: combined Tasks 2+3 into one commit since both modify the same RequestDetail.svelte if/else-if chain; isOwnRequest condition simplified by dropping redundant isAdRegister check (already guaranteed by parent chain)
 
 ### Pending Todos
 
@@ -310,7 +312,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T00:51:00.000Z
-Stopped at: Completed 12-12-PLAN.md
+Last session: 2026-06-23T18:00:21.877Z
+Stopped at: Completed 12-15-PLAN.md
 Resume file: 
 None
