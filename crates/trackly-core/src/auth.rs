@@ -110,6 +110,11 @@ pub enum Action {
     ReadPrinters,
     /// Просмотр заявок. All roles (сотрудник видит только свои).
     ReadRequests,
+    /// Удаление заявок в любом статусе. Admin | Manager (GAP-12-07/A4).
+    DeleteRequests,
+    /// Отмена собственной заявки автором. Все роли — владение проверяется
+    /// сервисным слоем (`RequestService::cancel()`), не здесь (GAP-12-07/A4).
+    CancelOwnRequest,
 }
 
 // ---------------------------------------------------------------------------
@@ -144,10 +149,11 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         | Action::MutatePrinters
         | Action::TransitionRequests
         | Action::ReadPrinters
-        | Action::ReadData => {
+        | Action::ReadData
+        | Action::DeleteRequests => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
-        Action::CreateRequest | Action::ReadRequests => true,
+        Action::CreateRequest | Action::ReadRequests | Action::CancelOwnRequest => true,
     };
 
     if allowed {
@@ -292,5 +298,39 @@ mod tests {
         let id = Identity::trusted_admin();
         assert_eq!(id.user_id, None);
         assert_eq!(id.role, Role::Admin);
+    }
+
+    // authorize — DeleteRequests / CancelOwnRequest (GAP-12-07/A4)
+
+    #[test]
+    fn authorize_manager_delete_requests_ok() {
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
+        };
+        assert!(authorize(&id, &Action::DeleteRequests).is_ok());
+    }
+
+    #[test]
+    fn authorize_employee_delete_requests_forbidden() {
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::DeleteRequests),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn authorize_employee_cancel_own_request_ok() {
+        // All roles pass the authorize() gate — real ownership check happens
+        // in the service layer (RequestService::cancel()), not here.
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
+        assert!(authorize(&id, &Action::CancelOwnRequest).is_ok());
     }
 }

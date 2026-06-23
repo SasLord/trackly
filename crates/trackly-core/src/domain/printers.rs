@@ -149,7 +149,8 @@ pub struct PrinterCounts {
 pub enum RequestTransitionOp {
     /// open → in_progress
     Accept,
-    /// open → rejected
+    /// open OR in_progress → rejected (GAP-12-07/A4: Специалист может
+    /// отклонить заявку «В работе», не только «Новая»).
     Reject { notes: Option<String> },
     /// in_progress → completed
     Complete {
@@ -157,17 +158,31 @@ pub enum RequestTransitionOp {
         /// If Some, links a cartridge installation (REQ-05 / D-Req-CART07-01).
         linked_cartridge_id: Option<i64>,
     },
+    /// open → cancelled. Author-only self-cancel (GAP-12-07/A4) — does NOT
+    /// go through `RequestService::transition()`/`Action::TransitionRequests`
+    /// (Admin|Manager only); enforced instead via the dedicated
+    /// `RequestService::cancel()` + `Action::CancelOwnRequest` path.
+    Cancel,
 }
 
 impl RequestTransitionOp {
     /// Validate that `current` status allows this transition.
+    ///
+    /// Rewritten from the original single-expected-status tuple match
+    /// (`(expected, op_name)`) to an explicit per-variant boolean check —
+    /// `Reject` now accepts TWO source statuses ("open" OR "in_progress"),
+    /// which a single `expected` string cannot express.
     pub fn validate_from_status(&self, current: &str) -> Result<(), AppError> {
-        let (expected, op_name) = match self {
-            RequestTransitionOp::Accept => ("open", "Принять в работу"),
-            RequestTransitionOp::Reject { .. } => ("open", "Отклонить"),
-            RequestTransitionOp::Complete { .. } => ("in_progress", "Выполнить"),
+        let (ok, op_name) = match self {
+            RequestTransitionOp::Accept => (current == "open", "Принять в работу"),
+            RequestTransitionOp::Reject { .. } => (
+                current == "open" || current == "in_progress",
+                "Отклонить",
+            ),
+            RequestTransitionOp::Complete { .. } => (current == "in_progress", "Выполнить"),
+            RequestTransitionOp::Cancel => (current == "open", "Отменить"),
         };
-        if current != expected {
+        if !ok {
             return Err(AppError::Validation {
                 field: "status".into(),
                 message: format!(
@@ -184,6 +199,7 @@ impl RequestTransitionOp {
             RequestTransitionOp::Accept => "in_progress",
             RequestTransitionOp::Reject { .. } => "rejected",
             RequestTransitionOp::Complete { .. } => "completed",
+            RequestTransitionOp::Cancel => "cancelled",
         }
     }
 
@@ -192,6 +208,7 @@ impl RequestTransitionOp {
             RequestTransitionOp::Accept => "custom:accept",
             RequestTransitionOp::Reject { .. } => "custom:reject",
             RequestTransitionOp::Complete { .. } => "custom:complete",
+            RequestTransitionOp::Cancel => "custom:cancel",
         }
     }
 }
@@ -235,5 +252,31 @@ mod tests {
             .target_status(),
             "completed"
         );
+    }
+
+    // GAP-12-07/A4: Reject is now valid from "open" OR "in_progress".
+
+    #[test]
+    fn transition_reject_validates_open_or_in_progress() {
+        let op = RequestTransitionOp::Reject { notes: None };
+        assert!(op.validate_from_status("open").is_ok());
+        assert!(op.validate_from_status("in_progress").is_ok());
+        assert!(op.validate_from_status("completed").is_err());
+    }
+
+    // GAP-12-07/A4: new Cancel variant — author-only self-cancel, "open" only.
+
+    #[test]
+    fn transition_cancel_validates_open_only() {
+        let op = RequestTransitionOp::Cancel;
+        assert!(op.validate_from_status("open").is_ok());
+        assert!(op.validate_from_status("in_progress").is_err());
+        assert!(op.validate_from_status("completed").is_err());
+    }
+
+    #[test]
+    fn transition_cancel_target_status_and_audit_action() {
+        assert_eq!(RequestTransitionOp::Cancel.target_status(), "cancelled");
+        assert_eq!(RequestTransitionOp::Cancel.audit_action(), "custom:cancel");
     }
 }
