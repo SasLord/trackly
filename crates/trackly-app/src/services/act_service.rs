@@ -1060,19 +1060,25 @@ impl ActService {
     /// операции, `OperationModal`) — единый backend-источник подсказок для
     /// `PersonAutocomplete.svelte` во всех формах.
     ///
-    /// Источник — UNION ALL двух арм:
+    /// Источник — UNION ALL до трёх арм:
     ///   1. `acts.{giver_name|receiver_name}` (soft-deleted акты исключены)
     ///   2. `cartridges.holder_name` (soft-deleted картриджи исключены) —
     ///      обе enum-ветки (`Giver`/`Receiver`) читают `holder_name`
     ///      одинаково: у cartridges нет различия giver/receiver, это
     ///      единственная person-name колонка на этой таблице.
+    ///   3. (только `Giver`) `audit_log.payload_json->given_by_name` для
+    ///      картриджных операций `custom:install`/`custom:to_refill`
+    ///      (GAP-12-06, A3, часть «а») — значение поля «Кто выдал» сейчас
+    ///      пишется ТОЛЬКО в JSON-payload (в отличие от «Кому выдал», у
+    ///      которого есть queryable-колонка `cartridges.holder_name`), без
+    ///      этой арки имя «Кто выдал» никогда не попадало в подсказки.
     ///
-    /// Имена дедуплицируются и агрегируются по сумме frequency между обеими
+    /// Имена дедуплицируются и агрегируются по сумме frequency между всеми
     /// арками (CTE с `GROUP BY name, SUM(freq)` в внешнем запросе),
     /// отсортированы по frequency DESC (alpha ASC tiebreak). LIKE-prefix
     /// match с `escape_like` защитой от SQL injection через `%` / `_` / `\`.
     ///
-    /// Phase 5 (future): третья UNION ALL арка с AD displayName —
+    /// Phase 5 (future): четвёртая UNION ALL арка с AD displayName —
     /// расширение в SQL без изменения сигнатуры / UI contract.
     pub async fn suggest_person(
         &self,
@@ -1093,6 +1099,24 @@ impl ActService {
             SuggestPersonField::Giver => "giver_name",
             SuggestPersonField::Receiver => "receiver_name",
         };
+        // given_by_name арка — только для контекста «Кто выдал» (Giver),
+        // симметрично тому, как holder_name участвует в обеих ветках, но
+        // given_by_name по семантике относится только к giver-стороне
+        // картриджных операций install/to_refill.
+        let given_by_name_arm = match field {
+            SuggestPersonField::Giver => {
+                " UNION ALL \
+                 SELECT json_extract(payload_json, '$.given_by_name') AS name, COUNT(*) AS freq \
+                   FROM audit_log \
+                  WHERE entity_type = 'cartridge' \
+                    AND action IN ('custom:install', 'custom:to_refill') \
+                    AND json_extract(payload_json, '$.given_by_name') IS NOT NULL \
+                    AND json_extract(payload_json, '$.given_by_name') != '' \
+                    AND json_extract(payload_json, '$.given_by_name') LIKE ?1 ESCAPE '\\' \
+                  GROUP BY json_extract(payload_json, '$.given_by_name')"
+            }
+            SuggestPersonField::Receiver => "",
+        };
         let sql = format!(
             "SELECT name, SUM(freq) AS total_freq FROM ( \
                  SELECT {col} AS name, COUNT(*) AS freq \
@@ -1105,11 +1129,13 @@ impl ActService {
                   WHERE holder_name LIKE ?1 ESCAPE '\\' \
                     AND deleted_at_utc IS NULL \
                   GROUP BY holder_name \
+                 {given_by_name_arm} \
              ) \
               GROUP BY name \
               ORDER BY total_freq DESC, name ASC \
               LIMIT ?2",
-            col = column
+            col = column,
+            given_by_name_arm = given_by_name_arm
         );
 
         let readers = self.readers.clone();

@@ -488,3 +488,172 @@ async fn suggest_person_excludes_soft_deleted_cartridges() {
     .await
     .expect("budget");
 }
+
+// ---------------------------------------------------------------------------
+// GAP-12-06 (A3, part "a"): suggest_person must also source `given_by_name`
+// ("Кто выдал") from audit_log.payload_json for cartridge install/to_refill
+// operations — this value is currently written ONLY to the JSON payload,
+// never to a queryable column, so it never reached the autocomplete
+// suggestions (unlike `given_to_name`, which lands in cartridges.holder_name
+// and is already aggregated by the existing UNION arm above).
+// ---------------------------------------------------------------------------
+
+/// Inserts an `audit_log` row with the given `entity_type`/`action` and a
+/// `payload_json` containing `given_by_name` — minimal fixture mirroring the
+/// real shape written by `CartridgesSqliteRepository::op_payload_json()`.
+async fn seed_audit_log_given_by_name(
+    writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    entity_type: &str,
+    action: &str,
+    given_by_name: &str,
+    now: i64,
+) {
+    let entity_type = entity_type.to_string();
+    let action = action.to_string();
+    let payload_json = serde_json::json!({
+        "op": "install",
+        "date_utc": now,
+        "given_by_name": given_by_name,
+        "given_to_name": "Кому Выдал",
+        "location": "Склад",
+    })
+    .to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO audit_log \
+                 (entity_type, entity_id, action, user_id, before_json, after_json, payload_json, created_at_utc) \
+                 VALUES (?1, 1, ?2, NULL, NULL, NULL, ?3, ?4)",
+                params![entity_type, action, payload_json, now],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("seed audit_log given_by_name");
+}
+
+/// Test 11 (GAP-12-06): `custom:install` audit row's `given_by_name`
+/// surfaces in `Giver`-field suggestions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_finds_given_by_name_from_install_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:install",
+            "Иванов И.И.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Иван", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Иванов И.И.".to_string()],
+            "given_by_name from custom:install audit_log must surface in Giver suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 12 (GAP-12-06): `custom:to_refill` audit row's `given_by_name` also
+/// surfaces (second relevant operation from the UAT text — «Отправка на
+/// заправку»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_finds_given_by_name_from_to_refill_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:to_refill",
+            "Сидоров С.С.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Сидор", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Сидоров С.С.".to_string()],
+            "given_by_name from custom:to_refill audit_log must surface in Giver suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 13 (GAP-12-06): irrelevant actions (e.g. `custom:return_to_stock`)
+/// must NOT contribute their `given_by_name` payload field — the `action IN
+/// (...)` filter excludes anything outside install/to_refill.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_excludes_given_by_name_from_irrelevant_action() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:return_to_stock",
+            "Петров П.П.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Петр", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.is_empty(),
+            "given_by_name from a non install/to_refill action must not surface, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 14 (GAP-12-06 regression guard): the new `given_by_name` arm only
+/// applies to the `Giver` field — `Receiver` suggestions must not pick it up
+/// (given_by_name is semantically "Кто выдал", not "Кому выдал").
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_given_by_name_does_not_leak_into_receiver_field() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:install",
+            "ТолькоГивер",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Receiver, "ТолькоГивер", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.is_empty(),
+            "given_by_name must not surface in Receiver-field suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
