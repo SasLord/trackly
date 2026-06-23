@@ -966,13 +966,17 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?5 = 0 OR (c.status_id = 1 AND (\
                          (m.kind_id = 1 AND c.state_id IN (1, 2)) \
                       OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
-                   )))",
+                   ))) \
+                   AND (?6 IS NULL \
+                        OR NOT EXISTS (SELECT 1 FROM printer_cartridge_models pcm WHERE pcm.device_id = ?6) \
+                        OR c.model_id IN (SELECT cartridge_model_id FROM printer_cartridge_models WHERE device_id = ?6))",
                 params![
                     include_deleted as i64,
                     filter.status_id,
                     filter.kind_id,
                     filter.model_id,
                     installable_only,
+                    filter.compatible_with_printer_device_id,
                 ],
                 |r| r.get(0),
             )
@@ -989,8 +993,11 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                          (m.kind_id = 1 AND c.state_id IN (1, 2)) \
                       OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
                    ))) \
+                   AND (?6 IS NULL \
+                        OR NOT EXISTS (SELECT 1 FROM printer_cartridge_models pcm WHERE pcm.device_id = ?6) \
+                        OR c.model_id IN (SELECT cartridge_model_id FROM printer_cartridge_models WHERE device_id = ?6)) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
-                 LIMIT ?6 OFFSET ?7"
+                 LIMIT ?7 OFFSET ?8"
             ))
             .map_err(map_rusqlite)?;
 
@@ -1002,6 +1009,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                     filter.kind_id,
                     filter.model_id,
                     installable_only,
+                    filter.compatible_with_printer_device_id,
                     limit,
                     offset,
                 ],

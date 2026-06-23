@@ -215,6 +215,65 @@ impl SqlitePrinterRepository {
         })
     }
 
+    /// Replace the set of cartridge models compatible with `device_id`
+    /// (D-11/D-12, Phase 12 gap closure — GAP-12-02). DELETE+re-INSERT,
+    /// mirrors `SqliteCartridgeRepository::upsert_compatibility_in_tx`'s
+    /// pattern for the existing free-text table. Empty `model_ids` clears
+    /// the link set entirely (treated as "not configured", D-14).
+    ///
+    /// Printer-side write path. `set_compatible_devices_in_tx` is the
+    /// equally-valid write path from the opposite side — both mutate the
+    /// SAME `printer_cartridge_models` table; keep row shape identical.
+    pub fn set_compatible_models_in_tx(
+        tx: &Transaction<'_>,
+        device_id: i64,
+        model_ids: &[i64],
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "DELETE FROM printer_cartridge_models WHERE device_id = ?1",
+            params![device_id],
+        )
+        .map_err(map_rusqlite)?;
+
+        for model_id in model_ids {
+            tx.execute(
+                "INSERT INTO printer_cartridge_models \
+                 (device_id, cartridge_model_id, created_at_utc) VALUES (?1, ?2, ?3)",
+                params![device_id, model_id, now_utc],
+            )
+            .map_err(map_rusqlite)?;
+        }
+        Ok(())
+    }
+
+    /// Replace the set of printer devices compatible with `cartridge_model_id`
+    /// (D-11/D-12). Model-side write path — mirrors
+    /// `set_compatible_models_in_tx` exactly, opposite direction into the
+    /// SAME table.
+    pub fn set_compatible_devices_in_tx(
+        tx: &Transaction<'_>,
+        cartridge_model_id: i64,
+        device_ids: &[i64],
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "DELETE FROM printer_cartridge_models WHERE cartridge_model_id = ?1",
+            params![cartridge_model_id],
+        )
+        .map_err(map_rusqlite)?;
+
+        for device_id in device_ids {
+            tx.execute(
+                "INSERT INTO printer_cartridge_models \
+                 (device_id, cartridge_model_id, created_at_utc) VALUES (?1, ?2, ?3)",
+                params![device_id, cartridge_model_id, now_utc],
+            )
+            .map_err(map_rusqlite)?;
+        }
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
@@ -406,6 +465,42 @@ impl PrinterRepository for SqlitePrinterRepository {
         )
         .optional()
         .map_err(map_rusqlite)
+    }
+
+    fn get_compatible_model_ids(
+        &self,
+        conn: &Self::Conn,
+        device_id: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        let mut stmt = conn
+            .prepare("SELECT cartridge_model_id FROM printer_cartridge_models WHERE device_id = ?1")
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![device_id], |r| r.get::<_, i64>(0))
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
+    }
+
+    fn get_compatible_device_ids(
+        &self,
+        conn: &Self::Conn,
+        cartridge_model_id: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        let mut stmt = conn
+            .prepare("SELECT device_id FROM printer_cartridge_models WHERE cartridge_model_id = ?1")
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![cartridge_model_id], |r| r.get::<_, i64>(0))
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
     }
 }
 
