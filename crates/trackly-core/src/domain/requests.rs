@@ -87,6 +87,7 @@ pub struct RequestCounts {
     pub in_progress: i64,
     pub completed: i64,
     pub rejected: i64,
+    pub cancelled: i64,
 }
 
 /// Pagination parameters for request list queries.

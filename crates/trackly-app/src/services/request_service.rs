@@ -169,6 +169,7 @@ impl RequestService {
                 in_progress: c.in_progress,
                 completed: c.completed,
                 rejected: c.rejected,
+                cancelled: c.cancelled,
             })
         })
         .await

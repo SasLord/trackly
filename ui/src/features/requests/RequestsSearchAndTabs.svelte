@@ -18,7 +18,7 @@
   // «Создать заявку» visible to all roles (REQ-01). identity accepted for future role-based use.
   const canCreate = $derived(_identity !== undefined);
 
-  type StatusTab = null | 'open' | 'in_progress' | 'completed' | 'rejected';
+  type StatusTab = null | 'open' | 'in_progress' | 'completed' | 'rejected' | 'cancelled';
 
   interface Tab {
     key: StatusTab;
@@ -31,6 +31,7 @@
     { key: 'in_progress', label: 'В работе' },
     { key: 'completed', label: 'Выполненные' },
     { key: 'rejected', label: 'Отклонённые' },
+    { key: 'cancelled', label: 'Отменённые' },
   ];
 
   function handleTabClick(key: StatusTab) {

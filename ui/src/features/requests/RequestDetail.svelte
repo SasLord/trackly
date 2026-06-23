@@ -104,7 +104,9 @@
           ? 'В работе'
           : request.status === 'completed'
             ? 'Выполнена'
-            : 'Отклонена',
+            : request.status === 'cancelled'
+              ? 'Отменена'
+              : 'Отклонена',
   );
 
   const typeLabel = $derived(
@@ -160,10 +162,12 @@
       accept: 'Принята в работу',
       complete: 'Выполнена',
       reject: 'Отклонена',
+      cancel: 'Отменена',
       'custom:create': 'Создана',
       'custom:accept': 'Принята в работу',
       'custom:complete': 'Выполнена',
       'custom:reject': 'Отклонена',
+      'custom:cancel': 'Отменена',
     };
     return labels[action] ?? action;
   }

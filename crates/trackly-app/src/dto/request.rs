@@ -284,6 +284,8 @@ pub struct RequestCountsDto {
     pub completed: i64,
     #[specta(type = i32)]
     pub rejected: i64,
+    #[specta(type = i32)]
+    pub cancelled: i64,
 }
 
 #[cfg(test)]

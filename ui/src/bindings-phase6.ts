@@ -200,6 +200,7 @@ export type RequestCountsDto = {
   inProgress: number;
   completed: number;
   rejected: number;
+  cancelled: number;
 };
 
 /**

@@ -351,12 +351,23 @@ impl RequestRepository for SqliteRequestRepository {
             )
             .map_err(map_rusqlite)?;
 
+        let cancelled: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM requests \
+                 WHERE status = 'cancelled' AND deleted_at_utc IS NULL \
+                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
+                params![requested_by_user_id],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+
         Ok(RequestCounts {
             all,
             open,
             in_progress,
             completed,
             rejected,
+            cancelled,
         })
     }
 }

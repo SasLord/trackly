@@ -37,6 +37,8 @@
         return 'Ваша заявка выполнена';
       case 'rejected':
         return 'Ваша заявка отклонена';
+      case 'cancelled':
+        return 'Ваша заявка отменена';
       default:
         return 'Статус вашей заявки изменён';
     }

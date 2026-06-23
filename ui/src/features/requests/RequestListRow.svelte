@@ -32,7 +32,9 @@
         ? 'В работе'
         : request.status === 'completed'
           ? 'Выполнена'
-          : 'Отклонена',
+          : request.status === 'cancelled'
+            ? 'Отменена'
+            : 'Отклонена',
   );
 
   const typeLabel = $derived(
