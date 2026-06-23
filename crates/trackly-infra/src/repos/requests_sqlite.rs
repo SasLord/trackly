@@ -147,7 +147,7 @@ impl SqliteRequestRepository {
         let notes = match op {
             RequestTransitionOp::Reject { notes } => notes.as_deref(),
             RequestTransitionOp::Complete { notes, .. } => notes.as_deref(),
-            RequestTransitionOp::Accept => None,
+            RequestTransitionOp::Accept | RequestTransitionOp::Cancel => None,
         };
 
         let affected = tx

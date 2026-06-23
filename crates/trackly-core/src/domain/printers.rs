@@ -175,10 +175,9 @@ impl RequestTransitionOp {
     pub fn validate_from_status(&self, current: &str) -> Result<(), AppError> {
         let (ok, op_name) = match self {
             RequestTransitionOp::Accept => (current == "open", "Принять в работу"),
-            RequestTransitionOp::Reject { .. } => (
-                current == "open" || current == "in_progress",
-                "Отклонить",
-            ),
+            RequestTransitionOp::Reject { .. } => {
+                (current == "open" || current == "in_progress", "Отклонить")
+            }
             RequestTransitionOp::Complete { .. } => (current == "in_progress", "Выполнить"),
             RequestTransitionOp::Cancel => (current == "open", "Отменить"),
         };

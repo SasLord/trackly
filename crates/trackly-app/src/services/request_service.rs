@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use rusqlite::OptionalExtension;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::requests::{Pagination, RequestFilter, RequestNew};
@@ -514,6 +515,13 @@ impl RequestService {
             RequestTransitionOp::Reject { notes } => notes.clone(),
             RequestTransitionOp::Complete { notes, .. } => notes.clone(),
             RequestTransitionOp::Accept => None,
+            // `op` here is built exclusively from `RequestTransitionPayload`
+            // (Accept/Reject/Complete) a few lines above — `Cancel` never
+            // flows through this generic transition() dispatcher (it has its
+            // own dedicated `Self::cancel()` method and authorization gate).
+            RequestTransitionOp::Cancel => {
+                unreachable!("Cancel never reaches transition() — see Self::cancel()")
+            }
         };
         let notes_json: Option<String> = match (plain_notes, cartridge_line) {
             (Some(notes), Some(line)) => Some(format!("{notes}; {line}")),
@@ -560,6 +568,134 @@ impl RequestService {
         let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
             request_id,
             new_status,
+            requested_by_user_id: dto.requested_by_user_id,
+        });
+
+        Ok(dto)
+    }
+
+    /// Soft-delete a request in ANY status (GAP-12-07/A4). Admin|Manager only
+    /// (`Action::DeleteRequests`). Mirrors `CartridgeService::delete()`'s
+    /// optimistic-lock UPDATE 1:1 — `affected == 0` distinguishes already-gone
+    /// (NotFound) from a stale `version` (OptimisticLockMismatch).
+    pub async fn delete(&self, id: i64, version: i64, caller: &Identity) -> Result<(), AppError> {
+        authorize(caller, &Action::DeleteRequests)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                let affected = tx
+                    .execute(
+                        "UPDATE requests SET deleted_at_utc=?1, updated_at_utc=?1, \
+                         version=version+1 \
+                         WHERE id=?2 AND version=?3 AND deleted_at_utc IS NULL",
+                        rusqlite::params![now, id, version],
+                    )
+                    .map_err(map_rusqlite)?;
+
+                if affected == 0 {
+                    let actual: Option<i64> = tx
+                        .query_row(
+                            "SELECT version FROM requests WHERE id = ?1",
+                            rusqlite::params![id],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .map_err(map_rusqlite)?;
+                    return match actual {
+                        None => Err(AppError::NotFound {
+                            entity: "request",
+                            id,
+                        }),
+                        Some(actual) => Err(AppError::OptimisticLockMismatch {
+                            entity: "request",
+                            id,
+                            expected: version,
+                            actual,
+                        }),
+                    };
+                }
+
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: id,
+                        action: "custom:delete",
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Cancel the CALLER'S OWN request, only while it is still "open"
+    /// (GAP-12-07/A4). Deliberately does NOT go through `Self::transition()`/
+    /// `Action::TransitionRequests` (Admin|Manager only) — Employee callers
+    /// must be able to reach this path. Instead:
+    ///   1. `authorize(&Action::CancelOwnRequest)` — passes every role.
+    ///   2. `Self::get(id, caller)` — reuses the existing BOLA-safe ownership
+    ///      check (`dto.requested_by_user_id != caller.user_id` → Forbidden
+    ///      for Employee callers) BEFORE any write is attempted.
+    ///   3. `RequestTransitionOp::Cancel.validate_from_status(&current.status)`
+    ///      — only "open" requests may be cancelled.
+    pub async fn cancel(
+        &self,
+        id: i64,
+        version: i64,
+        caller: &Identity,
+    ) -> Result<RequestDto, AppError> {
+        authorize(caller, &Action::CancelOwnRequest)?;
+
+        let current = self.get(id, caller).await?;
+        RequestTransitionOp::Cancel.validate_from_status(&current.status)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let request_repo = self.request_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let op = RequestTransitionOp::Cancel;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                request_repo.transition_in_tx(&tx, id, version, &op, None, None, now)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "request",
+                        entity_id: id,
+                        action: op.audit_action(),
+                        user_id,
+                        before_json: None,
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        let dto = self.get(id, caller).await?;
+
+        // WS push after successful cancel (D-Notify-01) — mirrors transition().
+        let _ = self.ws_tx.send(WsEvent::RequestStatusChanged {
+            request_id: id,
+            new_status: RequestTransitionOp::Cancel.target_status().to_string(),
             requested_by_user_id: dto.requested_by_user_id,
         });
 
