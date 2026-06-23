@@ -84,8 +84,7 @@ async fn http_create_broadcasts_exactly_one_event() {
             .await
             .expect("create employee user");
 
-        let session_store =
-            RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+        let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
         let cookie = create_session_cookie(&session_store, employee_dto.id, Role::Employee)
             .await
             .expect("create employee session");

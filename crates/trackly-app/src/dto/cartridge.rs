@@ -576,10 +576,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(previous_cartridge_state_id, Some(1));
-                assert_eq!(
-                    previous_cartridge_location,
-                    Some("Кабинет 5".to_string())
-                );
+                assert_eq!(previous_cartridge_location, Some("Кабинет 5".to_string()));
             }
             other => panic!("expected Install op, got {other:?}"),
         }

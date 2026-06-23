@@ -249,7 +249,10 @@ async fn employee_gets_printer_options_minimal_dto() {
 async fn no_session_gets_401() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
         let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
-        let app = build_router(&ctx, RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()));
+        let app = build_router(
+            &ctx,
+            RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+        );
         let (status, _body) = post_with_cookie(app, "/api/v1/request_printer_options", None).await;
         assert_eq!(
             status,
@@ -284,13 +287,21 @@ async fn empty_printer_list_returns_empty_array() {
             .expect("create employee user");
 
         let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
-        let employee_cookie = create_session_cookie(&session_store, employee_dto.id, Role::Employee)
-            .await
-            .expect("create employee session");
+        let employee_cookie =
+            create_session_cookie(&session_store, employee_dto.id, Role::Employee)
+                .await
+                .expect("create employee session");
 
-        let app = build_router(&ctx, RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()));
-        let (status, body) =
-            post_with_cookie(app, "/api/v1/request_printer_options", Some(&employee_cookie)).await;
+        let app = build_router(
+            &ctx,
+            RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+        );
+        let (status, body) = post_with_cookie(
+            app,
+            "/api/v1/request_printer_options",
+            Some(&employee_cookie),
+        )
+        .await;
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
