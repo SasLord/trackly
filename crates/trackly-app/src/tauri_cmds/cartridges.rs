@@ -14,8 +14,9 @@
 use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
-    CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    CartridgeListResponse, CartridgeModelCompatibleDevicesDto, CartridgeModelCreateDto,
+    CartridgeModelDto, CartridgeModelPatchDto, CartridgeTransitionPayload, LowStockItemDto,
+    Pagination,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -169,6 +170,39 @@ pub async fn build_cartridge_models_delete(
 ) -> Result<(), AppError> {
     authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.model_delete(id, version).await
+}
+
+/// Чтение списка совместимых принтеров для модели картриджа (D-11/D-12,
+/// Phase 12 gap closure — GAP-12-02). Управленческая функция — Admin|Manager,
+/// та же гейтинг-точка что у cartridges_get/printers_get.
+pub async fn build_cartridge_models_get_compatible_devices(
+    ctx: &AppCtx,
+    caller: &Identity,
+    model_id: i64,
+) -> Result<CartridgeModelCompatibleDevicesDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let device_ids = ctx.cartridges.get_compatible_devices(model_id).await?;
+    Ok(CartridgeModelCompatibleDevicesDto {
+        model_id,
+        device_ids,
+    })
+}
+
+/// Мутация: требует `caller` с правом `MutateCartridges`.
+pub async fn build_cartridge_models_set_compatible_devices(
+    ctx: &AppCtx,
+    caller: &Identity,
+    model_id: i64,
+    device_ids: Vec<i64>,
+) -> Result<CartridgeModelCompatibleDevicesDto, AppError> {
+    let device_ids = ctx
+        .cartridges
+        .set_compatible_devices(model_id, device_ids, caller)
+        .await?;
+    Ok(CartridgeModelCompatibleDevicesDto {
+        model_id,
+        device_ids,
+    })
 }
 
 pub async fn build_cartridges_suggest_brand(
@@ -405,6 +439,33 @@ pub async fn cartridges_suggest_compat_printer(
 ) -> Result<Vec<String>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_cartridges_suggest_compat_printer(state.inner(), &caller, field, prefix).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cartridge_models_get_compatible_devices(
+    state: tauri::State<'_, AppCtx>,
+    model_id: i32,
+) -> Result<CartridgeModelCompatibleDevicesDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_get_compatible_devices(state.inner(), &caller, model_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cartridge_models_set_compatible_devices(
+    state: tauri::State<'_, AppCtx>,
+    model_id: i32,
+    device_ids: Vec<i32>,
+) -> Result<CartridgeModelCompatibleDevicesDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridge_models_set_compatible_devices(
+        state.inner(),
+        &caller,
+        model_id as i64,
+        device_ids.into_iter().map(|id| id as i64).collect(),
+    )
+    .await
 }
 
 #[tauri::command]

@@ -8,8 +8,8 @@
 use crate::context::AppCtx;
 use crate::dto::device::DeviceNew;
 use crate::dto::printer::{
-    DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
-    PrinterListResponse,
+    DiscoveredPrinterDto, Pagination, PrinterCompatibleModelsDto, PrinterCreateDto, PrinterDto,
+    PrinterFilter, PrinterListResponse,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -197,6 +197,39 @@ pub async fn build_printers_acknowledge_alert(
     ctx.printers.acknowledge_alert(printer_id, caller).await
 }
 
+/// Чтение списка совместимых моделей картриджей для принтера (D-11/D-12,
+/// Phase 12 gap closure — GAP-12-02). Управленческая функция — Admin|Manager,
+/// та же гейтинг-точка что у printers_get/cartridges_get.
+pub async fn build_printers_get_compatible_models(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+) -> Result<PrinterCompatibleModelsDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let model_ids = ctx.printers.get_compatible_models(device_id).await?;
+    Ok(PrinterCompatibleModelsDto {
+        device_id,
+        model_ids,
+    })
+}
+
+/// Мутация: требует `caller` с правом `MutatePrinters` (Admin | Manager).
+pub async fn build_printers_set_compatible_models(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+    model_ids: Vec<i64>,
+) -> Result<PrinterCompatibleModelsDto, AppError> {
+    let model_ids = ctx
+        .printers
+        .set_compatible_models(device_id, model_ids, caller)
+        .await?;
+    Ok(PrinterCompatibleModelsDto {
+        device_id,
+        model_ids,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri wrappers
 // ---------------------------------------------------------------------------
@@ -273,4 +306,31 @@ pub async fn printers_acknowledge_alert(
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_acknowledge_alert(state.inner(), &caller, printer_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn printers_get_compatible_models(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+) -> Result<PrinterCompatibleModelsDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_get_compatible_models(state.inner(), &caller, device_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn printers_set_compatible_models(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+    model_ids: Vec<i32>,
+) -> Result<PrinterCompatibleModelsDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_set_compatible_models(
+        state.inner(),
+        &caller,
+        device_id as i64,
+        model_ids.into_iter().map(|id| id as i64).collect(),
+    )
+    .await
 }

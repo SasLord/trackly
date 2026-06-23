@@ -10,14 +10,15 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::printer::{
-    DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
-    PrinterListResponse,
+    DiscoveredPrinterDto, Pagination, PrinterCompatibleModelsDto, PrinterCreateDto, PrinterDto,
+    PrinterFilter, PrinterListResponse,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::printers::{
     build_printers_acknowledge_alert, build_printers_admit, build_printers_create,
-    build_printers_discover, build_printers_get, build_printers_list, build_printers_refresh,
+    build_printers_discover, build_printers_get, build_printers_get_compatible_models,
+    build_printers_list, build_printers_refresh, build_printers_set_compatible_models,
 };
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,19 @@ pub struct AcknowledgeAlertPayload {
 pub struct AdmitPayload {
     pub selected_ips: Vec<String>,
     pub community: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCompatibleModelsPayload {
+    pub device_id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCompatibleModelsPayload {
+    pub device_id: i32,
+    pub model_ids: Vec<i32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +192,41 @@ pub async fn handler_admit(
     ))
 }
 
+pub async fn handler_get_compatible_models(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetCompatibleModelsPayload>,
+) -> Result<Json<PrinterCompatibleModelsDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_get_compatible_models(&ctx, &identity, p.device_id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_set_compatible_models(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<SetCompatibleModelsPayload>,
+) -> Result<Json<PrinterCompatibleModelsDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_set_compatible_models(
+            &ctx,
+            &identity,
+            p.device_id as i64,
+            p.model_ids.into_iter().map(|id| id as i64).collect(),
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -193,5 +242,13 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/printers_acknowledge_alert",
             post(handler_acknowledge_alert),
+        )
+        .route(
+            "/api/v1/printers_get_compatible_models",
+            post(handler_get_compatible_models),
+        )
+        .route(
+            "/api/v1/printers_set_compatible_models",
+            post(handler_set_compatible_models),
         )
 }

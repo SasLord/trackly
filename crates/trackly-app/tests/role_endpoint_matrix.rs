@@ -56,6 +56,16 @@
 //!     request → 403 Forbidden (Action::TransitionRequests, Admin|Manager
 //!     only — the gate fires before any ownership check)
 //!
+//! Plan 12-05 (T-12-05-02, GAP-12-02) adds Cases 33-35: the new
+//! printer↔cartridge-model compatibility commands (junction table,
+//! D-11/D-12) are a management feature, not employee-facing.
+//! 33. Employee session → POST /api/v1/printers_get_compatible_models →
+//!     403 Forbidden (Action::ReadData, Admin|Manager only)
+//! 34. Employee session → POST /api/v1/printers_set_compatible_models →
+//!     403 Forbidden (Action::MutatePrinters, Admin|Manager only)
+//! 35. Employee session → POST /api/v1/cartridge_models_set_compatible_devices →
+//!     403 Forbidden (Action::MutateCartridges, Admin|Manager only)
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1175,6 +1185,68 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 32: Employee → requests_transition (even on own request) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 33 (T-12-05-02, Plan 12-05): Employee → printers_get_compatible_models
+        // → 403 Forbidden. authorize(&Action::ReadData) (Admin|Manager only)
+        // fires before any DB read, so device_id: 1 need not exist — this is a
+        // management-feature read, not employee-facing (same gate as
+        // printers_get/cartridges_get).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_get_compatible_models",
+                json!({ "deviceId": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 33: Employee → printers_get_compatible_models → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 34 (T-12-05-02, Plan 12-05): Employee → printers_set_compatible_models
+        // → 403 Forbidden. authorize(&Action::MutatePrinters) (Admin|Manager
+        // only) fires before any DB write.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_set_compatible_models",
+                json!({ "deviceId": 1, "modelIds": [1] }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 34: Employee → printers_set_compatible_models → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 35 (T-12-05-02, Plan 12-05): Employee → cartridge_models_set_compatible_devices
+        // → 403 Forbidden. authorize(&Action::MutateCartridges) (Admin|Manager
+        // only) fires before any DB write — model-side mirror of Case 34.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridge_models_set_compatible_devices",
+                json!({ "modelId": 1, "deviceIds": [1] }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 35: Employee → cartridge_models_set_compatible_devices → expected 403, got {status}"
             );
         }
 

@@ -12,17 +12,19 @@ use tower_sessions::Session;
 use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
-    CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    CartridgeListResponse, CartridgeModelCompatibleDevicesDto, CartridgeModelCreateDto,
+    CartridgeModelDto, CartridgeModelPatchDto, CartridgeTransitionPayload, LowStockItemDto,
+    Pagination,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::cartridges::{
     build_cartridge_models_create, build_cartridge_models_delete, build_cartridge_models_get,
-    build_cartridge_models_list, build_cartridge_models_update, build_cartridges_create,
-    build_cartridges_delete, build_cartridges_get, build_cartridges_get_history,
-    build_cartridges_list, build_cartridges_low_stock, build_cartridges_search,
-    build_cartridges_status_counts, build_cartridges_suggest_brand,
+    build_cartridge_models_get_compatible_devices, build_cartridge_models_list,
+    build_cartridge_models_set_compatible_devices, build_cartridge_models_update,
+    build_cartridges_create, build_cartridges_delete, build_cartridges_get,
+    build_cartridges_get_history, build_cartridges_list, build_cartridges_low_stock,
+    build_cartridges_search, build_cartridges_status_counts, build_cartridges_suggest_brand,
     build_cartridges_suggest_compat_printer, build_cartridges_suggest_location,
     build_cartridges_suggest_model, build_cartridges_transition, build_cartridges_update,
 };
@@ -92,6 +94,19 @@ pub struct ModelCreatePayload {
 #[serde(rename_all = "camelCase")]
 pub struct ModelUpdatePayload {
     pub payload: CartridgeModelPatchDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCompatibleDevicesPayload {
+    pub model_id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCompatibleDevicesPayload {
+    pub model_id: i32,
+    pub device_ids: Vec<i32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -345,6 +360,41 @@ pub async fn handler_models_delete(
     Ok(Json(()))
 }
 
+pub async fn handler_models_get_compatible_devices(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetCompatibleDevicesPayload>,
+) -> Result<Json<CartridgeModelCompatibleDevicesDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_cartridge_models_get_compatible_devices(&ctx, &identity, p.model_id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_models_set_compatible_devices(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<SetCompatibleDevicesPayload>,
+) -> Result<Json<CartridgeModelCompatibleDevicesDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_cartridge_models_set_compatible_devices(
+            &ctx,
+            &identity,
+            p.model_id as i64,
+            p.device_ids.into_iter().map(|id| id as i64).collect(),
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_suggest_brand(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -437,6 +487,14 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/cartridge_models_delete",
             post(handler_models_delete),
+        )
+        .route(
+            "/api/v1/cartridge_models_get_compatible_devices",
+            post(handler_models_get_compatible_devices),
+        )
+        .route(
+            "/api/v1/cartridge_models_set_compatible_devices",
+            post(handler_models_set_compatible_devices),
         )
         .route(
             "/api/v1/cartridges_suggest_brand",

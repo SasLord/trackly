@@ -460,3 +460,16 @@ pub struct AuditEntryDto {
     #[specta(type = i32)]
     pub created_at_utc: i64,
 }
+
+/// Read/write payload for the model-side printer-compatibility commands
+/// (D-11/D-12, Phase 12 gap closure — GAP-12-02). Reverse of
+/// `PrinterCompatibleModelsDto` — used by the cartridge-model form modal to
+/// edit which printer devices are compatible with this model. Snake_case,
+/// no rename — matches this file's existing convention.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct CartridgeModelCompatibleDevicesDto {
+    #[specta(type = i32)]
+    pub model_id: i64,
+    #[specta(type = Vec<i32>)]
+    pub device_ids: Vec<i64>,
+}
