@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-23T00:21:42.804Z"
+last_updated: "2026-06-23T00:37:09.837Z"
 last_activity: 2026-06-23
 progress:
   total_phases: 15
   completed_phases: 14
   total_plans: 85
-  completed_plans: 81
+  completed_plans: 82
   percent: 93
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-06-23
 
@@ -120,6 +120,7 @@ Last activity: 2026-06-23
 | Phase 12 P03 | 18min | 3 tasks | 3 files |
 | Phase 12 P04 | 12min | 1 tasks | 2 files |
 | Phase 12 P05 | 25min | 3 tasks | 16 files |
+| Phase 12 P06 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -251,6 +252,9 @@ Recent decisions affecting current work:
 - [Phase 12]: Plan 12-05: CartridgeService gained internal printer_repo: Arc<SqlitePrinterRepository> field (constructed via Arc::new) rather than threading it through CartridgeService::new() — avoids 11 call-site changes
 - [Phase 12]: Plan 12-05: printer_cartridge_models compatibility — setter service methods self-gate via inline authorize(), build_* helpers don't double-gate; getter build_* helpers gate directly since getter service methods take no caller param
 - [Phase 12]: Plan 12-05: D-13/D-14 narrowing implemented as single SQL predicate (?N IS NULL OR NOT EXISTS(...) OR model_id IN (...)) — one indexed query encodes both narrow-when-configured and pass-through-when-not
+- [Phase ?]: 12-06: Auto-return reuses the new install's given_by_name as implicit actor (D-17) — no new actor field added to ReturnToStock
+- [Phase ?]: 12-06: current_printer_device_id SET folded into the same optimistic-lock UPDATE as the status transition, rather than a second UPDATE
+- [Phase ?]: 12-06: Auto-return previous cartridge via direct UPDATE inside the same tx (not recursing into transition_in_tx) — internal cascade is known-safe by construction
 
 ### Pending Todos
 
@@ -288,7 +292,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T00:21:42.797Z
-Stopped at: Completed 12-04-PLAN.md
+Last session: 2026-06-23T00:37:09.830Z
+Stopped at: Completed 12-06-PLAN.md
 Resume file: 
 None
