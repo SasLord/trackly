@@ -31,6 +31,16 @@
     prefillLocation?: string;
     /** Pre-fill «Кому отдал» from the requester's name (D-04). */
     prefillGivenToName?: string;
+    /**
+     * GAP-12-04/A2: when the caller (e.g. RequestDetail's
+     * handleInstallSuccess) already shows its own, more specific success
+     * toast (e.g. «Заявка выполнена»), set this to `true` so the modal does
+     * NOT additionally show its generic «Операция выполнена успешно.» —
+     * one event, one notification. Defaults to `false`/`undefined` for the
+     * cartridge-centric entry (menu → «Установить в принтер», D-08), which
+     * has no caller-side toast and must keep showing its own.
+     */
+    suppressSuccessToast?: boolean;
     onClose: () => void;
     /**
      * WR-03: may return a Promise (e.g. the request-centric flow awaits a
@@ -50,6 +60,7 @@
     cartridgeModelId,
     prefillLocation,
     prefillGivenToName,
+    suppressSuccessToast,
     onClose,
     onSuccess,
   }: Props = $props();
@@ -383,10 +394,18 @@
     // resolves; if it rejects, the caller is responsible for its own
     // error toast (it already owns the more specific failure message), so
     // we just close without adding a duplicate/contradictory toast here.
+    //
+    // GAP-12-04/A2: skip this generic toast entirely when the caller passed
+    // suppressSuccessToast={true} — it means the caller already shows its
+    // own, more specific success toast (e.g. RequestDetail's «Заявка
+    // выполнена») and a second toast here would be a duplicate notification
+    // for the same event.
     try {
       await onSuccess(effectiveCartridge.id);
       onClose();
-      pushToast('success', `Операция выполнена успешно.`);
+      if (!suppressSuccessToast) {
+        pushToast('success', `Операция выполнена успешно.`);
+      }
     } catch {
       onClose();
     } finally {

@@ -604,6 +604,7 @@
     cartridgeModelId={request.cartridgeModelId ?? undefined}
     prefillLocation={request.printerLocation ?? undefined}
     prefillGivenToName={request.requesterName ?? undefined}
+    suppressSuccessToast={true}
     onClose={() => (operationModalOpen = false)}
     onSuccess={handleInstallSuccess}
   />
