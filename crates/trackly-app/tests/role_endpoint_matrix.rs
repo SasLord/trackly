@@ -66,6 +66,18 @@
 //! 35. Employee session → POST /api/v1/cartridge_models_set_compatible_devices →
 //!     403 Forbidden (Action::MutateCartridges, Admin|Manager only)
 //!
+//! Plan 12-14 (GAP-12-07/A4) adds Cases 36-39: Admin/Manager request
+//! deletion (any status) + Employee self-cancel (own request, open only) —
+//! a separate path from the Admin/Manager-only `transition()` dispatcher.
+//! 36. Employee session → POST /api/v1/requests_delete → 403 Forbidden
+//!     (Action::DeleteRequests, Admin|Manager only)
+//! 37. Manager session → POST /api/v1/requests_delete on a "completed"
+//!     request → 200 OK (delete allowed in ANY status, not just open)
+//! 38. Employee session (author) → POST /api/v1/requests_cancel on their
+//!     OWN "open" request → 200 OK, response status == "cancelled"
+//! 39. Employee session (not author) → POST /api/v1/requests_cancel on the
+//!     manager-owned "open" request → 403 Forbidden (BOLA)
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1247,6 +1259,137 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 35: Employee → cartridge_models_set_compatible_devices → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 36 (Plan 12-14, GAP-12-07/A4): Employee → requests_delete →
+        // 403 Forbidden. authorize(&Action::DeleteRequests) (Admin|Manager
+        // only) fires before any DB read, so id: 1 need not exist.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/requests_delete",
+                json!({ "id": 1, "version": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 36: Employee → requests_delete → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 37 (Plan 12-14, GAP-12-07/A4): Manager → requests_delete on a
+        // "completed" request → 200 OK. Delete must be allowed in ANY status,
+        // not just "open" — drives a fresh request through accept→complete
+        // via the service layer directly (transition() is already exercised
+        // by Cases 31/32; this fixture only needs the end state).
+        // =====================================================================
+        {
+            let to_complete = ctx
+                .requests
+                .create(
+                    RequestCreateDto {
+                        request_type: "free_form".to_string(),
+                        printer_device_id: None,
+                        cartridge_model_id: None,
+                        category_id: None,
+                        description: Some("to be completed then deleted".to_string()),
+                    },
+                    &employee_identity,
+                )
+                .await
+                .expect("create request for Case 37 fixture");
+
+            let accepted = ctx
+                .requests
+                .transition(
+                    trackly_app::dto::request::RequestTransitionPayload::Accept {
+                        request_id: to_complete.id,
+                        version: to_complete.version,
+                        assigned_to_user_id: None,
+                    },
+                    &manager_identity,
+                )
+                .await
+                .expect("accept Case 37 fixture");
+
+            let completed = ctx
+                .requests
+                .transition(
+                    trackly_app::dto::request::RequestTransitionPayload::Complete {
+                        request_id: accepted.id,
+                        version: accepted.version,
+                        notes: None,
+                        linked_cartridge_id: None,
+                    },
+                    &manager_identity,
+                )
+                .await
+                .expect("complete Case 37 fixture");
+            assert_eq!(completed.status, "completed");
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/requests_delete",
+                json!({ "id": completed.id, "version": completed.version }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 37: Manager → requests_delete (completed request) → expected 200, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 38 (Plan 12-14, GAP-12-07/A4): Employee (author) →
+        // requests_cancel on their OWN "open" request → 200 OK, status
+        // becomes "cancelled". Separate path from transition() (Case 32
+        // proved transition() denies Employee outright).
+        // =====================================================================
+        {
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/requests_cancel",
+                json!({ "id": employee_request.id, "version": employee_request.version }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 38: Employee → requests_cancel (own open request) → expected 200, got {status}"
+            );
+            assert_eq!(
+                body["status"], "cancelled",
+                "Case 38: cancelled request's status should be \"cancelled\", got {:?}",
+                body["status"]
+            );
+        }
+
+        // =====================================================================
+        // Case 39 (Plan 12-14, GAP-12-07/A4): Employee (not author) →
+        // requests_cancel on the manager-owned "open" request → 403
+        // Forbidden (BOLA — ownership check inside RequestService::cancel).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/requests_cancel",
+                json!({ "id": manager_request.id, "version": manager_request.version }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 39: Employee → requests_cancel (manager-owned request) → expected 403, got {status}"
             );
         }
 

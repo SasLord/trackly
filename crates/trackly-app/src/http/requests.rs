@@ -24,9 +24,10 @@ use crate::dto::request::{
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::requests::{
-    build_request_printer_options, build_requests_approve_ad_register, build_requests_counts,
-    build_requests_create, build_requests_get, build_requests_get_history, build_requests_list,
-    build_requests_list_categories, build_requests_transition,
+    build_request_printer_options, build_requests_approve_ad_register, build_requests_cancel,
+    build_requests_counts, build_requests_create, build_requests_delete, build_requests_get,
+    build_requests_get_history, build_requests_list, build_requests_list_categories,
+    build_requests_transition,
 };
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,20 @@ pub struct TransitionPayload {
 #[serde(rename_all = "camelCase")]
 pub struct ApproveAdRegisterPayload {
     pub payload: ApproveAdRegisterDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletePayload {
+    pub id: i32,
+    pub version: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelPayload {
+    pub id: i32,
+    pub version: i32,
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +222,41 @@ pub async fn handler_request_printer_options(
     ))
 }
 
+/// Удаление заявки — Admin | Manager, любой статус (GAP-12-07/A4). No WS
+/// push here — `RequestService::delete` does not emit `WsEvent` (matches
+/// `cartridges_delete`'s established pattern: deletion is not a status
+/// transition subscribers need to react to).
+pub async fn handler_delete(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<DeletePayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    build_requests_delete(&ctx, &identity, p.id as i64, p.version as i64)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
+}
+
+/// Самоотмена собственной заявки автором (GAP-12-07/A4). WS push is owned by
+/// `RequestService::cancel` (the single broadcast owner) — do NOT
+/// re-broadcast here (CR-01 double-fire fix, same as transition/create).
+pub async fn handler_cancel(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<CancelPayload>,
+) -> Result<Json<RequestDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let result = build_requests_cancel(&ctx, &identity, p.id as i64, p.version as i64)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(result))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -231,4 +281,6 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/request_printer_options",
             post(handler_request_printer_options),
         )
+        .route("/api/v1/requests_delete", post(handler_delete))
+        .route("/api/v1/requests_cancel", post(handler_cancel))
 }

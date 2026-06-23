@@ -143,6 +143,31 @@ pub async fn build_request_printer_options(
     ctx.requests.printer_options(caller).await
 }
 
+/// Удаление заявки (soft-delete) в ЛЮБОМ статусе — Admin | Manager только
+/// (GAP-12-07/A4). Авторизация и owner-агностичность — внутри
+/// `RequestService::delete` (`Action::DeleteRequests`).
+pub async fn build_requests_delete(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+    version: i64,
+) -> Result<(), AppError> {
+    ctx.requests.delete(id, version, caller).await
+}
+
+/// Самоотмена СОБСТВЕННОЙ заявки автором, только в статусе "open"
+/// (GAP-12-07/A4). Отдельный путь от `transition()` — авторизация
+/// (`Action::CancelOwnRequest`) и BOLA-safe owner-check внутри
+/// `RequestService::cancel`.
+pub async fn build_requests_cancel(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+    version: i64,
+) -> Result<RequestDto, AppError> {
+    ctx.requests.cancel(id, version, caller).await
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri wrappers
 // ---------------------------------------------------------------------------
@@ -239,4 +264,31 @@ pub async fn request_printer_options(
 ) -> Result<Vec<RequestPrinterOptionDto>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_request_printer_options(state.inner(), &caller).await
+}
+
+/// Удаление заявки — Admin | Manager, любой статус (GAP-12-07/A4).
+#[tauri::command]
+#[specta::specta]
+pub async fn requests_delete(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+    version: i32,
+) -> Result<(), AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_delete(state.inner(), &caller, id as i64, version as i64).await
+}
+
+/// Самоотмена собственной заявки автором, только статус "open" (GAP-12-07/A4).
+/// Desktop push: `RequestService::cancel` шлёт `WsEvent::RequestStatusChanged`
+/// через тот же `ws_broadcast`, что и `transition()` — глобальный bridge в
+/// `main.rs` форвардит его в desktop webview (см. doc comment модуля).
+#[tauri::command]
+#[specta::specta]
+pub async fn requests_cancel(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+    version: i32,
+) -> Result<RequestDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_requests_cancel(state.inner(), &caller, id as i64, version as i64).await
 }
