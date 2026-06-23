@@ -108,3 +108,13 @@ None - no external service configuration required.
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-23*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/12-cartridge-request-interconnection/12-11-SUMMARY.md
+- FOUND: crates/trackly-app/src/dto/printer.rs
+- FOUND: ui/src/features/cartridges/OperationModal.svelte
+- FOUND: ui/src/features/requests/RequestDetail.svelte
+- FOUND commit: 695fbaa (Task 1)
+- FOUND commit: 5d8b129 (Task 2)
+- FOUND commit: 230d52e (SUMMARY.md)
