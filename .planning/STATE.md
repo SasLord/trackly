@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-22T23:56:03.710Z"
-last_activity: 2026-06-22
+last_updated: "2026-06-23T00:21:42.804Z"
+last_activity: 2026-06-23
 progress:
   total_phases: 15
   completed_phases: 14
   total_plans: 85
-  completed_plans: 80
+  completed_plans: 81
   percent: 93
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
-Last activity: 2026-06-22
+Last activity: 2026-06-23
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -119,6 +119,7 @@ Last activity: 2026-06-22
 | Phase 12 P02 | 35min | 2 tasks | 5 files |
 | Phase 12 P03 | 18min | 3 tasks | 3 files |
 | Phase 12 P04 | 12min | 1 tasks | 2 files |
+| Phase 12 P05 | 25min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,9 @@ Recent decisions affecting current work:
 - [Phase 12]: effectiveCartridge derived pattern (cartridge prop ?? selectedCartridge) lets OperationModal serve both cartridge-centric and request-centric install entries off one code path (D-08)
 - [Phase 12]: Checkpoint Task 4 (human-verify, gate=blocking) auto-approved under AUTO_MODE; happy path/DISC-02/D-08 regression confirmed via code review + svelte-check/build, not a live interactive session
 - [Phase 12]: 12-04: suggest_person() UNIONs acts + cartridges.holder_name (both Giver/Receiver map to holder_name identically); frequency merge via outer GROUP BY SUM(freq) over a UNION ALL CTE
+- [Phase 12]: Plan 12-05: CartridgeService gained internal printer_repo: Arc<SqlitePrinterRepository> field (constructed via Arc::new) rather than threading it through CartridgeService::new() — avoids 11 call-site changes
+- [Phase 12]: Plan 12-05: printer_cartridge_models compatibility — setter service methods self-gate via inline authorize(), build_* helpers don't double-gate; getter build_* helpers gate directly since getter service methods take no caller param
+- [Phase 12]: Plan 12-05: D-13/D-14 narrowing implemented as single SQL predicate (?N IS NULL OR NOT EXISTS(...) OR model_id IN (...)) — one indexed query encodes both narrow-when-configured and pass-through-when-not
 
 ### Pending Todos
 
@@ -284,7 +288,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-22T23:56:03.703Z
+Last session: 2026-06-23T00:21:42.797Z
 Stopped at: Completed 12-04-PLAN.md
 Resume file: 
 None

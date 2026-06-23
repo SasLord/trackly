@@ -141,3 +141,9 @@ None - no external service configuration required. This plan is backend-only; th
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-23*
+
+## Self-Check: PASSED
+
+All 16 files modified/created by this plan exist on disk; all 5 commits
+(`9888404`, `1707ad0`, `3f0efa7`, `ca8fb08`, `147283d`) verified present in
+`git log --oneline --all`.
