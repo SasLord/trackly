@@ -1,136 +1,224 @@
 ---
 phase: 12-cartridge-request-interconnection
-reviewed: 2026-06-22T00:00:00Z
+reviewed: 2026-06-24T00:00:00Z
 depth: standard
-files_reviewed: 14
+files_reviewed: 19
 files_reviewed_list:
-  - crates/trackly-core/src/domain/cartridges.rs
-  - crates/trackly-core/src/domain/requests.rs
-  - crates/trackly-app/src/dto/cartridge.rs
-  - crates/trackly-app/src/dto/request.rs
+  - crates/trackly-app/src/dto/printer.rs
+  - crates/trackly-app/src/http/requests.rs
+  - crates/trackly-app/src/services/act_service.rs
   - crates/trackly-app/src/services/request_service.rs
-  - crates/trackly-infra/src/repos/cartridges_sqlite.rs
-  - crates/trackly-infra/src/repos/requests_sqlite.rs
-  - crates/trackly-app/tests/cartridges_lifecycle.rs
-  - crates/trackly-app/tests/phase06_stubs.rs
+  - crates/trackly-app/src/specta_export.rs
+  - crates/trackly-app/src/tauri_cmds/requests.rs
+  - crates/trackly-app/tests/acts_suggest.rs
+  - crates/trackly-app/tests/request_lifecycle.rs
   - crates/trackly-app/tests/role_endpoint_matrix.rs
-  - ui/src/bindings-phase6.ts
+  - crates/trackly-core/src/auth.rs
+  - crates/trackly-core/src/domain/printers.rs
+  - crates/trackly-infra/src/repos/printers_sqlite.rs
+  - crates/trackly-infra/src/repos/requests_sqlite.rs
+  - crates/trackly-infra/src/test_support/test_db.rs
+  - migrations/V030__printers_drop_connectivity_check.sql
+  - migrations/V031__requests_status_add_cancelled.sql
   - ui/src/features/cartridges/OperationModal.svelte
   - ui/src/features/requests/RequestDetail.svelte
-  - ui/src/lib/components/CartridgeSelect.svelte
+  - ui/src/features/requests/api.ts
 findings:
   critical: 1
-  warning: 7
-  info: 4
-  total: 12
+  warning: 6
+  info: 3
+  total: 10
 status: issues_found
 ---
 
-# Phase 12: Code Review Report
+# Phase 12 (Round 2): Code Review Report
 
-**Reviewed:** 2026-06-22
+**Reviewed:** 2026-06-24
 **Depth:** standard
-**Files Reviewed:** 14
+**Files Reviewed:** 19
 **Status:** issues_found
 
 ## Summary
 
-Phase 12 interconnects the cartridge-replace request flow with cartridge installation: an `installable_only` filter on the cartridge list, a request↔cartridge history link in `RequestService::transition`, a compatible-cartridge selector on the frontend, and printer-location auto-fill.
+Round-2 gap-closure batch (GAP-12-04..08): printer connectivity CHECK removal (V030),
+request lifecycle with a new `cancelled` status (V031 + `RequestTransitionOp::Cancel`),
+soft-delete + employee self-cancel endpoints, name-autocomplete aggregation, and
+per-variant `WsEvent` serialization.
 
-The security posture is solid: all SQL is parameterised (verified across both repos), RBAC gates are enforced at the builder layer (`build_cartridges_transition` → `Action::MutateCartridges`, `transition` → `Action::TransitionRequests`), the new role-matrix Cases 31/32 lock the Employee-denial path, and optimistic locking is consistently applied.
+The **authorization and BOLA story is solid**. `requests_delete` (`Action::DeleteRequests`,
+Admin|Manager) and `requests_cancel` (`Action::CancelOwnRequest` + service-layer ownership
+re-check via `Self::get()`) are correctly gated; the role×endpoint matrix (Cases 36-39)
+and `request_lifecycle.rs` exercise the deny/allow/BOLA paths directly. The thin Tauri
+`requests_delete`/`requests_cancel` wrappers do not call `authorize()` themselves, but this
+is not a gap — `RequestService::delete`/`cancel` self-authorize as their first statement.
+The `WsEvent` per-variant camelCase serialization is correct and well-tested, and the
+`suggest_person` SQL uses an enum-whitelisted column with parameterized `ESCAPE '\\'` LIKE,
+so the autocomplete aggregation has no injection surface.
 
-The headline correctness defect is the `installable_only` filter: it whitelists only charge states `IN (1, 2)`, which are **cartridge** states. Photo-drums (kind 2) use states 4/5/6, so the request-centric install picker silently excludes every drum — a hard data-correctness bug for any drum-replace request. There are also several robustness gaps in the install→complete frontend handshake (double toasts, fire-and-forget completion, no compatibility scoping when the request has no model).
+The one BLOCKER is a **test that V031 breaks**: `test_db.rs` hardcodes
+`assert_eq!(user_version, 30)`, now false (schema is at 31) — a red, CI-gating unit test
+shipped with the batch. Several WARNINGs concern the new `cancelled` status not being
+threaded through the UI labels, status counts, and history-action map, plus a
+privilege-asymmetry where a Manager can soft-delete an Admin-only `ad_register` request and
+orphan its `users` row.
 
 ## Critical Issues
 
-### CR-01: `installable_only` filter excludes all photo-drums via cartridge-only charge states
+### CR-01: V031 breaks the hardcoded `user_version == 30` assertion in `test_db`
 
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:966` and `:985`
-**Issue:** The new `installable_only` predicate is hardcoded to `(?5 = 0 OR c.state_id IN (1, 2))`. Per `migrations/V001` and `migrations/V017`, states `1=Полный, 2=Частичный, 3=Пустой` belong to cartridges (kind 1), while drums (kind 2) use `4=Новый, 5=Изношенный, 6=Отработанный`. A photo-drum can never have `state_id IN (1, 2)`, so when the request-centric install picker (`OperationModal` with `installable_only: true`) is opened for a drum-model request, the filter returns zero rows regardless of available stock — the operator sees "Нет подходящих картриджей на складе" even when full new drums exist. The domain doc comment (`cartridges.rs:209`) only describes cartridge semantics ("заряд Полный(1)/Частичный(2)") and the test suite (`cartridges_lifecycle.rs`) only exercises kind-1 cartridges, so the gap is unguarded. The installable kind-2 equivalent (exclude only `6=Отработанный`, which `transition_in_tx` already refuses to install at line 375) is never expressed.
-**Fix:** Make the predicate kind-aware so drums are installable in their non-spent states:
-```sql
-AND (?5 = 0 OR (
-        (m.kind_id = 1 AND c.state_id IN (1, 2))
-     OR (m.kind_id = 2 AND c.state_id IN (4, 5))
-))
+**File:** `crates/trackly-infra/src/test_support/test_db.rs:41`
+**Issue:** This batch adds `migrations/V031__requests_status_add_cancelled.sql`, advancing
+the schema to `user_version = 31`. The canonical test-DB fixture test still asserts the old
+value:
+```rust
+assert_eq!(user_version, 30);
 ```
-Add a `cartridges_lifecycle.rs` case that seeds a kind-2 drum with `state_id = 4` and asserts `installable_only: true` returns it. (If drums are intentionally out of scope for request-install, gate the picker on `kind_id = 1` explicitly and document it — but silent exclusion is the bug.)
+On a fresh DB the runner now sets `user_version = 31`, so
+`test_db_returns_fully_migrated_connection` fails. The module doc comment
+(`test_db.rs:4`, "currently V001..V030") is also stale. Unlike
+`migrations.rs::run_applies_all_known_migrations_on_fresh_db`, which computes
+`expected = max_known_version()` dynamically and stays green, this assertion is pinned to a
+literal. CI runs the infra unit tests, so the batch ships a red build.
+**Fix:** Track the runner instead of a literal, mirroring `migrations.rs`:
+```rust
+let expected = crate::db::migrations::max_known_version() as i64;
+assert_eq!(user_version, expected, "schema must be fully migrated");
+```
+and update the doc comment to drop the hardcoded "V001..V030".
 
 ## Warnings
 
-### WR-01: `installable_only` does not constrain `status_id`; relies entirely on the caller
+### WR-01: `cancelled` status renders as "Отклонена" (Rejected) in the UI
 
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:966`, `:985`
-**Issue:** The domain doc (`cartridges.rs:209`, DTO `cartridge.rs:336`) states `installable_only` means "Только статус «На складе» (1) И заряд ...". But the SQL only filters `state_id`, not `status_id`. It works today purely because the frontend always co-sends `status_id: 1` (`OperationModal.svelte:128`). A different caller (or a future refactor that drops the explicit status) passing `installable_only: true` without `status_id` would return in-use/at-refill/written-off cartridges as "installable", which then fail `validate_from_status` at install time. The filter does not enforce its own documented invariant.
-**Fix:** Fold the status requirement into the `installable_only` branch so the predicate is self-contained:
-```sql
-AND (?5 = 0 OR (c.status_id = 1 AND <kind-aware state check from CR-01>))
+**File:** `ui/src/features/requests/RequestDetail.svelte:98-108` (sibling
+`ui/src/features/requests/RequestListRow.svelte:28-36` is identical, outside the explicit
+review set)
+**Issue:** V031 + `RequestTransitionOp::Cancel` introduce a new terminal status
+`cancelled`, and `requests_cancel` returns a DTO with `status: "cancelled"`. The
+`statusLabel`/`statusVariant` `$derived` chains have no `cancelled` arm, so the final
+`else` maps it to `'Отклонена'` (Rejected). A user who cancels their own request sees it
+labelled as if a specialist rejected it — semantically wrong, and cancel-vs-reject is the
+whole point of GAP-12-07/A4.
+**Fix:** Add an explicit `cancelled` arm before the catch-all `else` in both `statusLabel`
+(e.g. `'Отменена'`) and `statusVariant` (e.g. `'default'`):
+```ts
+: request.status === 'rejected'
+  ? 'Отклонена'
+  : request.status === 'cancelled'
+    ? 'Отменена'
+    : '—',
 ```
 
-### WR-02: Install picker shows model-incompatible cartridges when the request has no `cartridge_model_id`
+### WR-02: `actionLabel` map lacks `cancel`/`custom:cancel` — history shows the raw action string
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:588`, `ui/src/features/cartridges/OperationModal.svelte:130`
-**Issue:** `cartridgeModelId={request.cartridgeModelId ?? undefined}` — `cartridge_model_id` is optional on a `cartridge_replace` request (`requests.rs:60`). When it is `None`, `OperationModal` calls `cartridges.list({ model_id: cartridgeModelId ?? null, ... })`, i.e. **no** model filter, so the picker lists every installable cartridge of every model. The operator can then install a cartridge that does not fit the request's printer, and the backend performs no model/printer compatibility check (`transition_in_tx` validates only status/kind, never compatibility against `cartridge_model_compatibility`). The phase intent ("compatible-cartridge selector") is silently defeated whenever the model is unset.
-**Fix:** When `request.cartridgeModelId` is null, either (a) derive compatible model(s) from the printer via `cartridge_model_compatibility` before listing, or (b) require a model selection / show an explicit "модель не указана — выберите вручную" warning. At minimum, document that no compatibility guarantee holds in this path.
+**File:** `ui/src/features/requests/RequestDetail.svelte:157-169`
+**Issue:** `RequestService::cancel` writes an audit row with
+`action = op.audit_action() = "custom:cancel"` (`domain/printers.rs:210`). The
+`actionLabel` lookup has `create/accept/complete/reject` and their `custom:` variants but
+no `cancel`/`custom:cancel`. The `?? action` fallback then renders the raw
+`"custom:cancel"` string in the History list of a cancelled request.
+**Fix:** Add `cancel: 'Отменена'` and `'custom:cancel': 'Отменена'` to the `labels` record.
 
-### WR-03: Install success toast fires even if request completion fails (fire-and-forget `onSuccess`)
+### WR-03: `RequestCounts`/`counts()` has no `cancelled` bucket — switch-bar totals drift
 
-**File:** `ui/src/features/cartridges/OperationModal.svelte:281-283`, `ui/src/features/requests/RequestDetail.svelte:301-323`
-**Issue:** `handleSubmit` calls `onSuccess(effectiveCartridge.id)` then unconditionally `pushToast('success', 'Операция выполнена успешно.')`. `onSuccess` is the async `handleInstallSuccess`, which is **not awaited** — it returns a floating promise. If the subsequent `requests.transition({op:'complete', linkedCartridgeId})` rejects, the user sees both the green "Операция выполнена успешно." (from the modal) and a red "Не удалось завершить заявку. Проверьте вручную." (from the handler). The request is left in `in_progress` with the cartridge already installed, but the success toast implies the whole flow worked.
-**Fix:** Make `onSuccess` awaited (`onSuccess: (id) => Promise<void>`) and only emit the modal-level success toast after it resolves, or move the success toast into `handleInstallSuccess` so it reflects the true end state.
+**File:** `crates/trackly-infra/src/repos/requests_sqlite.rs:299-361`,
+`crates/trackly-app/src/services/request_service.rs:151-178`
+**Issue:** `counts()` returns `all, open, in_progress, completed, rejected`. The `all`
+query has no status filter, so it now includes `cancelled` rows, but there is no
+`cancelled` bucket and `cancelled` is folded into none of the existing ones. After a
+self-cancel, `all` increments by 1 while `open+in_progress+completed+rejected` no longer
+sums to `all`. Any switch-bar/dashboard widget reconciling "all = sum of statuses" will
+show a discrepancy, and cancelled requests are uncountable in the status bar.
+**Fix:** Add a `cancelled` field to `RequestCounts` + `RequestCountsDto` and a matching
+`WHERE status = 'cancelled'` count query so consumers can reconcile.
 
-### WR-04: Stale request `version` used for the post-install Complete transition
+### WR-04: Manager can soft-delete an Admin-only `ad_register` request, orphaning the user row
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:306-312`
-**Issue:** `handleInstallSuccess` sends `version: request.version` from the prop captured at render time. Installing the cartridge does not bump the request row, so this is correct in the common case — but if any other actor transitions the request between modal open and completion (e.g. another specialist accepts/rejects, or a WS-driven refresh has not yet propagated), the Complete fires with a stale version and returns `OptimisticLockMismatch`, surfacing as the generic "Не удалось завершить заявку" with the cartridge already installed and unlinked. There is no re-fetch of the current version before completing.
-**Fix:** Re-read the request (or thread the latest version from `onTransition`/the list store) immediately before the Complete call, or have the backend expose a single "install-and-complete" operation so the cartridge install and request completion share one optimistic-lock boundary.
+**File:** `crates/trackly-app/src/services/request_service.rs:577-642`
+**Issue:** `delete()` is gated on `Action::DeleteRequests` = Admin **or Manager**
+(`auth.rs:146-155`) and is owner/type-agnostic — it soft-deletes any request in any status.
+But `ad_register` requests are otherwise strictly Admin-only: `approve_ad_register` and
+`reject_ad_register` both require `Action::ManageUsers` (Admin) and own the linked `users`
+row reconciliation (activate on approve; soft-delete the auto-created user on reject). A
+Manager calling `requests_delete` on an open `ad_register` request bypasses that Admin-only
+lifecycle: the request is soft-deleted but the pending/auto-created `users` row is never
+reconciled, leaving an orphaned inactive (pending) or still-active `is_active=1`
+(auto-accept) user with no governing request — a privilege-boundary asymmetry on a
+security-sensitive entity.
+**Fix:** In `delete()`, read the request type first (reuse `self.get(id, caller)`) and
+either (a) reject `request_type == "ad_register"` with `AppError::Forbidden`/`Validation`,
+or (b) require `Action::ManageUsers` for `ad_register` deletions and run the same user-row
+reconciliation as `reject_ad_register`. Option (a) is the smaller, safer change.
 
-### WR-05: `printer_options` join can return duplicate rows if a device has >1 matching location (LEFT JOIN unguarded)
+### WR-05: `printers_sqlite::list` status filter is a silent no-op
 
-**File:** `crates/trackly-app/src/services/request_service.rs:249-257`
-**Issue:** The query `LEFT JOIN locations l ON d.location_id = l.id` is 1:1 only if `locations.id` is unique (it is, as PK) — so this is low-risk — but the `WHERE d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')` subquery returns NULL if the seed name is ever renamed, silently making `d.type_id = NULL` always-false and returning an empty printer list with no error. The "resilience" comment (WR-04 inline) assumes the name is stable; a localized rename of the seed would break the dropdown invisibly.
-**Fix:** Either assert the subquery resolves (`COALESCE((SELECT id ...), -1)` won't help; better to fail loudly) or keep a unit test that the `'Принтер'` device-type seed exists so a rename breaks CI rather than production.
+**File:** `crates/trackly-infra/src/repos/printers_sqlite.rs:317-341`
+**Issue:** The `list` WHERE clause is `(?1 IS NULL OR p.last_seen_utc IS NOT NULL)` with
+`?1` bound to `filter.status`. When a status is supplied this does NOT filter by the status
+value — it merely requires `last_seen_utc IS NOT NULL` ("ever polled"), discarding the
+actual `filter.status` string ("ok"/"error"/"offline"/…). The `total` count query shares
+the shape, so paginated totals are also wrong relative to the selected status. This file is
+touched by the batch (V030 reshapes `printers`); even if pre-existing, it is a correctness
+defect the connectivity-CHECK removal interacts with.
+**Fix:** Implement real status filtering (join the latest `printer_readings.status` and
+compare to `?1`), or, if status filtering is genuinely deferred, drop the misleading bind
+and document that `PrinterFilter.status` is currently ignored.
 
-### WR-06: `relativeDate` / `formatFullDate` render history timestamps in UTC, not local time
+### WR-06: `transition_in_tx` `affected == 0` collapses lock-mismatch into `NotFound`
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:135-142`
-**Issue:** Both helpers use `getUTCDate/getUTCMonth/getUTCHours`. For a RU/Moscow single-tz deployment (UTC+3) every history line and "Создана" date is shown 3 hours behind wall-clock. The cartridge `OperationModal` builds `date_utc` from `new Date(iso + 'T00:00:00Z')` (also UTC midnight), so the round-trip is internally consistent but user-visibly wrong by the local offset. This is a correctness issue for an audit/history view where timestamps are load-bearing.
-**Fix:** Use local accessors (`getDate/getMonth/getHours`) for display, or format with an explicit Europe/Moscow offset. Confirm the intended tz convention against the act/cartridge history views for consistency.
-
-### WR-07: `get_history` notes-extraction silently swallows malformed payload JSON
-
-**File:** `crates/trackly-app/src/services/request_service.rs:205-213`
-**Issue:** The `notes` extraction does `serde_json::from_str::<Value>(p).ok().and_then(...)`. A payload that is non-JSON or has a non-string `notes` value yields `None` with no trace/log. Given Phase 12 newly writes `{"notes": "<plain>; Установлен C-... (Brand Model)"}` into this same field, any future format drift (e.g. someone stores a structured object under `notes`) would make completed-with-cartridge history lines silently lose their text. Not a security issue, but a debuggability gap on a freshly-touched code path.
-**Fix:** Keep the graceful fallback but add a `tracing::debug!` (or `warn!`) when `payload_json` is present yet fails to parse / lacks a string `notes`, so the drop is observable.
+**File:** `crates/trackly-infra/src/repos/requests_sqlite.rs:153-189`
+**Issue:** `transition_in_tx` fetches the row, version-checks → `OptimisticLockMismatch`,
+validates status, then UPDATEs `WHERE id=? AND version=? AND deleted_at_utc IS NULL`; the
+`affected == 0` branch unconditionally returns `NotFound`. `cancel()`/`delete()` pass the
+*payload* version (not the version observed by the BOLA-`get()` reader read), so a
+legitimate stale client version racing a concurrent transition surfaces here as `NotFound`
+rather than the more accurate `OptimisticLockMismatch`. The UI special-cases
+`OptimisticLockMismatch` to "reload and retry"; a `NotFound` is instead shown as "request
+gone," misleading the operator.
+**Fix:** Disambiguate in the `affected == 0` branch (mirror `delete()`'s pattern at
+`request_service.rs:601-621`): `SELECT version, deleted_at_utc FROM requests WHERE id=?` —
+return `NotFound` only when truly absent, `OptimisticLockMismatch` when it exists but the
+version moved, and a deleted-specific error when `deleted_at_utc IS NOT NULL`.
 
 ## Info
 
-### IN-01: Duplicate success toast on the install→complete happy path
+### IN-01: `PrinterDto::from` hardcodes `community_configured: true` with a contradictory comment
 
-**File:** `ui/src/features/cartridges/OperationModal.svelte:283`, `ui/src/features/requests/RequestDetail.svelte:313`
-**Issue:** On a successful request-centric install, the user sees "Операция выполнена успешно." (modal) immediately followed by "Заявка выполнена" (handler). Two stacked success toasts for one logical action.
-**Fix:** Suppress the modal-level toast when invoked from the request flow (e.g. pass a `silentSuccess` flag), letting the caller own the single user-facing message.
+**File:** `crates/trackly-app/src/dto/printer.rs:62-65`
+**Issue:** The field comment says "the service layer sets it to true when community !=
+default," but the `From` impl unconditionally sets `true` and no service override is in
+evidence. Code and comment disagree; the indicator is effectively a constant and conveys no
+information. Not a leak (community itself is never serialized), but misleading. Pre-existing,
+surfaced by reading the DTO.
+**Fix:** Compute `community_configured` from the stored community in the service read path,
+or drop the field and its comment.
 
-### IN-02: `printerContextHint` shows raw device id, not printer name
+### IN-02: V030/V031 `PRAGMA foreign_keys = OFF` relies on the refinery one-file-per-tx invariant
 
-**File:** `ui/src/features/cartridges/OperationModal.svelte:109-113`
-**Issue:** `Устанавливается в принтер #${preFillPrinterId}` displays the numeric `printer_device_id`, which is meaningless to an operator. The request already carries `printerName`, but it is not threaded into the modal.
-**Fix:** Pass `request.printerName` as a prop and render the human name (fall back to `#id` only if absent).
+**File:** `migrations/V030__printers_drop_connectivity_check.sql:28-59`,
+`migrations/V031__requests_status_add_cancelled.sql:22-60`
+**Issue:** Both rebuild migrations toggle `PRAGMA foreign_keys = OFF/ON` inside the file,
+with a comment asserting refinery runs one file per transaction (`set_grouped(false)`).
+`foreign_keys` is a connection-level (not transaction-level) PRAGMA — if a future change
+flips refinery to grouped mode, the OFF window would leak across migrations and silently
+disable FK enforcement for subsequent files in the same run. The invariant is load-bearing
+and only protected by a comment.
+**Fix:** Add a guard test asserting `PRAGMA foreign_keys` is `ON` after `migrations::run()`
+on a fresh DB, so a future grouping change fails loudly.
 
-### IN-03: `actionLabel` maps `custom:*` actions but request audit writes mixed prefixes
+### IN-03: `delete()` audit row captures no `before_json` snapshot
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:144-156`, `crates/trackly-app/src/services/request_service.rs:361,543,797`
-**Issue:** `create` is written without a prefix (`action: "create"`), `transition` writes `op.audit_action()` → `"custom:accept"|"custom:complete"|"custom:reject"`, and `reject_ad_register` writes the literal `"custom:reject"`, while `approve_ad_register` writes `"ad_register_approve"`. The `actionLabel` map covers `create`, the four bare verbs, and the four `custom:` verbs, but **not** `ad_register_approve` — an AD-approve history row renders the raw string `ad_register_approve`. Minor (admin-only screen) but inconsistent.
-**Fix:** Add `ad_register_approve` (and any other action strings actually produced) to the `labels` map, or normalize action strings server-side.
-
-### IN-04: `buildPayload` uses non-null assertions on `effectiveCartridge`
-
-**File:** `ui/src/features/cartridges/OperationModal.svelte:191-192`
-**Issue:** `effectiveCartridge!.id` / `!.version` rely on the runtime guard in `handleSubmit` (`if (!effectiveCartridge ... return`). The assertions are safe today because `buildPayload` is only reached after that guard, but the coupling is implicit; a future caller of `buildPayload` would get a null deref.
-**Fix:** Pass the resolved cartridge into `buildPayload(cartridge)` as a non-null parameter, or early-return inside `buildPayload`.
+**File:** `crates/trackly-app/src/services/request_service.rs:624-636`
+**Issue:** The soft-delete audit entry records only `action: "custom:delete"` with
+`before_json: None`. Other destructive paths (e.g. `act_service.rs` device mutations)
+capture `before_json` snapshots for forensics/undo. A deleted request leaves no record of
+its status/owner/fields at deletion time, weakening the audit trail for an action the
+confirm modal calls irreversible ("без возможности восстановления через интерфейс").
+**Fix:** Capture the request row (or key fields) into `before_json` before the soft-delete
+UPDATE, consistent with the project's snapshot-on-mutation pattern.
 
 ---
 
-_Reviewed: 2026-06-22_
+_Reviewed: 2026-06-24_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
