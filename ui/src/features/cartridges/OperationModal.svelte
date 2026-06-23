@@ -15,7 +15,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { cartridges } from './api';
   import { printers } from '../printers/api';
-  import type { CartridgeDto, CartridgeTransitionPayload } from '../../bindings';
+  import type { CartridgeDto, CartridgeTransitionPayload, PrinterDto } from '../../bindings';
 
   type Op = 'install' | 'return_to_stock' | 'to_refill' | 'from_refill' | 'write_off';
 
@@ -130,18 +130,32 @@
       previousCartridge = null;
       previousCartridgeStateId = 3;
       previousCartridgeLocation = '';
+      printerContext = null;
       locationError = '';
       givenByError = '';
       givenToError = '';
     }
   });
 
+  // GAP-12-05/A2 (Plan 12-12): the target printer's full DTO (deviceName +
+  // ipAddress), populated by the lookup $effect below. Drives
+  // printerContextHint so the hint shows the physical printer's name+IP
+  // instead of an abstract #id (UX clarity — operator needs to recognize
+  // the actual device, not a database key).
+  let printerContext = $state<PrinterDto | null>(null);
+
   // REQ-05: preFillPrinterId is accepted as context when the modal is opened
   // from a request (RequestDetail). The install form is cartridge-centric;
   // we show a hint about which printer this cartridge targets when the prop is set.
+  // GAP-12-05/A2: prefer printerContext.deviceName + ipAddress once the lookup
+  // resolves; fall back to #{id} only while loading or if deviceName is absent.
   const printerContextHint = $derived(
     op === 'install' && preFillPrinterId !== undefined
-      ? `Устанавливается в принтер #${preFillPrinterId}`
+      ? printerContext !== null
+        ? `Устанавливается в принтер: ${
+            printerContext.deviceName ?? `#${preFillPrinterId}`
+          }${printerContext.ipAddress ? ` (${printerContext.ipAddress})` : ''}`
+        : `Устанавливается в принтер #${preFillPrinterId}`
       : null,
   );
 
@@ -150,14 +164,19 @@
   // runs when there IS a printer context (preFillPrinterId !== undefined) —
   // no lookup at all for the old cartridge-centric entry (D-08) or when no
   // printer context exists, avoiding a wasted API call (Test 3).
+  // GAP-12-05/A2: also stores the printer DTO itself into `printerContext`
+  // (same printers.get() call — no second API request) so printerContextHint
+  // can render deviceName+ipAddress.
   $effect(() => {
     if (!(open && op === 'install' && cartridge === null && preFillPrinterId !== undefined)) {
       previousCartridge = null;
+      printerContext = null;
       return;
     }
     printers
       .get(preFillPrinterId)
       .then((printer) => {
+        printerContext = printer;
         if (printer.currentCartridgeId === null) {
           previousCartridge = null;
           return null;
@@ -431,6 +450,13 @@
     <!-- Поля по op (UI-SPEC §Поля OperationModal) -->
 
     {#if op === 'install' || op === 'to_refill'}
+      {#if printerContextHint}
+        <!-- GAP-12-05/A2: printer context (deviceName+ipAddress) renders
+             FIRST in the form, before the cartridge-select, so the operator
+             immediately sees which physical printer they're installing
+             into — not buried after the picker. -->
+        <p class="field-hint">{printerContextHint}</p>
+      {/if}
       {#if op === 'install' && cartridge === null}
         <!-- D-01/D-02/D-03/D-08: request-centric install flow — pick a
              physical cartridge from the installable-stock list. Not shown
@@ -450,9 +476,6 @@
             <span class="field-warning">Совместимость не задана — проверьте вручную</span>
           {/if}
         </div>
-      {/if}
-      {#if printerContextHint}
-        <p class="field-hint">{printerContextHint}</p>
       {/if}
       {#if previousCartridge}
         <!-- D-16 (Plan 12-09): previous-cartridge block — shown only when the
