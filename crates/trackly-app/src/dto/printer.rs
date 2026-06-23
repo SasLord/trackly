@@ -167,8 +167,19 @@ pub struct PrinterListResponse {
 
 /// WebSocket broadcast event — fan-out to all connected clients (D-Notify-01).
 ///
-/// `#[serde(tag = "type", rename_all = "snake_case")]` so the wire format is:
-///   `{ "type": "new_request", "request_id": 7, ... }`
+/// `#[serde(tag = "type", rename_all = "snake_case")]` controls ONLY the
+/// `type` tag's value (e.g. `"request_status_changed"`) — it does NOT cascade
+/// to each variant's field names (this is documented serde behavior, the same
+/// root cause already fixed once for `RequestTransitionPayload` in
+/// `dto/request.rs`, see `09-ad-gaps-defects`/Defect 2). Each variant below
+/// therefore carries its OWN `#[serde(rename_all = "camelCase")]` so fields
+/// serialize as `requestId`/`newStatus`/`requestedByUserId` etc. Without the
+/// per-variant attribute, fields serialized as `request_id`/`new_status`
+/// (snake_case) and `EmployeeLayout.svelte`'s `event.newStatus` read
+/// `undefined`, always falling into the `default` branch of
+/// `statusToastText()` (GAP-12-04/A1).
+///
+/// Wire format: `{ "type": "request_status_changed", "requestId": 7, ... }`
 ///
 /// Role-based visibility is enforced by `is_visible_to` — server-side filter
 /// before forwarding over WS (T-06-06-I).
@@ -176,6 +187,7 @@ pub struct PrinterListResponse {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsEvent {
     /// A new request has been submitted.
+    #[serde(rename_all = "camelCase")]
     NewRequest {
         #[specta(type = i32)]
         request_id: i64,
@@ -187,6 +199,7 @@ pub enum WsEvent {
     /// `requested_by_user_id` (D-WS-01) carries the request's author so
     /// `is_visible_to` can let the employee-author see their own status
     /// change, without opening the event to every employee (BOLA guard).
+    #[serde(rename_all = "camelCase")]
     RequestStatusChanged {
         #[specta(type = i32)]
         request_id: i64,
@@ -195,6 +208,7 @@ pub enum WsEvent {
         requested_by_user_id: i64,
     },
     /// A printer has an active alert (error or offline).
+    #[serde(rename_all = "camelCase")]
     PrinterAlert {
         #[specta(type = i32)]
         printer_id: i64,
@@ -296,5 +310,69 @@ mod tests {
         assert!(!event.is_visible_to(&identity(Some(42), Role::Employee)));
         assert!(event.is_visible_to(&identity(None, Role::Admin)));
         assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
+    }
+
+    // GAP-12-04/A1: per-variant `rename_all = "camelCase"` must serialize
+    // each variant's FIELDS in camelCase while the outer tag stays
+    // snake_case. Without the per-variant attribute, fields previously
+    // serialized as `request_id`/`new_status`/`requested_by_user_id`
+    // (snake_case) and `EmployeeLayout.svelte`'s `event.newStatus` read as
+    // `undefined`, always hitting the `default` branch of `statusToastText`.
+
+    #[test]
+    fn request_status_changed_serializes_camel_case_fields_snake_case_tag() {
+        let event = WsEvent::RequestStatusChanged {
+            request_id: 7,
+            new_status: "completed".to_string(),
+            requested_by_user_id: 3,
+        };
+        let value = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "request_status_changed",
+                "requestId": 7,
+                "newStatus": "completed",
+                "requestedByUserId": 3
+            })
+        );
+    }
+
+    #[test]
+    fn new_request_serializes_camel_case_fields_snake_case_tag() {
+        let event = WsEvent::NewRequest {
+            request_id: 1,
+            request_type: "cartridge_replace".to_string(),
+            requester_name: "Иванов И.И.".to_string(),
+        };
+        let value = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "new_request",
+                "requestId": 1,
+                "requestType": "cartridge_replace",
+                "requesterName": "Иванов И.И."
+            })
+        );
+    }
+
+    #[test]
+    fn printer_alert_serializes_camel_case_fields_snake_case_tag() {
+        let event = WsEvent::PrinterAlert {
+            printer_id: 5,
+            printer_name: "Pantum BM5100ADN".to_string(),
+            alert_type: "offline".to_string(),
+        };
+        let value = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "printer_alert",
+                "printerId": 5,
+                "printerName": "Pantum BM5100ADN",
+                "alertType": "offline"
+            })
+        );
     }
 }
