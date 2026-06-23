@@ -489,6 +489,7 @@ impl SqliteCartridgeRepository {
                 given_by_name,
                 given_to_name,
                 location,
+                ..
             } => json!({
                 "op": "install",
                 "date_utc": date_utc,
@@ -1363,6 +1364,7 @@ mod tests {
             given_by_name: "Иванов".into(),
             given_to_name: "Петров".into(),
             location: "Каб. 305".into(),
+            printer_device_id: None,
         };
 
         {

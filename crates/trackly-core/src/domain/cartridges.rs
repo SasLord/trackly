@@ -108,6 +108,11 @@ pub enum CartridgeTransitionOp {
         given_by_name: String,
         given_to_name: String,
         location: String,
+        /// Принтер, в который устанавливается картридж (device_id, FK на devices).
+        /// None допустим для обратной совместимости со старым cartridge-centric
+        /// входом (D-08), где принтер не указывается явно — авто-возврат
+        /// предыдущего картриджа (D-16) в этом случае не выполняется.
+        printer_device_id: Option<i64>,
     },
     /// Вернуть на склад: В работе → На складе.
     /// holder_name cleared; state_id set to payload value (default: 3=Пустой).
@@ -274,6 +279,7 @@ mod tests {
             given_by_name: "A".into(),
             given_to_name: "B".into(),
             location: "Каб. 1".into(),
+            printer_device_id: None,
         };
         assert!(op.validate_from_status(1).is_ok());
         assert!(op.validate_from_status(2).is_err()); // wrong status
@@ -313,6 +319,7 @@ mod tests {
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
                 location: "X".into(),
+                printer_device_id: None,
             }
             .audit_action(),
             "custom:install"
@@ -335,6 +342,7 @@ mod tests {
                 given_by_name: String::new(),
                 given_to_name: String::new(),
                 location: String::new(),
+                printer_device_id: None,
             }
             .target_status_id(),
             2

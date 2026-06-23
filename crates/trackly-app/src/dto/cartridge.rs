@@ -190,6 +190,12 @@ pub enum CartridgeTransitionPayload {
         given_by_name: String,
         given_to_name: String,
         location: String,
+        /// Принтер (devices.id), в который устанавливается картридж. None — старый
+        /// cartridge-centric вход (D-08); авто-возврат предыдущего картриджа (D-16)
+        /// не выполняется в этом случае.
+        #[specta(type = Option<i32>)]
+        #[serde(default)]
+        printer_device_id: Option<i64>,
     },
     /// Вернуть на склад: В работе (2) → На складе (1).
     #[serde(rename = "return_to_stock")]
@@ -275,12 +281,14 @@ impl From<CartridgeTransitionPayload> for trackly_core::domain::cartridges::Cart
                 given_by_name,
                 given_to_name,
                 location,
+                printer_device_id,
                 ..
             } => CartridgeTransitionOp::Install {
                 date_utc,
                 given_by_name,
                 given_to_name,
                 location,
+                printer_device_id,
             },
             CartridgeTransitionPayload::ReturnToStock {
                 state_id,
@@ -472,4 +480,59 @@ pub struct CartridgeModelCompatibleDevicesDto {
     pub model_id: i64,
     #[specta(type = Vec<i32>)]
     pub device_ids: Vec<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plan 12-06 Task 1, Test 2: `printer_device_id` round-trips through the
+    /// DTO → domain `.into()` conversion unchanged (D-19).
+    #[test]
+    fn install_payload_into_op_forwards_printer_device_id() {
+        let payload = CartridgeTransitionPayload::Install {
+            cartridge_id: 1,
+            version: 1,
+            date_utc: 1_700_000_000,
+            given_by_name: "Иванов".into(),
+            given_to_name: "Петров".into(),
+            location: "Каб. 305".into(),
+            printer_device_id: Some(7),
+        };
+
+        let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
+
+        match op {
+            trackly_core::domain::cartridges::CartridgeTransitionOp::Install {
+                printer_device_id,
+                ..
+            } => assert_eq!(printer_device_id, Some(7)),
+            other => panic!("expected Install op, got {other:?}"),
+        }
+    }
+
+    /// Backward-compat: `printer_device_id` omitted from JSON deserializes
+    /// to `None` (D-08's old cartridge-centric entry keeps working).
+    #[test]
+    fn install_payload_printer_device_id_defaults_to_none_when_omitted() {
+        let json = r#"{
+            "op": "install",
+            "cartridge_id": 1,
+            "version": 1,
+            "date_utc": 1700000000,
+            "given_by_name": "Иванов",
+            "given_to_name": "Петров",
+            "location": "Каб. 305"
+        }"#;
+
+        let payload: CartridgeTransitionPayload =
+            serde_json::from_str(json).expect("deserialize without printer_device_id");
+
+        match payload {
+            CartridgeTransitionPayload::Install {
+                printer_device_id, ..
+            } => assert_eq!(printer_device_id, None),
+            other => panic!("expected Install variant, got {other:?}"),
+        }
+    }
 }

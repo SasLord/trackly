@@ -89,6 +89,7 @@ async fn install_changes_status_to_in_use() {
                 given_by_name: "Иванов".into(),
                 given_to_name: "Петров".into(),
                 location: "Каб. 305".into(),
+                printer_device_id: None,
             })
             .await
             .expect("transition Install");
@@ -120,6 +121,7 @@ async fn return_to_stock_sets_default_empty_state() {
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
                 location: "Каб. 1".into(),
+                printer_device_id: None,
             })
             .await
             .expect("install");
@@ -251,6 +253,7 @@ async fn all_transitions_write_audit_log() {
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
                 location: "Каб.1".into(),
+                printer_device_id: None,
             })
             .await
             .expect("install");

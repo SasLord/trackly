@@ -74,6 +74,7 @@ async fn history_returns_audit_entries_for_cartridge() {
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
                 location: "Room 1".into(),
+                printer_device_id: None,
             })
             .await
             .expect("install");
@@ -115,6 +116,7 @@ async fn history_is_chronological() {
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
                 location: "Room".into(),
+                printer_device_id: None,
             })
             .await
             .expect("install");
