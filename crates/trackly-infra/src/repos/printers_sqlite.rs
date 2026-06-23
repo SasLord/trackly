@@ -621,6 +621,48 @@ mod tests {
     }
 
     #[test]
+    fn test_printer_no_ip_no_usb() {
+        // GAP-12-08 (UAT round 2, A5) regression: before V030, this same
+        // call returned a rusqlite CHECK constraint error because V020's
+        // CHECK(ip_address IS NOT NULL OR usb_host_device_id IS NOT NULL)
+        // wrongly required at least one connectivity method. IP is optional
+        // per requirements — a printer may be created as a plain inventory
+        // record before SNMP/USB wiring is configured.
+        let (mut conn, _g) = fresh_conn();
+        let device_id = seed_device(&mut conn);
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+
+        let printer_new = PrinterNew {
+            device_id,
+            ip_address: None, // no SNMP IP
+            community_raw: "public".to_string(),
+            snmp_version: "v2c".to_string(),
+            oid_profile_id: None,
+            usb_host_device_id: None, // no USB host either
+        };
+
+        let id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo
+                .create_in_tx(&tx, &printer_new, now)
+                .expect("create printer without IP and without USB");
+            tx.commit().expect("commit");
+            id
+        };
+
+        let row = repo.get(&conn, id).expect("get printer without IP/USB");
+        assert!(
+            row.ip_address.is_none(),
+            "ip_address should be None when not configured"
+        );
+        assert!(
+            row.usb_host_device_id.is_none(),
+            "usb_host_device_id should be None when not configured"
+        );
+    }
+
+    #[test]
     fn test_prune_old_readings() {
         let (mut conn, _g) = fresh_conn();
         let device_id = seed_device(&mut conn);
