@@ -55,7 +55,8 @@
       // Plain-text body only — never HTML (T-11-03-T).
       new Notification('Trackly', { body: text });
     } else {
-      pushToast(event.newStatus === 'rejected' ? 'info' : 'success', text);
+      const negative = event.newStatus === 'rejected' || event.newStatus === 'cancelled';
+      pushToast(negative ? 'info' : 'success', text);
     }
   }
 
