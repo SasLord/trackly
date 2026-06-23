@@ -78,6 +78,17 @@
   let cartridgeOptions = $state<CartridgeDto[]>([]);
   let cartridgeListLoading = $state(false);
 
+  // D-16 (Phase 12 gap closure GAP-12-03, Plan 12-09): when installing into a
+  // printer that already has a cartridge «В работе», show a «Предыдущий
+  // картридж» block — read-only code+model, editable charge state (default
+  // Пустой/3) and location (default empty) — both flow into the same
+  // transition() call via printer_device_id/previous_cartridge_state_id/
+  // previous_cartridge_location, no second API request (D-16 success
+  // criterion: single transition() call).
+  let previousCartridge = $state<CartridgeDto | null>(null);
+  let previousCartridgeStateId = $state(3); // default: Пустой
+  let previousCartridgeLocation = $state('');
+
   const effectiveCartridge = $derived(cartridge ?? selectedCartridge);
 
   // Вид расходника: фотобарабан (kind 2) использует другой набор состояний.
@@ -105,6 +116,9 @@
       notes = '';
       stateId = defaultStateId;
       selectedCartridge = null;
+      previousCartridge = null;
+      previousCartridgeStateId = 3;
+      previousCartridgeLocation = '';
       locationError = '';
       givenByError = '';
       givenToError = '';
@@ -119,6 +133,37 @@
       ? `Устанавливается в принтер #${preFillPrinterId}`
       : null,
   );
+
+  // D-16 (Plan 12-09): look up the target printer's current cartridge «В
+  // работе» (if any) so the «Предыдущий картридж» block can show it. Only
+  // runs when there IS a printer context (preFillPrinterId !== undefined) —
+  // no lookup at all for the old cartridge-centric entry (D-08) or when no
+  // printer context exists, avoiding a wasted API call (Test 3).
+  $effect(() => {
+    if (!(open && op === 'install' && cartridge === null && preFillPrinterId !== undefined)) {
+      previousCartridge = null;
+      return;
+    }
+    printers
+      .get(preFillPrinterId)
+      .then((printer) => {
+        if (printer.currentCartridgeId === null) {
+          previousCartridge = null;
+          return null;
+        }
+        return cartridges.get(printer.currentCartridgeId);
+      })
+      .then((prev) => {
+        if (prev !== null && prev !== undefined) {
+          previousCartridge = prev;
+        }
+      })
+      .catch(() => {
+        // Fail-safe: a failed lookup just means no previous-cartridge block
+        // is shown — install can still proceed normally.
+        previousCartridge = null;
+      });
+  });
 
   // D-13/D-14 (Phase 12 gap closure GAP-12-02): the request-centric install
   // flow (cartridge === null) narrows the picker to cartridges compatible
@@ -240,6 +285,10 @@
         given_by_name: givenByName.trim(),
         given_to_name: givenToName.trim(),
         location: location.trim(),
+        printer_device_id: preFillPrinterId ?? null,
+        previous_cartridge_state_id: previousCartridge !== null ? previousCartridgeStateId : null,
+        previous_cartridge_location:
+          previousCartridge !== null ? previousCartridgeLocation : null,
       };
     } else if (op === 'return_to_stock') {
       return {
@@ -385,6 +434,35 @@
       {/if}
       {#if printerContextHint}
         <p class="field-hint">{printerContextHint}</p>
+      {/if}
+      {#if previousCartridge}
+        <!-- D-16 (Plan 12-09): previous-cartridge block — shown only when the
+             target printer already has a cartridge «В работе». Read-only
+             code+model; editable charge state/location flow into the SAME
+             transition() call via buildPayload(), no second request. -->
+        <div class="field field-full previous-cartridge-block">
+          <p class="field-hint">
+            Сейчас в принтере: {previousCartridge.code} ({previousCartridge.model_brand}
+            {previousCartridge.model_name})
+          </p>
+          <label class="label" for="op-prev-state">Состояние заряда (предыдущий картридж)</label>
+          <Select
+            value={String(previousCartridgeStateId)}
+            id="op-prev-state"
+            onchange={(v) => (previousCartridgeStateId = parseInt(v, 10))}
+          >
+            <option value="1">Полный</option>
+            <option value="2">Частичный</option>
+            <option value="3">Пустой</option>
+          </Select>
+          <label class="label" for="op-prev-location">Расположение (предыдущий картридж)</label>
+          <LocationAutocomplete
+            value={previousCartridgeLocation}
+            placeholder="Расположение"
+            id="op-prev-location"
+            onChange={(v) => (previousCartridgeLocation = v)}
+          />
+        </div>
       {/if}
       <!-- Дата -->
       <div class="field">
@@ -536,5 +614,16 @@
   .field-warning {
     font-size: var(--font-size-label);
     color: var(--color-warning);
+  }
+
+  .field-full {
+    width: 100%;
+  }
+
+  .previous-cartridge-block {
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
   }
 </style>
