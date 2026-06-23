@@ -25,3 +25,11 @@ Out-of-scope discoveries logged during plan execution. Not fixed (per scope boun
   feature). `CartridgesPage.svelte:60` remains unresolved — out of scope for 12-08
   (`files_modified` only listed `OperationModal.svelte`); still belongs to whichever plan touches
   `CartridgesPage.svelte`'s filter construction next.
+
+## Plan 12-10
+
+- **`restore_request_visibility_http.rs::blocked_user_restore_request_visible_to_admin_and_marks_pending_http`** —
+  same pre-existing `503 service unavailable: ad` failure documented under Plan 12-04, reconfirmed
+  via `git stash`/`git stash pop` around this plan's commits (identical failure before and after).
+  Unrelated to the V030 `printers` CHECK-constraint removal or the new
+  `test_printer_no_ip_no_usb` regression test. Not fixed; out of scope for 12-10.
