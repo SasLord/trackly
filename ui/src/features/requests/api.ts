@@ -28,6 +28,14 @@ export const requests = {
   transition: (payload: RequestTransitionPayload) =>
     apiCall<RequestDto>('requests_transition', { payload }),
 
+  // GAP-12-07/A4: lifecycle management — delete (Admin/Manager, any status)
+  // and self-cancel (Employee author, open status only). Backend BOLA-guard
+  // (plan 12-14) is authoritative; these are thin transport wrappers.
+  delete: (id: number, version: number) => apiCall<void>('requests_delete', { id, version }),
+
+  cancel: (id: number, version: number) =>
+    apiCall<RequestDto>('requests_cancel', { id, version }),
+
   listCategories: () => apiCall<RequestCategoryDto[]>('requests_list_categories'),
 
   // D-PRN-01 (Phase 11): minimal printer options for the create-request
