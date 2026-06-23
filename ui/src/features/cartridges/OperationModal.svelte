@@ -487,6 +487,16 @@
             Сейчас в принтере: {previousCartridge.code} ({previousCartridge.model_brand}
             {previousCartridge.model_name})
           </p>
+          <!-- GAP-12-05/A2: purely informational hint explaining the
+               inverted Кто/Кому semantics — no new fields, the existing
+               «Кто выдал»/«Кому выдал» inputs below already apply to the
+               NEW cartridge and (by the reverse-role logic) to the
+               returned previous cartridge. -->
+          <p class="field-hint">
+            Поля «Кто выдал» / «Кому выдал» ниже относятся к НОВОМУ картриджу. При возврате этого
+            картриджа на склад роли переворачиваются: кто устанавливает новый — принимает этот
+            обратно; кому устанавливают новый — тот и сдаёт этот на возврат.
+          </p>
           <label class="label" for="op-prev-state">Состояние заряда (предыдущий картридж)</label>
           <Select
             value={String(previousCartridgeStateId)}
