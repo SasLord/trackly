@@ -11,7 +11,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rusqlite::params;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{
@@ -25,6 +27,74 @@ fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
     let clock = Arc::new(SystemClock);
     let svc = CartridgeService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// Seed a printer device (type_id=2, see `acts_clone_handover.rs::seed_device`
+/// for the type_id=1 analog) — Plan 12-06.
+async fn seed_printer_device(svc: &CartridgeService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO devices \
+                 (type_id, name, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (2, ?1, 2, 1, ?2, ?2)",
+                params![name, 1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            let id = tx.last_insert_rowid();
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(id)
+        })
+        .await
+        .expect("seed printer device")
+}
+
+/// Read `current_printer_device_id` for a cartridge directly — `CartridgeDto`
+/// does not expose this field yet (Plan 12-06 is backend-only; frontend wiring
+/// is a future plan).
+async fn current_printer_device_id_of(svc: &CartridgeService, cartridge_id: i64) -> Option<i64> {
+    svc.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT current_printer_device_id FROM cartridges WHERE id = ?1",
+                params![cartridge_id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("read current_printer_device_id")
+}
+
+/// Read `(status_id, state_id, location, holder_name, current_printer_device_id)`
+/// for a cartridge directly — used by the auto-return assertions.
+#[allow(clippy::type_complexity)]
+async fn cartridge_snapshot(
+    svc: &CartridgeService,
+    cartridge_id: i64,
+) -> (i64, Option<i64>, Option<String>, Option<String>, Option<i64>) {
+    svc.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT status_id, state_id, location, holder_name, current_printer_device_id \
+                 FROM cartridges WHERE id = ?1",
+                params![cartridge_id],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, Option<i64>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, Option<i64>>(4)?,
+                    ))
+                },
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("read cartridge snapshot")
 }
 
 async fn seed_model(svc: &CartridgeService) -> i64 {
@@ -524,4 +594,241 @@ async fn installable_only_includes_new_drum_excludes_spent_drum() {
     })
     .await
     .expect("installable_only_includes_new_drum_excludes_spent_drum budget")
+}
+
+// ---------------------------------------------------------------------------
+// Plan 12-06 (D-16..D-19, GAP-12-03): printer link + auto-return.
+// ---------------------------------------------------------------------------
+
+/// Test 1 (D-19): installing with `printer_device_id: Some(pid)` writes
+/// `cartridges.current_printer_device_id = pid`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_with_printer_sets_current_printer_device_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Pantum BM5100ADN").await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        let installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+            })
+            .await
+            .expect("install with printer");
+
+        assert_eq!(installed.status_id, 2, "status must be В работе (2)");
+        let linked = current_printer_device_id_of(&svc, installed.id).await;
+        assert_eq!(
+            linked,
+            Some(printer_id),
+            "current_printer_device_id must equal the target printer's id"
+        );
+    })
+    .await
+    .expect("install_with_printer_sets_current_printer_device_id budget")
+}
+
+/// Test 2 (D-16/D-17): installing cartridge B into a printer that already has
+/// cartridge A "В работе" auto-returns A to stock (status=1, state=3 Пустой,
+/// location='', current_printer_device_id=NULL, holder_name=NULL) within the
+/// SAME `transition()` call that installs B.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_auto_returns_previous_cartridge_in_same_printer() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Pantum BM5100ADN").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        // Install A into the printer first.
+        let a_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_a.id,
+                version: cart_a.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+            })
+            .await
+            .expect("install A");
+        assert_eq!(a_installed.status_id, 2);
+
+        // Install B into the SAME printer — must auto-return A.
+        let b_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_b.id,
+                version: cart_b.version,
+                date_utc: 1_700_000_100,
+                given_by_name: "Сидоров".into(),
+                given_to_name: "Кузнецов".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+            })
+            .await
+            .expect("install B into same printer");
+
+        // B is now the printer's current cartridge.
+        assert_eq!(b_installed.status_id, 2, "B must be В работе (2)");
+        let b_linked = current_printer_device_id_of(&svc, b_installed.id).await;
+        assert_eq!(b_linked, Some(printer_id));
+
+        // A was auto-returned to stock — all in the ONE transition() call above.
+        let (a_status, a_state, a_location, a_holder, a_printer) =
+            cartridge_snapshot(&svc, a_installed.id).await;
+        assert_eq!(a_status, 1, "A must be На складе (1) after auto-return");
+        assert_eq!(a_state, Some(3), "A's state must default to Пустой (3)");
+        assert_eq!(
+            a_location.as_deref(),
+            Some(""),
+            "A's location must be cleared to empty string"
+        );
+        assert_eq!(a_holder, None, "A's holder_name must be cleared");
+        assert_eq!(
+            a_printer, None,
+            "A's current_printer_device_id must be cleared"
+        );
+    })
+    .await
+    .expect("install_auto_returns_previous_cartridge_in_same_printer budget")
+}
+
+/// Test 3 (D-18): installing into a printer that NEVER had a cartridge causes
+/// no side effects on an unrelated cartridge.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_into_empty_printer_has_no_side_effects() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Kyocera ECOSYS").await;
+
+        let cart_c = create_stock_cartridge(&svc, model_id).await;
+        // Unrelated cartridge, never touched by this printer.
+        let unrelated = create_stock_cartridge(&svc, model_id).await;
+
+        let installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_c.id,
+                version: cart_c.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 1".into(),
+                printer_device_id: Some(printer_id),
+            })
+            .await
+            .expect("install C into empty printer");
+
+        assert_eq!(installed.status_id, 2);
+        let linked = current_printer_device_id_of(&svc, installed.id).await;
+        assert_eq!(linked, Some(printer_id));
+
+        // Unrelated cartridge is untouched — still На складе with no printer link.
+        let (u_status, _u_state, _u_location, u_holder, u_printer) =
+            cartridge_snapshot(&svc, unrelated.id).await;
+        assert_eq!(u_status, 1, "unrelated cartridge must remain На складе (1)");
+        assert_eq!(u_holder, None);
+        assert_eq!(u_printer, None);
+    })
+    .await
+    .expect("install_into_empty_printer_has_no_side_effects budget")
+}
+
+/// Test 4 (backward-compat, D-08): `printer_device_id: None` performs the
+/// status transition exactly as before — no printer lookup, no auto-return.
+/// This is a regression guard duplicating `install_changes_status_to_in_use`'s
+/// assertions plus an explicit check that current_printer_device_id stays NULL.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_without_printer_device_id_has_no_side_effects() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        let updated = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: None,
+            })
+            .await
+            .expect("install without printer_device_id");
+
+        assert_eq!(updated.status_id, 2, "status must be В работе (2)");
+        assert_eq!(updated.holder_name.as_deref(), Some("Петров"));
+        let linked = current_printer_device_id_of(&svc, updated.id).await;
+        assert_eq!(
+            linked, None,
+            "current_printer_device_id must stay NULL when no printer is supplied"
+        );
+    })
+    .await
+    .expect("install_without_printer_device_id_has_no_side_effects budget")
+}
+
+/// Test 5 (D-17, audit): after the auto-return scenario, the previous
+/// cartridge's audit_log entry carries `action = 'custom:return_to_stock'`
+/// — correlatable with the new install's own audit entry (which records
+/// `given_by_name`) by transaction/timestamp adjacency, no extra actor field.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn auto_return_writes_return_to_stock_audit_entry() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "HP LaserJet").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        let a_installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart_a.id,
+                version: cart_a.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 305".into(),
+                printer_device_id: Some(printer_id),
+            })
+            .await
+            .expect("install A");
+
+        svc.transition(CartridgeTransitionPayload::Install {
+            cartridge_id: cart_b.id,
+            version: cart_b.version,
+            date_utc: 1_700_000_100,
+            given_by_name: "Сидоров".into(),
+            given_to_name: "Кузнецов".into(),
+            location: "Каб. 305".into(),
+            printer_device_id: Some(printer_id),
+        })
+        .await
+        .expect("install B auto-returns A");
+
+        let a_history = svc.get_history(a_installed.id).await.expect("A history");
+        let has_return = a_history
+            .iter()
+            .any(|e| e.action == "custom:return_to_stock");
+        assert!(
+            has_return,
+            "A's audit history must contain a custom:return_to_stock entry: {:?}",
+            a_history
+        );
+    })
+    .await
+    .expect("auto_return_writes_return_to_stock_audit_entry budget")
 }

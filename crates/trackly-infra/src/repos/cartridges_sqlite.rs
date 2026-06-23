@@ -415,23 +415,52 @@ impl SqliteCartridgeRepository {
             }
         };
 
-        // 5. UPDATE cartridges (optimistic lock on version).
-        let affected = tx
-            .execute(
-                "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, holder_name=?4, \
-                 updated_at_utc=?5, version=version+1 \
-                 WHERE id=?6 AND version=?7",
-                params![
-                    new_status_id,
-                    new_state_id,
-                    new_location,
-                    new_holder_name,
-                    now_utc,
-                    cartridge_id,
-                    version,
-                ],
-            )
-            .map_err(map_rusqlite)?;
+        // 5. UPDATE cartridges (optimistic lock on version). Install also sets
+        // current_printer_device_id (D-19) in the SAME UPDATE — folded into one
+        // SET clause so the optimistic-lock WHERE stays in a single place.
+        let install_printer_device_id = match op {
+            CartridgeTransitionOp::Install {
+                printer_device_id, ..
+            } => *printer_device_id,
+            _ => None,
+        };
+
+        let affected = match op {
+            CartridgeTransitionOp::Install { .. } => tx
+                .execute(
+                    "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
+                     holder_name=?4, current_printer_device_id=?5, \
+                     updated_at_utc=?6, version=version+1 \
+                     WHERE id=?7 AND version=?8",
+                    params![
+                        new_status_id,
+                        new_state_id,
+                        new_location,
+                        new_holder_name,
+                        install_printer_device_id,
+                        now_utc,
+                        cartridge_id,
+                        version,
+                    ],
+                )
+                .map_err(map_rusqlite)?,
+            _ => tx
+                .execute(
+                    "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
+                     holder_name=?4, updated_at_utc=?5, version=version+1 \
+                     WHERE id=?6 AND version=?7",
+                    params![
+                        new_status_id,
+                        new_state_id,
+                        new_location,
+                        new_holder_name,
+                        now_utc,
+                        cartridge_id,
+                        version,
+                    ],
+                )
+                .map_err(map_rusqlite)?,
+        };
 
         if affected == 0 {
             // Race: something changed between our fetch and our update.
@@ -441,6 +470,87 @@ impl SqliteCartridgeRepository {
                 expected: version,
                 actual: current.version + 1,
             });
+        }
+
+        // 5b. D-16/D-17: if installing into a printer that already has another
+        // cartridge "В работе", auto-return that previous cartridge to stock in
+        // the SAME transaction (DISC-06) — reuses the new install's given_by_name
+        // as the implicit actor (D-17, no extra fields). printer_device_id=None
+        // (D-08 legacy cartridge-centric entry) performs no lookup — no regression.
+        if let CartridgeTransitionOp::Install {
+            printer_device_id: Some(pid),
+            ..
+        } = op
+        {
+            let previous: Option<(i64, i64)> = tx
+                .query_row(
+                    "SELECT id, version FROM cartridges \
+                     WHERE current_printer_device_id = ?1 AND status_id = 2 \
+                       AND id != ?2 AND deleted_at_utc IS NULL \
+                     LIMIT 1",
+                    params![pid, cartridge_id],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                )
+                .optional()
+                .map_err(map_rusqlite)?;
+
+            if let Some((prev_id, prev_version)) = previous {
+                // Snapshot before mutating, for the auto-return's audit before_json.
+                let prev_current = self.fetch_in_tx(tx, prev_id)?;
+
+                let prev_affected = tx
+                    .execute(
+                        "UPDATE cartridges SET status_id=1, state_id=3, location='', \
+                         holder_name=NULL, current_printer_device_id=NULL, \
+                         updated_at_utc=?1, version=version+1 \
+                         WHERE id=?2 AND version=?3",
+                        params![now_utc, prev_id, prev_version],
+                    )
+                    .map_err(map_rusqlite)?;
+
+                if prev_affected == 0 {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "cartridge",
+                        id: prev_id,
+                        expected: prev_version,
+                        actual: prev_version + 1,
+                    });
+                }
+
+                let prev_before_json = serde_json::to_string(&json!({
+                    "status_id": prev_current.status_id,
+                    "status_name": prev_current.status_name,
+                    "state_id": prev_current.state_id,
+                    "state_name": prev_current.state_name,
+                    "location": prev_current.location,
+                    "holder_name": prev_current.holder_name,
+                }))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("auto-return before_json serialize: {e}"),
+                })?;
+
+                let auto_return_op = CartridgeTransitionOp::ReturnToStock {
+                    state_id: 3,
+                    location: String::new(),
+                    notes: None,
+                };
+                let prev_payload_json = Self::op_payload_json(&auto_return_op);
+
+                let audit_repo = SqliteAuditLogRepository;
+                audit_repo.insert(
+                    tx,
+                    AuditEntry {
+                        entity_type: "cartridge",
+                        entity_id: prev_id,
+                        action: auto_return_op.audit_action(),
+                        user_id: None,
+                        before_json: Some(prev_before_json),
+                        after_json: None,
+                        payload_json: Some(prev_payload_json),
+                        created_at_utc: now_utc,
+                    },
+                )?;
+            }
         }
 
         // 6. Location round-trip.
