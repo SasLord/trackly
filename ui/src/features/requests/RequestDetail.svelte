@@ -41,6 +41,13 @@
   let approveRole = $state('employee');
   let approveSubmitting = $state(false);
 
+  // GAP-12-07/A4: delete (Admin/Manager, any status) and self-cancel
+  // (Employee author, open status only) lifecycle actions.
+  let deleteModalOpen = $state(false);
+  let deleteSubmitting = $state(false);
+  let cancelModalOpen = $state(false);
+  let cancelSubmitting = $state(false);
+
   // Current AD registration mode — only used to pick the correct reject
   // confirmation copy (auto-accept implies the user already has access and
   // reject must soft-delete; pending implies reject simply discards). The
@@ -56,6 +63,12 @@
   const isAdmin = $derived(identity?.role === 'admin');
   const isAdRegister = $derived(request?.requestType === 'ad_register');
   const isAdRestore = $derived(isAdRegister && request?.adSubtype === 'restore');
+
+  // GAP-12-07/A4: UI-level ownership check (cosmetic only — server-side
+  // BOLA-guard in RequestService::cancel is authoritative, T-12-15-01).
+  const isOwnRequest = $derived(
+    identity !== null && request !== null && identity.id === request.requestedByUserId,
+  );
 
   $effect(() => {
     if (!isAdRegister) return;
@@ -236,6 +249,46 @@
       pushToast('error', msg);
     } finally {
       rejectSubmitting = false;
+    }
+  }
+
+  // GAP-12-07/A4: delete request (Admin/Manager, any status).
+  async function handleDeleteConfirm() {
+    if (!request || deleteSubmitting) return;
+    deleteSubmitting = true;
+    try {
+      await requests.delete(request.id, request.version);
+      pushToast('success', 'Заявка удалена');
+      deleteModalOpen = false;
+      onTransition();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось выполнить операцию. Повторите попытку.';
+      pushToast('error', msg);
+    } finally {
+      deleteSubmitting = false;
+    }
+  }
+
+  // GAP-12-07/A4: self-cancel own request (Employee author, open status only).
+  async function handleCancelConfirm() {
+    if (!request || cancelSubmitting) return;
+    cancelSubmitting = true;
+    try {
+      await requests.cancel(request.id, request.version);
+      pushToast('success', 'Заявка отменена');
+      cancelModalOpen = false;
+      onTransition();
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось выполнить операцию. Повторите попытку.';
+      pushToast('error', msg);
+    } finally {
+      cancelSubmitting = false;
     }
   }
 
@@ -510,12 +563,34 @@
           {/if}
         {/if}
       </section>
+    {:else if isOwnRequest && request.status === 'open'}
+      <!-- GAP-12-07/A4: Employee — cancel own open request (this branch is
+           only reached when !isAdRegister && !isSpecialist per the if/else
+           chain above) -->
+      <section class="section">
+        <div class="actions">
+          <Button variant="destructive" onclick={() => (cancelModalOpen = true)}>
+            Отменить заявку
+          </Button>
+        </div>
+      </section>
     {:else if (request.status === 'completed' || request.status === 'rejected') && request.resolutionNotes}
       <!-- Employee view of terminal state resolution notes -->
       <section class="section">
         <div class="resolution">
           <span class="field-label">Комментарий специалиста</span>
           <span class="field-value">{request.resolutionNotes}</span>
+        </div>
+      </section>
+    {/if}
+
+    <!-- GAP-12-07/A4: Admin/Manager delete — any status, independent of status branches above -->
+    {#if isSpecialist}
+      <section class="section">
+        <div class="actions">
+          <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>
+            Удалить
+          </Button>
         </div>
       </section>
     {/if}
@@ -562,6 +637,33 @@
     <Button variant="secondary" onclick={() => (rejectModalOpen = false)}>Отмена</Button>
     <Button variant="destructive" loading={rejectSubmitting} onclick={handleRejectConfirm}>
       {rejectModalButtonLabel}
+    </Button>
+  {/snippet}
+</Modal>
+
+<!-- GAP-12-07/A4: Confirm-modal «Удалить» (Admin/Manager, any status) -->
+<Modal open={deleteModalOpen} title="Удалить заявку?" onClose={() => (deleteModalOpen = false)}>
+  <p class="confirm-body">
+    Заявка будет удалена без возможности восстановления через интерфейс. Действие необратимо.
+  </p>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={() => (deleteModalOpen = false)}>Отмена</Button>
+    <Button variant="destructive" loading={deleteSubmitting} onclick={handleDeleteConfirm}>
+      Удалить
+    </Button>
+  {/snippet}
+</Modal>
+
+<!-- GAP-12-07/A4: Confirm-modal «Отменить заявку» (Employee author, open only) -->
+<Modal open={cancelModalOpen} title="Отменить заявку?" onClose={() => (cancelModalOpen = false)}>
+  <p class="confirm-body">
+    Заявка будет отменена. Чтобы продолжить работу с этим запросом, потребуется создать новую
+    заявку.
+  </p>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={() => (cancelModalOpen = false)}>Отмена</Button>
+    <Button variant="destructive" loading={cancelSubmitting} onclick={handleCancelConfirm}>
+      Отменить заявку
     </Button>
   {/snippet}
 </Modal>
