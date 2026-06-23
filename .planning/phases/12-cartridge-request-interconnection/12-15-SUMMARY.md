@@ -95,3 +95,10 @@ None - no external service configuration required.
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-24*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/requests/api.ts
+- FOUND: ui/src/features/requests/RequestDetail.svelte
+- FOUND: commit aa5e964 (Task 1)
+- FOUND: commit 31d10ce (Tasks 2+3)
