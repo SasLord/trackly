@@ -11,3 +11,12 @@ Out-of-scope discoveries logged during plan execution. Not fixed (per scope boun
   (documented constraint — see project memory `dev_environment_constraints`). Pre-existing,
   unrelated to `act_service.rs`/`suggest_person()` — last touched in Phase 9 (`2a029f1`,
   `344a6fc`), well before this plan. Not fixed; out of scope for 12-04's `suggest_person` change.
+
+## Plan 12-07
+
+- **`svelte-check` pre-existing errors in `OperationModal.svelte:143` and `CartridgesPage.svelte:60`** —
+  both construct a `CartridgeFilter` object literal missing the
+  `compatible_with_printer_device_id` field added in Plan 12-05 (D-13/D-14). Confirmed via
+  `git stash` diff that both errors exist identically before and after this plan's changes —
+  unrelated to 12-07's two new editor components / API wrappers. Not fixed; belongs to whichever
+  plan touches `OperationModal.svelte`/`CartridgesPage.svelte` filter construction next.
