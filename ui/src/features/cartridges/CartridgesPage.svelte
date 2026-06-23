@@ -63,6 +63,7 @@
     model_id: modelId,
     search: searchQuery.trim() ? searchQuery.trim() : null,
     include_deleted: false,
+    compatible_with_printer_device_id: null,
   });
 
   const hasFilter = $derived(
