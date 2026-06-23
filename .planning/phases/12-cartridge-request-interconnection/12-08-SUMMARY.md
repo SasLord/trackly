@@ -127,3 +127,10 @@ None - no external service configuration required.
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-23*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/cartridges/OperationModal.svelte
+- FOUND: .planning/phases/12-cartridge-request-interconnection/12-08-SUMMARY.md
+- FOUND: commit 9ebc38e (Task 1)
+- FOUND: commit 37e077c (docs: summary + deferred-items)
