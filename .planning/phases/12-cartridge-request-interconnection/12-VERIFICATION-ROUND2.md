@@ -1,8 +1,17 @@
 ---
 phase: 12-cartridge-request-interconnection
 verified: 2026-06-24T01:30:00Z
-status: gaps_found
-score: 5/6 gap-closure truth-groups verified (GAP-12-04..06, 08 full; GAP-12-07 partial)
+status: resolved
+resolved: 2026-06-24T02:10:00Z
+resolution_note: >
+  R3 gap (cancelled-status UI threading) closed inline during this execute-phase run.
+  All enumerated sites fixed + committed (598561b, 2b93f52, and toast-variant follow-up):
+  statusLabel/actionLabel (RequestDetail + RequestListRow), RequestCounts cancelled bucket
+  (domain+repo+dto+service+bindings), EmployeeLayout toast text AND variant (info, not success),
+  and a new «Отменённые» filter tab so cancelled requests are reachable. CR-01 blocker
+  (test_db.rs stale schema version) also fixed (2b93f52). Verified: trackly-infra 74/74,
+  request_lifecycle 7/7, role_endpoint_matrix green, svelte-check 0 errors, ui build OK.
+score: 6/6 gap-closure truth-groups verified (GAP-12-04..08; GAP-12-07 presentation closed in R3)
 scope: "Round 2 --gaps-only — plans 12-10..12-15 only (GAP-12-04..08). Plans 12-01..12-09 verified in prior rounds (12-VERIFICATION.md)."
 overrides_applied: 0
 re_verification:
@@ -15,12 +24,14 @@ re_verification:
     - "GAP-12-05: install dialog shows printer name+IP first; reversed-semantics hint for Кто/Кому"
     - "GAP-12-06: suggest_person sources given_by_name from audit_log for install/to_refill"
     - "GAP-12-07 (mechanism): reject-from-in_progress, soft-delete any-status, employee self-cancel — backend + endpoints + RBAC + UI buttons all wired and tested"
-  gaps_remaining:
-    - "GAP-12-07 (presentation): new `cancelled` status not threaded through statusLabel, actionLabel history map, RequestCounts aggregation, or EmployeeLayout toast text"
+  gaps_remaining: []
+  gaps_closed_r3:
+    - "GAP-12-07 (presentation): `cancelled` now threaded through statusLabel (RequestDetail+RequestListRow → «Отменена»), actionLabel history map (cancel/custom:cancel), RequestCounts aggregation (cancelled bucket end-to-end), EmployeeLayout toast text+variant, and a new «Отменённые» filter tab"
+    - "CR-01 (code review BLOCKER): test_db.rs schema-version assertion now derived from max_known_version() instead of hardcoded 30"
   regressions: []
 gaps:
   - truth: "Сотрудник может отменить собственную заявку И ВИДЕТЬ ЕЁ КОРРЕКТНО ОТРАЖЁННОЙ как «Отменена» (не «Отклонена»)"
-    status: partial
+    status: resolved
     reason: >
       Механизм отмены работает end-to-end (status→'cancelled', persisted, BOLA-guarded,
       WS-broadcast — все backend-тесты зелёные). Но новый терминальный статус `cancelled`,
