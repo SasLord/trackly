@@ -103,3 +103,9 @@ None - no external service configuration required. Backend-only change; no UI co
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-23*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/12-cartridge-request-interconnection/12-13-SUMMARY.md`
+- FOUND: commit `3adeb6e` (feat: third UNION ALL arm + tests)
+- FOUND: commit `9431056` (docs: this summary)
