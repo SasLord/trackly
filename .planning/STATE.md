@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-23T17:00:59.636Z"
-last_activity: 2026-06-23
+last_updated: "2026-06-23T17:35:58.519Z"
+last_activity: 2026-06-24
 progress:
   total_phases: 15
   completed_phases: 14
   total_plans: 91
-  completed_plans: 88
+  completed_plans: 89
   percent: 93
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 4 of 15
+Plan: 12-14 complete, next: 12-15
 Status: Ready to execute
-Last activity: 2026-06-23
+Last activity: 2026-06-24
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -127,6 +127,7 @@ Last activity: 2026-06-23
 | Phase 12 P10 | 15min | 2 tasks | 3 files |
 | Phase 12 P11 | 14min | 2 tasks | 3 files |
 | Phase 12 P13 | 12min | 1 tasks | 2 files |
+| Phase 12 P14 | 45m | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,8 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-11: WsEvent per-variant rename_all=camelCase fixes GAP-12-04 — outer tag stays snake_case, fields camelCase, mirrors RequestTransitionPayload pattern
 - [Phase 12]: 12-11: OperationModal suppressSuccessToast opt-in prop — RequestDetail passes true to avoid duplicate toast; cartridge-centric entry (D-08) untouched
 - [Phase 12]: 12-13: given_by_name_arm built as Giver-scoped Rust string variable (empty for Receiver) instead of unconditional SQL arm — structural guarantee against cross-field leakage
+- [Phase ?]: 12-14: cancel() реализован как отдельный сервисный метод/эндпоинт, не вариант RequestTransitionPayload — избегает протаскивания Employee через transition()'s безусловный authorize(TransitionRequests)
+- [Phase ?]: 12-14: V031 миграция (CHECK requests.status += 'cancelled') добавлена как Rule 2 auto-fix — без неё cancel() падал с CHECK constraint failed
 
 ### Pending Todos
 
@@ -305,7 +308,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T16:59:59.407Z
-Stopped at: Completed 12-11-PLAN.md
+Last session: 2026-06-23T17:35:58.512Z
+Stopped at: Completed 12-14-PLAN.md
 Resume file: 
 None
