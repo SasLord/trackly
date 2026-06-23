@@ -8,6 +8,7 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';
+  import CompatibleDevicesEditor from './CompatibleDevicesEditor.svelte';
   import { cartridges } from './api';
   import type { CartridgeModelDto } from '../../bindings';
 
@@ -449,6 +450,14 @@
           suggestModelFn={(prefix) => cartridges.suggestCompatPrinter('printer_model', prefix)}
         />
       </div>
+
+      <!-- D-12, GAP-12-02: чеклист совместимых принтеров через printer_cartridge_models. -->
+      {#if isEdit && target}
+        <div class="field field-full compat-section">
+          <h3 class="compat-heading">Совместимые принтеры (по справочнику устройств)</h3>
+          <CompatibleDevicesEditor cartridgeModelId={target.id} />
+        </div>
+      {/if}
     </div>
   {/key}
 
