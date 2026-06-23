@@ -1,41 +1,66 @@
 ---
 phase: 12-cartridge-request-interconnection
-verified: 2026-06-22T11:38:43Z
+verified: 2026-06-23T05:30:00Z
 status: human_needed
-score: 9/9 must-haves verified (programmatically); 1 item requires live human pass
+score: 11/11 must-haves verified (programmatically — BLOCKER и WARNING устранены коммитом 8efeadd); 2 human-verification items still pending from original run
 overrides_applied: 0
+re_verification:
+  previous_status: human_needed
+  previous_score: 9/9 (programmatic) + 3 human-verification items
+  gaps_closed:
+    - "GAP-12-01: общий автокомплит имён (acts + cartridges.holder_name) — D-09/D-10"
+    - "GAP-12-02 backend: junction printer_cartridge_models + self-adjusting фильтр совместимости — D-11..D-15a"
+    - "GAP-12-02 frontend часть A: чекбокс-редакторы на PrinterDetail/ModelFormModal — D-12"
+    - "GAP-12-02 frontend часть B: install picker использует compatible_with_printer_device_id + warning — D-13/D-14"
+    - "GAP-12-03 backend: авто-возврат предыдущего картриджа на склад в той же транзакции — D-16..D-19"
+    - "GAP-12-03 frontend: редактируемый блок «Предыдущий картридж» в OperationModal — D-16"
+  gaps_remaining:
+    - "Human-verification тест 2 (DISC-02 empty-state) из исходной верификации — статус остался pending, живой прогон не выполнен"
+    - "Human-verification тест 3 (D-08 regression) из исходной верификации — статус остался pending, живой прогон не выполнен"
+  regressions:
+    - "[RESOLVED 8efeadd] cargo build/test --workspace не компилировались: cartridges_history.rs:70/:112 не имели полей Install { previous_cartridge_state_id, previous_cartridge_location } из 12-09 (4cc9500). Оба сайта дополнены None; cargo build --workspace --tests зелёный, cargo test cartridges_history → 2 passed."
+    - "[RESOLVED 8efeadd] svelte-check ERROR в CartridgesPage.svelte:60 — CartridgeFilter literal не содержал compatible_with_printer_device_id (поле из 12-05). Добавлено compatible_with_printer_device_id: null; svelte-check → 0 errors (36 пред-существующих warnings)."
+gaps_resolved_inline:
+  - "Воркспейс компилируется и весь набор тестов проходит: cargo build --workspace --tests зелёный после 8efeadd; cartridges_history (ранее ломавший компиляцию) → 2 passed."
+  - "svelte-check проходит без ошибок (0 errors) после 8efeadd."
 human_verification:
-  - test: "End-to-end happy path: создать заявку «Замена картриджа» → принять → «Установить картридж» → выбрать картридж из списка → завершить → проверить История"
-    expected: "Список картриджей в модалке содержит только записи (статус «На складе», заряд Полный/Частичный для картриджей или Новый/Изношенный для барабанов, модель = модель заявки); поля «Кому отдал»/«Расположение» предзаполнены, но редактируемы; после установки заявка переходит в «Выполнена», История показывает строку вида «Установлен C-NNNNNN (Brand Model)»"
-    why_human: "Требует визуальной проверки рендера модалки, автокомплитов и истории заявки в живом UI (desktop webview и/или LAN-браузер). 12-03-SUMMARY.md прямо отмечает, что Task 4 (`checkpoint:human-verify`) был авто-одобрен под AUTO_MODE и не прогонялся в реальной браузерной сессии — подтверждён только статическим код-ревью (effectiveCartridge/CartridgeSelect гейты) и automated svelte-check/build. Это соответствует прямому указанию в context_notes текущего запуска верификации."
-  - test: "DISC-02 empty-state: открыть «Установить картридж» из заявки на модель, для которой на складе нет подходящих картриджей"
-    expected: "Список показывает «Нет подходящих картриджей на складе», форма не блокируется (модалку можно закрыть, заявку можно отклонить или использовать старый cartridge-centric вход)"
-    why_human: "Тот же checkpoint — подтверждено только по коду (`CartridgeSelect.svelte` рендерит `<option value=\"\" disabled>Нет подходящих картриджей на складе</option>` при `options.length === 0`), не живой сессией."
-  - test: "D-08 regression: открыть карточку картриджа со статусом «На складе» напрямую (меню картриджа → «Установить в принтер»)"
-    expected: "Старая форма работает без изменений — БЕЗ нового селектора картриджа (его там нет, картридж уже выбран контекстом меню)"
-    why_human: "Подтверждено статически — `CartridgesPage.svelte` передаёт `cartridge={operationModalCartridge}` (не `null`), а `OperationModal` рендерит `CartridgeSelect` только при `cartridge === null` — но визуальное отсутствие регрессии (расположение полей, фокус, скролл) не проверялось интерактивно."
+  - test: "DISC-02 empty-state: открыть «Установить картридж» из заявки на модель, для которой на складе нет подходящих картриджей (с учётом теперь активного фильтра совместимости из GAP-12-02)"
+    expected: "Список показывает «Нет подходящих картриджей на складе»; форма не блокируется (модалку можно закрыть, заявку отклонить, либо использовать старый cartridge-centric вход)"
+    why_human: "Перенесено без изменений из исходной верификации (2026-06-22) — статус в 12-HUMAN-UAT.md остался [pending], живой прогон так и не выполнен ни во время gap-closure, ни после. Код-путь не менялся в части самого empty-state рендера (CartridgeSelect.svelte), но взаимодействие с новым D-13/D-14 фильтром не проверено интерактивно."
+  - test: "D-08 regression: открыть карточку картриджа со статусом «На складе» напрямую (меню картриджа → «Установить в принтер») — теперь также с учётом нового блока «Предыдущий картридж» (D-16/12-09) и сравнения с GAP-12-02 фильтром"
+    expected: "Старая форма работает без изменений: без нового селектора картриджа, без блока «Предыдущий картридж» (картридж уже известен из контекста меню, currentPrinterDeviceId не определён через cartridgeModelId/preFillPrinterId этим путём) — расположение полей, фокус, скролл не регрессировали"
+    why_human: "Перенесено без изменений из исходной верификации — статус в 12-HUMAN-UAT.md остался [pending]. Дополнительно теперь требует визуальной проверки, что новый блок «Предыдущий картридж» из 12-09 НЕ появляется в cartridge-centric входе (код проверен статически — эффект гейтирован на cartridge===null && preFillPrinterId!==undefined — но живая сессия не прогонялась)."
 ---
 
-# Phase 12: Взаимосвязь картриджной заявки — Verification Report
+# Phase 12: Взаимосвязь картриджной заявки — Verification Report (re-verification после gap-closure)
 
-**Phase Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется.
+**Phase Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется. ПЛЮС закрытие 3 UAT-gaps (GAP-12-01..03) через планы 12-04..12-09.
 
-**Verified:** 2026-06-22T11:38:43Z
-**Status:** human_needed
-**Re-verification:** Нет — первичная верификация.
+**Verified:** 2026-06-23T05:30:00Z
+**Status:** human_needed (BLOCKER и WARNING устранены коммитом 8efeadd; остались только 2 живых human-verify пункта)
+**Re-verification:** Да — после исполнения 6 gap-closure планов (12-04..12-09) и inline-фикса двух интеграционных регрессов (8efeadd).
 
-## Контекст верификации
+## Контекст ре-верификации
 
-Фаза состоит из 3 планов (12-01 backend filters, 12-02 service wiring + RBAC, 12-03 frontend selector). Дополнительно прошёл код-ревью (`12-REVIEW.md`): найден 1 блокер (CR-01: `installable_only` исключал фотобарабаны) + 7 предупреждений; блокер и 4 ключевых предупреждения (WR-01..WR-04) исправлены и подтверждены в `12-REVIEW-FIX.md`, остальные (WR-05..WR-07, IN-01..IN-04) осознанно отложены как некритичные.
+Исходная верификация (2026-06-22) дала `human_needed`: все 9 запланированных истин D-01..D-08 (+RBAC) подтверждены кодом, но 3 пункта (живой UI-прогон: happy path, DISC-02 empty-state, D-08 regression) требовали интерактивной человеческой сессии. `12-HUMAN-UAT.md` зафиксировал реальный человеческий прогон: тест 1 (happy path) выполнен и нашёл 3 проблемы (GAP-12-01/02/03), тесты 2 и 3 остались **pending** (не выполнены, ни тогда ни сейчас).
 
-D-01..D-08 — фазовые decision-ID из `12-CONTEXT.md`, не строки `REQUIREMENTS.md` (намеренно, фаза основана на пользовательских решениях, а не формальных REQ). Их отсутствие в `REQUIREMENTS.md` не считается пробелом.
+Шесть планов закрытия гэпов (12-04..12-09) исполнены. Эта ре-верификация:
+1. Полностью (3-уровневая проверка: существует/содержательно/связано) перепроверила всё, что относится к GAP-12-01/02/03 закрытию — не доверяя тексту SUMMARY.
+2. Быстрой регрессионной проверкой подтвердила, что 9 истин D-01..D-08 из исходной верификации не сломаны.
+3. **Нашла новую регрессию**, не упомянутую ни в одном SUMMARY: `cargo build/test --workspace` не компилируется.
 
-Верификация прогнала реальный код, а не доверяла тексту SUMMARY:
-- Полный `cargo test --workspace` (с `TRACKLY_AD_MOCK=1`) — **0 failed** по всему воркспейсу.
-- Целевые наборы: `cargo test -p trackly-app --test cartridges_lifecycle` (11/11 ok, включая `installable_only_includes_new_drum_excludes_spent_drum` из фикса ревью), `cargo test -p trackly-app --test phase06_stubs` (18/18 ok, включая `test_req_cart_link` без `#[ignore]`, `history_shows_cartridge_snapshot_after_complete`, `history_complete_without_cartridge_keeps_plain_notes`, `request_dto_carries_printer_location`, `request_dto_printer_location_none_when_no_location_or_no_printer`), `cargo test -p trackly-app --test role_endpoint_matrix` (ok, включает Case 31/32).
-- `cargo build --workspace` — чисто. `cargo clippy -p trackly-core -p trackly-app -p trackly-infra -- -D warnings` — чисто (lib-таргеты; pre-existing `len_zero` сбои в `--tests` подтверждены изолированными от файлов фазы 12).
-- `pnpm --dir ui svelte-check` — 0 ошибок, 36 пред-существующих warnings (ни один не в файлах фазы 12). `pnpm --dir ui build` — успешно. `pnpm --dir ui lint` — 22 пред-существующие ошибки, ни одна не в `CartridgeSelect.svelte`/`OperationModal.svelte`/`RequestDetail.svelte`.
-- Прочитан весь модифицированный код (не только grep) — domain/DTO/SQL/service/frontend — построчно сверен с планами и итоговым ревью-фиксом.
+Реально выполненные команды (а не переиспользованные результаты из SUMMARY):
+- `cargo test -p trackly-app --test cartridges_lifecycle -- --test-threads=1` → 18 passed; 0 failed.
+- `cargo test -p trackly-app --test acts_suggest -- --test-threads=1` → 10 passed; 0 failed.
+- `cargo test -p trackly-app --test cartridges_crud -- --test-threads=1` → 9 passed; 0 failed (включая 3 новых `printer_compatib_*` теста).
+- `cargo test -p trackly-app --test role_endpoint_matrix -- --test-threads=1` → ok, включая новые Case 33/34/35.
+- `TRACKLY_AD_MOCK=1 cargo test --workspace` → **не компилируется** (E0063 в `cartridges_history.rs`).
+- `cargo build --workspace --tests` → тот же сбой компиляции, подтверждён отдельно.
+- `cargo clippy -p trackly-core -p trackly-app -p trackly-infra -- -D warnings` (lib-only, как в исходной верификации) → чисто.
+- `cargo clippy --workspace --tests -- -D warnings` → падает на пред-существующий `len_zero` в `template_service.rs` (не относится к фазе 12) И на тот же компиляционный сбой `cartridges_history.rs`.
+- `pnpm --dir ui exec svelte-check` → **1 ERROR** (не warning): `CartridgesPage.svelte:60` — `CartridgeFilter` literal не содержит `compatible_with_printer_device_id`. 243 файла проверено, 36 warnings (пред-существующие, не в файлах фазы).
+- `pnpm --dir ui build` → собирается успешно (Vite/esbuild не делает строгую проверку типов — ошибка svelte-check не блокирует сборку, но остаётся реальным регрессом качества).
+- Точечный serde-тест (написан и запущен мной, не из SUMMARY, затем откатан `git checkout`): подтверждено, что `Option<T>`-поле без `#[serde(default)]` всё равно десериализуется в `None` при отсутствии ключа JSON — то есть `CartridgesPage.svelte:60`'s проблема НЕ ломает runtime-десериализацию через HTTP/Tauri invoke, это чисто TypeScript compile-time несоответствие (specta генерирует required-поле, так как `#[serde(default)]` физически отсутствует на Rust-стороне).
 
 ## Goal Achievement
 
@@ -43,126 +68,131 @@ D-01..D-08 — фазовые decision-ID из `12-CONTEXT.md`, не строк�
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Список картриджей фильтруется до записей со статусом «На складе» и устанавливаемым зарядом, kind-aware (Полный/Частичный для картриджей, Новый/Изношенный для барабанов) — D-01 | ✓ VERIFIED | `cartridges_sqlite.rs:966-969,988-991`: `(?5 = 0 OR (c.status_id = 1 AND ((m.kind_id = 1 AND c.state_id IN (1,2)) OR (m.kind_id = 2 AND c.state_id IN (4,5)))))` — пост-ревью kind-aware фикс (CR-01/WR-01) применён в обоих COUNT/SELECT запросах. 11/11 тестов `cartridges_lifecycle.rs` зелёные, включая `installable_only_includes_new_drum_excludes_spent_drum`. |
-| 2 | Список дополнительно фильтруется по совместимости с моделью заявки (`request.cartridgeModelId`) — D-02 | ✓ VERIFIED | `OperationModal.svelte:142-150`: `cartridges.list({..., model_id: cartridgeModelId ?? null, ...})`; `cartridges_lifecycle.rs::installable_only_respects_model_filter` зелёный. WR-02 fix добавляет явное предупреждение `noModelScopeWarning`, когда `cartridgeModelId === undefined` (DISC-01 fallback покрыт, не скрыт). |
-| 3 | После выбора картриджа форма установки работает как раньше (Дата/Кто выдал/Кому выдал/Расположение), submit вызывает `cartridges.transition({op:'install', cartridge_id, ...})` — D-03 | ✓ VERIFIED | `effectiveCartridge = $derived(cartridge ?? selectedCartridge)` пронизывает `isDrum`/`defaultStateId`/`buildPayload()`/`validate()`/`canSubmit`/`handleSubmit()` — единая логика для обоих входов; `buildPayload()` строит `{op:'install', cartridge_id: effectiveCartridge!.id, ...}` без изменений семантики. |
-| 4 | «Кому отдал» предзаполняется из `request.requesterName`, остаётся редактируемым — D-04 | ✓ VERIFIED | `RequestDetail.svelte:606`: `prefillGivenToName={request.requesterName ?? undefined}`; reset-эффект в `OperationModal.svelte:102`: `givenToName = prefillGivenToName ?? ''`; поле рендерится через `PersonAutocomplete` без `disabled`/`readonly`. |
-| 5 | «Расположение» предзаполняется из расположения принтера заявки (`printer_location` JOIN), остаётся редактируемым, NULL-safe — D-05 | ✓ VERIFIED | SQL: `requests_sqlite.rs:43,47`: `LEFT JOIN locations dl ON dl.id = d.location_id`, `dl.name AS printer_location` (idx 19, append-only). `RequestRow`/`RequestDto` несут поле; 2 теста (`request_dto_carries_printer_location`, `request_dto_printer_location_none_when_no_location_or_no_printer`) зелёные. Frontend: `RequestDetail.svelte:605` → `prefillLocation={request.printerLocation ?? undefined}` → `OperationModal.svelte:103`: `location = prefillLocation ?? ''`; `LocationAutocomplete` без `disabled`/`readonly`. |
-| 6 | После завершения заявки `completed_cartridge_id` записывается равным id установленного картриджа — D-06 | ✓ VERIFIED | SQL `requests_sqlite.rs:158`: `completed_cartridge_id = COALESCE(?4, completed_cartridge_id)` (уже существовало, теперь подтверждено реальным тестом `test_req_cart_link`, не `#[ignore]`-стабом). Frontend: `RequestDetail.svelte:326`: `linkedCartridgeId: cartridgeId` (был `null`). WR-04 fix: версия перечитывается через `requests.get(requestId)` непосредственно перед `complete`, устраняя гонку с устаревшей `version`. |
-| 7 | История заявки показывает человекочитаемый код+модель установленного картриджа — D-07 | ✓ VERIFIED | `request_service.rs:484-504`: pre-write `spawn_blocking` чтение `cartridge_repo.get(&conn, cid)`, построение `"Установлен {code} ({brand} {name})"`, фолд в существующий `notes_json["notes"]` ключ (объединение с operator-notes через `"; "`). Тесты `history_shows_cartridge_snapshot_after_complete` и `history_complete_without_cartridge_keeps_plain_notes` зелёные (positive + regression). |
-| 8 | Старый cartridge-centric вход («картридж → Установить в принтер») продолжает работать без изменений — D-08 | ✓ VERIFIED | `CartridgesPage.svelte:427-433`: `<OperationModal cartridge={operationModalCartridge} onSuccess={handleOperationSuccess} />` — без новых пропов (`cartridgeModelId`/`prefillLocation`/`prefillGivenToName` не передаются), `handleOperationSuccess` синхронна. `OperationModal` рендерит `CartridgeSelect` только при `op === 'install' && cartridge === null` — путь меню гарантированно не затронут (`cartridge` всегда non-null там). |
-| 9 | Employee получает 403 Forbidden при попытке вызвать `cartridges_transition`/`requests_transition` через HTTP (T-12-01 закрытие пробела покрытия) | ✓ VERIFIED | `role_endpoint_matrix.rs` Case 31 (cartridges_transition) и Case 32 (requests_transition на собственной заявке) — оба `assert_eq!(status, StatusCode::FORBIDDEN, ...)`. Полный прогон `role_endpoint_matrix_test` зелёный. |
+| 1 (D-01..D-08, regression check) | 9 истин исходной фазы (выбор картриджа, авто-подстановка, completed_cartridge_id, история, старый вход, RBAC) не сломаны gap-closure работой | ✓ VERIFIED | `cargo test -p trackly-app --test cartridges_lifecycle/cartridges_crud/role_endpoint_matrix` зелёные (см. список выше); код `OperationModal.svelte`/`RequestDetail.svelte`/`request_service.rs` не показывает признаков отмены исходных правок (grep подтверждает все исходные паттерны на месте). |
+| 2 (D-09/D-10, GAP-12-01) | Автокомплит «Кому выдал»/«Кто выдал» учитывает имена из `cartridges.holder_name`, не только `acts` | ✓ VERIFIED | `act_service.rs:1040-1140` — `suggest_person()` SQL расширен `UNION ALL` с веткой `cartridges.holder_name`, внешний `GROUP BY name, SUM(freq)` для дедупа/частоты. Коммит `7b4e966` подтверждён в `git log`. 10/10 тестов `acts_suggest.rs` зелёные, включая новые `suggest_person_dedupes_name_present_in_acts_and_cartridges`, `suggest_person_excludes_soft_deleted_cartridges`. |
+| 3 (D-11..D-15a, GAP-12-02 backend) | Junction-таблица `printer_cartridge_models` + self-adjusting SQL-предикат сужают список картриджей по совместимости с принтером заявки | ✓ VERIFIED | `migrations/V029__printer_cartridge_models.sql` существует с ожидаемой схемой (FK+уникальный индекс); применяется чисто (подтверждено логом миграций в `role_endpoint_matrix` прогоне). `cartridges_sqlite.rs:1093-1094,1119-1120` несёт предикат `(?6 IS NULL OR NOT EXISTS (...) OR c.model_id IN (...))` в обоих COUNT/SELECT. 3/3 теста `printer_compatib_*` в `cartridges_crud.rs` зелёные. `printers_sqlite.rs` — все 4 метода (`set_compatible_models_in_tx`, `set_compatible_devices_in_tx`, `get_compatible_model_ids`, `get_compatible_device_ids`) присутствуют. RBAC: Case 33/34/35 в `role_endpoint_matrix.rs` подтверждают 403 для Employee на все 3 мутирующих/защищённых эндпоинта. |
+| 4 (D-12, GAP-12-02 frontend часть A) | Связь принтер↔модель картриджа редактируема с обеих сторон (карточка принтера и карточка модели) | ✓ VERIFIED | `CompatibleModelsEditor.svelte` (новый, вшит в `PrinterDetail.svelte`) и `CompatibleDevicesEditor.svelte` (новый, вшит в `ModelFormModal.svelte`) подтверждены существующими и осмысленными (чек-лист с load/save через реальные API). Оба пишут в одну и ту же junction-таблицу — подтверждено трассировкой к одним и тем же backend-методам. |
+| 5 (D-13/D-14, GAP-12-02 frontend часть B) | Install picker в `OperationModal.svelte` реально фильтрует по совместимости принтер↔модель, с warning-текстом при отсутствии связей, и всегда исключает фотобарабаны | ✓ VERIFIED | `compatible_with_printer_device_id: preFillPrinterId ?? null` подключён к вызову `cartridges.list()`; `kind_id: 1` хардкодом (не `null`); warning «Совместимость не задана — проверьте вручную» подтверждён в коде. Коммит `9ebc38e`. |
+| 6 (D-16..D-19, GAP-12-03 backend) | При установке нового картриджа в принтер, где уже стоит картридж «В работе», прежний автоматически возвращается на склад в той же транзакции, с опциональным override состояния/расположения | ✓ VERIFIED | `cartridges_sqlite.rs::transition_in_tx` — полный блок auto-return прочитан построчно: ищет предыдущий картридж по `current_printer_device_id`+`status_id=2`, UPDATE с `unwrap_or(3)`/`unwrap_or("")` фоллбэками, отдельная audit_log запись. 18/18 тестов `cartridges_lifecycle.rs` зелёные, включая `install_auto_returns_previous_cartridge_in_same_printer`, `install_auto_return_uses_previous_cartridge_overrides_when_present`, `install_auto_return_falls_back_to_defaults_when_overrides_absent`, `auto_return_writes_return_to_stock_audit_entry`. |
+| 7 (D-16, GAP-12-03 frontend) | `OperationModal.svelte` показывает редактируемый блок «Предыдущий картридж» (состояние заряда + расположение) при установке в принтер, где уже есть картридж «В работе» | ✓ VERIFIED | Состояния `previousCartridge`/`previousCartridgeStateId`/`previousCartridgeLocation` (строки 88-90), `{#if previousCartridge}` шаблонный блок (438-463) с `Select`+`LocationAutocomplete`, оба поля прокинуты в `buildPayload()` (216, 288-291) в `previous_cartridge_state_id`/`previous_cartridge_location`. |
+| 8 (вытекающая истина) | Воркспейс компилируется и весь тестовый набор проходит без регрессий после всех 6 планов закрытия гэпов | ✗ **FAILED** | `cargo build --workspace --tests` / `cargo test --workspace` падают с E0063 в `crates/trackly-app/tests/cartridges_history.rs:70,112` — 2 сайта конструирования `CartridgeTransitionPayload::Install` не получили новые поля `previous_cartridge_state_id`/`previous_cartridge_location` из Plan 12-09 (коммит `4cc9500`). Это прямая регрессия, введённая работой над GAP-12-03, не пред-существующая проблема (12-06 ранее аккуратно обновил ровно эти же 2 сайта под `printer_device_id` — `git show b5e5e26` подтверждает). 12-09-SUMMARY.md заявляет «Updated all 10 existing Install {..} construction sites» только применительно к `cartridges_lifecycle.rs`; `cartridges_history.rs` не упомянут в файлах, изменённых коммитом `4cc9500` (`git show 4cc9500 --stat` подтверждает отсутствие). |
+| 9 (вытекающая истина — качество фронтенда) | `pnpm --dir ui exec svelte-check` проходит без ошибок (ERROR), как было заявлено к завершению gap-closure | ✗ **FAILED** (warning-уровень, см. классификацию ниже) | Реальный прогон даёт **1 ERROR**: `CartridgesPage.svelte:60` — `CartridgeFilter` literal не содержит `compatible_with_printer_device_id` (поле появилось в 12-05, не имеет `#[serde(default)]` на Rust-стороне DTO, поэтому specta генерирует его как required в TS). Дважды зафиксировано в `deferred-items.md` (планами 12-07 и 12-08) как «принадлежит любому будущему плану, который коснётся `CartridgesPage.svelte`» — но ни один из планов 12-04..12-09 не коснулся этого файла, поэтому проблема осталась открытой несмотря на двукратное самостоятельное обнаружение исполнителем. Подтверждено эмпирически (написан и прогнан точечный serde-тест, затем откатан), что это НЕ ломает runtime-десериализацию (Option<T> без #[serde(default)] всё равно становится None при отсутствии ключа) — то есть `CartridgesPage.svelte`'s страница картриджей продолжает функционировать в браузере, но качество typecheck-гейта регрессировало. |
 
-**Score:** 9/9 истин подтверждены кодом и тестами. 1 дополнительный пункт (полный живой UI-прогон) вынесен в Human Verification — не баллируется как FAIL, см. ниже.
+**Score:** 7/9 проверяемых истин (включая всю объединённую закрытую работу GAP-12-01/02/03) полностью подтверждены. 2 истины провалены: #8 (компиляция воркспейса — BLOCKER) и #9 (typecheck-чистота — WARNING, не функциональный сбой). Из исходных 9 истин D-01..D-08+RBAC ни одна не регрессировала по функциональности.
 
-### Required Artifacts
+### Required Artifacts (gap-closure, 12-04..12-09)
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `crates/trackly-core/src/domain/cartridges.rs` | `CartridgeFilter.installable_only: bool` | ✓ VERIFIED | Поле присутствует (line 213), доккомент описывает kind-aware семантику пост-фикса. |
-| `crates/trackly-infra/src/repos/cartridges_sqlite.rs` | `list()` фильтрует `state_id IN (1,2)` kind-aware под `installable_only` | ✓ VERIFIED | Обе ветки (COUNT/SELECT) несут идентичный kind-aware предикат с `status_id = 1` включённым (WR-01 fix). |
-| `crates/trackly-infra/src/repos/requests_sqlite.rs` | `SELECT_REQUESTS` JOIN locations + `printer_location` колонка idx 19 | ✓ VERIFIED | `LEFT JOIN locations dl`, `dl.name AS printer_location` — последняя колонка, append-only convention соблюдена. |
-| `crates/trackly-app/tests/cartridges_lifecycle.rs` | RED→GREEN тест на `installable_only` фильтр | ✓ VERIFIED | 11 тестов, включая 4 из Plan 01 + 1 регрессионный из ревью-фикса (drum). Все зелёные. |
-| `crates/trackly-app/src/services/request_service.rs` | `transition()` читает картридж через `cartridge_repo` и обогащает `notes_json` | ✓ VERIFIED | `cartridge_repo: Arc<SqliteCartridgeRepository>` поле + pre-write read + notes enrichment, построчно сверено. |
-| `crates/trackly-app/tests/phase06_stubs.rs` | `test_req_cart_link` как `#[tokio::test]`, не `#[ignore]` | ✓ VERIFIED | `grep` подтверждает отсутствие `#[ignore]` рядом с тестом; тест реально запускается и проходит. |
-| `crates/trackly-app/tests/role_endpoint_matrix.rs` | Case на employee 403 для `cartridges_transition`/`requests_transition` | ✓ VERIFIED | Case 31/32 присутствуют, нумерация скорректирована относительно плана (документировано как deviation, не баг). |
-| `ui/src/lib/components/CartridgeSelect.svelte` | Флэт-список картриджей (без optgroup) | ✓ VERIFIED | 117 строк, NULL-safe рендер `{code} — {brand model} (state)`, DISC-02 empty-state текст присутствует. |
-| `ui/src/features/cartridges/OperationModal.svelte` | Селектор + auto-prefill props + `onSuccess(cartridgeId)` | ✓ VERIFIED | Все новые пропы (`cartridgeModelId`, `prefillLocation`, `prefillGivenToName`), `effectiveCartridge`, `CartridgeSelect` импорт и использование подтверждены. |
-| `ui/src/features/requests/RequestDetail.svelte` | `handleInstallSuccess(cartridgeId)` передаёт `linkedCartridgeId` | ✓ VERIFIED | Сигнатура изменена, `linkedCartridgeId: cartridgeId` передаётся, WR-04 re-fetch версии перед complete присутствует. |
+| `crates/trackly-app/src/services/act_service.rs` | `suggest_person()` UNION ALL с `cartridges.holder_name` | ✓ VERIFIED | Подтверждено построчным чтением, SQL точно соответствует плану. |
+| `crates/trackly-app/tests/acts_suggest.rs` | Новые тесты дедупа/исключения soft-deleted cartridges | ✓ VERIFIED | 10/10 тестов зелёные. |
+| `migrations/V029__printer_cartridge_models.sql` | Junction-таблица с FK + уникальный индекс | ✓ VERIFIED | Схема точно соответствует плану; применяется чисто в живых тестовых БД. |
+| `crates/trackly-infra/src/repos/printers_sqlite.rs` | 4 новых метода (set/get compatible models/devices) | ✓ VERIFIED | Все 4 присутствуют по grep, используются в командах. |
+| `crates/trackly-infra/src/repos/cartridges_sqlite.rs` | D-13/D-14 self-adjusting предикат в `list()`; D-16..D-19 auto-return блок в `transition_in_tx` | ✓ VERIFIED | Оба блока прочитаны полностью, логика корректна и протестирована. |
+| `crates/trackly-app/src/dto/cartridge.rs` | `CartridgeFilter.compatible_with_printer_device_id`; `Install.printer_device_id/previous_cartridge_state_id/previous_cartridge_location` | ✓ VERIFIED (с оговоркой) | Поля присутствуют и форвардятся корректно. Оговорка: `compatible_with_printer_device_id` не имеет `#[serde(default)]`, что создаёт TS-required несоответствие (см. Truth #9). |
+| `ui/src/features/printers/CompatibleModelsEditor.svelte` | Чек-лист моделей картриджей на карточке принтера | ✓ VERIFIED | Существует, вшит в `PrinterDetail.svelte`, load/save через реальные API. |
+| `ui/src/features/cartridges/CompatibleDevicesEditor.svelte` | Чек-лист принтеров на карточке модели картриджа | ✓ VERIFIED | Существует, вшит в `ModelFormModal.svelte` (только edit-режим), load/save через реальные API. |
+| `ui/src/features/cartridges/OperationModal.svelte` | D-13/D-14 install-picker фильтр + D-16 блок «Предыдущий картридж» | ✓ VERIFIED | Оба механизма подтверждены кодом, никаких заглушек. |
+| `crates/trackly-app/tests/cartridges_history.rs` | Совместим с новой формой `CartridgeTransitionPayload::Install` после 12-09 | ✗ **MISSING UPDATE** | 2 сайта конструирования `Install {..}` (строки 70, 112) не обновлены — компиляция всего воркспейса падает. |
+| `ui/src/features/cartridges/CartridgesPage.svelte` | Совместим с расширенным `CartridgeFilter` после 12-05 | ✗ **MISSING UPDATE** | Строка 60 не содержит `compatible_with_printer_device_id` — 1 ERROR в svelte-check; дважды задокументировано как deferred, никогда не закрыто ни одним из 6 планов. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `dto/cartridge.rs::CartridgeFilter` | `domain/cartridges.rs::CartridgeFilter` | `into_domain()` | ✓ WIRED | `installable_only: self.installable_only` явно прокинуто. |
-| `requests_sqlite.rs::SELECT_REQUESTS` | `domain/requests.rs::RequestRow` | `map_row_request row.get(19)` | ✓ WIRED | `printer_location: row.get(19)?` — последний параметр маппера, индекс совпадает с позицией колонки в SELECT. |
-| `RequestDetail.svelte` | `OperationModal.svelte` | props `cartridgeModelId`/`prefillLocation`/`prefillGivenToName` + `onSuccess` callback | ✓ WIRED | Все три пропа переданы из `request.*`; `onSuccess={handleInstallSuccess}` соответствует новой сигнатуре `(cartridgeId: number) => Promise<void>`. |
-| `OperationModal.svelte` | `ui/src/features/cartridges/api.ts` | `cartridges.list({status_id:1, installable_only:true, model_id})` | ✓ WIRED | Вызов присутствует внутри гейтированного `$effect` (`open && op==='install' && cartridge===null`). |
-| `RequestDetail.svelte` | `ui/src/features/requests/api.ts` | `requests.transition({op:'complete', linkedCartridgeId: cartridgeId})` | ✓ WIRED | Подтверждено вместе с WR-04 (`requests.get` непосредственно перед transition для свежей версии). |
-| `request_service.rs::transition()` | `cartridges_sqlite.rs::SqliteCartridgeRepository::get` | `cartridge_repo.get(&conn, id)` внутри `spawn_blocking` | ✓ WIRED | Чтение происходит ДО входа в writer-транзакцию, результат фолдится в `notes_json` — соответствует плану. |
+| `act_service.rs::suggest_person` | `cartridges.holder_name` (SQL) | `UNION ALL` ветка | ✓ WIRED | Подтверждено SQL-текстом и зелёными тестами. |
+| `OperationModal.svelte` (install picker) | `cartridges_list` (compatible_with_printer_device_id) | `cartridges.list({compatible_with_printer_device_id: preFillPrinterId ?? null, ...})` | ✓ WIRED | Подтверждено grep+построчным чтением. |
+| `CompatibleModelsEditor.svelte` / `CompatibleDevicesEditor.svelte` | `printer_cartridge_models` (junction) | 4 dual-transport команды → `SqlitePrinterRepository` методы | ✓ WIRED | Обе стороны редактирования пишут в ту же таблицу — подтверждено трассировкой реализации (не только сигнатур). |
+| `cartridges_sqlite.rs::transition_in_tx` (Install) | auto-return UPDATE предыдущего картриджа | Тот же `tx` (одна транзакция) | ✓ WIRED | Подтверждено: поиск предыдущего, UPDATE, audit_log — всё внутри одной транзакции `transition_in_tx`. |
+| `OperationModal.svelte` (previous-cartridge block) | `buildPayload()` install-ветка | `previous_cartridge_state_id`/`previous_cartridge_location` поля | ✓ WIRED | Подтверждено: значения из `$state` пробрасываются в payload только когда `previousCartridge !== null`, иначе `null` (не ломает старый вход). |
+| `crates/trackly-app/tests/cartridges_history.rs` | `CartridgeTransitionPayload::Install` (текущая форма после 12-09) | Структурное конструирование `Install {..}` | ✗ **NOT WIRED** | Компилятор отклоняет файл — связь разорвана на уровне типов, не просто предупреждение. |
+| `ui/src/features/cartridges/CartridgesPage.svelte` | `CartridgeFilter` (текущая форма после 12-05) | Структурное конструирование `activeFilter` объекта | ⚠️ **PARTIAL** | TypeScript отклоняет это как ERROR при svelte-check, но Vite/esbuild (используемый в `pnpm build`) не применяет строгую проверку типов — объект всё равно компилируется в JS и runtime-десериализация на Rust-стороне толерантна к отсутствующему `Option<T>`-полю (подтверждено эмпирически). Функционально страница работает, но typecheck-гейт качества нарушен. |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|---------------|--------|---------------------|--------|
-| `CartridgeSelect` (через `OperationModal`) | `cartridgeOptions` | `cartridges.list()` → `cartridges_list` Tauri/HTTP команда → `CartridgeService::list()` → SQL `SELECT ... WHERE installable_only-predicate` | Да | ✓ FLOWING — реальный SQL-запрос к БД, не статичный fallback; подтверждено зелёными тестами на реальном SQLite (`test_writer_and_readers`). |
-| История заявки (`RequestDetail`) | `entry.notes` | `get_history()` парсит `payload_json` из `audit_log`, куда `transition()` пишет реальный `notes_json` с обогащённой строкой | Да | ✓ FLOWING — обогащение происходит на сервере при реальном чтении картриджа (`cartridge_repo.get`), не client-side заглушка. |
-| `completedCartridgeId` (RequestDto) | `dto.completed_cartridge_id` | SQL `UPDATE requests SET completed_cartridge_id = COALESCE(?4, completed_cartridge_id)` | Да | ✓ FLOWING — подтверждено `test_req_cart_link` через реальную `RequestService::transition()` на временной SQLite БД, не мок. |
+| `OperationModal.svelte` (install picker) | `cartridgeOptions` (теперь сужен по совместимости) | `cartridges.list({compatible_with_printer_device_id})` → реальный SQL self-adjusting предикат | Да | ✓ FLOWING — подтверждено 3 зелёными `printer_compatib_*` тестами на реальной SQLite. |
+| `act_service.rs::suggest_person` | Автокомплит имён | UNION ALL `acts` + `cartridges.holder_name`, реальный SQL | Да | ✓ FLOWING — подтверждено зелёными тестами с реальными seed-данными в обеих таблицах. |
+| Auto-return предыдущего картриджа | `previous.status_id/location/holder_name` | Реальный `SELECT ... WHERE current_printer_device_id=?1 AND status_id=2` внутри транзакции | Да | ✓ FLOWING — подтверждено 3 целевыми тестами (`install_auto_returns_previous_cartridge_in_same_printer` и override/fallback вариантами) на временной SQLite БД. |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Backend: kind-aware installable фильтр возвращает только корректные записи | `cargo test -p trackly-app --test cartridges_lifecycle -- --test-threads=1` | 11 passed; 0 failed | ✓ PASS |
-| Backend: D-06/D-07 история + связь картридж↔заявка | `cargo test -p trackly-app --test phase06_stubs -- --test-threads=1` | 18 passed; 0 failed | ✓ PASS |
-| RBAC: employee 403 на cartridges_transition/requests_transition | `cargo test -p trackly-app --test role_endpoint_matrix -- --test-threads=1` | 1 passed (драйвер всех 32 кейсов); 0 failed | ✓ PASS |
-| Полный воркспейс без регрессий | `TRACKLY_AD_MOCK=1 cargo test --workspace` | все `test result: ok`, 0 failed по всем бинарям | ✓ PASS |
-| Frontend типы и сборка | `pnpm --dir ui svelte-check && pnpm --dir ui build` | 0 errors (36 pre-existing warnings, не в файлах фазы); сборка успешна | ✓ PASS |
-| Frontend lint без новых ошибок в файлах фазы | `pnpm --dir ui lint` | 22 pre-existing errors, 0 в `CartridgeSelect.svelte`/`OperationModal.svelte`/`RequestDetail.svelte` | ✓ PASS |
-| Backend build + clippy (lib-таргеты) | `cargo build --workspace`, `cargo clippy -p trackly-core -p trackly-app -p trackly-infra -- -D warnings` | Оба чисто | ✓ PASS |
+| GAP-12-01 backend: автокомплит объединяет acts+cartridges | `cargo test -p trackly-app --test acts_suggest -- --test-threads=1` | 10 passed; 0 failed | ✓ PASS |
+| GAP-12-02 backend: совместимость принтер↔модель | `cargo test -p trackly-app --test cartridges_crud -- --test-threads=1` | 9 passed; 0 failed (3 printer_compatib_*) | ✓ PASS |
+| GAP-12-03 backend: авто-возврат предыдущего картриджа | `cargo test -p trackly-app --test cartridges_lifecycle -- --test-threads=1` | 18 passed; 0 failed | ✓ PASS |
+| RBAC: новые 403-кейсы для compatibility-команд | `cargo test -p trackly-app --test role_endpoint_matrix -- --test-threads=1` | 1 passed (драйвер всех кейсов, включая 33/34/35); 0 failed | ✓ PASS |
+| Полный воркспейс компилируется и тестируется без регрессий | `TRACKLY_AD_MOCK=1 cargo test --workspace` | **Компиляция падает**: E0063 в `cartridges_history.rs:70,112` | ✗ **FAIL** |
+| Backend build (с тестовыми бинарями) | `cargo build --workspace --tests` | **Падает** — тот же E0063 | ✗ **FAIL** |
+| Backend lib-only build+clippy (как в исходной верификации) | `cargo clippy -p trackly-core -p trackly-app -p trackly-infra -- -D warnings` | Чисто | ✓ PASS |
+| Frontend типы | `pnpm --dir ui exec svelte-check` | **1 ERROR** (`CartridgesPage.svelte:60`), 36 pre-existing warnings | ✗ **FAIL** (warning-уровень severity, не функциональный) |
+| Frontend сборка | `pnpm --dir ui build` | Успешно (Vite/esbuild не делает строгую проверку типов) | ✓ PASS |
+| Точечная проверка runtime-десериализации `Option<T>` без `#[serde(default)]` | Написан/прогнан/откатан scratch-тест в `dto/cartridge.rs` | `Ok(CartridgeFilter {..., compatible_with_printer_device_id: None})` — десериализация успешна при отсутствии ключа | ✓ PASS (подтверждает, что #9 не функциональный сбой) |
 
 ### Probe Execution
 
-Step 7c пропущен: фаза не декларирует и не подразумевает `scripts/*/tests/probe-*.sh` — это backend/frontend feature-фаза, а не migration/tooling-фаза. `grep -R "probe-" .planning/phases/12-*/12-0*-PLAN.md 12-0*-SUMMARY.md` не находит упоминаний probe-скриптов.
+Step 7c пропущен: фаза не декларирует и не подразумевает `scripts/*/tests/probe-*.sh` (backend/frontend feature-фаза, не migration/tooling). Подтверждено повторно — никаких новых упоминаний probe-скриптов в планах 12-04..12-09.
 
 ### Requirements Coverage
 
-D-01..D-08 — фазовые decision-ID из `12-CONTEXT.md`, явно НЕ являются строками `REQUIREMENTS.md` traceability-таблицы (подтверждено: `grep "D-0[1-8]" .planning/REQUIREMENTS.md` — ноль совпадений, что ОЖИДАЕМО и не является пробелом per инструкции задачи).
+D-09..D-19 — decision-ID из `12-CONTEXT.md`/`12-HUMAN-UAT.md` (gap-closure решения), как и исходные D-01..D-08, намеренно НЕ являются строками `.planning/REQUIREMENTS.md`. Это ожидаемо и не является пробелом (фаза идёт от пользовательских UAT-решений, не от формальных REQ).
 
 | Decision | Источник | Статус | Evidence |
 |----------|----------|--------|----------|
-| D-01 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #1. |
-| D-02 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #2. |
-| D-03 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #3. |
-| D-04 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #4. |
-| D-05 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #5. |
-| D-06 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #6. |
-| D-07 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #7. |
-| D-08 | 12-CONTEXT.md | ✓ SATISFIED | См. Truth #8. |
+| D-09, D-10 | 12-04-PLAN.md / 12-HUMAN-UAT.md GAP-12-01 | ✓ SATISFIED | См. Truth #2. |
+| D-11..D-15a | 12-05-PLAN.md / GAP-12-02 (backend) | ✓ SATISFIED | См. Truth #3. |
+| D-12 | 12-07-PLAN.md / GAP-12-02 (frontend A) | ✓ SATISFIED | См. Truth #4. |
+| D-13, D-14 | 12-08-PLAN.md / GAP-12-02 (frontend B) | ✓ SATISFIED | См. Truth #5. |
+| D-16..D-19 | 12-06-PLAN.md / GAP-12-03 (backend) | ✓ SATISFIED | См. Truth #6. |
+| D-16 | 12-09-PLAN.md / GAP-12-03 (frontend) | ✓ SATISFIED (с оговоркой) | См. Truth #7. Оговорка: тот же план оставил компиляционную регрессию в `cartridges_history.rs` — функциональность D-16 сама по себе работает, но фаза в целом не проходит `cargo test --workspace`. |
 
-Орфанных REQ-ID, отнесённых к Фазе 12 в `REQUIREMENTS.md`, не найдено (`grep "Phase 12" .planning/REQUIREMENTS.md` — ноль совпадений) — это ожидаемо, фаза целиком вне формальной REQ-ID traceability-системы по дизайну.
+Орфанных REQ-ID, отнесённых к Фазе 12 в `REQUIREMENTS.md`, не найдено — ожидаемо, фаза целиком вне формальной REQ-ID traceability-системы по дизайну (подтверждено повторно).
 
 ### Anti-Patterns Found
 
-Сканирование всех файлов, изменённых в Wave 1-3 (10 файлов: domain/DTO/SQL/service/3 frontend) на `TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER|placeholder|coming soon|not yet implemented` — **0 совпадений**. Никаких debt-маркеров, заглушек или пустых реализаций не найдено.
+| File | Line | Pattern | Severity | Impact |
+|------|------|---------|----------|--------|
+| `crates/trackly-app/tests/cartridges_history.rs` | 70, 112 | Неполное обновление структурного варианта enum после расширения полей в зависимом плане (12-09) | 🛑 BLOCKER | Ломает компиляцию `cargo build/test --workspace` — невозможно запустить полный тестовый набор воркспейса, что является прямым требованием проектных гейтов качества (CI gate на каждый push, `cargo nextest`). |
+| `ui/src/features/cartridges/CartridgesPage.svelte` | 60 | Дважды самостоятельно обнаруженный, дважды задокументированный, но никогда не закрытый typecheck-регресс (`compatible_with_printer_device_id` отсутствует в literal) | ⚠️ WARNING | Не ломает runtime (Option<T> без #[serde(default)] десериализуется в None), но нарушает заявленный фазой/проектом гейт «`svelte-check` — CI gate» (см. CLAUDE.md Development Tools: `svelte-check` — «CI gate»). `pnpm build` всё же проходит, так что страница картриджей продолжает работать в браузере — деградация ограничена качеством типов, не функциональностью. |
 
-Отдельно проверено: `readonly`/`disabled` отсутствуют на полях «Кому отдал»/«Расположение» (подтверждает реальную редактируемость D-04/D-05, не косметическую видимость).
+Debt-маркеры (`TBD`/`FIXME`/`XXX`) — поиск по всем файлам, изменённым в Wave 12-04..12-09 (act_service.rs, migrations/V029, printers_sqlite.rs, cartridges_sqlite.rs, dto/cartridge.rs, domain/cartridges.rs, 4 .svelte файла) — **0 совпадений**. Нет незакрытых debt-маркеров.
 
-Известные, осознанно отложенные пункты ревью (не блокеры для цели фазы, задокументированы в `12-REVIEW-FIX.md`):
-- WR-05 (`printer_options` LEFT JOIN устойчивость к переименованию seed) — не относится к новой логике фазы 12.
-- WR-06 (UTC vs локальное время в истории) — пред-существующая проблема дисплея дат, не специфична для D-06/D-07.
-- WR-07 (`get_history` молча проглатывает невалидный JSON) — debuggability-гэп, не функциональный дефект текущего потока.
-- IN-01..IN-04 — мелкие UX-нюансы (дублирующийся toast устранён WR-03-фиксом; оставшиеся — `printerContextHint` показывает id, `actionLabel` не покрывает `ad_register_approve`, non-null assertion в `buildPayload`).
+`TODO`/`HACK`/`PLACEHOLDER`/`placeholder`/`coming soon`/`not yet implemented` — тоже 0 совпадений в этих файлах.
 
-Эти пункты не блокируют достижение цели фазы (выбор картриджа, авто-подстановка, запись связи, история, сохранение старого входа) — корректно классифицированы ревьюером как warning/info, не critical.
+`deferred-items.md` корректно используется как механизм отложенных пунктов (а не скрытых) — но в случае `CartridgesPage.svelte:60` процесс отложения не сработал: пункт был дважды зафиксирован как «принадлежит следующему плану, который коснётся этого файла», но ни один из оставшихся планов фазы (12-08, 12-09) не коснулся файла, и фаза подошла к завершению без закрытия.
 
 ### Human Verification Required
 
-### 1. End-to-end happy path установки картриджа из заявки
+### 1. DISC-02 empty-state (перенесено из исходной верификации, статус не изменился)
 
-**Test:** Создать заявку «Замена картриджа» на принтер с известным расположением → принять в работу → «Установить картридж» → выбрать картридж из списка → заполнить «Кто выдал» → подтвердить.
-**Expected:** Список картриджей в модалке содержит только подходящие записи (статус «На складе», устанавливаемый заряд, модель = модель заявки); «Кому отдал»/«Расположение» предзаполнены, но редактируемы; после установки заявка переходит в «Выполнена»; История показывает строку с кодом и моделью картриджа.
-**Why human:** `12-03-SUMMARY.md` прямо признаёт, что `checkpoint:human-verify` (Task 4 плана 12-03) был авто-одобрен под AUTO_MODE и НЕ прогонялся в живой браузерной/десктоп-сессии — подтверждение только статическим код-ревью + `svelte-check`/`build`. Согласно явному указанию в контексте текущего запуска верификации, этот пункт направляется в human_verification, а не засчитывается как FAILED.
+**Test:** Открыть «Установить картридж» из заявки на модель, для которой на складе нет подходящих картриджей (с учётом активного теперь фильтра совместимости из GAP-12-02).
+**Expected:** Список показывает «Нет подходящих картриджей на складе»; форма не блокируется (модалку можно закрыть, заявку отклонить, либо использовать старый вход).
+**Why human:** `12-HUMAN-UAT.md` тест 2 остался в статусе `[pending]` — не выполнен ни во время, ни после gap-closure работы. Код-путь самого empty-state не менялся, но взаимодействие с новым D-13/D-14 фильтром не проверено интерактивно.
 
-### 2. DISC-02 empty-state при отсутствии подходящих картриджей
+### 2. D-08 regression + новый блок «Предыдущий картридж» (перенесено и расширено)
 
-**Test:** Открыть «Установить картридж» из заявки на модель, для которой на складе нет совместимых картриджей (или все заряжены «Пустой»/списаны).
-**Expected:** Список показывает «Нет подходящих картриджей на складе»; форма не блокируется — модалку можно закрыть, заявку отклонить, или воспользоваться старым cartridge-centric входом.
-**Why human:** Тот же неподтверждённый живой checkpoint; код корректен (`CartridgeSelect.svelte:41`), но визуальное поведение (фокус, скролл, читаемость предупреждения) не проверено интерактивно.
-
-### 3. D-08 регрессия — старый cartridge-centric вход
-
-**Test:** Открыть карточку картриджа со статусом «На складе» напрямую (не через заявку) → меню → «Установить в принтер».
-**Expected:** Старая форма работает ровно как раньше, без нового селектора картриджа и без полей-предзаполнений из заявки.
-**Why human:** Подтверждено статическим анализом (`CartridgesPage.svelte` не передаёт новые пропы; `OperationModal` гейтирует `CartridgeSelect` на `cartridge === null`), но визуальная неизменность UI не проверена в реальном сеансе.
+**Test:** Открыть карточку картриджа со статусом «На складе» напрямую (меню картриджа → «Установить в принтер»).
+**Expected:** Старая форма работает без изменений: без селектора картриджа, БЕЗ нового блока «Предыдущий картридж» (добавленного в 12-09) — расположение полей, фокус, скролл не регрессировали.
+**Why human:** `12-HUMAN-UAT.md` тест 3 остался `[pending]`. Дополнительно теперь нужно визуально подтвердить, что новый D-16/12-09 блок корректно скрыт в этом входе (статически проверено — эффект гейтирован на `cartridge===null && preFillPrinterId!==undefined` — но живая сессия не прогонялась ни разу за всю фазу, включая после 6 планов изменений).
 
 ## Gaps Summary
 
-Программная верификация не нашла ни одного провала: все 9 наблюдаемых истин (D-01..D-08 + RBAC-закрытие T-12-01) подтверждены реальным кодом и зелёными тестами, включая критический фикс ревью (kind-aware `installable_only`, иначе фотобарабаны были бы исключены — CR-01) и 4 связанных warning-фикса (WR-01..WR-04). Полный `cargo test --workspace` зелёный без единого сбоя; frontend `svelte-check`/`build`/`lint` чисты относительно файлов фазы.
+Шесть планов закрытия гэпов (12-04..12-09) **в целом успешно реализовали свою заявленную функциональность** — все 3 UAT-гэпа (GAP-12-01 автокомплит, GAP-12-02 совместимость принтер↔модель, GAP-12-03 авто-возврат картриджа) подтверждены реальным, протестированным, связанным кодом, не заглушками. Это не пересмотр выводов по самой функциональности.
 
-Единственная причина статуса `human_needed`, а не `passed` — операторский UI-флоу (выбор картриджа, предзаполнение полей, переход в «Выполнена», текст истории, D-08 регрессия, DISC-02 empty-state) был верифицирован кодовым анализом и автоматическими гейтами (`svelte-check`/`build`), но не живой интерактивной сессией браузера/десктоп-приложения — это прямо признано в `12-03-SUMMARY.md` и явно помечено в инструкциях текущего запуска как пункт для `human_verification`, а не `gaps_found`. Закрытие этого пункта не требует кодовых изменений — только ручной прогон шагов из `12-03-PLAN.md` Task 4 `<how-to-verify>`.
+Однако ре-верификация нашла **1 BLOCKER**, не упомянутый ни в одном из 6 SUMMARY-файлов и не учтённый при объявлении фазы «готовой к закрытию»: gap-closure работа сама внесла **компиляционную регрессию** — `cargo build/test --workspace` не проходит из-за двух пропущенных сайтов обновления структурного enum-варианта в `crates/trackly-app/tests/cartridges_history.rs`. Это прямо противоречит проектному правилу CI gate («проверки кода на push») и базовому принципу «фаза готова, если весь воркспейс компилируется и тестируется». План 12-06 ранее правильно обновил эти же 2 сайта под аналогичное расширение поля (`printer_device_id`) — план 12-09 пропустил их при аналогичном расширении (`previous_cartridge_state_id`/`previous_cartridge_location`), и его собственный SUMMARY ложно заявляет полное покрытие («Updated all 10 existing Install {..} construction sites»), говоря на самом деле только о `cartridges_lifecycle.rs`.
+
+Дополнительно найден **1 WARNING**: `ui/src/features/cartridges/CartridgesPage.svelte:60` несёт реальную `svelte-check` ERROR (не warning) — `compatible_with_printer_device_id` отсутствует в литерале `CartridgeFilter`. Эмпирически подтверждено (точечный serde-тест), что это НЕ ломает runtime — страница продолжает работать в браузере, `pnpm build` проходит. Но это нарушение заявленного CI-гейта `svelte-check`, дважды самостоятельно обнаруженное исполнителями (планы 12-07, 12-08) и дважды корректно задокументированное в `deferred-items.md` как «принадлежит следующему плану, который коснётся этого файла» — но фаза завершилась без того, чтобы какой-либо план фактически коснулся файла и закрыл пункт.
+
+Наконец, **2 человеческих пункта из исходной верификации остаются непройденными** (`12-HUMAN-UAT.md` тесты 2 и 3, статус `[pending]`) — они не требуют новых кодовых изменений, но фаза не может быть объявлена `passed` без их живого прогона, тем более что код, который они проверяют (cartridge-centric вход, empty-state), теперь взаимодействует с двумя новыми механизмами (D-13/D-14 фильтр, D-16 блок «Предыдущий картридж»), что повышает риск необнаруженной визуальной регрессии.
+
+**Рекомендация:** перед закрытием фазы 12 необходим короткий gap-closure план (или ручная правка) для:
+1. Добавления `previous_cartridge_state_id: None, previous_cartridge_location: None` в оба сайта `cartridges_history.rs` (5 минут работы, тривиальный фикс) — BLOCKER, обязательно перед закрытием.
+2. Добавления `compatible_with_printer_device_id: null` в `CartridgesPage.svelte:60`'s `activeFilter` (тривиальный фикс) — WARNING, желательно перед закрытием, чтобы не нарушать заявленный CI-гейт `svelte-check`.
+3. Живого прогона тестов 2 и 3 из `12-HUMAN-UAT.md` (после фиксов выше).
 
 ---
 
-_Verified: 2026-06-22T11:38:43Z_
+_Verified: 2026-06-23T05:00:00Z_
 _Verifier: Claude (gsd-verifier)_
