@@ -9,6 +9,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
+  import CompatibleModelsEditor from './CompatibleModelsEditor.svelte';
   import { printers } from './api';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
 
@@ -189,6 +190,12 @@
         {:else}
           <p class="muted">Картридж не закреплён</p>
         {/if}
+      </section>
+
+      <!-- Секция: совместимые модели картриджей (D-12, GAP-12-02) -->
+      <section class="detail-section">
+        <h3 class="section-heading">Совместимые модели картриджей</h3>
+        <CompatibleModelsEditor deviceId={printer.deviceId} />
       </section>
 
       <!-- Секция: история статусов (PRN-05) -->
