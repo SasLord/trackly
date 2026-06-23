@@ -14,6 +14,7 @@
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { cartridges } from './api';
+  import { printers } from '../printers/api';
   import type { CartridgeDto, CartridgeTransitionPayload } from '../../bindings';
 
   type Op = 'install' | 'return_to_stock' | 'to_refill' | 'from_refill' | 'write_off';
@@ -119,16 +120,36 @@
       : null,
   );
 
-  // WR-02: when the request-centric install flow (cartridge === null) has no
-  // cartridge_model_id, the picker below cannot scope the list to a model —
-  // it lists every installable cartridge regardless of model/printer fit.
-  // Surface an explicit warning so the operator checks compatibility by hand
-  // instead of silently trusting an unscoped list.
-  const noModelScopeWarning = $derived(
-    op === 'install' && cartridge === null && cartridgeModelId === undefined
-      ? 'Модель не указана — проверьте совместимость вручную'
-      : null,
-  );
+  // D-13/D-14 (Phase 12 gap closure GAP-12-02): the request-centric install
+  // flow (cartridge === null) narrows the picker to cartridges compatible
+  // with the request's printer (printer_cartridge_models, via 12-05's
+  // `compatible_with_printer_device_id` filter). When a printer context
+  // exists (preFillPrinterId set) but has zero configured compatibility
+  // links, the backend filter self-adjusts to show the full unfiltered
+  // kind_id=1 stock (D-14) — this flag drives the warning that tells the
+  // operator compatibility was never configured for this printer, so they
+  // should verify the fit manually. Replaces the old WR-02 placeholder
+  // (which warned on missing `cartridgeModelId`, not on missing
+  // printer↔model links).
+  let compatibilityUnconfigured = $state(false);
+
+  $effect(() => {
+    if (!(open && op === 'install' && cartridge === null && preFillPrinterId !== undefined)) {
+      compatibilityUnconfigured = false;
+      return;
+    }
+    printers
+      .getCompatibleModels(preFillPrinterId)
+      .then((res) => {
+        compatibilityUnconfigured = res.modelIds.length === 0;
+      })
+      .catch(() => {
+        // Fail-safe default (T-12-08-01): a failed compatibility check is a
+        // UX hint only, not a security boundary — never show the warning
+        // off of an error state.
+        compatibilityUnconfigured = false;
+      });
+  });
 
   // D-01/D-02 (Phase 12 Plan 03): load the installable-stock cartridge list
   // when the modal is opened for the request-centric install flow
@@ -144,9 +165,10 @@
           status_id: 1,
           installable_only: true,
           model_id: cartridgeModelId ?? null,
-          kind_id: null,
+          kind_id: 1,
           search: null,
           include_deleted: false,
+          compatible_with_printer_device_id: preFillPrinterId ?? null,
         },
         { offset: 0, limit: 200 },
       )
@@ -356,8 +378,8 @@
               selectedCartridge = cartridgeOptions.find((c) => String(c.id) === v) ?? null;
             }}
           />
-          {#if noModelScopeWarning}
-            <span class="field-warning">{noModelScopeWarning}</span>
+          {#if compatibilityUnconfigured}
+            <span class="field-warning">Совместимость не задана — проверьте вручную</span>
           {/if}
         </div>
       {/if}
