@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-23T00:53:31.440Z"
+last_updated: "2026-06-23T01:13:13.798Z"
 last_activity: 2026-06-23
 progress:
   total_phases: 15
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 85
-  completed_plans: 84
-  percent: 93
+  completed_plans: 85
+  percent: 100
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-06-23
 
@@ -123,6 +123,7 @@ Last activity: 2026-06-23
 | Phase 12 P06 | 25min | 2 tasks | 5 files |
 | Phase 12 P07 | 25min | 3 tasks | 6 files |
 | Phase 12 P08 | 15min | 1 tasks | 1 files |
+| Phase 12 P09 | 55min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -259,6 +260,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 12-06: Auto-return previous cartridge via direct UPDATE inside the same tx (not recursing into transition_in_tx) — internal cascade is known-safe by construction
 - [Phase 12]: Plan 12-07: bindings.ts already contained PrinterCompatibleModelsDto/CartridgeModelCompatibleDevicesDto from 12-05's cargo test regen; API wrappers built against real modelId/device_ids wrapper DTO contract, not the plan's assumed cartridgeModelId/number[] shape
 - [Phase 12]: Plan 12-08: compatibilityUnconfigured state replaces noModelScopeWarning; gated on preFillPrinterId !== undefined, fail-safe default false on getCompatibleModels error (UX hint, not security boundary)
+- [Phase 12]: Plan 12-09: Reused existing Select component (value+onchange) for previous-cartridge charge state instead of raw bind:value select — Matches established codebase convention in OperationModal.svelte's own op-state field and avoids Svelte native-select numeric coercion bug documented in CartridgeFilters.svelte
 
 ### Pending Todos
 
@@ -296,7 +298,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-23T00:53:31.433Z
-Stopped at: Completed 12-08-PLAN.md
+Last session: 2026-06-23T01:13:13.791Z
+Stopped at: Completed 12-09-PLAN.md
 Resume file: 
 None
