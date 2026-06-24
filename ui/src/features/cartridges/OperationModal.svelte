@@ -160,15 +160,20 @@
   );
 
   // D-16 (Plan 12-09): look up the target printer's current cartridge «В
-  // работе» (if any) so the «Предыдущий картридж» block can show it. Only
-  // runs when there IS a printer context (preFillPrinterId !== undefined) —
-  // no lookup at all for the old cartridge-centric entry (D-08) or when no
-  // printer context exists, avoiding a wasted API call (Test 3).
+  // работе» (if any) so the «Предыдущий картридж» block can show it. Runs
+  // whenever there IS a printer context (preFillPrinterId !== undefined),
+  // in BOTH the request-centric (cartridge===null) and cartridge-centric
+  // (cartridge!=null) install entries — GAP-12-11: the cartridge-centric
+  // entry (menu → «Установить в принтер») needs the same printer name/IP
+  // hint and previous-cartridge block as the request-centric one. When no
+  // printer context exists (preFillPrinterId undefined), the lookup is
+  // skipped entirely, avoiding a wasted API call (Test 3, D-08 regression
+  // guard for the printer-less cartridge-centric flows).
   // GAP-12-05/A2: also stores the printer DTO itself into `printerContext`
   // (same printers.get() call — no second API request) so printerContextHint
   // can render deviceName+ipAddress.
   $effect(() => {
-    if (!(open && op === 'install' && cartridge === null && preFillPrinterId !== undefined)) {
+    if (!(open && op === 'install' && preFillPrinterId !== undefined)) {
       previousCartridge = null;
       printerContext = null;
       return;
