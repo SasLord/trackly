@@ -84,3 +84,10 @@ GAP-12-09 (B1) closed. No blockers. Backend untouched (`device_location` was alr
 ---
 *Phase: 12-cartridge-request-interconnection*
 *Completed: 2026-06-24*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/12-cartridge-request-interconnection/12-16-SUMMARY.md
+- FOUND: ui/src/features/printers/PrinterListRow.svelte
+- FOUND commit: d8ac384
+- FOUND commit: def221d
