@@ -12,10 +12,19 @@
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
+  import PrinterSelect from '$lib/components/PrinterSelect.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { cartridges } from './api';
   import { printers } from '../printers/api';
   import type { CartridgeDto, CartridgeTransitionPayload, PrinterDto } from '../../bindings';
+  // printers.list() (used by the new D-20/D-21 selector below) returns items
+  // typed against bindings-phase6's PrinterDto (the hand-maintained type
+  // printers/api.ts actually uses) — distinct from bindings.ts's generated
+  // PrinterDto (used elsewhere in this file for printerContext/single-get
+  // lookups). The two shapes differ only in `tonerLevels`'s exact type
+  // (JsonValue vs Record<string, number|null>), which is irrelevant here;
+  // aliasing avoids a structural-typing mismatch on the array assignment.
+  import type { PrinterDto as PrinterListItemDto } from '../../bindings-phase6';
 
   type Op = 'install' | 'return_to_stock' | 'to_refill' | 'from_refill' | 'write_off';
 
@@ -127,6 +136,7 @@
       notes = '';
       stateId = defaultStateId;
       selectedCartridge = null;
+      selectedPrinterId = undefined;
       previousCartridge = null;
       previousCartridgeStateId = 3;
       previousCartridgeLocation = '';
@@ -144,18 +154,37 @@
   // the actual device, not a database key).
   let printerContext = $state<PrinterDto | null>(null);
 
+  // D-20/D-21/D-22 (Round 4 gap-closure, Plan 12-20): the cartridge-centric
+  // install entry (menu → «Установить в принтер», cartridge prop set) had no
+  // UI for choosing a printer at all — preFillPrinterId only ever arrives
+  // from the request-centric flow (RequestDetail). selectedPrinterId is the
+  // new local choice made via the PrinterSelect rendered below; it is
+  // OPTIONAL (D-20) — undefined means "no printer", identical to legacy
+  // behavior (no regression).
+  let selectedPrinterId = $state<number | undefined>(undefined);
+  // Full printer list + reverse compatibility lookup (device_ids compatible
+  // with effectiveCartridge.model_id) for the new selector (D-21).
+  let printerOptions = $state<PrinterListItemDto[]>([]);
+  let compatibleDeviceIds = $state<Set<number>>(new Set());
+
+  // Single source of truth for "which printer is this install targeting":
+  // request-centric flow keeps using the preFillPrinterId prop (priority);
+  // cartridge-centric flow uses the new local selectedPrinterId. Both feed
+  // the SAME downstream lookup/payload logic below.
+  const effectivePrinterId = $derived(preFillPrinterId ?? selectedPrinterId);
+
   // REQ-05: preFillPrinterId is accepted as context when the modal is opened
   // from a request (RequestDetail). The install form is cartridge-centric;
   // we show a hint about which printer this cartridge targets when the prop is set.
   // GAP-12-05/A2: prefer printerContext.deviceName + ipAddress once the lookup
   // resolves; fall back to #{id} only while loading or if deviceName is absent.
   const printerContextHint = $derived(
-    op === 'install' && preFillPrinterId !== undefined
+    op === 'install' && effectivePrinterId !== undefined
       ? printerContext !== null
         ? `Устанавливается в принтер: ${
-            printerContext.deviceName ?? `#${preFillPrinterId}`
+            printerContext.deviceName ?? `#${effectivePrinterId}`
           }${printerContext.ipAddress ? ` (${printerContext.ipAddress})` : ''}`
-        : `Устанавливается в принтер #${preFillPrinterId}`
+        : `Устанавливается в принтер #${effectivePrinterId}`
       : null,
   );
 
@@ -173,13 +202,13 @@
   // (same printers.get() call — no second API request) so printerContextHint
   // can render deviceName+ipAddress.
   $effect(() => {
-    if (!(open && op === 'install' && preFillPrinterId !== undefined)) {
+    if (!(open && op === 'install' && effectivePrinterId !== undefined)) {
       previousCartridge = null;
       printerContext = null;
       return;
     }
     printers
-      .get(preFillPrinterId)
+      .get(effectivePrinterId)
       .then((printer) => {
         printerContext = printer;
         if (printer.currentCartridgeId === null) {
@@ -228,6 +257,36 @@
         // UX hint only, not a security boundary — never show the warning
         // off of an error state.
         compatibilityUnconfigured = false;
+      });
+  });
+
+  // D-20/D-21 (Round 4 gap-closure, Plan 12-20): load the full printer list
+  // + reverse compatibility lookup for the NEW cartridge-centric printer
+  // selector. Gated strictly on cartridge-centric install with NO incoming
+  // printer context (preFillPrinterId === undefined) — the request-centric
+  // flow (cartridge === null) and the pre-filled flow (printer context from
+  // a request) never trigger this, no extra network calls there (D-08/D-20
+  // regression guard, T-12-20-04).
+  $effect(() => {
+    if (!(open && op === 'install' && cartridge !== null && preFillPrinterId === undefined)) {
+      printerOptions = [];
+      compatibleDeviceIds = new Set();
+      return;
+    }
+    Promise.all([
+      printers.list({ status: null, search: null }, { offset: 0, limit: 500 }),
+      cartridges.modelsGetCompatibleDevices(cartridge.model_id),
+    ])
+      .then(([printersRes, compatRes]) => {
+        printerOptions = printersRes.items;
+        compatibleDeviceIds = new Set(compatRes.device_ids);
+      })
+      .catch(() => {
+        // Fail-safe (D-21): a failed lookup must not block install without a
+        // printer — worst case the selector shows "Принтеры не найдены",
+        // which is still a valid no-printer path (D-20).
+        printerOptions = [];
+        compatibleDeviceIds = new Set();
       });
   });
 
@@ -320,7 +379,7 @@
         given_by_name: givenByName.trim(),
         given_to_name: givenToName.trim(),
         location: location.trim(),
-        printer_device_id: preFillPrinterId ?? null,
+        printer_device_id: effectivePrinterId ?? null,
         previous_cartridge_state_id: previousCartridge !== null ? previousCartridgeStateId : null,
         previous_cartridge_location:
           previousCartridge !== null ? previousCartridgeLocation : null,
@@ -455,6 +514,24 @@
     <!-- Поля по op (UI-SPEC §Поля OperationModal) -->
 
     {#if op === 'install' || op === 'to_refill'}
+      {#if op === 'install' && cartridge !== null && preFillPrinterId === undefined}
+        <!-- D-20/D-21 (Round 4 gap-closure, Plan 12-20): optional printer
+             selector for the cartridge-centric install entry — only shown
+             when there's no incoming printer context (request-centric flow
+             already has its own preFillPrinterId, no regression there). -->
+        <div class="field">
+          <label class="label" for="op-printer">Принтер (опционально)</label>
+          <PrinterSelect
+            options={printerOptions}
+            {compatibleDeviceIds}
+            value={selectedPrinterId !== undefined ? String(selectedPrinterId) : ''}
+            id="op-printer"
+            onchange={(v) => {
+              selectedPrinterId = v ? parseInt(v, 10) : undefined;
+            }}
+          />
+        </div>
+      {/if}
       {#if printerContextHint}
         <!-- GAP-12-05/A2: printer context (deviceName+ipAddress) renders
              FIRST in the form, before the cartridge-select, so the operator
