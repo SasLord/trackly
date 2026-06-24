@@ -590,6 +590,37 @@ impl RequestService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
+                // WR-04: `ad_register` requests own the reconciliation of a
+                // linked `users` row — `approve_ad_register` activates it,
+                // `reject_ad_register` soft-deletes the auto-created account.
+                // Both are Admin-only (`Action::ManageUsers`). This generic
+                // soft-delete is gated on `Action::DeleteRequests` (Admin **or
+                // Manager**) and does NO user-row reconciliation, so deleting an
+                // `ad_register` request here would orphan its `users` row (a
+                // pending inactive account, or a still-active auto-accepted one,
+                // with no governing request) — a privilege-boundary asymmetry on
+                // a security-sensitive entity. Refuse outright: an `ad_register`
+                // request must be resolved through approve/reject, never through
+                // `requests_delete`. The type is read WITHOUT a `deleted_at_utc`
+                // filter so the existing missing-vs-stale disambiguation below
+                // keeps its established behavior for non-ad_register rows.
+                let req_type: Option<String> = tx
+                    .query_row(
+                        "SELECT request_type FROM requests WHERE id = ?1",
+                        rusqlite::params![id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
+                if req_type.as_deref() == Some("ad_register") {
+                    return Err(AppError::Validation {
+                        field: "request_type".into(),
+                        message: "Заявку на регистрацию (ad_register) нельзя удалить — \
+                                  разрешите её через одобрение или отклонение."
+                            .into(),
+                    });
+                }
+
                 let affected = tx
                     .execute(
                         "UPDATE requests SET deleted_at_utc=?1, updated_at_utc=?1, \

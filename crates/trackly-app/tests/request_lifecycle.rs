@@ -237,6 +237,74 @@ async fn delete_nonexistent_request_returns_not_found() {
     );
 }
 
+/// WR-04 (Phase 12 Round 2 review): an `ad_register` request owns the
+/// reconciliation of a linked `users` row (Admin-only approve/reject). The
+/// generic `delete()` (Admin|Manager, no user-row cleanup) must refuse to
+/// soft-delete one — otherwise a Manager could orphan the linked user. We
+/// insert the `ad_register` row directly because `create()` forbids that type.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_ad_register_request_is_refused() {
+    let (svc, writer, _dir) = make_service();
+    let employee_id = seed_user(&writer, "us412", "Pending AD User", "employee").await;
+    let manager_id = seed_user(&writer, "us413", "Manager AdReg", "manager").await;
+
+    // Seed an open `ad_register` request directly (the create() path allowlist
+    // rejects `ad_register`, mirroring how AuthService writes these rows).
+    let req_id = {
+        let now = SystemClock.unix_seconds();
+        writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+                tx.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('ad_register', 'open', ?1, 'register', ?2, ?2, 1)",
+                    params![employee_id, now],
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+                let id = tx.last_insert_rowid();
+                tx.commit().map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+                Ok(id)
+            })
+            .await
+            .expect("seed ad_register request")
+    };
+
+    let err = svc
+        .delete(req_id, 1, &manager(manager_id))
+        .await
+        .expect_err("deleting an ad_register request must be refused");
+    assert!(
+        matches!(err, AppError::Validation { ref field, .. } if field == "request_type"),
+        "ожидали Validation[request_type], получили {err:?}"
+    );
+
+    // The request must still be present (not soft-deleted) after the refusal.
+    let readers = svc.readers.clone();
+    let deleted_at: Option<i64> = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT deleted_at_utc FROM requests WHERE id = ?1",
+            params![req_id],
+            |r| r.get(0),
+        )
+        .expect("query request")
+    })
+    .await
+    .expect("spawn_blocking");
+    assert!(
+        deleted_at.is_none(),
+        "ad_register request must NOT have been soft-deleted"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // cancel()
 // ---------------------------------------------------------------------------

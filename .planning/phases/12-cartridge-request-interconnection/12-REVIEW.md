@@ -29,6 +29,11 @@ findings:
   info: 3
   total: 10
 status: issues_found
+resolved:
+  - WR-04
+  - WR-05
+  - WR-06
+resolved_note: "WR-04/05/06 fixed 2026-06-24 (advisory batch); CR-01 + R3 gaps already closed in prior commits. Remaining WR-01..03 (UI cancelled-status threading) + IN-01..03 still open/advisory."
 ---
 
 # Phase 12 (Round 2): Code Review Report
@@ -134,6 +139,12 @@ show a discrepancy, and cancelled requests are uncountable in the status bar.
 
 ### WR-04: Manager can soft-delete an Admin-only `ad_register` request, orphaning the user row
 
+**Status:** ✅ RESOLVED (2026-06-24) — `RequestService::delete()` now reads
+`request_type` inside the writer transaction (without the `deleted_at_utc`
+filter, to preserve the existing missing-vs-stale disambiguation) and refuses
+`ad_register` deletions with `AppError::Validation` for every role. Regression
+test `delete_ad_register_request_is_refused` (`tests/request_lifecycle.rs`).
+
 **File:** `crates/trackly-app/src/services/request_service.rs:577-642`
 **Issue:** `delete()` is gated on `Action::DeleteRequests` = Admin **or Manager**
 (`auth.rs:146-155`) and is owner/type-agnostic — it soft-deletes any request in any status.
@@ -152,6 +163,13 @@ reconciliation as `reject_ad_register`. Option (a) is the smaller, safer change.
 
 ### WR-05: `printers_sqlite::list` status filter is a silent no-op
 
+**Status:** ✅ RESOLVED (2026-06-24) — both the count and list queries now filter
+on the printer's actual latest status via a correlated subquery against the
+newest `printer_readings.status` row (the same value `PrinterService::get`
+surfaces as `PrinterDto.status`). Unpolled printers (NULL latest status) are
+excluded by any non-NULL filter, included when status is `None`. Regression test
+`test_printer_list_status_filter` (`printers_sqlite.rs`).
+
 **File:** `crates/trackly-infra/src/repos/printers_sqlite.rs:317-341`
 **Issue:** The `list` WHERE clause is `(?1 IS NULL OR p.last_seen_utc IS NOT NULL)` with
 `?1` bound to `filter.status`. When a status is supplied this does NOT filter by the status
@@ -165,6 +183,14 @@ compare to `?1`), or, if status filtering is genuinely deferred, drop the mislea
 and document that `PrinterFilter.status` is currently ignored.
 
 ### WR-06: `transition_in_tx` `affected == 0` collapses lock-mismatch into `NotFound`
+
+**Status:** ✅ RESOLVED (2026-06-24) — the `affected == 0` branch now re-reads the
+row and returns `NotFound` only when truly absent, `OptimisticLockMismatch` when
+it exists with a moved version (mirroring `request_service::delete()`). The UI
+special-cases `OptimisticLockMismatch` as "reload and retry" rather than
+"request gone". Regression test
+`test_request_transition_stale_version_is_optimistic_lock_mismatch`
+(`requests_sqlite.rs`).
 
 **File:** `crates/trackly-infra/src/repos/requests_sqlite.rs:153-189`
 **Issue:** `transition_in_tx` fetches the row, version-checks → `OptimisticLockMismatch`,

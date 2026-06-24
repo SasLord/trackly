@@ -314,11 +314,25 @@ impl PrinterRepository for SqlitePrinterRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
+        // WR-05: filter on the printer's ACTUAL latest status, not merely
+        // "has ever been polled". The displayed status (PrinterDto.status) is
+        // the most-recent `printer_readings.status` row (PrinterService::get →
+        // get_last_reading), so the filter compares the same value: a
+        // correlated subquery picks the newest reading's status per printer and
+        // matches it against `?1`. A printer with no readings yet has a NULL
+        // latest status, so it never matches a non-NULL status filter (and is
+        // always included when `?1 IS NULL`). The count and list queries share
+        // this clause so paginated totals stay consistent with the page.
+        const STATUS_FILTER: &str = "(?1 IS NULL OR ( \
+            SELECT pr.status FROM printer_readings pr \
+             WHERE pr.printer_id = p.id \
+             ORDER BY pr.ts_utc DESC, pr.id DESC \
+             LIMIT 1 \
+        ) = ?1)";
+
         let total: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM printers p \
-                 LEFT JOIN devices d ON d.id = p.device_id \
-                 WHERE (?1 IS NULL OR p.last_seen_utc IS NOT NULL)",
+                &format!("SELECT COUNT(*) FROM printers p WHERE {STATUS_FILTER}"),
                 params![filter.status.as_deref()],
                 |r| r.get(0),
             )
@@ -327,7 +341,7 @@ impl PrinterRepository for SqlitePrinterRepository {
         let mut stmt = conn
             .prepare(&format!(
                 "{SELECT_PRINTERS} \
-                 WHERE (?1 IS NULL OR p.last_seen_utc IS NOT NULL) \
+                 WHERE {STATUS_FILTER} \
                  ORDER BY p.id DESC \
                  LIMIT ?2 OFFSET ?3"
             ))
@@ -659,6 +673,117 @@ mod tests {
         assert!(
             row.usb_host_device_id.is_none(),
             "usb_host_device_id should be None when not configured"
+        );
+    }
+
+    /// WR-05 regression: `list`'s status filter must match the printer's
+    /// ACTUAL latest reading status, not merely "ever polled". Before the fix
+    /// the clause was `?1 IS NULL OR p.last_seen_utc IS NOT NULL`, which
+    /// ignored the requested status value entirely (a silent no-op).
+    #[test]
+    fn test_printer_list_status_filter() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+
+        // Two printers: one whose latest reading is "ok", one "error".
+        let make_printer = |conn: &mut Connection, status: &str| -> i64 {
+            let device_id = seed_device(conn);
+            let printer_id = {
+                let tx = conn.transaction().expect("tx");
+                let id = repo
+                    .create_in_tx(
+                        &tx,
+                        &PrinterNew {
+                            device_id,
+                            ip_address: Some("192.168.1.1".to_string()),
+                            community_raw: "public".to_string(),
+                            snmp_version: "v2c".to_string(),
+                            oid_profile_id: None,
+                            usb_host_device_id: None,
+                        },
+                        now,
+                    )
+                    .expect("create printer");
+                tx.commit().expect("commit");
+                id
+            };
+            // Older reading with a different status to prove "latest wins".
+            {
+                let tx = conn.transaction().expect("tx");
+                repo.upsert_reading_in_tx(&tx, printer_id, now - 100, "{}", None, "warning")
+                    .expect("old reading");
+                repo.upsert_reading_in_tx(&tx, printer_id, now, "{}", None, status)
+                    .expect("latest reading");
+                tx.commit().expect("commit");
+            }
+            printer_id
+        };
+
+        let ok_printer = make_printer(&mut conn, "ok");
+        let error_printer = make_printer(&mut conn, "error");
+
+        let filter = |conn: &Connection, status: Option<&str>| -> (Vec<i64>, u64) {
+            let f = PrinterFilter {
+                status: status.map(|s| s.to_string()),
+                search: None,
+            };
+            let (rows, total) = repo.list(conn, &f, &Pagination::default()).expect("list");
+            (rows.into_iter().map(|r| r.id).collect(), total)
+        };
+
+        // status = "ok" → only the ok printer.
+        let (ids, total) = filter(&conn, Some("ok"));
+        assert_eq!(total, 1, "exactly one printer has latest status 'ok'");
+        assert_eq!(ids, vec![ok_printer], "filter 'ok' must return ok printer");
+
+        // status = "error" → only the error printer.
+        let (ids, total) = filter(&conn, Some("error"));
+        assert_eq!(total, 1, "exactly one printer has latest status 'error'");
+        assert_eq!(
+            ids,
+            vec![error_printer],
+            "filter 'error' must return error printer"
+        );
+
+        // status = "offline" (no printer matches) → empty, NOT all rows.
+        let (ids, total) = filter(&conn, Some("offline"));
+        assert_eq!(total, 0, "no printer has latest status 'offline'");
+        assert!(ids.is_empty(), "filter 'offline' must return nothing");
+
+        // status = None → both printers.
+        let (ids, total) = filter(&conn, None);
+        assert_eq!(total, 2, "no filter → all printers");
+        assert!(ids.contains(&ok_printer) && ids.contains(&error_printer));
+
+        // A printer with NO readings is excluded by any non-NULL status filter
+        // (latest status is NULL) but included when status is None.
+        let _unpolled = {
+            let device_id = seed_device(&mut conn);
+            let tx = conn.transaction().expect("tx");
+            let id = repo
+                .create_in_tx(
+                    &tx,
+                    &PrinterNew {
+                        device_id,
+                        ip_address: Some("192.168.1.9".to_string()),
+                        community_raw: "public".to_string(),
+                        snmp_version: "v2c".to_string(),
+                        oid_profile_id: None,
+                        usb_host_device_id: None,
+                    },
+                    now,
+                )
+                .expect("create unpolled printer");
+            tx.commit().expect("commit");
+            id
+        };
+        let (_ids, total_ok) = filter(&conn, Some("ok"));
+        assert_eq!(total_ok, 1, "unpolled printer must not match a status filter");
+        let (_ids, total_all) = filter(&conn, None);
+        assert_eq!(
+            total_all, 3,
+            "unpolled printer is included when status is None"
         );
     }
 

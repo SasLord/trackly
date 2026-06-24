@@ -4,7 +4,7 @@
 //! All SQL is parameterised through `rusqlite::params![...]`. No user input is
 //! ever concatenated into query strings — SQL injection is structurally impossible.
 
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trackly_core::domain::printers::RequestTransitionOp;
 use trackly_core::domain::requests::{
     Pagination, RequestCounts, RequestFilter, RequestNew, RequestRow,
@@ -171,18 +171,38 @@ impl SqliteRequestRepository {
             .map_err(map_rusqlite)?;
 
         if affected == 0 {
-            // WR-03: `fetch_in_tx` above already validated existence
-            // (deleted_at_utc IS NULL) AND `current.version == version`, and the
-            // UPDATE's WHERE clause uses that same version. Inside this single
-            // transaction the only way the UPDATE can touch 0 rows after the
-            // fetch succeeded is that the row was concurrently soft-deleted
-            // (deleted_at_utc became non-NULL). It is NOT a version mismatch —
-            // reporting `actual: current.version + 1` would fabricate a
-            // non-existent concurrent edit and send a debugger chasing a ghost.
-            return Err(AppError::NotFound {
-                entity: "request",
-                id: request_id,
-            });
+            // WR-06: do NOT collapse every zero-row outcome into `NotFound` —
+            // the UI special-cases `OptimisticLockMismatch` as "reload and
+            // retry" but renders `NotFound` as "request gone", so misclassifying
+            // a version conflict here misleads the operator. The early
+            // `current.version != version` check above already returns
+            // `OptimisticLockMismatch` for the common stale-version case, so in
+            // single-writer mode this branch is normally unreachable; we still
+            // disambiguate defensively (mirroring `request_service::delete()`):
+            // re-read the row and report `NotFound` only when it is truly absent
+            // (or soft-deleted), `OptimisticLockMismatch` when it exists but its
+            // version has moved past the expected one.
+            let actual: Option<i64> = tx
+                .query_row(
+                    "SELECT version FROM requests \
+                     WHERE id = ?1 AND deleted_at_utc IS NULL",
+                    params![request_id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(map_rusqlite)?;
+            return match actual {
+                None => Err(AppError::NotFound {
+                    entity: "request",
+                    id: request_id,
+                }),
+                Some(actual) => Err(AppError::OptimisticLockMismatch {
+                    entity: "request",
+                    id: request_id,
+                    expected: version,
+                    actual,
+                }),
+            };
         }
 
         Ok(())
@@ -619,6 +639,54 @@ mod tests {
 
         let row2 = repo.get(&conn, request_id).expect("get after complete");
         assert_eq!(row2.status, "completed");
+    }
+
+    /// WR-06 regression: a transition with a stale `version` must surface as
+    /// `OptimisticLockMismatch` (UI: "reload and retry"), never as `NotFound`
+    /// (UI: "request gone"). Guards both the early version-check and the
+    /// disambiguated `affected == 0` branch — the two paths must agree that a
+    /// version conflict on an existing row is a lock mismatch.
+    #[test]
+    fn test_request_transition_stale_version_is_optimistic_lock_mismatch() {
+        let (mut conn, _g) = fresh_conn();
+        let user_id = seed_user(&mut conn, "Волков");
+        let repo = SqliteRequestRepository;
+        let now = 1_700_000_000_i64;
+
+        let new = RequestNew {
+            request_type: "free_form".to_string(),
+            requested_by_user_id: user_id,
+            printer_device_id: None,
+            cartridge_model_id: None,
+            category_id: None,
+            description: None,
+            ad_subtype: None,
+        };
+
+        let request_id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo.insert_in_tx(&tx, &new, now).expect("insert");
+            tx.commit().expect("commit");
+            id
+        };
+
+        // Row is at version 1; pass a stale version 99.
+        let tx = conn.transaction().expect("tx");
+        let err = repo
+            .transition_in_tx(
+                &tx,
+                request_id,
+                99,
+                &RequestTransitionOp::Accept,
+                None,
+                None,
+                now + 1,
+            )
+            .expect_err("stale version must fail");
+        assert!(
+            matches!(err, AppError::OptimisticLockMismatch { actual: 1, expected: 99, .. }),
+            "expected OptimisticLockMismatch (not NotFound), got: {err:?}"
+        );
     }
 
     #[test]
