@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: executing
-last_updated: "2026-06-24T23:26:56.886Z"
-last_activity: 2026-06-24
+status: verifying
+last_updated: "2026-06-24T23:45:26.146Z"
+last_activity: 2026-06-25
 progress:
   total_phases: 15
   completed_phases: 15
@@ -324,7 +324,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T23:26:56.878Z
-Stopped at: Completed 12-20-PLAN.md (Round 4 gap-closure: GAP-12-11, GAP-12-12 п.1/3 closed)
+Last session: 2026-06-24T23:45:26.138Z
+Stopped at: Phase 12 Round 4 executed + verified (code-level passed); awaiting live UAT
 Resume file: 
-None
+.planning/phases/12-cartridge-request-interconnection/12-VERIFICATION-ROUND4.md
