@@ -474,13 +474,15 @@ impl SqliteCartridgeRepository {
 
         // 5b. D-16/D-17: if installing into a printer that already has another
         // cartridge "В работе", auto-return that previous cartridge to stock in
-        // the SAME transaction (DISC-06) — reuses the new install's given_by_name
-        // as the implicit actor (D-17, no extra fields). printer_device_id=None
+        // the SAME transaction (DISC-06) — records an INVERTED actor from the
+        // new install's given_by/given_to (GAP-12-12, see below). printer_device_id=None
         // (D-08 legacy cartridge-centric entry) performs no lookup — no regression.
         if let CartridgeTransitionOp::Install {
             printer_device_id: Some(pid),
             previous_cartridge_state_id,
             previous_cartridge_location,
+            given_by_name: install_given_by_name,
+            given_to_name: install_given_to_name,
             ..
         } = op
         {
@@ -545,7 +547,25 @@ impl SqliteCartridgeRepository {
                     location: resolved_location.to_string(),
                     notes: None,
                 };
-                let prev_payload_json = Self::op_payload_json(&auto_return_op);
+                // GAP-12-12: record an INVERTED actor in the auto-return's own
+                // payload_json — the new install's given_to_name (the
+                // recipient of the new cartridge) is the one who *hands back*
+                // the previous cartridge, and the new install's given_by_name
+                // (the issuer/warehouse) is the one who *receives* it. Keys
+                // are exactly given_by_name/given_to_name so the existing
+                // history UI (CartridgeDetail.svelte parsePayload) renders
+                // them without changes. ReturnToStock has no actor fields by
+                // design — op_payload_json() (used for direct, user-initiated
+                // returns) is intentionally left untouched.
+                let prev_payload_json = json!({
+                    "op": "return_to_stock",
+                    "state_id": resolved_state_id,
+                    "location": resolved_location,
+                    "notes": null,
+                    "given_by_name": install_given_to_name,
+                    "given_to_name": install_given_by_name,
+                })
+                .to_string();
 
                 let audit_repo = SqliteAuditLogRepository;
                 audit_repo.insert(
