@@ -38,7 +38,9 @@
             : 'Нет данных',
   );
 
-  const locationLabel = $derived<string>(
+  const locationText = $derived<string>(printer.deviceLocation ?? '—');
+
+  const ipText = $derived<string>(
     printer.ipAddress ? printer.ipAddress : printer.usbHostDeviceId ? 'USB' : '—',
   );
 
@@ -91,10 +93,11 @@
     </span>
   </div>
   <div class="bottom">
-    <span class="location">{locationLabel}</span>
+    <span class="row-location">{locationText}</span>
     {#if tonerSummary}
       <span class="toner-hint">{tonerSummary}</span>
     {/if}
+    <span class="row-ip">{ipText}</span>
   </div>
 </div>
 
@@ -164,12 +167,22 @@
     color: var(--color-text-secondary);
   }
 
-  .location {
-    font-variant-numeric: tabular-nums;
+  .row-location {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .toner-hint {
     color: var(--color-text-muted);
     font-size: var(--font-size-label);
+    flex-shrink: 0;
+  }
+
+  .row-ip {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
   }
 </style>
