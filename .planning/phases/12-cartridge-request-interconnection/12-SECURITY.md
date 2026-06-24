@@ -4,16 +4,19 @@ slug: cartridge-request-interconnection
 status: secured
 threats_open: 0
 threats_total: 31
-threats_closed: 10
+threats_closed: 11
 threats_accepted: 21
 register_authored_at_plan_time: true
 asvs_level: 1
 block_on: high
-accepted_risks:
+accepted_risks: []
+resolved_findings:
   - id: WR-04
     severity: medium
-    summary: "Manager can requests_delete an ad_register request, orphaning the linked users row; fix tracked in follow-up task"
+    status: closed
+    summary: "Manager could requests_delete an ad_register request → orphaned users row. CLOSED: ad_register delete now requires ManageUsers (Admin-only); Manager is blocked. Per product decision Admin delete leaves the linked users row untouched (managed separately via the users section). Commit after ee58ca6."
 created: 2026-06-24
+updated: 2026-06-24
 ---
 
 # SECURITY.md — Phase 12: cartridge-request-interconnection
@@ -34,11 +37,11 @@ All `accept`-disposition threats are logged below. No executor-reported
 unregistered attack surface (both `## Threat Flags` sections explicitly declare
 "no new surface").
 
-One out-of-register finding (**WR-04**, from 12-REVIEW.md) is a real but
-**MEDIUM** data-integrity gap on the new `requests_delete` endpoint. It is below
-the `high` block threshold; the user **explicitly accepted it as a documented risk
-(2026-06-24)** with the fix tracked in a follow-up task. `threats_open: 0` — the
-phase is not blocked. WR-04 is logged in the accepted-risks section below.
+One out-of-register finding (**WR-04**, from 12-REVIEW.md) — a MEDIUM data-integrity
+gap on `requests_delete` — was **fixed on 2026-06-24**: deleting an `ad_register`
+request now requires Admin (`ManageUsers`), so a Manager can no longer remove a
+request governing an AD account. Per product decision an Admin delete leaves the
+linked `users` row untouched. `threats_open: 0`. See the resolved-findings section below.
 
 ---
 
@@ -90,12 +93,18 @@ holds against the implementation; no SECURITY.md remediation required.
 
 ---
 
-## Accepted out-of-register findings
+## Resolved out-of-register findings
 
-### WR-04 — Manager can delete an `ad_register` request, orphaning the linked user row
+### WR-04 — Manager could delete an `ad_register` request, orphaning the linked user row
 
-**Disposition: ACCEPTED (documented risk) — user decision 2026-06-24.** Below the
-`high` block threshold; fix tracked in a follow-up task. Does not block Phase 12.
+**Disposition: CLOSED — fixed 2026-06-24.** `RequestService::delete()` now requires
+`Action::ManageUsers` (Admin-only) to delete an `ad_register` request; a Manager is
+returned `Forbidden`. Per product decision (user, 2026-06-24) an Admin delete soft-deletes
+only the request record and leaves the linked `users` row untouched — the admin manages the
+account separately via the users section. Covered by `request_lifecycle.rs`:
+`delete_ad_register_request_manager_forbidden` and
+`delete_ad_register_request_admin_succeeds_user_untouched`. The original "refuse outright"
+guard (which also blocked Admin) is removed.
 
 - **Source:** 12-REVIEW.md (code review), NOT in any plan-time `<threat_model>` register.
 - **Category:** Tampering / data-integrity (secondary Elevation-of-Privilege flavor).
