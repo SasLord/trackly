@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-24T15:43:29.008Z"
+last_updated: "2026-06-24T15:52:33.189Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 15
   completed_phases: 14
   total_plans: 95
-  completed_plans: 92
+  completed_plans: 93
   percent: 93
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 12-19 complete (Round 3 gap-closure, GAP-12-12 closed)
+Plan: 12-17 complete (Round 3 gap-closure, GAP-12-10 closed — connectWs() refcounted singleton)
 Status: Ready to execute
 Last activity: 2026-06-24
 
@@ -131,6 +131,7 @@ Last activity: 2026-06-24
 | Phase 12 P12 | 12min | 2 tasks | 1 files |
 | Phase 12 P15 | 5min | 3 tasks | 2 files |
 | Phase 12 P19 | 18min | 2 tasks | 2 files |
+| Phase 12 P17 | 12min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -278,6 +279,7 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 12-15: combined Tasks 2+3 into one commit since both modify the same RequestDetail.svelte if/else-if chain; isOwnRequest condition simplified by dropping redundant isAdRegister check (already guaranteed by parent chain)
 - [Phase 12]: 12-19: Inverted actor computed server-side from the triggering Install op's given_by_name/given_to_name (no new payload fields) — closes Tampering threat T-12-19-02 by construction
 - [Phase 12]: 12-19: Collapsed Install vs ReturnToStock/ToRefill/FromRefill/WriteOff UPDATE branches in transition_in_tx into one — current_printer_device_id is now always written, fixing a latent bug where direct (non-auto) returns left a stale printer link
+- [Phase 12]: 12-17: connectWs() refcounted singleton (refCount + activeCleanup module state) replaces single-shot disconnectFn; idempotency keyed on refCount not ws!==null since browser branch nulls ws on every reconnect — fixes GAP-12-10 duplicate WS toasts without touching the 3 call sites
 
 ### Pending Todos
 
@@ -315,7 +317,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T15:43:29.000Z
-Stopped at: Completed 12-19-PLAN.md
+Last session: 2026-06-24T15:52:14.480Z
+Stopped at: Completed 12-17-PLAN.md
 Resume file: 
 None
