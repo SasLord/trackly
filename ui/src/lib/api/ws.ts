@@ -1,4 +1,5 @@
 // Plan 06-04: Dual-transport WebSocket client.
+// Plan 12-17 (GAP-12-10): refcounted singleton — see connectWs() below.
 //
 // Browser path: native WebSocket → /api/v1/ws, exponential backoff reconnect.
 // Tauri path: @tauri-apps/api/event listen('trackly-event') — no WS server needed.
@@ -17,7 +18,17 @@ let handlers: WsEventHandler[] = [];
 let ws: WebSocket | null = null;
 let reconnectDelay = 1000;
 let reconnecting = false;
-let disconnectFn: (() => void) | null = null;
+
+// Plan 12-17: refcounted singleton state. Multiple onMount call sites
+// (EmployeeLayout, RequestsPage, PrintersPage) each call connectWs() — without
+// a refcount each call opened its OWN WebSocket/listen subscription, so a
+// single backend event fanned out into N toasts (GAP-12-10). `refCount` is the
+// source of truth for idempotency (NOT `ws !== null` — the browser branch nulls
+// `ws` on every reconnect cycle, so that check is unreliable across retries).
+// `activeCleanup` replaces the old single-shot `disconnectFn` and is the one
+// real teardown (Tauri unlisten / browser ws.close) shared by every consumer.
+let refCount = 0;
+let activeCleanup: (() => void) | null = null;
 
 export function onWsEvent(handler: WsEventHandler): () => void {
   handlers.push(handler);
@@ -63,6 +74,15 @@ function connectBrowser(): void {
 
   ws.onclose = () => {
     ws = null;
+    // Plan 12-17: once the last consumer has released the singleton,
+    // `activeCleanup` (set below) nulls this very `onclose` handler before
+    // calling `ws.close()` — so in practice this branch only runs while
+    // refCount > 0. The explicit guard is defence-in-depth in case a stray
+    // close event fires in between (e.g. a server-initiated close raced with
+    // release()) — it must NOT resurrect a connection nobody asked for.
+    if (refCount <= 0) {
+      return;
+    }
     // Show the "reconnecting" toast at most once per disconnection episode.
     // `reconnecting` stays true across the whole backoff sequence and is only
     // reset on a successful onopen, so a failing connection (e.g. an untrusted
@@ -84,33 +104,62 @@ function connectBrowser(): void {
   };
 }
 
+// Plan 12-17: refcounted singleton. Public contract unchanged — every caller
+// still gets back a release function and calls it on teardown — but only the
+// FIRST concurrent caller (refCount 0→1) actually opens a connection
+// (Tauri listen() or browser WebSocket). Each subsequent caller shares that
+// same connection and gets a release() that just decrements the count.
+// The real close()/unlisten() only runs when the LAST consumer releases
+// (refCount 1→0), which is what fixes GAP-12-10 (duplicate toasts from N
+// independent sockets all dispatching the same backend event).
 export async function connectWs(): Promise<() => void> {
-  if (isTauri) {
-    // Tauri path: native events, no WebSocket needed.
-    const { listen } = await import('@tauri-apps/api/event');
-    const unlisten = await listen<WsEvent>('trackly-event', (e) => {
-      dispatch(e.payload);
-    });
-    disconnectFn = unlisten;
-    return unlisten;
+  refCount += 1;
+
+  if (refCount === 1) {
+    // First consumer: establish the real connection.
+    if (isTauri) {
+      // Tauri path: native events, no WebSocket needed.
+      const { listen } = await import('@tauri-apps/api/event');
+      const unlisten = await listen<WsEvent>('trackly-event', (e) => {
+        dispatch(e.payload);
+      });
+      activeCleanup = unlisten;
+    } else {
+      // Browser path.
+      connectBrowser();
+      activeCleanup = () => {
+        if (ws) {
+          ws.onclose = null; // Prevent reconnect loop on intentional close.
+          ws.close();
+          ws = null;
+        }
+        // Reset reconnect state so a future first-consumer connectWs() call
+        // starts a fresh backoff/toast cycle instead of inheriting stale state.
+        reconnecting = false;
+        reconnectDelay = 1000;
+      };
+    }
   }
 
-  // Browser path.
-  connectBrowser();
-  const cleanup = () => {
-    if (ws) {
-      ws.onclose = null; // Prevent reconnect loop on intentional close.
-      ws.close();
-      ws = null;
+  let released = false;
+  return () => {
+    if (released) {
+      // Idempotent: a consumer calling its release twice must not double-decrement.
+      return;
+    }
+    released = true;
+    refCount = Math.max(0, refCount - 1);
+    if (refCount === 0 && activeCleanup) {
+      activeCleanup();
+      activeCleanup = null;
     }
   };
-  disconnectFn = cleanup;
-  return cleanup;
 }
 
 export function disconnectWs(): void {
-  if (disconnectFn) {
-    disconnectFn();
-    disconnectFn = null;
+  refCount = 0;
+  if (activeCleanup) {
+    activeCleanup();
+    activeCleanup = null;
   }
 }
