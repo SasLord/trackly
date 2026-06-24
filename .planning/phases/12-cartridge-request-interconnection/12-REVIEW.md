@@ -1,168 +1,174 @@
 ---
 phase: 12-cartridge-request-interconnection
-reviewed: 2026-06-24T00:00:00Z
+reviewed: 2026-06-25T00:00:00Z
 depth: standard
-files_reviewed: 5
+files_reviewed: 2
 files_reviewed_list:
-  - crates/trackly-infra/src/repos/cartridges_sqlite.rs
-  - crates/trackly-app/tests/cartridges_lifecycle.rs
+  - ui/src/lib/components/PrinterSelect.svelte
   - ui/src/features/cartridges/OperationModal.svelte
-  - ui/src/features/printers/PrinterListRow.svelte
-  - ui/src/lib/api/ws.ts
 findings:
   critical: 0
-  warning: 4
-  info: 3
+  warning: 3
+  info: 4
   total: 7
 status: issues_found
 ---
 
-# Phase 12: Code Review Report
+# Phase 12: Code Review Report (Round 4 gap-closure, plan 12-20)
 
-**Reviewed:** 2026-06-24
+**Reviewed:** 2026-06-25
 **Depth:** standard
-**Files Reviewed:** 5
+**Files Reviewed:** 2
 **Status:** issues_found
 
 ## Summary
 
-Round 3 gap-closure (GAP-12-09..12, plans 12-16..12-19) reviewed against diff base
-`f6b5dbc`. Scope was limited to the changes in the five listed files: the
-single-UPDATE refactor + inverted-actor auto-return in the cartridge repo, the
-previous-cartridge lookup widening in OperationModal, the PrinterListRow IP/location
-column split, and the refcounted WebSocket singleton.
+Scope was strictly the diff since `a6227c3` in two files: the brand-new `PrinterSelect.svelte`
+and the optional-printer-selection wiring added to `OperationModal.svelte`
+(`selectedPrinterId` $state, `effectivePrinterId = preFillPrinterId ?? selectedPrinterId`,
+the new printer-list/compat `$effect`, and the `printer_device_id` payload generalization).
 
-No BLOCKER-tier defects: all SQL is parameterised, the `state_id` FK prevents hard
-crashes, and the auto-return runs inside the install transaction. However there are
-four WARNING-tier correctness gaps — the most material being a drum-vs-cartridge
-state mismatch in the auto-return defaults (backend) and its matching frontend
-Select, plus two async-lifecycle bugs in the new WS singleton that can leak or tear
-down connections out from under live consumers.
+Overall the reactive wiring is sound: the `effectivePrinterId` precedence (request-centric
+`preFillPrinterId` wins over the new local `selectedPrinterId`) is correct, the optionality
+contract holds (`undefined` → `printer_device_id: null`, no regression to the legacy
+printer-less path), and the gating predicates on the three relevant `$effect`s correctly
+isolate the new cartridge-centric branch from the request-centric and pre-filled flows.
+`svelte-check` reports 0 errors and 0 warnings for both files; the `PrinterListItemDto`
+type-alias deviation compiles cleanly.
 
-## Narrative Findings (AI reviewer)
+No blockers. The most material finding is a silent server-side pagination cap (WR-01) that
+makes the new selector incomplete on fleets larger than 200 printers — including, potentially,
+the compatible target printer the operator is looking for. Two smaller correctness/robustness
+warnings and four quality items follow.
+
+Note on the `printers.get(deviceId)` / `printer_device_id` id convention: the new code feeds
+`effectivePrinterId` (a *device* id, since the option `value` is `p.deviceId`) into
+`printers.get()`. This mirrors the **pre-existing** request-centric path
+(`printers.get(preFillPrinterId)` where `preFillPrinterId = request.printerDeviceId`, also a
+device id) verbatim — confirmed against `a6227c3`. `printers_get` resolves `WHERE p.id = ?1`
+(printer record id, not device id). If that mismatch is a real bug it is **pre-existing and
+out of scope** for this diff; the new code introduces no *new* inconsistency because it follows
+the exact same convention as the verified request-centric flow. Flagged here for traceability
+only, not as a finding against this change.
 
 ## Warnings
 
-### WR-01: Auto-return hardcodes cartridge-only state 3 (Пустой) for the previous cartridge — invalid for photo-drums
+### WR-01: New printer selector silently truncated to 200 entries — compatible printer may be unreachable
 
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:474`
-**Issue:** The auto-return resolves the previous cartridge's new state with
-`let resolved_state_id = previous_cartridge_state_id.unwrap_or(3);`. State 3
-(Пустой) is a *cartridge* charge state. Drums (kind_id=2) use states 4/5/6
-(Новый/Изношенный/Отработанный) — a distinction enforced everywhere else in this
-phase (see `installable_only` kind branching at lines 1094-1095 and test
-`installable_only_includes_new_drum_excludes_spent_drum`). When the cartridge being
-auto-returned is a drum and no override was supplied (the cartridge-centric path,
-where the frontend cannot even supply a valid drum state — see WR-02), the drum is
-silently written to a nonsensical cartridge state. The FK to `cartridge_states(id)`
-is satisfied (state 3 exists), so there is no crash — the corruption is silent and
-surfaces later as a drum displaying "Пустой". The auto-returned cartridge's kind is
-available from the `prev_current` snapshot taken at line 491.
-**Fix:**
-```rust
-// Reorder so the snapshot is taken before resolving the default:
-let prev_current = self.fetch_in_tx(tx, prev_id)?;
-let default_state = if prev_current.model_kind_id == Some(2) { 6 } else { 3 };
-let resolved_state_id = previous_cartridge_state_id.unwrap_or(default_state);
-```
-
-### WR-02: Previous-cartridge state Select offers only cartridge states (1/2/3) even when the previous cartridge is a drum
-
-**File:** `ui/src/features/cartridges/OperationModal.svelte:506-514` (and defaults at lines 100, 131)
-**Issue:** The «Предыдущий картридж» block hardcodes three `<option>`s
-(Полный/Частичный/Пустой = 1/2/3). When `previousCartridge.model_kind_id === 2`
-(photo-drum), the operator can only pick a cartridge state, never the correct drum
-states (4/5/6). The component already derives drum-aware options for the main field
-(`DRUM_STATES` / `stateOptions`, lines 295-300) but the previous-cartridge block
-ignores them. Combined with WR-01, a drum auto-returned over another drum is
-guaranteed to get a wrong state regardless of operator action. The default
-`previousCartridgeStateId = 3` (lines 100, 131) is likewise a cartridge state.
-**Fix:** Derive the options from `previousCartridge.model_kind_id` and default the
-state when a drum resolves:
-```svelte
-{#each (previousCartridge?.model_kind_id === 2 ? DRUM_STATES : CARTRIDGE_STATES) as opt (opt.value)}
-  <option value={String(opt.value)}>{opt.label}</option>
-{/each}
-```
-
-### WR-03: `connectWs()` async race can leak or orphan the underlying connection
-
-**File:** `ui/src/lib/api/ws.ts:115-142`
-**Issue:** `refCount` is incremented synchronously, but the real connection is
-established asynchronously (`await import(...)`, then `await listen(...)` on the
-Tauri path). If a consumer releases while establishment is still pending, the
-`refCount === 0 && activeCleanup` teardown observes `activeCleanup === null` (it is
-assigned only after the awaits), so the `unlisten`/cleanup that resolves afterward
-is stored and never invoked — the listener leaks and keeps dispatching events,
-defeating the GAP-12-10 goal. Sequence: A `connectWs()` (0→1, awaiting) → B
-`connectWs()` (1→2) → B release (2→1) → A release (1→0, but `activeCleanup` still
-null) → `listen` resolves and assigns an orphaned `activeCleanup`.
-**Fix:** After establishment completes inside the `refCount === 1` block, re-check
-and tear down if the count already fell to zero:
+**File:** `ui/src/features/cartridges/OperationModal.svelte:277`
+**Issue:** The new `$effect` loads the full printer list with
+`printers.list({ status: null, search: null }, { offset: 0, limit: 500 })`, on the assumption
+that 500 covers the whole fleet ("Full printer list" per the comment at line 165). But the
+backend hard-clamps the page size: `let limit = page.limit.min(200)` in
+`crates/trackly-infra/src/repos/printers_sqlite.rs:314`. So at most **200** printers are
+returned, there is no second-page fetch, and `printerOptions` is silently incomplete on any
+deployment with >200 printers. Because the truncation happens *before* grouping (server-side
+`ORDER BY p.id DESC LIMIT 200`), a compatible printer that falls outside the first 200 will be
+absent from both the «Совместимые принтеры» and «Остальные принтеры» groups — the operator
+simply cannot select it, with no error or "showing 200 of N" indication.
+**Fix:** Either page through until exhausted, or (simpler, since this selector wants the whole
+fleet) add a dedicated unpaginated/compat-filtered list command. Minimal interim mitigation —
+fetch in a loop until exhausted:
 ```ts
-if (refCount === 1) {
-  // ...establish, assign activeCleanup...
-  if (refCount === 0 && activeCleanup) { activeCleanup(); activeCleanup = null; }
+const all: PrinterListItemDto[] = [];
+let offset = 0;
+const limit = 200; // match the server cap; don't request 500 and assume it's honored
+// eslint-disable-next-line no-constant-condition
+while (true) {
+  const res = await printers.list({ status: null, search: null }, { offset, limit });
+  all.push(...res.items);
+  if (res.items.length < limit || all.length >= res.total) break;
+  offset += limit;
 }
+printerOptions = all;
 ```
-or have `release()` await the in-flight establishment promise before tearing down.
+At minimum, change `limit: 500` → `limit: 200` so the request reflects what the server actually
+honors, and add a TODO documenting the >200 gap.
 
-### WR-04: `disconnectWs()` leaves stale release closures that can decrement a freshly-established connection to zero
+### WR-02: Option value/label use `deviceId`, the device-vs-record id convention is now user-visible
 
-**File:** `ui/src/lib/api/ws.ts:144-165`
-**Issue:** `disconnectWs()` force-sets `refCount = 0` and runs `activeCleanup()`, but
-consumers that obtained a `release` from an earlier `connectWs()` still hold
-`released === false`. After a `disconnectWs()`, if a component remounts and calls
-`connectWs()` (refCount 0→1, new connection), an *old* consumer's later release runs
-`refCount = Math.max(0, refCount - 1)` → 0 and tears down the live connection out
-from under the new consumer. There is no generation/epoch to invalidate release
-closures created before a `disconnectWs()`.
-**Fix:** Capture an epoch per call and no-op the release if the epoch advanced:
+**File:** `ui/src/lib/components/PrinterSelect.svelte:38-41`, `85`/`92`
+**Issue:** `printerLabel` renders `Принтер #${p.deviceId}` when `deviceName` is null, and the
+option `value` is also `String(p.deviceId)`. That is internally consistent for this component,
+but `deviceId` here is the device foreign key, while `printers.get(id)` / `printers_get` key on
+the printer *record* id (`p.id`, `WHERE p.id = ?1`). The value emitted (`deviceId`) becomes
+`effectivePrinterId` and is passed to the pre-existing `printers.get(effectivePrinterId)`
+lookup. This is the surface where the device-id-vs-record-id convention (see Summary) becomes
+user-visible and, if the underlying lookup convention is wrong, will manifest as "I picked
+printer #7 but it loaded the wrong device / nothing." Confirm the round-trip on real data before
+shipping.
+**Fix:** Verify on a dataset where `device_id != printers.id` (not the trivial seed where they
+coincide). If `printers_get` truly needs `p.id`, the option value must be `p.id` while a separate
+`deviceId` is carried for the `printer_device_id` payload — they are not interchangeable. If the
+device-id convention is in fact correct app-wide, add a comment in `PrinterSelect` documenting
+that the emitted value is intentionally `deviceId` (matching `printer_device_id` /
+`preFillPrinterId`) to prevent a future "fix" to `p.id`.
+
+### WR-03: Previous-cartridge location has no validation in the newly-reachable cartridge-centric printer path
+
+**File:** `ui/src/features/cartridges/OperationModal.svelte:204-230`, `383-385`, `427-455`
+**Issue:** The new selector means the «Предыдущий картридж» block (state/location editors) can
+now appear in the *cartridge-centric* install flow too — previously it only surfaced via the
+request-centric `preFillPrinterId`. When `previousCartridge !== null`, `buildPayload()` sends
+`previous_cartridge_location: previousCartridgeLocation` (default `''`). `validate()` checks the
+new cartridge's `location`/`givenBy`/`givenTo` but never the previous cartridge's location, so
+the displaced cartridge can be returned to an empty location string. The new selector widens the
+set of paths that can hit this gap.
+**Fix:** If the backend treats `previous_cartridge_location: ""` as "unknown/stock", confirm that
+is acceptable; otherwise validate it when `previousCartridge !== null`:
 ```ts
-const myEpoch = epoch;        // module-scope `let epoch = 0`
-return () => {
-  if (released || myEpoch !== epoch) return;
-  released = true;
-  refCount = Math.max(0, refCount - 1);
-  if (refCount === 0 && activeCleanup) { activeCleanup(); activeCleanup = null; }
-};
-// disconnectWs(): epoch += 1; refCount = 0; ...
+if (op === 'install' && previousCartridge !== null && !previousCartridgeLocation.trim()) {
+  valid = false; // surface a field error for op-prev-location
+}
 ```
 
 ## Info
 
-### IN-01: Inverted-actor payload duplicates `op_payload_json` instead of extending it
+### IN-01: `$bindable('')` on `value` is dead — the prop is consumed one-way
 
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:545-553`
-**Issue:** The auto-return hand-builds a `return_to_stock` payload inline with
-inverted actor keys, diverging from `op_payload_json` (lines 626-635) which builds
-the same shape without actor fields. The inline JSON is correct today but the two
-will drift if the payload schema changes.
-**Fix:** Factor out a base-payload helper (or an optional-actor variant of
-`op_payload_json`) so the canonical shape lives in one place.
+**File:** `ui/src/lib/components/PrinterSelect.svelte:31`
+**Issue:** `value = $bindable('')` declares `value` as bindable, but the only consumer
+(`OperationModal.svelte:527`) passes it one-way (`value={...}` + `onchange`), never `bind:value`.
+The `$bindable` machinery is unused and misleads about the contract (implies two-way binding no
+caller uses).
+**Fix:** Drop `$bindable` and declare a plain prop: `value = '',`. Keep `onchange` as the single
+output channel, matching how `OperationModal` wires it.
 
-### IN-02: `ipText` column can display the literal "USB" under an IP-implying heading
+### IN-02: Two `<option value="">` entries can coexist
 
-**File:** `ui/src/features/printers/PrinterListRow.svelte:43-45`
-**Issue:** Splitting connectivity into the dedicated `.row-ip` column means the value
-shown there is sometimes the string `USB` (or `—`), not an IP. Minor UX ambiguity
-introduced by the column split; not a correctness bug.
-**Fix:** Optional — render USB as a small badge, or keep as-is.
+**File:** `ui/src/lib/components/PrinterSelect.svelte:79-81`
+**Issue:** The component always renders `<option value="">Без привязки к принтеру</option>`, and
+when `options.length === 0` *also* renders `<option value="" disabled>Принтеры не найдены</option>`.
+Two options share `value=""`; the duplicate-empty-value pairing is fragile, and the "не найдены"
+row is reachable state in the failure path (the WR-01 fail-safe sets `printerOptions = []`).
+**Fix:** Render the "не найдены" hint outside the `<select>` (as a `.field-hint`) when
+`options.length === 0`, or give it a sentinel disabled value that is never `""`.
 
-### IN-03: No test covers a drum being auto-returned (would have caught WR-01)
+### IN-03: Flat-group `{#each}` keyed by array reference is brittle
 
-**File:** `crates/trackly-app/tests/cartridges_lifecycle.rs:558-610, 946-1078`
-**Issue:** Auto-return tests cover the inverted-actor payload and the
-override/default branches for cartridges, and there is a separate drum
-`installable_only` test, but nothing installs a drum over another drum to exercise
-the auto-return default-state path. The WR-01 defect slipped through precisely
-because no test combines "auto-return" with "drum".
-**Fix:** Add a test: install drum A into a printer, install drum B into the same
-printer with `previous_cartridge_state_id: None`, then assert A's resolved state is
-a valid drum state (6=Отработанный after the WR-01 fix).
+**File:** `ui/src/lib/components/PrinterSelect.svelte:83`
+**Issue:** `{#each groups as [, printers] (printers)}` keys the outer loop by the `printers`
+array identity. In the flat branch `groups` is `[['', options]]`, so the key is the `options`
+prop reference — fine today, but array-reference keys silently break reconciliation if the parent
+passes a structurally-equal but new array, and the key is unused for rendering. The compat loop
+already keys by `(label)`, the cleaner pattern.
+**Fix:** Key by a stable string, e.g. `(label || 'all')` for both loops, or by index in the flat
+case.
+
+### IN-04: `printerContextHint` and the new selector both render after a pick — minor redundancy
+
+**File:** `ui/src/features/cartridges/OperationModal.svelte:517-541`
+**Issue:** In the cartridge-centric flow, once a printer is chosen the «Принтер (опционально)»
+selector stays visible *and* `printerContextHint` («Устанавливается в принтер: …») appears below
+it (because `effectivePrinterId` is now defined). Both describe the same target printer. Not a
+bug — the hint adds the resolved name+IP the dropdown label may lack — but worth a deliberate UX
+call.
+**Fix:** Optional. If redundancy is undesired, suppress `printerContextHint` when the selector is
+shown (`cartridge !== null && preFillPrinterId === undefined`), keeping the hint only for the
+pre-filled request-centric flow where there is no selector.
 
 ---
 
-_Reviewed: 2026-06-24_
+_Reviewed: 2026-06-25_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
