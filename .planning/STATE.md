@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: executing
-last_updated: "2026-06-24T17:03:30.870Z"
+last_updated: "2026-06-24T23:26:56.886Z"
 last_activity: 2026-06-24
 progress:
   total_phases: 15
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 96
-  completed_plans: 95
-  percent: 93
+  completed_plans: 96
+  percent: 100
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 12-18 complete (Round 3 gap-closure, GAP-12-11 closed — printer name/IP + previous-cartridge block now show in cartridge-centric install entry)
-Status: Ready to execute
-Last activity: 2026-06-24
+Plan: 12-20 complete (Round 4 gap-closure, GAP-12-11 + GAP-12-12 п.1/3 closed — optional compatibility-prioritized printer selector in cartridge-centric install entry)
+Status: Round 4 gap-closure complete — recommend re-verification before closing phase
+Last activity: 2026-06-25
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -134,6 +134,7 @@ Last activity: 2026-06-24
 | Phase 12 P17 | 12min | 1 tasks | 1 files |
 | Phase 12 P16 | 2min | 1 tasks | 1 files |
 | Phase 12 P18 | 6min | 1 tasks | 1 files |
+| Phase 12 P20 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -284,6 +285,8 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-17: connectWs() refcounted singleton (refCount + activeCleanup module state) replaces single-shot disconnectFn; idempotency keyed on refCount not ws!==null since browser branch nulls ws on every reconnect — fixes GAP-12-10 duplicate WS toasts without touching the 3 call sites
 - [Phase 12]: 12-16: renamed locationLabel (stale name — it actually held IP, not location) to ipText; new locationText derived from printer.deviceLocation closes GAP-12-09 (B1) — printer list row now shows device location left, IP/USB/"—" right via margin-left:auto
 - [Phase 12]: 12-18: closed GAP-12-11 by broadening OperationModal's printerContext/previousCartridge lookup $effect gate from `cartridge===null && preFillPrinterId!==undefined` to just `preFillPrinterId!==undefined` — cartridge-centric install entry now shows printer name+IP hint and the «Предыдущий картридж» block, same as request-centric; compatibleModels/cartridgeOptions effects intentionally kept on the narrower `cartridge===null` gate (D-08 regression guard preserved)
+- [Phase 12]: 12-20: PrinterSelect.svelte adds optional, compatibility-prioritized printer selector to cartridge-centric install (D-20/D-21); falls back to flat list when no compatibility links exist, never blocks
+- [Phase 12]: 12-20: effectivePrinterId derived (preFillPrinterId ?? selectedPrinterId) unifies request-centric and cartridge-centric printer context into one lookup/payload path; previousCartridge block (D-22) reused unchanged
 
 ### Pending Todos
 
@@ -321,7 +324,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T17:03:30.862Z
-Stopped at: Phase 12 Round 4 planned (12-20, verified PASSED)
+Last session: 2026-06-24T23:26:56.878Z
+Stopped at: Completed 12-20-PLAN.md (Round 4 gap-closure: GAP-12-11, GAP-12-12 п.1/3 closed)
 Resume file: 
-.planning/phases/12-cartridge-request-interconnection/12-20-PLAN.md
+None
