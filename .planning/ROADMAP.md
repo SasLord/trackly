@@ -427,7 +427,7 @@ Plans:
 **Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется.
 **Requirements**: D-01..D-08 (см. 12-CONTEXT.md — нет формальных REQ-ID, фаза идёт от пользовательских решений)
 **Depends on:** Phase 11
-**Plans:** 15/15 plans complete
+**Plans:** 15/15 complete + 4 gap-closure (Round 3, planned)
 Plans:
 **Wave 1**
 
@@ -440,3 +440,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 12-03-PLAN.md — Frontend: CartridgeSelect + OperationModal selector/prefill + RequestDetail wiring + human-verify checkpoint
+
+**Gap-Closure Wave Round 3** *(2026-06-24 — 4 открытых гэпа GAP-12-09..12, все в Wave 1, файлы не пересекаются → параллельно)*
+
+- [ ] 12-16-PLAN.md — GAP-12-09 (B1): Расположение принтера в строке списка (frontend-only, PrinterListRow.svelte; backend device_location уже отдаётся)
+- [ ] 12-17-PLAN.md — GAP-12-10: connectWs() refcounted singleton (устранение дубля браузер-нотификации; ws.ts)
+- [ ] 12-18-PLAN.md — GAP-12-11: cartridge-centric лукап принтера/предыдущего картриджа (имя+IP вместо «#id», блок «Предыдущий картридж»; OperationModal.svelte)
+- [ ] 12-19-PLAN.md — GAP-12-12: авто-возврат — инвертированный актор в истории + регрессия привязки current_printer_device_id (cartridges_sqlite.rs + tests)
