@@ -588,8 +588,9 @@
       </section>
     {/if}
 
-    <!-- GAP-12-07/A4: Admin/Manager delete — any status, independent of status branches above -->
-    {#if isSpecialist}
+    <!-- GAP-12-07/A4: Admin/Manager delete — any status, independent of status branches above.
+         WR-04 (revised): ad_register requests govern an AD user row → delete is Admin-only. -->
+    {#if isSpecialist && (!isAdRegister || isAdmin)}
       <section class="section">
         <div class="actions">
           <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>
