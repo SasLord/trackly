@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
+use serde_json::Value;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
@@ -802,10 +803,14 @@ async fn install_without_printer_device_id_has_no_side_effects() {
     .expect("install_without_printer_device_id_has_no_side_effects budget")
 }
 
-/// Test 5 (D-17, audit): after the auto-return scenario, the previous
-/// cartridge's audit_log entry carries `action = 'custom:return_to_stock'`
-/// — correlatable with the new install's own audit entry (which records
-/// `given_by_name`) by transaction/timestamp adjacency, no extra actor field.
+/// Test 5 (D-17, audit; GAP-12-12 extended): after the auto-return scenario,
+/// the previous cartridge's audit_log entry carries
+/// `action = 'custom:return_to_stock'` AND its `payload_json` records an
+/// INVERTED actor relative to the new install (B): B's given_to_name
+/// ("Кузнецов", the recipient of the new cartridge) is the one who hands
+/// back A, so A's payload must have `given_by_name == "Кузнецов"`; B's
+/// given_by_name ("Сидоров", issuer/warehouse) receives A back, so A's
+/// payload must have `given_to_name == "Сидоров"`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn auto_return_writes_return_to_stock_audit_entry() {
     tokio::time::timeout(Duration::from_secs(30), async {
@@ -846,17 +851,88 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
         .expect("install B auto-returns A");
 
         let a_history = svc.get_history(a_installed.id).await.expect("A history");
-        let has_return = a_history
+        let return_entry = a_history
             .iter()
-            .any(|e| e.action == "custom:return_to_stock");
-        assert!(
-            has_return,
-            "A's audit history must contain a custom:return_to_stock entry: {:?}",
-            a_history
+            .find(|e| e.action == "custom:return_to_stock")
+            .expect("A's audit history must contain a custom:return_to_stock entry");
+
+        let payload: Value = serde_json::from_str(
+            return_entry
+                .payload_json
+                .as_deref()
+                .expect("return_to_stock entry must have payload_json"),
+        )
+        .expect("payload_json must parse as JSON");
+
+        assert_eq!(
+            payload.get("given_by_name").and_then(Value::as_str),
+            Some("Кузнецов"),
+            "given_by_name must be B's given_to_name (recipient hands A back): {payload:?}"
+        );
+        assert_eq!(
+            payload.get("given_to_name").and_then(Value::as_str),
+            Some("Сидоров"),
+            "given_to_name must be B's given_by_name (issuer/warehouse receives A back): {payload:?}"
         );
     })
     .await
     .expect("auto_return_writes_return_to_stock_audit_entry budget")
+}
+
+/// Test 6 (GAP-12-12 round-trip): install with `printer_device_id` sets
+/// `current_printer_device_id`; a subsequent direct `ReturnToStock` of that
+/// same cartridge clears the link (NULL). Proves the binding is symmetric
+/// across the full install→return lifecycle, not just on auto-return.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_to_stock_clears_current_printer_device_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Canon iR").await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        let installed = svc
+            .transition(CartridgeTransitionPayload::Install {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 401".into(),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            })
+            .await
+            .expect("install with printer");
+
+        let linked = current_printer_device_id_of(&svc, installed.id).await;
+        assert_eq!(
+            linked,
+            Some(printer_id),
+            "current_printer_device_id must be set after install"
+        );
+
+        let returned = svc
+            .transition(CartridgeTransitionPayload::ReturnToStock {
+                cartridge_id: installed.id,
+                version: installed.version,
+                state_id: 3,
+                location: "Склад".into(),
+                notes: None,
+            })
+            .await
+            .expect("direct return to stock");
+        assert_eq!(returned.status_id, 1, "status must be На складе (1)");
+
+        let unlinked = current_printer_device_id_of(&svc, installed.id).await;
+        assert_eq!(
+            unlinked, None,
+            "current_printer_device_id must be cleared after direct return"
+        );
+    })
+    .await
+    .expect("return_to_stock_clears_current_printer_device_id budget")
 }
 
 // ---------------------------------------------------------------------------

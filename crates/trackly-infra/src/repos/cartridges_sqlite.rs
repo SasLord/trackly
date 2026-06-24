@@ -415,9 +415,12 @@ impl SqliteCartridgeRepository {
             }
         };
 
-        // 5. UPDATE cartridges (optimistic lock on version). Install also sets
-        // current_printer_device_id (D-19) in the SAME UPDATE — folded into one
-        // SET clause so the optimistic-lock WHERE stays in a single place.
+        // 5. UPDATE cartridges (optimistic lock on version). current_printer_device_id
+        // (D-19) is folded into the SAME UPDATE/SET clause so the optimistic-lock
+        // WHERE stays in a single place: Install sets it to the target printer
+        // (or NULL for the legacy cartridge-centric D-08 path with no printer);
+        // every other op (ReturnToStock/ToRefill/FromRefill/WriteOff) clears it to
+        // NULL — a cartridge leaving "В работе" must not keep a stale printer link.
         let install_printer_device_id = match op {
             CartridgeTransitionOp::Install {
                 printer_device_id, ..
@@ -425,42 +428,24 @@ impl SqliteCartridgeRepository {
             _ => None,
         };
 
-        let affected = match op {
-            CartridgeTransitionOp::Install { .. } => tx
-                .execute(
-                    "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
-                     holder_name=?4, current_printer_device_id=?5, \
-                     updated_at_utc=?6, version=version+1 \
-                     WHERE id=?7 AND version=?8",
-                    params![
-                        new_status_id,
-                        new_state_id,
-                        new_location,
-                        new_holder_name,
-                        install_printer_device_id,
-                        now_utc,
-                        cartridge_id,
-                        version,
-                    ],
-                )
-                .map_err(map_rusqlite)?,
-            _ => tx
-                .execute(
-                    "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
-                     holder_name=?4, updated_at_utc=?5, version=version+1 \
-                     WHERE id=?6 AND version=?7",
-                    params![
-                        new_status_id,
-                        new_state_id,
-                        new_location,
-                        new_holder_name,
-                        now_utc,
-                        cartridge_id,
-                        version,
-                    ],
-                )
-                .map_err(map_rusqlite)?,
-        };
+        let affected = tx
+            .execute(
+                "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
+                 holder_name=?4, current_printer_device_id=?5, \
+                 updated_at_utc=?6, version=version+1 \
+                 WHERE id=?7 AND version=?8",
+                params![
+                    new_status_id,
+                    new_state_id,
+                    new_location,
+                    new_holder_name,
+                    install_printer_device_id,
+                    now_utc,
+                    cartridge_id,
+                    version,
+                ],
+            )
+            .map_err(map_rusqlite)?;
 
         if affected == 0 {
             // Race: something changed between our fetch and our update.
