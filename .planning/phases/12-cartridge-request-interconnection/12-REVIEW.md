@@ -2,246 +2,164 @@
 phase: 12-cartridge-request-interconnection
 reviewed: 2026-06-24T00:00:00Z
 depth: standard
-files_reviewed: 19
+files_reviewed: 5
 files_reviewed_list:
-  - crates/trackly-app/src/dto/printer.rs
-  - crates/trackly-app/src/http/requests.rs
-  - crates/trackly-app/src/services/act_service.rs
-  - crates/trackly-app/src/services/request_service.rs
-  - crates/trackly-app/src/specta_export.rs
-  - crates/trackly-app/src/tauri_cmds/requests.rs
-  - crates/trackly-app/tests/acts_suggest.rs
-  - crates/trackly-app/tests/request_lifecycle.rs
-  - crates/trackly-app/tests/role_endpoint_matrix.rs
-  - crates/trackly-core/src/auth.rs
-  - crates/trackly-core/src/domain/printers.rs
-  - crates/trackly-infra/src/repos/printers_sqlite.rs
-  - crates/trackly-infra/src/repos/requests_sqlite.rs
-  - crates/trackly-infra/src/test_support/test_db.rs
-  - migrations/V030__printers_drop_connectivity_check.sql
-  - migrations/V031__requests_status_add_cancelled.sql
+  - crates/trackly-infra/src/repos/cartridges_sqlite.rs
+  - crates/trackly-app/tests/cartridges_lifecycle.rs
   - ui/src/features/cartridges/OperationModal.svelte
-  - ui/src/features/requests/RequestDetail.svelte
-  - ui/src/features/requests/api.ts
+  - ui/src/features/printers/PrinterListRow.svelte
+  - ui/src/lib/api/ws.ts
 findings:
-  critical: 1
-  warning: 6
+  critical: 0
+  warning: 4
   info: 3
-  total: 10
+  total: 7
 status: issues_found
-resolved:
-  - WR-04
-  - WR-05
-  - WR-06
-resolved_note: "WR-04/05/06 fixed 2026-06-24 (advisory batch); CR-01 + R3 gaps already closed in prior commits. Remaining WR-01..03 (UI cancelled-status threading) + IN-01..03 still open/advisory."
 ---
 
-# Phase 12 (Round 2): Code Review Report
+# Phase 12: Code Review Report
 
 **Reviewed:** 2026-06-24
 **Depth:** standard
-**Files Reviewed:** 19
+**Files Reviewed:** 5
 **Status:** issues_found
 
 ## Summary
 
-Round-2 gap-closure batch (GAP-12-04..08): printer connectivity CHECK removal (V030),
-request lifecycle with a new `cancelled` status (V031 + `RequestTransitionOp::Cancel`),
-soft-delete + employee self-cancel endpoints, name-autocomplete aggregation, and
-per-variant `WsEvent` serialization.
+Round 3 gap-closure (GAP-12-09..12, plans 12-16..12-19) reviewed against diff base
+`f6b5dbc`. Scope was limited to the changes in the five listed files: the
+single-UPDATE refactor + inverted-actor auto-return in the cartridge repo, the
+previous-cartridge lookup widening in OperationModal, the PrinterListRow IP/location
+column split, and the refcounted WebSocket singleton.
 
-The **authorization and BOLA story is solid**. `requests_delete` (`Action::DeleteRequests`,
-Admin|Manager) and `requests_cancel` (`Action::CancelOwnRequest` + service-layer ownership
-re-check via `Self::get()`) are correctly gated; the role×endpoint matrix (Cases 36-39)
-and `request_lifecycle.rs` exercise the deny/allow/BOLA paths directly. The thin Tauri
-`requests_delete`/`requests_cancel` wrappers do not call `authorize()` themselves, but this
-is not a gap — `RequestService::delete`/`cancel` self-authorize as their first statement.
-The `WsEvent` per-variant camelCase serialization is correct and well-tested, and the
-`suggest_person` SQL uses an enum-whitelisted column with parameterized `ESCAPE '\\'` LIKE,
-so the autocomplete aggregation has no injection surface.
+No BLOCKER-tier defects: all SQL is parameterised, the `state_id` FK prevents hard
+crashes, and the auto-return runs inside the install transaction. However there are
+four WARNING-tier correctness gaps — the most material being a drum-vs-cartridge
+state mismatch in the auto-return defaults (backend) and its matching frontend
+Select, plus two async-lifecycle bugs in the new WS singleton that can leak or tear
+down connections out from under live consumers.
 
-The one BLOCKER is a **test that V031 breaks**: `test_db.rs` hardcodes
-`assert_eq!(user_version, 30)`, now false (schema is at 31) — a red, CI-gating unit test
-shipped with the batch. Several WARNINGs concern the new `cancelled` status not being
-threaded through the UI labels, status counts, and history-action map, plus a
-privilege-asymmetry where a Manager can soft-delete an Admin-only `ad_register` request and
-orphan its `users` row.
-
-## Critical Issues
-
-### CR-01: V031 breaks the hardcoded `user_version == 30` assertion in `test_db`
-
-**File:** `crates/trackly-infra/src/test_support/test_db.rs:41`
-**Issue:** This batch adds `migrations/V031__requests_status_add_cancelled.sql`, advancing
-the schema to `user_version = 31`. The canonical test-DB fixture test still asserts the old
-value:
-```rust
-assert_eq!(user_version, 30);
-```
-On a fresh DB the runner now sets `user_version = 31`, so
-`test_db_returns_fully_migrated_connection` fails. The module doc comment
-(`test_db.rs:4`, "currently V001..V030") is also stale. Unlike
-`migrations.rs::run_applies_all_known_migrations_on_fresh_db`, which computes
-`expected = max_known_version()` dynamically and stays green, this assertion is pinned to a
-literal. CI runs the infra unit tests, so the batch ships a red build.
-**Fix:** Track the runner instead of a literal, mirroring `migrations.rs`:
-```rust
-let expected = crate::db::migrations::max_known_version() as i64;
-assert_eq!(user_version, expected, "schema must be fully migrated");
-```
-and update the doc comment to drop the hardcoded "V001..V030".
+## Narrative Findings (AI reviewer)
 
 ## Warnings
 
-### WR-01: `cancelled` status renders as "Отклонена" (Rejected) in the UI
+### WR-01: Auto-return hardcodes cartridge-only state 3 (Пустой) for the previous cartridge — invalid for photo-drums
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:98-108` (sibling
-`ui/src/features/requests/RequestListRow.svelte:28-36` is identical, outside the explicit
-review set)
-**Issue:** V031 + `RequestTransitionOp::Cancel` introduce a new terminal status
-`cancelled`, and `requests_cancel` returns a DTO with `status: "cancelled"`. The
-`statusLabel`/`statusVariant` `$derived` chains have no `cancelled` arm, so the final
-`else` maps it to `'Отклонена'` (Rejected). A user who cancels their own request sees it
-labelled as if a specialist rejected it — semantically wrong, and cancel-vs-reject is the
-whole point of GAP-12-07/A4.
-**Fix:** Add an explicit `cancelled` arm before the catch-all `else` in both `statusLabel`
-(e.g. `'Отменена'`) and `statusVariant` (e.g. `'default'`):
-```ts
-: request.status === 'rejected'
-  ? 'Отклонена'
-  : request.status === 'cancelled'
-    ? 'Отменена'
-    : '—',
+**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:474`
+**Issue:** The auto-return resolves the previous cartridge's new state with
+`let resolved_state_id = previous_cartridge_state_id.unwrap_or(3);`. State 3
+(Пустой) is a *cartridge* charge state. Drums (kind_id=2) use states 4/5/6
+(Новый/Изношенный/Отработанный) — a distinction enforced everywhere else in this
+phase (see `installable_only` kind branching at lines 1094-1095 and test
+`installable_only_includes_new_drum_excludes_spent_drum`). When the cartridge being
+auto-returned is a drum and no override was supplied (the cartridge-centric path,
+where the frontend cannot even supply a valid drum state — see WR-02), the drum is
+silently written to a nonsensical cartridge state. The FK to `cartridge_states(id)`
+is satisfied (state 3 exists), so there is no crash — the corruption is silent and
+surfaces later as a drum displaying "Пустой". The auto-returned cartridge's kind is
+available from the `prev_current` snapshot taken at line 491.
+**Fix:**
+```rust
+// Reorder so the snapshot is taken before resolving the default:
+let prev_current = self.fetch_in_tx(tx, prev_id)?;
+let default_state = if prev_current.model_kind_id == Some(2) { 6 } else { 3 };
+let resolved_state_id = previous_cartridge_state_id.unwrap_or(default_state);
 ```
 
-### WR-02: `actionLabel` map lacks `cancel`/`custom:cancel` — history shows the raw action string
+### WR-02: Previous-cartridge state Select offers only cartridge states (1/2/3) even when the previous cartridge is a drum
 
-**File:** `ui/src/features/requests/RequestDetail.svelte:157-169`
-**Issue:** `RequestService::cancel` writes an audit row with
-`action = op.audit_action() = "custom:cancel"` (`domain/printers.rs:210`). The
-`actionLabel` lookup has `create/accept/complete/reject` and their `custom:` variants but
-no `cancel`/`custom:cancel`. The `?? action` fallback then renders the raw
-`"custom:cancel"` string in the History list of a cancelled request.
-**Fix:** Add `cancel: 'Отменена'` and `'custom:cancel': 'Отменена'` to the `labels` record.
+**File:** `ui/src/features/cartridges/OperationModal.svelte:506-514` (and defaults at lines 100, 131)
+**Issue:** The «Предыдущий картридж» block hardcodes three `<option>`s
+(Полный/Частичный/Пустой = 1/2/3). When `previousCartridge.model_kind_id === 2`
+(photo-drum), the operator can only pick a cartridge state, never the correct drum
+states (4/5/6). The component already derives drum-aware options for the main field
+(`DRUM_STATES` / `stateOptions`, lines 295-300) but the previous-cartridge block
+ignores them. Combined with WR-01, a drum auto-returned over another drum is
+guaranteed to get a wrong state regardless of operator action. The default
+`previousCartridgeStateId = 3` (lines 100, 131) is likewise a cartridge state.
+**Fix:** Derive the options from `previousCartridge.model_kind_id` and default the
+state when a drum resolves:
+```svelte
+{#each (previousCartridge?.model_kind_id === 2 ? DRUM_STATES : CARTRIDGE_STATES) as opt (opt.value)}
+  <option value={String(opt.value)}>{opt.label}</option>
+{/each}
+```
 
-### WR-03: `RequestCounts`/`counts()` has no `cancelled` bucket — switch-bar totals drift
+### WR-03: `connectWs()` async race can leak or orphan the underlying connection
 
-**File:** `crates/trackly-infra/src/repos/requests_sqlite.rs:299-361`,
-`crates/trackly-app/src/services/request_service.rs:151-178`
-**Issue:** `counts()` returns `all, open, in_progress, completed, rejected`. The `all`
-query has no status filter, so it now includes `cancelled` rows, but there is no
-`cancelled` bucket and `cancelled` is folded into none of the existing ones. After a
-self-cancel, `all` increments by 1 while `open+in_progress+completed+rejected` no longer
-sums to `all`. Any switch-bar/dashboard widget reconciling "all = sum of statuses" will
-show a discrepancy, and cancelled requests are uncountable in the status bar.
-**Fix:** Add a `cancelled` field to `RequestCounts` + `RequestCountsDto` and a matching
-`WHERE status = 'cancelled'` count query so consumers can reconcile.
+**File:** `ui/src/lib/api/ws.ts:115-142`
+**Issue:** `refCount` is incremented synchronously, but the real connection is
+established asynchronously (`await import(...)`, then `await listen(...)` on the
+Tauri path). If a consumer releases while establishment is still pending, the
+`refCount === 0 && activeCleanup` teardown observes `activeCleanup === null` (it is
+assigned only after the awaits), so the `unlisten`/cleanup that resolves afterward
+is stored and never invoked — the listener leaks and keeps dispatching events,
+defeating the GAP-12-10 goal. Sequence: A `connectWs()` (0→1, awaiting) → B
+`connectWs()` (1→2) → B release (2→1) → A release (1→0, but `activeCleanup` still
+null) → `listen` resolves and assigns an orphaned `activeCleanup`.
+**Fix:** After establishment completes inside the `refCount === 1` block, re-check
+and tear down if the count already fell to zero:
+```ts
+if (refCount === 1) {
+  // ...establish, assign activeCleanup...
+  if (refCount === 0 && activeCleanup) { activeCleanup(); activeCleanup = null; }
+}
+```
+or have `release()` await the in-flight establishment promise before tearing down.
 
-### WR-04: Manager can soft-delete an Admin-only `ad_register` request, orphaning the user row
+### WR-04: `disconnectWs()` leaves stale release closures that can decrement a freshly-established connection to zero
 
-**Status:** ✅ RESOLVED (2026-06-24) — `RequestService::delete()` now reads
-`request_type` inside the writer transaction (without the `deleted_at_utc`
-filter, to preserve the existing missing-vs-stale disambiguation) and refuses
-`ad_register` deletions with `AppError::Validation` for every role. Regression
-test `delete_ad_register_request_is_refused` (`tests/request_lifecycle.rs`).
-
-**File:** `crates/trackly-app/src/services/request_service.rs:577-642`
-**Issue:** `delete()` is gated on `Action::DeleteRequests` = Admin **or Manager**
-(`auth.rs:146-155`) and is owner/type-agnostic — it soft-deletes any request in any status.
-But `ad_register` requests are otherwise strictly Admin-only: `approve_ad_register` and
-`reject_ad_register` both require `Action::ManageUsers` (Admin) and own the linked `users`
-row reconciliation (activate on approve; soft-delete the auto-created user on reject). A
-Manager calling `requests_delete` on an open `ad_register` request bypasses that Admin-only
-lifecycle: the request is soft-deleted but the pending/auto-created `users` row is never
-reconciled, leaving an orphaned inactive (pending) or still-active `is_active=1`
-(auto-accept) user with no governing request — a privilege-boundary asymmetry on a
-security-sensitive entity.
-**Fix:** In `delete()`, read the request type first (reuse `self.get(id, caller)`) and
-either (a) reject `request_type == "ad_register"` with `AppError::Forbidden`/`Validation`,
-or (b) require `Action::ManageUsers` for `ad_register` deletions and run the same user-row
-reconciliation as `reject_ad_register`. Option (a) is the smaller, safer change.
-
-### WR-05: `printers_sqlite::list` status filter is a silent no-op
-
-**Status:** ✅ RESOLVED (2026-06-24) — both the count and list queries now filter
-on the printer's actual latest status via a correlated subquery against the
-newest `printer_readings.status` row (the same value `PrinterService::get`
-surfaces as `PrinterDto.status`). Unpolled printers (NULL latest status) are
-excluded by any non-NULL filter, included when status is `None`. Regression test
-`test_printer_list_status_filter` (`printers_sqlite.rs`).
-
-**File:** `crates/trackly-infra/src/repos/printers_sqlite.rs:317-341`
-**Issue:** The `list` WHERE clause is `(?1 IS NULL OR p.last_seen_utc IS NOT NULL)` with
-`?1` bound to `filter.status`. When a status is supplied this does NOT filter by the status
-value — it merely requires `last_seen_utc IS NOT NULL` ("ever polled"), discarding the
-actual `filter.status` string ("ok"/"error"/"offline"/…). The `total` count query shares
-the shape, so paginated totals are also wrong relative to the selected status. This file is
-touched by the batch (V030 reshapes `printers`); even if pre-existing, it is a correctness
-defect the connectivity-CHECK removal interacts with.
-**Fix:** Implement real status filtering (join the latest `printer_readings.status` and
-compare to `?1`), or, if status filtering is genuinely deferred, drop the misleading bind
-and document that `PrinterFilter.status` is currently ignored.
-
-### WR-06: `transition_in_tx` `affected == 0` collapses lock-mismatch into `NotFound`
-
-**Status:** ✅ RESOLVED (2026-06-24) — the `affected == 0` branch now re-reads the
-row and returns `NotFound` only when truly absent, `OptimisticLockMismatch` when
-it exists with a moved version (mirroring `request_service::delete()`). The UI
-special-cases `OptimisticLockMismatch` as "reload and retry" rather than
-"request gone". Regression test
-`test_request_transition_stale_version_is_optimistic_lock_mismatch`
-(`requests_sqlite.rs`).
-
-**File:** `crates/trackly-infra/src/repos/requests_sqlite.rs:153-189`
-**Issue:** `transition_in_tx` fetches the row, version-checks → `OptimisticLockMismatch`,
-validates status, then UPDATEs `WHERE id=? AND version=? AND deleted_at_utc IS NULL`; the
-`affected == 0` branch unconditionally returns `NotFound`. `cancel()`/`delete()` pass the
-*payload* version (not the version observed by the BOLA-`get()` reader read), so a
-legitimate stale client version racing a concurrent transition surfaces here as `NotFound`
-rather than the more accurate `OptimisticLockMismatch`. The UI special-cases
-`OptimisticLockMismatch` to "reload and retry"; a `NotFound` is instead shown as "request
-gone," misleading the operator.
-**Fix:** Disambiguate in the `affected == 0` branch (mirror `delete()`'s pattern at
-`request_service.rs:601-621`): `SELECT version, deleted_at_utc FROM requests WHERE id=?` —
-return `NotFound` only when truly absent, `OptimisticLockMismatch` when it exists but the
-version moved, and a deleted-specific error when `deleted_at_utc IS NOT NULL`.
+**File:** `ui/src/lib/api/ws.ts:144-165`
+**Issue:** `disconnectWs()` force-sets `refCount = 0` and runs `activeCleanup()`, but
+consumers that obtained a `release` from an earlier `connectWs()` still hold
+`released === false`. After a `disconnectWs()`, if a component remounts and calls
+`connectWs()` (refCount 0→1, new connection), an *old* consumer's later release runs
+`refCount = Math.max(0, refCount - 1)` → 0 and tears down the live connection out
+from under the new consumer. There is no generation/epoch to invalidate release
+closures created before a `disconnectWs()`.
+**Fix:** Capture an epoch per call and no-op the release if the epoch advanced:
+```ts
+const myEpoch = epoch;        // module-scope `let epoch = 0`
+return () => {
+  if (released || myEpoch !== epoch) return;
+  released = true;
+  refCount = Math.max(0, refCount - 1);
+  if (refCount === 0 && activeCleanup) { activeCleanup(); activeCleanup = null; }
+};
+// disconnectWs(): epoch += 1; refCount = 0; ...
+```
 
 ## Info
 
-### IN-01: `PrinterDto::from` hardcodes `community_configured: true` with a contradictory comment
+### IN-01: Inverted-actor payload duplicates `op_payload_json` instead of extending it
 
-**File:** `crates/trackly-app/src/dto/printer.rs:62-65`
-**Issue:** The field comment says "the service layer sets it to true when community !=
-default," but the `From` impl unconditionally sets `true` and no service override is in
-evidence. Code and comment disagree; the indicator is effectively a constant and conveys no
-information. Not a leak (community itself is never serialized), but misleading. Pre-existing,
-surfaced by reading the DTO.
-**Fix:** Compute `community_configured` from the stored community in the service read path,
-or drop the field and its comment.
+**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:545-553`
+**Issue:** The auto-return hand-builds a `return_to_stock` payload inline with
+inverted actor keys, diverging from `op_payload_json` (lines 626-635) which builds
+the same shape without actor fields. The inline JSON is correct today but the two
+will drift if the payload schema changes.
+**Fix:** Factor out a base-payload helper (or an optional-actor variant of
+`op_payload_json`) so the canonical shape lives in one place.
 
-### IN-02: V030/V031 `PRAGMA foreign_keys = OFF` relies on the refinery one-file-per-tx invariant
+### IN-02: `ipText` column can display the literal "USB" under an IP-implying heading
 
-**File:** `migrations/V030__printers_drop_connectivity_check.sql:28-59`,
-`migrations/V031__requests_status_add_cancelled.sql:22-60`
-**Issue:** Both rebuild migrations toggle `PRAGMA foreign_keys = OFF/ON` inside the file,
-with a comment asserting refinery runs one file per transaction (`set_grouped(false)`).
-`foreign_keys` is a connection-level (not transaction-level) PRAGMA — if a future change
-flips refinery to grouped mode, the OFF window would leak across migrations and silently
-disable FK enforcement for subsequent files in the same run. The invariant is load-bearing
-and only protected by a comment.
-**Fix:** Add a guard test asserting `PRAGMA foreign_keys` is `ON` after `migrations::run()`
-on a fresh DB, so a future grouping change fails loudly.
+**File:** `ui/src/features/printers/PrinterListRow.svelte:43-45`
+**Issue:** Splitting connectivity into the dedicated `.row-ip` column means the value
+shown there is sometimes the string `USB` (or `—`), not an IP. Minor UX ambiguity
+introduced by the column split; not a correctness bug.
+**Fix:** Optional — render USB as a small badge, or keep as-is.
 
-### IN-03: `delete()` audit row captures no `before_json` snapshot
+### IN-03: No test covers a drum being auto-returned (would have caught WR-01)
 
-**File:** `crates/trackly-app/src/services/request_service.rs:624-636`
-**Issue:** The soft-delete audit entry records only `action: "custom:delete"` with
-`before_json: None`. Other destructive paths (e.g. `act_service.rs` device mutations)
-capture `before_json` snapshots for forensics/undo. A deleted request leaves no record of
-its status/owner/fields at deletion time, weakening the audit trail for an action the
-confirm modal calls irreversible ("без возможности восстановления через интерфейс").
-**Fix:** Capture the request row (or key fields) into `before_json` before the soft-delete
-UPDATE, consistent with the project's snapshot-on-mutation pattern.
+**File:** `crates/trackly-app/tests/cartridges_lifecycle.rs:558-610, 946-1078`
+**Issue:** Auto-return tests cover the inverted-actor payload and the
+override/default branches for cartridges, and there is a separate drum
+`installable_only` test, but nothing installs a drum over another drum to exercise
+the auto-return default-state path. The WR-01 defect slipped through precisely
+because no test combines "auto-return" with "drum".
+**Fix:** Add a test: install drum A into a printer, install drum B into the same
+printer with `previous_cartridge_state_id: None`, then assert A's resolved state is
+a valid drum state (6=Отработанный after the WR-01 fix).
 
 ---
 
