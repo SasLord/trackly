@@ -427,7 +427,7 @@ Plans:
 **Goal:** Сделать установку картриджа из заявки «Замена картриджа» полнофункциональной и взаимосвязанной: выбор физического картриджа из БД (на складе, заряд Полный/Частичный, совместимый с моделью заявки), авто-подстановка Расположения из принтера и «Кому отдал» из заявителя (оба редактируемы), запись установленного картриджа в `completed_cartridge_id` заявки и отражение в истории. Старый cartridge-centric вход сохраняется.
 **Requirements**: D-01..D-08 (см. 12-CONTEXT.md — нет формальных REQ-ID, фаза идёт от пользовательских решений)
 **Depends on:** Phase 11
-**Plans:** 19/19 plans complete
+**Plans:** 19/20 plans complete
 Plans:
 **Wave 1**
 
@@ -447,3 +447,7 @@ Plans:
 - [x] 12-17-PLAN.md — GAP-12-10: connectWs() refcounted singleton (устранение дубля браузер-нотификации; ws.ts)
 - [x] 12-18-PLAN.md — GAP-12-11: cartridge-centric лукап принтера/предыдущего картриджа (имя+IP вместо «#id», блок «Предыдущий картридж»; OperationModal.svelte)
 - [x] 12-19-PLAN.md — GAP-12-12: авто-возврат — инвертированный актор в истории + регрессия привязки current_printer_device_id (cartridges_sqlite.rs + tests)
+
+**Gap-Closure Wave Round 4** *(2026-06-24 — 2 открытых гэпа GAP-12-11/12 п.1+3 из 12-VERIFICATION-ROUND3.md, Wave 1, frontend-only)*
+
+- [ ] 12-20-PLAN.md — D-20/D-21/D-22: опциональный выбор принтера в cartridge-centric установке (новый PrinterSelect.svelte + OperationModal.svelte: приоритизация совместимых принтеров, блок «Предыдущий картридж» с редактируемыми полями)
