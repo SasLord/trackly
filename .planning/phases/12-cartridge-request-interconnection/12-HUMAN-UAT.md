@@ -1,17 +1,17 @@
 ---
-status: issues_found
+status: complete
 phase: 12-cartridge-request-interconnection
 source: [12-VERIFICATION.md, 12-VERIFICATION-ROUND4.md]
 started: 2026-06-22T11:40:00Z
-updated: 2026-06-25T00:10:00Z
+updated: 2026-06-25T00:40:00Z
 round4_results: { R4-1: issue, R4-2: pass, R4-3: issue }
-round4_root_cause: "device_id/id в printers.get — лукап принтера резолвит по printers.id, а на вход device_id; одна правка закрывает R4-1+R4-3"
-open_round5: [GAP-12-13 (printers.get by device_id → name+IP + previous-cartridge block в обоих входах), DEC-A (подсказка id+IP в cartridge-centric), DEC-B (prefill Расположение из printer.deviceLocation в cartridge-centric)]
+round5_results: { R5-1: pass, R5-2: pass }
+final: "все Round 4 проблемы закрыты планом 12-21 (+WR-01 fix); R5-1/R5-2 подтверждены пользователем; фаза 12 готова к закрытию"
 ---
 
 ## Current Test
 
-[testing complete — Round 4 live UAT: R4-1 issue, R4-2 pass, R4-3 issue. R4-1+R4-3 = один root cause (device_id/id в printers.get). Маршрут: gap-closure Round 5.]
+[testing complete — Round 5 retest: R5-1 pass, R5-2 pass. Все UAT-гэпы фазы 12 закрыты. Фаза готова к completion.]
 
 ## Tests
 
@@ -144,3 +144,15 @@ expected: Установка ИЗ заявки (request-centric, принтер 
 result: issue — селектор принтера корректно НЕ показывается; «Расположение» предзаполнено «2-09» (из данных заявки, RequestDto.printerLocation — работает). НО: подсказка показывает «#13» вместо имени+IP, и блок «Предыдущий картридж» НЕ появляется, хотя в принтере стоит картридж. ТА ЖЕ причина, что R4-1 (device_id/id в printers.get) — баг был латентным в request-centric и проявился на данных где device_id != printers.id. GAP-12-05 (имя+IP) и GAP-12-11/D-16 (блок предыдущего) фактически НЕ работают на реальных данных. Один фикс закрывает R4-1 и R4-3.
 severity: major
 root_cause: "Тот же, что R4-1: printers.get резолвит по printers.id, а на вход идёт device_id (request.printerDeviceId / PrinterSelect deviceId). printerContext=null → нет имени/IP, currentCartridgeId не резолвится → нет блока «Предыдущий картридж»."
+
+---
+
+## Round 5 retest (2026-06-25, после плана 12-21 + WR-01 fix)
+
+### R5-1. Retest R4-1 — cartridge-centric с выбором принтера (вкл. переключение)
+expected: Карточка картриджа «На складе» → «Установить в принтер». При выборе принтера: подсказка «#id (IP)»; «Расположение» автозаполнено локацией принтера; блок «Предыдущий картридж» (редактируемые Расположение + Уровень заряда, дефолт Пустой) если в принтере стоит «В работе». Переключение принтера → «Расположение» обновляется (WR-01). После установки — старый возвращён с выбранными значениями, инверт. актор.
+result: pass — подтверждено пользователем: подсказка #id+IP, автозаполнение/обновление «Расположения» при переключении, блок «Предыдущий картридж» работают.
+
+### R5-2. Retest R4-3 — request-centric из заявки (имя+IP + блок предыдущего)
+expected: Установка ИЗ заявки: селектор принтера НЕ показывается; подсказка показывает имя+IP принтера (НЕ «#13»); блок «Предыдущий картридж» появляется, если в принтере стоит картридж; установка завершает заявку.
+result: pass — подтверждено пользователем: имя+IP принтера и блок «Предыдущий картридж» работают в request-centric входе.
