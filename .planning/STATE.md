@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-25T23:23:10.117Z"
+last_updated: "2026-06-25T23:58:08.833Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 16
   completed_phases: 15
   total_plans: 105
-  completed_plans: 98
-  percent: 93
+  completed_plans: 99
+  percent: 94
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 13 (per-device-junction-chip-drum-state) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-06-25
 
@@ -138,6 +138,7 @@ Last activity: 2026-06-25
 | Phase 12 P20 | 35min | 2 tasks | 2 files |
 | Phase 12 P21 | 35min | 2 tasks | 9 files |
 | Phase 13 P01 | 35min | 3 tasks | 3 files |
+| Phase 13 P02 | 30min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -295,6 +296,8 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-21 (DEC-A/DEC-B): printerContextHint branches on isSelectorVisible (same predicate gating PrinterSelect markup) — omits name when selector already shows it; Расположение auto-fills from printerContext.deviceLocation in the cartridge-centric entry only, never overwriting manual input
 - [Phase 13]: 13-01: upsert_compatibility_in_tx stores printer_name as-given (no TRIM at write); normalisation (LOWER+TRIM) applied only at compare time in list()/compatible_model_aggregates (D-02/D-03/D-04)
 - [Phase 13]: 13-01: D-05 pass-through scoped strictly to list()'s cartridge-selection filter, NOT applied in compatible_model_aggregates — R4/D-07 require the printer-card aggregate to reflect only real V005 compatibility rows
+- [Phase 13]: Pulled forward Plan 13-03's Tauri/HTTP/specta deletion scope into 13-02 (Rule 3 blocking-issue fix) — Removing the printer/cartridge compat service methods broke compilation in 5 transport-adapter files outside 13-02's stated scope; fixing was required to keep trackly-app building, and matches 13-03's own pre-planned deletion instructions exactly
+- [Phase 13]: Cartridge model compatibility DTOs switched from Vec<(String,String)> brand/model pairs to Vec<String> printer names — Matches V032 migration's single printer_name column (Plan 13-01); CartridgeModelDto/CreateDto/PatchDto all updated together
 
 ### Pending Todos
 
@@ -332,6 +335,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T23:22:56.021Z
-Stopped at: Phase 13 UI-SPEC approved
+Last session: 2026-06-25T23:58:08.825Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
