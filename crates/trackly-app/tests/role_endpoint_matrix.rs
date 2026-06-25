@@ -56,15 +56,13 @@
 //!     request → 403 Forbidden (Action::TransitionRequests, Admin|Manager
 //!     only — the gate fires before any ownership check)
 //!
-//! Plan 12-05 (T-12-05-02, GAP-12-02) adds Cases 33-35: the new
-//! printer↔cartridge-model compatibility commands (junction table,
-//! D-11/D-12) are a management feature, not employee-facing.
-//! 33. Employee session → POST /api/v1/printers_get_compatible_models →
-//!     403 Forbidden (Action::ReadData, Admin|Manager only)
-//! 34. Employee session → POST /api/v1/printers_set_compatible_models →
-//!     403 Forbidden (Action::MutatePrinters, Admin|Manager only)
-//! 35. Employee session → POST /api/v1/cartridge_models_set_compatible_devices →
-//!     403 Forbidden (Action::MutateCartridges, Admin|Manager only)
+//! Plan 12-05 (T-12-05-02, GAP-12-02) added Cases 33-35 for the V029
+//! per-device junction compatibility commands (printers_get_compatible_models,
+//! printers_set_compatible_models, cartridge_models_set_compatible_devices).
+//! Plan 13-02 removed those commands from both transports (V029 table dropped
+//! in Plan 13-01) — Cases 33-35 were removed accordingly. A replacement
+//! read-only aggregate command (R4) is expected to land its own RBAC case in
+//! Plan 13-03.
 //!
 //! Plan 12-14 (GAP-12-07/A4) adds Cases 36-39: Admin/Manager request
 //! deletion (any status) + Employee self-cancel (own request, open only) —
@@ -79,8 +77,7 @@
 //!     manager-owned "open" request → 403 Forbidden (BOLA)
 //!
 //! Plan 12-21 (Round 5 gap closure, GAP-12-13) adds Case 40: новая
-//! device-id-keyed read команда — тот же класс гейта, что и printers_get/
-//! printers_get_compatible_models.
+//! device-id-keyed read команда — тот же класс гейта, что и printers_get.
 //! 40. Employee session → POST /api/v1/printers_get_by_device_id → 403
 //!     Forbidden (Action::ReadData, Admin|Manager only).
 //!
@@ -1207,66 +1204,14 @@ async fn role_endpoint_matrix_test() {
         }
 
         // =====================================================================
-        // Case 33 (T-12-05-02, Plan 12-05): Employee → printers_get_compatible_models
-        // → 403 Forbidden. authorize(&Action::ReadData) (Admin|Manager only)
-        // fires before any DB read, so device_id: 1 need not exist — this is a
-        // management-feature read, not employee-facing (same gate as
-        // printers_get/cartridges_get).
+        // Cases 33-35 (T-12-05-02, Plan 12-05) removed in Plan 13-02: the V029
+        // per-device junction commands (printers_get_compatible_models,
+        // printers_set_compatible_models, cartridge_models_set_compatible_devices)
+        // no longer exist in either transport (Plan 13-01 dropped the table,
+        // Plan 13-02 removed the service methods + their Tauri/HTTP wrappers).
+        // A replacement read command (printers_get_compatible_aggregates, R4)
+        // is planned for 13-03 and will get its own RBAC case there.
         // =====================================================================
-        {
-            let status = post_with_cookie(
-                new_app!(),
-                "/api/v1/printers_get_compatible_models",
-                json!({ "deviceId": 1 }),
-                Some(&employee_cookie),
-            )
-            .await;
-            assert_eq!(
-                status,
-                StatusCode::FORBIDDEN,
-                "Case 33: Employee → printers_get_compatible_models → expected 403, got {status}"
-            );
-        }
-
-        // =====================================================================
-        // Case 34 (T-12-05-02, Plan 12-05): Employee → printers_set_compatible_models
-        // → 403 Forbidden. authorize(&Action::MutatePrinters) (Admin|Manager
-        // only) fires before any DB write.
-        // =====================================================================
-        {
-            let status = post_with_cookie(
-                new_app!(),
-                "/api/v1/printers_set_compatible_models",
-                json!({ "deviceId": 1, "modelIds": [1] }),
-                Some(&employee_cookie),
-            )
-            .await;
-            assert_eq!(
-                status,
-                StatusCode::FORBIDDEN,
-                "Case 34: Employee → printers_set_compatible_models → expected 403, got {status}"
-            );
-        }
-
-        // =====================================================================
-        // Case 35 (T-12-05-02, Plan 12-05): Employee → cartridge_models_set_compatible_devices
-        // → 403 Forbidden. authorize(&Action::MutateCartridges) (Admin|Manager
-        // only) fires before any DB write — model-side mirror of Case 34.
-        // =====================================================================
-        {
-            let status = post_with_cookie(
-                new_app!(),
-                "/api/v1/cartridge_models_set_compatible_devices",
-                json!({ "modelId": 1, "deviceIds": [1] }),
-                Some(&employee_cookie),
-            )
-            .await;
-            assert_eq!(
-                status,
-                StatusCode::FORBIDDEN,
-                "Case 35: Employee → cartridge_models_set_compatible_devices → expected 403, got {status}"
-            );
-        }
 
         // =====================================================================
         // Case 36 (Plan 12-14, GAP-12-07/A4): Employee → requests_delete →
@@ -1403,8 +1348,7 @@ async fn role_endpoint_matrix_test() {
         // Case 40 (Plan 12-21, Round 5 gap closure, GAP-12-13): Employee →
         // printers_get_by_device_id → 403 Forbidden. authorize(&Action::ReadData)
         // (Admin|Manager only) fires before any DB read, so device_id: 1 need
-        // not exist — same gate class as printers_get/
-        // printers_get_compatible_models.
+        // not exist — same gate class as printers_get.
         // =====================================================================
         {
             let status = post_with_cookie(
