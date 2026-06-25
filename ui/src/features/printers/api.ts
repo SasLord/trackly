@@ -20,6 +20,13 @@ export const printers = {
 
   get: (id: number) => apiCall<PrinterDto>('printers_get', { id }),
 
+  // GAP-12-13 (Phase 12 Round 5 gap closure): printers_get resolves by
+  // printers.id; the UI only ever has device_id (PrinterSelect emits
+  // deviceId, requests carry printerDeviceId) — this resolves the actual
+  // contract the UI needs.
+  getByDeviceId: (deviceId: number) =>
+    apiCall<PrinterDto>('printers_get_by_device_id', { deviceId }),
+
   create: (payload: PrinterCreateDto) => apiCall<PrinterDto>('printers_create', { payload }),
 
   delete: (id: number, version: number) => apiCall<null>('printers_delete', { id, version }),

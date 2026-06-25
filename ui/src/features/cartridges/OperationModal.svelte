@@ -173,17 +173,34 @@
   // the SAME downstream lookup/payload logic below.
   const effectivePrinterId = $derived(preFillPrinterId ?? selectedPrinterId);
 
+  // D-20 (Round 4) / DEC-A (Round 5, Phase 12 gap closure): true when the
+  // PrinterSelect selector itself is visible in the form (cartridge-centric
+  // install with no incoming printer context). In that case the printer's
+  // NAME is already shown by the selector's own option label — repeating it
+  // in the hint below is redundant, so DEC-A drops the name there and shows
+  // only #id + IP. The request-centric entry (selector never rendered) keeps
+  // the original name+IP hint — no regression.
+  const isSelectorVisible = $derived(
+    op === 'install' && cartridge !== null && preFillPrinterId === undefined,
+  );
+
   // REQ-05: preFillPrinterId is accepted as context when the modal is opened
   // from a request (RequestDetail). The install form is cartridge-centric;
   // we show a hint about which printer this cartridge targets when the prop is set.
   // GAP-12-05/A2: prefer printerContext.deviceName + ipAddress once the lookup
   // resolves; fall back to #{id} only while loading or if deviceName is absent.
+  // DEC-A (Round 5): when the selector is visible, omit the name (already
+  // shown by the selector) — hint shows only #id + IP.
   const printerContextHint = $derived(
     op === 'install' && effectivePrinterId !== undefined
       ? printerContext !== null
-        ? `Устанавливается в принтер: ${
-            printerContext.deviceName ?? `#${effectivePrinterId}`
-          }${printerContext.ipAddress ? ` (${printerContext.ipAddress})` : ''}`
+        ? isSelectorVisible
+          ? `Устанавливается в принтер: #${effectivePrinterId}${
+              printerContext.ipAddress ? ` (${printerContext.ipAddress})` : ''
+            }`
+          : `Устанавливается в принтер: ${
+              printerContext.deviceName ?? `#${effectivePrinterId}`
+            }${printerContext.ipAddress ? ` (${printerContext.ipAddress})` : ''}`
         : `Устанавливается в принтер #${effectivePrinterId}`
       : null,
   );
@@ -199,8 +216,13 @@
   // skipped entirely, avoiding a wasted API call (Test 3, D-08 regression
   // guard for the printer-less cartridge-centric flows).
   // GAP-12-05/A2: also stores the printer DTO itself into `printerContext`
-  // (same printers.get() call — no second API request) so printerContextHint
-  // can render deviceName+ipAddress.
+  // (same lookup call — no second API request) so printerContextHint can
+  // render deviceName+ipAddress.
+  // GAP-12-13 (Phase 12 Round 5): effectivePrinterId is ALWAYS a device_id
+  // (PrinterSelect emits String(p.deviceId); preFillPrinterId is
+  // request.printerDeviceId) — printers.get() resolves by printers.id, so it
+  // never matched and printerContext stayed null forever, in both install
+  // entries. Switched to getByDeviceId, which resolves the actual contract.
   $effect(() => {
     if (!(open && op === 'install' && effectivePrinterId !== undefined)) {
       previousCartridge = null;
@@ -208,9 +230,17 @@
       return;
     }
     printers
-      .get(effectivePrinterId)
+      .getByDeviceId(effectivePrinterId)
       .then((printer) => {
         printerContext = printer;
+        // DEC-B (Phase 12 Round 5): in the cartridge-centric entry (no
+        // incoming preFillPrinterId — the operator just picked a printer via
+        // the selector below), auto-fill «Расположение» from the printer's
+        // device location. Never overwrites manual operator input — only
+        // fires while location is still empty.
+        if (preFillPrinterId === undefined && printer.deviceLocation && !location.trim()) {
+          location = printer.deviceLocation;
+        }
         if (printer.currentCartridgeId === null) {
           previousCartridge = null;
           return null;
