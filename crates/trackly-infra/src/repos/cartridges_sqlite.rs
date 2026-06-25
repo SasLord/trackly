@@ -13,7 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::json;
 use trackly_core::domain::cartridges::{
     CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeRow,
-    CartridgeTransitionOp, LowStockItem, Pagination,
+    CartridgeTransitionOp, CompatibleModelAggregate, LowStockItem, Pagination,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -276,15 +276,21 @@ impl SqliteCartridgeRepository {
         Ok(())
     }
 
-    /// Upsert compatibility pairs for a cartridge model inside a transaction.
+    /// Upsert compatibility printer names for a cartridge model inside a
+    /// transaction.
     ///
-    /// Deletes all existing pairs for `model_id`, then inserts the provided
-    /// `pairs` (Бренд, Модель). Empty `pairs` → effectively clears compatibility.
+    /// Deletes all existing rows for `model_id`, then inserts the provided
+    /// `names` (free-text printer names, e.g. "Pantum BM5100ADN"). Empty
+    /// `names` → effectively clears compatibility (D-05 pass-through then
+    /// applies to the cartridge-selection filter). Values are stored exactly
+    /// as given — TRIM/case-insensitive normalisation is applied at
+    /// comparison time in `list()`/`compatible_model_aggregates`, not at
+    /// write time (D-02/D-03/D-04).
     pub fn upsert_compatibility_in_tx(
         &self,
         tx: &Transaction<'_>,
         model_id: i64,
-        pairs: &[(String, String)],
+        names: &[String],
     ) -> Result<(), AppError> {
         tx.execute(
             "DELETE FROM cartridge_model_compatibility WHERE cartridge_model_id = ?1",
@@ -292,36 +298,89 @@ impl SqliteCartridgeRepository {
         )
         .map_err(map_rusqlite)?;
 
-        for (brand, model) in pairs {
+        for name in names {
             tx.execute(
                 "INSERT INTO cartridge_model_compatibility \
-                 (cartridge_model_id, printer_brand, printer_model) VALUES (?1, ?2, ?3)",
-                params![model_id, brand, model],
+                 (cartridge_model_id, printer_name) VALUES (?1, ?2)",
+                params![model_id, name],
             )
             .map_err(map_rusqlite)?;
         }
         Ok(())
     }
 
-    /// Fetch compatibility pairs for a cartridge model (read-only).
+    /// Fetch compatibility printer names for a cartridge model (read-only).
     pub fn get_compatibility(
         &self,
         conn: &Connection,
         model_id: i64,
-    ) -> Result<Vec<(String, String)>, AppError> {
+    ) -> Result<Vec<String>, AppError> {
         let mut stmt = conn
             .prepare(
-                "SELECT printer_brand, printer_model \
+                "SELECT printer_name \
                  FROM cartridge_model_compatibility \
                  WHERE cartridge_model_id = ?1 \
-                 ORDER BY printer_brand ASC, printer_model ASC",
+                 ORDER BY printer_name ASC",
             )
             .map_err(map_rusqlite)?;
         let rows = stmt
-            .query_map(params![model_id], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            .query_map(params![model_id], |r| r.get::<_, String>(0))
+            .map_err(map_rusqlite)?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
+    }
+
+    /// Aggregate counts (by status) for every cartridge model compatible
+    /// with `printer_device_id`, matching `cartridge_model_compatibility
+    /// .printer_name` against `devices.name` (case-insensitive, TRIM'd).
+    ///
+    /// NOTE — does NOT apply the D-05 pass-through used by `list()`'s
+    /// `compatible_with_printer_device_id` filter: a model with zero
+    /// compatibility rows matching this printer's name is simply absent
+    /// from the result (R4/D-07), so the printer card can render "Нет
+    /// совместимых моделей картриджей." when appropriate. Pass-through is
+    /// scoped strictly to the cartridge-selection filter in `list()`.
+    pub fn compatible_model_aggregates(
+        &self,
+        conn: &Connection,
+        printer_device_id: i64,
+    ) -> Result<Vec<CompatibleModelAggregate>, AppError> {
+        let sql = "
+            SELECT m.id, m.brand, m.model,
+                   COALESCE(SUM(CASE WHEN c.status_id = 1 THEN 1 ELSE 0 END), 0) AS in_stock,
+                   COALESCE(SUM(CASE WHEN c.status_id = 3 THEN 1 ELSE 0 END), 0) AS at_refill,
+                   COALESCE(SUM(CASE WHEN c.status_id = 2 THEN 1 ELSE 0 END), 0) AS in_use
+              FROM cartridge_models m
+              JOIN devices d ON d.id = ?1
+              LEFT JOIN cartridges c
+                     ON c.model_id = m.id AND c.deleted_at_utc IS NULL
+             WHERE m.deleted_at_utc IS NULL
+               AND EXISTS (
+                     SELECT 1 FROM cartridge_model_compatibility cmc
+                      WHERE cmc.cartridge_model_id = m.id
+                        AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))
+                   )
+             GROUP BY m.id, m.brand, m.model
+             ORDER BY m.brand ASC, m.model ASC
+        ";
+
+        let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map(params![printer_device_id], |r| {
+                Ok(CompatibleModelAggregate {
+                    model_id: r.get(0)?,
+                    brand: r.get(1)?,
+                    model: r.get(2)?,
+                    in_stock: r.get(3)?,
+                    at_refill: r.get(4)?,
+                    in_use: r.get(5)?,
+                })
             })
             .map_err(map_rusqlite)?;
+
         let mut out = Vec::new();
         for row in rows {
             out.push(row.map_err(map_rusqlite)?);
@@ -1095,8 +1154,11 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                       OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
                    ))) \
                    AND (?6 IS NULL \
-                        OR NOT EXISTS (SELECT 1 FROM printer_cartridge_models pcm WHERE pcm.device_id = ?6) \
-                        OR c.model_id IN (SELECT cartridge_model_id FROM printer_cartridge_models WHERE device_id = ?6))",
+                        OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
+                        OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
+                                   JOIN devices d ON d.id = ?6 \
+                                   WHERE cmc.cartridge_model_id = c.model_id \
+                                     AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))))",
                 params![
                     include_deleted as i64,
                     filter.status_id,
@@ -1121,8 +1183,11 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                       OR (m.kind_id = 2 AND c.state_id IN (4, 5)) \
                    ))) \
                    AND (?6 IS NULL \
-                        OR NOT EXISTS (SELECT 1 FROM printer_cartridge_models pcm WHERE pcm.device_id = ?6) \
-                        OR c.model_id IN (SELECT cartridge_model_id FROM printer_cartridge_models WHERE device_id = ?6)) \
+                        OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
+                        OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
+                                   JOIN devices d ON d.id = ?6 \
+                                   WHERE cmc.cartridge_model_id = c.model_id \
+                                     AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name)))) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
                  LIMIT ?7 OFFSET ?8"
             ))
