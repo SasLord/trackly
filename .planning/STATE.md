@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: verifying
-last_updated: "2026-06-24T23:45:26.146Z"
+last_updated: "2026-06-25T12:14:13.357Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 15
-  completed_phases: 15
-  total_plans: 96
+  completed_phases: 14
+  total_plans: 97
   completed_plans: 96
-  percent: 100
+  percent: 93
 ---
 
 # Project State
@@ -324,7 +324,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-24T23:45:26.138Z
-Stopped at: Phase 12 Round 4 executed + verified (code-level passed); awaiting live UAT
+Last session: 2026-06-25T12:14:13.349Z
+Stopped at: Phase 12 Round 5 planned (12-21, verified PASSED) — device_id/id printer lookup fix
 Resume file: 
-.planning/phases/12-cartridge-request-interconnection/12-VERIFICATION-ROUND4.md
+.planning/phases/12-cartridge-request-interconnection/12-21-PLAN.md
