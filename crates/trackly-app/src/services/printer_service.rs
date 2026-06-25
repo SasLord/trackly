@@ -206,6 +206,7 @@ impl PrinterService {
 
     /// Get a single printer by device_id, enriched with last reading + alert
     /// + current cartridge (GAP-12-13, Phase 12 Round 5 gap closure).
+    ///
     /// Mirrors `get()`'s body 1:1 — only the resolve key differs.
     pub async fn get_by_device_id(&self, device_id: i64) -> Result<PrinterDto, AppError> {
         let readers = self.readers.clone();
@@ -262,67 +263,6 @@ impl PrinterService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
-    }
-
-    /// Get the cartridge_model_id list compatible with this printer device
-    /// via `printer_cartridge_models` (D-11/D-12, Phase 12 gap closure —
-    /// GAP-12-02). Empty Vec means "not configured" (D-14) — callers must
-    /// not treat that as "no compatible models", only as "no narrowing".
-    pub async fn get_compatible_models(&self, device_id: i64) -> Result<Vec<i64>, AppError> {
-        let readers = self.readers.clone();
-        let repo = self.printer_repo.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            repo.get_compatible_model_ids(&conn, device_id)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking: {e}"),
-        })?
-    }
-
-    /// Replace the set of cartridge models compatible with this printer
-    /// device (printer-side write path, D-12). Returns the new set.
-    pub async fn set_compatible_models(
-        &self,
-        device_id: i64,
-        model_ids: Vec<i64>,
-        caller: &Identity,
-    ) -> Result<Vec<i64>, AppError> {
-        authorize(caller, &Action::MutatePrinters)?;
-        let now = self.clock.unix_seconds();
-        let user_id = caller.user_id;
-        let audit_repo = self.audit_repo.clone();
-        let model_ids_for_write = model_ids.clone();
-
-        self.writer
-            .execute(move |conn| {
-                let tx = conn.transaction().map_err(map_rusqlite)?;
-                SqlitePrinterRepository::set_compatible_models_in_tx(
-                    &tx,
-                    device_id,
-                    &model_ids_for_write,
-                    now,
-                )?;
-                audit_repo.insert(
-                    &tx,
-                    AuditEntry {
-                        entity_type: "printer_compatibility",
-                        entity_id: device_id,
-                        action: "set_compatible_models",
-                        user_id,
-                        before_json: None,
-                        after_json: None,
-                        payload_json: Some(json!({ "model_ids": model_ids_for_write }).to_string()),
-                        created_at_utc: now,
-                    },
-                )?;
-                tx.commit().map_err(map_rusqlite)?;
-                Ok(())
-            })
-            .await?;
-
-        self.get_compatible_models(device_id).await
     }
 
     // -----------------------------------------------------------------------

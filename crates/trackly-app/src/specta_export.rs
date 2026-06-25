@@ -80,10 +80,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::cartridges::cartridges_suggest_model,
         crate::tauri_cmds::cartridges::cartridges_suggest_compat_printer,
         crate::tauri_cmds::cartridges::cartridges_suggest_location,
-        // Phase 12 gap closure (GAP-12-02, Plan 12-05) — printer↔cartridge-model
-        // compatibility junction table, editable from both sides (D-11/D-12).
-        crate::tauri_cmds::cartridges::cartridge_models_get_compatible_devices,
-        crate::tauri_cmds::cartridges::cartridge_models_set_compatible_devices,
         // Phase 5 — Auth (Plan 03)
         crate::tauri_cmds::auth::auth_login,
         crate::tauri_cmds::auth::auth_logout,
@@ -116,10 +112,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::printers::printers_admit,
         crate::tauri_cmds::printers::printers_refresh,
         crate::tauri_cmds::printers::printers_acknowledge_alert,
-        // Phase 12 gap closure (GAP-12-02, Plan 12-05) — printer-side half of
-        // the printer↔cartridge-model compatibility commands.
-        crate::tauri_cmds::printers::printers_get_compatible_models,
-        crate::tauri_cmds::printers::printers_set_compatible_models,
         // Phase 6 — Requests (Plan 03)
         crate::tauri_cmds::requests::requests_list,
         crate::tauri_cmds::requests::requests_get,

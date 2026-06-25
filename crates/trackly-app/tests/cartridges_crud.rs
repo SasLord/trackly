@@ -3,20 +3,25 @@
 //! Covers: create + auto-code, custom code, get-404, soft-delete, counts,
 //! rejects_invalid_custom_code (empty or >32 chars or ctrl chars → AppError::Validation).
 //!
-//! Plan 12-05 adds `printer_compatib*` tests covering the new
-//! `printer_cartridge_models` junction table (D-11/D-12/D-13/D-14, GAP-12-02).
+//! Plan 12-05 originally added `printer_compatib*` tests covering the
+//! `printer_cartridge_models` junction table (D-11/D-12/D-13/D-14,
+//! GAP-12-02). Plan 13-01/13-02 (V032) replaced that junction table with a
+//! single `cartridge_model_compatibility.printer_name` column matched
+//! case-insensitively against `devices.name` — the tests below were updated
+//! to seed compatibility via `CartridgeService::model_create`'s
+//! `compatibility: Vec<String>` field instead of the removed
+//! `SqlitePrinterRepository::set_compatible_models_in_tx` /
+//! `get_compatible_model_ids` / `get_compatible_device_ids`.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_core::error::AppError;
 use trackly_infra::clock_impl::SystemClock;
-use trackly_infra::repos::printers_sqlite::SqlitePrinterRepository;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeFilter, Pagination};
 use trackly_app::services::CartridgeService;
-use trackly_core::ports::printers::PrinterRepository;
 
 /// Set up a fresh CartridgeService backed by an in-memory migrated DB.
 fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
@@ -259,19 +264,34 @@ async fn rejects_invalid_custom_code() {
 }
 
 // ---------------------------------------------------------------------------
-// Plan 12-05: printer_cartridge_models junction table (GAP-12-02, D-11..D-14)
+// Plan 12-05 (rewired by 13-01/13-02, V032): single-column printer-name
+// compatibility (D-11..D-14), matched case-insensitively against the
+// printer device's `devices.name`.
 // ---------------------------------------------------------------------------
 
 /// Test 1: cartridges.list() with compatible_with_printer_device_id narrows
-/// to the linked model when a link exists (D-13). Model B (also kind_id=1,
-/// in stock) is excluded.
+/// to the linked model when a link exists (D-13). Model B has a
+/// *non-matching* compatibility entry (not an empty list — an empty list
+/// would pass through unfiltered per D-05) so it is properly excluded.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn printer_compatib_list_narrows_to_linked_model() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, writer, _readers, _dir) = make_cartridge_service_with_handles();
-        let device_id = seed_printer_device(&writer, "Принтер тест").await;
+        let printer_name = "Принтер тест";
+        let device_id = seed_printer_device(&writer, printer_name).await;
 
-        let model_a = seed_model(&svc).await;
+        let model_a = svc
+            .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
+                brand: "Pantum".into(),
+                model: "TL-5120X".into(),
+                kind_id: 1,
+                color: Some("Чёрный".into()),
+                notes: None,
+                compatibility: vec![printer_name.to_string()],
+            })
+            .await
+            .expect("seed model A")
+            .id;
         let model_b = svc
             .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
                 brand: "Kyocera".into(),
@@ -279,7 +299,7 @@ async fn printer_compatib_list_narrows_to_linked_model() {
                 kind_id: 1,
                 color: Some("Чёрный".into()),
                 notes: None,
-                compatibility: vec![],
+                compatibility: vec!["Другой принтер".into()],
             })
             .await
             .expect("seed model B")
@@ -304,25 +324,6 @@ async fn printer_compatib_list_narrows_to_linked_model() {
         })
         .await
         .expect("create cartridge B");
-
-        // Link device to model A only.
-        writer
-            .execute(move |conn| {
-                let tx = conn
-                    .transaction()
-                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
-                SqlitePrinterRepository::set_compatible_models_in_tx(
-                    &tx,
-                    device_id,
-                    &[model_a],
-                    1_700_000_000,
-                )?;
-                tx.commit()
-                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
-                Ok(())
-            })
-            .await
-            .expect("link device to model A");
 
         let resp = svc
             .list(
@@ -431,16 +432,32 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
     .expect("printer_compatib_unconfigured_device_does_not_narrow budget")
 }
 
-/// Test 3: SqlitePrinterRepository::get_compatible_model_ids round-trips a
-/// 2-model link set; get_compatible_device_ids reverse-lookup returns the
-/// linked device for a given model_id.
+/// Test 3 (rewired for V032/Plan 13-02): seeding two models with the same
+/// printer name in their `compatibility: Vec<String>` round-trips through
+/// `CartridgeService::model_get`'s `compatibility` field (forward direction —
+/// replaces the removed `get_compatible_model_ids`), and the cartridge-list
+/// narrowing filter confirms the reverse direction (replaces the removed
+/// `get_compatible_device_ids`): both models' in-stock cartridges are
+/// returned when filtering by that printer's device_id.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn printer_compatib_round_trip_both_directions() {
     tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, writer, readers, _dir) = make_cartridge_service_with_handles();
-        let device_id = seed_printer_device(&writer, "Принтер round-trip").await;
+        let (svc, writer, _readers, _dir) = make_cartridge_service_with_handles();
+        let printer_name = "Принтер round-trip";
+        let device_id = seed_printer_device(&writer, printer_name).await;
 
-        let model_a = seed_model(&svc).await;
+        let model_a = svc
+            .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
+                brand: "Pantum".into(),
+                model: "TL-5120X".into(),
+                kind_id: 1,
+                color: Some("Чёрный".into()),
+                notes: None,
+                compatibility: vec![printer_name.to_string()],
+            })
+            .await
+            .expect("seed model A")
+            .id;
         let model_b = svc
             .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
                 brand: "Kyocera".into(),
@@ -448,50 +465,61 @@ async fn printer_compatib_round_trip_both_directions() {
                 kind_id: 1,
                 color: Some("Чёрный".into()),
                 notes: None,
-                compatibility: vec![],
+                compatibility: vec![printer_name.to_string()],
             })
             .await
             .expect("seed model B")
             .id;
 
-        writer
-            .execute(move |conn| {
-                let tx = conn
-                    .transaction()
-                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
-                SqlitePrinterRepository::set_compatible_models_in_tx(
-                    &tx,
-                    device_id,
-                    &[model_a, model_b],
-                    1_700_000_000,
-                )?;
-                tx.commit()
-                    .map_err(trackly_infra::error_conversions::map_rusqlite)?;
-                Ok(())
-            })
-            .await
-            .expect("link device to both models");
+        // Forward direction: model -> compatible printer names round-trips.
+        let fetched_a = svc.model_get(model_a).await.expect("model_get A");
+        assert_eq!(
+            fetched_a.compatibility,
+            vec![printer_name.to_string()],
+            "model A's compatibility must round-trip the printer name"
+        );
 
-        let repo = SqlitePrinterRepository;
-        let conn = readers.acquire();
-        let mut ids = repo
-            .get_compatible_model_ids(&conn, device_id)
-            .expect("get_compatible_model_ids");
-        ids.sort();
+        svc.create(CartridgeCreateDto {
+            model_id: model_a,
+            code_override: None,
+            state_id: Some(1),
+            location: Some("Склад".into()),
+            notes: None,
+        })
+        .await
+        .expect("create cartridge A");
+        svc.create(CartridgeCreateDto {
+            model_id: model_b,
+            code_override: None,
+            state_id: Some(1),
+            location: Some("Склад".into()),
+            notes: None,
+        })
+        .await
+        .expect("create cartridge B");
+
+        // Reverse direction: device_id -> both linked models' cartridges
+        // show up in the narrowing filter.
+        let resp = svc
+            .list(
+                CartridgeFilter {
+                    kind_id: Some(1),
+                    installable_only: true,
+                    compatible_with_printer_device_id: Some(device_id),
+                    ..Default::default()
+                },
+                Pagination::default(),
+            )
+            .await
+            .expect("list with compatibility filter");
+
+        let mut model_ids: Vec<i64> = resp.items.iter().map(|i| i.model_id).collect();
+        model_ids.sort();
         let mut expected = vec![model_a, model_b];
         expected.sort();
         assert_eq!(
-            ids, expected,
-            "round-trip must return both linked model ids"
-        );
-
-        let devices = repo
-            .get_compatible_device_ids(&conn, model_a)
-            .expect("get_compatible_device_ids");
-        assert_eq!(
-            devices,
-            vec![device_id],
-            "reverse lookup must return the linked device for model A"
+            model_ids, expected,
+            "reverse lookup must return both linked models' cartridges"
         );
     })
     .await

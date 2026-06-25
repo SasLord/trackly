@@ -90,8 +90,9 @@ pub struct CartridgeModelDto {
     pub created_at_utc: i64,
     #[specta(type = i32)]
     pub updated_at_utc: i64,
-    /// Compatibility pairs (printer_brand, printer_model).
-    pub compatibility: Vec<(String, String)>,
+    /// Compatible printer names (free-text, matched against `devices.name` —
+    /// V032/Phase 13 single-column contract, replaces the old (brand, model) pairs).
+    pub compatibility: Vec<String>,
     /// Number of live (non-deleted) cartridge instances of this model.
     /// Defaults to 0; populated by the service for list/get reads.
     #[specta(type = i32)]
@@ -100,9 +101,9 @@ pub struct CartridgeModelDto {
 }
 
 impl CartridgeModelDto {
-    /// Build a DTO from a domain row + loaded compatibility pairs.
+    /// Build a DTO from a domain row + loaded compatible printer names.
     /// `instance_count` defaults to 0 — enrich via [`Self::with_instance_count`].
-    pub fn from_row(r: DomainModelRow, compatibility: Vec<(String, String)>) -> Self {
+    pub fn from_row(r: DomainModelRow, compatibility: Vec<String>) -> Self {
         Self {
             id: r.id,
             version: r.version,
@@ -149,9 +150,9 @@ pub struct CartridgeModelCreateDto {
     pub kind_id: i64,
     pub color: Option<String>,
     pub notes: Option<String>,
-    /// Compatibility pairs (printer_brand, printer_model).
+    /// Compatible printer names (free-text, V032/Phase 13 single-column contract).
     #[serde(default)]
-    pub compatibility: Vec<(String, String)>,
+    pub compatibility: Vec<String>,
 }
 
 /// Payload for updating an existing cartridge model.
@@ -168,7 +169,7 @@ pub struct CartridgeModelPatchDto {
     pub color: Option<String>,
     pub notes: Option<String>,
     #[serde(default)]
-    pub compatibility: Vec<(String, String)>,
+    pub compatibility: Vec<String>,
 }
 
 /// Lifecycle transition payload.
@@ -360,8 +361,9 @@ pub struct CartridgeFilter {
     #[serde(default)]
     pub installable_only: bool,
     /// Когда задан — ограничивает выборку моделями, совместимыми с этим
-    /// устройством-принтером через `printer_cartridge_models`; пустой набор
-    /// связей не сужает выборку (D-13/D-14, Phase 12 gap closure GAP-12-02).
+    /// устройством-принтером (матчинг по `cartridge_model_compatibility.printer_name`
+    /// против `devices.name`, V032/Phase 13); пустой набор связей не сужает
+    /// выборку (D-13/D-14, Phase 12 gap closure GAP-12-02; D-05 pass-through).
     #[specta(type = Option<i32>)]
     pub compatible_with_printer_device_id: Option<i64>,
 }
@@ -480,19 +482,6 @@ pub struct AuditEntryDto {
     pub after_json: Option<String>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
-}
-
-/// Read/write payload for the model-side printer-compatibility commands
-/// (D-11/D-12, Phase 12 gap closure — GAP-12-02). Reverse of
-/// `PrinterCompatibleModelsDto` — used by the cartridge-model form modal to
-/// edit which printer devices are compatible with this model. Snake_case,
-/// no rename — matches this file's existing convention.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct CartridgeModelCompatibleDevicesDto {
-    #[specta(type = i32)]
-    pub model_id: i64,
-    #[specta(type = Vec<i32>)]
-    pub device_ids: Vec<i64>,
 }
 
 #[cfg(test)]

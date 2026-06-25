@@ -14,17 +14,13 @@
 use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
-use serde_json::json;
-use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::cartridges::CartridgeModelNew;
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
-use trackly_core::ports::printers::PrinterRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
-use trackly_infra::repos::printers_sqlite::SqlitePrinterRepository;
 use trackly_infra::repos::{SqliteAuditLogRepository, SqliteCartridgeRepository};
 
 use crate::dto::cartridge::{
@@ -41,11 +37,6 @@ pub struct CartridgeService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) cart_repo: Arc<SqliteCartridgeRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
-    /// Used only for the model-side compatibility methods (D-12, Phase 12
-    /// gap closure — GAP-12-02); the junction table CRUD lives behind
-    /// `PrinterRepository`/`SqlitePrinterRepository` regardless of which
-    /// side initiates the write.
-    pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
 }
 
 impl CartridgeService {
@@ -60,7 +51,6 @@ impl CartridgeService {
             clock,
             cart_repo: Arc::new(SqliteCartridgeRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
-            printer_repo: Arc::new(SqlitePrinterRepository),
         }
     }
 
@@ -738,75 +728,6 @@ impl CartridgeService {
     }
 
     // -----------------------------------------------------------------------
-    // Printer compatibility (model-side, D-11/D-12, Phase 12 gap closure —
-    // GAP-12-02). Mirrors PrinterService::get_compatible_models /
-    // set_compatible_models exactly, opposite direction into the SAME
-    // `printer_cartridge_models` table.
-    // -----------------------------------------------------------------------
-
-    /// Get the printer device_id list compatible with this cartridge model
-    /// via `printer_cartridge_models` (reverse lookup for the model-side
-    /// editor).
-    pub async fn get_compatible_devices(&self, model_id: i64) -> Result<Vec<i64>, AppError> {
-        let readers = self.readers.clone();
-        let repo = self.printer_repo.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            repo.get_compatible_device_ids(&conn, model_id)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking: {e}"),
-        })?
-    }
-
-    /// Replace the set of printer devices compatible with this cartridge
-    /// model (model-side write path, D-12). Returns the new set.
-    pub async fn set_compatible_devices(
-        &self,
-        model_id: i64,
-        device_ids: Vec<i64>,
-        caller: &Identity,
-    ) -> Result<Vec<i64>, AppError> {
-        authorize(caller, &Action::MutateCartridges)?;
-        let now = self.clock.unix_seconds();
-        let user_id = caller.user_id;
-        let audit_repo = self.audit_repo.clone();
-        let device_ids_for_write = device_ids.clone();
-
-        self.writer
-            .execute(move |conn| {
-                let tx = conn.transaction().map_err(map_rusqlite)?;
-                SqlitePrinterRepository::set_compatible_devices_in_tx(
-                    &tx,
-                    model_id,
-                    &device_ids_for_write,
-                    now,
-                )?;
-                audit_repo.insert(
-                    &tx,
-                    AuditEntry {
-                        entity_type: "printer_compatibility",
-                        entity_id: model_id,
-                        action: "set_compatible_devices",
-                        user_id,
-                        before_json: None,
-                        after_json: None,
-                        payload_json: Some(
-                            json!({ "device_ids": device_ids_for_write }).to_string(),
-                        ),
-                        created_at_utc: now,
-                    },
-                )?;
-                tx.commit().map_err(map_rusqlite)?;
-                Ok(())
-            })
-            .await?;
-
-        self.get_compatible_devices(model_id).await
-    }
-
-    // -----------------------------------------------------------------------
     // Autocomplete / suggest helpers
     // -----------------------------------------------------------------------
 
@@ -870,9 +791,14 @@ impl CartridgeService {
         })?
     }
 
-    /// Autocomplete for printer_brand or printer_model in compatibility table.
+    /// Autocomplete for printer names in the compatibility table.
     ///
-    /// `field` must be `"printer_brand"` or `"printer_model"`.
+    /// `field` historically distinguished `"printer_brand"` / `"printer_model"`
+    /// (pre-V032 two-column contract). V032 (Plan 13-01) collapsed both into a
+    /// single `printer_name` column on `cartridge_model_compatibility`; all
+    /// three accepted values now resolve to that one column. Public signature
+    /// kept unchanged for this plan (13-02) — Plan 13-03 is expected to revisit
+    /// the caller-facing contract once the compatibility editor UI is rebuilt.
     pub async fn suggest_compat_printer(
         &self,
         field: String,
@@ -880,8 +806,7 @@ impl CartridgeService {
     ) -> Result<Vec<String>, AppError> {
         // Whitelist field — never interpolate user input.
         let col = match field.as_str() {
-            "printer_brand" => "printer_brand",
-            "printer_model" => "printer_model",
+            "printer_brand" | "printer_model" | "printer_name" => "printer_name",
             other => {
                 return Err(AppError::Validation {
                     field: "field".into(),
