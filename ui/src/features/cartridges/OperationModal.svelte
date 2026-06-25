@@ -79,6 +79,11 @@
   let givenByName = $state('');
   let givenToName = $state('');
   let location = $state('');
+  // DEC-B (Round 5, WR-01 fix): tracks whether `location` currently holds a
+  // value auto-filled from the selected printer's deviceLocation (vs. typed by
+  // the operator). Lets a printer switch refresh the auto-fill while still
+  // never clobbering manual input.
+  let locationAutofilled = $state(false);
   let stateId = $state(3); // default: Пустой (D-Op-Fields-01)
   let notes = $state('');
   let submitting = $state(false);
@@ -133,6 +138,7 @@
       givenByName = '';
       givenToName = prefillGivenToName ?? '';
       location = prefillLocation ?? '';
+      locationAutofilled = false;
       notes = '';
       stateId = defaultStateId;
       selectedCartridge = null;
@@ -227,6 +233,13 @@
     if (!(open && op === 'install' && effectivePrinterId !== undefined)) {
       previousCartridge = null;
       printerContext = null;
+      // DEC-B/WR-01: deselecting the printer ("Без привязки") drops an
+      // auto-filled location so a stale value isn't recorded; manual input
+      // (locationAutofilled === false) is left untouched.
+      if (preFillPrinterId === undefined && locationAutofilled) {
+        location = '';
+        locationAutofilled = false;
+      }
       return;
     }
     printers
@@ -236,10 +249,17 @@
         // DEC-B (Phase 12 Round 5): in the cartridge-centric entry (no
         // incoming preFillPrinterId — the operator just picked a printer via
         // the selector below), auto-fill «Расположение» from the printer's
-        // device location. Never overwrites manual operator input — only
-        // fires while location is still empty.
-        if (preFillPrinterId === undefined && printer.deviceLocation && !location.trim()) {
+        // device location. Never clobbers manual operator input: fills while
+        // the field is empty OR still holds a prior auto-fill (WR-01 — so
+        // switching printers refreshes the location instead of keeping the
+        // first printer's value).
+        if (
+          preFillPrinterId === undefined &&
+          printer.deviceLocation &&
+          (!location.trim() || locationAutofilled)
+        ) {
           location = printer.deviceLocation;
+          locationAutofilled = true;
         }
         if (printer.currentCartridgeId === null) {
           previousCartridge = null;
@@ -672,7 +692,12 @@
           placeholder="Расположение"
           id="op-location"
           invalid={!!locationError}
-          onChange={(v) => (location = v)}
+          onChange={(v) => {
+            location = v;
+            // WR-01: a manual edit unmarks the auto-fill so a later printer
+            // switch will not overwrite what the operator typed.
+            locationAutofilled = false;
+          }}
         />
         {#if locationError}
           <span class="field-error">{locationError}</span>
