@@ -17,8 +17,9 @@ use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::printers::{
     build_printers_acknowledge_alert, build_printers_admit, build_printers_create,
-    build_printers_discover, build_printers_get, build_printers_get_compatible_models,
-    build_printers_list, build_printers_refresh, build_printers_set_compatible_models,
+    build_printers_discover, build_printers_get, build_printers_get_by_device_id,
+    build_printers_get_compatible_models, build_printers_list, build_printers_refresh,
+    build_printers_set_compatible_models,
 };
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,12 @@ pub struct ListPayload {
 #[serde(rename_all = "camelCase")]
 pub struct GetPayload {
     pub id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetByDeviceIdPayload {
+    pub device_id: i32,
 }
 
 #[derive(serde::Deserialize)]
@@ -113,6 +120,21 @@ pub async fn handler_get(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_printers_get(&ctx, &identity, p.id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_get_by_device_id(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetByDeviceIdPayload>,
+) -> Result<Json<PrinterDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_get_by_device_id(&ctx, &identity, p.device_id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -235,6 +257,10 @@ pub fn router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/printers_list", post(handler_list))
         .route("/api/v1/printers_get", post(handler_get))
+        .route(
+            "/api/v1/printers_get_by_device_id",
+            post(handler_get_by_device_id),
+        )
         .route("/api/v1/printers_create", post(handler_create))
         .route("/api/v1/printers_discover", post(handler_discover))
         .route("/api/v1/printers_admit", post(handler_admit))

@@ -78,6 +78,12 @@
 //! 39. Employee session (not author) → POST /api/v1/requests_cancel on the
 //!     manager-owned "open" request → 403 Forbidden (BOLA)
 //!
+//! Plan 12-21 (Round 5 gap closure, GAP-12-13) adds Case 40: новая
+//! device-id-keyed read команда — тот же класс гейта, что и printers_get/
+//! printers_get_compatible_models.
+//! 40. Employee session → POST /api/v1/printers_get_by_device_id → 403
+//!     Forbidden (Action::ReadData, Admin|Manager only).
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1390,6 +1396,28 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 39: Employee → requests_cancel (manager-owned request) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 40 (Plan 12-21, Round 5 gap closure, GAP-12-13): Employee →
+        // printers_get_by_device_id → 403 Forbidden. authorize(&Action::ReadData)
+        // (Admin|Manager only) fires before any DB read, so device_id: 1 need
+        // not exist — same gate class as printers_get/
+        // printers_get_compatible_models.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_get_by_device_id",
+                json!({ "deviceId": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 40: Employee → printers_get_by_device_id → expected 403, got {status}"
             );
         }
 

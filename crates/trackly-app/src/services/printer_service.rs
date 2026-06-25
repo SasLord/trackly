@@ -204,6 +204,49 @@ impl PrinterService {
         })?
     }
 
+    /// Get a single printer by device_id, enriched with last reading + alert
+    /// + current cartridge (GAP-12-13, Phase 12 Round 5 gap closure).
+    /// Mirrors `get()`'s body 1:1 — only the resolve key differs.
+    pub async fn get_by_device_id(&self, device_id: i64) -> Result<PrinterDto, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.printer_repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let row = repo.get_by_device_id(&conn, device_id)?;
+            let mut dto = PrinterDto::from(row);
+
+            // Enrich with last reading (keyed by the resolved printers.id row).
+            if let Some(reading) = repo.get_last_reading(&conn, dto.id)? {
+                dto.status = Some(reading.status.clone());
+                dto.page_count = reading.page_count;
+                // Parse toner_levels JSON.
+                if let Ok(val) =
+                    serde_json::from_str::<serde_json::Value>(&reading.toner_levels_json)
+                {
+                    if !val.is_null() {
+                        dto.toner_levels = Some(val);
+                    }
+                }
+            }
+
+            // Enrich with alert.
+            let alerts = repo.list_active_alerts(&conn)?;
+            if let Some(alert) = alerts.iter().find(|a| a.printer_id == dto.id) {
+                dto.has_alert = true;
+                dto.alert_type = Some(alert.alert_type.clone());
+            }
+
+            // Enrich with current cartridge (D-PRN07-01).
+            dto.current_cartridge_id = repo.current_cartridge_for_printer(&conn, dto.device_id)?;
+
+            Ok(dto)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
     /// Get the current cartridge ID installed in a printer (by printer device_id).
     pub async fn current_cartridge_for_printer(
         &self,

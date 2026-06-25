@@ -305,6 +305,21 @@ impl PrinterRepository for SqlitePrinterRepository {
         })
     }
 
+    fn get_by_device_id(&self, conn: &Self::Conn, device_id: i64) -> Result<PrinterRow, AppError> {
+        conn.query_row(
+            &format!("{SELECT_PRINTERS} WHERE p.device_id = ?1"),
+            params![device_id],
+            map_row_printer,
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                entity: "printer",
+                id: device_id,
+            },
+            other => map_rusqlite(other),
+        })
+    }
+
     fn list(
         &self,
         conn: &Self::Conn,

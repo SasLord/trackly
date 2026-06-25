@@ -40,6 +40,19 @@ pub async fn build_printers_get(
     ctx.printers.get(id).await
 }
 
+/// Чтение принтера по device_id (FK устройства), а не по id записи printers
+/// (GAP-12-13, Phase 12 Round 5 gap closure). Тот же гейт, что у
+/// `build_printers_get` — это тот же класс чтения, просто другой ключ
+/// резолва.
+pub async fn build_printers_get_by_device_id(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+) -> Result<PrinterDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.printers.get_by_device_id(device_id).await
+}
+
 /// Мутация: требует `caller` с правом `MutatePrinters` (Admin | Manager).
 pub async fn build_printers_create(
     ctx: &AppCtx,
@@ -253,6 +266,16 @@ pub async fn printers_get(
 ) -> Result<PrinterDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_get(state.inner(), &caller, id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn printers_get_by_device_id(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+) -> Result<PrinterDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_get_by_device_id(state.inner(), &caller, device_id as i64).await
 }
 
 #[tauri::command]

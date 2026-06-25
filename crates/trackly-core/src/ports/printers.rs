@@ -20,6 +20,15 @@ pub trait PrinterRepository {
     /// Returns `AppError::NotFound` if absent.
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<PrinterRow, AppError>;
 
+    /// Fetch a single printer by its device_id (FK into devices), not by the
+    /// printers.id primary key.
+    ///
+    /// GAP-12-13 (Phase 12 Round 5): UI consistently passes device_id
+    /// (PrinterSelect emits deviceId; requests carry printerDeviceId) — this
+    /// resolves that contract directly instead of forcing callers through
+    /// the id-keyed get(). Returns AppError::NotFound if absent.
+    fn get_by_device_id(&self, conn: &Self::Conn, device_id: i64) -> Result<PrinterRow, AppError>;
+
     /// Paginated list of printers matching `filter`. Returns `(rows, total)`.
     fn list(
         &self,
