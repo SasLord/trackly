@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: milestone_complete
-last_updated: 2026-06-25T13:14:37.856Z
+status: in_progress
+last_updated: 2026-06-25T13:30:00.000Z
 last_activity: 2026-06-25
 progress:
   total_phases: 15
@@ -11,7 +11,7 @@ progress:
   total_plans: 97
   completed_plans: 97
   percent: 100
-stopped_at: Milestone complete (Phase 12 was final phase)
+stopped_at: "Phase 12 closed; milestone v1.1 NOT finalized — extending with Phase 13 (Printer<->Cartridge compatibility redesign + folded chip tasks). Next: add Phase 13 to ROADMAP via /gsd-phase, then /gsd-spec-phase 13. Do NOT run /gsd-complete-milestone."
 ---
 
 # Project State
@@ -21,13 +21,13 @@ stopped_at: Milestone complete (Phase 12 was final phase)
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** Phase 13 — редизайн совместимости Принтеры↔Картриджи (в милстоне v1.1)
 
 ## Current Position
 
-Phase: 12
+Phase: 13 (to be added to ROADMAP)
 Plan: Not started
-Status: Milestone complete
+Status: Ready to spec — add Phase 13 to ROADMAP (/gsd-phase, milestone v1.1), then /gsd-spec-phase 13
 Last activity: 2026-06-25
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -329,6 +329,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T12:52:26.300Z
-Stopped at: Phase 12 Round 5 executed (12-21 + WR-01 fix); awaiting live re-UAT of R4-1/R4-3
-Resume file: .planning/phases/12-cartridge-request-interconnection/12-HUMAN-UAT.md
+Last session: 2026-06-25T13:30:00.000Z
+Stopped at: Phase 12 CLOSED (5 gap rounds + live UAT R5 pass). Milestone v1.1 NOT finalized — extending with Phase 13 (Printer↔Cartridge compatibility redesign by unique printer name/type, folds 2 chip tasks: drum-state default + printer-list cap). Next session: (1) /gsd-phase add Phase 13 to v1.1, (2) /gsd-spec-phase 13, (3) discuss→plan→execute. Full scope in memory phase13-compatibility-redesign. Context was cleared here intentionally.
+Resume file: None
