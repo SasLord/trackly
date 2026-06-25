@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: verifying
-last_updated: "2026-06-25T12:14:13.357Z"
+status: completed
+last_updated: "2026-06-25T12:34:39.917Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 15
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 97
-  completed_plans: 96
-  percent: 93
+  completed_plans: 97
+  percent: 100
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 12-20 complete (Round 4 gap-closure, GAP-12-11 + GAP-12-12 п.1/3 closed — optional compatibility-prioritized printer selector in cartridge-centric install entry)
-Status: Round 4 gap-closure complete — recommend re-verification before closing phase
+Plan: 12-21 complete (Round 5 gap-closure, GAP-12-13 + DEC-A + DEC-B closed — printer lookup resolves by device_id instead of printers.id, fixing previousCartridge/printerContext in both install entries; printerContextHint branches on selector visibility; Расположение auto-fills from deviceLocation)
+Status: Round 5 gap-closure complete — recommend final UAT pass re-testing R4-1/R4-3 before closing phase
 Last activity: 2026-06-25
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -135,6 +135,7 @@ Last activity: 2026-06-25
 | Phase 12 P16 | 2min | 1 tasks | 1 files |
 | Phase 12 P18 | 6min | 1 tasks | 1 files |
 | Phase 12 P20 | 35min | 2 tasks | 2 files |
+| Phase 12 P21 | 35min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -287,6 +288,8 @@ Recent decisions affecting current work:
 - [Phase 12]: 12-18: closed GAP-12-11 by broadening OperationModal's printerContext/previousCartridge lookup $effect gate from `cartridge===null && preFillPrinterId!==undefined` to just `preFillPrinterId!==undefined` — cartridge-centric install entry now shows printer name+IP hint and the «Предыдущий картридж» block, same as request-centric; compatibleModels/cartridgeOptions effects intentionally kept on the narrower `cartridge===null` gate (D-08 regression guard preserved)
 - [Phase 12]: 12-20: PrinterSelect.svelte adds optional, compatibility-prioritized printer selector to cartridge-centric install (D-20/D-21); falls back to flat list when no compatibility links exist, never blocks
 - [Phase 12]: 12-20: effectivePrinterId derived (preFillPrinterId ?? selectedPrinterId) unifies request-centric and cartridge-centric printer context into one lookup/payload path; previousCartridge block (D-22) reused unchanged
+- [Phase 12]: 12-21 (Round 5, GAP-12-13): root cause of printerContext staying null — effectivePrinterId is always a device_id, but printers_get resolves WHERE p.id=?1; added parallel printers_get_by_device_id command (same RBAC gate) instead of changing printers_get's contract (used elsewhere keyed by printers.id); OperationModal switched its lookup effect to getByDeviceId
+- [Phase 12]: 12-21 (DEC-A/DEC-B): printerContextHint branches on isSelectorVisible (same predicate gating PrinterSelect markup) — omits name when selector already shows it; Расположение auto-fills from printerContext.deviceLocation in the cartridge-centric entry only, never overwriting manual input
 
 ### Pending Todos
 
@@ -324,7 +327,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T12:14:13.349Z
-Stopped at: Phase 12 Round 5 planned (12-21, verified PASSED) — device_id/id printer lookup fix
-Resume file: 
-.planning/phases/12-cartridge-request-interconnection/12-21-PLAN.md
+Last session: 2026-06-25T12:30:03.558Z
+Stopped at: Phase 12 Round 5 executed (12-21 complete) — GAP-12-13/DEC-A/DEC-B closed; recommend final UAT pass re-testing R4-1/R4-3 before closing phase
+Resume file: None
