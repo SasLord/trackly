@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
-status: completed
-last_updated: "2026-06-25T12:52:26.307Z"
+status: milestone_complete
+last_updated: 2026-06-25T13:14:37.856Z
 last_activity: 2026-06-25
 progress:
   total_phases: 15
@@ -11,6 +11,7 @@ progress:
   total_plans: 97
   completed_plans: 97
   percent: 100
+stopped_at: Milestone complete (Phase 12 was final phase)
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-24)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 12 — cartridge-request-interconnection
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 12 (cartridge-request-interconnection) — EXECUTING
-Plan: 12-21 complete (Round 5 gap-closure, GAP-12-13 + DEC-A + DEC-B closed — printer lookup resolves by device_id instead of printers.id, fixing previousCartridge/printerContext in both install entries; printerContextHint branches on selector visibility; Расположение auto-fills from deviceLocation)
-Status: Round 5 gap-closure complete — recommend final UAT pass re-testing R4-1/R4-3 before closing phase
+Phase: 12
+Plan: Not started
+Status: Milestone complete
 Last activity: 2026-06-25
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -40,7 +41,7 @@ Last activity: 2026-06-25
 
 **Velocity:**
 
-- Total plans completed: 52
+- Total plans completed: 73
 - Average duration: —
 - Total execution time: —
 
@@ -56,6 +57,7 @@ Last activity: 2026-06-25
 | 07 | 14 | - | - |
 | 08 | 2 | - | - |
 | 11 | 3 | - | - |
+| 12 | 21 | - | - |
 
 **Recent Trend:**
 
