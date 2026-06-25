@@ -222,9 +222,12 @@ pub struct CartridgeFilter {
     /// (Отработанный(6) уже отдельно отбраковывается при установке). Для селектора
     /// установки из заявки (D-01, Phase 12; kind-aware fix — CR-01/WR-01).
     pub installable_only: bool,
-    /// Когда задан — ограничивает выборку моделями, связанными с этим
-    /// устройством-принтером через `printer_cartridge_models`; пустой набор
-    /// связей не сужает выборку (D-14). Phase 12 gap closure (GAP-12-02).
+    /// Когда задан — ограничивает выборку моделями, чья
+    /// `cartridge_model_compatibility.printer_name` совпадает
+    /// (регистронезависимо, с TRIM) с `devices.name` связанного принтера;
+    /// пустой набор строк совместимости для модели не сужает выборку (D-05).
+    /// Phase 13 redesign — per-printer-name compatibility, supersedes the
+    /// V029 per-device junction table.
     pub compatible_with_printer_device_id: Option<i64>,
 }
 
@@ -253,6 +256,31 @@ pub struct LowStockItem {
     pub count: i64,
     /// The configured threshold (from app_settings.low_stock_threshold).
     pub threshold: i64,
+}
+
+/// Aggregate counts (by status) for a single cartridge model compatible with
+/// a given printer device — backs the printer card's "Совместимые модели
+/// картриджей" widget (R4, Phase 13).
+///
+/// Built from `cartridge_model_compatibility.printer_name` matching
+/// `devices.name` (case-insensitive, TRIM'd) — see
+/// `SqliteCartridgeRepository::compatible_model_aggregates`. Unlike the
+/// `compatible_with_printer_device_id` filter in `CartridgeFilter` (which
+/// pass-throughs when a model has no compatibility rows at all, D-05), this
+/// aggregate does NOT pass through: a model with zero matching compatibility
+/// rows for this printer is simply absent from the result (R4/D-07) so the
+/// UI can render "Нет совместимых моделей картриджей." when appropriate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompatibleModelAggregate {
+    pub model_id: i64,
+    pub brand: String,
+    pub model: String,
+    /// Live (non-deleted) cartridges of this model with status_id = 1 (На складе).
+    pub in_stock: i64,
+    /// Live (non-deleted) cartridges of this model with status_id = 3 (На заправке).
+    pub at_refill: i64,
+    /// Live (non-deleted) cartridges of this model with status_id = 2 (В работе).
+    pub in_use: i64,
 }
 
 /// Pagination parameters for list queries.
