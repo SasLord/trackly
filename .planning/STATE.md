@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: AD-аутентификация
 status: completed
-last_updated: "2026-06-25T12:34:39.917Z"
+last_updated: "2026-06-25T12:52:26.307Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 15
@@ -327,6 +327,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T12:30:03.558Z
-Stopped at: Phase 12 Round 5 executed (12-21 complete) — GAP-12-13/DEC-A/DEC-B closed; recommend final UAT pass re-testing R4-1/R4-3 before closing phase
-Resume file: None
+Last session: 2026-06-25T12:52:26.300Z
+Stopped at: Phase 12 Round 5 executed (12-21 + WR-01 fix); awaiting live re-UAT of R4-1/R4-3
+Resume file: .planning/phases/12-cartridge-request-interconnection/12-HUMAN-UAT.md
