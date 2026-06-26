@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-26T00:39:21.248Z"
+last_updated: "2026-06-26T01:05:03.486Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 16
   completed_phases: 15
   total_plans: 105
-  completed_plans: 101
+  completed_plans: 102
   percent: 94
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 13 (per-device-junction-chip-drum-state) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-06-26
 
@@ -141,6 +141,7 @@ Last activity: 2026-06-26
 | Phase 13 P02 | 30min | 2 tasks | 13 files |
 | Phase 13 P03 | 25min | 1 tasks | 6 files |
 | Phase 13 P04 | 13min | 2 tasks | 2 files |
+| Phase 13 P05 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -304,6 +305,7 @@ Recent decisions affecting current work:
 - [Phase 13]: 13-03: no D-07 pass-through on the new aggregate endpoint — A model with zero compatibility rows for a printer is simply absent from the response, not included with zero counts; Admin/Manager with no matches still gets 200 with models: []
 - [Phase 13]: 13-04: transition_in_tx — moved resolved_state_id computation to after prev_current.model_kind_id is fetched, since the kind-aware branch depends on it
 - [Phase 13]: 13-04: printers_sqlite.rs::list() — removed .min(200) cap entirely rather than raising it, per D-13 uncapped-read decision (no pagination introduced)
+- [Phase ?]: 13-05: suggest_compat_printer re-sourced from devices.name (D-06) instead of cartridge_model_compatibility free-text history; dropped legacy field param across service/Tauri/HTTP layers
 
 ### Pending Todos
 
@@ -341,6 +343,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T00:39:21.241Z
-Stopped at: Completed 13-04-PLAN.md
+Last session: 2026-06-26T01:05:03.478Z
+Stopped at: Completed 13-05-PLAN.md
 Resume file: None
