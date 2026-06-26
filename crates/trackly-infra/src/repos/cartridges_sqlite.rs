@@ -1738,7 +1738,9 @@ mod tests {
             tx.commit().expect("commit");
         }
 
-        let prev_row = repo.get(&conn, prev_id).expect("get prev after auto-return");
+        let prev_row = repo
+            .get(&conn, prev_id)
+            .expect("get prev after auto-return");
         assert_eq!(prev_row.status_id, 1); // На складе (auto-returned)
         assert_eq!(prev_row.state_id, Some(5)); // Изношенный — NOT 3
     }
@@ -1825,7 +1827,9 @@ mod tests {
             tx.commit().expect("commit");
         }
 
-        let prev_row = repo.get(&conn, prev_id).expect("get prev after auto-return");
+        let prev_row = repo
+            .get(&conn, prev_id)
+            .expect("get prev after auto-return");
         assert_eq!(prev_row.status_id, 1); // На складе (auto-returned)
         assert_eq!(prev_row.state_id, Some(3)); // На заправке — unchanged behavior
     }
