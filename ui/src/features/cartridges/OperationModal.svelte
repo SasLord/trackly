@@ -323,6 +323,14 @@
   // flow (cartridge === null) and the pre-filled flow (printer context from
   // a request) never trigger this, no extra network calls there (D-08/D-20
   // regression guard, T-12-20-04).
+  //
+  // D-21/R3 (Phase 13): client-side derivation over V005 — cartridge.model_id
+  // gives compatibility: string[] (printer names), matched against
+  // printerOptions[].deviceName (case-insensitive+trim, mirrors the server-
+  // side matching from Plan 13-01) to build compatibleDeviceIds, used by
+  // PrinterSelect for highlighting. Replaces the deleted per-device junction
+  // lookup (cartridges_models_get_compatible_devices, V029, removed in Plan
+  // 13-03).
   $effect(() => {
     if (!(open && op === 'install' && cartridge !== null && preFillPrinterId === undefined)) {
       printerOptions = [];
@@ -331,11 +339,26 @@
     }
     Promise.all([
       printers.list({ status: null, search: null }, { offset: 0, limit: 500 }),
-      cartridges.modelsGetCompatibleDevices(cartridge.model_id),
+      cartridges.modelsGet(cartridge.model_id),
     ])
-      .then(([printersRes, compatRes]) => {
+      .then(([printersRes, modelRes]) => {
         printerOptions = printersRes.items;
-        compatibleDeviceIds = new Set(compatRes.device_ids);
+        if (modelRes.compatibility.length === 0) {
+          // D-05 pass-through: empty compatibility means "compatible with
+          // any printer" — every printer in the list counts as compatible.
+          compatibleDeviceIds = new Set(printerOptions.map((p) => p.deviceId));
+          return;
+        }
+        // D-03: case-insensitive + trim matching, identical to the server-
+        // side comparison in Plan 13-01.
+        const normalizedNames = new Set(
+          modelRes.compatibility.map((n) => n.trim().toLowerCase()),
+        );
+        compatibleDeviceIds = new Set(
+          printerOptions
+            .filter((p) => normalizedNames.has((p.deviceName ?? '').trim().toLowerCase()))
+            .map((p) => p.deviceId),
+        );
       })
       .catch(() => {
         // Fail-safe (D-21): a failed lookup must not block install without a
