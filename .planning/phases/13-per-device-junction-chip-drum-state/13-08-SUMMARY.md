@@ -111,6 +111,15 @@ None — both effects in this plan replace existing client-side UX hints (highli
 
 Phase 13 (per-device-junction-chip-drum-state) is now fully closed at the frontend level: `OperationModal.svelte` was the last file with dangling references to the deleted V029 per-device compatibility commands (tracked in `deferred-items.md` from Plans 13-02/13-06). The whole UI builds (`pnpm --dir ui build`) and `svelte-check`/`tsc` report zero errors attributable to Phase 13 work (the one remaining `tsc` error is the documented pre-existing `returnPayload.ts` issue, unrelated to this phase). No blockers for closing Phase 13 / milestone v1.1.
 
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/cartridges/OperationModal.svelte
+- FOUND: .planning/phases/13-per-device-junction-chip-drum-state/13-08-SUMMARY.md
+- FOUND: 1694340 (Task 1 commit)
+- FOUND: 4605fc7 (Task 2 commit)
+- FOUND: 1480756 (Task 3 commit)
+- FOUND: fefb366 (docs: summary commit)
+
 ---
 *Phase: 13-per-device-junction-chip-drum-state*
 *Completed: 2026-06-26*
