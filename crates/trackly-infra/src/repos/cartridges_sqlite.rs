@@ -343,23 +343,39 @@ impl SqliteCartridgeRepository {
     /// from the result (R4/D-07), so the printer card can render "Нет
     /// совместимых моделей картриджей." when appropriate. Pass-through is
     /// scoped strictly to the cartridge-selection filter in `list()`.
+    ///
+    /// NOTE (WR-03) — the `in_stock`/`at_refill`/`in_use` sums are RAW status
+    /// counts (status_id 1/3/2), NOT installable counts: `state_id` is
+    /// intentionally ignored so the figures match the "На складе/На заправке/
+    /// В работе" UI labels. A drum (kind_id=2) with status=1 state=6
+    /// (Отработанный) is counted in `in_stock` even though it cannot be
+    /// installed. See `CompatibleModelAggregate`'s doc for rationale.
     pub fn compatible_model_aggregates(
         &self,
         conn: &Connection,
         printer_device_id: i64,
     ) -> Result<Vec<CompatibleModelAggregate>, AppError> {
+        // WR-01/IN-01: the device-name lookup lives entirely inside the
+        // EXISTS subquery (no outer JOIN on devices). The device join is
+        // scoped to live printers only (type_id = 2 = Принтер,
+        // deleted_at_utc IS NULL) so a non-printer or soft-deleted device id
+        // whose name happens to collide with a compatibility entry can never
+        // produce a false-positive match. This mirrors `list()`'s subquery
+        // shape and `suggest_compat_printer`'s suggestion source.
         let sql = "
             SELECT m.id, m.brand, m.model,
                    COALESCE(SUM(CASE WHEN c.status_id = 1 THEN 1 ELSE 0 END), 0) AS in_stock,
                    COALESCE(SUM(CASE WHEN c.status_id = 3 THEN 1 ELSE 0 END), 0) AS at_refill,
                    COALESCE(SUM(CASE WHEN c.status_id = 2 THEN 1 ELSE 0 END), 0) AS in_use
               FROM cartridge_models m
-              JOIN devices d ON d.id = ?1
               LEFT JOIN cartridges c
                      ON c.model_id = m.id AND c.deleted_at_utc IS NULL
              WHERE m.deleted_at_utc IS NULL
                AND EXISTS (
                      SELECT 1 FROM cartridge_model_compatibility cmc
+                       JOIN devices d ON d.id = ?1
+                                     AND d.type_id = 2
+                                     AND d.deleted_at_utc IS NULL
                       WHERE cmc.cartridge_model_id = m.id
                         AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))
                    )
@@ -1167,7 +1183,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?6 IS NULL \
                         OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
                         OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
-                                   JOIN devices d ON d.id = ?6 \
+                                   JOIN devices d ON d.id = ?6 AND d.type_id = 2 AND d.deleted_at_utc IS NULL \
                                    WHERE cmc.cartridge_model_id = c.model_id \
                                      AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name))))",
                 params![
@@ -1196,7 +1212,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                    AND (?6 IS NULL \
                         OR NOT EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc WHERE cmc.cartridge_model_id = c.model_id) \
                         OR EXISTS (SELECT 1 FROM cartridge_model_compatibility cmc \
-                                   JOIN devices d ON d.id = ?6 \
+                                   JOIN devices d ON d.id = ?6 AND d.type_id = 2 AND d.deleted_at_utc IS NULL \
                                    WHERE cmc.cartridge_model_id = c.model_id \
                                      AND LOWER(TRIM(cmc.printer_name)) = LOWER(TRIM(d.name)))) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \

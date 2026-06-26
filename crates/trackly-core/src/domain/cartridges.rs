@@ -276,6 +276,15 @@ pub struct CompatibleModelAggregate {
     pub brand: String,
     pub model: String,
     /// Live (non-deleted) cartridges of this model with status_id = 1 (На складе).
+    ///
+    /// NOTE (WR-03): this is a RAW status count, NOT an "installable" count.
+    /// It deliberately mirrors the "На складе" UI label, which reflects the
+    /// physical/storage status (status_id = 1) regardless of `state_id`. For
+    /// drums (kind_id = 2) a status=1 unit in state=6 (Отработанный) is counted
+    /// here even though `transition_in_tx` would reject installing it — the
+    /// installable predicate `(kind_id=1 AND state_id IN (1,2)) OR
+    /// (kind_id=2 AND state_id IN (4,5))` used by `CartridgeRepository::list`'s
+    /// `installable_only` filter is intentionally NOT applied to this count.
     pub in_stock: i64,
     /// Live (non-deleted) cartridges of this model with status_id = 3 (На заправке).
     pub at_refill: i64,
