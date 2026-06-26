@@ -10,15 +10,15 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::printer::{
-    DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
-    PrinterListResponse,
+    DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto, PrinterCreateDto, PrinterDto,
+    PrinterFilter, PrinterListResponse,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::printers::{
     build_printers_acknowledge_alert, build_printers_admit, build_printers_create,
     build_printers_discover, build_printers_get, build_printers_get_by_device_id,
-    build_printers_list, build_printers_refresh,
+    build_printers_get_compatible_aggregates, build_printers_list, build_printers_refresh,
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +41,12 @@ pub struct GetPayload {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetByDeviceIdPayload {
+    pub device_id: i32,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCompatibleAggregatesPayload {
     pub device_id: i32,
 }
 
@@ -121,6 +127,21 @@ pub async fn handler_get_by_device_id(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_printers_get_by_device_id(&ctx, &identity, p.device_id as i64)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_get_compatible_aggregates(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<GetCompatibleAggregatesPayload>,
+) -> Result<Json<PrinterCompatibleAggregatesDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_printers_get_compatible_aggregates(&ctx, &identity, p.device_id as i64)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -211,6 +232,10 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/printers_get_by_device_id",
             post(handler_get_by_device_id),
+        )
+        .route(
+            "/api/v1/printers_get_compatible_aggregates",
+            post(handler_get_compatible_aggregates),
         )
         .route("/api/v1/printers_create", post(handler_create))
         .route("/api/v1/printers_discover", post(handler_discover))

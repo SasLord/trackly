@@ -8,8 +8,8 @@
 use crate::context::AppCtx;
 use crate::dto::device::DeviceNew;
 use crate::dto::printer::{
-    DiscoveredPrinterDto, Pagination, PrinterCreateDto, PrinterDto, PrinterFilter,
-    PrinterListResponse,
+    CompatibleModelAggregateDto, DiscoveredPrinterDto, Pagination, PrinterCompatibleAggregatesDto,
+    PrinterCreateDto, PrinterDto, PrinterFilter, PrinterListResponse,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -200,6 +200,29 @@ pub async fn build_printers_refresh(
     ctx.printers.get(id).await
 }
 
+/// Read-only агрегаты совместимых моделей картриджей по принтеру (R4, Phase
+/// 13) — заменяет удалённые per-device junction-команды (V029). Тот же
+/// гейт, что у `build_printers_get`/`build_printers_get_by_device_id` — это
+/// тот же класс read-функции, управленческое чтение, не мутация.
+pub async fn build_printers_get_compatible_aggregates(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device_id: i64,
+) -> Result<PrinterCompatibleAggregatesDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let aggregates = ctx
+        .cartridges
+        .compatible_aggregates_for_printer(device_id)
+        .await?;
+    Ok(PrinterCompatibleAggregatesDto {
+        device_id,
+        models: aggregates
+            .into_iter()
+            .map(CompatibleModelAggregateDto::from)
+            .collect(),
+    })
+}
+
 /// Acknowledge alert — требует admin/manager.
 pub async fn build_printers_acknowledge_alert(
     ctx: &AppCtx,
@@ -243,6 +266,16 @@ pub async fn printers_get_by_device_id(
 ) -> Result<PrinterDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_get_by_device_id(state.inner(), &caller, device_id as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn printers_get_compatible_aggregates(
+    state: tauri::State<'_, AppCtx>,
+    device_id: i32,
+) -> Result<PrinterCompatibleAggregatesDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_printers_get_compatible_aggregates(state.inner(), &caller, device_id as i64).await
 }
 
 #[tauri::command]
@@ -297,4 +330,3 @@ pub async fn printers_acknowledge_alert(
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_printers_acknowledge_alert(state.inner(), &caller, printer_id as i64).await
 }
-

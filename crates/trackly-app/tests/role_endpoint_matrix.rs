@@ -81,6 +81,12 @@
 //! 40. Employee session → POST /api/v1/printers_get_by_device_id → 403
 //!     Forbidden (Action::ReadData, Admin|Manager only).
 //!
+//! Plan 13-03 adds Case 41: the new R4 read-only aggregate command replacing
+//! the deleted V029 per-device junction commands (Cases 33-35, removed).
+//! 41. Employee session → POST /api/v1/printers_get_compatible_aggregates →
+//!     403 Forbidden (Action::ReadData, Admin|Manager only — same gate as
+//!     printers_get/printers_get_by_device_id).
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1362,6 +1368,27 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 40: Employee → printers_get_by_device_id → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 41 (Plan 13-03): Employee → printers_get_compatible_aggregates
+        // → 403 Forbidden. Same authorize(&Action::ReadData) gate as
+        // printers_get/printers_get_by_device_id — replaces the deleted V029
+        // per-device junction commands (Cases 33-35).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/printers_get_compatible_aggregates",
+                json!({ "deviceId": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 41: Employee → printers_get_compatible_aggregates → expected 403, got {status}"
             );
         }
 

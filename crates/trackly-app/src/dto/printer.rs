@@ -165,6 +165,51 @@ pub struct PrinterListResponse {
     pub total: i64,
 }
 
+/// Per-model aggregate (by cartridge status) for the printer-card "Совместимые
+/// модели картриджей" widget (R4, Phase 13). Mirrors
+/// `trackly_core::domain::cartridges::CompatibleModelAggregate` — does NOT
+/// pass through when a model has no compatibility rows (D-07); a model is
+/// simply absent from the list when it doesn't match this printer's name.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibleModelAggregateDto {
+    #[specta(type = i32)]
+    pub model_id: i64,
+    pub brand: String,
+    pub model: String,
+    #[specta(type = i32)]
+    pub in_stock: i64,
+    #[specta(type = i32)]
+    pub at_refill: i64,
+    #[specta(type = i32)]
+    pub in_use: i64,
+}
+
+impl From<trackly_core::domain::cartridges::CompatibleModelAggregate>
+    for CompatibleModelAggregateDto
+{
+    fn from(a: trackly_core::domain::cartridges::CompatibleModelAggregate) -> Self {
+        Self {
+            model_id: a.model_id,
+            brand: a.brand,
+            model: a.model,
+            in_stock: a.in_stock,
+            at_refill: a.at_refill,
+            in_use: a.in_use,
+        }
+    }
+}
+
+/// Response for `printers_get_compatible_aggregates` (R4) — read-only
+/// replacement for the deleted V029 per-device junction commands.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterCompatibleAggregatesDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub models: Vec<CompatibleModelAggregateDto>,
+}
+
 /// WebSocket broadcast event — fan-out to all connected clients (D-Notify-01).
 ///
 /// `#[serde(tag = "type", rename_all = "snake_case")]` controls ONLY the

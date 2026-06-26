@@ -480,6 +480,31 @@ impl CartridgeService {
     }
 
     // -----------------------------------------------------------------------
+    // Printer-card compatible-models aggregate (R4, Phase 13)
+    // -----------------------------------------------------------------------
+
+    /// Aggregate counts (by status) for every cartridge model compatible with
+    /// `printer_device_id` — backs `printers_get_compatible_aggregates`
+    /// (both transports). Lives on `CartridgeService` because the underlying
+    /// query lives in `cartridges_sqlite.rs` (Plan 13-01); printers.rs's
+    /// `build_*` helper calls through `ctx.cartridges`.
+    pub async fn compatible_aggregates_for_printer(
+        &self,
+        printer_device_id: i64,
+    ) -> Result<Vec<trackly_core::domain::cartridges::CompatibleModelAggregate>, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.cart_repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.compatible_model_aggregates(&conn, printer_device_id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    // -----------------------------------------------------------------------
     // Cartridge models CRUD
     // -----------------------------------------------------------------------
 

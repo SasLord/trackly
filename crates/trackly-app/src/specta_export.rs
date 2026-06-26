@@ -107,6 +107,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::printers::printers_get,
         // Phase 12 Round 5 gap closure (GAP-12-13): device-id-keyed printer read — printers_get resolves by printers.id, the UI only ever has device_id.
         crate::tauri_cmds::printers::printers_get_by_device_id,
+        // Phase 13 (R4) — read-only агрегаты совместимых моделей картриджей по принтеру, заменяет удалённый per-device junction (V029).
+        crate::tauri_cmds::printers::printers_get_compatible_aggregates,
         crate::tauri_cmds::printers::printers_create,
         crate::tauri_cmds::printers::printers_discover,
         crate::tauri_cmds::printers::printers_admit,
