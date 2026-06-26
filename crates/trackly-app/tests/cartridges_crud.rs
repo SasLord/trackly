@@ -496,3 +496,80 @@ async fn printer_compatib_case_insensitive_match() {
     .await
     .expect("printer_compatib_case_insensitive_match budget")
 }
+
+/// Seed a device with an explicit `type_id` and name (covers non-printer rows
+/// and duplicate / soft-deleted printers that `seed_printer_device` cannot
+/// express). Mirrors `seed_printer_device`'s INSERT shape.
+async fn seed_device_typed(
+    writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    type_id: i64,
+    name: &str,
+    deleted: bool,
+) -> i64 {
+    let name = name.to_string();
+    writer
+        .execute(move |conn| {
+            let deleted_at: Option<i64> = if deleted { Some(1_700_000_000) } else { None };
+            conn.execute(
+                "INSERT INTO devices (type_id, name, status_id, created_at_utc, updated_at_utc, version, deleted_at_utc) \
+                 VALUES (?1, ?2, 1, 1700000000, 1700000000, 1, ?3)",
+                rusqlite::params![type_id, name, deleted_at],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed_device_typed")
+}
+
+/// GAP-1 (SPEC-13-R3): `suggest_compat_printer` autocomplete sources DISTINCT
+/// names strictly from live printer devices (type_id=2, not soft-deleted),
+/// prefix-matched. A non-printer device with a matching name must NOT appear,
+/// duplicate printer names collapse to one entry, and soft-deleted printers
+/// are excluded.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_compat_printer_returns_distinct_printer_names() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, writer, _readers, _dir) = make_cartridge_service_with_handles();
+
+        // Two DISTINCT-collapsible duplicate printers (same name, type_id=2).
+        seed_device_typed(&writer, 2, "HP LaserJet M404", false).await;
+        seed_device_typed(&writer, 2, "HP LaserJet M404", false).await;
+        // A second, distinct matching printer.
+        seed_device_typed(&writer, 2, "HP LaserJet M507", false).await;
+        // A non-printer device whose name matches the prefix — must be excluded.
+        seed_device_typed(&writer, 1, "HP Switch HX100", false).await;
+        // A soft-deleted printer matching the prefix — must be excluded.
+        seed_device_typed(&writer, 2, "HP DeletedJet", true).await;
+        // A live printer that does NOT match the prefix — must be excluded.
+        seed_device_typed(&writer, 2, "Canon i-SENSYS", false).await;
+
+        let got = svc
+            .suggest_compat_printer("HP ".into())
+            .await
+            .expect("suggest_compat_printer");
+
+        // Only live printer (type_id=2) names matching the prefix, DISTINCT,
+        // ordered by name ASC.
+        assert_eq!(
+            got,
+            vec![
+                "HP LaserJet M404".to_string(),
+                "HP LaserJet M507".to_string(),
+            ],
+            "expected only DISTINCT live-printer names matching prefix 'HP '; got {got:?}"
+        );
+
+        // Non-matching / empty-result prefix returns an empty set.
+        let none = svc
+            .suggest_compat_printer("Zzz".into())
+            .await
+            .expect("suggest_compat_printer non-matching");
+        assert!(
+            none.is_empty(),
+            "non-matching prefix must return empty, got {none:?}"
+        );
+    })
+    .await
+    .expect("suggest_compat_printer_returns_distinct_printer_names budget")
+}

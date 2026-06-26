@@ -1850,6 +1850,159 @@ mod tests {
         assert_eq!(prev_row.state_id, Some(3)); // На заправке — unchanged behavior
     }
 
+    /// GAP-2 (SPEC-13-R4): `compatible_model_aggregates` returns RAW per-status
+    /// counts (status_id 1/3/2 → in_stock/at_refill/in_use, state_id ignored)
+    /// for every model whose compatibility list matches the printer's
+    /// `devices.name` (LOWER(TRIM) on both sides). A model with NO matching
+    /// compatibility row is ABSENT (no D-05 pass-through), and soft-deleted
+    /// cartridges are not counted.
+    #[test]
+    fn compatible_model_aggregates_counts_raw_statuses_and_omits_unmatched() {
+        let (mut conn, _g) = fresh_conn();
+        // seed_device hardcodes name 'Test Printer', type_id=2.
+        let printer_device_id = seed_device(&mut conn);
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        // Model A: compatible with the printer. Use a case/whitespace variant of
+        // the device name to also exercise the LOWER(TRIM) match.
+        let model_a = seed_model(&mut conn, "Pantum", "TL-5120X");
+        // Model B: also compatible — proves ORDER BY brand ASC (Cactus < Pantum)
+        // and that multiple compatible models are returned independently.
+        let model_b = seed_model(&mut conn, "Cactus", "CS-TL5120");
+        // Model C: NO matching compatibility row → must be ABSENT (not zero-count).
+        let model_c = seed_model(&mut conn, "Hewlett", "HP-999");
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.upsert_compatibility_in_tx(&tx, model_a, &["  test printer  ".to_string()])
+                .expect("compat A");
+            repo.upsert_compatibility_in_tx(&tx, model_b, &["Test Printer".to_string()])
+                .expect("compat B");
+            // Model C: compatibility points at a DIFFERENT printer name → no match.
+            repo.upsert_compatibility_in_tx(&tx, model_c, &["Some Other Printer".to_string()])
+                .expect("compat C");
+            tx.commit().expect("commit");
+        }
+
+        // Model A cartridges: 2× status 1 (на складе), 1× status 3 (на заправке),
+        // 3× status 2 (в работе). Include a status=1 unit in a "spent" state to
+        // prove state_id is ignored in the RAW count. Plus 1 soft-deleted status=1
+        // unit that must NOT be counted.
+        {
+            let tx = conn.transaction().expect("tx");
+            for (i, (status, state)) in [
+                (1_i64, Some(1_i64)),
+                (1, Some(6)), // status=1 but state=6 (spent) — still counted in_stock.
+                (3, Some(3)),
+                (2, Some(2)),
+                (2, Some(2)),
+                (2, Some(2)),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let code = format!("A-{i:03}");
+                repo.insert_cartridge_in_tx(
+                    &tx, &code, model_a, *status, *state, Some("Склад"), None, None, now,
+                )
+                .expect("insert A cartridge");
+            }
+            // Soft-deleted status=1 cartridge for model A — excluded from counts.
+            let soft_deleted_id = repo
+                .insert_cartridge_in_tx(
+                    &tx,
+                    "A-DEL",
+                    model_a,
+                    1,
+                    Some(1),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert soft-deleted A cartridge");
+            tx.execute(
+                "UPDATE cartridges SET deleted_at_utc = ?1 WHERE id = ?2",
+                params![now, soft_deleted_id],
+            )
+            .expect("soft-delete cartridge");
+            tx.commit().expect("commit");
+        }
+
+        // Model B cartridge: a single status=2 (в работе) unit.
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.insert_cartridge_in_tx(
+                &tx,
+                "B-001",
+                model_b,
+                2,
+                Some(2),
+                Some("Каб. 1"),
+                None,
+                None,
+                now,
+            )
+            .expect("insert B cartridge");
+            tx.commit().expect("commit");
+        }
+
+        // Model C cartridge exists but model C is not compatible → never appears.
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.insert_cartridge_in_tx(
+                &tx,
+                "C-001",
+                model_c,
+                1,
+                Some(1),
+                Some("Склад"),
+                None,
+                None,
+                now,
+            )
+            .expect("insert C cartridge");
+            tx.commit().expect("commit");
+        }
+
+        let aggregates = repo
+            .compatible_model_aggregates(&conn, printer_device_id)
+            .expect("compatible_model_aggregates");
+
+        // Only model A and model B are compatible → exactly two rows, ordered by
+        // brand ASC: "Cactus" (B) before "Pantum" (A). Model C is ABSENT.
+        assert_eq!(
+            aggregates.len(),
+            2,
+            "exactly the two compatible models, model C (no match) absent; got {aggregates:?}"
+        );
+        assert_eq!(aggregates[0].model_id, model_b, "Cactus sorts first (brand ASC)");
+        assert_eq!(aggregates[1].model_id, model_a, "Pantum sorts second");
+
+        // Model B: 0 in_stock, 0 at_refill, 1 in_use.
+        let b = &aggregates[0];
+        assert_eq!(b.in_stock, 0);
+        assert_eq!(b.at_refill, 0);
+        assert_eq!(b.in_use, 1);
+
+        // Model A: RAW counts — 2 in_stock (state_id ignored, soft-deleted
+        // excluded), 1 at_refill, 3 in_use.
+        let a = &aggregates[1];
+        assert_eq!(
+            a.in_stock, 2,
+            "two status=1 units counted (state ignored), soft-deleted excluded"
+        );
+        assert_eq!(a.at_refill, 1, "one status=3 unit");
+        assert_eq!(a.in_use, 3, "three status=2 units");
+
+        // Sanity: none of the compatible rows is model C.
+        assert!(
+            !aggregates.iter().any(|m| m.model_id == model_c),
+            "model C must be absent (no pass-through for zero matching compat rows)"
+        );
+    }
+
     #[test]
     fn low_stock_returns_models_below_threshold() {
         let (mut conn, _g) = fresh_conn();
