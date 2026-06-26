@@ -120,3 +120,11 @@ None - no external service configuration required.
 ---
 *Phase: 13-per-device-junction-chip-drum-state*
 *Completed: 2026-06-26*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/13-per-device-junction-chip-drum-state/13-04-SUMMARY.md`
+- FOUND: commit `9a786ec` (Task 1 — R7 kind-aware auto-return)
+- FOUND: commit `83c20cf` (Task 2 — R8 uncapped printer list)
+- FOUND: commit `d304c55` (style fixup)
+- FOUND: commit `8a976d7` (this SUMMARY.md)
