@@ -270,6 +270,10 @@
       .then((prev) => {
         if (prev !== null && prev !== undefined) {
           previousCartridge = prev;
+          // R7/D-11: kind-aware default — выставляется одновременно с
+          // обнаружением previousCartridge (а не статически при открытии
+          // формы), зеркалит серверный kind-aware default (Plan 13-04, D-10).
+          previousCartridgeStateId = prev.model_kind_id === 2 ? 5 : 3;
         }
       })
       .catch(() => {
@@ -437,6 +441,14 @@
   ];
   const stateOptions = $derived(isDrum ? DRUM_STATES : CARTRIDGE_STATES);
   const stateFieldLabel = $derived(isDrum ? 'Состояние' : 'Состояние заряда');
+
+  // R7/D-11 (13-SPEC.md): previous-cartridge state Select больше не
+  // хардкодит 1/2/3 — переиспользует stateOptions-паттерн (DRUM_STATES/
+  // CARTRIDGE_STATES) по previousCartridge.model_kind_id (ДРУГОЙ картридж в
+  // форме, не effectiveCartridge); дефолт 5 «Изношенный» для фотобарабана
+  // зеркалит серверный kind-aware default из Plan 13-04 (D-10).
+  const prevIsDrum = $derived(previousCartridge?.model_kind_id === 2);
+  const prevStateOptions = $derived(prevIsDrum ? DRUM_STATES : CARTRIDGE_STATES);
 
   // Convert ISO date string to unix seconds
   function isoToUnix(iso: string): number {
@@ -664,9 +676,9 @@
             id="op-prev-state"
             onchange={(v) => (previousCartridgeStateId = parseInt(v, 10))}
           >
-            <option value="1">Полный</option>
-            <option value="2">Частичный</option>
-            <option value="3">Пустой</option>
+            {#each prevStateOptions as opt (opt.value)}
+              <option value={String(opt.value)}>{opt.label}</option>
+            {/each}
           </Select>
           <label class="label" for="op-prev-location">Расположение (предыдущий картридж)</label>
           <LocationAutocomplete
