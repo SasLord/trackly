@@ -2,13 +2,15 @@
   // Plan 04-06: CRUD-модалка модели картриджа.
   // По образцу DeviceFormModal.svelte — openInstanceCounter + {#key} remount.
   // size="wide" (960px) из-за CompatibilityEditor.
+  // Plan 13-06 (R3): свёрнуто до ОДНОГО блока совместимости — compatibility:
+  // string[] (V032/Phase 13 single-column contract), CompatibleDevicesEditor
+  // (V029 per-device чеклист) удалён.
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Select from '$lib/components/Select.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';
-  import CompatibleDevicesEditor from './CompatibleDevicesEditor.svelte';
   import { cartridges } from './api';
   import type { CartridgeModelDto } from '../../bindings';
 
@@ -21,11 +23,6 @@
     'Светло-голубой',
     'Светло-пурпурный',
   ];
-
-  interface CompatRow {
-    printer_brand: string;
-    printer_model: string;
-  }
 
   interface Props {
     open: boolean;
@@ -51,13 +48,8 @@
   let color = $state(target?.color ?? 'Чёрный');
   let notes = $state(target?.notes ?? '');
 
-  // Совместимость: из [string, string][] → CompatRow[]
-  let compatibility = $state<CompatRow[]>(
-    (target?.compatibility ?? []).map(([pb, pm]) => ({
-      printer_brand: pb,
-      printer_model: pm,
-    })),
-  );
+  // Совместимость: список имён принтеров (V032/Phase 13, прямое присваивание).
+  let compatibility = $state<string[]>(target?.compatibility ?? []);
 
   $effect(() => {
     const isOpen = open;
@@ -72,10 +64,7 @@
       model = target?.model ?? '';
       color = target?.color ?? 'Чёрный';
       notes = target?.notes ?? '';
-      compatibility = (target?.compatibility ?? []).map(([pb, pm]) => ({
-        printer_brand: pb,
-        printer_model: pm,
-      }));
+      compatibility = target?.compatibility ?? [];
       brandError = '';
       modelError = '';
       conflictError = '';
@@ -257,9 +246,13 @@
     conflictError = '';
     if (!validate()) return;
 
-    // T-04-06-02: фильтруем пустые пары перед submit.
-    const filteredCompatibility = compatibility.filter(
-      (p) => p.printer_brand.trim() && p.printer_model.trim(),
+    // T-04-06-02: фильтруем пустые/дублирующиеся строки перед submit.
+    const filteredCompatibility = Array.from(
+      new Set(
+        compatibility
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      ),
     );
 
     submitting = true;
@@ -274,7 +267,7 @@
           kind_id: kindId,
           color: kindId !== 2 ? color || null : null,
           notes: notes.trim() || null,
-          compatibility: filteredCompatibility.map((p) => [p.printer_brand, p.printer_model]),
+          compatibility: filteredCompatibility,
         });
       } else {
         result = await cartridges.modelsCreate({
@@ -283,7 +276,7 @@
           kind_id: kindId,
           color: kindId !== 2 ? color || null : null,
           notes: notes.trim() || null,
-          compatibility: filteredCompatibility.map((p) => [p.printer_brand, p.printer_model]),
+          compatibility: filteredCompatibility,
         });
       }
       pushToast('success', isEdit ? 'Модель обновлена.' : 'Модель создана.');
@@ -440,24 +433,20 @@
         <div class="field-error conflict-error field-full">{conflictError}</div>
       {/if}
 
-      <!-- CompatibilityEditor — полная ширина -->
+      <!-- CompatibilityEditor — единственный блок совместимости (R3), полная ширина -->
       <div class="field field-full compat-section">
         <h3 class="compat-heading">Совместимые принтеры</h3>
+        {#if compatibility.length === 0}
+          <p class="compat-empty">
+            Совместимость не задана — картриджи этой модели подходят к любому принтеру.
+          </p>
+        {/if}
         <CompatibilityEditor
           {compatibility}
-          onChange={(pairs) => (compatibility = pairs)}
-          suggestBrandFn={(prefix) => cartridges.suggestCompatPrinter('printer_brand', prefix)}
-          suggestModelFn={(prefix) => cartridges.suggestCompatPrinter('printer_model', prefix)}
+          onChange={(names) => (compatibility = names)}
+          suggestFn={(prefix) => cartridges.suggestCompatPrinter(prefix)}
         />
       </div>
-
-      <!-- D-12, GAP-12-02: чеклист совместимых принтеров через printer_cartridge_models. -->
-      {#if isEdit && target}
-        <div class="field field-full compat-section">
-          <h3 class="compat-heading">Совместимые принтеры (по справочнику устройств)</h3>
-          <CompatibleDevicesEditor cartridgeModelId={target.id} />
-        </div>
-      {/if}
     </div>
   {/key}
 
@@ -585,5 +574,11 @@
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--color-text-primary);
+  }
+
+  .compat-empty {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--font-size-body);
+    color: var(--color-text-muted);
   }
 </style>

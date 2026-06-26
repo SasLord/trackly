@@ -1,28 +1,23 @@
 <script lang="ts">
-  // Plan 04-06: добавляемый список пар (Бренд принтера + Модель принтера) с focus-open autocomplete.
-  // Нет аналога — новый паттерн.
-  // Пары хранятся как [printer_brand, printer_model][] (совместимо с CartridgeModelCreateDto.compatibility).
+  // Plan 04-06: добавляемый список строк (имя принтера) с focus-open autocomplete.
+  // Plan 13-06 (R3/D-04): свёрнуто с пар (Бренд+Модель) до одного свободного
+  // текстового поля «Имя принтера» — V032/Phase 13 single-column contract
+  // (CartridgeModelCreateDto.compatibility: string[]).
   import Button from '$lib/components/Button.svelte';
 
-  interface CompatRow {
-    printer_brand: string;
-    printer_model: string;
-  }
-
   interface Props {
-    compatibility: CompatRow[];
-    onChange: (_pairs: CompatRow[]) => void;
-    suggestBrandFn: (_prefix: string) => Promise<string[]>;
-    suggestModelFn: (_prefix: string) => Promise<string[]>;
+    compatibility: string[];
+    onChange: (_names: string[]) => void;
+    suggestFn: (_prefix: string) => Promise<string[]>;
   }
 
-  const { compatibility, onChange, suggestBrandFn, suggestModelFn }: Props = $props();
+  const { compatibility, onChange, suggestFn }: Props = $props();
 
   // Локальная копия строк — инициализируется при монтировании из prop.
-  let rows = $state<CompatRow[]>(compatibility.map((r) => ({ ...r })));
+  let rows = $state<string[]>([...compatibility]);
 
   function addRow() {
-    rows = [...rows, { printer_brand: '', printer_model: '' }];
+    rows = [...rows, ''];
     onChange(rows);
   }
 
@@ -31,28 +26,22 @@
     onChange(rows);
   }
 
-  function updateBrand(index: number, value: string) {
-    rows = rows.map((r, i) => (i === index ? { ...r, printer_brand: value } : r));
+  function updateName(index: number, value: string) {
+    rows = rows.map((r, i) => (i === index ? value : r));
     onChange(rows);
   }
 
-  function updateModel(index: number, value: string) {
-    rows = rows.map((r, i) => (i === index ? { ...r, printer_model: value } : r));
-    onChange(rows);
-  }
+  // --- inline autocomplete state per row ---
 
-  // --- inline autocomplete state per row field ---
-  // Для избежания громоздких массивов объектов используем единое состояние по (index, field).
-
-  let openKey = $state<string | null>(null); // '{i}-brand' | '{i}-model'
+  let openKey = $state<string | null>(null); // '{i}'
   let suggestions = $state<string[]>([]);
   let activeIndex = $state(-1);
   let loadingKey = $state<string | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function getKey(index: number, field: 'brand' | 'model') {
-    return `${index}-${field}`;
+  function getKey(index: number) {
+    return String(index);
   }
 
   function closeSuggestions() {
@@ -61,12 +50,11 @@
     activeIndex = -1;
   }
 
-  async function fetchSuggestions(index: number, field: 'brand' | 'model', prefix: string) {
-    const key = getKey(index, field);
+  async function fetchSuggestions(index: number, prefix: string) {
+    const key = getKey(index);
     loadingKey = key;
     try {
-      const results =
-        field === 'brand' ? await suggestBrandFn(prefix) : await suggestModelFn(prefix);
+      const results = await suggestFn(prefix);
       if (openKey === key) {
         suggestions = results;
         activeIndex = -1;
@@ -78,44 +66,32 @@
     }
   }
 
-  function handleFocus(index: number, field: 'brand' | 'model') {
-    const key = getKey(index, field);
+  function handleFocus(index: number) {
+    const key = getKey(index);
     openKey = key;
     suggestions = [];
     activeIndex = -1;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      void fetchSuggestions(
-        index,
-        field,
-        field === 'brand' ? (rows[index]?.printer_brand ?? '') : (rows[index]?.printer_model ?? ''),
-      );
+      void fetchSuggestions(index, rows[index] ?? '');
     }, 0);
   }
 
-  function handleInput(index: number, field: 'brand' | 'model', value: string) {
-    if (field === 'brand') {
-      updateBrand(index, value);
-    } else {
-      updateModel(index, value);
-    }
-    const key = getKey(index, field);
+  function handleInput(index: number, value: string) {
+    updateName(index, value);
+    const key = getKey(index);
     openKey = key;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => void fetchSuggestions(index, field, value), 200);
+    debounceTimer = setTimeout(() => void fetchSuggestions(index, value), 200);
   }
 
-  function selectSuggestion(index: number, field: 'brand' | 'model', value: string) {
-    if (field === 'brand') {
-      updateBrand(index, value);
-    } else {
-      updateModel(index, value);
-    }
+  function selectSuggestion(index: number, value: string) {
+    updateName(index, value);
     closeSuggestions();
   }
 
-  function handleKeydown(e: KeyboardEvent, index: number, field: 'brand' | 'model') {
-    const key = getKey(index, field);
+  function handleKeydown(e: KeyboardEvent, index: number) {
+    const key = getKey(index);
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -133,11 +109,11 @@
       if (activeIndex >= 0 && activeIndex < suggestions.length) {
         e.preventDefault();
         e.stopPropagation();
-        selectSuggestion(index, field, suggestions[activeIndex]);
+        selectSuggestion(index, suggestions[activeIndex]);
       }
     } else if (e.key === 'Tab') {
       if (activeIndex >= 0 && activeIndex < suggestions.length) {
-        selectSuggestion(index, field, suggestions[activeIndex]);
+        selectSuggestion(index, suggestions[activeIndex]);
       }
       closeSuggestions();
     }
@@ -160,101 +136,45 @@
 </script>
 
 <div class="compat-editor">
-  {#if rows.length > 0}
-    <!-- Метки колонок — один раз сверху списка (UAT round 2, замечание №2). -->
-    <div class="compat-header">
-      <span class="field-label">Бренд принтера</span>
-      <span class="field-label">Модель принтера</span>
-      <span class="header-spacer" aria-hidden="true"></span>
-    </div>
-  {/if}
   {#each rows as row, i (i)}
     <div class="compat-row">
-      <!-- Бренд принтера -->
+      <!-- Имя принтера -->
       <div class="compat-field" role="none">
-        <label class="visually-hidden" for="compat-brand-{i}">Бренд принтера {i + 1}</label>
+        <label class="visually-hidden" for="compat-name-{i}">Имя принтера {i + 1}</label>
         <div class="autocomplete-wrapper">
           <input
-            id="compat-brand-{i}"
+            id="compat-name-{i}"
             type="text"
             class="autocomplete-input"
-            value={row.printer_brand}
-            placeholder="Бренд принтера"
+            value={row}
+            placeholder="Наименование / тип принтера"
             autocomplete="off"
             aria-autocomplete="list"
-            aria-activedescendant={openKey === getKey(i, 'brand') && activeIndex >= 0
-              ? `compat-brand-item-${i}-${activeIndex}`
+            aria-activedescendant={openKey === getKey(i) && activeIndex >= 0
+              ? `compat-name-item-${i}-${activeIndex}`
               : undefined}
-            oninput={(e) => handleInput(i, 'brand', (e.currentTarget as HTMLInputElement).value)}
-            onfocus={() => handleFocus(i, 'brand')}
-            onkeydown={(e) => handleKeydown(e, i, 'brand')}
+            oninput={(e) => handleInput(i, (e.currentTarget as HTMLInputElement).value)}
+            onfocus={() => handleFocus(i)}
+            onkeydown={(e) => handleKeydown(e, i)}
           />
-          {#if openKey === getKey(i, 'brand')}
+          {#if openKey === getKey(i)}
             <div class="dropdown" role="listbox">
-              {#if loadingKey === getKey(i, 'brand')}
+              {#if loadingKey === getKey(i)}
                 <div class="dropdown-loading">Загружаем…</div>
               {:else if suggestions.length === 0}
-                <div class="dropdown-empty">Нет совпадений</div>
+                <div class="dropdown-empty">Нет совпадений — будет сохранено как есть</div>
               {:else}
                 {#each suggestions as s, si (s)}
                   <button
                     type="button"
-                    id="compat-brand-item-{i}-{si}"
+                    id="compat-name-item-{i}-{si}"
                     role="option"
                     class="dropdown-item"
                     class:active={si === activeIndex}
                     aria-selected={si === activeIndex}
                     onmousedown={(e) => {
                       e.preventDefault();
-                      selectSuggestion(i, 'brand', s);
-                    }}
-                  >
-                    {s}
-                  </button>
-                {/each}
-              {/if}
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Модель принтера -->
-      <div class="compat-field" role="none">
-        <label class="visually-hidden" for="compat-model-{i}">Модель принтера {i + 1}</label>
-        <div class="autocomplete-wrapper">
-          <input
-            id="compat-model-{i}"
-            type="text"
-            class="autocomplete-input"
-            value={row.printer_model}
-            placeholder="Модель принтера"
-            autocomplete="off"
-            aria-autocomplete="list"
-            aria-activedescendant={openKey === getKey(i, 'model') && activeIndex >= 0
-              ? `compat-model-item-${i}-${activeIndex}`
-              : undefined}
-            oninput={(e) => handleInput(i, 'model', (e.currentTarget as HTMLInputElement).value)}
-            onfocus={() => handleFocus(i, 'model')}
-            onkeydown={(e) => handleKeydown(e, i, 'model')}
-          />
-          {#if openKey === getKey(i, 'model')}
-            <div class="dropdown" role="listbox">
-              {#if loadingKey === getKey(i, 'model')}
-                <div class="dropdown-loading">Загружаем…</div>
-              {:else if suggestions.length === 0}
-                <div class="dropdown-empty">Нет совпадений</div>
-              {:else}
-                {#each suggestions as s, si (s)}
-                  <button
-                    type="button"
-                    id="compat-model-item-{i}-{si}"
-                    role="option"
-                    class="dropdown-item"
-                    class:active={si === activeIndex}
-                    aria-selected={si === activeIndex}
-                    onmousedown={(e) => {
-                      e.preventDefault();
-                      selectSuggestion(i, 'model', s);
+                      selectSuggestion(i, s);
                     }}
                   >
                     {s}
@@ -288,17 +208,6 @@
     gap: var(--space-sm);
   }
 
-  .compat-header {
-    display: grid;
-    grid-template-columns: 1fr 1fr 28px;
-    gap: var(--space-sm);
-    margin-bottom: 4px;
-  }
-
-  .header-spacer {
-    width: 28px;
-  }
-
   .visually-hidden {
     position: absolute;
     width: 1px;
@@ -313,7 +222,7 @@
 
   .compat-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 28px;
+    grid-template-columns: 1fr 28px;
     gap: var(--space-sm);
     align-items: end;
     margin-bottom: var(--space-sm);
@@ -323,12 +232,6 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-  }
-
-  .field-label {
-    font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
-    line-height: var(--line-height-label);
   }
 
   .autocomplete-wrapper {
