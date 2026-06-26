@@ -29,6 +29,11 @@ pub struct PrinterRow {
     pub device_name: Option<String>,
     /// Joined from devices.location.
     pub device_location: Option<String>,
+    /// True when the printer's SNMP community differs from the default
+    /// `"public"` (WR-04). Derived in the SELECT as `community <> 'public'`
+    /// so the raw secret community value never leaves the repository — only
+    /// this safe boolean is carried. Consumed by `PrinterDto`.
+    pub community_configured: bool,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
     pub version: i64,

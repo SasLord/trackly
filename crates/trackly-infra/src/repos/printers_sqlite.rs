@@ -28,7 +28,8 @@ const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
            d.name AS device_name, l.name AS device_location,
-           p.created_at_utc, p.updated_at_utc, p.version
+           p.created_at_utc, p.updated_at_utc, p.version,
+           (p.community <> 'public') AS community_configured
       FROM printers p
       LEFT JOIN devices d ON d.id = p.device_id
       LEFT JOIN locations l ON l.id = d.location_id
@@ -50,6 +51,8 @@ fn map_row_printer(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRow> {
         created_at_utc: row.get(10)?,
         updated_at_utc: row.get(11)?,
         version: row.get(12)?,
+        // SQLite returns the boolean predicate as 0/1; rusqlite maps it to bool.
+        community_configured: row.get(13)?,
     })
 }
 

@@ -59,10 +59,11 @@ impl From<PrinterRow> for PrinterDto {
             vendor: r.vendor,
             oid_profile_id: r.oid_profile_id,
             last_seen_utc: r.last_seen_utc,
-            // community_configured is set to true as a placeholder;
-            // the service layer sets it to true when community != default.
-            // Always true here since we never store empty community.
-            community_configured: true,
+            // WR-04: derived in the repository SELECT as `community <> 'public'`
+            // (the raw secret community never leaves the repo — only this safe
+            // boolean is carried on PrinterRow). True only when a non-default
+            // community was configured.
+            community_configured: r.community_configured,
             device_name: r.device_name,
             device_location: r.device_location,
             usb_host_device_id: r.usb_host_device_id,
