@@ -121,3 +121,8 @@ None - no external service configuration required.
 ---
 *Phase: 13-per-device-junction-chip-drum-state*
 *Completed: 2026-06-26*
+
+## Self-Check: PASSED
+
+All claimed files verified present/absent as documented; all 4 commits
+(`f44a90d`, `1fe3657`, `dc56a78`, `3676d43`) verified in `git log --oneline --all`.
