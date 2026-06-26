@@ -165,6 +165,7 @@ async fn backup_retention_prunes_oldest() {
         for i in 0..3 {
             // Создаём fake-бэкап напрямую (разные mtime через sleep)
             let fake_path = backup_dir.join(format!("trackly-backup-{}.db", 1_000_000 + i));
+            #[allow(clippy::disallowed_methods)] // OK in tests: just fabricating fixture files, not a real DB backup
             std::fs::copy(dir.path().join("test.db"), &fake_path).expect("copy fake backup");
             // Убеждаемся в разнице mtime через небольшую задержку
             tokio::time::sleep(Duration::from_millis(50)).await;

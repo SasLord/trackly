@@ -376,7 +376,7 @@ mod tests {
         let result = svc.validate_preview(body).await;
         match result {
             Ok(bytes) => {
-                assert!(bytes.len() > 0, "PDF bytes must be non-empty");
+                assert!(!bytes.is_empty(), "PDF bytes must be non-empty");
                 assert!(
                     bytes.starts_with(b"%PDF"),
                     "output must be a valid PDF (starts with %PDF)"
@@ -427,7 +427,7 @@ mod tests {
         let result = svc.validate_preview(body).await;
         match result {
             Ok(bytes) => {
-                assert!(bytes.len() > 0, "PDF bytes must be non-empty");
+                assert!(!bytes.is_empty(), "PDF bytes must be non-empty");
                 // PDF magic bytes: %PDF
                 assert!(
                     bytes.starts_with(b"%PDF"),
