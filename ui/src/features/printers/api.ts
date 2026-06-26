@@ -12,7 +12,7 @@ import type {
   PrinterListResponse,
   PrinterReadingDto,
 } from '../../bindings-phase6';
-import type { Pagination, PrinterCompatibleModelsDto } from '../../bindings';
+import type { Pagination, PrinterCompatibleAggregatesDto } from '../../bindings';
 
 export const printers = {
   list: (filter: PrinterFilter, pagination: Pagination) =>
@@ -43,10 +43,8 @@ export const printers = {
 
   getReadings: (id: number) => apiCall<PrinterReadingDto[]>('printers_get_readings', { id }),
 
-  // D-12, Phase 12 Plan 05/07 — printer_cartridge_models junction (GAP-12-02).
-  getCompatibleModels: (deviceId: number) =>
-    apiCall<PrinterCompatibleModelsDto>('printers_get_compatible_models', { deviceId }),
-
-  setCompatibleModels: (payload: PrinterCompatibleModelsDto) =>
-    apiCall<PrinterCompatibleModelsDto>('printers_set_compatible_models', payload),
+  // R4/Plan 13-03: read-only compatibility aggregates by unique printer name
+  // (replaces the deleted per-device junction get/setCompatibleModels, V029).
+  getCompatibleAggregates: (deviceId: number) =>
+    apiCall<PrinterCompatibleAggregatesDto>('printers_get_compatible_aggregates', { deviceId }),
 };

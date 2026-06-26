@@ -11,7 +11,6 @@ import type {
   CartridgeDto,
   CartridgeFilter,
   CartridgeListResponse,
-  CartridgeModelCompatibleDevicesDto,
   CartridgeModelCreateDto,
   CartridgeModelDto,
   CartridgeModelPatchDto,
@@ -59,30 +58,15 @@ export const cartridges = {
   modelsDelete: (id: number, version: number) =>
     apiCall<null>('cartridge_models_delete', { id, version }),
 
-  // D-12, Phase 12 Plan 05/07 — printer_cartridge_models junction (GAP-12-02).
-  // Note: Tauri/HTTP arg name is `modelId` (not `cartridgeModelId`) per 12-05's
-  // actual command signature; deviates from this plan's interfaces section,
-  // which assumed `cartridgeModelId` and a bare number[] return — the real
-  // contract uses a `{ model_id, device_ids }` wrapper DTO (snake_case, no rename).
-  modelsGetCompatibleDevices: (modelId: number) =>
-    apiCall<CartridgeModelCompatibleDevicesDto>('cartridge_models_get_compatible_devices', {
-      modelId,
-    }),
-
-  modelsSetCompatibleDevices: (modelId: number, deviceIds: number[]) =>
-    apiCall<CartridgeModelCompatibleDevicesDto>('cartridge_models_set_compatible_devices', {
-      modelId,
-      deviceIds,
-    }),
-
   // Autocomplete suggest endpoints
   suggestBrand: (prefix: string) => apiCall<string[]>('cartridges_suggest_brand', { prefix }),
 
   suggestModel: (brand: string, prefix: string) =>
     apiCall<string[]>('cartridges_suggest_model', { brand, prefix }),
 
-  suggestCompatPrinter: (field: 'printer_brand' | 'printer_model', prefix: string) =>
-    apiCall<string[]>('cartridges_suggest_compat_printer', { field, prefix }),
+  // Plan 13-05: field param removed — autocompletes from devices.name (D-06).
+  suggestCompatPrinter: (prefix: string) =>
+    apiCall<string[]>('cartridges_suggest_compat_printer', { prefix }),
 
   suggestLocation: (prefix: string) => apiCall<string[]>('cartridges_suggest_location', { prefix }),
 };
