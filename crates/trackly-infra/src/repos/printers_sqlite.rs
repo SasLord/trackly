@@ -267,7 +267,11 @@ impl PrinterRepository for SqlitePrinterRepository {
         filter: &PrinterFilter,
         page: &Pagination,
     ) -> Result<(Vec<PrinterRow>, u64), AppError> {
-        let limit = page.limit.min(200) as i64;
+        // R8/D-13: uncapped read — фронтенд (OperationModal) запрашивает до
+        // 500 принтеров для селектора установки; сервер больше не капит ниже
+        // фронтового запроса; полная пагинация — будущая фаза при росте
+        // парка выше разумного объёма.
+        let limit = page.limit as i64;
         let offset = page.offset as i64;
 
         // WR-05: filter on the printer's ACTUAL latest status, not merely
@@ -924,5 +928,65 @@ mod tests {
 
         // keep printer_id used to avoid unused variable warning
         let _ = printer_id;
+    }
+
+    /// R8/D-13 regression: `list()` must NOT cap at 200 rows — the frontend
+    /// (OperationModal) requests up to 500 printers for the install selector.
+    /// Seeds 250 printers (above the old cap) and asserts `list()` with
+    /// `page.limit = 500` returns ALL of them, including the printer with the
+    /// highest seeded id (previously cut off by `ORDER BY p.id DESC LIMIT 200`).
+    #[test]
+    fn list_returns_all_printers_above_old_cap() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+
+        const SEED_COUNT: i64 = 250;
+        let mut last_printer_id: Option<i64> = None;
+        for i in 0..SEED_COUNT {
+            let device_id = seed_device(&mut conn);
+            let tx = conn.transaction().expect("tx");
+            let id = repo
+                .create_in_tx(
+                    &tx,
+                    &PrinterNew {
+                        device_id,
+                        ip_address: Some(format!("192.168.1.{}", i % 250)),
+                        community_raw: "public".to_string(),
+                        snmp_version: "v2c".to_string(),
+                        oid_profile_id: None,
+                        usb_host_device_id: None,
+                    },
+                    now,
+                )
+                .expect("create printer");
+            tx.commit().expect("commit");
+            last_printer_id = Some(id);
+        }
+
+        let filter = PrinterFilter {
+            status: None,
+            search: None,
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 500,
+        };
+        let (rows, total) = repo.list(&conn, &filter, &page).expect("list");
+
+        assert_eq!(
+            total, SEED_COUNT as u64,
+            "total count must reflect all seeded printers, not capped"
+        );
+        assert_eq!(
+            rows.len(),
+            SEED_COUNT as usize,
+            "list() must return all seeded printers without the old .min(200) cap"
+        );
+        let max_id = last_printer_id.expect("seeded at least one printer");
+        assert!(
+            rows.iter().any(|r| r.id == max_id),
+            "printer with the highest seeded id must be present (no ORDER BY ... LIMIT 200 cutoff)"
+        );
     }
 }
