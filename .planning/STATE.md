@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-25T23:58:08.833Z"
-last_activity: 2026-06-25
+last_updated: "2026-06-26T00:26:57.439Z"
+last_activity: 2026-06-26
 progress:
   total_phases: 16
   completed_phases: 15
   total_plans: 105
-  completed_plans: 99
+  completed_plans: 100
   percent: 94
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 13 (per-device-junction-chip-drum-state) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
-Last activity: 2026-06-25
+Last activity: 2026-06-26
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -139,6 +139,7 @@ Last activity: 2026-06-25
 | Phase 12 P21 | 35min | 2 tasks | 9 files |
 | Phase 13 P01 | 35min | 3 tasks | 3 files |
 | Phase 13 P02 | 30min | 2 tasks | 13 files |
+| Phase 13 P03 | 25min | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -298,6 +299,8 @@ Recent decisions affecting current work:
 - [Phase 13]: 13-01: D-05 pass-through scoped strictly to list()'s cartridge-selection filter, NOT applied in compatible_model_aggregates — R4/D-07 require the printer-card aggregate to reflect only real V005 compatibility rows
 - [Phase 13]: Pulled forward Plan 13-03's Tauri/HTTP/specta deletion scope into 13-02 (Rule 3 blocking-issue fix) — Removing the printer/cartridge compat service methods broke compilation in 5 transport-adapter files outside 13-02's stated scope; fixing was required to keep trackly-app building, and matches 13-03's own pre-planned deletion instructions exactly
 - [Phase 13]: Cartridge model compatibility DTOs switched from Vec<(String,String)> brand/model pairs to Vec<String> printer names — Matches V032 migration's single printer_name column (Plan 13-01); CartridgeModelDto/CreateDto/PatchDto all updated together
+- [Phase 13]: 13-03: compatible_aggregates_for_printer placed on CartridgeService (not PrinterService) since the underlying query lives in cartridges_sqlite.rs — Avoids duplicating query logic across domains; printers.rs build_* helper calls through ctx.cartridges
+- [Phase 13]: 13-03: no D-07 pass-through on the new aggregate endpoint — A model with zero compatibility rows for a printer is simply absent from the response, not included with zero counts; Admin/Manager with no matches still gets 200 with models: []
 
 ### Pending Todos
 
@@ -335,6 +338,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-25T23:58:08.825Z
-Stopped at: Completed 13-02-PLAN.md
+Last session: 2026-06-26T00:26:57.431Z
+Stopped at: Completed 13-03-PLAN.md
 Resume file: None

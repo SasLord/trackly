@@ -461,12 +461,12 @@ Plans:
 **Goal:** Модель совместимости «принтер↔картридж» переходит с per-device junction-таблицы (V029) на free-text-связь по уникальному наименованию принтера (V005); UI совместимости консолидирован в один блок на стороне модели картриджа; карточка принтера получает read-only агрегаты совместимости и блок данных устройства с редактированием; устранены два сопутствующих дефекта (kind-aware дефолт авто-возврата фотобарабана, рассогласование лимита списка принтеров).
 **Requirements**: [SPEC-13-R1, SPEC-13-R2, SPEC-13-R3, SPEC-13-R4, SPEC-13-R5, SPEC-13-R6, SPEC-13-R7, SPEC-13-R8]
 **Depends on:** Phase 12
-**Plans:** 2/8 plans executed
+**Plans:** 3/8 plans executed
 
 Plans:
 - [x] 13-01-PLAN.md — V032 миграция (drop V029, collapse V005 printer_brand+model → printer_name) + repo rewrite на printer_name матчинг (SPEC-13-R1, SPEC-13-R2)
 - [x] 13-02-PLAN.md — удаление V029 repo/service/DTO кода, переход CartridgeModelDto.compatibility на Vec<String> (SPEC-13-R1, SPEC-13-R2, SPEC-13-R3)
-- [ ] 13-03-PLAN.md — удаление 4 V029 Tauri/HTTP команд + новая printers_get_compatible_aggregates команда (оба транспорта, DTO, specta, role_endpoint_matrix) (SPEC-13-R1, SPEC-13-R4)
+- [x] 13-03-PLAN.md — удаление 4 V029 Tauri/HTTP команд + новая printers_get_compatible_aggregates команда (оба транспорта, DTO, specta, role_endpoint_matrix) (SPEC-13-R1, SPEC-13-R4)
 - [ ] 13-04-PLAN.md — kind-aware дефолт состояния авто-возврата (фотобарабан→5) + uncapped read списка принтеров (SPEC-13-R7, SPEC-13-R8)
 - [ ] 13-05-PLAN.md — переписать printer_compatib_* тесты на V005 семантику + suggest_compat_printer на devices.name автокомплит (SPEC-13-R2)
 - [ ] 13-06-PLAN.md — CompatibilityEditor (single printer-name field) + ModelFormModal единый блок + api.ts очистка (SPEC-13-R3)
