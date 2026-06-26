@@ -45,9 +45,15 @@ CREATE TABLE cartridge_model_compatibility_new (
   printer_name        TEXT    NOT NULL
 );
 
+-- Only migrate rows that produce a usable (non-empty) printer_name. A legacy
+-- row with printer_brand='' AND printer_model='' collapses to TRIM(' ')='',
+-- which would never match any devices.name and would silently suppress the
+-- D-05 "no compatibility configured => compatible with any printer"
+-- pass-through (CR-01). Dropping such empty rows restores that pass-through.
 INSERT INTO cartridge_model_compatibility_new (id, cartridge_model_id, printer_name)
 SELECT id, cartridge_model_id, TRIM(printer_brand || ' ' || printer_model)
-  FROM cartridge_model_compatibility;
+  FROM cartridge_model_compatibility
+ WHERE TRIM(printer_brand || ' ' || printer_model) <> '';
 
 DROP TABLE cartridge_model_compatibility;
 

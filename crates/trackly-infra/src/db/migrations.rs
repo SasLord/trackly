@@ -121,4 +121,109 @@ mod tests {
         );
         assert_eq!(second.schema_version, expected);
     }
+
+    /// The actual V032 migration SQL, embedded at compile time so this test
+    /// exercises the shipped file rather than a hand-copied duplicate.
+    const V032_SQL: &str =
+        include_str!("../../../../migrations/V032__cartridge_model_compatibility_printer_name.sql");
+
+    /// V032 data-transform coverage (CR-01 / IN-05).
+    ///
+    /// The integration tests in `cartridges_crud.rs` only ever seed
+    /// compatibility via `model_create` against the post-V032 single-column
+    /// schema, so the V005 -> V032 `TRIM(printer_brand || ' ' || printer_model)`
+    /// transform on pre-existing rows was unverified. This test stands up the
+    /// V005-shaped tables, seeds legacy rows (including an empty/whitespace
+    /// row), runs the real V032 SQL, and asserts:
+    ///   - a populated legacy row survives with the concatenated printer_name,
+    ///   - an empty/whitespace-only legacy row is DROPPED (so the D-05
+    ///     "no compatibility => compatible with any printer" pass-through is
+    ///     restored for that model rather than silently broken).
+    #[test]
+    fn v032_data_transform_drops_empty_and_preserves_populated() {
+        let (conn, _guard) = fresh_conn();
+
+        // Minimal V005-era schema needed by V032 (FK target + the two tables
+        // V032 rebuilds/drops). FK enforcement is toggled OFF inside V032 itself.
+        conn.execute_batch(
+            "CREATE TABLE cartridge_models (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 brand TEXT NOT NULL,
+                 model TEXT NOT NULL
+             );
+             CREATE TABLE cartridge_model_compatibility (
+                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                 cartridge_model_id  INTEGER NOT NULL REFERENCES cartridge_models(id) ON DELETE CASCADE,
+                 printer_brand       TEXT NOT NULL,
+                 printer_model       TEXT NOT NULL
+             );
+             CREATE TABLE printer_cartridge_models (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 device_id INTEGER NOT NULL,
+                 cartridge_model_id INTEGER NOT NULL
+             );
+             INSERT INTO cartridge_models (id, brand, model) VALUES
+                 (1, 'Pantum', 'TL-5120X'),
+                 (2, 'HP', '85A');
+             -- Populated: should survive as 'Pantum BM5100'.
+             INSERT INTO cartridge_model_compatibility
+                 (cartridge_model_id, printer_brand, printer_model)
+                 VALUES (1, 'Pantum', 'BM5100');
+             -- Brand-only: should survive as 'Pantum' (trailing-space collapsed).
+             INSERT INTO cartridge_model_compatibility
+                 (cartridge_model_id, printer_brand, printer_model)
+                 VALUES (1, 'Pantum', '');
+             -- Empty/whitespace: should be DROPPED (model 2 ends up with 0 rows).
+             INSERT INTO cartridge_model_compatibility
+                 (cartridge_model_id, printer_brand, printer_model)
+                 VALUES (2, '', '');",
+        )
+        .expect("seed V005-shaped schema + rows");
+
+        // Run the real V032 file.
+        conn.execute_batch(V032_SQL).expect("apply V032 transform");
+
+        // Model 1: both populated rows preserved with concatenated names.
+        let mut names: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT printer_name FROM cartridge_model_compatibility \
+                     WHERE cartridge_model_id = 1 ORDER BY printer_name",
+                )
+                .expect("prepare model 1 query");
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .expect("query model 1");
+            rows.map(|r| r.expect("row")).collect()
+        };
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["Pantum".to_string(), "Pantum BM5100".to_string()],
+            "populated legacy rows must survive with TRIM'd concatenated names"
+        );
+
+        // Model 2: empty/whitespace-only row dropped => zero rows.
+        let model2_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cartridge_model_compatibility WHERE cartridge_model_id = 2",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count model 2 rows");
+        assert_eq!(
+            model2_count, 0,
+            "empty/whitespace legacy row must be dropped so D-05 pass-through is restored"
+        );
+
+        // No empty-string printer_name leaked through anywhere.
+        let empty_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cartridge_model_compatibility WHERE TRIM(printer_name) = ''",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count empty names");
+        assert_eq!(empty_count, 0, "no empty printer_name rows may survive V032");
+    }
 }
