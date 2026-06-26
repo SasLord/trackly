@@ -193,11 +193,10 @@ pub async fn build_cartridges_suggest_model(
 pub async fn build_cartridges_suggest_compat_printer(
     ctx: &AppCtx,
     caller: &Identity,
-    field: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
     authorize(caller, &Action::ReadData)?;
-    ctx.cartridges.suggest_compat_printer(field, prefix).await
+    ctx.cartridges.suggest_compat_printer(prefix).await
 }
 
 pub async fn build_cartridges_suggest_location(
@@ -400,11 +399,10 @@ pub async fn cartridges_suggest_model(
 #[specta::specta]
 pub async fn cartridges_suggest_compat_printer(
     state: tauri::State<'_, AppCtx>,
-    field: String,
     prefix: String,
 ) -> Result<Vec<String>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_cartridges_suggest_compat_printer(state.inner(), &caller, field, prefix).await
+    build_cartridges_suggest_compat_printer(state.inner(), &caller, prefix).await
 }
 
 #[tauri::command]

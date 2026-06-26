@@ -30,6 +30,20 @@ editor rebuilt around `Vec<String>` printer names instead of per-device
 junction rows). Do not attempt to patch these files under 13-02; they are in
 scope for the plan that rebuilds the compatibility editor UI.
 
+**Update (Plan 13-05):** `suggest_compat_printer`'s backend signature changed
+again — the `field: String` parameter (`"printer_brand"`/`"printer_model"`)
+was dropped entirely (it no longer makes sense against the single
+`printer_name` column), and the data source switched from
+`cartridge_model_compatibility` history to the real printer roster
+(`devices.name WHERE type_id = 2`, D-06). `ui/src/features/cartridges/api.ts`'s
+`suggestCompatPrinter(field, prefix)` and its two call sites in
+`ModelFormModal.svelte` (`'printer_brand'`/`'printer_model'`) still send the
+old `field` argument — harmless at the wire level (axum's `SuggestCompatPayload`
+only deserializes `prefix`, ignoring unknown JSON fields; Tauri's command
+signature drops unknown args similarly), but the call site is stale and
+should be rewritten to `suggestCompatPrinter(prefix)` (single positional
+arg, no field) when the compatibility editor UI is rebuilt.
+
 **Pre-existing `clippy::len_zero` warnings in `template_service.rs` (unrelated
 subsystem).** `cargo clippy -p trackly-app --tests -- -D warnings` fails on
 two `assert!(bytes.len() > 0, ...)` calls in

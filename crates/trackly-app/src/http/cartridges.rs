@@ -110,7 +110,6 @@ pub struct SuggestModelPayload {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SuggestCompatPayload {
-    pub field: String,
     pub prefix: String,
 }
 
@@ -384,7 +383,7 @@ pub async fn handler_suggest_compat_printer(
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
-        build_cartridges_suggest_compat_printer(&ctx, &identity, p.field, p.prefix)
+        build_cartridges_suggest_compat_printer(&ctx, &identity, p.prefix)
             .await
             .map_err(AppErrorResponse::from)?,
     ))

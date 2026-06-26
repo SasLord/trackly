@@ -816,38 +816,28 @@ impl CartridgeService {
         })?
     }
 
-    /// Autocomplete for printer names in the compatibility table.
+    /// Autocomplete for printer names when editing a cartridge model's
+    /// compatibility list (D-06, Plan 13-05).
     ///
-    /// `field` historically distinguished `"printer_brand"` / `"printer_model"`
-    /// (pre-V032 two-column contract). V032 (Plan 13-01) collapsed both into a
-    /// single `printer_name` column on `cartridge_model_compatibility`; all
-    /// three accepted values now resolve to that one column. Public signature
-    /// kept unchanged for this plan (13-02) — Plan 13-03 is expected to revisit
-    /// the caller-facing contract once the compatibility editor UI is rebuilt.
-    pub async fn suggest_compat_printer(
-        &self,
-        field: String,
-        prefix: String,
-    ) -> Result<Vec<String>, AppError> {
-        // Whitelist field — never interpolate user input.
-        let col = match field.as_str() {
-            "printer_brand" | "printer_model" | "printer_name" => "printer_name",
-            other => {
-                return Err(AppError::Validation {
-                    field: "field".into(),
-                    message: format!("Недопустимое поле: {}", other),
-                })
-            }
-        };
-        let sql = format!(
-            "SELECT DISTINCT {col} FROM cartridge_model_compatibility \
-              WHERE {col} LIKE ?1 ORDER BY {col} ASC LIMIT 20"
-        );
+    /// Sources suggestions from the real printer roster (`devices.name WHERE
+    /// type_id = 2`), not from previously-entered free-text values in
+    /// `cartridge_model_compatibility` — the compatibility column stores
+    /// free text (D-04), so suggesting from its own history would surface
+    /// typos/stale names instead of actual printers a model could match.
+    /// `prefix` is passed as a bind parameter (T-13-10) — never concatenated
+    /// into the SQL text.
+    pub async fn suggest_compat_printer(&self, prefix: String) -> Result<Vec<String>, AppError> {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
             let conn = readers.acquire();
             let pattern = format!("{}%", prefix);
-            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT DISTINCT name FROM devices \
+                      WHERE type_id = 2 AND deleted_at_utc IS NULL AND name LIKE ?1 \
+                      ORDER BY name ASC LIMIT 20",
+                )
+                .map_err(map_rusqlite)?;
             let rows = stmt
                 .query_map(params![pattern], |r| r.get::<_, String>(0))
                 .map_err(map_rusqlite)?;
