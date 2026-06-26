@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-26T01:18:32.929Z"
+last_updated: "2026-06-26T01:26:13.738Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 16
   completed_phases: 15
   total_plans: 105
-  completed_plans: 103
+  completed_plans: 104
   percent: 94
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-05-24)
 ## Current Position
 
 Phase: 13 (per-device-junction-chip-drum-state) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-06-26
 
@@ -143,6 +143,7 @@ Last activity: 2026-06-26
 | Phase 13 P04 | 13min | 2 tasks | 2 files |
 | Phase 13 P05 | 20min | 2 tasks | 5 files |
 | Phase 13 P06 | 25min | 2 tasks | 4 files |
+| Phase 13 P07 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -309,6 +310,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 13-05: suggest_compat_printer re-sourced from devices.name (D-06) instead of cartridge_model_compatibility free-text history; dropped legacy field param across service/Tauri/HTTP layers
 - [Phase 13]: filteredCompatibility (trim+dedupe) sent in submit payload, per plan action text, not raw compatibility variable — 13-06: plan's <action> for Task 2 explicitly names filteredCompatibility; frontmatter key_links regex was a looser hint
 - [Phase 13]: CompatibleModelsEditor.svelte and OperationModal.svelte compat-junction call sites logged to deferred-items.md, not fixed under 13-06 — Both outside 13-06 files_modified; confirmed pre-existing via git-stash diff; CompatibleModelsEditor.svelte explicitly scoped to Plan 13-07 per UI-SPEC
+- [Phase ?]: 13-07: compatAggregates/deviceData/installedCartridge each get their own independent $effect keyed on printer, matching the existing readings $effect convention
+- [Phase ?]: 13-07: installedCartridge loading-gap renders '…' instead of falling back to the numeric id — no raw id shown in any intermediate state
 
 ### Pending Todos
 
@@ -346,6 +349,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-26T01:18:32.921Z
+Last session: 2026-06-26T01:25:52.050Z
 Stopped at: Completed 13-06-PLAN.md
 Resume file: None
