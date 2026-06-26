@@ -10,8 +10,11 @@
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
   import { printers } from './api';
+  import { devices } from '../devices/api';
+  import { cartridges } from '../cartridges/api';
+  import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
-  import type { CompatibleModelAggregateDto } from '../../bindings';
+  import type { CompatibleModelAggregateDto, DeviceDto, CartridgeDto } from '../../bindings';
 
   interface Props {
     printer: PrinterDto | null;
@@ -68,6 +71,50 @@
       })
       .finally(() => {
         compatLoading = false;
+      });
+  });
+
+  // R5/D-08/D-09: блок данных устройства + диалог редактирования (DeviceFormModal).
+  let deviceData = $state<DeviceDto | null>(null);
+  let deviceLoading = $state(false);
+  let deviceEditOpen = $state(false);
+
+  $effect(() => {
+    const p = printer;
+    if (p === null) {
+      deviceData = null;
+      return;
+    }
+    deviceLoading = true;
+    devices
+      .get(p.deviceId)
+      .then((d) => {
+        deviceData = d;
+      })
+      .catch(() => {
+        deviceData = null;
+      })
+      .finally(() => {
+        deviceLoading = false;
+      });
+  });
+
+  // R6: установленный картридж по коду + наименованию модели (без числового id).
+  let installedCartridge = $state<CartridgeDto | null>(null);
+
+  $effect(() => {
+    const p = printer;
+    if (p === null || p.currentCartridgeId === null) {
+      installedCartridge = null;
+      return;
+    }
+    cartridges
+      .get(p.currentCartridgeId)
+      .then((c) => {
+        installedCartridge = c;
+      })
+      .catch(() => {
+        installedCartridge = null;
       });
   });
 
@@ -207,11 +254,17 @@
         {/if}
       </section>
 
-      <!-- Секция: установленный картридж (PRN-07, D-PRN07-01) -->
+      <!-- Секция: установленный картридж (PRN-07, R6 — код+наименование) -->
       <section class="detail-section">
         <h3 class="section-heading">Установленный картридж</h3>
         {#if printer.currentCartridgeId !== null}
-          <p class="cartridge-row">Картридж #{printer.currentCartridgeId}</p>
+          {#if installedCartridge !== null}
+            <p class="cartridge-row">
+              {installedCartridge.code} — {installedCartridge.model_brand} {installedCartridge.model_name}
+            </p>
+          {:else}
+            <p class="cartridge-row">…</p>
+          {/if}
         {:else}
           <p class="muted">Картридж не закреплён</p>
         {/if}
@@ -259,6 +312,36 @@
         {/if}
       </section>
 
+      <!-- Секция: данные устройства (R5, D-08/D-09) -->
+      <section class="detail-section">
+        <div class="section-heading-row">
+          <h3 class="section-heading">Данные устройства</h3>
+          <Button variant="secondary" size="sm" onclick={() => (deviceEditOpen = true)}>
+            Редактировать
+          </Button>
+        </div>
+        {#if deviceLoading}
+          <div class="readings-loading"><Spinner size="sm" /></div>
+        {:else}
+          <div class="meta-row">
+            <span class="meta-label">Инвентарный №</span>
+            <span class="meta-value">{deviceData?.inventory_no ?? '—'}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Серийный №</span>
+            <span class="meta-value">{deviceData?.serial_no ?? '—'}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Расположение</span>
+            <span class="meta-value">{deviceData?.location ?? '—'}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Состояние</span>
+            <span class="meta-value">{deviceData?.state ?? '—'}</span>
+          </div>
+        {/if}
+      </section>
+
       <!-- Метаданные -->
       <section class="detail-section meta-section">
         {#if printer.ipAddress}
@@ -288,6 +371,18 @@
         {/if}
       </section>
     </div>
+
+    <DeviceFormModal
+      open={deviceEditOpen}
+      target={deviceData}
+      onClose={() => (deviceEditOpen = false)}
+      onSaved={() => {
+        deviceEditOpen = false;
+        if (printer) {
+          devices.get(printer.deviceId).then((d) => (deviceData = d));
+        }
+      }}
+    />
   {/if}
 </div>
 
@@ -370,6 +465,13 @@
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--color-text-primary);
+  }
+
+  .section-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
   }
 
   .toner-list {
