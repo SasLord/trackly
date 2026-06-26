@@ -242,9 +242,15 @@
       }
       return;
     }
+    // WR-05: cancellation guard — if the operator switches/deselects the
+    // printer (or reopens the modal) while this getByDeviceId round-trip is
+    // in flight, ignore the late resolution so it can't overwrite
+    // printerContext/previousCartridge with data for the previous printer.
+    let cancelled = false;
     printers
       .getByDeviceId(effectivePrinterId)
       .then((printer) => {
+        if (cancelled) return null;
         printerContext = printer;
         // DEC-B (Phase 12 Round 5): in the cartridge-centric entry (no
         // incoming preFillPrinterId — the operator just picked a printer via
@@ -268,6 +274,7 @@
         return cartridges.get(printer.currentCartridgeId);
       })
       .then((prev) => {
+        if (cancelled) return;
         if (prev !== null && prev !== undefined) {
           previousCartridge = prev;
           // R7/D-11: kind-aware default — выставляется одновременно с
@@ -277,10 +284,14 @@
         }
       })
       .catch(() => {
+        if (cancelled) return;
         // Fail-safe: a failed lookup just means no previous-cartridge block
         // is shown — install can still proceed normally.
         previousCartridge = null;
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // D-13/D-14 (Phase 12 gap closure GAP-12-02): the request-centric install
@@ -307,17 +318,26 @@
       compatibilityUnconfigured = false;
       return;
     }
+    // WR-05: cancellation guard against a stale getCompatibleAggregates
+    // resolution overwriting the flag for a printer the operator has since
+    // changed away from.
+    let cancelled = false;
     printers
       .getCompatibleAggregates(preFillPrinterId)
       .then((res) => {
+        if (cancelled) return;
         compatibilityUnconfigured = res.models.length === 0;
       })
       .catch(() => {
+        if (cancelled) return;
         // Fail-safe default (T-12-08-01): a failed compatibility check is a
         // UX hint only, not a security boundary — never show the warning
         // off of an error state.
         compatibilityUnconfigured = false;
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // D-20/D-21 (Round 4 gap-closure, Plan 12-20): load the full printer list
@@ -341,11 +361,18 @@
       compatibleDeviceIds = new Set();
       return;
     }
+    // WR-05: cancellation guard — if the operator switches the selected
+    // cartridge (or reopens for a different one) before this list +
+    // modelsGet round-trip settles, ignore the late resolution so
+    // compatibleDeviceIds isn't overwritten with results for the previous
+    // cartridge's model_id.
+    let cancelled = false;
     Promise.all([
       printers.list({ status: null, search: null }, { offset: 0, limit: 500 }),
       cartridges.modelsGet(cartridge.model_id),
     ])
       .then(([printersRes, modelRes]) => {
+        if (cancelled) return;
         printerOptions = printersRes.items;
         if (modelRes.compatibility.length === 0) {
           // D-05 pass-through: empty compatibility means "compatible with
@@ -365,12 +392,16 @@
         );
       })
       .catch(() => {
+        if (cancelled) return;
         // Fail-safe (D-21): a failed lookup must not block install without a
         // printer — worst case the selector shows "Принтеры не найдены",
         // which is still a valid no-printer path (D-20).
         printerOptions = [];
         compatibleDeviceIds = new Set();
       });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // D-01/D-02 (Phase 12 Plan 03): load the installable-stock cartridge list
