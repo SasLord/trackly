@@ -281,15 +281,21 @@
 
   // D-13/D-14 (Phase 12 gap closure GAP-12-02): the request-centric install
   // flow (cartridge === null) narrows the picker to cartridges compatible
-  // with the request's printer (printer_cartridge_models, via 12-05's
-  // `compatible_with_printer_device_id` filter). When a printer context
-  // exists (preFillPrinterId set) but has zero configured compatibility
-  // links, the backend filter self-adjusts to show the full unfiltered
-  // kind_id=1 stock (D-14) — this flag drives the warning that tells the
-  // operator compatibility was never configured for this printer, so they
-  // should verify the fit manually. Replaces the old WR-02 placeholder
-  // (which warned on missing `cartridgeModelId`, not on missing
-  // printer↔model links).
+  // with the request's printer. When a printer context exists
+  // (preFillPrinterId set) but has zero configured compatibility links, the
+  // backend filter self-adjusts to show the full unfiltered kind_id=1 stock
+  // (D-14) — this flag drives the warning that tells the operator
+  // compatibility was never configured for this printer, so they should
+  // verify the fit manually. Replaces the old WR-02 placeholder (which
+  // warned on missing `cartridgeModelId`, not on missing printer↔model
+  // links).
+  //
+  // D-21/R4 (Phase 13): source is V005 cartridge_model_compatibility via
+  // printer_name matching (Plan 13-03's printers_get_compatible_aggregates),
+  // not the deleted per-device junction (printers_get_compatible_models,
+  // V029, removed in Plan 13-03). `models.length === 0` is the direct
+  // equivalent of the old `modelIds.length === 0` check — both express
+  // "this printer has zero compatible cartridge models".
   let compatibilityUnconfigured = $state(false);
 
   $effect(() => {
@@ -298,9 +304,9 @@
       return;
     }
     printers
-      .getCompatibleModels(preFillPrinterId)
+      .getCompatibleAggregates(preFillPrinterId)
       .then((res) => {
-        compatibilityUnconfigured = res.modelIds.length === 0;
+        compatibilityUnconfigured = res.models.length === 0;
       })
       .catch(() => {
         // Fail-safe default (T-12-08-01): a failed compatibility check is a
