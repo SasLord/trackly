@@ -104,3 +104,18 @@ None - no external service configuration required.
 ---
 *Phase: 13-per-device-junction-chip-drum-state*
 *Completed: 2026-06-26*
+
+## Self-Check: PASSED
+
+All created/modified files confirmed on disk:
+- FOUND: crates/trackly-app/tests/cartridges_crud.rs
+- FOUND: crates/trackly-app/src/services/cartridge_service.rs
+- FOUND: crates/trackly-app/src/tauri_cmds/cartridges.rs
+- FOUND: crates/trackly-app/src/http/cartridges.rs
+- FOUND: .planning/phases/13-per-device-junction-chip-drum-state/deferred-items.md
+- FOUND: .planning/phases/13-per-device-junction-chip-drum-state/13-05-SUMMARY.md
+
+All commit hashes confirmed in `git log --oneline --all`:
+- FOUND: bea37c8 (test(13-05): replace printer_compatib round-trip with case-insensitive match test)
+- FOUND: 7a4f7ca (feat(13-05): suggest_compat_printer autocompletes from real printer roster)
+- FOUND: 9f7b264 (docs(13-05): add plan summary)
