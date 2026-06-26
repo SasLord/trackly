@@ -3,15 +3,17 @@
 //! Covers: create + auto-code, custom code, get-404, soft-delete, counts,
 //! rejects_invalid_custom_code (empty or >32 chars or ctrl chars → AppError::Validation).
 //!
-//! Plan 12-05 originally added `printer_compatib*` tests covering the
-//! `printer_cartridge_models` junction table (D-11/D-12/D-13/D-14,
-//! GAP-12-02). Plan 13-01/13-02 (V032) replaced that junction table with a
-//! single `cartridge_model_compatibility.printer_name` column matched
+//! Plan 12-05 originally added `printer_compatib*` tests covering a
+//! per-device printer/model junction table (D-11/D-12/D-13/D-14, GAP-12-02).
+//! Plan 13-01/13-02 (V032) replaced that junction table with a single
+//! `cartridge_model_compatibility.printer_name` column matched
 //! case-insensitively against `devices.name` — the tests below were updated
 //! to seed compatibility via `CartridgeService::model_create`'s
-//! `compatibility: Vec<String>` field instead of the removed
-//! `SqlitePrinterRepository::set_compatible_models_in_tx` /
-//! `get_compatible_model_ids` / `get_compatible_device_ids`.
+//! `compatibility: Vec<String>` field instead of the removed junction-table
+//! repository methods. Plan 13-05 replaced the leftover round-trip test
+//! (which still exercised those removed methods) with
+//! `printer_compatib_case_insensitive_match`, covering the case/whitespace
+//! comparison semantics (D-03) the round-trip test never verified.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,8 +50,8 @@ async fn seed_model(svc: &CartridgeService) -> i64 {
 }
 
 /// Set up a fresh CartridgeService PLUS raw writer/readers handles, for tests
-/// that need to seed a `devices` row (type_id=2, Принтер) or exercise
-/// `SqlitePrinterRepository` directly (Plan 12-05 printer_compatib* tests).
+/// that need to seed a `devices` row (type_id=2, Принтер) directly
+/// (`printer_compatib*` tests).
 fn make_cartridge_service_with_handles() -> (
     CartridgeService,
     Arc<trackly_infra::db::writer_worker::WriterHandle>,
@@ -432,52 +434,33 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
     .expect("printer_compatib_unconfigured_device_does_not_narrow budget")
 }
 
-/// Test 3 (rewired for V032/Plan 13-02): seeding two models with the same
-/// printer name in their `compatibility: Vec<String>` round-trips through
-/// `CartridgeService::model_get`'s `compatibility` field (forward direction —
-/// replaces the removed `get_compatible_model_ids`), and the cartridge-list
-/// narrowing filter confirms the reverse direction (replaces the removed
-/// `get_compatible_device_ids`): both models' in-stock cartridges are
-/// returned when filtering by that printer's device_id.
+/// Test 3 (Plan 13-05): seeding a model's compatibility with a printer name
+/// that differs from the linked device's `devices.name` only by case and
+/// surrounding whitespace still narrows the cartridge-list filter to that
+/// model — confirms the case-insensitive + TRIM comparison (D-03).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn printer_compatib_round_trip_both_directions() {
+async fn printer_compatib_case_insensitive_match() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, writer, _readers, _dir) = make_cartridge_service_with_handles();
-        let printer_name = "Принтер round-trip";
-        let device_id = seed_printer_device(&writer, printer_name).await;
+        let device_id = seed_printer_device(&writer, "HP LaserJet M404").await;
 
         let model_a = svc
             .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
-                brand: "Pantum".into(),
-                model: "TL-5120X".into(),
+                brand: "HP".into(),
+                model: "CF258A".into(),
                 kind_id: 1,
                 color: Some("Чёрный".into()),
                 notes: None,
-                compatibility: vec![printer_name.to_string()],
+                // Different case + leading/trailing whitespace vs. the
+                // device's exact name "HP LaserJet M404" — D-03 normalises
+                // via LOWER(TRIM(...)) on both sides, which strips
+                // leading/trailing whitespace and folds case, but does NOT
+                // collapse interior whitespace runs.
+                compatibility: vec!["  hp laserjet m404  ".into()],
             })
             .await
             .expect("seed model A")
             .id;
-        let model_b = svc
-            .model_create(trackly_app::dto::cartridge::CartridgeModelCreateDto {
-                brand: "Kyocera".into(),
-                model: "TK-1200".into(),
-                kind_id: 1,
-                color: Some("Чёрный".into()),
-                notes: None,
-                compatibility: vec![printer_name.to_string()],
-            })
-            .await
-            .expect("seed model B")
-            .id;
-
-        // Forward direction: model -> compatible printer names round-trips.
-        let fetched_a = svc.model_get(model_a).await.expect("model_get A");
-        assert_eq!(
-            fetched_a.compatibility,
-            vec![printer_name.to_string()],
-            "model A's compatibility must round-trip the printer name"
-        );
 
         svc.create(CartridgeCreateDto {
             model_id: model_a,
@@ -488,18 +471,7 @@ async fn printer_compatib_round_trip_both_directions() {
         })
         .await
         .expect("create cartridge A");
-        svc.create(CartridgeCreateDto {
-            model_id: model_b,
-            code_override: None,
-            state_id: Some(1),
-            location: Some("Склад".into()),
-            notes: None,
-        })
-        .await
-        .expect("create cartridge B");
 
-        // Reverse direction: device_id -> both linked models' cartridges
-        // show up in the narrowing filter.
         let resp = svc
             .list(
                 CartridgeFilter {
@@ -513,15 +485,14 @@ async fn printer_compatib_round_trip_both_directions() {
             .await
             .expect("list with compatibility filter");
 
-        let mut model_ids: Vec<i64> = resp.items.iter().map(|i| i.model_id).collect();
-        model_ids.sort();
-        let mut expected = vec![model_a, model_b];
-        expected.sort();
         assert_eq!(
-            model_ids, expected,
-            "reverse lookup must return both linked models' cartridges"
+            resp.items.len(),
+            1,
+            "case/whitespace-insensitive match must still narrow to model A, got: {:?}",
+            resp.items
         );
+        assert_eq!(resp.items[0].model_id, model_a);
     })
     .await
-    .expect("printer_compatib_round_trip_both_directions budget")
+    .expect("printer_compatib_case_insensitive_match budget")
 }
