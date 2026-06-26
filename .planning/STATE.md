@@ -2,33 +2,32 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-status: milestone_complete
-last_updated: 2026-06-26T12:00:09.756Z
-last_activity: 2026-06-26
+status: Awaiting next milestone
+last_updated: "2026-06-26T14:56:59.675Z"
+last_activity: 2026-06-26 — Milestone v1.1 completed and archived
 progress:
   total_phases: 16
   completed_phases: 16
   total_plans: 105
   completed_plans: 105
   percent: 100
-stopped_at: Milestone complete (Phase 13 was final phase)
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-24)
+See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** v1.1 завершён и заархивирован; планирование следующего milestone (`/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: 13
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-26
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-26 — Milestone v1.1 completed and archived
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -334,11 +333,30 @@ Spike-зоны, требующие внимания во время планир
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and deferred at v1.1 milestone close on 2026-06-26. The v1.1
+milestone audit (`milestones/v1.1-MILESTONE-AUDIT.md`) assessed all of these as
+`tech_debt` — no critical blockers. Most are v1.0 (already-shipped) leftovers or
+un-automatable human-verify items (no FE test runner by design).
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| uat_gap | 03.1 — 03.1-DEFERRED-UAT-ITEMS.md (v1.0) | open (0 pending) | 2026-06-26 |
+| uat_gap | 03.1 — 03.1-HUMAN-UAT.md (v1.0) | partial (13 scenarios) | 2026-06-26 |
+| uat_gap | 03.3 — 03.3-UAT-ITEMS.md (v1.0) | unknown (0 pending) | 2026-06-26 |
+| uat_gap | 04 — 04-HUMAN-UAT.md (v1.0) | passed (0 pending) | 2026-06-26 |
+| uat_gap | 05 — 05-UAT.md (v1.0) | testing (0 pending) | 2026-06-26 |
+| uat_gap | 07 — 07-HUMAN-UAT.md (v1.0) | passed (13 scenarios) | 2026-06-26 |
+| uat_gap | 08 — 08-HUMAN-UAT.md (v1.0) | passed (0 pending) | 2026-06-26 |
+| uat_gap | 10 — 10-HUMAN-UAT.md (v1.1) | partial (2 scenarios, live-browser only) | 2026-06-26 |
+| uat_gap | 11 — 11-HUMAN-UAT.md (v1.1) | partial (7 scenarios, live-browser only) | 2026-06-26 |
+| verification_gap | 03 — 03-VERIFICATION.md (v1.0) | human_needed | 2026-06-26 |
+| verification_gap | 03.1 — 03.1-VERIFICATION.md (v1.0) | human_needed | 2026-06-26 |
+| verification_gap | 03.2 — 03.2-VERIFICATION.md (v1.0) | human_needed | 2026-06-26 |
+| verification_gap | 04 — 04-VERIFICATION.md (v1.0) | human_needed | 2026-06-26 |
+| verification_gap | 10 — 10-VERIFICATION.md (v1.1) | human_needed (render checks) | 2026-06-26 |
+| verification_gap | 11 — 11-VERIFICATION.md (v1.1) | human_needed (render checks) | 2026-06-26 |
+| quick_task | 260618-vtm-backup-date-schedule-template-fixes | done (recorded complete ✓ in Quick Tasks table; no separate record file) | 2026-06-26 |
+| quick_task | 260621-r8x-fix-fk-constraint-on-request-accept-assi | done (recorded complete ✓ in Quick Tasks table; no separate record file) | 2026-06-26 |
 
 ## Quick Tasks Completed
 
@@ -358,3 +376,7 @@ Items acknowledged and carried forward from previous milestone close:
 Last session: 2026-06-26T01:33:48.250Z
 Stopped at: Completed 13-08-PLAN.md
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
