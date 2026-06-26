@@ -530,7 +530,6 @@ impl SqliteCartridgeRepository {
             ..
         } = op
         {
-            let resolved_state_id = previous_cartridge_state_id.unwrap_or(3);
             let resolved_location = previous_cartridge_location.as_deref().unwrap_or("");
 
             let previous: Option<(i64, i64)> = tx
@@ -548,6 +547,18 @@ impl SqliteCartridgeRepository {
             if let Some((prev_id, prev_version)) = previous {
                 // Snapshot before mutating, for the auto-return's audit before_json.
                 let prev_current = self.fetch_in_tx(tx, prev_id)?;
+
+                // R7 (13-SPEC.md): kind-aware default — фотобарабан (kind_id=2)
+                // возвращается в state 5 «Изношенный», обычный картридж
+                // (kind_id=1) — в state 3 «На заправке» (D-10/D-11/D-12), если
+                // previous_cartridge_state_id не передан явно.
+                let resolved_state_id = previous_cartridge_state_id.unwrap_or_else(|| {
+                    if prev_current.model_kind_id == Some(2) {
+                        5
+                    } else {
+                        3
+                    }
+                });
 
                 let prev_affected = tx
                     .execute(
@@ -1361,6 +1372,41 @@ mod tests {
         id
     }
 
+    /// Сид устройства (type_id=2 — Принтер) — возвращает device_id, на
+    /// которое cartridges.current_printer_device_id может ссылаться (FK).
+    fn seed_device(conn: &mut Connection) -> i64 {
+        let now = 1_700_000_000_i64;
+        conn.execute(
+            "INSERT INTO devices (type_id, name, status_id, created_at_utc, updated_at_utc, version) \
+             VALUES (2, 'Test Printer', 1, ?1, ?1, 1)",
+            params![now],
+        )
+        .expect("insert device");
+        conn.last_insert_rowid()
+    }
+
+    /// Сид модели фотобарабана (kind_id=2) — для R7 kind-aware auto-return тестов.
+    fn seed_drum_model(conn: &mut Connection, brand: &str, model: &str) -> i64 {
+        let tx = conn.transaction().expect("tx");
+        let now = 1_700_000_000_i64;
+        let repo = SqliteCartridgeRepository;
+        let id = repo
+            .insert_model_in_tx(
+                &tx,
+                &CartridgeModelNew {
+                    brand: brand.into(),
+                    model: model.into(),
+                    kind_id: 2,
+                    color: None,
+                    notes: None,
+                },
+                now,
+            )
+            .expect("insert drum model");
+        tx.commit().expect("commit");
+        id
+    }
+
     #[test]
     fn assign_code_auto_increments() {
         let (mut conn, _g) = fresh_conn();
@@ -1603,6 +1649,185 @@ mod tests {
             .transition_in_tx(&tx, cart_id, 1, &op, now)
             .expect_err("should fail");
         assert!(matches!(err, AppError::Validation { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn auto_return_uses_kind_aware_default_state_for_drum() {
+        // R7 regression: устанавливают фотобарабан (kind_id=2) на принтер,
+        // где уже "В работе" другой фотобарабан, без явного
+        // previous_cartridge_state_id → авто-возвращённый предыдущий
+        // фотобарабан должен получить state_id=5 («Изношенный»), НЕ 3.
+        let (mut conn, _g) = fresh_conn();
+        let drum_model = seed_drum_model(&mut conn, "Pantum", "DL-5120");
+        let printer_device_id = seed_device(&mut conn);
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        // Первый фотобарабан — установлен "В работе" на printer_device_id.
+        let prev_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code");
+            let id = repo
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    drum_model,
+                    1,
+                    Some(4),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert prev drum");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_prev = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 101".into(),
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
+                .expect("install prev drum");
+            tx.commit().expect("commit");
+        }
+
+        // Второй фотобарабан — устанавливается на тот же принтер, без
+        // явного previous_cartridge_state_id → должен авто-вернуть первый.
+        let new_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code2");
+            let id = repo
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    drum_model,
+                    1,
+                    Some(4),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert new drum");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_new = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Сидоров".into(),
+                given_to_name: "Кузнецов".into(),
+                location: "Каб. 101".into(),
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
+                .expect("install new drum");
+            tx.commit().expect("commit");
+        }
+
+        let prev_row = repo.get(&conn, prev_id).expect("get prev after auto-return");
+        assert_eq!(prev_row.status_id, 1); // На складе (auto-returned)
+        assert_eq!(prev_row.state_id, Some(5)); // Изношенный — NOT 3
+    }
+
+    #[test]
+    fn auto_return_keeps_state_3_default_for_regular_cartridge() {
+        // Non-regression: обычный картридж (kind_id=1) продолжает
+        // авто-возвращаться в state_id=3 («На заправке») по умолчанию.
+        let (mut conn, _g) = fresh_conn();
+        let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let printer_device_id = seed_device(&mut conn);
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        let prev_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+            let id = repo
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    model_id,
+                    1,
+                    Some(1),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert prev cartridge");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_prev = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                location: "Каб. 202".into(),
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
+                .expect("install prev cartridge");
+            tx.commit().expect("commit");
+        }
+
+        let new_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code2");
+            let id = repo
+                .insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    model_id,
+                    1,
+                    Some(1),
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert new cartridge");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_new = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Сидоров".into(),
+                given_to_name: "Кузнецов".into(),
+                location: "Каб. 202".into(),
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_location: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
+                .expect("install new cartridge");
+            tx.commit().expect("commit");
+        }
+
+        let prev_row = repo.get(&conn, prev_id).expect("get prev after auto-return");
+        assert_eq!(prev_row.status_id, 1); // На складе (auto-returned)
+        assert_eq!(prev_row.state_id, Some(3)); // На заправке — unchanged behavior
     }
 
     #[test]
