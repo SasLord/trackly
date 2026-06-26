@@ -129,3 +129,7 @@ None - no external service configuration required.
 ---
 *Phase: 13-per-device-junction-chip-drum-state*
 *Completed: 2026-06-26*
+
+## Self-Check: PASSED
+
+All claimed files verified present on disk; both commit hashes (`199438c`, `bed91c1`) verified present in `git log --oneline --all`.
