@@ -9,9 +9,9 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
-  import CompatibleModelsEditor from './CompatibleModelsEditor.svelte';
   import { printers } from './api';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
+  import type { CompatibleModelAggregateDto } from '../../bindings';
 
   interface Props {
     printer: PrinterDto | null;
@@ -43,6 +43,31 @@
       })
       .finally(() => {
         readingsLoading = false;
+      });
+  });
+
+  // R4/D-07: read-only совместимые модели картриджей — агрегаты по статусам
+  // (заменяет удалённый V029 per-device чеклист-редактор).
+  let compatAggregates = $state<CompatibleModelAggregateDto[]>([]);
+  let compatLoading = $state(false);
+
+  $effect(() => {
+    const p = printer;
+    if (p === null) {
+      compatAggregates = [];
+      return;
+    }
+    compatLoading = true;
+    printers
+      .getCompatibleAggregates(p.deviceId)
+      .then((res) => {
+        compatAggregates = res.models;
+      })
+      .catch(() => {
+        compatAggregates = [];
+      })
+      .finally(() => {
+        compatLoading = false;
       });
   });
 
@@ -192,10 +217,20 @@
         {/if}
       </section>
 
-      <!-- Секция: совместимые модели картриджей (D-12, GAP-12-02) -->
+      <!-- Секция: совместимые модели картриджей (R4/D-07 — read-only агрегаты) -->
       <section class="detail-section">
         <h3 class="section-heading">Совместимые модели картриджей</h3>
-        <CompatibleModelsEditor deviceId={printer.deviceId} />
+        {#if compatLoading}
+          <div class="readings-loading"><Spinner size="sm" /></div>
+        {:else if compatAggregates.length === 0}
+          <p class="muted">Совместимость не настроена</p>
+        {:else}
+          {#each compatAggregates as agg (agg.modelId)}
+            <p class="compat-agg-row">
+              {agg.brand} {agg.model}: На складе {agg.inStock}, На заправке {agg.atRefill}, В работе {agg.inUse}
+            </p>
+          {/each}
+        {/if}
       </section>
 
       <!-- Секция: история статусов (PRN-05) -->
@@ -364,6 +399,12 @@
     margin: 0;
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+  }
+
+  .compat-agg-row {
+    margin: 0;
+    font-size: var(--font-size-body);
     color: var(--color-text-primary);
   }
 
