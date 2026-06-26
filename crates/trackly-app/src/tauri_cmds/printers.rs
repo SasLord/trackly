@@ -210,6 +210,13 @@ pub async fn build_printers_get_compatible_aggregates(
     device_id: i64,
 ) -> Result<PrinterCompatibleAggregatesDto, AppError> {
     authorize(caller, &Action::ReadData)?;
+    // WR-02: assert the device exists and is actually a printer before
+    // computing aggregates. `get_by_device_id` returns `NotFound` for a
+    // missing or non-printer device, so a bogus `device_id` (e.g. a
+    // printers.id passed where a device_id is expected) surfaces as 404
+    // instead of a silent HTTP 200 with an empty `models` list — matching the
+    // behaviour of every other printer read path.
+    ctx.printers.get_by_device_id(device_id).await?;
     let aggregates = ctx
         .cartridges
         .compatible_aggregates_for_printer(device_id)
