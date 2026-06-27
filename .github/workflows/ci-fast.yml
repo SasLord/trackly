@@ -54,17 +54,28 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: ui/pnpm-lock.yaml
 
-      # Break the rust-embed prebuild cycle on a clean checkout (mirrors release.yml).
-      # trackly-app embeds the SPA via #[derive(RustEmbed)] #[folder = "../../ui/dist"],
-      # and rust-embed requires that folder to EXIST at compile time. ui/dist is
-      # gitignored, so a fresh CI checkout has none and every cargo compile of
-      # trackly-app (clippy/test/build) fails. Seed a placeholder so the workspace
-      # compiles; the real SPA is only needed for the release embed (release.yml).
+      - name: pnpm install (frozen lockfile)
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      # rust-embed embeds the SPA via #[derive(RustEmbed)] #[folder = "../../ui/dist"]
+      # and requires that folder to EXIST at compile time. ui/dist is gitignored, so
+      # a fresh checkout has none. The `pnpm build` below regenerates it, but its
+      # `prebuild` hook (cargo test --test export_bindings) compiles trackly-app
+      # BEFORE vite writes ui/dist — circular. Seed a placeholder to break the cycle;
+      # vite (emptyOutDir) then replaces it with the real SPA.
       - name: Seed ui/dist placeholder (breaks rust-embed prebuild cycle)
         shell: bash
         run: |
           mkdir -p ui/dist
           [ -f ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > ui/dist/index.html
+
+      # Build the REAL Svelte SPA into ui/dist. Needed not just for compilation but
+      # for tests/security_headers::server_serves_embedded_spa_index, which serves
+      # GET / and asserts the real index.html mount point (a placeholder fails it).
+      - name: Build Svelte SPA (ui/dist)
+        working-directory: ui
+        run: pnpm build
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
@@ -72,6 +83,10 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # TRACKLY_AD_MOCK / TRACKLY_SNMP_MOCK: CI has no reachable AD/SNMP, so the
+      # suite must run against the mock clients (D-Mock-01). Without these, AD-backed
+      # tests (settings_ad, restore_request_visibility_http) get a real LDAP bind →
+      # 503 SERVICE_UNAVAILABLE instead of the expected mock behavior.
       # --test-threads=1 serializes tests within each test binary. Several
       # tests build a tokio multi_thread runtime + tracing-appender non_blocking
       # background thread + WriterHandle spawn_blocking; running multiple such
@@ -81,11 +96,10 @@ jobs:
       # on macOS dev box). Cross-binary parallelism is still in effect; only
       # tests within the same binary are serialized.
       - name: cargo test
+        env:
+          TRACKLY_AD_MOCK: '1'
+          TRACKLY_SNMP_MOCK: '1'
         run: cargo test --workspace --no-fail-fast -- --test-threads=1
-
-      - name: pnpm install (frozen lockfile)
-        working-directory: ui
-        run: pnpm install --frozen-lockfile
 
       # Phase 2 (Plan 02-02) resolved the @tauri-apps/api deferred item — svelte-check
       # is now a blocking gate. See .planning/phases/01-foundation/deferred-items.md.
