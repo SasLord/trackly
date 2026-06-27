@@ -224,6 +224,9 @@ mod tests {
                 |r| r.get(0),
             )
             .expect("count empty names");
-        assert_eq!(empty_count, 0, "no empty printer_name rows may survive V032");
+        assert_eq!(
+            empty_count, 0,
+            "no empty printer_name rows may survive V032"
+        );
     }
 }

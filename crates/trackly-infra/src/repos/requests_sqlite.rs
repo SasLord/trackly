@@ -684,7 +684,14 @@ mod tests {
             )
             .expect_err("stale version must fail");
         assert!(
-            matches!(err, AppError::OptimisticLockMismatch { actual: 1, expected: 99, .. }),
+            matches!(
+                err,
+                AppError::OptimisticLockMismatch {
+                    actual: 1,
+                    expected: 99,
+                    ..
+                }
+            ),
             "expected OptimisticLockMismatch (not NotFound), got: {err:?}"
         );
     }

@@ -1904,7 +1904,15 @@ mod tests {
             {
                 let code = format!("A-{i:03}");
                 repo.insert_cartridge_in_tx(
-                    &tx, &code, model_a, *status, *state, Some("Склад"), None, None, now,
+                    &tx,
+                    &code,
+                    model_a,
+                    *status,
+                    *state,
+                    Some("Склад"),
+                    None,
+                    None,
+                    now,
                 )
                 .expect("insert A cartridge");
             }
@@ -1977,7 +1985,10 @@ mod tests {
             2,
             "exactly the two compatible models, model C (no match) absent; got {aggregates:?}"
         );
-        assert_eq!(aggregates[0].model_id, model_b, "Cactus sorts first (brand ASC)");
+        assert_eq!(
+            aggregates[0].model_id, model_b,
+            "Cactus sorts first (brand ASC)"
+        );
         assert_eq!(aggregates[1].model_id, model_a, "Pantum sorts second");
 
         // Model B: 0 in_stock, 0 at_refill, 1 in_use.

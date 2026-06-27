@@ -443,7 +443,6 @@ impl PrinterRepository for SqlitePrinterRepository {
         .optional()
         .map_err(map_rusqlite)
     }
-
 }
 
 fn map_oid_profile_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<OidProfileRow> {
@@ -707,7 +706,10 @@ mod tests {
             id
         };
         let (_ids, total_ok) = filter(&conn, Some("ok"));
-        assert_eq!(total_ok, 1, "unpolled printer must not match a status filter");
+        assert_eq!(
+            total_ok, 1,
+            "unpolled printer must not match a status filter"
+        );
         let (_ids, total_all) = filter(&conn, None);
         assert_eq!(
             total_all, 3,
