@@ -221,13 +221,7 @@
 
     <div class="form-field">
       <label class="form-label" for="org-kpp">КПП</label>
-      <input
-        id="org-kpp"
-        class="form-input"
-        type="text"
-        bind:value={kpp}
-        placeholder="000000000"
-      />
+      <input id="org-kpp" class="form-input" type="text" bind:value={kpp} placeholder="000000000" />
     </div>
 
     <div class="form-field form-field--full">
@@ -254,11 +248,7 @@
       {#if hasLogo && logoObjectUrl}
         <div class="logo-display">
           <!-- T-07-04-05: render as <img> — NOT raw SVG/HTML, scripts are blocked in img context -->
-          <img
-            src={logoObjectUrl}
-            alt="Логотип организации"
-            class="logo-img"
-          />
+          <img src={logoObjectUrl} alt="Логотип организации" class="logo-img" />
           <div class="logo-actions">
             <Button variant="ghost" size="sm" onclick={removeLogo}>Удалить логотип</Button>
             <Button variant="secondary" size="sm" loading={uploading} onclick={uploadLogo}>

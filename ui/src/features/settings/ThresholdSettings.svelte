@@ -50,9 +50,7 @@
       />
       <span class="input-suffix">штук</span>
     </div>
-    <p class="helper-text">
-      Значение сохраняется автоматически при потере фокуса.
-    </p>
+    <p class="helper-text">Значение сохраняется автоматически при потере фокуса.</p>
   </div>
 </section>
 

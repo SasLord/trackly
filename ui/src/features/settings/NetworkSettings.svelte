@@ -96,7 +96,9 @@
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
-          : enable ? 'Не удалось запустить сервер' : 'Не удалось остановить сервер';
+          : enable
+            ? 'Не удалось запустить сервер'
+            : 'Не удалось остановить сервер';
       pushToast('error', msg);
     } finally {
       toggling = false;
@@ -109,12 +111,7 @@
     try {
       await apiCall<void>('desktop_set_lock', { enabled });
       settings.desktop_lock_enabled = enabled;
-      pushToast(
-        'success',
-        enabled
-          ? 'Вход в десктопе включён'
-          : 'Вход в десктопе отключён',
-      );
+      pushToast('success', enabled ? 'Вход в десктопе включён' : 'Вход в десктопе отключён');
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -128,9 +125,7 @@
 
   // Format fingerprint with colons for readability.
   const formattedFingerprint = $derived(
-    serverFingerprint
-      ? serverFingerprint.replace(/(.{2})(?=.)/g, '$1:').toUpperCase()
-      : null,
+    serverFingerprint ? serverFingerprint.replace(/(.{2})(?=.)/g, '$1:').toUpperCase() : null,
   );
 </script>
 

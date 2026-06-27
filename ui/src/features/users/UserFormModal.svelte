@@ -116,7 +116,9 @@
     }
   }
 
-  const modalTitle = $derived(mode === 'edit' ? 'Редактирование пользователя' : 'Новый пользователь');
+  const modalTitle = $derived(
+    mode === 'edit' ? 'Редактирование пользователя' : 'Новый пользователь',
+  );
   const submitLabel = $derived(mode === 'edit' ? 'Сохранить' : 'Создать');
 </script>
 

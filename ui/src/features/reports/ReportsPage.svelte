@@ -241,17 +241,25 @@
   function reportTypeKey(): string {
     if (activeDomain === 'devices') {
       switch (activeReport) {
-        case 'acts': return 'device_acts';
-        case 'returns': return 'device_returns';
-        case 'in_use': return 'device_in_use';
-        case 'in_stock': return 'device_in_stock';
+        case 'acts':
+          return 'device_acts';
+        case 'returns':
+          return 'device_returns';
+        case 'in_use':
+          return 'device_in_use';
+        case 'in_stock':
+          return 'device_in_stock';
       }
     } else {
       switch (activeReport) {
-        case 'consumption': return 'cartridge_consumption';
-        case 'refills': return 'cartridge_refills';
-        case 'in_use': return 'cartridge_in_use';
-        case 'in_stock': return 'cartridge_in_stock';
+        case 'consumption':
+          return 'cartridge_consumption';
+        case 'refills':
+          return 'cartridge_refills';
+        case 'in_use':
+          return 'cartridge_in_use';
+        case 'in_stock':
+          return 'cartridge_in_stock';
       }
     }
     return 'device_acts'; // fallback
@@ -259,7 +267,10 @@
 
   function currentColumns(): Column[] {
     // For cartridge domain, use prefixed keys to differentiate from device in_use/in_stock
-    if (activeDomain === 'cartridges' && (activeReport === 'in_use' || activeReport === 'in_stock')) {
+    if (
+      activeDomain === 'cartridges' &&
+      (activeReport === 'in_use' || activeReport === 'in_stock')
+    ) {
       return COLUMNS_MAP[`cartridge_${activeReport}`] ?? COLUMNS_MAP[activeReport] ?? [];
     }
     return COLUMNS_MAP[activeReport] ?? [];

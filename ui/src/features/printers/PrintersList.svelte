@@ -40,11 +40,7 @@
   {:else}
     <div class="rows">
       {#each items as p (p.id)}
-        <PrinterListRow
-          printer={p}
-          selected={p.id === selectedId}
-          onclick={() => onSelect(p.id)}
-        />
+        <PrinterListRow printer={p} selected={p.id === selectedId} onclick={() => onSelect(p.id)} />
       {/each}
     </div>
     <footer class="footer">

@@ -7,7 +7,7 @@
   import ThemeSwitcher from '$lib/components/ThemeSwitcher.svelte';
   import { apiCall } from '$lib/api/client';
 
-  const visibleItems = $derived(getVisibleItems(authStore.user?.role as UserRole | null ?? null));
+  const visibleItems = $derived(getVisibleItems((authStore.user?.role as UserRole | null) ?? null));
 
   const ROLE_LABELS: Record<UserRole, string> = {
     admin: 'Администратор',
@@ -65,12 +65,7 @@
           <span class="user-name">{authStore.user.fullName}</span>
           <span class="user-role">{ROLE_LABELS[authStore.user.role]}</span>
         </div>
-        <button
-          type="button"
-          class="logout-btn"
-          onclick={logout}
-          disabled={loggingOut}
-        >
+        <button type="button" class="logout-btn" onclick={logout} disabled={loggingOut}>
           {loggingOut ? 'Выход…' : 'Выйти'}
         </button>
       </div>

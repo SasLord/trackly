@@ -39,8 +39,7 @@
     status: null,
     requestType: null,
     assignedToUserId: null,
-    requestedByUserId:
-      identity?.role === 'employee' ? (identity?.id ?? null) : null,
+    requestedByUserId: identity?.role === 'employee' ? (identity?.id ?? null) : null,
   });
 
   let filter = $state<RequestFilter>({
@@ -259,7 +258,7 @@
         <RequestsList
           {items}
           loading={listLoading}
-          selectedId={selectedId}
+          {selectedId}
           {emptyConfig}
           onSelect={(id) => (selectedId = id)}
         />

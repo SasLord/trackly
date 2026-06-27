@@ -79,14 +79,14 @@
     let lastSeparatorKey = '';
 
     for (const row of rows) {
-      const separatorKey = isSnapshot
-        ? (row.location_name ?? '')
-        : (row.month_key ?? '');
+      const separatorKey = isSnapshot ? (row.location_name ?? '') : (row.month_key ?? '');
 
       if (separatorKey !== lastSeparatorKey && separatorKey !== '') {
         const label = isSnapshot
           ? separatorKey
-          : (row.month_key ? formatMonthKey(row.month_key) : separatorKey);
+          : row.month_key
+            ? formatMonthKey(row.month_key)
+            : separatorKey;
         result.push({ type: 'separator', label });
         lastSeparatorKey = separatorKey;
       }

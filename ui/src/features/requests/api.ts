@@ -33,8 +33,7 @@ export const requests = {
   // (plan 12-14) is authoritative; these are thin transport wrappers.
   delete: (id: number, version: number) => apiCall<void>('requests_delete', { id, version }),
 
-  cancel: (id: number, version: number) =>
-    apiCall<RequestDto>('requests_cancel', { id, version }),
+  cancel: (id: number, version: number) => apiCall<RequestDto>('requests_cancel', { id, version }),
 
   listCategories: () => apiCall<RequestCategoryDto[]>('requests_list_categories'),
 

@@ -382,9 +382,7 @@
         }
         // D-03: case-insensitive + trim matching, identical to the server-
         // side comparison in Plan 13-01.
-        const normalizedNames = new Set(
-          modelRes.compatibility.map((n) => n.trim().toLowerCase()),
-        );
+        const normalizedNames = new Set(modelRes.compatibility.map((n) => n.trim().toLowerCase()));
         compatibleDeviceIds = new Set(
           printerOptions
             .filter((p) => normalizedNames.has((p.deviceName ?? '').trim().toLowerCase()))
@@ -503,8 +501,7 @@
         location: location.trim(),
         printer_device_id: effectivePrinterId ?? null,
         previous_cartridge_state_id: previousCartridge !== null ? previousCartridgeStateId : null,
-        previous_cartridge_location:
-          previousCartridge !== null ? previousCartridgeLocation : null,
+        previous_cartridge_location: previousCartridge !== null ? previousCartridgeLocation : null,
       };
     } else if (op === 'return_to_stock') {
       return {

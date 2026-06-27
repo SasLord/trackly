@@ -170,7 +170,10 @@
         title="Устройства"
         mainNumber={widgetData?.devices_total ?? null}
         mainLabel="устройств в базе"
-        breakdown={widgetData?.devices_by_status.map((s) => ({ label: s.status_name, count: s.count })) ?? []}
+        breakdown={widgetData?.devices_by_status.map((s) => ({
+          label: s.status_name,
+          count: s.count,
+        })) ?? []}
         loading={widgetsLoading}
         error={widgetData === null && !widgetsLoading ? widgetError : null}
       />
@@ -182,7 +185,10 @@
           ? widgetData.cartridge_by_status.reduce((a, s) => a + s.count, 0)
           : null}
         mainLabel="картриджей"
-        breakdown={widgetData?.cartridge_by_status.map((s) => ({ label: s.status_name, count: s.count })) ?? []}
+        breakdown={widgetData?.cartridge_by_status.map((s) => ({
+          label: s.status_name,
+          count: s.count,
+        })) ?? []}
         warningItems={widgetData?.low_stock_models ?? []}
         loading={widgetsLoading}
         error={widgetData === null && !widgetsLoading ? widgetError : null}

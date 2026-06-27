@@ -39,11 +39,7 @@
   {:else}
     <div class="rows">
       {#each items as r (r.id)}
-        <RequestListRow
-          request={r}
-          selected={r.id === selectedId}
-          onclick={() => onSelect(r.id)}
-        />
+        <RequestListRow request={r} selected={r.id === selectedId} onclick={() => onSelect(r.id)} />
       {/each}
     </div>
     <footer class="pagination">

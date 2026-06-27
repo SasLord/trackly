@@ -10,7 +10,11 @@
     location?: { hash: string };
   }
 
-  const {}: Props = $props();
+  // Props are accepted (router passes `location`) but intentionally unused — the
+  // copy is route-independent. `void` keeps both eslint (no-empty-pattern) and
+  // svelte-check (noUnusedLocals) satisfied without reintroducing a dev warning.
+  const props: Props = $props();
+  void props;
 </script>
 
 <div class="access-denied">
@@ -18,8 +22,7 @@
   <p class="access-denied-body">
     У вашей роли («Сотрудник») нет доступа к этому разделу. Доступны только заявки.
   </p>
-  <Button variant="secondary" onclick={() => (window.location.hash = '/requests')}
-    >К заявкам</Button
+  <Button variant="secondary" onclick={() => (window.location.hash = '/requests')}>К заявкам</Button
   >
 </div>
 

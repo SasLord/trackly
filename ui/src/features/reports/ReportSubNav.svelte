@@ -65,7 +65,14 @@
     onReportChange: (_r: string) => void;
   }
 
-  const { activeDomain, activeReport, rowCount, statusCounts, onDomainChange, onReportChange }: Props = $props();
+  const {
+    activeDomain,
+    activeReport,
+    rowCount,
+    statusCounts,
+    onDomainChange,
+    onReportChange,
+  }: Props = $props();
 
   const activeReports = $derived(activeDomain === 'devices' ? DEVICE_REPORTS : CARTRIDGE_REPORTS);
 </script>
@@ -99,11 +106,8 @@
         {r.label}
         <!-- G2-5b: when statusCounts provided, show real count for ALL tabs;
              otherwise fall back to rowCount (active) / '–' (inactive) for compat -->
-        <Badge
-          variant={r.key === activeReport ? 'accent' : 'default'}
-          size="sm"
-        >
-          {statusCounts ? (statusCounts[r.key] ?? 0) : (r.key === activeReport ? rowCount : '–')}
+        <Badge variant={r.key === activeReport ? 'accent' : 'default'} size="sm">
+          {statusCounts ? (statusCounts[r.key] ?? 0) : r.key === activeReport ? rowCount : '–'}
         </Badge>
       </button>
     {/each}

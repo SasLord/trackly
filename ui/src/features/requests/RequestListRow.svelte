@@ -86,7 +86,7 @@
   role="button"
   tabindex="0"
   aria-pressed={selected}
-  onclick={onclick}
+  {onclick}
   onkeydown={handleKeydown}
 >
   <div class="top">

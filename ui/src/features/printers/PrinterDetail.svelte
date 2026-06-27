@@ -173,7 +173,13 @@
   // Map status string to Russian label.
   function statusRu(s: string): string {
     return (
-      { ok: 'В сети', online: 'В сети', warning: 'Предупреждение', error: 'Ошибка', offline: 'Не в сети' }[s] ?? s
+      {
+        ok: 'В сети',
+        online: 'В сети',
+        warning: 'Предупреждение',
+        error: 'Ошибка',
+        offline: 'Не в сети',
+      }[s] ?? s
     );
   }
 
@@ -206,12 +212,7 @@
       <div class="title-row">
         <h2 class="detail-title">{displayName}</h2>
         <Badge variant={statusVariant}>{statusLabel}</Badge>
-        <Button
-          variant="primary"
-          size="sm"
-          loading={refreshing}
-          onclick={handleRefresh}
-        >
+        <Button variant="primary" size="sm" loading={refreshing} onclick={handleRefresh}>
           Обновить сейчас
         </Button>
       </div>
@@ -229,11 +230,7 @@
           <h3 class="section-heading">Уровни тонера/чернил</h3>
           <div class="toner-list">
             {#each tonerEntries as [label, level] (label)}
-              <TonerGauge
-                {label}
-                {level}
-                encoding="percent"
-              />
+              <TonerGauge {label} {level} encoding="percent" />
             {/each}
           </div>
         </section>
@@ -260,7 +257,8 @@
         {#if printer.currentCartridgeId !== null}
           {#if installedCartridge !== null}
             <p class="cartridge-row">
-              {installedCartridge.code} — {installedCartridge.model_brand} {installedCartridge.model_name}
+              {installedCartridge.code} — {installedCartridge.model_brand}
+              {installedCartridge.model_name}
             </p>
           {:else}
             <p class="cartridge-row">…</p>
@@ -280,7 +278,8 @@
         {:else}
           {#each compatAggregates as agg (agg.modelId)}
             <p class="compat-agg-row">
-              {agg.brand} {agg.model}: На складе {agg.inStock}, На заправке {agg.atRefill}, В работе {agg.inUse}
+              {agg.brand}
+              {agg.model}: На складе {agg.inStock}, На заправке {agg.atRefill}, В работе {agg.inUse}
             </p>
           {/each}
         {/if}
@@ -354,7 +353,8 @@
         {:else if printer.usbHostDeviceId}
           <div class="meta-row">
             <span class="meta-label">Подключение</span>
-            <span class="meta-value">Подключён по USB к: устройство #{printer.usbHostDeviceId}</span>
+            <span class="meta-value">Подключён по USB к: устройство #{printer.usbHostDeviceId}</span
+            >
           </div>
         {/if}
         {#if printer.vendor}

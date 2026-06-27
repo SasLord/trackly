@@ -11,7 +11,7 @@
 </script>
 
 <div class="period-toggle" role="group" aria-label="Период графика">
-  {#each ([3, 6, 12] as const) as m}
+  {#each [3, 6, 12] as const as m}
     <button
       class="toggle-btn"
       class:active={windowMonths === m}

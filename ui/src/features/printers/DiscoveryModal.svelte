@@ -66,7 +66,11 @@
     discovered = [];
     selected = new Set();
     try {
-      discovered = await printers.discover(ipStart.trim(), ipEnd.trim(), community.trim() || 'public');
+      discovered = await printers.discover(
+        ipStart.trim(),
+        ipEnd.trim(),
+        community.trim() || 'public',
+      );
       scanned = true;
     } catch (e: unknown) {
       const msg =
@@ -99,7 +103,7 @@
   }
 </script>
 
-<Modal {open} title="Поиск принтеров в сети" size="wide" onClose={onClose}>
+<Modal {open} title="Поиск принтеров в сети" size="wide" {onClose}>
   <div class="scan-form">
     <div class="fields">
       <div class="field">
@@ -113,12 +117,7 @@
       </div>
       <div class="field">
         <label class="field-label" for="ip-end">до</label>
-        <Input
-          id="ip-end"
-          value={ipEnd}
-          placeholder="192.168.1.254"
-          oninput={(v) => (ipEnd = v)}
-        />
+        <Input id="ip-end" value={ipEnd} placeholder="192.168.1.254" oninput={(v) => (ipEnd = v)} />
       </div>
       <div class="field">
         <label class="field-label" for="community">SNMP Community</label>
@@ -141,11 +140,7 @@
   {:else if scanned}
     <div class="results-section">
       <h3 class="results-heading">Найденные принтеры</h3>
-      <DiscoveryResultsTable
-        items={discovered}
-        {selected}
-        onToggle={toggleSelect}
-      />
+      <DiscoveryResultsTable items={discovered} {selected} onToggle={toggleSelect} />
     </div>
   {/if}
 

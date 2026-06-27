@@ -42,6 +42,8 @@ const browserGlobals = {
   Blob: 'readonly',
   FileReader: 'readonly',
   FormData: 'readonly',
+  Notification: 'readonly',
+  WebSocket: 'readonly',
 };
 
 // Svelte 5 rune globals (available in .svelte.ts and .svelte files)
@@ -66,7 +68,9 @@ const nodeGlobals = {
 
 export default [
   {
-    ignores: ['node_modules/', 'dist/', 'src/bindings.ts', 'pnpm-lock.yaml'],
+    // public/ holds static assets copied verbatim by Vite (e.g. theme-init.js,
+    // an inline theme bootstrap with no module graph) — not lint-able source.
+    ignores: ['node_modules/', 'dist/', 'public/', 'src/bindings.ts', 'pnpm-lock.yaml'],
   },
   js.configs.recommended,
   // Node/config files
@@ -101,7 +105,10 @@ export default [
     plugins: { '@typescript-eslint': ts },
     rules: {
       ...ts.configs.recommended.rules,
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // The base rule misreports parameter names in TS function-type annotations
+      // (e.g. `onChange: (months: number) => void`) as unused. Defer entirely to
+      // @typescript-eslint/no-unused-vars, which understands type positions.
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
@@ -124,7 +131,9 @@ export default [
     },
     plugins: { '@typescript-eslint': ts },
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // See the .ts block: defer to the typescript-eslint variant so TS
+      // function-type parameter names are not misreported as unused.
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

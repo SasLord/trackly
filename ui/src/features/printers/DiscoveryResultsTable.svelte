@@ -16,8 +16,7 @@
 
   const nonDuplicateCount = $derived(items.filter((it) => !it.isDuplicate).length);
   const allSelected = $derived(
-    nonDuplicateCount > 0 &&
-      items.every((it, idx) => it.isDuplicate || selected.has(idx)),
+    nonDuplicateCount > 0 && items.every((it, idx) => it.isDuplicate || selected.has(idx)),
   );
 
   function toggleAll() {

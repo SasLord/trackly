@@ -136,19 +136,11 @@
     <div class="period-controls period-range">
       <label class="range-label">
         <span class="range-text">С</span>
-        <DatePicker
-          bind:value={dateFrom}
-          invalid={rangeError !== null}
-          max={dateTo || undefined}
-        />
+        <DatePicker bind:value={dateFrom} invalid={rangeError !== null} max={dateTo || undefined} />
       </label>
       <label class="range-label">
         <span class="range-text">По</span>
-        <DatePicker
-          bind:value={dateTo}
-          invalid={rangeError !== null}
-          min={dateFrom || undefined}
-        />
+        <DatePicker bind:value={dateTo} invalid={rangeError !== null} min={dateFrom || undefined} />
       </label>
       <!-- Range validation fires via $effect watching dateFrom / dateTo -->
       {#if rangeError}

@@ -55,9 +55,7 @@
   let adAutoAccept = $state(false);
 
   // Derived visibility — specialist/admin maps to manager/admin in the actual UserRole type.
-  const isSpecialist = $derived(
-    identity?.role === 'admin' || identity?.role === 'manager',
-  );
+  const isSpecialist = $derived(identity?.role === 'admin' || identity?.role === 'manager');
 
   // ad_register requests are admin-only (REQ-06, T-09-21) — manager cannot act on them.
   const isAdmin = $derived(identity?.role === 'admin');
@@ -593,9 +591,7 @@
     {#if isSpecialist && (!isAdRegister || isAdmin)}
       <section class="section">
         <div class="actions">
-          <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>
-            Удалить
-          </Button>
+          <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>Удалить</Button>
         </div>
       </section>
     {/if}
@@ -681,8 +677,8 @@
     onClose={() => (approveModalOpen = false)}
   >
     <p class="confirm-body">
-      Пользователь {request.description ?? request.requesterName ?? ''} получит доступ к системе с
-      выбранной ролью.
+      Пользователь {request.description ?? request.requesterName ?? ''} получит доступ к системе с выбранной
+      ролью.
     </p>
     <div class="field" style="margin-top: var(--space-md);">
       <label class="label" for="approve-role">Роль</label>

@@ -63,8 +63,8 @@
     {#if submitted}
       <h1 class="login-title">Запрос отправлен</h1>
       <p class="screen-body">
-        Запрос на восстановление доступа отправлен администратору. Доступ появится
-        после подтверждения.
+        Запрос на восстановление доступа отправлен администратору. Доступ появится после
+        подтверждения.
       </p>
       <button class="btn-link" type="button" onclick={onBackToLogin}>
         Войти под другим пользователем
@@ -72,8 +72,8 @@
     {:else if blockedDetails.pending}
       <h1 class="login-title">Запрос на рассмотрении</h1>
       <p class="screen-body">
-        Ваш запрос на восстановление доступа уже отправлен администратору и ожидает
-        решения. Повторно отправлять его не нужно.
+        Ваш запрос на восстановление доступа уже отправлен администратору и ожидает решения.
+        Повторно отправлять его не нужно.
       </p>
       <button class="btn-link" type="button" onclick={onBackToLogin}>
         Войти под другим пользователем
@@ -86,12 +86,7 @@
       {#if serverError}
         <div class="server-error">{serverError}</div>
       {/if}
-      <button
-        class="btn-submit"
-        type="button"
-        disabled={submitting}
-        onclick={handleRestoreRequest}
-      >
+      <button class="btn-submit" type="button" disabled={submitting} onclick={handleRestoreRequest}>
         {#if submitting}Отправка…{:else}Запросить снова{/if}
       </button>
       <button class="btn-link" type="button" onclick={onBackToLogin}>
@@ -100,18 +95,12 @@
     {:else}
       <h1 class="login-title">Доступ закрыт</h1>
       <p class="screen-body">
-        Ваша учётная запись отключена. Вы можете запросить восстановление доступа у
-        администратора.
+        Ваша учётная запись отключена. Вы можете запросить восстановление доступа у администратора.
       </p>
       {#if serverError}
         <div class="server-error">{serverError}</div>
       {/if}
-      <button
-        class="btn-submit"
-        type="button"
-        disabled={submitting}
-        onclick={handleRestoreRequest}
-      >
+      <button class="btn-submit" type="button" disabled={submitting} onclick={handleRestoreRequest}>
         {#if submitting}Отправка…{:else}Запросить восстановление доступа{/if}
       </button>
       <button class="btn-link" type="button" onclick={onBackToLogin}>

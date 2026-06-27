@@ -87,11 +87,13 @@
     refresh();
     // Connect WS for real-time notifications.
     let unlisten: (() => void) | undefined;
-    connectWs().then((fn) => {
-      unlisten = fn;
-    }).catch(() => {
-      // WS connection is non-fatal.
-    });
+    connectWs()
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        // WS connection is non-fatal.
+      });
     const unsubscribe = onWsEvent(handleWsEvent);
     return () => {
       unsubscribe();
@@ -113,7 +115,12 @@
           heading: 'Принтеры ещё не добавлены',
           body: 'Запустите поиск принтеров в сети — система найдёт их по SNMP и заведёт автоматически.',
           actionLabel: authStore.user?.role === 'admin' ? 'Найти принтеры' : null,
-          onAction: authStore.user?.role === 'admin' ? () => { discoveryOpen = true; } : undefined,
+          onAction:
+            authStore.user?.role === 'admin'
+              ? () => {
+                  discoveryOpen = true;
+                }
+              : undefined,
         },
   );
 </script>
@@ -144,9 +151,9 @@
         <PrintersList
           {items}
           loading={listLoading}
-          selectedId={selectedId}
+          {selectedId}
           onSelect={(id) => (selectedId = id)}
-          emptyConfig={emptyConfig}
+          {emptyConfig}
         />
       {/snippet}
       {#snippet detail()}
@@ -155,13 +162,19 @@
           loading={detailLoading}
           onRefresh={() => {
             if (selectedId !== null) {
-              printers.refresh(selectedId).then((dto) => {
-                selectedPrinter = dto;
-                pushToast('success', 'Данные принтера обновлены');
-                void refresh();
-              }).catch(() => {
-                pushToast('error', 'Принтер не отвечает на SNMP. Проверьте доступность и community.');
-              });
+              printers
+                .refresh(selectedId)
+                .then((dto) => {
+                  selectedPrinter = dto;
+                  pushToast('success', 'Данные принтера обновлены');
+                  void refresh();
+                })
+                .catch(() => {
+                  pushToast(
+                    'error',
+                    'Принтер не отвечает на SNMP. Проверьте доступность и community.',
+                  );
+                });
             }
           }}
         />

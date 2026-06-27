@@ -99,7 +99,12 @@
       <Button variant="ghost" size="sm" onclick={openFolder} disabled={!dbPath}>
         Открыть папку с базой данных
       </Button>
-      <Button variant="destructive" size="sm" onclick={() => (confirmMove = true)} disabled={!dbPath}>
+      <Button
+        variant="destructive"
+        size="sm"
+        onclick={() => (confirmMove = true)}
+        disabled={!dbPath}
+      >
         Сменить расположение
       </Button>
     </div>
@@ -119,9 +124,7 @@
   </p>
   {#snippet footer()}
     <Button variant="secondary" onclick={() => (confirmMove = false)}>Отмена</Button>
-    <Button variant="primary" loading={moving} onclick={proceedWithMove}>
-      Выбрать новый путь
-    </Button>
+    <Button variant="primary" loading={moving} onclick={proceedWithMove}>Выбрать новый путь</Button>
   {/snippet}
 </Modal>
 

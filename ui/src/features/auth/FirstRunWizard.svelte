@@ -89,7 +89,13 @@
     <h1 class="wizard-title">Добро пожаловать в Trackly</h1>
     <p class="wizard-subtitle">Создайте учётную запись администратора</p>
 
-    <form class="wizard-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+    <form
+      class="wizard-form"
+      onsubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+    >
       <div class="form-field">
         <label class="form-label" for="wiz-login">Логин</label>
         <input

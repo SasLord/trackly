@@ -248,11 +248,7 @@
 
     // T-04-06-02: фильтруем пустые/дублирующиеся строки перед submit.
     const filteredCompatibility = Array.from(
-      new Set(
-        compatibility
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
-      ),
+      new Set(compatibility.map((s) => s.trim()).filter((s) => s.length > 0)),
     );
 
     submitting = true;

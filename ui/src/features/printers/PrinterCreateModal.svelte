@@ -75,7 +75,7 @@
       await printers.create({
         deviceId: device.id,
         ipAddress: hasIp ? ipAddress.trim() : null,
-        communityUpdate: hasIp ? (community.trim() || 'public') : null,
+        communityUpdate: hasIp ? community.trim() || 'public' : null,
         snmpVersion: 'v2c',
         oidProfileId: null,
         usbHostDeviceId: null,

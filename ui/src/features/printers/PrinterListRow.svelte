@@ -81,11 +81,7 @@
 >
   <div class="top">
     {#if printer.hasAlert}
-      <span
-        class="alert-dot"
-        aria-label="Есть проблема с принтером"
-        title="Есть проблема"
-      ></span>
+      <span class="alert-dot" aria-label="Есть проблема с принтером" title="Есть проблема"></span>
     {/if}
     <span class="name">{displayName}</span>
     <span class="badge-wrap">

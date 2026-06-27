@@ -140,8 +140,8 @@
     <details class="advanced-details">
       <summary class="advanced-summary">Расширенные настройки</summary>
       <p class="helper-text">
-        Заполняется автоматически на доменном компьютере. Меняйте только если
-        автоопределение не сработало.
+        Заполняется автоматически на доменном компьютере. Меняйте только если автоопределение не
+        сработало.
       </p>
 
       <div class="form-grid">
@@ -187,9 +187,7 @@
     </details>
 
     <div class="save-row">
-      <Button variant="primary" loading={saving} onclick={saveSettings}>
-        Сохранить настройки
-      </Button>
+      <Button variant="primary" loading={saving} onclick={saveSettings}>Сохранить настройки</Button>
       <Button
         variant="secondary"
         loading={testing}

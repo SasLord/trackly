@@ -65,7 +65,7 @@
       <option value="" disabled>Принтеры не найдены</option>
     {:else}
       {#each groups as [label, printers] (label)}
-        <optgroup label={label}>
+        <optgroup {label}>
           {#each printers as p (p.id)}
             <option value={String(p.id)}>{p.name || `Принтер #${p.id}`}</option>
           {/each}

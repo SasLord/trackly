@@ -64,20 +64,10 @@
 
 <!-- GAP-R4: filter row now contains only export buttons -->
 <div class="export-buttons">
-  <Button
-    variant="secondary"
-    size="sm"
-    loading={csvExporting}
-    onclick={onExportCsv}
-  >
+  <Button variant="secondary" size="sm" loading={csvExporting} onclick={onExportCsv}>
     Экспорт CSV
   </Button>
-  <Button
-    variant="secondary"
-    size="sm"
-    loading={pdfExporting}
-    onclick={onExportPdf}
-  >
+  <Button variant="secondary" size="sm" loading={pdfExporting} onclick={onExportPdf}>
     Экспорт PDF
   </Button>
   <Button variant="ghost" size="sm" onclick={onPrint}>

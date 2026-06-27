@@ -31,9 +31,7 @@
   const isDirty = $derived(body !== originalBody);
 
   // The currently selected template object
-  const selectedTemplate = $derived(
-    templates.find((t) => t.kind === selectedKind) ?? null,
-  );
+  const selectedTemplate = $derived(templates.find((t) => t.kind === selectedKind) ?? null);
 
   async function loadTemplates() {
     try {
@@ -129,10 +127,7 @@
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
           : 'Ошибка синтаксиса MiniJinja';
-      pushToast(
-        'error',
-        `Не удалось сохранить шаблон. Ошибка синтаксиса MiniJinja: ${msg}.`,
-      );
+      pushToast('error', `Не удалось сохранить шаблон. Ошибка синтаксиса MiniJinja: ${msg}.`);
     } finally {
       saving = false;
     }
@@ -217,9 +212,7 @@
     <Button variant="secondary" loading={validating} onclick={validateAndPreview}>
       Проверить (превью PDF)
     </Button>
-    <Button variant="primary" loading={saving} onclick={saveTemplate}>
-      Сохранить шаблон
-    </Button>
+    <Button variant="primary" loading={saving} onclick={saveTemplate}>Сохранить шаблон</Button>
     <Button variant="destructive" onclick={() => (confirmReset = true)}>
       Сбросить до умолчания
     </Button>
@@ -228,11 +221,7 @@
   <!-- PDF preview iframe (shown when blobUrl is set) -->
   {#if blobUrl}
     <div class="preview-wrapper">
-      <iframe
-        src={blobUrl}
-        title="Превью PDF"
-        class="pdf-iframe"
-      ></iframe>
+      <iframe src={blobUrl} title="Превью PDF" class="pdf-iframe"></iframe>
     </div>
   {/if}
 </section>
@@ -251,9 +240,7 @@
   </p>
   {#snippet footer()}
     <Button variant="secondary" onclick={() => (confirmReset = false)}>Отмена</Button>
-    <Button variant="destructive" loading={resetting} onclick={resetTemplate}>
-      Сбросить
-    </Button>
+    <Button variant="destructive" loading={resetting} onclick={resetTemplate}>Сбросить</Button>
   {/snippet}
 </Modal>
 

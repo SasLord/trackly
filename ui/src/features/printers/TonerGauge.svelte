@@ -36,9 +36,7 @@
           : 'var(--color-destructive)',
   );
 
-  const ariaLabel = $derived(
-    `Уровень ${label}: ${pct !== null ? pct + '%' : 'неизвестно'}`,
-  );
+  const ariaLabel = $derived(`Уровень ${label}: ${pct !== null ? pct + '%' : 'неизвестно'}`);
 </script>
 
 <div class="toner-gauge-row">
@@ -52,10 +50,7 @@
     aria-label={ariaLabel}
   >
     {#if pct !== null}
-      <div
-        class="gauge-fill"
-        style="width: {pct}%; background: {fillColor}"
-      ></div>
+      <div class="gauge-fill" style="width: {pct}%; background: {fillColor}"></div>
     {/if}
   </div>
   <span class="gauge-pct" style="font-variant-numeric: tabular-nums">

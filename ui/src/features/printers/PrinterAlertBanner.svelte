@@ -34,12 +34,7 @@
 </script>
 
 {#if hasAlert}
-  <div
-    class="alert-banner"
-    role="alert"
-    aria-live="polite"
-    style="border-color: {borderColor}"
-  >
+  <div class="alert-banner" role="alert" aria-live="polite" style="border-color: {borderColor}">
     <span class="alert-icon" aria-hidden="true">
       <svg
         width="16"

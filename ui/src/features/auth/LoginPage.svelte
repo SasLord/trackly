@@ -94,7 +94,13 @@
   <div class="login-container">
     <div class="login-card">
       <h1 class="login-title">Вход в систему</h1>
-      <form class="login-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+      <form
+        class="login-form"
+        onsubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+      >
         <div class="form-field">
           <label class="form-label" for="login-input">Логин</label>
           <input
