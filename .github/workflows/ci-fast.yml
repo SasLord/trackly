@@ -54,6 +54,18 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: ui/pnpm-lock.yaml
 
+      # Break the rust-embed prebuild cycle on a clean checkout (mirrors release.yml).
+      # trackly-app embeds the SPA via #[derive(RustEmbed)] #[folder = "../../ui/dist"],
+      # and rust-embed requires that folder to EXIST at compile time. ui/dist is
+      # gitignored, so a fresh CI checkout has none and every cargo compile of
+      # trackly-app (clippy/test/build) fails. Seed a placeholder so the workspace
+      # compiles; the real SPA is only needed for the release embed (release.yml).
+      - name: Seed ui/dist placeholder (breaks rust-embed prebuild cycle)
+        shell: bash
+        run: |
+          mkdir -p ui/dist
+          [ -f ui/dist/index.html ] || printf '<!doctype html><title>placeholder</title>\n' > ui/dist/index.html
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
