@@ -141,11 +141,16 @@ fn main() -> anyhow::Result<()> {
         // Uses child CancellationToken (never cancels master AppCtx.shutdown — D-Server-01).
         // Server starts BEFORE tauri::Builder so it's ready for LAN connections immediately.
         if ctx.config.server.enabled {
-            let server_config = &ctx.config.server;
-            let host = server_config.host.clone();
-            let port = server_config.port;
-            let cert_path = server_config.cert_path.clone();
-            let key_path = server_config.key_path.clone();
+            // Эффективные настройки: live app_settings (host/port/cert_path,
+            // сохранённые через Настройки) поверх TOML-bootstrap. Root-cause
+            // фикс server-bind-localhost-only — выбранный в UI `0.0.0.0` теперь
+            // реально доходит до TcpListener::bind на старте, а не подменяется
+            // дефолтным config.host=127.0.0.1.
+            let net = trackly_app::http::settings::resolve_effective_network(&ctx).await?;
+            let host = net.host.clone();
+            let port = net.port;
+            let cert_path = net.cert_path.clone();
+            let key_path = net.key_path.clone();
 
             // Build TLS bundle: load from cert/key files if cert_path provided, else
             // generate self-signed. Uses the same `tls::load_from_files` contract as

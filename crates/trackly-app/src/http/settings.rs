@@ -62,6 +62,79 @@ pub struct SetNetworkPayload {
 }
 
 // ---------------------------------------------------------------------------
+// Effective network settings (live app_settings over TOML bootstrap)
+// ---------------------------------------------------------------------------
+
+/// Эффективные сетевые настройки сервера на момент bind'а.
+///
+/// **Почему это нужно (root-cause фикс server-bind-localhost-only):**
+/// `settings_set_network` сохраняет `server_host`/`server_port`/`server_cert_path`
+/// в таблицу `app_settings`, но раньше НИ ОДИН путь не читал их обратно —
+/// и старт сервера (`main.rs`), и hot-toggle (`build_server_toggle`) биндили
+/// из `ctx.config.server` (TOML, дефолт `127.0.0.1`). Поэтому выбранный в
+/// Настройках `0.0.0.0` никогда не доходил до `TcpListener::bind`, и сервер
+/// всегда слушал только localhost.
+///
+/// `app_settings` — live источник истины; `ctx.config.server` (TOML) —
+/// bootstrap-дефолт на случай отсутствия ключа.
+pub struct EffectiveNetwork {
+    pub host: String,
+    pub port: u16,
+    pub cert_path: String,
+    pub key_path: String,
+}
+
+/// Прочитать одно значение из `app_settings` по ключу (None если нет строки).
+async fn read_app_setting(ctx: &AppCtx, key: &'static str) -> Result<Option<String>, AppError> {
+    let readers = ctx.readers.clone();
+    tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
+        let conn = readers.acquire();
+        let result: rusqlite::Result<String> = conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            rusqlite::params![key],
+            |r| r.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(map_rusqlite(e)),
+        }
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking read_app_setting {key}: {e}"),
+    })?
+}
+
+/// Разрешить эффективные сетевые настройки: live `app_settings` поверх
+/// TOML-bootstrap `ctx.config.server`.
+pub async fn resolve_effective_network(ctx: &AppCtx) -> Result<EffectiveNetwork, AppError> {
+    let cfg = &ctx.config.server;
+
+    let host = match read_app_setting(ctx, "server_host").await? {
+        Some(h) if !h.trim().is_empty() => h,
+        _ => cfg.host.clone(),
+    };
+
+    let port = match read_app_setting(ctx, "server_port").await? {
+        Some(p) => p.trim().parse::<u16>().unwrap_or(cfg.port),
+        None => cfg.port,
+    };
+
+    let cert_path = match read_app_setting(ctx, "server_cert_path").await? {
+        Some(c) => c,
+        None => cfg.cert_path.clone(),
+    };
+
+    Ok(EffectiveNetwork {
+        host,
+        port,
+        cert_path,
+        key_path: cfg.key_path.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // build_* helpers
 // ---------------------------------------------------------------------------
 
@@ -73,7 +146,9 @@ pub async fn build_settings_get_network(
     let caller = session_identity(session).await?;
     trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
 
-    let config = &ctx.config.server;
+    // Live app_settings поверх TOML-bootstrap — UI должен показывать то, что
+    // реально попадёт в bind (root-cause фикс server-bind-localhost-only).
+    let net = resolve_effective_network(ctx).await?;
     let desktop_lock_enabled = ctx.auth.get_desktop_lock_enabled().await?;
 
     let running = {
@@ -82,16 +157,16 @@ pub async fn build_settings_get_network(
     };
 
     let server_url = if running {
-        Some(format!("https://{}:{}", config.host, config.port))
+        Some(format!("https://{}:{}", net.host, net.port))
     } else {
         None
     };
 
     Ok(NetworkSettingsDto {
-        enabled: config.enabled,
-        host: config.host.clone(),
-        port: config.port as i64,
-        cert_path: config.cert_path.clone(),
+        enabled: ctx.config.server.enabled,
+        host: net.host,
+        port: net.port as i64,
+        cert_path: net.cert_path,
         server_url,
         fingerprint: None, // TODO: store fingerprint in server_ctl
         desktop_lock_enabled,
@@ -162,8 +237,6 @@ pub async fn build_server_toggle(
     let caller = session_identity(session).await?;
     trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
 
-    let config = &ctx.config.server;
-
     if !enable {
         // Остановить сервер если запущен.
         let mut guard = ctx.server_ctl.lock().await;
@@ -188,15 +261,20 @@ pub async fn build_server_toggle(
         }
     }
 
+    // Эффективные настройки: live app_settings поверх TOML-bootstrap
+    // (root-cause фикс server-bind-localhost-only — host из Настроек теперь
+    // реально доходит до bind, а не игнорируется в пользу config.host).
+    let net = resolve_effective_network(ctx).await?;
+
     // Построить TLS bundle.
-    let tls_bundle = if config.cert_path.is_empty() {
-        let host = config.host.clone();
+    let tls_bundle = if net.cert_path.is_empty() {
+        let host = net.host.clone();
         tls::generate_self_signed(&host).map_err(|e| AppError::Internal {
             source_chain: format!("generate_self_signed: {e}"),
         })?
     } else {
         // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).
-        tls::load_from_files(&config.cert_path, &config.key_path).map_err(|e| {
+        tls::load_from_files(&net.cert_path, &net.key_path).map_err(|e| {
             AppError::Internal {
                 source_chain: format!("load_from_files: {e}"),
             }
@@ -204,8 +282,8 @@ pub async fn build_server_toggle(
     };
 
     let fingerprint = tls_bundle.fingerprint_hex.clone();
-    let host = config.host.clone();
-    let port = config.port;
+    let host = net.host.clone();
+    let port = net.port;
     let url = format!("https://{}:{}", host, port);
 
     let addr: SocketAddr =

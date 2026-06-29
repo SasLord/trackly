@@ -58,8 +58,6 @@ pub async fn build_server_toggle_tauri(
     ctx: &AppCtx,
     enable: bool,
 ) -> Result<ServerStatusDto, AppError> {
-    let config = &ctx.config.server;
-
     if !enable {
         let mut guard = ctx.server_ctl.lock().await;
         if let Some(handle) = guard.take() {
@@ -82,15 +80,22 @@ pub async fn build_server_toggle_tauri(
         }
     }
 
+    // Эффективные настройки: live app_settings поверх TOML-bootstrap. Это
+    // путь, который реально использует десктоп-UI (server_toggle Tauri-команда)
+    // — root-cause фикс server-bind-localhost-only: выбранный в Настройках
+    // host=0.0.0.0 теперь доходит до TcpListener::bind, а не подменяется
+    // дефолтным config.host=127.0.0.1.
+    let net = crate::http::settings::resolve_effective_network(ctx).await?;
+
     // TLS bundle.
-    let tls_bundle = if config.cert_path.is_empty() {
-        let host = config.host.clone();
+    let tls_bundle = if net.cert_path.is_empty() {
+        let host = net.host.clone();
         tls::generate_self_signed(&host).map_err(|e| AppError::Internal {
             source_chain: format!("generate_self_signed: {e}"),
         })?
     } else {
         // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).
-        tls::load_from_files(&config.cert_path, &config.key_path).map_err(|e| {
+        tls::load_from_files(&net.cert_path, &net.key_path).map_err(|e| {
             AppError::Internal {
                 source_chain: format!("load_from_files: {e}"),
             }
@@ -98,8 +103,8 @@ pub async fn build_server_toggle_tauri(
     };
 
     let fingerprint = tls_bundle.fingerprint_hex.clone();
-    let host = config.host.clone();
-    let port = config.port;
+    let host = net.host.clone();
+    let port = net.port;
     let url = format!("https://{}:{}", host, port);
 
     let addr: std::net::SocketAddr =
@@ -317,7 +322,10 @@ pub async fn build_settings_get_network_tauri(
     let caller = crate::tauri_cmds::users::resolve_tauri_identity(ctx).await?;
     trackly_core::auth::authorize(&caller, &Action::ManageSettings)?;
 
-    let config = &ctx.config.server;
+    // Live app_settings поверх TOML-bootstrap — host/port/cert_path берутся из
+    // сохранённых настроек (root-cause фикс server-bind-localhost-only), а не
+    // только из стартового TOML-config.
+    let net = crate::http::settings::resolve_effective_network(ctx).await?;
     let desktop_lock_enabled = ctx.auth.get_desktop_lock_enabled().await?;
 
     let running = {
@@ -326,16 +334,16 @@ pub async fn build_settings_get_network_tauri(
     };
 
     let server_url = if running {
-        Some(format!("https://{}:{}", config.host, config.port))
+        Some(format!("https://{}:{}", net.host, net.port))
     } else {
         None
     };
 
     Ok(NetworkSettingsDto {
-        enabled: config.enabled,
-        host: config.host.clone(),
-        port: config.port as i64,
-        cert_path: config.cert_path.clone(),
+        enabled: ctx.config.server.enabled,
+        host: net.host,
+        port: net.port as i64,
+        cert_path: net.cert_path,
         server_url,
         fingerprint: None,
         desktop_lock_enabled,
