@@ -5,6 +5,7 @@ title: Fix TLS cert SAN for wildcard bind host
 date: 2026-06-30
 status: complete
 commit: fb129be
+followup_commit: 08eab42
 ---
 
 # Quick Task 260630-v4m — Summary
@@ -67,6 +68,34 @@ Note: required seeding/building `ui/dist` (`pnpm --dir ui build`) before the lib
 would compile (rust-embed `SpaAssets` folder-existence gotcha) — known per project
 memory. Tests run with `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1`.
 
+## Follow-up (commit 08eab42) — live-UAT findings
+
+User tested from a neighbour PC (`https://192.168.1.2:8443`) on a rebuilt
+(`cargo tauri dev`) binary and reported "still 0.0.0.0" + untrusted-cert
+warning. Diagnosis via clarifying questions:
+
+- **"0.0.0.0"** was the **Settings UI** field "Адрес сервера:
+  `https://0.0.0.0:8443`" — i.e. the displayed *bind* address, not the cert
+  SAN. Cosmetic but useless to hand to a colleague.
+- **Untrusted-cert warning** (`received fatal alert: CertificateUnknown` in
+  logs) is **expected** for a self-signed cert (untrusted CA). The SAN fix only
+  removes the *name-mismatch* error; the untrusted-CA warning stays by design
+  (user clicks through / trusts the fingerprint).
+
+Changes:
+- Added `tls::display_host(host)` — for wildcard hosts substitutes the best
+  detected LAN IP (private IPv4 preferred via new `detect_lan_ips()` ranking:
+  private IPv4 → other IPv4 → IPv6), else `"localhost"`. Wired into the
+  displayed `server_url` / `ServerStatusDto.url` in `http/settings.rs` and
+  `tauri_cmds/auth.rs`. The actual bind still uses the wildcard host.
+- `collect_subject_alt_names` now adds loopback (`127.0.0.1`, `::1`) to the
+  wildcard SAN so a local test via `https://127.0.0.1:port` doesn't name-mismatch.
+- Refactored IP enumeration into shared `detect_lan_ips()`.
+- +2 unit tests (`display_host_substitutes_wildcard`,
+  `collect_sans_wildcard_includes_loopback`); tls unit tests now 6, all green;
+  `tls_server_smoke` (5) green; clippy + fmt clean.
+
 ## Commit
 
 - `fb129be` — fix(server): add LAN IP/hostname SANs to self-signed cert for wildcard bind host
+- `08eab42` — fix(server): show real LAN IP (not 0.0.0.0) as server URL + add loopback to wildcard SAN
