@@ -48,6 +48,10 @@ tower-sessions = "0.15"
 tokio-rustls = "0.26"
 rcgen = "0.14"
 rustls-pemfile = "2"
+# LAN-IP SAN detection for self-signed certs (wildcard bind host). Pure-Rust,
+# cross-platform (Windows/macOS/Linux), no OpenSSL/DLL — portable-friendly.
+if-addrs = "0.15"
+hostname = "0.4"
 tower_governor = "0.8"
 rmp-serde = "1"
 sha2 = "0.10"
