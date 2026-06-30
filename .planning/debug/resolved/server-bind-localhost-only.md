@@ -1,6 +1,6 @@
 ---
 slug: server-bind-localhost-only
-status: awaiting_human_verify
+status: resolved
 trigger: "На платформе Windows запускаю сервер, работает только на localhost. Пробовал в Настройках указать bind 0.0.0.0 - нет доступа к этому серверу. Раньше в тестовой сборке v0.1.0-test работало корректно."
 created: 2026-06-29
 updated: 2026-06-29
@@ -91,7 +91,9 @@ verification: |
     * effective_network_falls_back_on_blank_saved_host — пробельный сохранённый host откатывается на TOML-дефолт.
   - Адъяцентные тесты PASS без регрессий: server_hot_toggle, settings_ad, tls_server_smoke, security_headers.
   - cargo build -p trackly-app: OK. cargo clippy -p trackly-app --tests: без warnings.
-  - НЕ проверено вживую на Windows (нет доступа с dev-мака) — требуется human-verify (netstat + LAN-доступ).
+  - HUMAN-VERIFIED 2026-06-30: пользователь скачал обновлённую сборку v1.1.0 (релиз пересобран с фиксом),
+    подтвердил «теперь всё работает правильно» — bind на внешний интерфейс и LAN-доступ восстановлены.
+    Вторичная проблема firewall не всплыла. RESOLVED.
 
 files_changed:
   - crates/trackly-app/src/http/settings.rs (resolve_effective_network + применение в toggle/get_network)
