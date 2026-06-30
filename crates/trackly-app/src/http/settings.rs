@@ -157,7 +157,11 @@ pub async fn build_settings_get_network(
     };
 
     let server_url = if running {
-        Some(format!("https://{}:{}", net.host, net.port))
+        Some(format!(
+            "https://{}:{}",
+            tls::display_host(&net.host),
+            net.port
+        ))
     } else {
         None
     };
@@ -274,17 +278,17 @@ pub async fn build_server_toggle(
         })?
     } else {
         // WR-01: explicit/validated key-path resolution (no brittle .replace heuristic).
-        tls::load_from_files(&net.cert_path, &net.key_path).map_err(|e| {
-            AppError::Internal {
-                source_chain: format!("load_from_files: {e}"),
-            }
+        tls::load_from_files(&net.cert_path, &net.key_path).map_err(|e| AppError::Internal {
+            source_chain: format!("load_from_files: {e}"),
         })?
     };
 
     let fingerprint = tls_bundle.fingerprint_hex.clone();
     let host = net.host.clone();
     let port = net.port;
-    let url = format!("https://{}:{}", host, port);
+    // Адрес для пользователя: для wildcard-bind показываем реальный LAN-IP,
+    // а не бесполезный https://0.0.0.0:port (bind по-прежнему на `host`).
+    let url = format!("https://{}:{}", tls::display_host(&host), port);
 
     let addr: SocketAddr =
         format!("{}:{}", host, port)

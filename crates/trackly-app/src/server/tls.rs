@@ -95,21 +95,76 @@ fn is_valid_dns_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
 }
 
+/// Перечислить non-loopback, non-unspecified IP-адреса машины.
+///
+/// Порядок (для выбора «лучшего» адреса под отображение): приватные IPv4
+/// (`10/8`, `172.16/12`, `192.168/16`) → прочие IPv4 → IPv6. Внутри группы —
+/// порядок перечисления ОС. Это даёт предсказуемый «главный» LAN-адрес для
+/// `display_host`, отсекая VPN/публичные интерфейсы в пользу обычной локалки.
+fn detect_lan_ips() -> Vec<std::net::IpAddr> {
+    use std::net::IpAddr;
+
+    let mut ips: Vec<IpAddr> = match if_addrs::get_if_addrs() {
+        Ok(ifaces) => ifaces
+            .into_iter()
+            .map(|i| i.ip())
+            .filter(|ip| !ip.is_loopback() && !ip.is_unspecified())
+            .collect(),
+        Err(e) => {
+            tracing::warn!("detect_lan_ips: if_addrs failed: {e}");
+            Vec::new()
+        }
+    };
+
+    // Стабильная сортировка по «рангу»: меньше — приоритетнее.
+    fn rank(ip: &IpAddr) -> u8 {
+        match ip {
+            IpAddr::V4(v4) if v4.is_private() => 0,
+            IpAddr::V4(_) => 1,
+            IpAddr::V6(_) => 2,
+        }
+    }
+    ips.sort_by_key(rank);
+    ips.dedup();
+    ips
+}
+
+/// Адрес для отображения/подключения, который видит пользователь.
+///
+/// Для wildcard `host` (`0.0.0.0`/`::`/пусто) сам адрес bind'а бесполезен —
+/// подставляем «лучший» LAN-IP (приватный IPv4 в приоритете, см.
+/// [`detect_lan_ips`]); если ни одного non-loopback адреса нет — `"localhost"`.
+/// Не-wildcard `host` возвращается как есть.
+///
+/// Используется в построении `server_url`/`ServerStatusDto.url`, чтобы в
+/// Настройках показывался `https://192.168.1.2:8443`, а не `https://0.0.0.0:8443`.
+pub fn display_host(host: &str) -> String {
+    if is_wildcard_host(host) {
+        detect_lan_ips()
+            .first()
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| "localhost".to_string())
+    } else {
+        host.to_string()
+    }
+}
+
 /// Собрать список subject-alt-names для self-signed сертификата.
 ///
 /// - Не-wildcard `host` → `[host, "localhost"]` (прежнее поведение).
 /// - Wildcard/unspecified `host` (`0.0.0.0`, `::`, пусто) → `"localhost"` +
-///   все non-loopback IPv4/IPv6 адреса машины (как IP-SAN) + OS hostname
-///   (если валиден как DNS-имя). Это убирает hostname-mismatch ошибку, когда
-///   браузер из LAN подключается по `https://<LAN-IP>:port`.
+///   loopback (`127.0.0.1`, `::1`) + все non-loopback IPv4/IPv6 адреса машины
+///   (как IP-SAN) + OS hostname (если валиден как DNS-имя). Это убирает
+///   hostname-mismatch ошибку и для LAN (`https://<LAN-IP>:port`), и для
+///   локального теста (`https://127.0.0.1:port`).
 ///
 /// rcgen авто-классифицирует каждую строку: парсится как `IpAddr` → IP-SAN,
 /// иначе DnsName (`CertificateParams::new`), поэтому достаточно класть строки.
 ///
 /// Дедуплицирует с сохранением порядка. Если детект интерфейсов вернул пусто
 /// (нет non-loopback адресов / ошибка перечисления), список содержит только
-/// `"localhost"` (+ hostname) — генерация не падает, но в этом случае
-/// IP-mismatch ожидаем (см. unit-тест).
+/// `"localhost"` + loopback (+ hostname) — генерация не падает, но в этом
+/// случае LAN-IP-mismatch ожидаем (см. unit-тест).
 fn collect_subject_alt_names(host: &str) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     let mut push_unique = |s: String| {
@@ -119,22 +174,15 @@ fn collect_subject_alt_names(host: &str) -> Vec<String> {
     };
 
     if is_wildcard_host(host) {
+        // Loopback: wildcard-bind слушает и на 127.0.0.1/::1 — локальный тест
+        // через https://127.0.0.1:port не должен давать name-mismatch.
         push_unique("localhost".to_string());
+        push_unique("127.0.0.1".to_string());
+        push_unique("::1".to_string());
 
-        // Перечислить интерфейсы; не-loopback, не-unspecified IPv4/IPv6 → IP-SAN.
-        match if_addrs::get_if_addrs() {
-            Ok(ifaces) => {
-                for iface in ifaces {
-                    let ip = iface.ip();
-                    if ip.is_loopback() || ip.is_unspecified() {
-                        continue;
-                    }
-                    push_unique(ip.to_string());
-                }
-            }
-            Err(e) => {
-                tracing::warn!("collect_subject_alt_names: if_addrs failed: {e}");
-            }
+        // Реальные non-loopback IPv4/IPv6 → IP-SAN (для LAN-подключений).
+        for ip in detect_lan_ips() {
+            push_unique(ip.to_string());
         }
 
         // OS hostname — даёт браузерам путь https://<machine-name>:port.
@@ -301,10 +349,42 @@ mod tests {
         );
     }
 
+    /// Wildcard host всегда добавляет loopback (localhost + 127.0.0.1 + ::1),
+    /// чтобы локальный тест через https://127.0.0.1:port не давал name-mismatch.
+    #[test]
+    fn collect_sans_wildcard_includes_loopback() {
+        let sans = collect_subject_alt_names("0.0.0.0");
+        for expected in ["localhost", "127.0.0.1", "::1"] {
+            assert!(
+                sans.iter().any(|s| s == expected),
+                "expected {expected} in wildcard SAN: {sans:?}"
+            );
+        }
+    }
+
+    /// `display_host`: не-wildcard возвращается как есть; wildcard → реальный
+    /// адрес (детектированный LAN-IP или "localhost"), но НИКОГДА не "0.0.0.0".
+    #[test]
+    fn display_host_substitutes_wildcard() {
+        assert_eq!(display_host("192.168.1.10"), "192.168.1.10");
+        assert_eq!(display_host("printserver.local"), "printserver.local");
+
+        let shown = display_host("0.0.0.0");
+        assert_ne!(shown, "0.0.0.0", "wildcard must not be shown to user");
+        assert_ne!(shown, "::");
+        assert!(!shown.is_empty());
+        // Должен совпадать с первым детектированным LAN-IP, либо fallback localhost.
+        let expected = detect_lan_ips()
+            .first()
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| "localhost".to_string());
+        assert_eq!(shown, expected);
+    }
+
     /// Для wildcard host SAN-список должен включать хотя бы один обнаруженный
     /// non-loopback LAN IP. Если детект интерфейсов на тестовой машине ничего
     /// не вернул (CI-окружение без non-loopback адресов), мы это документируем
-    /// и не падаем: тогда список содержит только "localhost" (+ возможный
+    /// и не падаем: тогда список содержит только loopback (+ возможный
     /// hostname), но НЕ литеральный "0.0.0.0".
     #[test]
     fn collect_sans_wildcard_includes_detected_lan_ip() {
