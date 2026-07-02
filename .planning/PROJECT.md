@@ -23,13 +23,30 @@ Trackly поставляет полный учёт устройств / акто
 
 Полная история — `.planning/MILESTONES.md`; детали фаз — `.planning/milestones/`.
 
-## Next Milestone Goals
+## Current Milestone: v1.1.1 PDF-акт по образцу Word (полное соответствие + мультиустройство)
 
-Milestone v2 ещё не определён. Запусти `/gsd-new-milestone` для старта (questioning →
-research → requirements → roadmap). Кандидаты из v2-бэклога (см. «Out of Scope» ниже):
-карта помещений (MAP), внешние уведомления (NTF: SMTP/Telegram/Webhook), Pantum
-auto-restart (PNT), полный SSO Kerberos/NTLM (ADV-01), английская локализация (I18N),
-Windows 7 32-bit (WIN7).
+**Goal:** PDF акта приёма-передачи визуально соответствует бумажной форме организации
+(образец `.planning/reference/act-word-source/act-sample.docx`), с одним намеренным
+отличием — блок «Устройство» переделан под несколько позиций в одном акте.
+
+**Target features:**
+- Полное соответствие Word: шапка (лого + реквизиты), заголовок, вводная формулировка, поля устройства, «Сроком до», подписи «Выдал/Получил»
+- Блок «Устройство» → мультиустройство (форма/таблица на N позиций через `ItemsTable`)
+- Недостающие поля данных (Комплектация, Технические характеристики, Срок до) доступны в акте
+- Расширенная шапка с реквизитами (телефон/факс/e-mail/ОКПО/ОГРН) из `org_settings`
+- Двухстрочные подписи (Подпись / ФИО)
+- Шаблон остаётся редактируемым через `document_templates` (не хардкод сверх дефолт-сида)
+
+**Ключевой контекст:** пайплайн уже есть (MiniJinja-шаблон в БД → DocSpec JSON → krilla →
+PDF); `ItemsTable` — готовый примитив для мультиустройства; кириллица покрыта embedded-шрифтом.
+Полный разбор образца, гэп-анализ и открытые вопросы для discuss-phase — в
+`.planning/PHASE-BRIEF-act-pdf-word-fidelity.md`.
+
+## Backlog (v2 и далее)
+
+Кандидаты из v2-бэклога (см. «Out of Scope» ниже): карта помещений (MAP), внешние
+уведомления (NTF: SMTP/Telegram/Webhook), Pantum auto-restart (PNT), полный SSO
+Kerberos/NTLM (ADV-01), английская локализация (I18N), Windows 7 32-bit (WIN7).
 
 ## Requirements
 
@@ -52,9 +69,9 @@ Windows 7 32-bit (WIN7).
 
 <!-- Current scope. Building toward these. -->
 
-Все v1-требования поставлены и перенесены в Validated (см. выше). Активной рабочей области
-нет — следующий milestone (v2) определяется через `/gsd-new-milestone`. До этого момента
-кандидаты на работу перечислены в «Out of Scope» (v2-бэклог) ниже.
+Milestone **v1.1.1** активен — PDF-акт по образцу Word + мультиустройство. Требования
+этого milestone — в `.planning/REQUIREMENTS.md`. Все v1-требования (120/120) остаются в
+Validated (см. выше). Дальнейшие кандидаты — в «Out of Scope» (v2-бэклог) ниже.
 
 ### Out of Scope
 
@@ -146,4 +163,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 13: Редизайн совместимости Принтеры↔Картриджи** (completed 2026-06-26) — V032 миграция: `printer_brand`+`printer_model` → единый `printer_name`, снос per-device junction (V029); `cartridges_sqlite.rs` матчит совместимость по `devices.name` (case-insensitive + TRIM, D-05 pass-through только в selection-фильтре); удалены 4 V029-команды, новая read-only `printers_get_compatible_aggregates` (агрегаты по статусу); карточка принтера: агрегаты совместимости + блок данных устройства (через `DeviceFormModal`) + установленный картридж по коду; `ModelFormModal` — единый free-text-блок «Совместимые принтеры»; kind-aware дефолт авто-возврата фотобарабана (state 5 «Изношенный»); снят лимит списка принтеров; `suggest_compat_printer` re-sourced с free-text истории на `devices.name`. Завершает milestone v1.1. (SPEC-13-R1..R8)
 
 ---
-*Last updated: 2026-06-26 — milestone v1.1 завершён и заархивирован (phases 9–13). Релизная линия v1 закрыта (120/120 требований). Тег v1.1. Следующий шаг — `/gsd-new-milestone`.*
+*Last updated: 2026-07-03 — milestone v1.1.1 запущен (PDF-акт по образцу Word + мультиустройство). Скоуп/поля/гэпы — из `.planning/PHASE-BRIEF-act-pdf-word-fidelity.md`.*

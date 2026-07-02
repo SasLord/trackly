@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: milestone
-status: Awaiting next milestone
-last_updated: "2026-06-26T14:56:59.675Z"
-last_activity: 2026-06-26 — Milestone v1.1 completed and archived
+milestone: v1.1.1
+milestone_name: PDF-акт по образцу Word (мультиустройство)
+status: planning
+last_updated: "2026-07-02T23:52:55.827Z"
+last_activity: 2026-07-02
 progress:
-  total_phases: 16
-  completed_phases: 16
-  total_plans: 105
-  completed_plans: 105
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-02 — Completed quick task 260702-vtf: consumption chart → grouped bar chart with Y-axis + tooltip
+Status: Defining requirements
+Last activity: 2026-07-02 — Milestone v1.1.1 started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
