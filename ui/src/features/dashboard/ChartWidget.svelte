@@ -113,23 +113,28 @@
     })(),
   );
 
-  // niceMax: округлить вверх до удобного числа (кратное 5 или 10), не менее 1
-  const niceMax = $derived(
+  // yStep: целый «удобный» шаг оси Y — наименьший из ряда 1/2/5/…,
+  // дающий не более 5 интервалов. Целый шаг гарантирует целые деления
+  // без пропусков и дублей (installs — всегда целые). T-vtf-01: >= 1.
+  const yStep = $derived(
     (() => {
-      // T-vtf-01: niceMax >= 1 всегда
       const raw = Math.max(maxVal, 1);
-      // Округлить вверх до ближайшего кратного 5
-      const step = raw <= 5 ? 1 : raw <= 20 ? 5 : raw <= 50 ? 10 : raw <= 100 ? 20 : 50;
-      return Math.ceil(raw / step) * step;
+      const candidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+      for (const c of candidates) {
+        if (Math.ceil(raw / c) <= 5) return c;
+      }
+      return candidates[candidates.length - 1];
     })(),
   );
 
-  // Y-axis ticks: 5 равномерных тиков от 0 до niceMax
+  // niceMax: округлить вверх до кратного yStep, не менее 1
+  const niceMax = $derived(Math.max(Math.ceil(maxVal / yStep) * yStep, 1));
+
+  // Y-axis ticks: целые деления от 0 до niceMax с шагом yStep (без пропусков)
   const yTicks = $derived(
     (() => {
       const ticks: { value: number; y: number }[] = [];
-      for (let i = 0; i <= 4; i++) {
-        const value = Math.round((niceMax * i) / 4);
+      for (let value = 0; value <= niceMax; value += yStep) {
         const y = TOP_PAD + CHART_H - (value / niceMax) * CHART_H;
         ticks.push({ value, y });
       }
