@@ -141,8 +141,12 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // would neutralize CSP's XSS protection. Kept on style-src for
             // Svelte scoped styles.
             // T-06-12-I: connect-src includes wss: for same-origin WebSocket upgrade.
+            // PDF-CSP: frame-src/object-src allow blob: so PdfPreviewModal and
+            // TemplateEditor can render their `blob:` PDF URLs in <iframe>. Without
+            // this, default-src 'self' blocks blob: framing and the preview is blank
+            // (browser: "Refused to load blob:... neither frame-src nor default-src").
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
             ),
         ));
 

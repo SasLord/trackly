@@ -78,6 +78,17 @@ async fn security_headers_present() {
             "x-content-type-options: nosniff expected"
         );
 
+        // PDF-CSP regression: frame-src/object-src must allow blob: so the PDF
+        // preview iframes (PdfPreviewModal, TemplateEditor) can render blob: URLs.
+        let csp = headers
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            csp.contains("frame-src") && csp.contains("blob:"),
+            "CSP must include frame-src with blob: for PDF preview, got: {csp}"
+        );
+
         ctx.shutdown.cancel();
     })
     .await

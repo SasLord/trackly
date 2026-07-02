@@ -45,5 +45,14 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
     }
     throw err;
   }
+  // Binary responses (e.g. `application/pdf` from *_render_pdf, reports_export_pdf,
+  // templates_render_preview) must NOT be parsed as JSON. The Tauri path returns
+  // `Vec<u8>` as `number[]`; mirror that shape here so callers (fetchPdfBlob et al.)
+  // get the same `number[]` regardless of transport.
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    return Array.from(buf) as R;
+  }
   return res.json();
 }
