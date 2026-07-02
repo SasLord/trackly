@@ -1,6 +1,5 @@
 <script lang="ts">
-  // Plan 07-05: ChartWidget — виджет динамики расхода картриджей.
-  // SVG polyline (ручная отрисовка, нет npm-зависимостей).
+  // Plan 260702-vtf-01: ChartWidget — grouped bar chart с Y-осью, сеткой, value labels и tooltip.
   // DASH-03, D-11: 3/6/12 месяцев, multi-model серии, aria-доступность.
   import Spinner from '$lib/components/Spinner.svelte';
   import PeriodToggle from './PeriodToggle.svelte';
@@ -21,7 +20,7 @@
 
   const { data, windowMonths, loading, error, onWindowChange }: Props = $props();
 
-  // Цвета для серий (до 3 моделей; остальные схлопываются)
+  // Цвета для серий (до 3 моделей)
   const COLORS = ['var(--color-accent)', 'var(--color-success)', 'var(--color-warning)'];
 
   // Русские названия месяцев для подписей осей
@@ -40,23 +39,26 @@
     'Декабрь',
   ];
 
-  // Вычисляет SVG-координаты точек серии.
-  // Одна точка центрируется по X (единственный месяц → маркер по середине графика).
-  function toCoords(series: number[], maxVal: number): { x: number; y: number }[] {
-    const n = series.length;
-    return series.map((v, i) => {
-      // При n === 1 ставим точку в центр (x = 200); иначе распределяем по ширине.
-      const x = n < 2 ? 200 : (i / (n - 1)) * 380 + 10;
-      const y = 190 - (v / (maxVal || 1)) * 170;
-      return { x, y };
-    });
-  }
+  // Coordinate system constants
+  const LEFT_PAD = 42;
+  const RIGHT_PAD = 8;
+  const TOP_PAD = 20;
+  const BOTTOM_PAD = 28;
+  const CHART_TOTAL_W = 500;
+  const CHART_TOTAL_H = 220;
+  const CHART_W = CHART_TOTAL_W - LEFT_PAD - RIGHT_PAD;
+  const CHART_H = CHART_TOTAL_H - TOP_PAD - BOTTOM_PAD;
 
-  // Преобразует координаты в строку points для polyline (нужно >= 2 точек).
-  function toPolyline(coords: { x: number; y: number }[]): string {
-    if (coords.length < 2) return '';
-    return coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  // Tooltip state
+  interface TooltipState {
+    visible: boolean;
+    x: number;
+    y: number;
+    month: string;
+    model: string;
+    installs: number;
   }
+  let tooltip = $state<TooltipState>({ visible: false, x: 0, y: 0, month: '', model: '', installs: 0 });
 
   // Форматирует month_key "2026-06" в короткое название "Июн."
   function monthKeyToLabel(key: string): string {
@@ -67,7 +69,7 @@
     return name.slice(0, 3) + '.';
   }
 
-  // Производные данные для SVG
+  // Производные данные
   const uniqueMonths = $derived(
     (() => {
       const set = new Set<string>();
@@ -80,7 +82,7 @@
     (() => {
       const set = new Set<string>();
       data.forEach((p) => set.add(p.model_label));
-      return Array.from(set).slice(0, 3); // показываем до 3 моделей
+      return Array.from(set).slice(0, 3);
     })(),
   );
 
@@ -110,6 +112,91 @@
       return max;
     })(),
   );
+
+  // niceMax: округлить вверх до удобного числа (кратное 5 или 10), не менее 1
+  const niceMax = $derived(
+    (() => {
+      // T-vtf-01: niceMax >= 1 всегда
+      const raw = Math.max(maxVal, 1);
+      // Округлить вверх до ближайшего кратного 5
+      const step = raw <= 5 ? 1 : raw <= 20 ? 5 : raw <= 50 ? 10 : raw <= 100 ? 20 : 50;
+      return Math.ceil(raw / step) * step;
+    })(),
+  );
+
+  // Y-axis ticks: 5 равномерных тиков от 0 до niceMax
+  const yTicks = $derived(
+    (() => {
+      const ticks: { value: number; y: number }[] = [];
+      for (let i = 0; i <= 4; i++) {
+        const value = Math.round((niceMax * i) / 4);
+        const y = TOP_PAD + CHART_H - (value / niceMax) * CHART_H;
+        ticks.push({ value, y });
+      }
+      return ticks;
+    })(),
+  );
+
+  // Bar layout: массив объектов с координатами для каждого bar
+  interface BarItem {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    color: string;
+    installs: number;
+    model: string;
+    monthLabel: string;
+  }
+
+  const barLayout = $derived<BarItem[]>(
+    (() => {
+      const N = uniqueMonths.length;
+      const M = modelKeys.length;
+      if (N === 0 || M === 0) return [];
+
+      const GROUP_W = CHART_W / N;
+      const BAR_GAP = 2;
+      const BAR_W = Math.max(4, (GROUP_W - BAR_GAP * (M + 1)) / M);
+
+      const bars: BarItem[] = [];
+      for (let i = 0; i < N; i++) {
+        const month = uniqueMonths[i];
+        for (let mi = 0; mi < M; mi++) {
+          const model = modelKeys[mi];
+          const installs = seriesData[model]?.[i] ?? 0;
+          const barH = (installs / niceMax) * CHART_H;
+          const x = LEFT_PAD + i * GROUP_W + BAR_GAP * (mi + 1) + mi * BAR_W;
+          const y = TOP_PAD + CHART_H - barH;
+          bars.push({
+            x,
+            y,
+            width: BAR_W,
+            height: barH,
+            color: COLORS[mi % COLORS.length],
+            installs,
+            model,
+            monthLabel: monthKeyToLabel(month),
+          });
+        }
+      }
+      return bars;
+    })(),
+  );
+
+  // X-axis label positions (по центру группы)
+  const xLabels = $derived(
+    (() => {
+      const N = uniqueMonths.length;
+      if (N === 0) return [];
+      const GROUP_W = CHART_W / N;
+      return uniqueMonths.map((month, i) => ({
+        label: monthKeyToLabel(month),
+        x: LEFT_PAD + i * GROUP_W + GROUP_W / 2,
+        y: TOP_PAD + CHART_H + 16,
+      }));
+    })(),
+  );
 </script>
 
 <section class="chart-widget" aria-labelledby="chart-title">
@@ -127,43 +214,96 @@
   {:else if data.length === 0}
     <div class="chart-state chart-empty">Нет данных о расходе за выбранный период</div>
   {:else}
-    <svg
-      role="img"
-      aria-label="График динамики расхода картриджей за {windowMonths} месяцев"
-      viewBox="0 0 400 200"
-      preserveAspectRatio="xMidYMid meet"
-      class="chart-svg"
-    >
-      {#each modelKeys as model, mi}
-        {@const coords = toCoords(seriesData[model] ?? [], maxVal)}
-        <!-- Линия (только при >= 2 месяцах) -->
-        <polyline
-          points={toPolyline(coords)}
-          fill="none"
-          stroke={COLORS[mi % COLORS.length]}
-          stroke-width="2"
-          stroke-linejoin="round"
-          stroke-linecap="round"
-        />
-        <!-- Маркеры точек: гарантируют видимость данных даже при одном месяце -->
-        {#each coords as pt}
-          <circle cx={pt.x.toFixed(1)} cy={pt.y.toFixed(1)} r="3" fill={COLORS[mi % COLORS.length]} />
+    <div class="chart-area">
+      <svg
+        role="img"
+        aria-label="График динамики расхода картриджей за {windowMonths} месяцев"
+        viewBox="0 0 {CHART_TOTAL_W} {CHART_TOTAL_H}"
+        preserveAspectRatio="xMidYMid meet"
+        class="chart-svg"
+      >
+        <!-- Y-axis gridlines и метки -->
+        {#each yTicks as tick}
+          <line
+            x1={LEFT_PAD}
+            x2={CHART_TOTAL_W - RIGHT_PAD}
+            y1={tick.y}
+            y2={tick.y}
+            stroke="var(--color-border)"
+            stroke-width="0.5"
+          />
+          <text
+            x={LEFT_PAD - 4}
+            y={tick.y + 3}
+            text-anchor="end"
+            font-size="9"
+            fill="var(--color-text-muted)"
+          >{tick.value}</text>
         {/each}
-      {/each}
-      <!-- Подписи месяцев по оси X -->
-      {#each uniqueMonths as month, i}
-        {@const total = uniqueMonths.length}
-        <text
-          x={(total < 2 ? 200 : (i / (total - 1)) * 380 + 10).toFixed(1)}
-          y="198"
-          font-size="9"
-          text-anchor="middle"
-          fill="var(--color-text-muted)"
+
+        <!-- Grouped bars -->
+        {#each barLayout as bar}
+          <rect
+            x={bar.x}
+            y={bar.y}
+            width={bar.width}
+            height={bar.height}
+            fill={bar.color}
+            rx="2"
+            style="cursor: crosshair;"
+            onmouseenter={(e) => {
+              const target = e.currentTarget as SVGRectElement;
+              const svgEl = target.closest('svg') as SVGSVGElement | null;
+              const areaEl = svgEl?.parentElement as HTMLElement | null;
+              if (!areaEl) return;
+              const areaRect = areaEl.getBoundingClientRect();
+              tooltip = {
+                visible: true,
+                x: e.clientX - areaRect.left,
+                y: e.clientY - areaRect.top,
+                month: bar.monthLabel,
+                model: bar.model,
+                installs: bar.installs,
+              };
+            }}
+            onmouseleave={() => {
+              tooltip.visible = false;
+            }}
+          />
+          <!-- Value label над баром (только если installs > 0) -->
+          {#if bar.installs > 0}
+            <text
+              x={bar.x + bar.width / 2}
+              y={bar.y - 3}
+              text-anchor="middle"
+              font-size="8"
+              fill={bar.color}
+            >{bar.installs}</text>
+          {/if}
+        {/each}
+
+        <!-- X-axis labels (месяцы) -->
+        {#each xLabels as lbl}
+          <text
+            x={lbl.x}
+            y={lbl.y}
+            text-anchor="middle"
+            font-size="9"
+            fill="var(--color-text-muted)"
+          >{lbl.label}</text>
+        {/each}
+      </svg>
+
+      <!-- Hover tooltip -->
+      {#if tooltip.visible}
+        <div
+          class="chart-tooltip"
+          style="left: {tooltip.x + 10}px; top: {tooltip.y - 28}px;"
         >
-          {monthKeyToLabel(month)}
-        </text>
-      {/each}
-    </svg>
+          {tooltip.month} · {tooltip.model}: {tooltip.installs}
+        </div>
+      {/if}
+    </div>
 
     <!-- Визуально скрытая таблица данных для доступности (Screen Reader) -->
     <table class="sr-only" aria-label="Данные графика расхода картриджей">
@@ -226,10 +366,28 @@
     color: var(--color-text-primary);
   }
 
+  .chart-area {
+    position: relative;
+  }
+
   .chart-svg {
     width: 100%;
     height: 180px;
     display: block;
+  }
+
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    font-size: var(--font-size-label);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    z-index: 10;
   }
 
   .chart-state {
