@@ -96,7 +96,7 @@
     chartError = null;
     try {
       chartData = await apiCall<ConsumptionPoint[]>('dashboard_get_consumption_chart', {
-        window_months: windowMonths,
+        windowMonths,
       });
     } catch (e: unknown) {
       chartError =

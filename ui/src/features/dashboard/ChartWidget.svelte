@@ -40,16 +40,22 @@
     'Декабрь',
   ];
 
-  // Преобразует массив значений в строку SVG-координат для polyline
-  function toPoints(series: number[], maxVal: number): string {
-    if (series.length < 2) return '';
-    return series
-      .map((v, i) => {
-        const x = (i / (series.length - 1)) * 380 + 10;
-        const y = 190 - (v / (maxVal || 1)) * 170;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
+  // Вычисляет SVG-координаты точек серии.
+  // Одна точка центрируется по X (единственный месяц → маркер по середине графика).
+  function toCoords(series: number[], maxVal: number): { x: number; y: number }[] {
+    const n = series.length;
+    return series.map((v, i) => {
+      // При n === 1 ставим точку в центр (x = 200); иначе распределяем по ширине.
+      const x = n < 2 ? 200 : (i / (n - 1)) * 380 + 10;
+      const y = 190 - (v / (maxVal || 1)) * 170;
+      return { x, y };
+    });
+  }
+
+  // Преобразует координаты в строку points для polyline (нужно >= 2 точек).
+  function toPolyline(coords: { x: number; y: number }[]): string {
+    if (coords.length < 2) return '';
+    return coords.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   }
 
   // Форматирует month_key "2026-06" в короткое название "Июн."
@@ -129,20 +135,26 @@
       class="chart-svg"
     >
       {#each modelKeys as model, mi}
+        {@const coords = toCoords(seriesData[model] ?? [], maxVal)}
+        <!-- Линия (только при >= 2 месяцах) -->
         <polyline
-          points={toPoints(seriesData[model] ?? [], maxVal)}
+          points={toPolyline(coords)}
           fill="none"
           stroke={COLORS[mi % COLORS.length]}
           stroke-width="2"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
+        <!-- Маркеры точек: гарантируют видимость данных даже при одном месяце -->
+        {#each coords as pt}
+          <circle cx={pt.x.toFixed(1)} cy={pt.y.toFixed(1)} r="3" fill={COLORS[mi % COLORS.length]} />
+        {/each}
       {/each}
       <!-- Подписи месяцев по оси X -->
       {#each uniqueMonths as month, i}
         {@const total = uniqueMonths.length}
         <text
-          x={((i / (total - 1 || 1)) * 380 + 10).toFixed(1)}
+          x={(total < 2 ? 200 : (i / (total - 1)) * 380 + 10).toFixed(1)}
           y="198"
           font-size="9"
           text-anchor="middle"
