@@ -48,20 +48,20 @@ MiniJinja-шаблон (в БД) → DocSpec JSON → krilla → PDF-байты.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PDFA-01 | — | Pending |
-| PDFA-02 | — | Pending |
-| PDFA-03 | — | Pending |
-| PDFA-04 | — | Pending |
-| PDFA-05 | — | Pending |
-| PDFA-06 | — | Pending |
-| PDFA-07 | — | Pending |
-| PDFA-08 | — | Pending |
+| PDFA-01 | Phase 15 | Pending |
+| PDFA-02 | Phase 15 | Pending |
+| PDFA-03 | Phase 14 | Pending |
+| PDFA-04 | Phase 14 | Pending |
+| PDFA-05 | Phase 15 | Pending |
+| PDFA-06 | Phase 14 | Pending |
+| PDFA-07 | Phase 15 | Pending |
+| PDFA-08 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.1.1 requirements: 8 total
-- Mapped to phases: 0 (роадмап ещё не создан)
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8/8 ✓ (Phase 14: PDFA-03/04/06; Phase 15: PDFA-01/02/05/07/08)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-03*
-*Last updated: 2026-07-03 after milestone v1.1.1 definition*
+*Last updated: 2026-07-03 after ROADMAP.md created (Phase 14–15, 8/8 requirements mapped)*

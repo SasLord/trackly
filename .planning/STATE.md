@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: planning
-last_updated: "2026-07-02T23:52:55.827Z"
-last_activity: 2026-07-02
+last_updated: "2026-07-03T00:00:00.000Z"
+last_activity: 2026-07-03
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** v1.1 завершён и заархивирован; планирование следующего milestone (`/gsd-new-milestone`)
+**Current focus:** v1.1.1 — PDF-акт по образцу Word (мультиустройство); роадмап создан (Phase 14–15), ожидает планирования Phase 14
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 14 - Данные и структура акта (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-07-02 — Milestone v1.1.1 started
+Status: Roadmap created, ready for /gsd-plan-phase 14
+Last activity: 2026-07-03 — Roadmap created for milestone v1.1.1 (Phase 14–15, 8/8 requirements mapped)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -158,6 +158,8 @@ Last activity: 2026-07-02 — Milestone v1.1.1 started
 - Phase 10 added (2026-06-21): Ограничение роли employee (Сотрудник) — доступ только к Заявкам + отдельный employee-UI; аудит role-gating read-эндпоинтов на бэкенде
 - Phase 12 added (2026-06-22): Взаимосвязь картриджной заявки — сквозная связка заявки на замену картриджа → установка (выбор заправленного картриджа, авто-подстановка расположения принтера, предзаполнение заявителя)
 - Phase 13 added (2026-06-25): Редизайн совместимости Принтеры↔Картриджи по уникальному наименованию/типу принтера (не per-device junction; сносит промежуточный UI/таблицы из Phase 12) + свёрнутые chip-задачи (kind-aware drum-state дефолт авто-возврата, лимит списка принтеров 500-vs-200). В милстоне v1.1.
+- Phase 14 added (2026-07-03): Данные и структура акта — миграции/схема для расширенных реквизитов организации, Комплектации, Технических характеристик, Срока до, мультиустройства и контекста рендера. Milestone v1.1.1 (PDFA-03, PDFA-04, PDFA-06).
+- Phase 15 added (2026-07-03): Рендер и соответствие образцу — дефолтный `.minijinja`-шаблон, мультиустройство через `ItemsTable`, двухстрочные подписи, regression-тесты PDF-пайплайна. Milestone v1.1.1 (PDFA-01, PDFA-02, PDFA-05, PDFA-07, PDFA-08).
 
 ### Decisions
 
@@ -382,4 +384,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Roadmap created for v1.1.1 (Phase 14–15). Next: `/gsd-plan-phase 14`.
