@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: executing
-last_updated: "2026-07-03T14:31:59.313Z"
+status: verifying
+last_updated: "2026-07-03T15:39:02.234Z"
 last_activity: 2026-07-03
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 14 (act-data-structure) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -148,6 +148,7 @@ Last activity: 2026-07-03
 | Phase 13 P08 | 15min | 3 tasks | 1 files |
 | Phase 14 P01 | 22min | 2 tasks | 10 files |
 | Phase 14 P02 | 12min | 2 tasks | 1 files |
+| Phase 14 P03 | 30min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -325,6 +326,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 14-01: HeaderBlock direct-construction sites use ..Default::default() spread for new fields where site doesn't need requisite content
 - [Phase ?]: 14-01: new org_settings columns always appended last in SQL SELECT/UPDATE to preserve existing r.get(N) ordinal indexes
 - [Phase 14]: 14-02: Task 1 required no code changes to http/settings_org.rs or tauri_cmds/settings_org.rs — both pass OrgPatch through opaquely; bindings.ts already carried the 5 new fields from Plan 01
+- [Phase 14]: 14-03: org_db wired via separate with_org_db() builder (not folded into with_pdf_pipeline's 3-arg signature) — avoids breaking existing test call sites; org_db is Option-aware end-to-end
+- [Phase 14]: 14-03: render_pdf fallback (org_db=None) reads legacy org.json name/inn/kpp/address, defaults 5 new requisites to empty strings — matches D-02 degrade-to-blank contract
 
 ### Pending Todos
 
@@ -384,8 +387,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-03T14:30:31.003Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-07-03T15:39:02.229Z
+Stopped at: Completed 14-03-PLAN.md (Phase 14 done — all 3 plans)
 Resume file: None
 
 ## Operator Next Steps
