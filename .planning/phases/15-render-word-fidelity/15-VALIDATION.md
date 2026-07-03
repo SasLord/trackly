@@ -1,8 +1,8 @@
 ---
 phase: 15
 slug: render-word-fidelity
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-04
 ---
@@ -43,7 +43,9 @@ created: 2026-07-04
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | PDFA-01/02/05/07/08 | — | N/A (local doc render) | integration | `cargo test -p trackly-app --test pdf_render_act` | ✅ | ⬜ pending |
+| 15-01-* | 15-01 | 1 | PDFA-01/02/05/07 | STRIDE-D (render DoS) | render never panics on empty/oversized fields | unit/tdd | `cargo test -p trackly-app --lib pdf` | ✅ | ⬜ pending |
+| 15-02-* | 15-02 | 2 | PDFA-01/02/05/07 | STRIDE-T (logo MIME) | mismatched/oversized logo BLOB degrades, no crash | integration | `cargo test -p trackly-app` | ✅ | ⬜ pending |
+| 15-03-* | 15-03 | 3 | PDFA-01/02/05/07/08 | — | multi-device + Cyrillic + logo full-pipeline | integration | `cargo test -p trackly-app --test pdf_render_act` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
