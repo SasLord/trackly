@@ -74,7 +74,7 @@ Trackly — портативное приложение для учёта тех
 **Plans**: 3 plans
 **Wave 1**
 
-- [ ] 14-01-PLAN.md — Миграция V033 org_settings +5 реквизитов; OrgPatch/OrgSettingsDto/3 SQL-сайта/HeaderBlock
+- [x] 14-01-PLAN.md — Миграция V033 org_settings +5 реквизитов; OrgPatch/OrgSettingsDto/3 SQL-сайта/HeaderBlock
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -121,7 +121,7 @@ Trackly — портативное приложение для учёта тех
 | 11. Заявки/employee UX | v1.1 | 3/3 | Complete | 2026-06-22 |
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
-| 14. Данные и структура акта | v1.1.1 | 0/TBD | Not started | - |
+| 14. Данные и структура акта | v1.1.1 | 1/3 | In Progress|  |
 | 15. Рендер и соответствие образцу | v1.1.1 | 0/TBD | Not started | - |
 
 ## Coverage

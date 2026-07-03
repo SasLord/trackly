@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-03T13:08:59.887Z"
-last_activity: 2026-07-03 -- Phase 14 planning complete
+last_updated: "2026-07-03T14:26:01.934Z"
+last_activity: 2026-07-03
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** v1.1.1 — PDF-акт по образцу Word (мультиустройство); роадмап создан (Phase 14–15), ожидает планирования Phase 14
+**Current focus:** Phase 14 — act-data-structure
 
 ## Current Position
 
-Phase: 14 - Данные и структура акта (not started)
-Plan: —
+Phase: 14 (act-data-structure) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-03 -- Phase 14 planning complete
+Last activity: 2026-07-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -146,6 +146,7 @@ Last activity: 2026-07-03 -- Phase 14 planning complete
 | Phase 13 P06 | 25min | 2 tasks | 4 files |
 | Phase 13 P07 | 25min | 2 tasks | 2 files |
 | Phase 13 P08 | 15min | 3 tasks | 1 files |
+| Phase 14 P01 | 22min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -319,6 +320,9 @@ Recent decisions affecting current work:
 - [Phase 13]: 13-08: res.models.length === 0 used as direct equivalent of removed modelIds.length === 0 check for compatibilityUnconfigured (no extra heuristic)
 - [Phase 13]: 13-08: compatibleDeviceIds D-05 pass-through computed from printerOptions itself (Set of all deviceId) instead of a second network call
 - [Phase 13]: 13-08: previousCartridgeStateId kind-aware default (5 drum / 3 cartridge) set when previousCartridge resolves (.then branch), not in the modal-open reset effect
+- [Phase ?]: 14-01: org_settings new requisite columns default to empty string (not V026-style placeholder) — missing requisites degrade to blank per D-02
+- [Phase ?]: 14-01: HeaderBlock direct-construction sites use ..Default::default() spread for new fields where site doesn't need requisite content
+- [Phase ?]: 14-01: new org_settings columns always appended last in SQL SELECT/UPDATE to preserve existing r.get(N) ordinal indexes
 
 ### Pending Todos
 
@@ -378,9 +382,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-03T12:48:09.792Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-act-data-structure/14-CONTEXT.md
+Last session: 2026-07-03T14:26:01.929Z
+Stopped at: Completed 14-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
