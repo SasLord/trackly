@@ -1,0 +1,174 @@
+# Phase 15: Рендер и соответствие образцу - Context
+
+**Gathered:** 2026-07-04
+**Status:** Ready for planning
+
+<domain>
+## Phase Boundary
+
+Переработать дефолтный редактируемый шаблон акта приёма-передачи (`act_handover`) и,
+где нужно, DocSpec-примитивы/рендерер так, чтобы сгенерированный PDF **визуально
+воспроизводил структуру бумажного образца Word** (`.planning/reference/act-word-source/act-sample.docx`),
+с одним намеренным отличием — блок устройства переделан под **N позиций** в одном акте.
+
+Фаза 14 уже заложила ДАННЫЕ (реквизиты org_settings V033, `specs`/notes и org-реквизиты
+доходят до контекста рендера). Фаза 15 — это **HOW рендерить**: шаблон, вёрстка, примитивы,
+шрифт-регрессия, тесты. Требования: PDFA-01, PDFA-02, PDFA-05, PDFA-07, PDFA-08.
+
+**Не входит:** новые поля данных/схема (сделано в 14), UI-редактор шаблонов, импорт/экспорт .docx,
+прочие виды документов кроме акта приёма-передачи.
+
+</domain>
+
+<decisions>
+## Implementation Decisions
+
+### Мультиустройство (PDFA-02)
+- **D-06:** Гибридная вёрстка блока устройств. Короткие идентификационные поля
+  (№, Наименование, Инв.№, Серийный №, Модель) — в компактной табличной форме;
+  длинные поля (**Комплектация**, **Технические характеристики**, **Состояние**) —
+  в отдельном переносящемся блоке на каждое устройство, чтобы избежать overflow
+  8-колоночной таблицы на A4 portrait.
+  - Рекомендуемая форма (уточнит research/planner): на каждую позицию акта —
+    per-device секция: компактная строка идентификации + длинные поля как
+    wrapping key-value строки. Должно читаться и при 1, и при 5+ устройствах.
+  - Существующий `ItemsTable` — базовый примитив для табличной части; проверить
+    перенос длинных ячеек в `renderer.rs` (есть тест `pdf_column_overflow.rs`).
+  - Точное визуальное расположение (table-then-blocks vs per-device-card) —
+    Claude's Discretion в рамках: без обрезки/наложения, читаемо при 1 vs N.
+
+### Подписи (PDFA-05)
+- **D-07:** Расширить DocSpec-примитив `Signature` (docspec.rs) под двухстрочные
+  подписи «Подпись»/«ФИО» для сторон «Выдал»/«Получил» + отрисовка в `renderer.rs`.
+  - Новые под-поля пометить `#[serde(default)]`, чтобы старые шаблоны (без под-лейблов)
+    десериализовались без ошибки (тот же backward-compat паттерн, что в 14 для HeaderBlock).
+  - НЕ собирать подписи вручную из Paragraph+линий в JSON-шаблоне (хрупкое выравнивание).
+
+### Шапка и логотип (PDFA-01)
+- **D-08:** (а) Фикс WR-03 — переключить источник логотипа акта на `org_settings`
+  BLOB (`logo_blob`/`logo_mime` из `OrgDbService::get_for_pdf()`), унифицируя с D-05
+  (текстовые реквизиты уже берутся оттуда). Сейчас act-рендер читает лого из legacy
+  `org.json`, а Settings UI пишет только в BLOB → лого не попадает в акт.
+  (б) Вёрстка 2-колоночной шапки как в образце: логотип слева | реквизиты справа
+  (название, адрес, телефон, факс, e-mail, ОКПО/ОГРН, ИНН/КПП). Отсутствующие/пустые
+  реквизиты деградируют в пусто/«—», не в ошибку рендера.
+
+### Вводная формулировка и лейблы (PDFA-01)
+- **D-09:** Полное соответствие образцу:
+  - Заголовок «Акт приема-передачи», реальные № и дата (D-04, без прочерков).
+  - Вводная фраза-абзац: «Настоящим актом утверждаю, что мною <ФИО получателя>
+    было получено устройство:» (ФИО = `act.receiver_name`).
+  - Лейблы подписей «Выдал»/«Получил» (сейчас «Сдал»/«Принял»).
+  - Блок «Сроком до: <дата человекочитаемо>».
+  - Порядок блоков: шапка → заголовок → №/дата → вводная → блок(и) устройства →
+    «Сроком до» → подписи.
+
+### Ключевые ограничения (из брифа, обязательны)
+- Дефолтный шаблон остаётся **редактируемым** через `document_templates` (не хардкод
+  в Rust сверх дефолт-сида в `templates/*.minijinja` + `template_service` seed).
+- Кириллица рендерится корректно через embedded-шрифт (PDFA-07, регрессия существующего
+  пайплайна `fonts.rs`).
+- Существующие PDF-тесты проходят; добавить тесты на новый шаблон и мультиустройство
+  (1 vs N позиций) — PDFA-08.
+- НЕ вводить новый `kind` в `document_templates` (D-03 из фазы 14) — перерабатываем
+  существующий `act_handover`.
+
+### Claude's Discretion
+- Точное визуальное расположение гибридного блока устройств (в рамках D-06).
+- Внутренняя структура расширения примитива `Signature` (поля/имена) при соблюдении
+  serde(default)-совместимости.
+- Размеры/отступы/шрифт-веса вёрстки, пока результат визуально соответствует образцу.
+
+</decisions>
+
+<canonical_refs>
+## Canonical References
+
+**Downstream agents MUST read these before planning or implementing.**
+
+### Скоуп и образец
+- `.planning/PHASE-BRIEF-act-pdf-word-fidelity.md` — самодостаточный бриф: цель, точный
+  разбор образца Word (шапка/заголовок/вводная/устройство/срок/подписи), гэп-анализ,
+  критерии приёмки. ГЛАВНЫЙ источник «что должно быть на PDF».
+- `.planning/reference/act-word-source/act-sample.docx` — исходный образец Word.
+- `.planning/reference/act-word-source/image1.png` — логотип образца (СМУ ГХК / РОСАТОМ).
+- `.planning/reference/act-word-source/image2.png` — тонкая линия-разделитель.
+
+### Решения фазы 14 (данные, на которых строится рендер)
+- `.planning/phases/14-act-data-structure/14-CONTEXT.md` — D-01..D-05 (specs↔notes,
+  расширенные реквизиты org_settings, act_handover без нового kind, реальные №/дата,
+  источник org = org_settings).
+- `.planning/phases/14-act-data-structure/14-REVIEW.md` — WR-01..WR-05. **WR-01/WR-02
+  (реквизиты и specs в контексте, но не отрисованы) — это и есть ядро задачи Phase 15.
+  WR-03 (лого из org.json) — адресуется D-08.**
+
+### Требования
+- `.planning/REQUIREMENTS.md` — PDFA-01, PDFA-02, PDFA-05, PDFA-07, PDFA-08 (тексты).
+- `.planning/ROADMAP.md` §«Phase 15» — Goal + 5 success criteria (авторитетный контракт).
+
+</canonical_refs>
+
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- `crates/trackly-app/src/pdf/docspec.rs` — DocSpec IR: `Section` = Paragraph / Heading /
+  KeyValueTable / **ItemsTable** / **Signature** / Spacer; `HeaderBlock` (после 14 несёт
+  org_name/inn/kpp/address + phone/fax/email/okpo/ogrn + logo_path|logo_bytes+mime).
+  Расширяем `Signature` (D-07); возможно добавляем/используем header-layout поля.
+- `crates/trackly-app/src/pdf/renderer.rs` — krilla-рендерер (`render_docspec` ~L130-165).
+  Точка правок для двухстрочных подписей, 2-колоночной шапки, переноса длинных ячеек.
+- `crates/trackly-app/templates/act_handover.minijinja` — дефолтный шаблон (переписываем
+  под образец). Сейчас: «Сдал/Принял», 6-колоночная ItemsTable, single-line Signature.
+- `crates/trackly-app/src/services/template_service.rs` — `DEFAULT_TEMPLATES`,
+  `seed_defaults_on_startup` (сидинг обновлённого шаблона при первом запуске).
+- `crates/trackly-app/src/services/act_service.rs` — `render_pdf` (~L1342-1456): сборка
+  контекста (org из `OrgDbService::get_for_pdf()`, items с `specs`); тут же фикс источника
+  логотипа на BLOB (D-08).
+- `crates/trackly-app/src/pdf/fonts.rs`, `assets/fonts/` — embedded Cyrillic шрифт (PDFA-07).
+
+### Established Patterns
+- Пайплайн: MiniJinja-шаблон (в БД, редактируемый) → DocSpec JSON → krilla → PDF-байты.
+- serde(default) для новых полей примитивов — обратная совместимость со старыми шаблонами.
+- Тесты рендера: `crates/trackly-app/tests/pdf_render_act.rs`, `pdf_column_overflow.rs`,
+  `pdf_logo.rs` — расширяем на новый шаблон + мультиустройство.
+
+### Integration Points
+- Шаблон читает `act.items[]` циклом (мультиустройство) — контекст уже отдаёт список
+  позиций с `specs`; проверить наличие полей Комплектация(`kit`/complectation_at_time)/
+  Состояние(condition_at_time) в item-контексте.
+- Логотип: `get_for_pdf()` уже возвращает `logo_blob`/`logo_mime` — подключить в render_pdf.
+
+</code_context>
+
+<specifics>
+## Specific Ideas
+
+- Образец точно разобран в брифе (§«Точный разбор образца Word»): шапка с полным
+  блоком реквизитов, заголовок, вводная про «получено устройство», поля устройства
+  (Наименование/Инв.№/Серийный/Модель/Комплектация/Тех.характеристики/Состояние),
+  «Сроком до», двухстрочные подписи «Выдал/Получил».
+- Пользователь выбрал максимальную верность образцу по всем четырём осям
+  (мультиустройство-гибрид, расширение примитива подписи, фикс лого + точная шапка,
+  полная вводная формулировка).
+
+</specifics>
+
+<deferred>
+## Deferred Ideas
+
+- **WR-04** (`migrate_from_org_json` — два зависимых UPDATE в autocommit без транзакции) —
+  вне рендер-скоупа; отдельный cleanup-таск (надёжность миграции org.json → org_settings).
+- **WR-05** (report `search` LIKE-фильтр без `ESCAPE` — некорректная обработка `%`/`_`) —
+  вне скоупа Phase 15 (отчёты, не акт-рендер); отдельный багфикс.
+- UI-редактор шаблонов, импорт/экспорт .docx, прочие виды документов — вне милстоуна
+  (из «Вне скоупа» брифа).
+
+None beyond the above — discussion stayed within phase scope.
+
+</deferred>
+
+---
+
+*Phase: 15-render-word-fidelity*
+*Context gathered: 2026-07-04*
