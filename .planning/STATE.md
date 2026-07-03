@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: planning
-last_updated: "2026-07-03T00:00:00.000Z"
-last_activity: 2026-07-03
+status: Roadmap created, ready for /gsd-plan-phase 14
+last_updated: "2026-07-03T12:48:09.801Z"
+last_activity: 2026-07-03 — Roadmap created for milestone v1.1.1 (Phase 14–15, 8/8 requirements mapped)
 progress:
-  total_phases: 2
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -378,9 +378,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-06-26T01:33:48.250Z
-Stopped at: Completed 13-08-PLAN.md
-Resume file: None
+Last session: 2026-07-03T12:48:09.792Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-act-data-structure/14-CONTEXT.md
 
 ## Operator Next Steps
 
