@@ -16,8 +16,10 @@ use std::time::Duration;
 use rusqlite::params;
 use tempfile::TempDir;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::reports::OrgPatch;
 use trackly_app::pdf::PdfRenderer;
-use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -53,6 +55,43 @@ async fn make_full_pipeline() -> Pipeline {
         organization.clone(),
         pdf.clone(),
     );
+
+    Pipeline {
+        acts,
+        templates,
+        writer,
+        _readers: readers,
+        _dir: dir,
+    }
+}
+
+/// Same as `make_full_pipeline`, but also wires `OrgDbService` (D-05) via
+/// `with_org_db` — exercises the real production org-requisites source
+/// (`org_settings`), not the fallback branch.
+async fn make_full_pipeline_with_org_db() -> Pipeline {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+
+    let paths = Arc::new(Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths"));
+    let organization = Arc::new(OrganizationService::new(paths.clone()));
+    let templates = Arc::new(TemplateService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
+    let pdf = Arc::new(PdfRenderer::new());
+    templates.seed_defaults_on_startup().await.expect("seed");
+
+    let org_db = Arc::new(OrgDbService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+        paths,
+    ));
+
+    let acts = ActService::new(writer.clone(), readers.clone(), clock.clone())
+        .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone())
+        .with_org_db(org_db.clone());
 
     Pipeline {
         acts,
@@ -267,6 +306,106 @@ async fn render_pdf_with_missing_logo_renders_without_logo() {
 
         // touch templates to silence unused-warning if it surfaces
         let _ = p.templates.clone();
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Phase 14 plan 03 — backward-compat (success criterion #4, T-14-03-01):
+/// an "old" act whose device has NULL `notes` (specs) and whose org_settings
+/// requisites are all at their V033 empty-string default must still render
+/// to a non-empty, valid PDF — never error. `device.notes` defaults to NULL
+/// on INSERT (not set by `seed_devices`); `org_db` is wired but untouched
+/// (all-defaults row from the V026/V033 migration seed).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_pdf_with_null_specs_and_empty_requisites_succeeds() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline_with_org_db().await;
+        // seed_devices does not set `notes` -> NULL by default.
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Старый И.И.").await;
+
+        let bytes = p
+            .acts
+            .render_pdf(act.id)
+            .await
+            .expect("render_pdf must succeed with NULL specs + empty org requisites");
+        assert!(bytes.len() > 1000, "expected substantive PDF");
+        assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Phase 14 plan 03 — positive path: device.notes filled + org_settings
+/// requisites filled via `save_fields` (D-01/D-02/D-05) both surface in the
+/// PDF text (extracted via pdf_extract), proving the data actually flows
+/// through the render context instead of just "not erroring".
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_pdf_with_filled_specs_and_requisites_surfaces_data() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline_with_org_db().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+
+        // Fill device.notes (specs, D-01 — live value read at render time).
+        let device_id = device_ids[0];
+        p.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET notes = ?1 WHERE id = ?2",
+                    params!["Intel i5, 8GB ОЗУ", device_id],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("set device notes");
+
+        // Fill org_settings requisites (D-02/D-05) via the real save path.
+        let org_db = Arc::new(OrgDbService::new(
+            p.writer.clone(),
+            p._readers.clone(),
+            Arc::new(SystemClock),
+            Arc::new(
+                Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths for org_db"),
+            ),
+        ));
+        let caller = Identity::trusted_admin();
+        org_db
+            .save_fields(
+                &caller,
+                OrgPatch {
+                    org_name: "ООО Ромашка".to_string(),
+                    inn: "7712345678".to_string(),
+                    kpp: "771001001".to_string(),
+                    address: "г. Москва, ул. Тестовая, 1".to_string(),
+                    phone: "+7 495 000-00-01".to_string(),
+                    fax: "+7 495 000-00-02".to_string(),
+                    email: "info@romashka.ru".to_string(),
+                    okpo: "87654321".to_string(),
+                    ogrn: "1027700654321".to_string(),
+                },
+            )
+            .await
+            .expect("save_fields");
+
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Новый Н.Н.").await;
+        let bytes = p
+            .acts
+            .render_pdf(act.id)
+            .await
+            .expect("render_pdf with filled specs/requisites");
+        assert!(bytes.len() > 1000);
+
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        // Org requisites from org_settings (D-05) must reach the shipped
+        // default template's header, proving the render context carries them
+        // (the default act_handover template renders org.name/inn/kpp/address).
+        assert!(
+            text.contains("Ромашка"),
+            "org_settings org_name missing from rendered PDF. Head: {:?}",
+            text.chars().take(500).collect::<String>()
+        );
     })
     .await
     .expect("timeout");

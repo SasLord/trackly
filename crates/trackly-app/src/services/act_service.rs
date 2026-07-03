@@ -1349,7 +1349,10 @@ impl ActService {
         // org_db не подключён (helper-фикстуры без with_org_db) — деградирует
         // в пустые реквизиты, не в ошибку рендера.
         let org_legacy = pipeline.organization.read().await?;
-        let safe_logo = pipeline.organization.safe_logo_canonical(&org_legacy).await?;
+        let safe_logo = pipeline
+            .organization
+            .safe_logo_canonical(&org_legacy)
+            .await?;
         let org_dto = match pipeline.org_db {
             Some(org_db) => {
                 let (dto, _logo_bytes, _logo_mime) = org_db.get_for_pdf().await?;
