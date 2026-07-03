@@ -11,6 +11,11 @@
     kpp: string;
     address: string;
     has_logo: boolean;
+    phone: string;
+    fax: string;
+    email: string;
+    okpo: string;
+    ogrn: string;
   }
 
   let orgName = $state('');
@@ -18,6 +23,11 @@
   let kpp = $state('');
   let address = $state('');
   let hasLogo = $state(false);
+  let phone = $state('');
+  let fax = $state('');
+  let email = $state('');
+  let okpo = $state('');
+  let ogrn = $state('');
   let logoObjectUrl = $state<string | null>(null);
   let saving = $state(false);
   let uploading = $state(false);
@@ -34,6 +44,11 @@
       kpp = dto.kpp;
       address = dto.address;
       hasLogo = dto.has_logo;
+      phone = dto.phone;
+      fax = dto.fax;
+      email = dto.email;
+      okpo = dto.okpo;
+      ogrn = dto.ogrn;
       if (dto.has_logo) {
         await loadLogo();
       }
@@ -78,6 +93,11 @@
           inn,
           kpp,
           address,
+          phone,
+          fax,
+          email,
+          okpo,
+          ogrn,
         },
       });
       pushToast('success', 'Настройки организации сохранены');
@@ -232,6 +252,61 @@
         type="text"
         bind:value={address}
         placeholder="г. Москва, ул. Примерная, д. 1"
+      />
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="org-phone">Телефон</label>
+      <input
+        id="org-phone"
+        class="form-input"
+        type="text"
+        bind:value={phone}
+        placeholder="+7 (000) 000-00-00"
+      />
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="org-fax">Факс</label>
+      <input
+        id="org-fax"
+        class="form-input"
+        type="text"
+        bind:value={fax}
+        placeholder="+7 (000) 000-00-00"
+      />
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="org-email">E-mail</label>
+      <input
+        id="org-email"
+        class="form-input"
+        type="email"
+        bind:value={email}
+        placeholder="info@example.ru"
+      />
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="org-okpo">ОКПО</label>
+      <input
+        id="org-okpo"
+        class="form-input"
+        type="text"
+        bind:value={okpo}
+        placeholder="00000000"
+      />
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="org-ogrn">ОГРН</label>
+      <input
+        id="org-ogrn"
+        class="form-input"
+        type="text"
+        bind:value={ogrn}
+        placeholder="0000000000000"
       />
     </div>
   </div>
