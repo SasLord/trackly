@@ -130,6 +130,14 @@ None - no external service configuration required. This plan is data/schema-only
 - `HeaderBlock` is ready for Plan 03 to wire the requisites into the act-render context (per 14-CONTEXT D-05: switching `act_service.rs`'s org context source to `OrgDbService::get_for_pdf()`), and for Phase 15 to consume `org_phone`/`org_fax`/`org_email`/`org_okpo`/`org_ogrn` in the redesigned `act_handover.minijinja` template.
 - No blockers. The `embed_migrations!` staleness issue documented above is a build-cache gotcha, not a functional blocker — a `touch`/clean rebuild resolves it if it recurs.
 
+## Self-Check: PASSED
+
+- FOUND: migrations/V033__org_settings_requisites.sql
+- FOUND: .planning/phases/14-act-data-structure/14-01-SUMMARY.md
+- FOUND commit: 08bcddc (Task 1)
+- FOUND commit: 497efe8 (Task 2)
+- FOUND commit: dcbd2f1 (SUMMARY.md)
+
 ---
 *Phase: 14-act-data-structure*
 *Completed: 2026-07-03*
