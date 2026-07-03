@@ -100,6 +100,11 @@ pub struct ActItemDto {
     pub inventory_no: Option<String>,
     pub serial_no: Option<String>,
     pub model: Option<String>,
+    /// Живое значение `devices.notes` («Технические характеристики»), НЕ снимок
+    /// (D-01, Phase 14 plan 03): читается на момент рендера, а не на момент
+    /// создания акта. `None` при отсутствующем значении — деградирует в шаблоне
+    /// в «—»/пусто, не в ошибку.
+    pub specs: Option<String>,
     pub condition_at_time: Option<String>,
     pub complectation_at_time: Option<String>,
     /// G-10 / G-12 (Phase 03.1): device_id'ы, ещё не возвращённые.

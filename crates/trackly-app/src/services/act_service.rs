@@ -1352,7 +1352,7 @@ impl ActService {
                     "inventory_no": it.inventory_no,
                     "serial_no": it.serial_no,
                     "model": it.model,
-                    "specs": serde_json::Value::Null,
+                    "specs": it.specs,
                     "kit": it.complectation_at_time,
                     "condition": it.condition_at_time,
                     "quantity": it.quantity,
@@ -1685,7 +1685,7 @@ fn load_items_for_act(
     let mut stmt = conn
         .prepare(
             "SELECT ai.id, ai.device_id, ai.quantity, ai.condition_at_time, ai.complectation_at_time, \
-                    d.name, d.inventory_number, d.serial_number, d.model \
+                    d.name, d.inventory_number, d.serial_number, d.model, d.notes \
                FROM act_items ai \
                JOIN devices d ON d.id = ai.device_id \
               WHERE ai.act_id = ?1 \
@@ -1704,6 +1704,8 @@ fn load_items_for_act(
                 inventory_no: r.get(6)?,
                 serial_no: r.get(7)?,
                 model: r.get(8)?,
+                // D-01 (Phase 14 plan 03): live device.notes value, not a snapshot.
+                specs: r.get(9)?,
                 // G-10/G-12 (Phase 03.1): outstanding_device_ids заполняется
                 // в caller'е (ActService::get / list / search) — этот helper
                 // только подгружает joined-device fields. Initialized to empty;
