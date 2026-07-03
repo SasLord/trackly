@@ -54,7 +54,8 @@ impl OrgDbService {
             let conn = readers.acquire();
             conn.query_row(
                 "SELECT org_name, inn, kpp, address, \
-                 (logo_blob IS NOT NULL) as has_logo \
+                 (logo_blob IS NOT NULL) as has_logo, \
+                 phone, fax, email, okpo, ogrn \
                  FROM org_settings WHERE id = 1",
                 [],
                 |r| {
@@ -64,6 +65,11 @@ impl OrgDbService {
                         kpp: r.get(2)?,
                         address: r.get(3)?,
                         has_logo: r.get::<_, bool>(4)?,
+                        phone: r.get(5)?,
+                        fax: r.get(6)?,
+                        email: r.get(7)?,
+                        okpo: r.get(8)?,
+                        ogrn: r.get(9)?,
                     })
                 },
             )
@@ -88,7 +94,8 @@ impl OrgDbService {
                 conn.execute(
                     "UPDATE org_settings \
                      SET org_name=?2, inn=?3, kpp=?4, address=?5, \
-                         updated_at_utc=?6, version=version+1 \
+                         phone=?6, fax=?7, email=?8, okpo=?9, ogrn=?10, \
+                         updated_at_utc=?11, version=version+1 \
                      WHERE id=1",
                     params![
                         1i64,
@@ -96,6 +103,11 @@ impl OrgDbService {
                         patch.inn,
                         patch.kpp,
                         patch.address,
+                        patch.phone,
+                        patch.fax,
+                        patch.email,
+                        patch.okpo,
+                        patch.ogrn,
                         now
                     ],
                 )
@@ -358,7 +370,8 @@ impl OrgDbService {
             conn.query_row(
                 "SELECT org_name, inn, kpp, address, \
                  (logo_blob IS NOT NULL) as has_logo, \
-                 logo_blob, logo_mime \
+                 logo_blob, logo_mime, \
+                 phone, fax, email, okpo, ogrn \
                  FROM org_settings WHERE id = 1",
                 [],
                 |r| {
@@ -368,6 +381,11 @@ impl OrgDbService {
                         kpp: r.get(2)?,
                         address: r.get(3)?,
                         has_logo: r.get::<_, bool>(4)?,
+                        phone: r.get(7)?,
+                        fax: r.get(8)?,
+                        email: r.get(9)?,
+                        okpo: r.get(10)?,
+                        ogrn: r.get(11)?,
                     };
                     let logo_blob: Option<Vec<u8>> = r.get(5)?;
                     let logo_mime: Option<String> = r.get(6)?;

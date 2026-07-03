@@ -179,6 +179,12 @@ pub struct OrgPatch {
     pub inn: String,
     pub kpp: String,
     pub address: String,
+    /// Extended requisites (PDFA-03, Phase 14). Empty string = not filled in.
+    pub phone: String,
+    pub fax: String,
+    pub email: String,
+    pub okpo: String,
+    pub ogrn: String,
 }
 
 /// Logo upload/download DTO (SET-02).
@@ -206,6 +212,12 @@ pub struct OrgSettingsDto {
     /// True if a logo is stored (logo_blob IS NOT NULL). Frontend shows
     /// "Remove logo" button only when this is true.
     pub has_logo: bool,
+    /// Extended requisites (PDFA-03, Phase 14). Empty string = not filled in.
+    pub phone: String,
+    pub fax: String,
+    pub email: String,
+    pub okpo: String,
+    pub ogrn: String,
 }
 
 // ---------------------------------------------------------------------------

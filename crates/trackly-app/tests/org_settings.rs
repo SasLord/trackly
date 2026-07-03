@@ -46,6 +46,12 @@ async fn org_settings_save_and_load_round_trip() {
         let initial = svc.get().await.expect("get initial");
         assert_eq!(initial.org_name, "Ваша организация");
         assert!(!initial.has_logo);
+        // V033: новые реквизиты дефолтятся в пустую строку (не placeholder), per D-02
+        assert_eq!(initial.phone, "");
+        assert_eq!(initial.fax, "");
+        assert_eq!(initial.email, "");
+        assert_eq!(initial.okpo, "");
+        assert_eq!(initial.ogrn, "");
 
         // Сохраняем новые данные
         let patch = OrgPatch {
@@ -53,6 +59,11 @@ async fn org_settings_save_and_load_round_trip() {
             inn: "7712345678".to_string(),
             kpp: "771001001".to_string(),
             address: "г. Москва, ул. Тестовая, 42".to_string(),
+            phone: "+7 495 123-45-67".to_string(),
+            fax: "+7 495 123-45-68".to_string(),
+            email: "info@test.ru".to_string(),
+            okpo: "12345678".to_string(),
+            ogrn: "1027700123456".to_string(),
         };
         svc.save_fields(&caller, patch).await.expect("save_fields");
 
@@ -62,6 +73,11 @@ async fn org_settings_save_and_load_round_trip() {
         assert_eq!(updated.inn, "7712345678");
         assert_eq!(updated.kpp, "771001001");
         assert_eq!(updated.address, "г. Москва, ул. Тестовая, 42");
+        assert_eq!(updated.phone, "+7 495 123-45-67");
+        assert_eq!(updated.fax, "+7 495 123-45-68");
+        assert_eq!(updated.email, "info@test.ru");
+        assert_eq!(updated.okpo, "12345678");
+        assert_eq!(updated.ogrn, "1027700123456");
         assert!(
             !updated.has_logo,
             "has_logo должен быть false — лого не загружали"
