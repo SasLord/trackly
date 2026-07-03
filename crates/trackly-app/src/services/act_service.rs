@@ -33,6 +33,7 @@ use crate::dto::act::{
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
+use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
 use crate::services::template_service::TemplateService;
 
@@ -52,6 +53,11 @@ pub struct ActService {
     pub(crate) templates: Option<Arc<TemplateService>>,
     pub(crate) organization: Option<Arc<OrganizationService>>,
     pub(crate) pdf: Option<Arc<PdfRenderer>>,
+    /// D-05 (Phase 14 plan 03): единый источник org-реквизитов для act-рендера
+    /// — `org_settings` (то, что пишет Settings UI), не `org.json`. `organization`
+    /// остаётся подключённым для logo-пути (`safe_logo_canonical`) и
+    /// `render_acceptance_pdf`, который по D-03 остаётся вне скоупа этой фазы.
+    pub(crate) org_db: Option<Arc<OrgDbService>>,
 }
 
 impl ActService {
@@ -70,12 +76,18 @@ impl ActService {
             templates: None,
             organization: None,
             pdf: None,
+            org_db: None,
         }
     }
 
-    /// Builder: подключить PDF pipeline deps (templates + organization + pdf).
+    /// Builder: подключить PDF pipeline deps (templates + organization + pdf + org_db).
     /// Используется в `AppCtx::build` (production runtime) и в plan-04
     /// integration tests, проверяющих render_pdf end-to-end.
+    ///
+    /// `org_db` — Optional (Phase 14 plan 03 D-05): pre-existing test fixtures
+    /// calling the old 3-arg signature would break; `with_org_db` sets it
+    /// separately so `ActService::new(...).with_pdf_pipeline(...)` call sites
+    /// without org_db keep compiling (org-context degrades — see `pdf_pipeline()`).
     pub fn with_pdf_pipeline(
         mut self,
         templates: Arc<TemplateService>,
@@ -85,6 +97,14 @@ impl ActService {
         self.templates = Some(templates);
         self.organization = Some(organization);
         self.pdf = Some(pdf);
+        self
+    }
+
+    /// Builder: подключить `OrgDbService` (D-05) — источник org-реквизитов для
+    /// act-рендера. Отдельный builder-метод, чтобы не ломать существующие
+    /// call sites `with_pdf_pipeline(templates, organization, pdf)`.
+    pub fn with_org_db(mut self, org_db: Arc<OrgDbService>) -> Self {
+        self.org_db = Some(org_db);
         self
     }
 
@@ -1322,8 +1342,32 @@ impl ActService {
     pub async fn render_pdf(&self, act_id: i64) -> Result<Vec<u8>, AppError> {
         let pipeline = self.pdf_pipeline()?;
         let act = self.get(act_id).await?;
-        let org = pipeline.organization.read().await?;
-        let safe_logo = pipeline.organization.safe_logo_canonical(&org).await?;
+        // D-05 (Phase 14 plan 03): org-реквизиты читаются из `org_settings`
+        // (единый источник, который пишет Settings UI), а не из org.json.
+        // `organization` (org.json) остаётся подключён только для logo-пути
+        // (`safe_logo_canonical`). Fallback на пустой OrgSettingsDto, если
+        // org_db не подключён (helper-фикстуры без with_org_db) — деградирует
+        // в пустые реквизиты, не в ошибку рендера.
+        let org_legacy = pipeline.organization.read().await?;
+        let safe_logo = pipeline.organization.safe_logo_canonical(&org_legacy).await?;
+        let org_dto = match pipeline.org_db {
+            Some(org_db) => {
+                let (dto, _logo_bytes, _logo_mime) = org_db.get_for_pdf().await?;
+                dto
+            }
+            None => crate::dto::reports::OrgSettingsDto {
+                org_name: org_legacy.name.clone(),
+                inn: org_legacy.inn.clone(),
+                kpp: org_legacy.kpp.clone(),
+                address: org_legacy.address.clone(),
+                has_logo: false,
+                phone: String::new(),
+                fax: String::new(),
+                email: String::new(),
+                okpo: String::new(),
+                ogrn: String::new(),
+            },
+        };
         let template_src = pipeline.templates.get_active("act_handover").await?;
 
         // Optional parent block для return-актов (Plan 04 рендерит handover,
@@ -1362,10 +1406,15 @@ impl ActService {
 
         let ctx = serde_json::json!({
             "org": {
-                "name": org.name,
-                "inn": org.inn,
-                "kpp": org.kpp,
-                "address": org.address,
+                "name": org_dto.org_name,
+                "inn": org_dto.inn,
+                "kpp": org_dto.kpp,
+                "address": org_dto.address,
+                "phone": org_dto.phone,
+                "fax": org_dto.fax,
+                "email": org_dto.email,
+                "okpo": org_dto.okpo,
+                "ogrn": org_dto.ogrn,
                 "logo_path": safe_logo.map(|p| p.display().to_string()),
             },
             "act": {
@@ -1495,12 +1544,16 @@ impl ActService {
     }
 
     /// Возвращает PDF-pipeline deps как refs или `Internal` если не подключены.
+    /// `org_db` — Option-aware (D-05): helper-фикстуры (`ActService::new` без
+    /// `with_org_db`) не падают, только org-контекст рендера деградирует к
+    /// пустым реквизитам (см. `render_pdf`'s fallback branch).
     fn pdf_pipeline(&self) -> Result<PdfPipelineRefs<'_>, AppError> {
         match (&self.templates, &self.organization, &self.pdf) {
             (Some(t), Some(o), Some(p)) => Ok(PdfPipelineRefs {
                 templates: t,
                 organization: o,
                 pdf: p,
+                org_db: self.org_db.as_ref(),
             }),
             _ => Err(AppError::Internal {
                 source_chain: "ActService::render_pdf called without with_pdf_pipeline".into(),
@@ -1513,6 +1566,7 @@ struct PdfPipelineRefs<'a> {
     templates: &'a Arc<TemplateService>,
     organization: &'a Arc<OrganizationService>,
     pdf: &'a Arc<PdfRenderer>,
+    org_db: Option<&'a Arc<OrgDbService>>,
 }
 
 // ---------------------------------------------------------------------------

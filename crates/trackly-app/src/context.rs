@@ -248,12 +248,13 @@ impl AppCtx {
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         // ActService с подключённым PDF pipeline.
+        // D-05 (Phase 14 plan 03): org_db прокинут отдельным builder-методом
+        // (`with_org_db`) — источник org-реквизитов act-рендера (org_settings),
+        // единый с тем, что пишет Settings UI. org_db уже создан выше (до acts).
         let acts = Arc::new(
-            ActService::new(writer.clone(), readers.clone(), clock.clone()).with_pdf_pipeline(
-                templates.clone(),
-                organization.clone(),
-                pdf.clone(),
-            ),
+            ActService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone())
+                .with_org_db(org_db.clone()),
         );
 
         // Phase 4 Plan 03: cartridge service.
