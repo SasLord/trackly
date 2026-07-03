@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: Roadmap created, ready for /gsd-plan-phase 14
-last_updated: "2026-07-03T12:48:09.801Z"
-last_activity: 2026-07-03 — Roadmap created for milestone v1.1.1 (Phase 14–15, 8/8 requirements mapped)
+status: executing
+last_updated: "2026-07-03T13:08:59.887Z"
+last_activity: 2026-07-03 -- Phase 14 planning complete
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 14 - Данные и структура акта (not started)
 Plan: —
-Status: Roadmap created, ready for /gsd-plan-phase 14
-Last activity: 2026-07-03 — Roadmap created for milestone v1.1.1 (Phase 14–15, 8/8 requirements mapped)
+Status: Ready to execute
+Last activity: 2026-07-03 -- Phase 14 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
