@@ -99,7 +99,19 @@ Trackly — портативное приложение для учёта тех
 4. Кириллица (включая длинные значения комплектации/характеристик и реквизиты организации) рендерится корректно во всех блоках нового шаблона — без квадратов/пропусков символов.
 5. Дефолтный `.minijinja`-шаблон обновлён под новый вид, сидируется при первом запуске через `template_service`, и остаётся редактируемым через `document_templates` (не хардкод в Rust сверх дефолт-сида); существующие PDF-пайплайн тесты проходят, добавлены новые тесты на мультиустройство (1 vs N позиций) и новый шаблон.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+**Wave 1**
+
+- [ ] 15-01-PLAN.md — Renderer capability: DocSpec Signature two-line sublabels (D-07), render_header_two_column, wrap_text_to_width (ttf-parser), extended Signature render arm
+
+**Wave 2** *(depends on Wave 1)*
+
+- [ ] 15-02-PLAN.md — Wire pipeline: fix WR-03 logo-BLOB plumbing in act_service.rs, DeviceCard hybrid section (D-06), rewrite act_handover.minijinja (D-09), sync validate_preview demo_ctx
+
+**Wave 3** *(depends on Wave 2)*
+
+- [ ] 15-03-PLAN.md — Test coverage: multi-device (1 vs N) wrap tests, two-line signature test, full-pipeline logo test (closes WR-03 regression gap), regenerate pdf_determinism fixture
 
 ## Progress
 
@@ -122,7 +134,7 @@ Trackly — портативное приложение для учёта тех
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
-| 15. Рендер и соответствие образцу | v1.1.1 | 0/TBD | Not started | - |
+| 15. Рендер и соответствие образцу | v1.1.1 | 0/3 | Planned | - |
 
 ## Coverage
 
@@ -163,4 +175,4 @@ Trackly — портативное приложение для учёта тех
 | ADV-01..05 (SSO/REST API наружу/Signature pad/доп. вендоры принтеров/Postgres) | Преждевременная сложность для текущего масштаба |
 
 ---
-*Last updated: 2026-07-03 — milestone v1.1.1 roadmap created (Phases 14–15).*
+*Last updated: 2026-07-04 — Phase 15 planned (3 plans, 3 waves).*
