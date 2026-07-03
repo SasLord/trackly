@@ -93,6 +93,7 @@ None - no external service configuration required.
 
 - FOUND: ui/src/features/settings/OrgSettings.svelte (bind:value for phone/fax/email/okpo/ogrn all present, count=1 each)
 - FOUND commit: e09ce2e (Task 2)
+- FOUND commit: b3fb9da (SUMMARY.md)
 
 ---
 *Phase: 14-act-data-structure*
