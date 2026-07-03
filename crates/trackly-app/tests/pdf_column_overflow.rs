@@ -23,6 +23,7 @@ fn spec_with_long_name() -> DocSpec {
             logo_mime: None,
             act_label: "Акт №1".into(),
             date_label: "31 мая 2026".into(),
+            ..Default::default()
         },
         sections: vec![Section::ItemsTable {
             columns: vec!["Устр-во".into(), "Инв.№".into(), "Кол-во".into()],

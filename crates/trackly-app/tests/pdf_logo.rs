@@ -34,6 +34,7 @@ fn base_spec(logo_path: Option<String>) -> DocSpec {
             logo_mime: None,
             act_label: "Акт".into(),
             date_label: "1 января 2026 г.".into(),
+            ..Default::default()
         },
         sections: vec![Section::Paragraph {
             text: "Тело документа".into(),
@@ -115,6 +116,7 @@ fn logo_bytes_blob_renders_image_in_pdf() {
             logo_mime: Some("image/png".into()),
             act_label: "Акт".into(),
             date_label: "1 января 2026 г.".into(),
+            ..Default::default()
         },
         sections: vec![Section::Paragraph {
             text: "Тело документа с BLOB логотипом".into(),
@@ -153,6 +155,7 @@ fn logo_bytes_takes_priority_over_logo_path() {
             logo_mime: Some("image/png".into()),
             act_label: "Акт".into(),
             date_label: "1 января 2026 г.".into(),
+            ..Default::default()
         },
         sections: vec![],
     };

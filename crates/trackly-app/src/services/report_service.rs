@@ -527,6 +527,11 @@ impl ReportService {
             logo_path: None,
             logo_bytes,
             logo_mime,
+            org_phone: org.phone.clone(),
+            org_fax: org.fax.clone(),
+            org_email: org.email.clone(),
+            org_okpo: org.okpo.clone(),
+            org_ogrn: org.ogrn.clone(),
             act_label: report_name.to_string(),
             date_label: period_label.to_string(),
         };

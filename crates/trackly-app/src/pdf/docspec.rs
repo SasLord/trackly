@@ -46,6 +46,19 @@ pub struct HeaderBlock {
     /// MIME type of the BLOB logo ("image/png" | "image/jpeg" | "image/svg+xml").
     #[serde(default)]
     pub logo_mime: Option<String>,
+    /// Extended requisites (PDFA-03, Phase 14): phone/fax/email/OKPO/OGRN.
+    /// `#[serde(default)]` keeps old templates/JSON that omit these keys
+    /// deserializing correctly with an empty string (RESEARCH Pitfall 7).
+    #[serde(default)]
+    pub org_phone: String,
+    #[serde(default)]
+    pub org_fax: String,
+    #[serde(default)]
+    pub org_email: String,
+    #[serde(default)]
+    pub org_okpo: String,
+    #[serde(default)]
+    pub org_ogrn: String,
     /// Russian display label for the act, e.g. «Акт приёма-передачи №42».
     pub act_label: String,
     /// Localized human-readable date, e.g. «28 мая 2026 г.».
@@ -122,6 +135,7 @@ mod tests {
                 logo_mime: None,
                 act_label: "Акт приёма-передачи №42".into(),
                 date_label: "28 мая 2026 г.".into(),
+                ..Default::default()
             },
             sections: vec![
                 Section::Heading {
