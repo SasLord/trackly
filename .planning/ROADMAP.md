@@ -78,7 +78,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-02-PLAN.md — Сквозной путь реквизитов: HTTP/Tauri passthrough + bindings + input-поля Настроек
+- [x] 14-02-PLAN.md — Сквозной путь реквизитов: HTTP/Tauri passthrough + bindings + input-поля Настроек
 - [ ] 14-03-PLAN.md — Контекст акта: specs↔notes (D-01) + источник org на org_settings (D-05) + backward-compat
 
 ---
@@ -121,7 +121,7 @@ Trackly — портативное приложение для учёта тех
 | 11. Заявки/employee UX | v1.1 | 3/3 | Complete | 2026-06-22 |
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
-| 14. Данные и структура акта | v1.1.1 | 1/3 | In Progress|  |
+| 14. Данные и структура акта | v1.1.1 | 2/3 | In Progress|  |
 | 15. Рендер и соответствие образцу | v1.1.1 | 0/TBD | Not started | - |
 
 ## Coverage

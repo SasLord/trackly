@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-03T14:26:01.934Z"
+last_updated: "2026-07-03T14:31:59.313Z"
 last_activity: 2026-07-03
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 14 (act-data-structure) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-03
 
@@ -147,6 +147,7 @@ Last activity: 2026-07-03
 | Phase 13 P07 | 25min | 2 tasks | 2 files |
 | Phase 13 P08 | 15min | 3 tasks | 1 files |
 | Phase 14 P01 | 22min | 2 tasks | 10 files |
+| Phase 14 P02 | 12min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -323,6 +324,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 14-01: org_settings new requisite columns default to empty string (not V026-style placeholder) — missing requisites degrade to blank per D-02
 - [Phase ?]: 14-01: HeaderBlock direct-construction sites use ..Default::default() spread for new fields where site doesn't need requisite content
 - [Phase ?]: 14-01: new org_settings columns always appended last in SQL SELECT/UPDATE to preserve existing r.get(N) ordinal indexes
+- [Phase 14]: 14-02: Task 1 required no code changes to http/settings_org.rs or tauri_cmds/settings_org.rs — both pass OrgPatch through opaquely; bindings.ts already carried the 5 new fields from Plan 01
 
 ### Pending Todos
 
@@ -382,7 +384,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-03T14:26:01.929Z
+Last session: 2026-07-03T14:30:31.003Z
 Stopped at: Completed 14-01-PLAN.md
 Resume file: None
 
