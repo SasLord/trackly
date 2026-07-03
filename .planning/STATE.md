@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: milestone_complete
-last_updated: 2026-07-03T16:40:13.598Z
+status: completed
+last_updated: "2026-07-03T18:44:37.572Z"
 last_activity: 2026-07-03
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 100
-stopped_at: Milestone complete (Phase 14 was final phase)
+  percent: 50
 ---
 
 # Project State
@@ -389,9 +388,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-03T15:39:02.229Z
-Stopped at: Completed 14-03-PLAN.md (Phase 14 done — all 3 plans)
-Resume file: None
+Last session: 2026-07-03T18:44:37.564Z
+Stopped at: Phase 15 context gathered
+Resume file: .planning/phases/15-render-word-fidelity/15-CONTEXT.md
 
 ## Operator Next Steps
 
