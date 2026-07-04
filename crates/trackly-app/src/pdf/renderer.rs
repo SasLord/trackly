@@ -1375,9 +1375,7 @@ mod tests {
 
         // Enough DeviceCard entries (each with populated long_fields) that
         // cumulative measured height exceeds one A4 page's usable height.
-        let sections: Vec<Section> = (1..=12)
-            .map(|i| long_device_card(i, &long_kit))
-            .collect();
+        let sections: Vec<Section> = (1..=12).map(|i| long_device_card(i, &long_kit)).collect();
 
         let spec = device_card_spec(sections);
         let r = PdfRenderer::new();
@@ -1433,9 +1431,7 @@ mod tests {
         // Enough cards that the page break falls mid-sequence — chosen so a
         // card straddles the boundary if pagination did NOT keep cards
         // atomic.
-        let sections: Vec<Section> = (1..=12)
-            .map(|i| long_device_card(i, &long_kit))
-            .collect();
+        let sections: Vec<Section> = (1..=12).map(|i| long_device_card(i, &long_kit)).collect();
 
         let spec = device_card_spec(sections);
         let r = PdfRenderer::new();

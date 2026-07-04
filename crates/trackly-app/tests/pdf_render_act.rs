@@ -188,6 +188,17 @@ async fn render_handover_act_produces_cyrillic_pdf() {
             "Act number missing. Head: {:?}",
             text.chars().take(300).collect::<String>()
         );
+
+        // Phase 15 plan 04 (WR-05 gap closure): a short 2-device act with no
+        // long fields must still render as exactly 1 page — page-count
+        // regression guard, not just an absence-of-clipping assumption.
+        assert_eq!(
+            pdf_extract::extract_text_from_mem_by_pages(&bytes)
+                .expect("pages by page")
+                .len(),
+            1,
+            "single short device act must still render as exactly 1 page"
+        );
     })
     .await
     .expect("timeout");
@@ -310,6 +321,75 @@ async fn render_handover_multi_device_wraps_long_fields() {
              Head: {:?}",
             text.chars().take(800).collect::<String>()
         );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Phase 15 plan 04 — WR-05/PDFA-02 gap closure: a realistic multi-device act
+/// (8 devices, each with a populated 150+ char Cyrillic `complectation_at_time`)
+/// must render as a REAL multi-page PDF — measured via
+/// `pdf_extract::extract_text_from_mem_by_pages`'s page-tree-aware page count,
+/// not via text-extraction alone (which cannot detect content drawn past the
+/// visible page area). Also asserts no data loss: every seeded device's name
+/// is still present somewhere across the full multi-page document.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_multi_device_paginates_when_overflowing_one_page() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 8).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Смирнов С.С.").await;
+
+        let long_kit = "Блок питания, кабель питания, кабель HDMI, сумка для переноски, \
+            документация на русском языке, гарантийный талон, комплект крепёжных винтов, \
+            салфетка для протирки экрана, дополнительный набор переходников и адаптеров \
+            для подключения к разным типам мониторов и периферийных устройств"
+            .to_string();
+        assert!(
+            long_kit.chars().count() > 150,
+            "test fixture string must exceed 150 chars"
+        );
+
+        // Set complectation_at_time on ALL 8 act_items rows (not just 2) —
+        // this test needs enough cumulative height to force a real page
+        // break, unlike render_handover_multi_device_wraps_long_fields above.
+        for item in &act.items {
+            let act_id = act.id;
+            let device_id = item.device_id;
+            let value = long_kit.clone();
+            p.writer
+                .execute(move |conn| {
+                    conn.execute(
+                        "UPDATE act_items SET complectation_at_time = ?1 \
+                         WHERE act_id = ?2 AND device_id = ?3",
+                        params![value, act_id, device_id],
+                    )
+                    .map(|_| ())
+                    .map_err(map_rusqlite)
+                })
+                .await
+                .expect("set complectation_at_time");
+        }
+
+        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages by page");
+        assert!(
+            pages.len() > 1,
+            "expected a real multi-page PDF for 8 devices with long fields, got {} page(s)",
+            pages.len()
+        );
+
+        // No data loss: every seeded device's name survives somewhere across
+        // the full multi-page document.
+        let full_text = pages.join("\n");
+        for i in 0..8 {
+            let expected_name = format!("Ноутбук-{i}");
+            assert!(
+                full_text.contains(&expected_name),
+                "device name {expected_name:?} missing from full multi-page document"
+            );
+        }
     })
     .await
     .expect("timeout");
