@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: verifying
-last_updated: "2026-07-04T07:16:06.157Z"
-last_activity: 2026-07-04
+status: completed
+last_updated: "2026-07-04T09:04:15.212Z"
+last_activity: 2026-07-04 -- Plan 15-04 (gap-closure) executed and committed
 progress:
   total_phases: 2
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 7
+  completed_plans: 7
   percent: 100
 ---
 
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 15 (render-word-fidelity) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-07-04
+Phase: 15 (render-word-fidelity) — COMPLETE (4/4 plans)
+Plan: 4 of 4
+Status: Phase 15 complete — WR-05 pagination gap closed (15-04)
+Last activity: 2026-07-04 -- Plan 15-04 (gap-closure) executed and committed
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -153,6 +153,7 @@ Last activity: 2026-07-04
 | Phase 15 P01 | 25min | 2 tasks | 3 files |
 | Phase 15 P02 | 35min | 3 tasks | 5 files |
 | Phase 15 P03 | 50 | 3 tasks | 5 files |
+| Phase 15 P04 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -341,6 +342,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: 15-03: render_handover_act_produces_cyrillic_pdf assertion updated from stale giver_name-in-body wording to receiver_name (D-09 removed giver_name from body) — planned N=1 regression anchor
 - [Phase ?]: [Phase 15]: 15-03: acts_e2e_smoke.rs handover_pdf_render_within_e2e had the same D-09 giver_name-in-body drift as pdf_render_act.rs but was outside the plan's files_modified — fixed as Rule 1 auto-fix (same root cause, single assertion line)
 - [Phase ?]: [Phase 15]: 15-03: act_42.sha256 regenerated (88df7f9d -> caaca9c5) via deliberate single-step procedure (run test, copy printed hash, verify act_42.json fixture input untouched) per T-15-09 mitigation — not a blanket auto-accept
+- [Phase ?]: [Phase 15]: 15-04: Header renders once on page 1 only (WR-05 gap closure)
+- [Phase ?]: [Phase 15]: 15-04: DeviceCard measured via measure_device_card_height (mirrors draw-time wrap_text_to_width arithmetic) — never split across a page boundary; other section variants use a cheap pre-draw bounds check
+- [Phase ?]: [Phase 15]: 15-04: act_42.sha256 verified unchanged (not regenerated) — pagination bounds check never fires for the single-device fixture
 
 ### Pending Todos
 
@@ -400,8 +404,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-04T07:16:06.152Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-07-04T09:04:15.207Z
+Stopped at: Completed 15-04-PLAN.md (gap-closure, WR-05 pagination) — Phase 15 complete
 Resume file: None
 
 ## Operator Next Steps

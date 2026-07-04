@@ -115,7 +115,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 4** *(gap closure — depends on Wave 3; closes WR-05/PDFA-02 pagination gap from 15-VERIFICATION.md)*
 
-- [ ] 15-04-PLAN.md — Page-break/pagination in render_docspec/render_section (DeviceCard kept atomic across page boundaries) + full-pipeline page-count regression test
+- [x] 15-04-PLAN.md — Page-break/pagination in render_docspec/render_section (DeviceCard kept atomic across page boundaries) + full-pipeline page-count regression test
 
 ## Progress
 
@@ -138,7 +138,7 @@ Trackly — портативное приложение для учёта тех
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
-| 15. Рендер и соответствие образцу | v1.1.1 | 3/3 | Complete   | 2026-07-04 |
+| 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 
 ## Coverage
 
