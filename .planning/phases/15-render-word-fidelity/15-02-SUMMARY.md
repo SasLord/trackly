@@ -117,3 +117,7 @@ None — no external service configuration required.
 ---
 *Phase: 15-render-word-fidelity*
 *Completed: 2026-07-04*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk; all 4 commit hashes (0161621, a44d455, 6ad0202, acad13b) verified present in git log.
