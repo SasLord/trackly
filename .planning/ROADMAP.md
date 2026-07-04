@@ -103,7 +103,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 1**
 
-- [ ] 15-01-PLAN.md — Renderer capability: DocSpec Signature two-line sublabels (D-07), render_header_two_column, wrap_text_to_width (ttf-parser), extended Signature render arm
+- [x] 15-01-PLAN.md — Renderer capability: DocSpec Signature two-line sublabels (D-07), render_header_two_column, wrap_text_to_width (ttf-parser), extended Signature render arm
 
 **Wave 2** *(depends on Wave 1)*
 
@@ -134,7 +134,7 @@ Trackly — портативное приложение для учёта тех
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
-| 15. Рендер и соответствие образцу | v1.1.1 | 0/3 | Planned | - |
+| 15. Рендер и соответствие образцу | v1.1.1 | 1/3 | In Progress|  |
 
 ## Coverage
 

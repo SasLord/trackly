@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-03T19:40:50.026Z"
-last_activity: 2026-07-03 -- Phase 15 planning complete
+last_updated: "2026-07-04T06:09:56.895Z"
+last_activity: 2026-07-04
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 50
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** Phase 15 — render-word-fidelity
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
+Phase: 15 (render-word-fidelity) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-03 -- Phase 15 planning complete
+Last activity: 2026-07-04
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -150,6 +150,7 @@ Last activity: 2026-07-03 -- Phase 15 planning complete
 | Phase 14 P01 | 22min | 2 tasks | 10 files |
 | Phase 14 P02 | 12min | 2 tasks | 1 files |
 | Phase 14 P03 | 30min | 3 tasks | 4 files |
+| Phase 15 P01 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -329,6 +330,9 @@ Recent decisions affecting current work:
 - [Phase 14]: 14-02: Task 1 required no code changes to http/settings_org.rs or tauri_cmds/settings_org.rs — both pass OrgPatch through opaquely; bindings.ts already carried the 5 new fields from Plan 01
 - [Phase 14]: 14-03: org_db wired via separate with_org_db() builder (not folded into with_pdf_pipeline's 3-arg signature) — avoids breaking existing test call sites; org_db is Option-aware end-to-end
 - [Phase 14]: 14-03: render_pdf fallback (org_db=None) reads legacy org.json name/inn/kpp/address, defaults 5 new requisites to empty strings — matches D-02 degrade-to-blank contract
+- [Phase 15]: 15-01: Section::Signature sublabels use plain #[serde(default)] + Option<String> idiom (defaulting to None, not the fn-default idiom used for spacer_pt) so absence renders the pre-Phase-15 single-line layout unchanged
+- [Phase 15]: 15-01: ttf-parser promoted to direct dependency (0.25.1, exact-pinned, already transitive via krilla->rustybuzz/skrifa) via Task 0 human-verify checkpoint
+- [Phase 15]: 15-01: 2-column header grid stays fixed regardless of logo presence (no adaptive single-column fallback); empty requisite lines (phone/fax/email/OKPO+OGRN) skipped entirely rather than shown as blank placeholder
 
 ### Pending Todos
 
@@ -388,9 +392,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-03T18:44:37.564Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-render-word-fidelity/15-CONTEXT.md
+Last session: 2026-07-04T06:09:56.890Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: .planning/phases/15-render-word-fidelity/15-02-PLAN.md
 
 ## Operator Next Steps
 
