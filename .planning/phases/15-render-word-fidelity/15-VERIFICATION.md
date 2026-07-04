@@ -1,9 +1,11 @@
 ---
 phase: 15-render-word-fidelity
-verified: 2026-07-04T08:00:00Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-07-04T10:00:00Z
+status: passed
+score: 5/5 must-haves verified
 overrides_applied: 0
+reverification: "Gap WR-05/PDFA-02 closed by plan 15-04 (see 'Re-Verification' section at end); prior gaps_found history preserved below."
+prior_status: gaps_found
 gaps:
   - truth: "An act with N (2+) devices renders each device's identification + long fields as a repeating per-device card, all positions present, no clipping/overlap (roadmap Success Criterion #2: 'без обрезки/наложения текста')"
     status: partial
@@ -145,3 +147,37 @@ This is not a fabricated-summary problem — the executor's SUMMARYs accurately 
 
 *Verified: 2026-07-04*
 *Verifier: Claude (gsd-verifier)*
+
+---
+
+## Re-Verification (2026-07-04, after plan 15-04)
+
+**Verdict: PASSED — 5/5 must-haves verified. The single prior gap (WR-05 / PDFA-02) is closed.**
+
+Gap-closure plan `15-04` added vertical pagination to the krilla renderer. Re-verification confirms:
+
+| WR-05 must-have | Evidence | Status |
+|-----------------|----------|--------|
+| `render_docspec`/`render_section` compare the running y-cursor against `A4_HEIGHT_PT - MARGIN_PT` and start a new page (y reset to `MARGIN_PT`) before overflowing content | `renderer.rs:147` (`page_bottom = A4_HEIGHT_PT - MARGIN_PT`), section loop `renderer.rs:151-188` triggers `doc.start_page_with(...)` + `y = MARGIN_PT` on overflow for both DeviceCard (`:158-164`) and non-card sections (`:171-177`) | ✓ CLOSED |
+| DeviceCard kept atomic across a page break (whole card moves to a fresh page, never split mid-card) | Measure-then-place: `measure_device_card_height` (`renderer.rs:422`) computes full card height using the same `wrap_text_to_width` calls as the draw arm; the card is moved as a unit before drawing (`:157-164`) | ✓ CLOSED |
+| Multi-page verified by counting ACTUAL PDF page objects, not text-extraction alone | `render_handover_multi_device_paginates_when_overflowing_one_page` (`pdf_render_act.rs:337`) asserts `pdf_extract::extract_text_from_mem_by_pages(...).len() > 1` for an 8-device act with long Cyrillic fields, plus a no-data-loss check that all 8 device names survive across pages | ✓ CLOSED |
+| Common single-device / typical act still renders exactly 1 page (no regression) | `fixture_act_42_renders_to_known_hash` passes with `act_42.sha256` **unchanged** (byte-identical output); `rendering_twice_yields_identical_bytes` still green | ✓ CLOSED |
+
+### Re-Verification Spot-Checks (run by orchestrator, one `cargo test` at a time per project rule)
+
+| Command | Result |
+|---------|--------|
+| `cargo test -p trackly-app --test pdf_render_act -- --test-threads=1` | 11/11 ok (incl. new pagination test) |
+| `cargo test -p trackly-app --test pdf_determinism -- --test-threads=1` | 2/2 ok — `act_42.sha256` fixture unchanged |
+
+Executor's full-suite run (`TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app`) reported green with clippy `-D warnings` and `fmt --check` clean on the same tree.
+
+### Requirements Coverage — updated
+
+| Requirement | Prior | Now | Note |
+|-------------|-------|-----|------|
+| PDFA-02 | ⚠️ PARTIAL (pagination missing) | ✓ SATISFIED | Multi-device acts now paginate; cards atomic; verified by real page-count assertion. Roadmap Success Criterion #2 ("без обрезки/наложения текста") met for realistic multi-device counts. |
+
+**Advisory (not blocking, unchanged from prior review):** WR-01/02/03/04/06 from `15-REVIEW.md` remain open fidelity/perf refinements (header logo/text overlap clamp, width clamps, space-width heuristic, regex recompilation). None defeats a phase must-have; carry to backlog if desired.
+
+*Re-verified: 2026-07-04 — Claude (orchestrator, inline; gsd-verifier hit session limit before writing)*
