@@ -150,14 +150,14 @@ Trackly — портативное приложение для учёта тех
 
 | Requirement | Phase | Status |
 |--------------|-------|--------|
-| PDFA-01 | Phase 15 | Pending |
-| PDFA-02 | Phase 15 | Pending |
-| PDFA-03 | Phase 14 | Pending |
-| PDFA-04 | Phase 14 | Pending |
-| PDFA-05 | Phase 15 | Pending |
-| PDFA-06 | Phase 14 | Pending |
-| PDFA-07 | Phase 15 | Pending |
-| PDFA-08 | Phase 15 | Pending |
+| PDFA-01 | Phase 15 | Complete |
+| PDFA-02 | Phase 15 | Complete |
+| PDFA-03 | Phase 14 | Complete |
+| PDFA-04 | Phase 14 | Complete |
+| PDFA-05 | Phase 15 | Complete |
+| PDFA-06 | Phase 14 | Complete |
+| PDFA-07 | Phase 15 | Complete |
+| PDFA-08 | Phase 15 | Complete |
 
 ## Out of v1.1.1 Roadmap (Deferred)
 
