@@ -108,6 +108,22 @@ pub enum Section {
     },
     /// Vertical spacer.
     Spacer { height_pt: f32 },
+    /// Per-device hybrid card (D-06, Phase 15 plan 02): compact
+    /// identification fields (Инв.№/Серийный №/Модель) plus wrapped long
+    /// free-text fields (Комплектация/Технические характеристики/
+    /// Состояние). Reuses `KvRow` for both lists — `identification` renders
+    /// via the same compact key/value layout as `KeyValueTable`;
+    /// `long_fields` renders each row's value word-wrapped via
+    /// `wrap_text_to_width` across the full content width, never truncated.
+    /// Empty-value long fields are expected to be filtered out by the
+    /// template before emission (not by the renderer), matching the
+    /// existing conditional-injection idiom used elsewhere in
+    /// `act_handover.minijinja`.
+    DeviceCard {
+        heading: String,
+        identification: Vec<KvRow>,
+        long_fields: Vec<KvRow>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -229,6 +245,21 @@ mod tests {
         };
         let json = serde_json::to_value(&sig).expect("serialize signature");
         assert_eq!(json["type"], "signature");
+
+        let device_card = Section::DeviceCard {
+            heading: "Устройство №1: Ноутбук".into(),
+            identification: vec![KvRow {
+                key: "Инв.№".into(),
+                value: "ИНВ-001".into(),
+            }],
+            long_fields: vec![KvRow {
+                key: "Комплектация".into(),
+                value: "Зарядное устройство, сумка".into(),
+            }],
+        };
+        let json = serde_json::to_value(&device_card).expect("serialize device_card");
+        assert_eq!(json["type"], "device_card");
+        assert_eq!(json["heading"], "Устройство №1: Ноутбук");
     }
 
     #[test]

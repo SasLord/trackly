@@ -113,6 +113,14 @@ impl PdfRenderer {
             source_chain: "krilla Font::new(bold): None — invalid TTF".into(),
         })?;
 
+        // ttf-parser Face over the same regular-font bytes — used by
+        // `wrap_text_to_width` for real glyph-metrics word-wrap in
+        // `Section::DeviceCard` long fields (Phase 15 plan 02, D-06).
+        let regular_face =
+            Face::parse(self.font_regular_bytes.as_ref(), 0).map_err(|e| AppError::Internal {
+                source_chain: format!("ttf_parser Face::parse(regular): {e:?}"),
+            })?;
+
         let page_settings =
             PageSettings::from_wh(A4_WIDTH_PT, A4_HEIGHT_PT).ok_or_else(|| AppError::Internal {
                 source_chain: "krilla PageSettings::from_wh: invalid A4 dimensions".into(),
@@ -133,7 +141,14 @@ impl PdfRenderer {
 
             // Walk DocSpec sections.
             for section in &spec.sections {
-                y = render_section(&mut surface, section, &font_regular, &font_bold, y);
+                y = render_section(
+                    &mut surface,
+                    section,
+                    &font_regular,
+                    &font_bold,
+                    &regular_face,
+                    y,
+                );
             }
 
             surface.finish();
@@ -366,6 +381,7 @@ fn render_section(
     section: &Section,
     font_regular: &Font,
     font_bold: &Font,
+    regular_face: &Face,
     mut y: f32,
 ) -> f32 {
     match section {
@@ -517,6 +533,79 @@ fn render_section(
             }
         }
         Section::Spacer { height_pt } => y + height_pt,
+        Section::DeviceCard {
+            heading,
+            identification,
+            long_fields,
+        } => {
+            // Heading — bold, same size as a level-2 Heading section.
+            surface.draw_text(
+                Point::from_xy(MARGIN_PT, y),
+                font_bold.clone(),
+                HEADING_SIZE_PT - 2.0,
+                heading,
+                false,
+                TextDirection::Auto,
+            );
+            y += (HEADING_SIZE_PT - 2.0) + 8.0;
+
+            // Compact identification rows — same inline key-bold/value-regular
+            // two-column layout as Section::KeyValueTable.
+            for KvRow { key, value } in identification {
+                surface.draw_text(
+                    Point::from_xy(MARGIN_PT, y),
+                    font_bold.clone(),
+                    BODY_SIZE_PT,
+                    &format!("{key}:"),
+                    false,
+                    TextDirection::Auto,
+                );
+                surface.draw_text(
+                    Point::from_xy(MARGIN_PT + 120.0, y),
+                    font_regular.clone(),
+                    BODY_SIZE_PT,
+                    value,
+                    false,
+                    TextDirection::Auto,
+                );
+                y += BODY_SIZE_PT + 4.0;
+            }
+
+            // Long fields — label bold, value wrapped across the full
+            // content width via wrap_text_to_width (D-06/Pitfall 4: this is
+            // the point of the hybrid layout, not a narrow table column).
+            // Empty-value entries are expected to be filtered out by the
+            // template before emission; the renderer here simply renders
+            // whatever rows it's given (an empty `long_fields` Vec means no
+            // extra lines render at all).
+            let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+            for KvRow { key, value } in long_fields {
+                surface.draw_text(
+                    Point::from_xy(MARGIN_PT, y),
+                    font_bold.clone(),
+                    BODY_SIZE_PT,
+                    &format!("{key}:"),
+                    false,
+                    TextDirection::Auto,
+                );
+                y += BODY_SIZE_PT + 4.0;
+
+                let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, usable_width);
+                for line in &lines {
+                    surface.draw_text(
+                        Point::from_xy(MARGIN_PT, y),
+                        font_regular.clone(),
+                        BODY_SIZE_PT,
+                        line,
+                        false,
+                        TextDirection::Auto,
+                    );
+                    y += BODY_SIZE_PT + 2.0;
+                }
+            }
+
+            y + 8.0
+        }
     }
 }
 
@@ -1050,5 +1139,137 @@ mod tests {
         let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
         assert!(text.contains("ООО Ромашка"), "org_name missing: {text:?}");
         assert!(text.contains("Москва"), "org_address missing: {text:?}");
+    }
+
+    fn device_card_spec(sections: Vec<Section>) -> DocSpec {
+        DocSpec {
+            title: "Акт".into(),
+            header: HeaderBlock {
+                org_name: "Org".into(),
+                org_inn: "1".into(),
+                org_kpp: "2".into(),
+                org_address: "Addr".into(),
+                logo_path: None,
+                logo_bytes: None,
+                logo_mime: None,
+                org_phone: "".into(),
+                org_fax: "".into(),
+                org_email: "".into(),
+                org_okpo: "".into(),
+                org_ogrn: "".into(),
+                act_label: "Act".into(),
+                date_label: "Today".into(),
+            },
+            sections,
+        }
+    }
+
+    #[test]
+    fn device_card_renders_identification_and_wrapped_long_fields() {
+        // 150+ Cyrillic chars — long enough to force wrapping across
+        // multiple lines at the full content width.
+        let long_kit = "Зарядное устройство USB Type-C с кабелем длиной два метра, \
+            сумка для переноски из водоотталкивающей ткани, документация \
+            на русском языке, гарантийный талон и коробка"
+            .to_string();
+        let middle_substring = "сумка для переноски";
+        assert!(
+            long_kit.contains(middle_substring),
+            "test fixture sanity check"
+        );
+
+        let spec = device_card_spec(vec![Section::DeviceCard {
+            heading: "Устройство №1: Ноутбук Lenovo".into(),
+            identification: vec![KvRow {
+                key: "Инв.№".into(),
+                value: "ИНВ-001".into(),
+            }],
+            long_fields: vec![KvRow {
+                key: "Комплектация".into(),
+                value: long_kit.clone(),
+            }],
+        }]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        assert!(
+            !text.contains('…'),
+            "wrap path must be used, not truncate (no ellipsis expected): {text:?}"
+        );
+        assert!(
+            text.contains(middle_substring),
+            "expected middle substring of the long value to survive wrapping: {text:?}"
+        );
+    }
+
+    #[test]
+    fn device_card_skips_empty_long_field() {
+        let spec = device_card_spec(vec![Section::DeviceCard {
+            heading: "Устройство №1: Монитор".into(),
+            identification: vec![KvRow {
+                key: "Инв.№".into(),
+                value: "ИНВ-002".into(),
+            }],
+            long_fields: vec![],
+        }]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        assert!(
+            text.contains("Устройство №1: Монитор"),
+            "heading missing: {text:?}"
+        );
+        assert!(
+            !text.contains("Комплектация"),
+            "no long_fields entries means no stray label should render: {text:?}"
+        );
+    }
+
+    #[test]
+    fn two_device_cards_do_not_overlap() {
+        let long_specs = "Диагональ: 27 дюймов, разрешение 3840x2160, HDR10, \
+            частота обновления 144 Гц, порты HDMI 2.1 и DisplayPort 1.4"
+            .to_string();
+
+        let spec = device_card_spec(vec![
+            Section::DeviceCard {
+                heading: "Устройство №1: Монитор Dell".into(),
+                identification: vec![KvRow {
+                    key: "Инв.№".into(),
+                    value: "ИНВ-010".into(),
+                }],
+                long_fields: vec![KvRow {
+                    key: "Тех.характеристики".into(),
+                    value: long_specs,
+                }],
+            },
+            Section::DeviceCard {
+                heading: "Устройство №2: Клавиатура Logitech".into(),
+                identification: vec![KvRow {
+                    key: "Инв.№".into(),
+                    value: "ИНВ-011".into(),
+                }],
+                long_fields: vec![],
+            },
+        ]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        let first_idx = text
+            .find("Устройство №1: Монитор Dell")
+            .expect("first device heading missing");
+        let second_idx = text
+            .find("Устройство №2: Клавиатура Logitech")
+            .expect("second device heading missing");
+        assert!(
+            first_idx < second_idx,
+            "first device heading must appear before second in extracted text: {text:?}"
+        );
     }
 }
