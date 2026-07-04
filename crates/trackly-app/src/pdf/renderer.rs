@@ -126,10 +126,15 @@ impl PdfRenderer {
                 source_chain: "krilla PageSettings::from_wh: invalid A4 dimensions".into(),
             })?;
 
-        // Build a single page. Pagination is out of scope for Phase 3 plan 01;
-        // plan 04 may add page breaks if a real act overflows.
+        // Page-break-aware render loop (Phase 15 plan 04, WR-05 gap closure).
+        // The header (logo + requisites) renders once, on page 1 only — the
+        // Word sample's letterhead is not repeated on continuation pages.
+        // Each `Section::DeviceCard` is measured BEFORE drawing so it can be
+        // kept atomic across a page boundary (never split mid-card); all
+        // other section variants use a cheaper pre-draw bounds check since
+        // they are short, fixed/near-fixed-height blocks.
         {
-            let mut page = doc.start_page_with(page_settings);
+            let mut page = doc.start_page_with(page_settings.clone());
             let mut surface = page.surface();
 
             let mut y = MARGIN_PT + HEADING_SIZE_PT;
@@ -139,8 +144,39 @@ impl PdfRenderer {
             // into a reusable, testable function (Pattern 1, D-08б).
             y = render_header_two_column(&mut surface, &spec.header, &font_regular, &font_bold, y);
 
-            // Walk DocSpec sections.
+            let page_bottom = A4_HEIGHT_PT - MARGIN_PT;
+
+            // Walk DocSpec sections, starting a new page whenever the next
+            // section would overflow the printable area.
             for section in &spec.sections {
+                if let Section::DeviceCard { .. } = section {
+                    // Measure-then-place: compute the card's total height
+                    // WITHOUT drawing, using the exact same wrap_text_to_width
+                    // calls the draw arm uses, so measurement and drawing
+                    // cannot disagree.
+                    let card_height = measure_device_card_height(section, &regular_face);
+                    if y + card_height > page_bottom {
+                        surface.finish();
+                        page.finish();
+                        page = doc.start_page_with(page_settings.clone());
+                        surface = page.surface();
+                        y = MARGIN_PT;
+                    }
+                } else {
+                    // Non-DeviceCard variants are short enough that a simple
+                    // pre-draw bounds check (using one line-height as the
+                    // minimum advance) is sufficient — no measure-then-place
+                    // needed.
+                    let min_advance = BODY_SIZE_PT + 4.0;
+                    if y + min_advance > page_bottom {
+                        surface.finish();
+                        page.finish();
+                        page = doc.start_page_with(page_settings.clone());
+                        surface = page.surface();
+                        y = MARGIN_PT;
+                    }
+                }
+
                 y = render_section(
                     &mut surface,
                     section,
@@ -372,6 +408,44 @@ pub fn wrap_text_to_width(face: &Face, text: &str, font_size: f32, max_width: f3
         // String.
     }
     lines
+}
+
+/// Compute the total vertical height (PDF points) a `Section::DeviceCard`
+/// will occupy when drawn, WITHOUT drawing anything — mirrors the exact
+/// arithmetic the `Section::DeviceCard` arm in `render_section` uses (Phase
+/// 15 plan 04, WR-05 gap closure). Reuses `wrap_text_to_width` for the
+/// long-field line count, so measurement and drawing use identical wrap logic
+/// and cannot disagree.
+///
+/// Panics (via `unreachable!`) if called with a non-`DeviceCard` section —
+/// callers must only invoke this after matching on `Section::DeviceCard`.
+fn measure_device_card_height(section: &Section, regular_face: &Face) -> f32 {
+    let Section::DeviceCard {
+        identification,
+        long_fields,
+        ..
+    } = section
+    else {
+        unreachable!("measure_device_card_height called with a non-DeviceCard section");
+    };
+
+    let mut height = (HEADING_SIZE_PT - 2.0) + 8.0;
+
+    for _ in identification {
+        height += BODY_SIZE_PT + 4.0;
+    }
+
+    let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+    for KvRow { value, .. } in long_fields {
+        height += BODY_SIZE_PT + 4.0; // label line
+        let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, usable_width);
+        for _ in &lines {
+            height += BODY_SIZE_PT + 2.0;
+        }
+    }
+
+    height += 8.0;
+    height
 }
 
 /// Render a single Section against `surface`. Returns the y-cursor *after*
@@ -1271,5 +1345,117 @@ mod tests {
             first_idx < second_idx,
             "first device heading must appear before second in extracted text: {text:?}"
         );
+    }
+
+    /// Builds a `Section::DeviceCard` with a heading, one identification row,
+    /// and one long_fields row of `long_value` — the shape used by the
+    /// pagination tests below.
+    fn long_device_card(index: usize, long_value: &str) -> Section {
+        Section::DeviceCard {
+            heading: format!("Устройство №{index}: Ноутбук Lenovo-{index}"),
+            identification: vec![KvRow {
+                key: "Инв.№".into(),
+                value: format!("ИНВ-{index:03}"),
+            }],
+            long_fields: vec![KvRow {
+                key: "Комплектация".into(),
+                value: long_value.to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn device_cards_paginate_when_exceeding_one_page() {
+        let long_kit = "Зарядное устройство USB Type-C с кабелем длиной два метра, \
+            сумка для переноски из водоотталкивающей ткани, документация \
+            на русском языке, гарантийный талон и коробка, комплект крепёжных \
+            винтов и дополнительный набор кабелей и переходников для подключения \
+            к разным типам мониторов и периферийных устройств"
+            .to_string();
+
+        // Enough DeviceCard entries (each with populated long_fields) that
+        // cumulative measured height exceeds one A4 page's usable height.
+        let sections: Vec<Section> = (1..=12)
+            .map(|i| long_device_card(i, &long_kit))
+            .collect();
+
+        let spec = device_card_spec(sections);
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages");
+        assert!(
+            pages.len() > 1,
+            "expected 2+ pages for 12 long-field device cards, got {}",
+            pages.len()
+        );
+    }
+
+    #[test]
+    fn single_short_device_card_stays_on_one_page() {
+        let spec = device_card_spec(vec![
+            Section::DeviceCard {
+                heading: "Устройство №1: Ноутбук".into(),
+                identification: vec![KvRow {
+                    key: "Инв.№".into(),
+                    value: "ИНВ-001".into(),
+                }],
+                long_fields: vec![],
+            },
+            Section::DeviceCard {
+                heading: "Устройство №2: Монитор".into(),
+                identification: vec![KvRow {
+                    key: "Инв.№".into(),
+                    value: "ИНВ-002".into(),
+                }],
+                long_fields: vec![],
+            },
+        ]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages");
+        assert_eq!(
+            pages.len(),
+            1,
+            "1-2 short device cards must still render as exactly 1 page (no regression)"
+        );
+    }
+
+    #[test]
+    fn device_card_never_split_across_page_boundary() {
+        let long_kit = "Зарядное устройство USB Type-C с кабелем длиной два метра, \
+            сумка для переноски из водоотталкивающей ткани, документация \
+            на русском языке, гарантийный талон и коробка, комплект крепёжных \
+            винтов и дополнительный набор кабелей и переходников для подключения \
+            к разным типам мониторов и периферийных устройств"
+            .to_string();
+
+        // Enough cards that the page break falls mid-sequence — chosen so a
+        // card straddles the boundary if pagination did NOT keep cards
+        // atomic.
+        let sections: Vec<Section> = (1..=12)
+            .map(|i| long_device_card(i, &long_kit))
+            .collect();
+
+        let spec = device_card_spec(sections);
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages");
+        assert!(pages.len() > 1, "test requires 2+ pages to be meaningful");
+
+        for (page_idx, page_text) in pages.iter().enumerate() {
+            for i in 1..=12 {
+                let heading = format!("Устройство №{i}: Ноутбук Lenovo-{i}");
+                if page_text.contains(&heading) {
+                    let inv = format!("ИНВ-{i:03}");
+                    assert!(
+                        page_text.contains(&inv),
+                        "card {i}'s heading is on page {page_idx} but its identification \
+                         row {inv:?} is not — card was split across a page boundary. \
+                         Page text: {page_text:?}"
+                    );
+                }
+            }
+        }
     }
 }
