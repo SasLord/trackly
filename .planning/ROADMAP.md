@@ -43,7 +43,7 @@ Trackly — портативное приложение для учёта тех
 **v1.1.1 — PDF-акт по образцу Word (мультиустройство) — ACTIVE**
 
 - [x] **Phase 14: Данные и структура акта** - Схема/контекст акта содержит все поля образца (реквизиты, комплектация, тех.характеристики, срок до, мультиустройство, двухстрочные подписи) и достижимы через существующий механизм `document_templates`. (completed 2026-07-03)
-- [ ] **Phase 15: Рендер и соответствие образцу** - Дефолтный шаблон и рендерер производят PDF, визуально соответствующий образцу Word, с мультиустройством и regression-тестами.
+- [x] **Phase 15: Рендер и соответствие образцу** - Дефолтный шаблон и рендерер производят PDF, визуально соответствующий образцу Word, с мультиустройством и regression-тестами. (completed 2026-07-04)
 
 ## Phase Details
 
@@ -111,7 +111,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 3** *(depends on Wave 2)*
 
-- [ ] 15-03-PLAN.md — Test coverage: multi-device (1 vs N) wrap tests, two-line signature test, full-pipeline logo test (closes WR-03 regression gap), regenerate pdf_determinism fixture
+- [x] 15-03-PLAN.md — Test coverage: multi-device (1 vs N) wrap tests, two-line signature test, full-pipeline logo test (closes WR-03 regression gap), regenerate pdf_determinism fixture
 
 ## Progress
 
@@ -134,7 +134,7 @@ Trackly — портативное приложение для учёта тех
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
-| 15. Рендер и соответствие образцу | v1.1.1 | 2/3 | In Progress|  |
+| 15. Рендер и соответствие образцу | v1.1.1 | 3/3 | Complete   | 2026-07-04 |
 
 ## Coverage
 

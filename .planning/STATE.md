@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: executing
-last_updated: "2026-07-04T06:25:56.622Z"
+status: verifying
+last_updated: "2026-07-04T07:16:06.157Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 50
+  completed_plans: 6
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 15 (render-word-fidelity) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-04
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -152,6 +152,7 @@ Last activity: 2026-07-04
 | Phase 14 P03 | 30min | 3 tasks | 4 files |
 | Phase 15 P01 | 25min | 2 tasks | 3 files |
 | Phase 15 P02 | 35min | 3 tasks | 5 files |
+| Phase 15 P03 | 50 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -337,6 +338,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: 15-02: render_pdf's None org_db branch explicitly returns (dto, None, None) 3-tuple — no behavior change for fixtures without org_db wired
 - [Phase ?]: [Phase 15]: 15-02: Section::DeviceCard long_fields renderer does not filter empty values itself — template is sole source of truth for which long fields get emitted (matches existing conditional-injection idiom)
 - [Phase ?]: [Phase 15]: 15-02: act.giver_name intentionally no longer displayed in act body per D-09 (moved to bare Выдал signature label; receiver_name now in intro paragraph) — deliberate content change, not a regression
+- [Phase ?]: [Phase 15]: 15-03: render_handover_act_produces_cyrillic_pdf assertion updated from stale giver_name-in-body wording to receiver_name (D-09 removed giver_name from body) — planned N=1 regression anchor
+- [Phase ?]: [Phase 15]: 15-03: acts_e2e_smoke.rs handover_pdf_render_within_e2e had the same D-09 giver_name-in-body drift as pdf_render_act.rs but was outside the plan's files_modified — fixed as Rule 1 auto-fix (same root cause, single assertion line)
+- [Phase ?]: [Phase 15]: 15-03: act_42.sha256 regenerated (88df7f9d -> caaca9c5) via deliberate single-step procedure (run test, copy printed hash, verify act_42.json fixture input untouched) per T-15-09 mitigation — not a blanket auto-accept
 
 ### Pending Todos
 
@@ -396,9 +400,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-04T06:25:56.615Z
-Stopped at: Completed 15-02-PLAN.md
-Resume file: .planning/phases/15-render-word-fidelity/15-03-PLAN.md
+Last session: 2026-07-04T07:16:06.152Z
+Stopped at: Completed 15-03-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
