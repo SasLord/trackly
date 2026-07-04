@@ -10,6 +10,17 @@
 //!   ли активная (non-deleted) запись. Если нет — INSERT дефолта.
 //! - Идемпотентно: повторный запуск никогда не дублирует.
 //! - При soft-delete всех версий — следующий запуск восстанавливает дефолт.
+//!
+//! Auto-upgrade бандл-дефолта (D-Templates-Seed-02, quick task 260704-uw3):
+//! - Если активная запись уже существует, `is_default = 1` (т.е. пользователь
+//!   её не кастомизировал через `update_body`) и её `body_minijinja` не
+//!   совпадает с текущим встроенным `DEFAULT_TEMPLATES` — она обновляется на
+//!   месте (`UPDATE`, `version+1`), тем самым существующие БД подхватывают
+//!   изменения бандл-шаблона из новых релизов без ре-сида с нуля.
+//! - Строки с `is_default = 0` (пользователь вызывал `update_body`) этой
+//!   веткой никогда не трогаются — они находятся вне области auto-upgrade.
+//! - Если тело уже совпадает с бандлом — запись не трогаем (нет write, нет
+//!   version bump) — повторные запуски idempotent.
 
 use std::sync::Arc;
 
@@ -64,33 +75,64 @@ impl TemplateService {
         }
     }
 
-    /// Sees missing default templates. Идемпотентно: проверяет COUNT активных
-    /// (`is_active = 1 AND deleted_at_utc IS NULL`) и INSERT'ит дефолт только
-    /// если 0.
+    /// Seeds missing default templates and auto-upgrades stale ones.
+    ///
+    /// For each `kind`: looks up the active (non-deleted) row's
+    /// `(is_default, body_minijinja)`, if any, then branches:
+    /// - no active row → `INSERT` bundled default (`is_default=1, version=1`).
+    /// - active row, `is_default=1`, body differs from bundled → `UPDATE`
+    ///   in place (`is_default=1`, `version=version+1`) — mirrors
+    ///   `reset_to_default`'s UPDATE shape.
+    /// - active row, `is_default=0` (user-customized) or body already
+    ///   matches bundled → no-op.
     pub async fn seed_defaults_on_startup(&self) -> Result<(), AppError> {
         let now = self.clock.unix_seconds();
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 for (kind, name, body) in DEFAULT_TEMPLATES.iter() {
-                    let active_count: i64 = tx
+                    let existing: Option<(bool, String)> = tx
                         .query_row(
-                            "SELECT COUNT(*) FROM document_templates \
+                            "SELECT is_default, body_minijinja FROM document_templates \
                              WHERE kind = ?1 AND is_active = 1 AND deleted_at_utc IS NULL",
                             params![kind],
-                            |r| r.get(0),
+                            |r| Ok((r.get::<_, bool>(0)?, r.get::<_, String>(1)?)),
                         )
-                        .map_err(map_rusqlite)?;
-                    if active_count == 0 {
-                        tx.execute(
-                            "INSERT INTO document_templates \
-                             (kind, name, body_minijinja, is_active, version, \
-                              created_at_utc, updated_at_utc) \
-                             VALUES (?1, ?2, ?3, 1, 1, ?4, ?4)",
-                            params![kind, name, body, now],
-                        )
-                        .map_err(map_rusqlite)?;
-                        tracing::info!("Seeded default template kind={kind} name={name}");
+                        .map(Some)
+                        .or_else(|e| match e {
+                            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                            other => Err(map_rusqlite(other)),
+                        })?;
+
+                    match existing {
+                        None => {
+                            tx.execute(
+                                "INSERT INTO document_templates \
+                                 (kind, name, body_minijinja, is_active, version, \
+                                  created_at_utc, updated_at_utc) \
+                                 VALUES (?1, ?2, ?3, 1, 1, ?4, ?4)",
+                                params![kind, name, body, now],
+                            )
+                            .map_err(map_rusqlite)?;
+                            tracing::info!("Seeded default template kind={kind} name={name}");
+                        }
+                        Some((is_default, stored_body)) if is_default && &stored_body != body => {
+                            tx.execute(
+                                "UPDATE document_templates \
+                                 SET body_minijinja=?2, is_default=1, \
+                                     updated_at_utc=?3, version=version+1 \
+                                 WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
+                                params![kind, body, now],
+                            )
+                            .map_err(map_rusqlite)?;
+                            tracing::info!(
+                                "Auto-upgraded default template kind={kind} name={name}"
+                            );
+                        }
+                        Some(_) => {
+                            // is_default=0 (user-customized) or body already
+                            // matches bundled default — no-op.
+                        }
                     }
                 }
                 tx.commit().map_err(map_rusqlite)?;
