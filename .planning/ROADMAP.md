@@ -99,7 +99,7 @@ Trackly — портативное приложение для учёта тех
 4. Кириллица (включая длинные значения комплектации/характеристик и реквизиты организации) рендерится корректно во всех блоках нового шаблона — без квадратов/пропусков символов.
 5. Дефолтный `.minijinja`-шаблон обновлён под новый вид, сидируется при первом запуске через `template_service`, и остаётся редактируемым через `document_templates` (не хардкод в Rust сверх дефолт-сида); существующие PDF-пайплайн тесты проходят, добавлены новые тесты на мультиустройство (1 vs N позиций) и новый шаблон.
 
-**Plans**: 3 plans
+**Plans**: 4 plans (gap closure round 1 added after verification found a pagination gap)
 
 **Wave 1**
 
@@ -112,6 +112,10 @@ Trackly — портативное приложение для учёта тех
 **Wave 3** *(depends on Wave 2)*
 
 - [x] 15-03-PLAN.md — Test coverage: multi-device (1 vs N) wrap tests, two-line signature test, full-pipeline logo test (closes WR-03 regression gap), regenerate pdf_determinism fixture
+
+**Wave 4** *(gap closure — depends on Wave 3; closes WR-05/PDFA-02 pagination gap from 15-VERIFICATION.md)*
+
+- [ ] 15-04-PLAN.md — Page-break/pagination in render_docspec/render_section (DeviceCard kept atomic across page boundaries) + full-pipeline page-count regression test
 
 ## Progress
 
@@ -175,4 +179,4 @@ Trackly — портативное приложение для учёта тех
 | ADV-01..05 (SSO/REST API наружу/Signature pad/доп. вендоры принтеров/Postgres) | Преждевременная сложность для текущего масштаба |
 
 ---
-*Last updated: 2026-07-04 — Phase 15 planned (3 plans, 3 waves).*
+*Last updated: 2026-07-04 — Phase 15 gap closure: 15-04-PLAN.md added (Wave 4) to close the WR-05/PDFA-02 pagination gap found by /gsd-verify-work (15-VERIFICATION.md, score 4/5).*
