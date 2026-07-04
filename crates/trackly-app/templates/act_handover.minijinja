@@ -14,6 +14,11 @@
     return.condition_default, return.location_default
 
   All optional fields use `{% if … %}` or `{{ … | default("—", true) }}` (Pitfall 6).
+
+  260704-wxw (Word-fidelity redesign): the body now emits `field_row` sections
+  (label | underlined value) instead of `device_card` — matching the Word
+  reference sample's "метка | подчёркнутое значение" layout, full-length field
+  labels, and no per-device "Устройство №N" heading/counter.
 -#}
 {
   "title": "Акт приема-передачи №{{ act.number }}{{ act.suffix | default('') }}",
@@ -47,40 +52,73 @@
     },
     {
       "type": "spacer",
-      "height_pt": 8.0
+      "height_pt": 12.0
     },
     {
-      "type": "paragraph",
-      "text": {{ ("Настоящим актом утверждаю, что мною " ~ act.receiver_name ~ " было получено устройство:") | tojson }}
-    },
+      "type": "field_row",
+      "label": "Настоящим актом утверждаю, что мною:",
+      "value": {{ act.receiver_name | tojson }}
+    }
+    {%- for item in act.items %}
+    {%- set has_inv = item.inventory_no -%}
+    {%- set has_serial = item.serial_no -%}
+    {%- set has_model = item.model -%}
+    {%- set has_kit = item.kit -%}
+    {%- set has_specs = item.specs -%}
+    {%- set has_condition = item.condition -%},
+    {
+      "type": "field_row",
+      "label": "было получено устройство:",
+      "value": {{ item.name | tojson }}
+    }
+    {%- if has_inv %},
+    {
+      "type": "field_row",
+      "label": "Инвентарный номер:",
+      "value": {{ item.inventory_no | tojson }}
+    }
+    {%- endif -%}
+    {%- if has_serial %},
+    {
+      "type": "field_row",
+      "label": "Серийный номер:",
+      "value": {{ item.serial_no | tojson }}
+    }
+    {%- endif -%}
+    {%- if has_model %},
+    {
+      "type": "field_row",
+      "label": "Модель:",
+      "value": {{ item.model | tojson }}
+    }
+    {%- endif -%}
+    {%- if has_kit %},
+    {
+      "type": "field_row",
+      "label": "Комплектация:",
+      "value": {{ item.kit | tojson }}
+    }
+    {%- endif -%}
+    {%- if has_specs %},
+    {
+      "type": "field_row",
+      "label": "Технические характеристики:",
+      "value": {{ item.specs | tojson }}
+    }
+    {%- endif -%}
+    {%- if has_condition %},
+    {
+      "type": "field_row",
+      "label": "Состояние:",
+      "value": {{ item.condition | tojson }}
+    }
+    {%- endif -%}
+    {%- if not loop.last %},
     {
       "type": "spacer",
-      "height_pt": 12.0
+      "height_pt": 8.0
     }
-    {%- for item in act.items %},
-    {
-      "type": "device_card",
-      "heading": {{ ("Устройство №" ~ loop.index ~ ": " ~ item.name) | tojson }},
-      "identification": [
-        { "key": "Инв.№",       "value": {{ (item.inventory_no | default("—", true)) | tojson }} },
-        { "key": "Серийный №",  "value": {{ (item.serial_no | default("—", true)) | tojson }} },
-        { "key": "Модель",      "value": {{ (item.model | default("—", true)) | tojson }} }
-      ],
-      "long_fields": [
-        {%- set has_kit = item.kit -%}
-        {%- set has_specs = item.specs -%}
-        {%- set has_condition = item.condition -%}
-        {%- if has_kit %}
-        { "key": "Комплектация", "value": {{ item.kit | tojson }} }{% if has_specs or has_condition %},{% endif %}
-        {%- endif -%}
-        {%- if has_specs %}
-        { "key": "Технические характеристики", "value": {{ item.specs | tojson }} }{% if has_condition %},{% endif %}
-        {%- endif -%}
-        {%- if has_condition %}
-        { "key": "Состояние", "value": {{ item.condition | tojson }} }
-        {%- endif %}
-      ]
-    }
+    {%- endif -%}
     {%- endfor %}
     {%- if act.deadline_human %},
     {
@@ -88,8 +126,9 @@
       "height_pt": 8.0
     },
     {
-      "type": "paragraph",
-      "text": {{ ("Сроком до: " ~ act.deadline_human) | tojson }}
+      "type": "field_row",
+      "label": "Сроком до:",
+      "value": {{ act.deadline_human | tojson }}
     }
     {%- elif act.deadline %},
     {
@@ -97,8 +136,9 @@
       "height_pt": 8.0
     },
     {
-      "type": "paragraph",
-      "text": {{ ("Сроком до: " ~ act.deadline) | tojson }}
+      "type": "field_row",
+      "label": "Сроком до:",
+      "value": {{ act.deadline | tojson }}
     }
     {%- endif %}
     {%- if act.parent %},
