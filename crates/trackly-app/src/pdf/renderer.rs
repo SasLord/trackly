@@ -143,7 +143,14 @@ impl PdfRenderer {
             // Two-column header — logo (left) + requisites (right). Phase 15
             // Plan 01: extracted from the previous inline draw_text sequence
             // into a reusable, testable function (Pattern 1, D-08б).
-            y = render_header_two_column(&mut surface, &spec.header, &font_regular, &font_bold, y);
+            y = render_header_two_column(
+                &mut surface,
+                &spec.header,
+                &font_regular,
+                &font_bold,
+                &regular_face,
+                y,
+            );
 
             let page_bottom = A4_HEIGHT_PT - MARGIN_PT;
 
@@ -239,6 +246,7 @@ fn render_header_two_column(
     header: &HeaderBlock,
     font_regular: &Font,
     font_bold: &Font,
+    face: &Face,
     y: f32,
 ) -> f32 {
     // Logo — left column. Same priority/graceful-degradation logic as before
@@ -264,25 +272,41 @@ fn render_header_two_column(
     let text_col_x = MARGIN_PT + HEADER_LOGO_COL_WIDTH_PT + HEADER_COL_GAP_PT;
     let mut cursor_y = y;
 
-    surface.draw_text(
-        Point::from_xy(text_col_x, cursor_y),
-        font_bold.clone(),
-        HEADING_SIZE_PT,
-        &header.org_name,
-        false,
-        TextDirection::Auto,
-    );
-    cursor_y += HEADING_SIZE_PT + 4.0;
+    // Right column width — the printable area from text_col_x to the right
+    // page margin. org_name is drawn bold, but wrap_text_to_width is only
+    // given the regular-face metrics (no bold Face is threaded through the
+    // renderer), which slightly UNDERESTIMATES bold glyph advance widths. A
+    // 0.97 safety margin keeps wrapped bold lines from overflowing the right
+    // margin despite the metrics mismatch (260704-wxw continuation, BUG 1).
+    let right_col_width = ((A4_WIDTH_PT - MARGIN_PT) - text_col_x) * 0.97;
 
-    surface.draw_text(
-        Point::from_xy(text_col_x, cursor_y),
-        font_regular.clone(),
-        BODY_SIZE_PT,
-        &header.org_address,
-        false,
-        TextDirection::Auto,
-    );
-    cursor_y += BODY_SIZE_PT + 4.0;
+    let org_name_lines =
+        wrap_text_to_width(face, &header.org_name, HEADING_SIZE_PT, right_col_width);
+    for line in &org_name_lines {
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_bold.clone(),
+            HEADING_SIZE_PT,
+            line,
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += HEADING_SIZE_PT + 4.0;
+    }
+
+    let org_address_lines =
+        wrap_text_to_width(face, &header.org_address, BODY_SIZE_PT, right_col_width);
+    for line in &org_address_lines {
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_regular.clone(),
+            BODY_SIZE_PT,
+            line,
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += BODY_SIZE_PT + 4.0;
+    }
 
     // Conditional single-line requisites — only non-empty ones, each its own
     // line. Order follows the Word sample: phone, fax, email, then OKPO+OGRN
@@ -350,16 +374,12 @@ fn render_header_two_column(
     );
     cursor_y += BODY_SIZE_PT + 16.0;
 
-    surface.draw_text(
-        Point::from_xy(text_col_x, cursor_y),
-        font_regular.clone(),
-        BODY_SIZE_PT,
-        &header.date_label,
-        false,
-        TextDirection::Auto,
-    );
-    cursor_y += BODY_SIZE_PT + 16.0;
-
+    // BUG 3 (260704-wxw continuation): the standalone header date_label line
+    // was removed — it does not appear in the Word reference sample, and the
+    // date is already carried by the body's "№ {number} от {date}"
+    // paragraph. `header.date_label` remains a HeaderBlock field (other call
+    // sites still populate it) but is intentionally unused by this renderer
+    // now.
     cursor_y
 }
 
@@ -472,35 +492,42 @@ const FIELD_ROW_LABEL_WIDTH_FRACTION: f32 = 0.42;
 /// Gap (PDF points) between the label column and the value column.
 const FIELD_ROW_COLUMN_GAP_PT: f32 = 6.0;
 
-/// Computes the `FieldRow`'s label-column x-offset, value-column x-offset,
-/// and value-column width — shared by both `measure_field_row_height` and the
-/// `Section::FieldRow` draw arm so the two can never disagree (260704-wxw).
-fn field_row_columns() -> (f32, f32, f32) {
+/// Computes the `FieldRow`'s label-column x-offset, label-column width,
+/// value-column x-offset, and value-column width — shared by both
+/// `measure_field_row_height` and the `Section::FieldRow` draw arm so the two
+/// can never disagree (260704-wxw). `label_width` was added in the
+/// continuation of 260704-wxw (BUG 2) so long labels can be word-wrapped
+/// within their column instead of overrunning into the value column.
+fn field_row_columns() -> (f32, f32, f32, f32) {
     let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
     let label_x = MARGIN_PT;
     let label_width = usable_width * FIELD_ROW_LABEL_WIDTH_FRACTION;
     let value_x = label_x + label_width + FIELD_ROW_COLUMN_GAP_PT;
     let value_width = usable_width - label_width - FIELD_ROW_COLUMN_GAP_PT;
-    (label_x, value_x, value_width)
+    (label_x, label_width, value_x, value_width)
 }
 
 /// Compute the total vertical height (PDF points) a `Section::FieldRow` will
 /// occupy when drawn, WITHOUT drawing anything — mirrors
 /// `measure_device_card_height`'s measure-then-place pattern (260704-wxw).
-/// Reuses `wrap_text_to_width` for the value's line count at the value
-/// column's width, so measurement and drawing use identical wrap logic and
-/// cannot disagree.
+/// Reuses `wrap_text_to_width` for both the label's line count (at the label
+/// column's width — BUG 2 continuation of 260704-wxw) and the value's line
+/// count (at the value column's width), so measurement and drawing use
+/// identical wrap logic and cannot disagree. The row's total height is driven
+/// by whichever of the two wraps to more lines (`max(label_lines,
+/// value_lines)`), matching the draw arm's vertical-advance rule.
 ///
 /// Panics (via `unreachable!`) if called with a non-`FieldRow` section —
 /// callers must only invoke this after matching on `Section::FieldRow`.
 fn measure_field_row_height(section: &Section, regular_face: &Face) -> f32 {
-    let Section::FieldRow { value, .. } = section else {
+    let Section::FieldRow { label, value } = section else {
         unreachable!("measure_field_row_height called with a non-FieldRow section");
     };
 
-    let (_, _, value_width) = field_row_columns();
-    let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, value_width);
-    let line_count = lines.len().max(1);
+    let (_, label_width, _, value_width) = field_row_columns();
+    let label_lines = wrap_text_to_width(regular_face, label, BODY_SIZE_PT, label_width);
+    let value_lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, value_width);
+    let line_count = label_lines.len().max(value_lines.len()).max(1);
 
     let mut height = 0.0;
     for _ in 0..line_count {
@@ -746,20 +773,34 @@ fn render_section(
         }
         Section::FieldRow { label, value } => {
             // Label — left column, bold, matches the KeyValueTable/DeviceCard
-            // idiom of a bold key.
-            surface.draw_text(
-                Point::from_xy(MARGIN_PT, y),
-                font_bold.clone(),
-                BODY_SIZE_PT,
-                label,
-                false,
-                TextDirection::Auto,
-            );
+            // idiom of a bold key. BUG 2 continuation of 260704-wxw: long
+            // labels (e.g. "Настоящим актом утверждаю, что мною:") are
+            // word-wrapped within the label column instead of being drawn as
+            // a single unbounded line that runs into the value column.
+            let (_, label_width, value_x, value_width) = field_row_columns();
+            let label_lines = wrap_text_to_width(regular_face, label, BODY_SIZE_PT, label_width);
+
+            let mut label_line_y = y;
+            if label_lines.is_empty() {
+                // Empty label — nothing to draw, but keep the loop shape
+                // symmetric with the value branch below.
+            } else {
+                for line in &label_lines {
+                    surface.draw_text(
+                        Point::from_xy(MARGIN_PT, label_line_y),
+                        font_bold.clone(),
+                        BODY_SIZE_PT,
+                        line,
+                        false,
+                        TextDirection::Auto,
+                    );
+                    label_line_y += BODY_SIZE_PT + 4.0;
+                }
+            }
 
             // Value — right column, word-wrapped, with a thin underline
             // drawn once under the LAST wrapped line only (the "заполни
             // прочерк" look from the Word sample, 260704-wxw).
-            let (_, value_x, value_width) = field_row_columns();
             let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, value_width);
 
             let mut line_y = y;
@@ -799,7 +840,10 @@ fn render_section(
                 }
             }
 
-            let line_count = lines.len().max(1);
+            // Total vertical advance: max(label_line_count, value_line_count)
+            // — whichever column wraps to more lines drives the row height,
+            // matching measure_field_row_height's identical calculation.
+            let line_count = label_lines.len().max(lines.len()).max(1);
             y + (line_count as f32) * (BODY_SIZE_PT + 4.0) + 4.0
         }
     }
@@ -1337,6 +1381,118 @@ mod tests {
         assert!(text.contains("Москва"), "org_address missing: {text:?}");
     }
 
+    /// BUG 1 (260704-wxw continuation): a long `org_name` that would overflow
+    /// the right page margin as a single line must instead be word-wrapped
+    /// within the header's right column — never truncated, never drawn past
+    /// the margin. Asserts the render succeeds (no panic) AND that the
+    /// header's returned cursor height grows relative to a short org_name,
+    /// proving `render_header_two_column` actually wrapped to 2+ lines
+    /// instead of drawing one overflowing line.
+    #[test]
+    fn header_long_org_name_wraps_and_grows_header_height() {
+        let face = dejavu_regular_face();
+        let font_regular = Font::new(
+            Arc::new(DEJAVU_SANS_REGULAR.to_vec())
+                .as_ref()
+                .clone()
+                .into(),
+            0,
+        )
+        .expect("font_regular");
+        let font_bold = Font::new(
+            Arc::new(DEJAVU_SANS_BOLD.to_vec()).as_ref().clone().into(),
+            0,
+        )
+        .expect("font_bold");
+
+        let long_org_name = "Общество с ограниченной ответственностью \
+            «Научно-производственное объединение Ромашка Плюс Инновационные Технологии»"
+            .to_string();
+        assert!(
+            long_org_name.chars().count() > 80,
+            "test fixture org_name must be long enough to force wrapping"
+        );
+
+        let short_header = HeaderBlock {
+            org_name: "ООО Ромашка".into(),
+            org_inn: "7700000000".into(),
+            org_kpp: "770001001".into(),
+            org_address: "г. Москва".into(),
+            logo_path: None,
+            logo_bytes: None,
+            logo_mime: None,
+            org_phone: "".into(),
+            org_fax: "".into(),
+            org_email: "".into(),
+            org_okpo: "".into(),
+            org_ogrn: "".into(),
+            act_label: "Act".into(),
+            date_label: "Today".into(),
+        };
+        let long_header = HeaderBlock {
+            org_name: long_org_name,
+            ..short_header.clone()
+        };
+
+        // Render both headers standalone (no full DocSpec/Document needed —
+        // render_header_two_column only needs a Surface) to compare returned
+        // cursor heights directly.
+        let settings = SerializeSettings::default();
+        let mut doc = Document::new_with(settings);
+        let page_settings =
+            PageSettings::from_wh(A4_WIDTH_PT, A4_HEIGHT_PT).expect("page settings");
+
+        let short_y = {
+            let mut page = doc.start_page_with(page_settings.clone());
+            let mut surface = page.surface();
+            let y = render_header_two_column(
+                &mut surface,
+                &short_header,
+                &font_regular,
+                &font_bold,
+                &face,
+                MARGIN_PT,
+            );
+            surface.finish();
+            page.finish();
+            y
+        };
+
+        let long_y = {
+            let mut page = doc.start_page_with(page_settings.clone());
+            let mut surface = page.surface();
+            let y = render_header_two_column(
+                &mut surface,
+                &long_header,
+                &font_regular,
+                &font_bold,
+                &face,
+                MARGIN_PT,
+            );
+            surface.finish();
+            page.finish();
+            y
+        };
+
+        assert!(
+            long_y > short_y,
+            "long org_name header must occupy more vertical space than a short one \
+             (proves wrapping happened): short_y={short_y}, long_y={long_y}"
+        );
+
+        // Full pipeline sanity: rendering a complete DocSpec with the long
+        // org_name must still succeed and produce a valid PDF (no panic, no
+        // overflow-induced corruption).
+        let spec = DocSpec {
+            title: "Акт".into(),
+            header: long_header,
+            sections: vec![],
+        };
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render with long org_name");
+        assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
+    }
+
     fn device_card_spec(sections: Vec<Section>) -> DocSpec {
         DocSpec {
             title: "Акт".into(),
@@ -1631,6 +1787,58 @@ mod tests {
         assert!(
             text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
             "middle-of-value marker missing — value appears to have been cut off: {text:?}"
+        );
+    }
+
+    /// BUG 2 (260704-wxw continuation): a long `FieldRow` label (like the
+    /// real intro paragraph label from the Word sample) must be word-wrapped
+    /// within the label column instead of overlapping the value column.
+    /// Asserts `measure_field_row_height` reflects the wrap (height for 2+
+    /// label lines is strictly greater than the height for a single
+    /// body-size line), and that rendering the full row does not panic and
+    /// produces a valid PDF containing both the (wrapped) label text and the
+    /// value.
+    #[test]
+    fn field_row_long_label_wraps_and_measure_reflects_it() {
+        let face = dejavu_regular_face();
+        let long_label = "Настоящим актом утверждаю, что мною:".to_string();
+
+        let section = Section::FieldRow {
+            label: long_label.clone(),
+            value: "ИНВ-042".into(),
+        };
+
+        let measured_height = measure_field_row_height(&section, &face);
+        let single_line_height = BODY_SIZE_PT + 4.0 + 4.0; // 1 line + underline padding
+        assert!(
+            measured_height > single_line_height,
+            "measure_field_row_height must account for label wrap (2+ lines), \
+             got measured_height={measured_height}, single_line_height={single_line_height}"
+        );
+
+        // Sanity: the label alone, wrapped at the label column width, really
+        // does produce 2+ lines — otherwise the height assertion above would
+        // be measuring something else.
+        let (_, label_width, _, _) = field_row_columns();
+        let label_lines = wrap_text_to_width(&face, &long_label, BODY_SIZE_PT, label_width);
+        assert!(
+            label_lines.len() >= 2,
+            "test fixture label must wrap to 2+ lines at the label column width, got {label_lines:?}"
+        );
+
+        let spec = field_row_spec(vec![section]);
+        let r = PdfRenderer::new();
+        let bytes = r
+            .render_docspec(&spec)
+            .expect("render must not panic with a long wrapped label");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(
+            text.contains("Настоящим актом"),
+            "wrapped label text missing from rendered PDF: {text:?}"
+        );
+        assert!(
+            text.contains("ИНВ-042"),
+            "value missing from rendered PDF: {text:?}"
         );
     }
 
