@@ -131,6 +131,11 @@ pub enum Section {
     /// values are the template's responsibility to omit before emission (same
     /// idiom as `DeviceCard.long_fields`) — the renderer does not filter.
     FieldRow { label: String, value: String },
+    /// Horizontally-centered single text block (260704-wxw fidelity pass) —
+    /// used for the centered title «Акт приема-передачи» and the «№ … от …»
+    /// line, matching the Word reference sample. Rendered in the regular
+    /// weight at body size; long text wraps and every wrapped line is centered.
+    CenteredText { text: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -336,6 +341,18 @@ mod tests {
         assert_eq!(json["type"], "field_row");
         assert_eq!(json["label"], "Инвентарный номер:");
         assert_eq!(json["value"], "ИНВ-001");
+    }
+
+    #[test]
+    fn centered_text_serializes_with_type_tag_and_round_trips() {
+        let sec = Section::CenteredText {
+            text: "Акт приема-передачи".into(),
+        };
+        let json = serde_json::to_value(&sec).expect("serialize centered_text");
+        assert_eq!(json["type"], "centered_text");
+        assert_eq!(json["text"], "Акт приема-передачи");
+        let back: Section = serde_json::from_value(json).expect("deserialize centered_text");
+        assert_eq!(back, sec);
     }
 
     #[test]

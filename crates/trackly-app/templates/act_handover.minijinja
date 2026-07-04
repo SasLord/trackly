@@ -38,8 +38,7 @@
   },
   "sections": [
     {
-      "type": "heading",
-      "level": 1,
+      "type": "centered_text",
       "text": "Акт приема-передачи"
     },
     {
@@ -47,7 +46,7 @@
       "height_pt": 8.0
     },
     {
-      "type": "paragraph",
+      "type": "centered_text",
       "text": {{ ("№ " ~ act.number ~ (act.suffix | default('')) ~ " от " ~ (act.date_human | default(act.date))) | tojson }}
     },
     {

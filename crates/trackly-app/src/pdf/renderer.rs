@@ -121,6 +121,10 @@ impl PdfRenderer {
             Face::parse(self.font_regular_bytes.as_ref(), 0).map_err(|e| AppError::Internal {
                 source_chain: format!("ttf_parser Face::parse(regular): {e:?}"),
             })?;
+        let bold_face =
+            Face::parse(self.font_bold_bytes.as_ref(), 0).map_err(|e| AppError::Internal {
+                source_chain: format!("ttf_parser Face::parse(bold): {e:?}"),
+            })?;
 
         let page_settings =
             PageSettings::from_wh(A4_WIDTH_PT, A4_HEIGHT_PT).ok_or_else(|| AppError::Internal {
@@ -138,17 +142,18 @@ impl PdfRenderer {
             let mut page = doc.start_page_with(page_settings.clone());
             let mut surface = page.surface();
 
-            let mut y = MARGIN_PT + HEADING_SIZE_PT;
+            let mut y = MARGIN_PT;
 
-            // Two-column header — logo (left) + requisites (right). Phase 15
-            // Plan 01: extracted from the previous inline draw_text sequence
-            // into a reusable, testable function (Pattern 1, D-08б).
-            y = render_header_two_column(
+            // Centered letterhead — logo centered on top, org name (bold) +
+            // contacts centered below, matching the Word reference sample
+            // (act-sample.docx / its PDF export). 260704-wxw fidelity pass.
+            y = render_header_centered(
                 &mut surface,
                 &spec.header,
                 &font_regular,
                 &font_bold,
                 &regular_face,
+                &bold_face,
                 y,
             );
 
@@ -222,127 +227,86 @@ impl PdfRenderer {
     }
 }
 
-/// Fixed left-column width (PDF points) reserved for the logo in the
-/// two-column header layout (Pattern 1, D-08б).
-const HEADER_LOGO_COL_WIDTH_PT: f32 = 120.0;
-/// Gap between the logo column and the requisites text column.
-const HEADER_COL_GAP_PT: f32 = 12.0;
-
-/// Render the organization header as a two-column layout: logo in a fixed
-/// left column, requisites (name/address/phone/fax/email/OKPO+OGRN/ИНН+КПП/
-/// date) stacked in the right column. Returns the y-cursor after the header
-/// (with trailing padding included).
-///
-/// Phase 15 Plan 01 (Pattern 1, D-08б): extracted from the previous inline
-/// `draw_text` sequence in `render_docspec` into a standalone, reusable,
-/// independently testable function. The 2-column grid is fixed regardless of
-/// logo presence (RESEARCH Open Question 3 resolution) — an absent logo
-/// simply leaves the left column empty, no adaptive single-column fallback.
-/// Empty requisite lines (phone/fax/email/OKPO+OGRN) are skipped entirely
-/// (not rendered as a blank "—" placeholder line) — the simplest correct
-/// degrade per D-08б.
-fn render_header_two_column(
+/// Render the organization header as a centered letterhead (260704-wxw
+/// fidelity pass): logo centered on top, then org name (bold, centered) and
+/// the requisites block (address/Телефон/Факс/E-mail/ОКПО+ОГРН/ИНН+КПП)
+/// centered line-by-line below it — matching the Word reference sample, whose
+/// letterhead is a single centered column (not the earlier logo-left /
+/// text-right two-column layout). An absent logo simply omits the logo line;
+/// empty requisite lines (phone/fax/email/OKPO+OGRN) are skipped entirely.
+/// Returns the y-cursor after the header (with trailing padding included).
+fn render_header_centered(
     surface: &mut krilla::surface::Surface<'_>,
     header: &HeaderBlock,
     font_regular: &Font,
     font_bold: &Font,
-    face: &Face,
+    regular_face: &Face,
+    bold_face: &Face,
     y: f32,
 ) -> f32 {
-    // Logo — left column. Same priority/graceful-degradation logic as before
-    // (Phase 7 plan 02), only the anchor changes from top-right to left.
-    //
-    // Priority:
-    //   1. logo_bytes is Some → draw from in-memory bytes + logo_mime
-    //   2. logo_path is Some → read from filesystem (Phase 3 path)
-    //   3. else → no logo (left column stays empty)
-    if let Some(logo_bytes) = &header.logo_bytes {
-        let mime = header.logo_mime.as_deref().unwrap_or("image/png");
-        draw_logo_from_bytes_at(surface, logo_bytes, mime, MARGIN_PT, y);
-    } else if let Some(logo_path_str) = &header.logo_path {
-        draw_logo_at_path(surface, logo_path_str, MARGIN_PT, y);
-    }
-
-    // Requisites — right column, built as a list of (font, size, text) lines,
-    // skipping empty ones. org_name (bold, heading size) and org_address
-    // (regular, body size) are always shown (never empty in practice); the
-    // extended requisites are conditionally shown only when non-empty;
-    // ИНН/КПП is always shown (unchanged from pre-Phase-15 behavior); date
-    // label is always shown last.
-    let text_col_x = MARGIN_PT + HEADER_LOGO_COL_WIDTH_PT + HEADER_COL_GAP_PT;
+    let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
     let mut cursor_y = y;
 
-    // Right column width — the printable area from text_col_x to the right
-    // page margin. org_name is drawn bold, but wrap_text_to_width is only
-    // given the regular-face metrics (no bold Face is threaded through the
-    // renderer), which slightly UNDERESTIMATES bold glyph advance widths. A
-    // 0.97 safety margin keeps wrapped bold lines from overflowing the right
-    // margin despite the metrics mismatch (260704-wxw continuation, BUG 1).
-    let right_col_width = ((A4_WIDTH_PT - MARGIN_PT) - text_col_x) * 0.97;
-
-    let org_name_lines =
-        wrap_text_to_width(face, &header.org_name, HEADING_SIZE_PT, right_col_width);
-    for line in &org_name_lines {
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_bold.clone(),
-            HEADING_SIZE_PT,
-            line,
-            false,
-            TextDirection::Auto,
-        );
-        cursor_y += HEADING_SIZE_PT + 4.0;
+    // Logo — centered horizontally near the top (the Word letterhead centers
+    // the СМУ ГХК / РОСАТОМ mark). Wide logos hit the LOGO_WIDTH_PT cap, so
+    // centering on LOGO_WIDTH_PT is accurate for them; narrower logos are
+    // left-biased by at most a few points, which is visually negligible.
+    let logo_x = (MARGIN_PT + (usable_width - LOGO_WIDTH_PT) * 0.5).max(MARGIN_PT);
+    if let Some(logo_bytes) = &header.logo_bytes {
+        let mime = header.logo_mime.as_deref().unwrap_or("image/png");
+        draw_logo_from_bytes_at(surface, logo_bytes, mime, logo_x, cursor_y);
+        cursor_y += LOGO_HEIGHT_PT + 10.0;
+    } else if let Some(logo_path_str) = &header.logo_path {
+        draw_logo_at_path(surface, logo_path_str, logo_x, cursor_y);
+        cursor_y += LOGO_HEIGHT_PT + 10.0;
     }
 
-    let org_address_lines =
-        wrap_text_to_width(face, &header.org_address, BODY_SIZE_PT, right_col_width);
-    for line in &org_address_lines {
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_regular.clone(),
+    // Org name — bold, centered, wrapped within ~90% of the usable width.
+    // Centered using the bold face's own metrics so the centering is accurate
+    // for the heavier glyphs.
+    for line in &wrap_text_to_width(
+        bold_face,
+        &header.org_name,
+        BODY_SIZE_PT,
+        usable_width * 0.9,
+    ) {
+        draw_centered_line(surface, bold_face, font_bold, BODY_SIZE_PT, line, cursor_y);
+        cursor_y += BODY_SIZE_PT + 3.0;
+    }
+    cursor_y += 5.0;
+
+    // Contacts — regular, centered, each requisite on its own centered line
+    // (empty ones skipped). Wording/order follow the Word sample: address,
+    // Телефон, Факс, E-mail, "ОКПО …, ОГРН …", "ИНН …, КПП …".
+    for line in &wrap_text_to_width(
+        regular_face,
+        &header.org_address,
+        BODY_SIZE_PT,
+        usable_width * 0.9,
+    ) {
+        draw_centered_line(
+            surface,
+            regular_face,
+            font_regular,
             BODY_SIZE_PT,
             line,
-            false,
-            TextDirection::Auto,
+            cursor_y,
         );
-        cursor_y += BODY_SIZE_PT + 4.0;
+        cursor_y += BODY_SIZE_PT + 3.0;
     }
 
-    // Conditional single-line requisites — only non-empty ones, each its own
-    // line. Order follows the Word sample: phone, fax, email, then OKPO+OGRN
-    // combined on one line (both empty → line skipped entirely).
+    let mut contact_line = |text: &str, cy: &mut f32| {
+        draw_centered_line(surface, regular_face, font_regular, BODY_SIZE_PT, text, *cy);
+        *cy += BODY_SIZE_PT + 3.0;
+    };
     if !header.org_phone.is_empty() {
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_regular.clone(),
-            BODY_SIZE_PT,
-            &format!("Тел.: {}", header.org_phone),
-            false,
-            TextDirection::Auto,
-        );
-        cursor_y += BODY_SIZE_PT + 4.0;
+        contact_line(&format!("Телефон {}", header.org_phone), &mut cursor_y);
     }
     if !header.org_fax.is_empty() {
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_regular.clone(),
-            BODY_SIZE_PT,
-            &format!("Факс: {}", header.org_fax),
-            false,
-            TextDirection::Auto,
-        );
-        cursor_y += BODY_SIZE_PT + 4.0;
+        contact_line(&format!("Факс {}", header.org_fax), &mut cursor_y);
     }
     if !header.org_email.is_empty() {
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_regular.clone(),
-            BODY_SIZE_PT,
-            &format!("E-mail: {}", header.org_email),
-            false,
-            TextDirection::Auto,
-        );
-        cursor_y += BODY_SIZE_PT + 4.0;
+        contact_line(&format!("E-mail: {}", header.org_email), &mut cursor_y);
     }
     if !header.org_okpo.is_empty() || !header.org_ogrn.is_empty() {
         let mut parts = Vec::new();
@@ -352,35 +316,58 @@ fn render_header_two_column(
         if !header.org_ogrn.is_empty() {
             parts.push(format!("ОГРН {}", header.org_ogrn));
         }
-        surface.draw_text(
-            Point::from_xy(text_col_x, cursor_y),
-            font_regular.clone(),
-            BODY_SIZE_PT,
-            &parts.join("  "),
-            false,
-            TextDirection::Auto,
-        );
-        cursor_y += BODY_SIZE_PT + 4.0;
+        contact_line(&parts.join(", "), &mut cursor_y);
     }
+    contact_line(
+        &format!("ИНН {}, КПП {}", header.org_inn, header.org_kpp),
+        &mut cursor_y,
+    );
 
-    // ИНН/КПП — always shown, unchanged from pre-Phase-15 behavior.
+    // Trailing gap before the title block.
+    cursor_y + 16.0
+}
+
+/// Advance width (PDF points) of a single `text` line at `font_size`, using
+/// the same real glyph-advance metrics `wrap_text_to_width` uses. Drives the
+/// horizontal centering of the letterhead and title lines (260704-wxw
+/// fidelity pass).
+fn text_line_width(face: &Face, text: &str, font_size: f32) -> f32 {
+    let units_per_em = face.units_per_em() as f32;
+    let scale = if units_per_em > 0.0 {
+        font_size / units_per_em
+    } else {
+        0.0
+    };
+    text.chars()
+        .filter_map(|c| face.glyph_index(c))
+        .map(|gid| face.glyph_hor_advance(gid).unwrap_or(0) as f32 * scale)
+        .sum()
+}
+
+/// Draws a single `text` line horizontally centered within the printable area
+/// (`MARGIN_PT .. A4_WIDTH_PT - MARGIN_PT`), measuring its width with `face`'s
+/// metrics. Callers must pass a `face` matching the `font` weight so the
+/// measured width matches the drawn glyphs. Lines wider than the printable
+/// area are clamped to the left margin (never drawn off-page-left).
+fn draw_centered_line(
+    surface: &mut krilla::surface::Surface<'_>,
+    face: &Face,
+    font: &Font,
+    font_size: f32,
+    text: &str,
+    y: f32,
+) {
+    let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+    let line_width = text_line_width(face, text, font_size);
+    let x = MARGIN_PT + ((usable_width - line_width) * 0.5).max(0.0);
     surface.draw_text(
-        Point::from_xy(text_col_x, cursor_y),
-        font_regular.clone(),
-        BODY_SIZE_PT,
-        &format!("ИНН {}  КПП {}", header.org_inn, header.org_kpp),
+        Point::from_xy(x, y),
+        font.clone(),
+        font_size,
+        text,
         false,
         TextDirection::Auto,
     );
-    cursor_y += BODY_SIZE_PT + 16.0;
-
-    // BUG 3 (260704-wxw continuation): the standalone header date_label line
-    // was removed — it does not appear in the Word reference sample, and the
-    // date is already carried by the body's "№ {number} от {date}"
-    // paragraph. `header.date_label` remains a HeaderBlock field (other call
-    // sites still populate it) but is intentionally unused by this renderer
-    // now.
-    cursor_y
 }
 
 /// Divides `text` into lines that each fit within `max_width` PDF points at
@@ -788,7 +775,7 @@ fn render_section(
                 for line in &label_lines {
                     surface.draw_text(
                         Point::from_xy(MARGIN_PT, label_line_y),
-                        font_bold.clone(),
+                        font_regular.clone(),
                         BODY_SIZE_PT,
                         line,
                         false,
@@ -845,6 +832,18 @@ fn render_section(
             // matching measure_field_row_height's identical calculation.
             let line_count = label_lines.len().max(lines.len()).max(1);
             y + (line_count as f32) * (BODY_SIZE_PT + 4.0) + 4.0
+        }
+        Section::CenteredText { text } => {
+            // Centered, regular-weight text — the title «Акт приема-передачи»
+            // and the «№ … от …» line in the Word reference sample sit
+            // centered on the page (260704-wxw fidelity pass). Wrap defensively
+            // to the full printable width; each wrapped line is centered.
+            let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+            for line in &wrap_text_to_width(regular_face, text, BODY_SIZE_PT, usable_width) {
+                draw_centered_line(surface, regular_face, font_regular, BODY_SIZE_PT, line, y);
+                y += BODY_SIZE_PT + 4.0;
+            }
+            y + 4.0
         }
     }
 }
@@ -1240,6 +1239,10 @@ mod tests {
         Face::parse(DEJAVU_SANS_REGULAR, 0).expect("parse embedded DejaVu Sans Regular")
     }
 
+    fn dejavu_bold_face() -> Face<'static> {
+        Face::parse(DEJAVU_SANS_BOLD, 0).expect("parse embedded DejaVu Sans Bold")
+    }
+
     #[test]
     fn wrap_text_to_width_short_text_stays_one_line() {
         let face = dejavu_regular_face();
@@ -1386,7 +1389,7 @@ mod tests {
     /// within the header's right column — never truncated, never drawn past
     /// the margin. Asserts the render succeeds (no panic) AND that the
     /// header's returned cursor height grows relative to a short org_name,
-    /// proving `render_header_two_column` actually wrapped to 2+ lines
+    /// proving `render_header_centered` actually wrapped to 2+ lines
     /// instead of drawing one overflowing line.
     #[test]
     fn header_long_org_name_wraps_and_grows_header_height() {
@@ -1405,6 +1408,7 @@ mod tests {
         )
         .expect("font_bold");
 
+        let bold_face = dejavu_bold_face();
         let long_org_name = "Общество с ограниченной ответственностью \
             «Научно-производственное объединение Ромашка Плюс Инновационные Технологии»"
             .to_string();
@@ -1435,7 +1439,7 @@ mod tests {
         };
 
         // Render both headers standalone (no full DocSpec/Document needed —
-        // render_header_two_column only needs a Surface) to compare returned
+        // render_header_centered only needs a Surface) to compare returned
         // cursor heights directly.
         let settings = SerializeSettings::default();
         let mut doc = Document::new_with(settings);
@@ -1445,12 +1449,13 @@ mod tests {
         let short_y = {
             let mut page = doc.start_page_with(page_settings.clone());
             let mut surface = page.surface();
-            let y = render_header_two_column(
+            let y = render_header_centered(
                 &mut surface,
                 &short_header,
                 &font_regular,
                 &font_bold,
                 &face,
+                &bold_face,
                 MARGIN_PT,
             );
             surface.finish();
@@ -1461,12 +1466,13 @@ mod tests {
         let long_y = {
             let mut page = doc.start_page_with(page_settings.clone());
             let mut surface = page.surface();
-            let y = render_header_two_column(
+            let y = render_header_centered(
                 &mut surface,
                 &long_header,
                 &font_regular,
                 &font_bold,
                 &face,
+                &bold_face,
                 MARGIN_PT,
             );
             surface.finish();
