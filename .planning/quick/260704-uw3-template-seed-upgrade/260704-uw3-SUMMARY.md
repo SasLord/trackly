@@ -97,3 +97,12 @@ None - no external service configuration required.
 ---
 *Quick task: 260704-uw3-template-seed-upgrade*
 *Completed: 2026-07-04*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/quick/260704-uw3-template-seed-upgrade/260704-uw3-SUMMARY.md`
+- FOUND: `.planning/quick/260704-uw3-template-seed-upgrade/260704-uw3-PLAN.md`
+- FOUND: `crates/trackly-app/src/services/template_service.rs`
+- FOUND commit: `20fb879` (fix — auto-upgrade branch)
+- FOUND commit: `1a7a1d7` (test — 3 regression tests)
+- FOUND commit: `b4d8f10` (docs — this summary)
