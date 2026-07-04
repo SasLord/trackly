@@ -107,7 +107,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 2** *(depends on Wave 1)*
 
-- [ ] 15-02-PLAN.md — Wire pipeline: fix WR-03 logo-BLOB plumbing in act_service.rs, DeviceCard hybrid section (D-06), rewrite act_handover.minijinja (D-09), sync validate_preview demo_ctx
+- [x] 15-02-PLAN.md — Wire pipeline: fix WR-03 logo-BLOB plumbing in act_service.rs, DeviceCard hybrid section (D-06), rewrite act_handover.minijinja (D-09), sync validate_preview demo_ctx
 
 **Wave 3** *(depends on Wave 2)*
 
@@ -134,7 +134,7 @@ Trackly — портативное приложение для учёта тех
 | 12. Взаимосвязь картриджной заявки | v1.1 | 21/21 | Complete | 2026-06-25 |
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
-| 15. Рендер и соответствие образцу | v1.1.1 | 1/3 | In Progress|  |
+| 15. Рендер и соответствие образцу | v1.1.1 | 2/3 | In Progress|  |
 
 ## Coverage
 

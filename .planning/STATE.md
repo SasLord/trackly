@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-04T06:09:56.895Z"
+last_updated: "2026-07-04T06:25:56.622Z"
 last_activity: 2026-07-04
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 50
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 15 (render-word-fidelity) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-04
 
@@ -151,6 +151,7 @@ Last activity: 2026-07-04
 | Phase 14 P02 | 12min | 2 tasks | 1 files |
 | Phase 14 P03 | 30min | 3 tasks | 4 files |
 | Phase 15 P01 | 25min | 2 tasks | 3 files |
+| Phase 15 P02 | 35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -333,6 +334,9 @@ Recent decisions affecting current work:
 - [Phase 15]: 15-01: Section::Signature sublabels use plain #[serde(default)] + Option<String> idiom (defaulting to None, not the fn-default idiom used for spacer_pt) so absence renders the pre-Phase-15 single-line layout unchanged
 - [Phase 15]: 15-01: ttf-parser promoted to direct dependency (0.25.1, exact-pinned, already transitive via krilla->rustybuzz/skrifa) via Task 0 human-verify checkpoint
 - [Phase 15]: 15-01: 2-column header grid stays fixed regardless of logo presence (no adaptive single-column fallback); empty requisite lines (phone/fax/email/OKPO+OGRN) skipped entirely rather than shown as blank placeholder
+- [Phase ?]: [Phase 15]: 15-02: render_pdf's None org_db branch explicitly returns (dto, None, None) 3-tuple — no behavior change for fixtures without org_db wired
+- [Phase ?]: [Phase 15]: 15-02: Section::DeviceCard long_fields renderer does not filter empty values itself — template is sole source of truth for which long fields get emitted (matches existing conditional-injection idiom)
+- [Phase ?]: [Phase 15]: 15-02: act.giver_name intentionally no longer displayed in act body per D-09 (moved to bare Выдал signature label; receiver_name now in intro paragraph) — deliberate content change, not a regression
 
 ### Pending Todos
 
@@ -392,9 +396,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-04T06:09:56.890Z
-Stopped at: Completed 15-01-PLAN.md
-Resume file: .planning/phases/15-render-word-fidelity/15-02-PLAN.md
+Last session: 2026-07-04T06:25:56.615Z
+Stopped at: Completed 15-02-PLAN.md
+Resume file: .planning/phases/15-render-word-fidelity/15-03-PLAN.md
 
 ## Operator Next Steps
 
