@@ -124,6 +124,13 @@ pub enum Section {
         identification: Vec<KvRow>,
         long_fields: Vec<KvRow>,
     },
+    /// Word-fidelity act-body row (260704-wxw): a label on the left and a
+    /// word-wrapped value on the right, with a thin underline drawn under the
+    /// last wrapped line of the value — the "метка | подчёркнутое значение"
+    /// fill-in-the-blank layout used by the Word reference sample. Empty
+    /// values are the template's responsibility to omit before emission (same
+    /// idiom as `DeviceCard.long_fields`) — the renderer does not filter.
+    FieldRow { label: String, value: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -317,5 +324,28 @@ mod tests {
         let json = serde_json::to_string(&sig).expect("serialize");
         let back: Section = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, sig);
+    }
+
+    #[test]
+    fn field_row_serializes_with_type_tag() {
+        let row = Section::FieldRow {
+            label: "Инвентарный номер:".into(),
+            value: "ИНВ-001".into(),
+        };
+        let json = serde_json::to_value(&row).expect("serialize field_row");
+        assert_eq!(json["type"], "field_row");
+        assert_eq!(json["label"], "Инвентарный номер:");
+        assert_eq!(json["value"], "ИНВ-001");
+    }
+
+    #[test]
+    fn field_row_round_trip_with_cyrillic_content() {
+        let row = Section::FieldRow {
+            label: "было получено устройство:".into(),
+            value: "Ноутбук Lenovo ThinkPad (ё)".into(),
+        };
+        let json = serde_json::to_string(&row).expect("serialize");
+        let back: Section = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, row);
     }
 }
