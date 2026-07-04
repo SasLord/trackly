@@ -256,8 +256,9 @@ async fn signature_renders_two_line_labels() {
 /// sets a long (150+ char) Cyrillic `complectation_at_time` on 2 of the 5
 /// resulting `act_items` rows directly (mirrors the `devices.notes` UPDATE
 /// idiom used elsewhere in this file), then asserts: all 5 device names are
-/// present, no ellipsis truncation marker appears (proves the DeviceCard
-/// wrap path was used, not `ItemsTable`'s truncate path), and a substring
+/// present, no ellipsis truncation marker appears (proves the FieldRow wrap
+/// path was used — 260704-wxw replaced DeviceCard with field_row in the
+/// default template — not `ItemsTable`'s truncate path), and a substring
 /// from the MIDDLE of the long value survived (proves it wasn't cut off).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_multi_device_wraps_long_fields() {
@@ -390,6 +391,79 @@ async fn render_handover_multi_device_paginates_when_overflowing_one_page() {
                 "device name {expected_name:?} missing from full multi-page document"
             );
         }
+    })
+    .await
+    .expect("timeout");
+}
+
+/// 260704-wxw success criterion: the default `act_handover.minijinja` must
+/// emit `field_row` sections (full-length labels), never `device_card`'s
+/// «Устройство №N» heading/counter nor the abbreviated legacy labels. Sets
+/// `inventory_number`/`serial_number`/`model` directly on the seeded
+/// `devices` rows (these fields live on `devices`, not `act_items` —
+/// `ActItemDto.inventory_no`/`serial_no`/`model` are joined live from
+/// `devices` at render time, unlike `complectation_at_time`/`condition_at_time`
+/// which are `act_items` snapshot columns).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_default_template_uses_field_rows_not_device_card() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 2).await;
+
+        for (i, &device_id) in device_ids.iter().enumerate() {
+            p.writer
+                .execute(move |conn| {
+                    conn.execute(
+                        "UPDATE devices SET inventory_number = ?1, serial_number = ?2, model = ?3 \
+                         WHERE id = ?4",
+                        params![
+                            format!("ИНВ-{i:03}"),
+                            format!("SN-{i:04}"),
+                            format!("Модель-{i}"),
+                            device_id
+                        ],
+                    )
+                    .map(|_| ())
+                    .map_err(map_rusqlite)
+                })
+                .await
+                .expect("set device inventory/serial/model");
+        }
+
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Волков В.В.").await;
+        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        // Full-length labels present.
+        for label in ["Инвентарный номер:", "Серийный номер:", "Модель:"] {
+            assert!(
+                text.contains(label),
+                "expected full-length label {label:?} in rendered PDF. Head: {:?}",
+                text.chars().take(800).collect::<String>()
+            );
+        }
+
+        // No device_card heading/counter of any kind.
+        assert!(
+            !text.contains("Устройство №1") && !text.contains("Устройство №2"),
+            "device_card-style «Устройство №N» heading must not appear. Head: {:?}",
+            text.chars().take(800).collect::<String>()
+        );
+
+        // No abbreviated legacy labels.
+        assert!(
+            !text.contains("Инв.№") && !text.contains("Серийный №"),
+            "abbreviated legacy labels must not appear. Head: {:?}",
+            text.chars().take(800).collect::<String>()
+        );
+
+        // Both device names present, in item order (first before second).
+        let first_idx = text.find("Ноутбук-0").expect("first device name missing");
+        let second_idx = text.find("Ноутбук-1").expect("second device name missing");
+        assert!(
+            first_idx < second_idx,
+            "device names must render in item order: {text:?}"
+        );
     })
     .await
     .expect("timeout");

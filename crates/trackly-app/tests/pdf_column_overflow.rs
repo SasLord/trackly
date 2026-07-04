@@ -104,11 +104,13 @@ fn long_name_truncated_does_not_overlap_inv_no() {
 /// Full-pipeline contrast to `long_name_truncated_does_not_overlap_inv_no`
 /// above: that test proves `ItemsTable` still truncates its own (old,
 /// compact-table) columns with an ellipsis. This test proves the INVERSE for
-/// the new `Section::DeviceCard` long-field wrap-blocks (D-06/D-07, Phase 15
-/// plan 02) — a long `complectation_at_time` value rendered through the real
+/// `Section::FieldRow`'s wrap behavior (260704-wxw replaced the default
+/// template's `Section::DeviceCard` long-field wrap-blocks from Phase 15 plan
+/// 02 with `field_row` sections, same wrap-not-truncate guarantee) — a long
+/// `complectation_at_time` value rendered through the real
 /// `act_handover.minijinja` template via the full `act_service::render_pdf`
 /// pipeline must wrap, never truncate with '…'. Both code paths coexist:
-/// `ItemsTable` truncation is untouched; `DeviceCard` wrap-blocks don't
+/// `ItemsTable` truncation is untouched; `FieldRow` wrap-blocks don't
 /// truncate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn device_card_long_field_wraps_instead_of_truncating() {
