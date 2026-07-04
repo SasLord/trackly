@@ -2,23 +2,32 @@
 
   Outputs JSON that deserializes to crates/trackly-app/src/pdf/docspec.rs::DocSpec.
 
-  Available context variables (D-PDF-Templates-Schema-01):
-    org.name, org.inn, org.kpp, org.address, org.logo_path
+  Available context variables (D-PDF-Templates-Schema-01, extended D-09/Phase 15):
+    org.name, org.inn, org.kpp, org.address, org.logo_path,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
     act.giver_name, act.receiver_name, act.deadline, act.deadline_human,
     act.location_name, act.items[], act.parent
+    act.items[].name, act.items[].inventory_no, act.items[].serial_no,
+    act.items[].model, act.items[].specs, act.items[].kit,
+    act.items[].condition, act.items[].quantity
     return.condition_default, return.location_default
 
   All optional fields use `{% if … %}` or `{{ … | default("—", true) }}` (Pitfall 6).
 -#}
 {
-  "title": "Акт приёма-передачи №{{ act.number }}{{ act.suffix | default('') }}",
+  "title": "Акт приема-передачи №{{ act.number }}{{ act.suffix | default('') }}",
   "header": {
     "org_name":    {{ org.name | tojson }},
     "org_inn":     {{ org.inn | tojson }},
     "org_kpp":     {{ org.kpp | tojson }},
     "org_address": {{ org.address | tojson }},
     "logo_path":   {{ org.logo_path | default(none) | tojson }},
+    "org_phone":   {{ (org.phone | default("", true)) | tojson }},
+    "org_fax":     {{ (org.fax | default("", true)) | tojson }},
+    "org_email":   {{ (org.email | default("", true)) | tojson }},
+    "org_okpo":    {{ (org.okpo | default("", true)) | tojson }},
+    "org_ogrn":    {{ (org.ogrn | default("", true)) | tojson }},
     "act_label":   {{ ("Акт приёма-передачи №" ~ act.number ~ (act.suffix | default(''))) | tojson }},
     "date_label":  {{ act.date_human | default(act.date) | tojson }}
   },
@@ -26,62 +35,88 @@
     {
       "type": "heading",
       "level": 1,
-      "text": {{ ("Акт приёма-передачи №" ~ act.number ~ (act.suffix | default(''))) | tojson }}
+      "text": "Акт приема-передачи"
     },
     {
       "type": "spacer",
       "height_pt": 8.0
     },
     {
-      "type": "key_value_table",
-      "rows": [
-        { "key": "Дата",          "value": {{ act.date_human | default(act.date) | tojson }} },
-        { "key": "Сдал",          "value": {{ act.giver_name | tojson }} },
-        { "key": "Принял",        "value": {{ act.receiver_name | tojson }} },
-        { "key": "Расположение",  "value": {{ (act.location_name | default("—", true)) | tojson }} }
-        {%- if act.deadline_human %},
-        { "key": "Сроком до",     "value": {{ act.deadline_human | tojson }} }
-        {%- elif act.deadline %},
-        { "key": "Сроком до",     "value": {{ act.deadline | tojson }} }
-        {%- endif %}
-        {%- if act.parent %},
-        { "key": "По акту",       "value": {{ (("№" ~ act.parent.number) ~ (" от " ~ (act.parent.date_human | default(act.parent.date | default(""))))) | tojson }} }
-        {%- endif %}
-      ]
+      "type": "paragraph",
+      "text": {{ ("№ " ~ act.number ~ (act.suffix | default('')) ~ " от " ~ (act.date_human | default(act.date))) | tojson }}
+    },
+    {
+      "type": "spacer",
+      "height_pt": 8.0
+    },
+    {
+      "type": "paragraph",
+      "text": {{ ("Настоящим актом утверждаю, что мною " ~ act.receiver_name ~ " было получено устройство:") | tojson }}
     },
     {
       "type": "spacer",
       "height_pt": 12.0
-    },
+    }
+    {%- for item in act.items %},
     {
-      "type": "heading",
-      "level": 2,
-      "text": "Позиции"
-    },
-    {
-      "type": "items_table",
-      "columns": ["№", "Наименование", "Инв.№", "Серийный №", "Модель", "Кол-во"],
-      "rows": [
-        {%- for item in act.items %}
-        [
-          {{ loop.index | string | tojson }},
-          {{ item.name | tojson }},
-          {{ (item.inventory_no | default("—", true)) | tojson }},
-          {{ (item.serial_no | default("—", true)) | tojson }},
-          {{ (item.model | default("—", true)) | tojson }},
-          {{ (item.quantity | default(1) | string) | tojson }}
-        ]{% if not loop.last %},{% endif %}
-        {%- endfor %}
+      "type": "device_card",
+      "heading": {{ ("Устройство №" ~ loop.index ~ ": " ~ item.name) | tojson }},
+      "identification": [
+        { "key": "Инв.№",       "value": {{ (item.inventory_no | default("—", true)) | tojson }} },
+        { "key": "Серийный №",  "value": {{ (item.serial_no | default("—", true)) | tojson }} },
+        { "key": "Модель",      "value": {{ (item.model | default("—", true)) | tojson }} }
+      ],
+      "long_fields": [
+        {%- set has_kit = item.kit -%}
+        {%- set has_specs = item.specs -%}
+        {%- set has_condition = item.condition -%}
+        {%- if has_kit %}
+        { "key": "Комплектация", "value": {{ item.kit | tojson }} }{% if has_specs or has_condition %},{% endif %}
+        {%- endif -%}
+        {%- if has_specs %}
+        { "key": "Технические характеристики", "value": {{ item.specs | tojson }} }{% if has_condition %},{% endif %}
+        {%- endif -%}
+        {%- if has_condition %}
+        { "key": "Состояние", "value": {{ item.condition | tojson }} }
+        {%- endif %}
       ]
+    }
+    {%- endfor %}
+    {%- if act.deadline_human %},
+    {
+      "type": "spacer",
+      "height_pt": 8.0
     },
+    {
+      "type": "paragraph",
+      "text": {{ ("Сроком до: " ~ act.deadline_human) | tojson }}
+    }
+    {%- elif act.deadline %},
+    {
+      "type": "spacer",
+      "height_pt": 8.0
+    },
+    {
+      "type": "paragraph",
+      "text": {{ ("Сроком до: " ~ act.deadline) | tojson }}
+    }
+    {%- endif %}
+    {%- if act.parent %},
+    {
+      "type": "paragraph",
+      "text": {{ (("По акту №" ~ act.parent.number) ~ (" от " ~ (act.parent.date_human | default(act.parent.date | default(""))))) | tojson }}
+    }
+    {%- endif %},
     {
       "type": "spacer",
       "height_pt": 24.0
     },
     {
       "type": "signature",
-      "left_label":  {{ ("Сдал: " ~ act.giver_name) | tojson }},
-      "right_label": {{ ("Принял: " ~ act.receiver_name) | tojson }},
+      "left_label":     "Выдал",
+      "right_label":    "Получил",
+      "left_sublabel":  "Подпись",
+      "right_sublabel": "ФИО",
       "spacer_pt": 30.0
     }
   ]

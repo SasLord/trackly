@@ -265,7 +265,12 @@ impl TemplateService {
                 "inn": "7700000000",
                 "kpp": "770000000",
                 "address": "г. Москва, ул. Примерная, д. 1",
-                "logo_path": null
+                "logo_path": null,
+                "phone": "(3919) 75-90-98",
+                "fax": "(3919) 75-08-59",
+                "email": "info@demo-org.ru",
+                "okpo": "10176125",
+                "ogrn": "1122452000714"
             },
             "act": {
                 "number": "42",
@@ -284,7 +289,10 @@ impl TemplateService {
                         "inventory_no": "ИНВ-001",
                         "serial_no": "SN-001",
                         "model": "LaserJet Pro M404n",
-                        "quantity": 1
+                        "quantity": 1,
+                        "specs": "Диагональ: 27 дюймов",
+                        "kit": "Монитор, подставка, кабель питания",
+                        "condition": "Новый в заводской упаковке"
                     }
                 ]
             },
