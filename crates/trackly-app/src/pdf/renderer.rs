@@ -38,8 +38,9 @@ use minijinja::Environment;
 use regex::bytes::Regex;
 use std::io::Cursor;
 use trackly_core::error::AppError;
+use ttf_parser::Face;
 
-use super::docspec::{DocSpec, KvRow, Section, TextStyle};
+use super::docspec::{DocSpec, HeaderBlock, KvRow, Section, TextStyle};
 use super::fonts::{DEJAVU_SANS_BOLD, DEJAVU_SANS_REGULAR};
 use super::minijinja_env::build_safe_env;
 
@@ -125,62 +126,10 @@ impl PdfRenderer {
 
             let mut y = MARGIN_PT + HEADING_SIZE_PT;
 
-            // Header band — org name + act_label + date_label. Kept minimal so
-            // the determinism fixture stays predictable.
-            surface.draw_text(
-                Point::from_xy(MARGIN_PT, y),
-                font_bold.clone(),
-                HEADING_SIZE_PT,
-                &spec.header.org_name,
-                false,
-                TextDirection::Auto,
-            );
-            y += HEADING_SIZE_PT + 4.0;
-            surface.draw_text(
-                Point::from_xy(MARGIN_PT, y),
-                font_regular.clone(),
-                BODY_SIZE_PT,
-                &spec.header.org_address,
-                false,
-                TextDirection::Auto,
-            );
-            y += BODY_SIZE_PT + 4.0;
-            surface.draw_text(
-                Point::from_xy(MARGIN_PT, y),
-                font_regular.clone(),
-                BODY_SIZE_PT,
-                &format!("ИНН {}  КПП {}", spec.header.org_inn, spec.header.org_kpp),
-                false,
-                TextDirection::Auto,
-            );
-            y += BODY_SIZE_PT + 16.0;
-            surface.draw_text(
-                Point::from_xy(MARGIN_PT, y),
-                font_regular.clone(),
-                BODY_SIZE_PT,
-                &spec.header.date_label,
-                false,
-                TextDirection::Auto,
-            );
-            y += BODY_SIZE_PT + 16.0;
-
-            // Optional logo in the top-right corner. Graceful — a missing file
-            // or unsupported mime is a tracing::warn, never an error: orgs
-            // without a logo (or with a misconfigured path) must still print.
-            // ACT-11 / CR-01: Phase-3 plans wired `safe_logo_canonical` up to
-            // `spec.header.logo_path`; Phase-7 plan-02 adds `logo_bytes` BLOB
-            // path that takes priority (T-07-02-01 mitigation — validated at save).
-            //
-            // Priority (Phase 7 plan 02):
-            //   1. logo_bytes is Some → draw from in-memory bytes + logo_mime
-            //   2. logo_path is Some → read from filesystem (Phase 3 path)
-            //   3. else → no logo
-            if let Some(logo_bytes) = &spec.header.logo_bytes {
-                let mime = spec.header.logo_mime.as_deref().unwrap_or("image/png");
-                draw_logo_from_bytes(&mut surface, logo_bytes, mime);
-            } else if let Some(logo_path_str) = &spec.header.logo_path {
-                draw_logo_top_right(&mut surface, logo_path_str);
-            }
+            // Two-column header — logo (left) + requisites (right). Phase 15
+            // Plan 01: extracted from the previous inline draw_text sequence
+            // into a reusable, testable function (Pattern 1, D-08б).
+            y = render_header_two_column(&mut surface, &spec.header, &font_regular, &font_bold, y);
 
             // Walk DocSpec sections.
             for section in &spec.sections {
@@ -197,6 +146,217 @@ impl PdfRenderer {
 
         Ok(normalize_pdf_for_determinism(&raw))
     }
+}
+
+/// Fixed left-column width (PDF points) reserved for the logo in the
+/// two-column header layout (Pattern 1, D-08б).
+const HEADER_LOGO_COL_WIDTH_PT: f32 = 120.0;
+/// Gap between the logo column and the requisites text column.
+const HEADER_COL_GAP_PT: f32 = 12.0;
+
+/// Render the organization header as a two-column layout: logo in a fixed
+/// left column, requisites (name/address/phone/fax/email/OKPO+OGRN/ИНН+КПП/
+/// date) stacked in the right column. Returns the y-cursor after the header
+/// (with trailing padding included).
+///
+/// Phase 15 Plan 01 (Pattern 1, D-08б): extracted from the previous inline
+/// `draw_text` sequence in `render_docspec` into a standalone, reusable,
+/// independently testable function. The 2-column grid is fixed regardless of
+/// logo presence (RESEARCH Open Question 3 resolution) — an absent logo
+/// simply leaves the left column empty, no adaptive single-column fallback.
+/// Empty requisite lines (phone/fax/email/OKPO+OGRN) are skipped entirely
+/// (not rendered as a blank "—" placeholder line) — the simplest correct
+/// degrade per D-08б.
+fn render_header_two_column(
+    surface: &mut krilla::surface::Surface<'_>,
+    header: &HeaderBlock,
+    font_regular: &Font,
+    font_bold: &Font,
+    y: f32,
+) -> f32 {
+    // Logo — left column. Same priority/graceful-degradation logic as before
+    // (Phase 7 plan 02), only the anchor changes from top-right to left.
+    //
+    // Priority:
+    //   1. logo_bytes is Some → draw from in-memory bytes + logo_mime
+    //   2. logo_path is Some → read from filesystem (Phase 3 path)
+    //   3. else → no logo (left column stays empty)
+    if let Some(logo_bytes) = &header.logo_bytes {
+        let mime = header.logo_mime.as_deref().unwrap_or("image/png");
+        draw_logo_from_bytes_at(surface, logo_bytes, mime, MARGIN_PT, y);
+    } else if let Some(logo_path_str) = &header.logo_path {
+        draw_logo_at_path(surface, logo_path_str, MARGIN_PT, y);
+    }
+
+    // Requisites — right column, built as a list of (font, size, text) lines,
+    // skipping empty ones. org_name (bold, heading size) and org_address
+    // (regular, body size) are always shown (never empty in practice); the
+    // extended requisites are conditionally shown only when non-empty;
+    // ИНН/КПП is always shown (unchanged from pre-Phase-15 behavior); date
+    // label is always shown last.
+    let text_col_x = MARGIN_PT + HEADER_LOGO_COL_WIDTH_PT + HEADER_COL_GAP_PT;
+    let mut cursor_y = y;
+
+    surface.draw_text(
+        Point::from_xy(text_col_x, cursor_y),
+        font_bold.clone(),
+        HEADING_SIZE_PT,
+        &header.org_name,
+        false,
+        TextDirection::Auto,
+    );
+    cursor_y += HEADING_SIZE_PT + 4.0;
+
+    surface.draw_text(
+        Point::from_xy(text_col_x, cursor_y),
+        font_regular.clone(),
+        BODY_SIZE_PT,
+        &header.org_address,
+        false,
+        TextDirection::Auto,
+    );
+    cursor_y += BODY_SIZE_PT + 4.0;
+
+    // Conditional single-line requisites — only non-empty ones, each its own
+    // line. Order follows the Word sample: phone, fax, email, then OKPO+OGRN
+    // combined on one line (both empty → line skipped entirely).
+    if !header.org_phone.is_empty() {
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_regular.clone(),
+            BODY_SIZE_PT,
+            &format!("Тел.: {}", header.org_phone),
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += BODY_SIZE_PT + 4.0;
+    }
+    if !header.org_fax.is_empty() {
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_regular.clone(),
+            BODY_SIZE_PT,
+            &format!("Факс: {}", header.org_fax),
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += BODY_SIZE_PT + 4.0;
+    }
+    if !header.org_email.is_empty() {
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_regular.clone(),
+            BODY_SIZE_PT,
+            &format!("E-mail: {}", header.org_email),
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += BODY_SIZE_PT + 4.0;
+    }
+    if !header.org_okpo.is_empty() || !header.org_ogrn.is_empty() {
+        let mut parts = Vec::new();
+        if !header.org_okpo.is_empty() {
+            parts.push(format!("ОКПО {}", header.org_okpo));
+        }
+        if !header.org_ogrn.is_empty() {
+            parts.push(format!("ОГРН {}", header.org_ogrn));
+        }
+        surface.draw_text(
+            Point::from_xy(text_col_x, cursor_y),
+            font_regular.clone(),
+            BODY_SIZE_PT,
+            &parts.join("  "),
+            false,
+            TextDirection::Auto,
+        );
+        cursor_y += BODY_SIZE_PT + 4.0;
+    }
+
+    // ИНН/КПП — always shown, unchanged from pre-Phase-15 behavior.
+    surface.draw_text(
+        Point::from_xy(text_col_x, cursor_y),
+        font_regular.clone(),
+        BODY_SIZE_PT,
+        &format!("ИНН {}  КПП {}", header.org_inn, header.org_kpp),
+        false,
+        TextDirection::Auto,
+    );
+    cursor_y += BODY_SIZE_PT + 16.0;
+
+    surface.draw_text(
+        Point::from_xy(text_col_x, cursor_y),
+        font_regular.clone(),
+        BODY_SIZE_PT,
+        &header.date_label,
+        false,
+        TextDirection::Auto,
+    );
+    cursor_y += BODY_SIZE_PT + 16.0;
+
+    cursor_y
+}
+
+/// Divides `text` into lines that each fit within `max_width` PDF points at
+/// `font_size`, using real glyph advance-width metrics from `face` (Pattern 2,
+/// D-06) instead of the `truncate_to_width` single-line ellipsis
+/// approximation. Breaks only at word boundaries (`split_whitespace`);
+/// consecutive whitespace is normalized to a single space between words.
+///
+/// Pathological case (T-15-01 mitigation): a single word longer than
+/// `max_width` on its own is returned as its own line — never split
+/// mid-word, never dropped, never causes an infinite loop.
+///
+/// A short text that fits entirely within `max_width` is returned unchanged
+/// as a single-element `Vec` (no spurious wrapping).
+pub fn wrap_text_to_width(face: &Face, text: &str, font_size: f32, max_width: f32) -> Vec<String> {
+    let units_per_em = face.units_per_em() as f32;
+    let scale = if units_per_em > 0.0 {
+        font_size / units_per_em
+    } else {
+        0.0
+    };
+
+    let word_width = |word: &str| -> f32 {
+        word.chars()
+            .filter_map(|c| face.glyph_index(c))
+            .map(|gid| face.glyph_hor_advance(gid).unwrap_or(0) as f32 * scale)
+            .sum()
+    };
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0.0_f32;
+
+    for word in text.split_whitespace() {
+        let w_width = word_width(word);
+        let space_width = if current.is_empty() {
+            0.0
+        } else {
+            font_size * 0.25
+        };
+
+        if current_width + space_width + w_width > max_width && !current.is_empty() {
+            lines.push(std::mem::take(&mut current));
+            current_width = 0.0;
+        }
+        if !current.is_empty() {
+            current.push(' ');
+            current_width += space_width;
+        }
+        current.push_str(word);
+        current_width += w_width;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        // Input was empty or all-whitespace — preserve prior truncate_to_width
+        // idiom of returning something rather than an empty Vec is NOT
+        // required here (empty text legitimately wraps to zero lines), but an
+        // explicit empty Vec is clearer than a Vec containing one empty
+        // String.
+    }
+    lines
 }
 
 /// Render a single Section against `surface`. Returns the y-cursor *after*
@@ -303,6 +463,8 @@ fn render_section(
             left_label,
             right_label,
             spacer_pt,
+            left_sublabel,
+            right_sublabel,
         } => {
             y += spacer_pt;
             let mid = A4_WIDTH_PT / 2.0;
@@ -322,7 +484,37 @@ fn render_section(
                 false,
                 TextDirection::Auto,
             );
-            y + BODY_SIZE_PT + 4.0
+            // D-07 (Phase 15): two-line signature sub-labels («Подпись» /
+            // «ФИО») under «Выдал»/«Получил». Only advance the y-cursor by an
+            // extra line when at least one sublabel is present — this keeps
+            // the returned y-cursor identical to pre-Phase-15 behavior for
+            // specs that don't use sublabels (backward-compat byte output).
+            if left_sublabel.is_some() || right_sublabel.is_some() {
+                let sub_y = y + BODY_SIZE_PT + 2.0;
+                if let Some(left_sub) = left_sublabel {
+                    surface.draw_text(
+                        Point::from_xy(MARGIN_PT, sub_y),
+                        font_regular.clone(),
+                        BODY_SIZE_PT,
+                        left_sub,
+                        false,
+                        TextDirection::Auto,
+                    );
+                }
+                if let Some(right_sub) = right_sublabel {
+                    surface.draw_text(
+                        Point::from_xy(mid + 10.0, sub_y),
+                        font_regular.clone(),
+                        BODY_SIZE_PT,
+                        right_sub,
+                        false,
+                        TextDirection::Auto,
+                    );
+                }
+                sub_y + BODY_SIZE_PT + 4.0
+            } else {
+                y + BODY_SIZE_PT + 4.0
+            }
         }
         Section::Spacer { height_pt } => y + height_pt,
     }
@@ -382,7 +574,8 @@ pub fn scale_logo_dimensions(orig_w: f32, orig_h: f32, max_w: f32, max_h: f32) -
     (orig_w * scale, orig_h * scale)
 }
 
-/// Draw a logo from in-memory bytes (Phase 7 plan 02 — BLOB path).
+/// Draw a logo from in-memory bytes (Phase 7 plan 02 — BLOB path), anchored
+/// at the given `(tx, ty)` top-left position.
 ///
 /// `mime` is used to determine the image format ("image/png", "image/jpeg",
 /// "image/svg+xml"). SVG is not supported by krilla natively, so it is
@@ -390,7 +583,18 @@ pub fn scale_logo_dimensions(orig_w: f32, orig_h: f32, max_w: f32, max_h: f32) -
 ///
 /// Failures are logged at WARN and the function returns silently — rendering
 /// must remain graceful so orgs without a valid logo still get a document.
-fn draw_logo_from_bytes(surface: &mut krilla::surface::Surface<'_>, logo_bytes: &[u8], mime: &str) {
+///
+/// Phase 15 Plan 01: anchor position parametrized (`tx`/`ty`) so the same
+/// scale/decode/graceful-degrade logic serves both the pre-Phase-15
+/// top-right anchor and the new header two-column left anchor — reused
+/// unchanged (RESEARCH Don't Hand-Roll: `scale_logo_dimensions` idiom).
+fn draw_logo_from_bytes_at(
+    surface: &mut krilla::surface::Surface<'_>,
+    logo_bytes: &[u8],
+    mime: &str,
+    tx: f32,
+    ty: f32,
+) {
     // Determine format from mime (T-07-02-01: only png/jpeg/svg allowed at save time)
     let mime_lower = mime.to_lowercase();
     let is_png = mime_lower.contains("png");
@@ -453,19 +657,25 @@ fn draw_logo_from_bytes(surface: &mut krilla::surface::Surface<'_>, logo_bytes: 
         }
     };
 
-    let tx = A4_WIDTH_PT - MARGIN_PT - final_w;
-    let ty = MARGIN_PT;
     surface.push_transform(&Transform::from_translate(tx, ty));
     surface.draw_image(image, size);
     surface.pop();
 }
 
-/// Read a logo image from disk and emit a `draw_image` call into the
-/// top-right corner of the page. Failures (missing file, unsupported mime,
-/// invalid bytes) are logged at WARN and the function returns silently —
-/// rendering must remain graceful so orgs without a valid logo still get a
+/// Read a logo image from disk and emit a `draw_image` call anchored at the
+/// given `(tx, ty)` top-left position. Failures (missing file, unsupported
+/// mime, invalid bytes) are logged at WARN and the function returns silently
+/// — rendering must remain graceful so orgs without a valid logo still get a
 /// document (ACT-11 / CR-01 design choice in 03-06-PLAN.md).
-fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str: &str) {
+///
+/// Phase 15 Plan 01: anchor position parametrized (`tx`/`ty`), same rationale
+/// as `draw_logo_from_bytes_at`.
+fn draw_logo_at_path(
+    surface: &mut krilla::surface::Surface<'_>,
+    logo_path_str: &str,
+    tx: f32,
+    ty: f32,
+) {
     let bytes = match std::fs::read(logo_path_str) {
         Ok(b) => b,
         Err(e) => {
@@ -552,13 +762,8 @@ fn draw_logo_top_right(surface: &mut krilla::surface::Surface<'_>, logo_path_str
 
     // `surface.draw_image` paints at the current transform origin with the
     // image's natural origin = (0,0). Translate so the logo lands at the
-    // top-right corner with a uniform page margin. push_transform / pop is a
-    // standard graphics-state save/restore.
-    //
-    // Right-align based on final_w (NOT LOGO_WIDTH_PT) — иначе при final_w <
-    // LOGO_WIDTH_PT логотип будет смещён ВПРАВО от правильного anchor'а.
-    let tx = A4_WIDTH_PT - MARGIN_PT - final_w;
-    let ty = MARGIN_PT;
+    // caller-supplied `(tx, ty)` anchor. push_transform / pop is a standard
+    // graphics-state save/restore.
     surface.push_transform(&Transform::from_translate(tx, ty));
     surface.draw_image(image, size);
     surface.pop();
@@ -679,5 +884,171 @@ mod tests {
             s.contains("/Producer (Trackly Phase 3)"),
             "post-process did not normalize Producer, got {s}"
         );
+    }
+
+    /// Measures the advance width (PDF points) of `line` at `font_size` using
+    /// the same glyph-metrics approach as `wrap_text_to_width` — test-only
+    /// helper to assert each wrapped line stays within `max_width`.
+    fn measure_line_width(face: &Face, line: &str, font_size: f32) -> f32 {
+        let units_per_em = face.units_per_em() as f32;
+        let scale = if units_per_em > 0.0 {
+            font_size / units_per_em
+        } else {
+            0.0
+        };
+        line.chars()
+            .filter_map(|c| face.glyph_index(c))
+            .map(|gid| face.glyph_hor_advance(gid).unwrap_or(0) as f32 * scale)
+            .sum::<f32>()
+            + if line.contains(' ') {
+                (line.matches(' ').count() as f32) * font_size * 0.25
+            } else {
+                0.0
+            }
+    }
+
+    fn dejavu_regular_face() -> Face<'static> {
+        Face::parse(DEJAVU_SANS_REGULAR, 0).expect("parse embedded DejaVu Sans Regular")
+    }
+
+    #[test]
+    fn wrap_text_to_width_short_text_stays_one_line() {
+        let face = dejavu_regular_face();
+        let lines = wrap_text_to_width(&face, "Короткий текст", 10.0, 400.0);
+        assert_eq!(
+            lines,
+            vec!["Короткий текст".to_string()],
+            "short text that fits must not be spuriously wrapped"
+        );
+    }
+
+    #[test]
+    fn wrap_text_to_width_long_text_wraps_multiple_lines_without_overlap() {
+        let face = dejavu_regular_face();
+        let long_text = "Комплектация: системный блок, монитор, клавиатура, \
+            мышь, кабель питания, документация, гарантийный талон, \
+            дополнительный набор кабелей и переходников";
+        let max_width = 200.0;
+        let font_size = 10.0;
+        let lines = wrap_text_to_width(&face, long_text, font_size, max_width);
+
+        assert!(
+            lines.len() > 1,
+            "long text at a narrow max_width must wrap to multiple lines, got {lines:?}"
+        );
+
+        let epsilon = font_size; // small tolerance for trailing space-width approximation
+        for line in &lines {
+            let width = measure_line_width(&face, line, font_size);
+            assert!(
+                width <= max_width + epsilon,
+                "wrapped line {line:?} measured width {width} exceeds max_width {max_width} (+ epsilon {epsilon})"
+            );
+        }
+
+        // No truncation ellipsis — word-wrap must never introduce '…'.
+        assert!(
+            !lines.iter().any(|l| l.contains('…')),
+            "wrap_text_to_width must never truncate with an ellipsis, got {lines:?}"
+        );
+    }
+
+    #[test]
+    fn wrap_text_to_width_single_long_word_does_not_panic_or_loop() {
+        let face = dejavu_regular_face();
+        let pathological = "а".repeat(200); // single unbroken token, no spaces
+        let lines = wrap_text_to_width(&face, &pathological, 10.0, 50.0);
+        assert_eq!(
+            lines.len(),
+            1,
+            "a single word longer than max_width must return as its own line, got {lines:?}"
+        );
+        assert_eq!(lines[0], pathological);
+    }
+
+    fn signature_spec(left_sublabel: Option<String>, right_sublabel: Option<String>) -> DocSpec {
+        DocSpec {
+            title: "Акт".into(),
+            header: HeaderBlock {
+                org_name: "Org".into(),
+                org_inn: "1".into(),
+                org_kpp: "2".into(),
+                org_address: "Addr".into(),
+                logo_path: None,
+                logo_bytes: None,
+                logo_mime: None,
+                org_phone: "".into(),
+                org_fax: "".into(),
+                org_email: "".into(),
+                org_okpo: "".into(),
+                org_ogrn: "".into(),
+                act_label: "Act".into(),
+                date_label: "Today".into(),
+            },
+            sections: vec![Section::Signature {
+                left_label: "Выдал".into(),
+                right_label: "Получил".into(),
+                spacer_pt: 30.0,
+                left_sublabel,
+                right_sublabel,
+            }],
+        }
+    }
+
+    #[test]
+    fn signature_two_line_sublabels_render_all_four_strings() {
+        let r = PdfRenderer::new();
+        let spec = signature_spec(Some("Подпись".into()), Some("ФИО".into()));
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        for expected in ["Выдал", "Получил", "Подпись", "ФИО"] {
+            assert!(
+                text.contains(expected),
+                "expected {expected:?} in rendered signature PDF. Extracted: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn signature_without_sublabels_renders_as_before() {
+        let r = PdfRenderer::new();
+        let spec = signature_spec(None, None);
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(text.contains("Выдал"));
+        assert!(text.contains("Получил"));
+        assert!(
+            !text.contains("Подпись") && !text.contains("ФИО"),
+            "sublabels must not appear when both are None"
+        );
+    }
+
+    #[test]
+    fn header_two_column_skips_empty_requisite_lines() {
+        let r = PdfRenderer::new();
+        let spec = DocSpec {
+            title: "Акт".into(),
+            header: HeaderBlock {
+                org_name: "ООО Ромашка".into(),
+                org_inn: "7700000000".into(),
+                org_kpp: "770001001".into(),
+                org_address: "г. Москва, ул. Ленина, 1".into(),
+                logo_path: None,
+                logo_bytes: None,
+                logo_mime: None,
+                org_phone: "".into(),
+                org_fax: "".into(),
+                org_email: "".into(),
+                org_okpo: "".into(),
+                org_ogrn: "".into(),
+                act_label: "Act".into(),
+                date_label: "Today".into(),
+            },
+            sections: vec![],
+        };
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(text.contains("ООО Ромашка"), "org_name missing: {text:?}");
+        assert!(text.contains("Москва"), "org_address missing: {text:?}");
     }
 }
