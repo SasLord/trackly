@@ -1353,23 +1353,27 @@ impl ActService {
             .organization
             .safe_logo_canonical(&org_legacy)
             .await?;
-        let org_dto = match pipeline.org_db {
+        let (org_dto, logo_bytes, logo_mime) = match pipeline.org_db {
             Some(org_db) => {
-                let (dto, _logo_bytes, _logo_mime) = org_db.get_for_pdf().await?;
-                dto
+                let (dto, logo_bytes, logo_mime) = org_db.get_for_pdf().await?;
+                (dto, logo_bytes, logo_mime)
             }
-            None => crate::dto::reports::OrgSettingsDto {
-                org_name: org_legacy.name.clone(),
-                inn: org_legacy.inn.clone(),
-                kpp: org_legacy.kpp.clone(),
-                address: org_legacy.address.clone(),
-                has_logo: false,
-                phone: String::new(),
-                fax: String::new(),
-                email: String::new(),
-                okpo: String::new(),
-                ogrn: String::new(),
-            },
+            None => (
+                crate::dto::reports::OrgSettingsDto {
+                    org_name: org_legacy.name.clone(),
+                    inn: org_legacy.inn.clone(),
+                    kpp: org_legacy.kpp.clone(),
+                    address: org_legacy.address.clone(),
+                    has_logo: false,
+                    phone: String::new(),
+                    fax: String::new(),
+                    email: String::new(),
+                    okpo: String::new(),
+                    ogrn: String::new(),
+                },
+                None,
+                None,
+            ),
         };
         let template_src = pipeline.templates.get_active("act_handover").await?;
 
@@ -1447,11 +1451,22 @@ impl ActService {
         )
         .await?;
 
-        let spec: crate::pdf::docspec::DocSpec =
+        let mut spec: crate::pdf::docspec::DocSpec =
             serde_json::from_str(&rendered).map_err(|e| AppError::Validation {
                 field: "template".to_string(),
                 message: format!("Шаблон не выдал валидный DocSpec JSON: {e}"),
             })?;
+
+        // WR-03 fix: propagate the real org_settings BLOB logo bytes into the
+        // parsed DocSpec, bypassing the MiniJinja JSON round-trip (templates
+        // can't reasonably emit raw binary as JSON, so they never set this
+        // field — the Rust layer is the sole source of truth for
+        // `logo_bytes`). `logo_path` (org.json) remains the fallback the
+        // renderer already prioritizes correctly (logo_bytes wins when Some).
+        if let Some(bytes) = logo_bytes {
+            spec.header.logo_bytes = Some(bytes);
+            spec.header.logo_mime = logo_mime;
+        }
 
         pipeline.pdf.render_docspec(&spec)
     }
