@@ -150,7 +150,10 @@ impl PdfRenderer {
             // Walk DocSpec sections, starting a new page whenever the next
             // section would overflow the printable area.
             for section in &spec.sections {
-                if matches!(section, Section::DeviceCard { .. } | Section::FieldRow { .. }) {
+                if matches!(
+                    section,
+                    Section::DeviceCard { .. } | Section::FieldRow { .. }
+                ) {
                     // Measure-then-place: compute the section's total height
                     // WITHOUT drawing, using the exact same wrap_text_to_width
                     // calls the draw arm uses, so measurement and drawing
@@ -1651,7 +1654,9 @@ mod tests {
         let first_idx = text
             .find("Серийный номер:")
             .expect("first field row label missing");
-        let second_idx = text.find("Модель:").expect("second field row label missing");
+        let second_idx = text
+            .find("Модель:")
+            .expect("second field row label missing");
         assert!(
             first_idx < second_idx,
             "first field row must appear before second in extracted text: {text:?}"

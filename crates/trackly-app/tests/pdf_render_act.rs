@@ -435,7 +435,8 @@ async fn render_handover_default_template_uses_field_rows_not_device_card() {
         let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
 
         // Full-length labels present.
-        for label in ["Инвентарный номер:", "Серийный номер:", "Модель:"] {
+        for label in ["Инвентарный номер:", "Серийный номер:", "Модель:"]
+        {
             assert!(
                 text.contains(label),
                 "expected full-length label {label:?} in rendered PDF. Head: {:?}",
