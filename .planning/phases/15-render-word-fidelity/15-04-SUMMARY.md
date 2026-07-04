@@ -105,3 +105,10 @@ No blockers. Milestone v1.1.1 (PDF-акт по образцу Word) is ready for
 ---
 *Phase: 15-render-word-fidelity*
 *Completed: 2026-07-04*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/15-render-word-fidelity/15-04-SUMMARY.md
+- FOUND: commit 169019d (Task 1 — pagination logic)
+- FOUND: commit ba5ea52 (Task 2 — regression test)
+- FOUND: commit 52ed330 (this SUMMARY.md)
