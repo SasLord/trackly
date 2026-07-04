@@ -8,7 +8,8 @@ Trackly — портативное приложение для учёта тех
 
 - ✅ **v1.0 — Базовый учёт** — Phases 1–8 (shipped 2026-06-19) → `milestones/v1.1-ROADMAP.md`
 - ✅ **v1.1 — AD, сотрудники и картриджная взаимосвязь** — Phases 9–13 (shipped 2026-06-26) → `milestones/v1.1-ROADMAP.md`
-- 🚧 **v1.1.1 — PDF-акт по образцу Word (мультиустройство)** — Phases 14–15 (active)
+- ✅ **v1.1.1 — PDF-акт по образцу Word (мультиустройство)** — Phases 14–15 (completed 2026-07-04)
+- 🚧 **v1.2 — Документы через HTML-печать** — Phase 16 (active)
 
 ## Phases
 
@@ -44,6 +45,10 @@ Trackly — портативное приложение для учёта тех
 
 - [x] **Phase 14: Данные и структура акта** - Схема/контекст акта содержит все поля образца (реквизиты, комплектация, тех.характеристики, срок до, мультиустройство, двухстрочные подписи) и достижимы через существующий механизм `document_templates`. (completed 2026-07-03)
 - [x] **Phase 15: Рендер и соответствие образцу** - Дефолтный шаблон и рендерер производят PDF, визуально соответствующий образцу Word, с мультиустройством и regression-тестами. (completed 2026-07-04)
+
+**v1.2 — Документы через HTML-печать — ACTIVE**
+
+- [ ] **Phase 16: Документы через HTML-печать** - Оба акта (приёма-передачи и приёмки устройства) генерируются из HTML-шаблонов (папка `templates/` рядом с exe + вшитый дефолт-fallback) и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN), визуально по образцу Word; krilla/DocSpec заморожен и не используется. (SPEC: 16-SPEC.md)
 
 ## Phase Details
 
@@ -117,6 +122,22 @@ Trackly — портативное приложение для учёта тех
 
 - [x] 15-04-PLAN.md — Page-break/pagination in render_docspec/render_section (DeviceCard kept atomic across page boundaries) + full-pipeline page-count regression test
 
+---
+
+### Phase 16: Документы через HTML-печать
+
+**Goal**: Генерация обоих актов переходит с krilla/DocSpec-пайплайна на HTML-шаблоны: шаблоны лежат в папке `templates/` рядом с исполняемым файлом (редактируются как файлы) с вшитым дефолтом-fallback, рендерятся в self-contained HTML по образцу Word и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN).
+
+**Depends on**: Phase 15 (контекст акта + образец Word зафиксированы)
+
+**Milestone**: v1.2 — Документы через HTML-печать
+
+**Spec**: `16-SPEC.md` (ambiguity 0.17)
+
+**Success Criteria** (what must be TRUE): см. `16-SPEC.md` — Acceptance Criteria.
+
+**Plans**: TBD (создаются в /gsd-plan-phase)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -139,6 +160,7 @@ Trackly — портативное приложение для учёта тех
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
+| 16. Документы через HTML-печать | v1.2 | 0/? | Spec'd | — |
 
 ## Coverage
 
