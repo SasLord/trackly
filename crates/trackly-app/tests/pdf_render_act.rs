@@ -151,6 +151,12 @@ async fn create_handover_with_giver(
     svc.create(payload).await.expect("create handover")
 }
 
+/// N=1 regression anchor. D-09 removed `giver_name` from the rendered body
+/// (it now only appears via the bare "Выдал" signature label); this test
+/// therefore asserts `receiver_name` — which D-09's intro paragraph does
+/// render — instead of the old giver_name-in-body assertion. The N=5
+/// multi-device case (with long-field wrap coverage) is covered separately
+/// by `render_handover_multi_device_wraps_long_fields` below.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_act_produces_cyrillic_pdf() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -172,8 +178,8 @@ async fn render_handover_act_produces_cyrillic_pdf() {
 
         let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
         assert!(
-            text.contains("Сидоров-Петроградский"),
-            "Cyrillic giver name missing. Head: {:?}",
+            text.contains("Петров"),
+            "Cyrillic receiver name (D-09 intro paragraph) missing. Head: {:?}",
             text.chars().take(300).collect::<String>()
         );
         // Act number is 1 (auto-incremented).
@@ -181,6 +187,128 @@ async fn render_handover_act_produces_cyrillic_pdf() {
             text.contains("№1") || text.contains("1"),
             "Act number missing. Head: {:?}",
             text.chars().take(300).collect::<String>()
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// D-09 intro paragraph presence + interpolated receiver_name, on the full
+/// `act_service::render_pdf` pipeline (PDFA-01).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_act_contains_d09_intro_phrase() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
+        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(
+            text.contains("Настоящим актом утверждаю"),
+            "D-09 intro phrase missing. Head: {:?}",
+            text.chars().take(500).collect::<String>()
+        );
+        assert!(
+            text.contains(&act.receiver_name),
+            "act.receiver_name ({:?}) not interpolated into intro paragraph. Head: {:?}",
+            act.receiver_name,
+            text.chars().take(500).collect::<String>()
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Two-line signature sublabels (D-07): «Подпись»/«ФИО» under «Выдал»/«Получил».
+/// N=1 is sufficient — the signature block does not vary with device count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn signature_renders_two_line_labels() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
+        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        for expected in ["Выдал", "Получил", "Подпись", "ФИО"] {
+            assert!(
+                text.contains(expected),
+                "expected signature label {expected:?} missing. Head: {:?}",
+                text.chars().take(500).collect::<String>()
+            );
+        }
+    })
+    .await
+    .expect("timeout");
+}
+
+/// PDFA-02: 1-vs-N device rendering. Seeds 5 devices in ONE handover act,
+/// sets a long (150+ char) Cyrillic `complectation_at_time` on 2 of the 5
+/// resulting `act_items` rows directly (mirrors the `devices.notes` UPDATE
+/// idiom used elsewhere in this file), then asserts: all 5 device names are
+/// present, no ellipsis truncation marker appears (proves the DeviceCard
+/// wrap path was used, not `ItemsTable`'s truncate path), and a substring
+/// from the MIDDLE of the long value survived (proves it wasn't cut off).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_multi_device_wraps_long_fields() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 5).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Кузнецов К.К.").await;
+
+        let long_kit = "Блок питания, кабель питания, кабель HDMI, сумка для переноски, \
+            документация на русском языке, гарантийный талон, комплект крепёжных винтов, \
+            салфетка для протирки экрана СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ хвостовая часть строки"
+            .to_string();
+        assert!(
+            long_kit.chars().count() > 150,
+            "test fixture string must exceed 150 chars"
+        );
+
+        // Set complectation_at_time on 2 of the 5 act_items rows directly.
+        for item in act.items.iter().take(2) {
+            let act_id = act.id;
+            let device_id = item.device_id;
+            let value = long_kit.clone();
+            p.writer
+                .execute(move |conn| {
+                    conn.execute(
+                        "UPDATE act_items SET complectation_at_time = ?1 \
+                         WHERE act_id = ?2 AND device_id = ?3",
+                        params![value, act_id, device_id],
+                    )
+                    .map(|_| ())
+                    .map_err(map_rusqlite)
+                })
+                .await
+                .expect("set complectation_at_time");
+        }
+
+        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        // seed_devices names devices "Ноутбук-{i}" where i is the loop
+        // index (0..count), independent of the assigned device_id.
+        assert_eq!(device_ids.len(), 5, "expected 5 seeded devices");
+        for i in 0..5 {
+            let expected_name = format!("Ноутбук-{i}");
+            assert!(
+                text.contains(&expected_name),
+                "device name {expected_name:?} missing from rendered text. Head: {:?}",
+                text.chars().take(800).collect::<String>()
+            );
+        }
+
+        assert!(
+            !text.contains('…'),
+            "long complectation field must wrap, not truncate with ellipsis. Head: {:?}",
+            text.chars().take(800).collect::<String>()
+        );
+
+        assert!(
+            text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
+            "middle-of-value marker missing — long field appears to have been cut off. \
+             Head: {:?}",
+            text.chars().take(800).collect::<String>()
         );
     })
     .await
