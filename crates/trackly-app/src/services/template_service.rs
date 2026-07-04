@@ -492,4 +492,161 @@ mod tests {
             Err(e) => panic!("validate_preview failed: {e:?}"),
         }
     }
+
+    /// Quick task 260704-uw3 (the bug): an existing DB whose active
+    /// `act_handover` row has `is_default=1` and a stale body must be
+    /// auto-upgraded in place to the current bundled body on the next
+    /// `seed_defaults_on_startup` call — no manual re-seed needed.
+    #[tokio::test]
+    async fn seed_upgrades_stale_default_body_to_bundled_current() {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer.clone(), readers, clock);
+
+        writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO document_templates \
+                     (kind, name, body_minijinja, is_active, is_default, version, \
+                      created_at_utc, updated_at_utc) \
+                     VALUES ('act_handover', 'Дефолтный шаблон акта приёма-передачи', \
+                             'STALE BODY', 1, 1, 1, 0, 0)",
+                    [],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        svc.seed_defaults_on_startup().await.unwrap();
+
+        let (_, _, bundled_body) = DEFAULT_TEMPLATES
+            .iter()
+            .find(|(k, _, _)| *k == "act_handover")
+            .expect("act_handover default template must exist");
+
+        let active_body = svc.get_active("act_handover").await.unwrap();
+        assert_eq!(
+            &active_body, bundled_body,
+            "stale body must be replaced by the current bundled default"
+        );
+
+        let version: i64 = writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT version FROM document_templates \
+                     WHERE kind = 'act_handover' AND is_active = 1 AND deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .unwrap();
+        assert_eq!(version, 2, "version must be bumped to 2 after the upgrade");
+    }
+
+    /// No-clobber: a user-customized template (`is_default=0`) must never be
+    /// overwritten by `seed_defaults_on_startup`, regardless of how the
+    /// bundled default changes.
+    #[tokio::test]
+    async fn seed_does_not_clobber_user_customized_body() {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer.clone(), readers, clock);
+
+        writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO document_templates \
+                     (kind, name, body_minijinja, is_active, is_default, version, \
+                      created_at_utc, updated_at_utc) \
+                     VALUES ('act_handover', 'Дефолтный шаблон акта приёма-передачи', \
+                             'CUSTOM USER BODY', 1, 0, 1, 0, 0)",
+                    [],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        svc.seed_defaults_on_startup().await.unwrap();
+
+        let active_body = svc.get_active("act_handover").await.unwrap();
+        assert_eq!(
+            active_body, "CUSTOM USER BODY",
+            "user-customized body must remain untouched"
+        );
+
+        let version: i64 = writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT version FROM document_templates \
+                     WHERE kind = 'act_handover' AND is_active = 1 AND deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .unwrap();
+        assert_eq!(version, 1, "version must stay 1 — no write should fire");
+    }
+
+    /// Idempotency: once a template's stored body already equals the
+    /// bundled default, repeated `seed_defaults_on_startup` calls must not
+    /// bump `version` (no needless write on every startup).
+    #[tokio::test]
+    async fn seed_is_idempotent_when_already_current() {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let svc = TemplateService::new(writer.clone(), readers, clock);
+
+        let (_, _, bundled_body) = DEFAULT_TEMPLATES
+            .iter()
+            .find(|(k, _, _)| *k == "act_handover")
+            .expect("act_handover default template must exist");
+        let bundled_body = bundled_body.to_string();
+
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO document_templates \
+                     (kind, name, body_minijinja, is_active, is_default, version, \
+                      created_at_utc, updated_at_utc) \
+                     VALUES ('act_handover', 'Дефолтный шаблон акта приёма-передачи', \
+                             ?1, 1, 1, 1, 0, 0)",
+                    params![bundled_body],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        svc.seed_defaults_on_startup().await.unwrap();
+        svc.seed_defaults_on_startup().await.unwrap();
+
+        let version: i64 = writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT version FROM document_templates \
+                     WHERE kind = 'act_handover' AND is_active = 1 AND deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            version, 1,
+            "version must stay 1 after two calls — no write fires when body already matches"
+        );
+    }
 }
