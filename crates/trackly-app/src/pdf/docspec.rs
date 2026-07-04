@@ -95,6 +95,16 @@ pub enum Section {
         right_label: String,
         #[serde(default = "default_spacer_pt")]
         spacer_pt: f32,
+        /// Two-line signature sub-labels («Подпись» / «ФИО», D-07, Phase 15).
+        /// `None` on old JSON/templates (that omit these keys) → renderer
+        /// falls back to the pre-Phase-15 single-line layout — backward-compat,
+        /// same `#[serde(default)]` + `Option<T>` idiom as `HeaderBlock.logo_bytes`/
+        /// `logo_mime` (NOT the `default_spacer_pt()` fn-default idiom, since
+        /// these fields must default to `None`/absent, not a non-empty string).
+        #[serde(default)]
+        left_sublabel: Option<String>,
+        #[serde(default)]
+        right_sublabel: Option<String>,
     },
     /// Vertical spacer.
     Spacer { height_pt: f32 },
@@ -163,6 +173,8 @@ mod tests {
                     left_label: "Сдал: ____________".into(),
                     right_label: "Принял: ____________".into(),
                     spacer_pt: 30.0,
+                    left_sublabel: None,
+                    right_sublabel: None,
                 },
             ],
         }
@@ -212,6 +224,8 @@ mod tests {
             left_label: "L".into(),
             right_label: "R".into(),
             spacer_pt: 24.0,
+            left_sublabel: None,
+            right_sublabel: None,
         };
         let json = serde_json::to_value(&sig).expect("serialize signature");
         assert_eq!(json["type"], "signature");
@@ -237,5 +251,40 @@ mod tests {
             Section::Signature { spacer_pt, .. } => assert_eq!(spacer_pt, 24.0),
             _ => panic!("wrong variant"),
         }
+    }
+
+    #[test]
+    fn signature_sublabels_default_to_none_when_absent() {
+        let json = serde_json::json!({
+            "type": "signature",
+            "left_label": "L",
+            "right_label": "R"
+        });
+        let section: Section = serde_json::from_value(json).expect("parse");
+        match section {
+            Section::Signature {
+                left_sublabel,
+                right_sublabel,
+                ..
+            } => {
+                assert_eq!(left_sublabel, None);
+                assert_eq!(right_sublabel, None);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn signature_sublabels_round_trip_when_present() {
+        let sig = Section::Signature {
+            left_label: "Выдал".into(),
+            right_label: "Получил".into(),
+            spacer_pt: 30.0,
+            left_sublabel: Some("Подпись".into()),
+            right_sublabel: Some("ФИО".into()),
+        };
+        let json = serde_json::to_string(&sig).expect("serialize");
+        let back: Section = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, sig);
     }
 }

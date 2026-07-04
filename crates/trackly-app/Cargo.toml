@@ -54,6 +54,11 @@ regex = "1.12.3"
 # G-9 (Phase 3.1 Plan 05): logo aspect-ratio — parse intrinsic dimensions
 # without re-encoding image data. krilla still handles actual rendering.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Phase 15 Plan 01: exact glyph advance-width metrics for word-wrap
+# (wrap_text_to_width) — promoted from an existing transitive dependency of
+# krilla (via rustybuzz/skrifa); pinned to the already-resolved Cargo.lock
+# version so `cargo build` does not need to re-resolve (Task 0 human-verify).
+ttf-parser = "0.25.1"
 # Phase 5: auth, server mode, TLS
 argon2 = { workspace = true }
 tower-sessions = { workspace = true }
