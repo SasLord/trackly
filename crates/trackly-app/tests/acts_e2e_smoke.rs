@@ -280,7 +280,10 @@ async fn handover_pdf_render_within_e2e() {
         assert!(bytes.len() > 1000);
         assert_eq!(&bytes[..4], b"%PDF");
         let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
-        assert!(text.contains("Сидоров-Петроградский"));
+        // D-09 (Phase 15 plan 02) removed giver_name from the rendered body —
+        // it now only appears via the bare "Выдал" signature label.
+        // receiver_name is the D-09 intro-paragraph value that IS rendered.
+        assert!(text.contains("Петров"));
     })
     .await
     .expect("budget");
