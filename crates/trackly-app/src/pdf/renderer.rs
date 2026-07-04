@@ -27,10 +27,11 @@
 use std::sync::Arc;
 
 use image::ImageReader;
-use krilla::geom::{Point, Size, Transform};
+use krilla::geom::{PathBuilder, Point, Rect, Size, Transform};
 use krilla::image::Image;
 use krilla::metadata::{DateTime as KrillaDateTime, Metadata};
 use krilla::page::PageSettings;
+use krilla::paint::Fill;
 use krilla::text::{Font, TextDirection};
 use krilla::Document;
 use krilla::SerializeSettings;
@@ -149,13 +150,25 @@ impl PdfRenderer {
             // Walk DocSpec sections, starting a new page whenever the next
             // section would overflow the printable area.
             for section in &spec.sections {
-                if let Section::DeviceCard { .. } = section {
-                    // Measure-then-place: compute the card's total height
+                if matches!(section, Section::DeviceCard { .. } | Section::FieldRow { .. }) {
+                    // Measure-then-place: compute the section's total height
                     // WITHOUT drawing, using the exact same wrap_text_to_width
                     // calls the draw arm uses, so measurement and drawing
-                    // cannot disagree.
-                    let card_height = measure_device_card_height(section, &regular_face);
-                    if y + card_height > page_bottom {
+                    // cannot disagree. FieldRow values can wrap across
+                    // multiple lines just like DeviceCard.long_fields, so it
+                    // joins the same measure-then-place branch (260704-wxw) —
+                    // otherwise a wrapped FieldRow could be split mid-value
+                    // across a page boundary.
+                    let section_height = match section {
+                        Section::DeviceCard { .. } => {
+                            measure_device_card_height(section, &regular_face)
+                        }
+                        Section::FieldRow { .. } => {
+                            measure_field_row_height(section, &regular_face)
+                        }
+                        _ => unreachable!("matches! guard above restricts to these two variants"),
+                    };
+                    if y + section_height > page_bottom {
                         surface.finish();
                         page.finish();
                         page = doc.start_page_with(page_settings.clone());
@@ -448,6 +461,54 @@ fn measure_device_card_height(section: &Section, regular_face: &Face) -> f32 {
     height
 }
 
+/// Fraction of the usable width (`A4_WIDTH_PT - 2*MARGIN_PT`) reserved for
+/// the `FieldRow` label column (left). The remaining `1.0 -
+/// FIELD_ROW_LABEL_WIDTH_FRACTION` is the value column (right), matching the
+/// Word sample's "метка | подчёркнутое значение" layout (260704-wxw).
+const FIELD_ROW_LABEL_WIDTH_FRACTION: f32 = 0.42;
+/// Gap (PDF points) between the label column and the value column.
+const FIELD_ROW_COLUMN_GAP_PT: f32 = 6.0;
+
+/// Computes the `FieldRow`'s label-column x-offset, value-column x-offset,
+/// and value-column width — shared by both `measure_field_row_height` and the
+/// `Section::FieldRow` draw arm so the two can never disagree (260704-wxw).
+fn field_row_columns() -> (f32, f32, f32) {
+    let usable_width = A4_WIDTH_PT - 2.0 * MARGIN_PT;
+    let label_x = MARGIN_PT;
+    let label_width = usable_width * FIELD_ROW_LABEL_WIDTH_FRACTION;
+    let value_x = label_x + label_width + FIELD_ROW_COLUMN_GAP_PT;
+    let value_width = usable_width - label_width - FIELD_ROW_COLUMN_GAP_PT;
+    (label_x, value_x, value_width)
+}
+
+/// Compute the total vertical height (PDF points) a `Section::FieldRow` will
+/// occupy when drawn, WITHOUT drawing anything — mirrors
+/// `measure_device_card_height`'s measure-then-place pattern (260704-wxw).
+/// Reuses `wrap_text_to_width` for the value's line count at the value
+/// column's width, so measurement and drawing use identical wrap logic and
+/// cannot disagree.
+///
+/// Panics (via `unreachable!`) if called with a non-`FieldRow` section —
+/// callers must only invoke this after matching on `Section::FieldRow`.
+fn measure_field_row_height(section: &Section, regular_face: &Face) -> f32 {
+    let Section::FieldRow { value, .. } = section else {
+        unreachable!("measure_field_row_height called with a non-FieldRow section");
+    };
+
+    let (_, _, value_width) = field_row_columns();
+    let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, value_width);
+    let line_count = lines.len().max(1);
+
+    let mut height = 0.0;
+    for _ in 0..line_count {
+        height += BODY_SIZE_PT + 4.0;
+    }
+    // Small fixed padding for the underline + trailing gap before the next
+    // section, mirroring measure_device_card_height's `+= 8.0` trailer.
+    height += 4.0;
+    height
+}
+
 /// Render a single Section against `surface`. Returns the y-cursor *after*
 /// this section (with trailing padding included).
 fn render_section(
@@ -679,6 +740,64 @@ fn render_section(
             }
 
             y + 8.0
+        }
+        Section::FieldRow { label, value } => {
+            // Label — left column, bold, matches the KeyValueTable/DeviceCard
+            // idiom of a bold key.
+            surface.draw_text(
+                Point::from_xy(MARGIN_PT, y),
+                font_bold.clone(),
+                BODY_SIZE_PT,
+                label,
+                false,
+                TextDirection::Auto,
+            );
+
+            // Value — right column, word-wrapped, with a thin underline
+            // drawn once under the LAST wrapped line only (the "заполни
+            // прочерк" look from the Word sample, 260704-wxw).
+            let (_, value_x, value_width) = field_row_columns();
+            let lines = wrap_text_to_width(regular_face, value, BODY_SIZE_PT, value_width);
+
+            let mut line_y = y;
+            let mut last_line_y = y;
+            if lines.is_empty() {
+                // Empty value: still draw an empty underline at the label's
+                // baseline so the "fill in the blank" line is visible even
+                // when the template didn't guard this row out (defensive —
+                // templates are expected to omit empty rows entirely).
+                last_line_y = y;
+            } else {
+                for line in &lines {
+                    surface.draw_text(
+                        Point::from_xy(value_x, line_y),
+                        font_regular.clone(),
+                        BODY_SIZE_PT,
+                        line,
+                        false,
+                        TextDirection::Auto,
+                    );
+                    last_line_y = line_y;
+                    line_y += BODY_SIZE_PT + 4.0;
+                }
+            }
+
+            // Underline: a thin filled rectangle spanning the value column's
+            // width, positioned ~2pt below the baseline of the last wrapped
+            // value line.
+            let underline_y = last_line_y + 2.0;
+            let mut pb = PathBuilder::new();
+            if let Some(rect) = Rect::from_xywh(value_x, underline_y, value_width, 0.6) {
+                pb.push_rect(rect);
+                if let Some(path) = pb.finish() {
+                    surface.set_fill(Some(Fill::default()));
+                    surface.draw_path(&path);
+                    surface.set_fill(None);
+                }
+            }
+
+            let line_count = lines.len().max(1);
+            y + (line_count as f32) * (BODY_SIZE_PT + 4.0) + 4.0
         }
     }
 }
@@ -1453,5 +1572,118 @@ mod tests {
                 }
             }
         }
+    }
+
+    // --- Section::FieldRow tests (260704-wxw) --------------------------------
+
+    fn field_row_spec(sections: Vec<Section>) -> DocSpec {
+        device_card_spec(sections)
+    }
+
+    #[test]
+    fn field_row_renders_label_and_short_value() {
+        let spec = field_row_spec(vec![Section::FieldRow {
+            label: "Инвентарный номер:".into(),
+            value: "ИНВ-042".into(),
+        }]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        assert!(
+            text.contains("Инвентарный номер:"),
+            "field row label missing: {text:?}"
+        );
+        assert!(
+            text.contains("ИНВ-042"),
+            "field row value missing: {text:?}"
+        );
+    }
+
+    #[test]
+    fn field_row_wraps_long_value_without_truncating() {
+        let long_value = "Комплект поставки включает зарядное устройство USB Type-C, кабель \
+            питания длиной два метра, СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ сумку для переноски из \
+            водоотталкивающей ткани, документацию на русском языке и гарантийный талон"
+            .to_string();
+        assert!(
+            long_value.chars().count() > 150,
+            "test fixture string must exceed 150 chars"
+        );
+
+        let spec = field_row_spec(vec![Section::FieldRow {
+            label: "Комплектация:".into(),
+            value: long_value,
+        }]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        assert!(
+            !text.contains('…'),
+            "FieldRow value must wrap, not truncate with ellipsis: {text:?}"
+        );
+        assert!(
+            text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
+            "middle-of-value marker missing — value appears to have been cut off: {text:?}"
+        );
+    }
+
+    #[test]
+    fn two_field_rows_render_in_order_without_overlap() {
+        let spec = field_row_spec(vec![
+            Section::FieldRow {
+                label: "Серийный номер:".into(),
+                value: "SN-0001".into(),
+            },
+            Section::FieldRow {
+                label: "Модель:".into(),
+                value: "ThinkPad T14".into(),
+            },
+        ]);
+
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+        let first_idx = text
+            .find("Серийный номер:")
+            .expect("first field row label missing");
+        let second_idx = text.find("Модель:").expect("second field row label missing");
+        assert!(
+            first_idx < second_idx,
+            "first field row must appear before second in extracted text: {text:?}"
+        );
+    }
+
+    #[test]
+    fn field_rows_paginate_when_exceeding_one_page() {
+        let long_value = "Технические характеристики: процессор Intel Core i7, оперативная \
+            память 16 ГБ DDR4, накопитель SSD 512 ГБ NVMe, видеокарта дискретная 4 ГБ, \
+            экран 14 дюймов Full HD, вес около 1.6 кг, время автономной работы до 10 часов"
+            .to_string();
+        assert!(
+            long_value.chars().count() > 150,
+            "test fixture string must exceed 150 chars"
+        );
+
+        let sections: Vec<Section> = (1..=25)
+            .map(|i| Section::FieldRow {
+                label: format!("Поле {i}:"),
+                value: long_value.clone(),
+            })
+            .collect();
+
+        let spec = field_row_spec(sections);
+        let r = PdfRenderer::new();
+        let bytes = r.render_docspec(&spec).expect("render");
+        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages");
+        assert!(
+            pages.len() > 1,
+            "expected 2+ pages for 25 long-value field rows, got {}",
+            pages.len()
+        );
     }
 }
