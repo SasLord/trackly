@@ -14,9 +14,19 @@
 //! which asserts the `None` branch keeps the pinned SHA256 stable.
 
 use std::io::Write;
+use std::sync::Arc;
 
+use rusqlite::params;
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::pdf::docspec::{DocSpec, HeaderBlock, Section};
 use trackly_app::pdf::PdfRenderer;
+use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
+use trackly_core::auth::Identity;
+use trackly_core::primitives::clock::Clock;
+use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::test_support::test_writer_and_readers;
+use trackly_infra::Paths;
 
 const LOGO_PNG: &[u8] = include_bytes!("fixtures/logo_test.png");
 
@@ -169,5 +179,92 @@ fn logo_bytes_takes_priority_over_logo_path() {
     assert!(
         bytes_contain(&bytes, b"/Subtype /Image") || bytes_contain(&bytes, b"/XObject"),
         "logo_bytes must take priority — image XObject should be present"
+    );
+}
+
+/// WR-03 regression closure (Phase 15 plan 03): all tests above call
+/// `PdfRenderer::render_docspec` directly, bypassing `act_service`/
+/// `OrgDbService` entirely — exactly why the WR-03 bug (BLOB logo silently
+/// dropped in `act_service::render_pdf`) was never caught. This test goes
+/// through the FULL pipeline: `OrgDbService::save_logo` → `ActService::create`
+/// → `ActService::render_pdf`, and asserts the same image-XObject marker.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+
+    let paths = Arc::new(Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths"));
+    let organization = Arc::new(OrganizationService::new(paths.clone()));
+    let templates = Arc::new(TemplateService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
+    let pdf = Arc::new(PdfRenderer::new());
+    templates.seed_defaults_on_startup().await.expect("seed");
+
+    let org_db = Arc::new(OrgDbService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+        paths,
+    ));
+
+    let acts = ActService::new(writer.clone(), readers.clone(), clock.clone())
+        .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone())
+        .with_org_db(org_db.clone());
+
+    // Save a BLOB logo through the real service path (Settings UI equivalent).
+    org_db
+        .save_logo(
+            &Identity::trusted_admin(),
+            LOGO_PNG.to_vec(),
+            "image/png".to_string(),
+        )
+        .await
+        .expect("save_logo");
+
+    // Seed one device and create a handover act through the full pipeline.
+    let device_id = writer
+        .execute(|conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (1, 'Ноутбук-логотест', 1, 1, ?1, ?1)",
+                params![1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed device");
+
+    let act = acts
+        .create(ActCreateDto {
+            number_override: None,
+            giver_name: "Логотестов Л.Л.".into(),
+            receiver_name: "Приемов П.П.".into(),
+            location_id: None,
+            location_name: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        })
+        .await
+        .expect("create handover");
+
+    let bytes = acts.render_pdf(act.id).await.expect("render_pdf");
+    assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
+    assert!(
+        bytes_contain(&bytes, b"/Subtype /Image") || bytes_contain(&bytes, b"/XObject"),
+        "full-pipeline rendered PDF must contain an image XObject when a BLOB \
+         logo was saved via OrgDbService::save_logo — this is the WR-03 \
+         regression the direct-render tests above never caught; got {} bytes",
+        bytes.len()
     );
 }

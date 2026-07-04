@@ -5,8 +5,18 @@
 //! текст из rendered PDF и assert на присутствие truncate-marker и
 //! separation between cells.
 
+use std::sync::Arc;
+
+use rusqlite::params;
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::pdf::docspec::{DocSpec, HeaderBlock, Section};
 use trackly_app::pdf::renderer::{truncate_to_width, PdfRenderer};
+use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_core::primitives::clock::Clock;
+use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::test_support::test_writer_and_readers;
+use trackly_infra::Paths;
 
 const LONG_NAME: &str = "Тестовое устройство с очень длинным русским названием которое не помещается в одну колонку и должно быть truncate-нуто";
 
@@ -88,5 +98,110 @@ fn long_name_truncated_does_not_overlap_inv_no() {
     assert!(
         !text.contains(LONG_NAME),
         "long name should be truncated, not fully present"
+    );
+}
+
+/// Full-pipeline contrast to `long_name_truncated_does_not_overlap_inv_no`
+/// above: that test proves `ItemsTable` still truncates its own (old,
+/// compact-table) columns with an ellipsis. This test proves the INVERSE for
+/// the new `Section::DeviceCard` long-field wrap-blocks (D-06/D-07, Phase 15
+/// plan 02) — a long `complectation_at_time` value rendered through the real
+/// `act_handover.minijinja` template via the full `act_service::render_pdf`
+/// pipeline must wrap, never truncate with '…'. Both code paths coexist:
+/// `ItemsTable` truncation is untouched; `DeviceCard` wrap-blocks don't
+/// truncate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn device_card_long_field_wraps_instead_of_truncating() {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+
+    let paths = Arc::new(Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths"));
+    let organization = Arc::new(OrganizationService::new(paths));
+    let templates = Arc::new(TemplateService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
+    let pdf = Arc::new(PdfRenderer::new());
+    templates.seed_defaults_on_startup().await.expect("seed");
+
+    let acts = ActService::new(writer.clone(), readers.clone(), clock.clone()).with_pdf_pipeline(
+        templates.clone(),
+        organization.clone(),
+        pdf.clone(),
+    );
+
+    let device_id = writer
+        .execute(|conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (1, 'Ноутбук-overflow-тест', 1, 1, ?1, ?1)",
+                params![1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed device");
+
+    let act = acts
+        .create(ActCreateDto {
+            number_override: None,
+            giver_name: "Тестов Т.Т.".into(),
+            receiver_name: "Приемов П.П.".into(),
+            location_id: None,
+            location_name: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        })
+        .await
+        .expect("create handover");
+
+    let long_kit = "Блок питания, кабель питания, кабель HDMI, сумка для переноски, \
+        документация на русском языке, гарантийный талон, комплект крепёжных винтов, \
+        салфетка для протирки экрана СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ хвостовая часть длинной строки"
+        .to_string();
+    assert!(
+        long_kit.chars().count() > 150,
+        "test fixture string must exceed 150 chars"
+    );
+
+    {
+        let act_id = act.id;
+        let value = long_kit.clone();
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE act_items SET complectation_at_time = ?1 \
+                     WHERE act_id = ?2 AND device_id = ?3",
+                    params![value, act_id, device_id],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("set complectation_at_time");
+    }
+
+    let bytes = acts.render_pdf(act.id).await.expect("render_pdf");
+    let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+
+    assert!(
+        !text.contains('…'),
+        "DeviceCard long field must wrap instead of truncating with ellipsis. \
+         Head: {:?}",
+        text.chars().take(800).collect::<String>()
+    );
+    assert!(
+        text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
+        "middle-of-value marker missing — long field appears truncated. Head: {:?}",
+        text.chars().take(800).collect::<String>()
     );
 }
