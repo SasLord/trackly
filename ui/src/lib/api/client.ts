@@ -45,11 +45,21 @@ export async function apiCall<R>(name: string, args: Record<string, unknown> = {
     }
     throw err;
   }
-  // Binary responses (e.g. `application/pdf` from *_render_pdf, reports_export_pdf,
-  // templates_render_preview) must NOT be parsed as JSON. The Tauri path returns
-  // `Vec<u8>` as `number[]`; mirror that shape here so callers (fetchPdfBlob et al.)
-  // get the same `number[]` regardless of transport.
+  // Binary responses (e.g. `application/pdf` from reports_export_pdf — the
+  // remaining krilla-based PDF export, frozen but still live) must NOT be
+  // parsed as JSON. The Tauri path returns `Vec<u8>` as `number[]`; mirror
+  // that shape here so callers get the same `number[]` regardless of
+  // transport.
+  //
+  // Phase 16 (D-09/D-10): acts_render_pdf/devices_render_acceptance_pdf now
+  // respond `text/html; charset=utf-8` carrying a plain HTML string (not
+  // bytes) over the HTTP transport, mirroring the Tauri path's `String`
+  // return. Route `text/html` through as plain text, not the binary
+  // Uint8Array conversion below.
   const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('text/html')) {
+    return (await res.text()) as R;
+  }
   if (!contentType.includes('application/json')) {
     const buf = new Uint8Array(await res.arrayBuffer());
     return Array.from(buf) as R;
