@@ -26,6 +26,7 @@ pub struct Paths {
     config_file: PathBuf,
     webview_data_dir: PathBuf,
     logs_dir: PathBuf,
+    templates_dir: PathBuf,
     is_portable: bool,
 }
 
@@ -70,6 +71,7 @@ impl Paths {
         let config_file = exe_dir.join("trackly.config.toml");
         let webview_data_dir = exe_dir.join("data").join("webview");
         let logs_dir = exe_dir.join("logs");
+        let templates_dir = exe_dir.join("templates");
 
         // Sentinel rule (D-Config-01): portable.txt ИЛИ trackly.config.toml.
         let is_portable = exe_dir.join("portable.txt").exists() || config_file.exists();
@@ -80,6 +82,7 @@ impl Paths {
             config_file,
             webview_data_dir,
             logs_dir,
+            templates_dir,
             is_portable,
         })
     }
@@ -112,6 +115,14 @@ impl Paths {
     /// в Plan 05 (`tracing_appender::rolling::daily`).
     pub fn logs_dir(&self) -> &Path {
         &self.logs_dir
+    }
+
+    /// Директория для шаблонов документов — `<exe_dir>/templates`.
+    /// Читается `pdf::html_templates` (Phase 16); может быть переопределена
+    /// через `TRACKLY_TEMPLATES_DIR` — это делает caller, не сам `Paths`,
+    /// см. D-07.
+    pub fn templates_dir(&self) -> &Path {
+        &self.templates_dir
     }
 
     /// True, если рядом с .exe лежит `portable.txt` или `trackly.config.toml`.
