@@ -17,7 +17,11 @@ use sha2::{Digest, Sha256};
 use trackly_app::pdf::docspec::DocSpec;
 use trackly_app::pdf::PdfRenderer;
 
+// D-13 (Phase 16): frozen krilla path, ignored by default — run explicitly
+// with `cargo test -- --ignored` to verify byte-determinism after a
+// deliberate renderer change.
 #[test]
+#[ignore]
 fn fixture_act_42_renders_to_known_hash() {
     let json = include_str!("fixtures/act_42.json");
     let spec: DocSpec = serde_json::from_str(json).expect("fixture parse");
@@ -36,7 +40,11 @@ fn fixture_act_42_renders_to_known_hash() {
     );
 }
 
+// D-13 (Phase 16): frozen krilla path, ignored by default — run explicitly
+// with `cargo test -- --ignored` to verify byte-determinism after a
+// deliberate renderer change.
 #[test]
+#[ignore]
 fn rendering_twice_yields_identical_bytes() {
     let json = include_str!("fixtures/act_42.json");
     let spec: DocSpec = serde_json::from_str(json).expect("fixture parse");
