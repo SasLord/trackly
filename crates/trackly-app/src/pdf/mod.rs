@@ -21,6 +21,7 @@
 
 pub mod docspec;
 pub mod fonts;
+pub mod html_templates;
 pub mod minijinja_env;
 pub mod renderer;
 
