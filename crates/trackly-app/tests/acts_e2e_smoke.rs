@@ -276,14 +276,13 @@ async fn handover_pdf_render_within_e2e() {
             })
             .await
             .expect("create");
-        let bytes = p.acts.render_pdf(handover.id).await.expect("render");
-        assert!(bytes.len() > 1000);
-        assert_eq!(&bytes[..4], b"%PDF");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        let html = p.acts.render_pdf(handover.id).await.expect("render");
+        assert!(html.len() > 1000);
+        assert!(html.to_lowercase().contains("<html"));
         // D-09 (Phase 15 plan 02) removed giver_name from the rendered body —
         // it now only appears via the bare "Выдал" signature label.
         // receiver_name is the D-09 intro-paragraph value that IS rendered.
-        assert!(text.contains("Петров"));
+        assert!(html.contains("Петров"));
     })
     .await
     .expect("budget");
@@ -294,7 +293,7 @@ async fn acceptance_pdf_render_smoke() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
         let ids = seed_devices(&p.writer, 1).await;
-        let bytes = p
+        let html = p
             .acts
             .render_acceptance_pdf(
                 ids[0],
@@ -304,12 +303,11 @@ async fn acceptance_pdf_render_smoke() {
             )
             .await
             .expect("render acceptance");
-        assert!(bytes.len() > 1000);
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(html.len() > 1000);
         assert!(
-            text.contains("Иванов") && text.contains("Пётр"),
+            html.contains("Иванов") && html.contains("Пётр"),
             "expected both giver+receiver. Head: {:?}",
-            text.chars().take(400).collect::<String>()
+            html.chars().take(400).collect::<String>()
         );
     })
     .await
@@ -351,16 +349,15 @@ async fn document_acceptance_pdf_renders_correct_calendar_date_for_same_day_msk_
         // Используем полдень MSK = 09:00 UTC выбранного дня
         // 2026-05-29T09:00:00Z = 1780045200.
         let date_utc: i64 = 1_780_045_200;
-        let bytes = p
+        let html = p
             .acts
             .render_acceptance_pdf(ids[0], "Иван".into(), "Пётр".into(), date_utc)
             .await
             .expect("render");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
         assert!(
-            text.contains("29 мая 2026"),
-            "expected «29 мая 2026» (день в MSK) в PDF. Head: {:?}",
-            text.chars().take(600).collect::<String>()
+            html.contains("29 мая 2026"),
+            "expected «29 мая 2026» (день в MSK) в HTML. Head: {:?}",
+            html.chars().take(600).collect::<String>()
         );
     })
     .await

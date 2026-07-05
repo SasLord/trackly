@@ -182,12 +182,15 @@ fn logo_bytes_takes_priority_over_logo_path() {
     );
 }
 
-/// WR-03 regression closure (Phase 15 plan 03): all tests above call
+/// WR-03 regression closure (Phase 15 plan 03), migrated to the HTML
+/// contract in Phase 16 Plan 05: all tests above call
 /// `PdfRenderer::render_docspec` directly, bypassing `act_service`/
 /// `OrgDbService` entirely — exactly why the WR-03 bug (BLOB logo silently
 /// dropped in `act_service::render_pdf`) was never caught. This test goes
 /// through the FULL pipeline: `OrgDbService::save_logo` → `ActService::create`
-/// → `ActService::render_pdf`, and asserts the same image-XObject marker.
+/// → `ActService::render_pdf`, and asserts the logo appears as a base64
+/// `data:` URI in the rendered HTML (D-11) — `render_pdf` no longer produces
+/// PDF bytes/image XObjects, it emits an HTML string with `<img src="data:...">`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -258,13 +261,16 @@ async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
         .await
         .expect("create handover");
 
-    let bytes = acts.render_pdf(act.id).await.expect("render_pdf");
-    assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
+    let html = acts.render_pdf(act.id).await.expect("render_pdf");
     assert!(
-        bytes_contain(&bytes, b"/Subtype /Image") || bytes_contain(&bytes, b"/XObject"),
-        "full-pipeline rendered PDF must contain an image XObject when a BLOB \
-         logo was saved via OrgDbService::save_logo — this is the WR-03 \
-         regression the direct-render tests above never caught; got {} bytes",
-        bytes.len()
+        html.to_lowercase().contains("<html"),
+        "missing HTML document marker"
+    );
+    assert!(
+        html.contains("data:image/png;base64,"),
+        "full-pipeline rendered HTML must contain a base64 data: URI image when a \
+         BLOB logo was saved via OrgDbService::save_logo — this is the WR-03 \
+         regression the direct-render tests above never caught; got {} chars",
+        html.len()
     );
 }

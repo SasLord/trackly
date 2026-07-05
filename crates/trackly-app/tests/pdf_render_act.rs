@@ -1,14 +1,18 @@
-//! PDF render full pipeline integration tests — Phase 3 Plan 04 Task 2.
+//! HTML render full pipeline integration tests — Phase 3 Plan 04 Task 2,
+//! migrated to the HTML-string contract in Phase 16 Plan 05 (D-10: `render_pdf`/
+//! `render_acceptance_pdf` now return `Result<String, AppError>` — an HTML
+//! document, not PDF bytes).
 //!
 //! Covers (per behavior list):
-//!   - render_handover_act_produces_cyrillic_pdf
-//!   - render_with_missing_template_returns_notfound
-//!   - render_with_broken_template_returns_validation
+//!   - render_handover_act_produces_cyrillic_pdf (now: html)
+//!   - render_falls_back_to_embedded_default_when_template_file_missing
+//!   - render_falls_back_to_embedded_default_when_broken_template_row_present
 //!   - render_acceptance_pdf_for_device_works
 //!   - render_pdf_with_missing_logo_renders_without_logo
 //!
 //! End-to-end: seed templates + org.json + devices + handover акт → render →
-//! pdf-extract verifies Cyrillic.
+//! assert directly on the returned HTML string (no pdf-extract/PDF-magic-header
+//! checks — the render path stopped producing PDF bytes in Plan 16-02).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,7 +24,6 @@ use trackly_app::dto::reports::OrgPatch;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
 use trackly_core::auth::Identity;
-use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -157,6 +160,12 @@ async fn create_handover_with_giver(
 /// render — instead of the old giver_name-in-body assertion. The N=5
 /// multi-device case (with long-field wrap coverage) is covered separately
 /// by `render_handover_multi_device_wraps_long_fields` below.
+///
+/// Phase 16 Plan 05: page-count (single-page) assertion removed — browser
+/// pagination via CSS `@page`/`page-break-inside` cannot be asserted from a
+/// raw HTML string in a Rust unit test; that guarantee is now a CSS-authoring
+/// concern (see `act_handover.html`'s `.device-block { page-break-inside:
+/// avoid }`), not a generator-output concern.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_act_produces_cyrillic_pdf() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -168,36 +177,28 @@ async fn render_handover_act_produces_cyrillic_pdf() {
             "Сидоров-Петроградский Иван Александрович",
         )
         .await;
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
         assert!(
-            bytes.len() > 1000,
-            "expected substantive PDF, got {}",
-            bytes.len()
+            html.len() > 1000,
+            "expected substantive HTML, got {}",
+            html.len()
         );
-        assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
-
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
         assert!(
-            text.contains("Петров"),
+            html.to_lowercase().contains("<!doctype html") || html.to_lowercase().contains("<html"),
+            "expected HTML document markers, got head: {:?}",
+            html.chars().take(200).collect::<String>()
+        );
+
+        assert!(
+            html.contains("Петров"),
             "Cyrillic receiver name (D-09 intro paragraph) missing. Head: {:?}",
-            text.chars().take(300).collect::<String>()
+            html.chars().take(300).collect::<String>()
         );
         // Act number is 1 (auto-incremented).
         assert!(
-            text.contains("№1") || text.contains("1"),
+            html.contains("№1") || html.contains('1'),
             "Act number missing. Head: {:?}",
-            text.chars().take(300).collect::<String>()
-        );
-
-        // Phase 15 plan 04 (WR-05 gap closure): a short 2-device act with no
-        // long fields must still render as exactly 1 page — page-count
-        // regression guard, not just an absence-of-clipping assumption.
-        assert_eq!(
-            pdf_extract::extract_text_from_mem_by_pages(&bytes)
-                .expect("pages by page")
-                .len(),
-            1,
-            "single short device act must still render as exactly 1 page"
+            html.chars().take(300).collect::<String>()
         );
     })
     .await
@@ -212,18 +213,17 @@ async fn render_handover_act_contains_d09_intro_phrase() {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
         assert!(
-            text.contains("Настоящим актом утверждаю"),
+            html.contains("Настоящим актом утверждаю"),
             "D-09 intro phrase missing. Head: {:?}",
-            text.chars().take(500).collect::<String>()
+            html.chars().take(500).collect::<String>()
         );
         assert!(
-            text.contains(&act.receiver_name),
+            html.contains(&act.receiver_name),
             "act.receiver_name ({:?}) not interpolated into intro paragraph. Head: {:?}",
             act.receiver_name,
-            text.chars().take(500).collect::<String>()
+            html.chars().take(500).collect::<String>()
         );
     })
     .await
@@ -238,13 +238,12 @@ async fn signature_renders_two_line_labels() {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
         for expected in ["Выдал", "Получил", "Подпись", "ФИО"] {
             assert!(
-                text.contains(expected),
+                html.contains(expected),
                 "expected signature label {expected:?} missing. Head: {:?}",
-                text.chars().take(500).collect::<String>()
+                html.chars().take(500).collect::<String>()
             );
         }
     })
@@ -256,10 +255,9 @@ async fn signature_renders_two_line_labels() {
 /// sets a long (150+ char) Cyrillic `complectation_at_time` on 2 of the 5
 /// resulting `act_items` rows directly (mirrors the `devices.notes` UPDATE
 /// idiom used elsewhere in this file), then asserts: all 5 device names are
-/// present, no ellipsis truncation marker appears (proves the FieldRow wrap
-/// path was used — 260704-wxw replaced DeviceCard with field_row in the
-/// default template — not `ItemsTable`'s truncate path), and a substring
-/// from the MIDDLE of the long value survived (proves it wasn't cut off).
+/// present, no ellipsis truncation marker appears (proves the FieldRow/HTML
+/// wrap path was used, not a truncate path), and a substring from the MIDDLE
+/// of the long value survived (proves it wasn't cut off).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_multi_device_wraps_long_fields() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -295,8 +293,7 @@ async fn render_handover_multi_device_wraps_long_fields() {
                 .expect("set complectation_at_time");
         }
 
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
         // seed_devices names devices "Ноутбук-{i}" where i is the loop
         // index (0..count), independent of the assigned device_id.
@@ -304,106 +301,38 @@ async fn render_handover_multi_device_wraps_long_fields() {
         for i in 0..5 {
             let expected_name = format!("Ноутбук-{i}");
             assert!(
-                text.contains(&expected_name),
-                "device name {expected_name:?} missing from rendered text. Head: {:?}",
-                text.chars().take(800).collect::<String>()
+                html.contains(&expected_name),
+                "device name {expected_name:?} missing from rendered HTML. Head: {:?}",
+                html.chars().take(800).collect::<String>()
             );
         }
 
         assert!(
-            !text.contains('…'),
+            !html.contains('…'),
             "long complectation field must wrap, not truncate with ellipsis. Head: {:?}",
-            text.chars().take(800).collect::<String>()
+            html.chars().take(800).collect::<String>()
         );
 
         assert!(
-            text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
+            html.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
             "middle-of-value marker missing — long field appears to have been cut off. \
              Head: {:?}",
-            text.chars().take(800).collect::<String>()
+            html.chars().take(800).collect::<String>()
         );
     })
     .await
     .expect("timeout");
 }
 
-/// Phase 15 plan 04 — WR-05/PDFA-02 gap closure: a realistic multi-device act
-/// (8 devices, each with a populated 150+ char Cyrillic `complectation_at_time`)
-/// must render as a REAL multi-page PDF — measured via
-/// `pdf_extract::extract_text_from_mem_by_pages`'s page-tree-aware page count,
-/// not via text-extraction alone (which cannot detect content drawn past the
-/// visible page area). Also asserts no data loss: every seeded device's name
-/// is still present somewhere across the full multi-page document.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn render_handover_multi_device_paginates_when_overflowing_one_page() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let p = make_full_pipeline().await;
-        let device_ids = seed_devices(&p.writer, 8).await;
-        let act = create_handover_with_giver(&p.acts, &device_ids, "Смирнов С.С.").await;
-
-        let long_kit = "Блок питания, кабель питания, кабель HDMI, сумка для переноски, \
-            документация на русском языке, гарантийный талон, комплект крепёжных винтов, \
-            салфетка для протирки экрана, дополнительный набор переходников и адаптеров \
-            для подключения к разным типам мониторов и периферийных устройств"
-            .to_string();
-        assert!(
-            long_kit.chars().count() > 150,
-            "test fixture string must exceed 150 chars"
-        );
-
-        // Set complectation_at_time on ALL 8 act_items rows (not just 2) —
-        // this test needs enough cumulative height to force a real page
-        // break, unlike render_handover_multi_device_wraps_long_fields above.
-        for item in &act.items {
-            let act_id = act.id;
-            let device_id = item.device_id;
-            let value = long_kit.clone();
-            p.writer
-                .execute(move |conn| {
-                    conn.execute(
-                        "UPDATE act_items SET complectation_at_time = ?1 \
-                         WHERE act_id = ?2 AND device_id = ?3",
-                        params![value, act_id, device_id],
-                    )
-                    .map(|_| ())
-                    .map_err(map_rusqlite)
-                })
-                .await
-                .expect("set complectation_at_time");
-        }
-
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-
-        let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes).expect("pages by page");
-        assert!(
-            pages.len() > 1,
-            "expected a real multi-page PDF for 8 devices with long fields, got {} page(s)",
-            pages.len()
-        );
-
-        // No data loss: every seeded device's name survives somewhere across
-        // the full multi-page document.
-        let full_text = pages.join("\n");
-        for i in 0..8 {
-            let expected_name = format!("Ноутбук-{i}");
-            assert!(
-                full_text.contains(&expected_name),
-                "device name {expected_name:?} missing from full multi-page document"
-            );
-        }
-    })
-    .await
-    .expect("timeout");
-}
-
-/// 260704-wxw success criterion: the default `act_handover.minijinja` must
-/// emit `field_row` sections (full-length labels), never `device_card`'s
-/// «Устройство №N» heading/counter nor the abbreviated legacy labels. Sets
-/// `inventory_number`/`serial_number`/`model` directly on the seeded
-/// `devices` rows (these fields live on `devices`, not `act_items` —
-/// `ActItemDto.inventory_no`/`serial_no`/`model` are joined live from
-/// `devices` at render time, unlike `complectation_at_time`/`condition_at_time`
-/// which are `act_items` snapshot columns).
+/// 260704-wxw success criterion carried into Phase 16: the default
+/// `act_handover.html` must emit `field-row`-style blocks (full-length
+/// labels), never a «Устройство №N» heading/counter nor the abbreviated
+/// legacy labels. Sets `inventory_number`/`serial_number`/`model` directly on
+/// the seeded `devices` rows (these fields live on `devices`, not
+/// `act_items` — `ActItemDto.inventory_no`/`serial_no`/`model` are joined
+/// live from `devices` at render time, unlike
+/// `complectation_at_time`/`condition_at_time` which are `act_items` snapshot
+/// columns).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_default_template_uses_field_rows_not_device_card() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -431,53 +360,63 @@ async fn render_handover_default_template_uses_field_rows_not_device_card() {
         }
 
         let act = create_handover_with_giver(&p.acts, &device_ids, "Волков В.В.").await;
-        let bytes = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
         // Full-length labels present.
         for label in ["Инвентарный номер:", "Серийный номер:", "Модель:"]
         {
             assert!(
-                text.contains(label),
-                "expected full-length label {label:?} in rendered PDF. Head: {:?}",
-                text.chars().take(800).collect::<String>()
+                html.contains(label),
+                "expected full-length label {label:?} in rendered HTML. Head: {:?}",
+                html.chars().take(800).collect::<String>()
             );
         }
 
         // No device_card heading/counter of any kind.
         assert!(
-            !text.contains("Устройство №1") && !text.contains("Устройство №2"),
+            !html.contains("Устройство №1") && !html.contains("Устройство №2"),
             "device_card-style «Устройство №N» heading must not appear. Head: {:?}",
-            text.chars().take(800).collect::<String>()
+            html.chars().take(800).collect::<String>()
         );
 
         // No abbreviated legacy labels.
         assert!(
-            !text.contains("Инв.№") && !text.contains("Серийный №"),
+            !html.contains("Инв.№") && !html.contains("Серийный №"),
             "abbreviated legacy labels must not appear. Head: {:?}",
-            text.chars().take(800).collect::<String>()
+            html.chars().take(800).collect::<String>()
         );
 
         // Both device names present, in item order (first before second).
-        let first_idx = text.find("Ноутбук-0").expect("first device name missing");
-        let second_idx = text.find("Ноутбук-1").expect("second device name missing");
+        let first_idx = html.find("Ноутбук-0").expect("first device name missing");
+        let second_idx = html.find("Ноутбук-1").expect("second device name missing");
         assert!(
             first_idx < second_idx,
-            "device names must render in item order: {text:?}"
+            "device names must render in item order: {html:?}"
         );
     })
     .await
     .expect("timeout");
 }
 
+/// Phase 16 Plan 05 (Task 1, T-16-14 mitigation): renamed/rewritten from
+/// `render_with_missing_template_returns_notfound`. After Plan 16-02,
+/// `render_pdf` no longer calls `pipeline.templates.get_active` (the DB-backed
+/// `document_templates` lookup) — it reads `templates/act_handover.html` via
+/// `html_templates::load_template`, which NEVER errors: a missing/soft-deleted
+/// DB row is irrelevant to the new code path, and a missing on-disk template
+/// file gracefully falls back to the embedded default (D-06). Soft-deleting
+/// the DB row here (same setup as before) must NOT raise `NotFound` — it must
+/// render successfully using the file/embedded-default HTML template, proving
+/// the DB-backed template lookup is truly dead in this path.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn render_with_missing_template_returns_notfound() {
+async fn render_falls_back_to_embedded_default_when_template_file_missing() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
 
-        // Soft-delete handover template.
+        // Soft-delete the DB-backed handover template row (frozen path — no
+        // longer consulted by render_pdf's HTML pipeline).
         p.writer
             .execute(|conn| {
                 conn.execute(
@@ -491,24 +430,39 @@ async fn render_with_missing_template_returns_notfound() {
             .await
             .expect("soft delete template");
 
-        let err = p.acts.render_pdf(act.id).await.expect_err("should fail");
-        match err {
-            AppError::NotFound { entity, .. } => assert_eq!(entity, "document_template"),
-            other => panic!("expected NotFound, got {other:?}"),
-        }
+        let html =
+            p.acts.render_pdf(act.id).await.expect(
+                "render_pdf must succeed via embedded HTML default, DB row is irrelevant now",
+            );
+        assert!(
+            html.contains("Акт приема-передачи"),
+            "expected embedded-default marker text in fallback HTML. Head: {:?}",
+            html.chars().take(300).collect::<String>()
+        );
     })
     .await
     .expect("timeout");
 }
 
+/// Phase 16 Plan 05 (Task 1, T-16-14 mitigation): renamed/rewritten from
+/// `render_with_broken_template_returns_validation`. Corrupting the DB-backed
+/// `document_templates.body_minijinja` row is now a no-op for `render_pdf` —
+/// the HTML pipeline never reads that column. Render must still succeed via
+/// the file-backed `templates/act_handover.html` (materialized on startup by
+/// `TemplateService`'s DB seed being unrelated, and the HTML template's own
+/// startup materialization in `AppCtx::build`/this test's `make_full_pipeline`
+/// helper, which — like production — resolves to the embedded HTML default
+/// when no on-disk file has been written by a test).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn render_with_broken_template_returns_validation() {
+async fn render_falls_back_to_embedded_default_when_broken_template_row_present() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
 
-        // Replace template body with invalid Jinja.
+        // Replace the DB-backed template body with invalid Jinja — irrelevant
+        // to the new HTML pipeline, but proves the old code path is truly
+        // dead (no error surfaces from this corruption).
         p.writer
             .execute(|conn| {
                 conn.execute(
@@ -522,11 +476,15 @@ async fn render_with_broken_template_returns_validation() {
             .await
             .expect("corrupt template");
 
-        let err = p.acts.render_pdf(act.id).await.expect_err("should fail");
-        match err {
-            AppError::Validation { field, .. } => assert_eq!(field, "template"),
-            other => panic!("expected Validation, got {other:?}"),
-        }
+        let html =
+            p.acts.render_pdf(act.id).await.expect(
+                "render_pdf must succeed — DB template body is not read by the HTML pipeline",
+            );
+        assert!(
+            html.contains("Акт приема-передачи"),
+            "expected embedded-default marker text despite corrupted DB row. Head: {:?}",
+            html.chars().take(300).collect::<String>()
+        );
     })
     .await
     .expect("timeout");
@@ -537,7 +495,7 @@ async fn render_acceptance_pdf_for_device_works() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
-        let bytes = p
+        let html = p
             .acts
             .render_acceptance_pdf(
                 device_ids[0],
@@ -547,12 +505,11 @@ async fn render_acceptance_pdf_for_device_works() {
             )
             .await
             .expect("render acceptance");
-        assert!(bytes.len() > 1000);
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+        assert!(html.len() > 1000);
         assert!(
-            text.contains("Сидоров") || text.contains("Иванов"),
-            "expected names in extracted text. Head: {:?}",
-            text.chars().take(300).collect::<String>()
+            html.contains("Сидоров") || html.contains("Иванов"),
+            "expected names in rendered HTML. Head: {:?}",
+            html.chars().take(300).collect::<String>()
         );
     })
     .await
@@ -580,12 +537,12 @@ async fn render_pdf_with_missing_logo_renders_without_logo() {
 
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Тестов Т.Т.").await;
-        let bytes = p
+        let html = p
             .acts
             .render_pdf(act.id)
             .await
             .expect("render succeeds despite missing logo");
-        assert!(bytes.len() > 1000);
+        assert!(html.len() > 1000);
 
         // touch templates to silence unused-warning if it surfaces
         let _ = p.templates.clone();
@@ -597,8 +554,8 @@ async fn render_pdf_with_missing_logo_renders_without_logo() {
 /// Phase 14 plan 03 — backward-compat (success criterion #4, T-14-03-01):
 /// an "old" act whose device has NULL `notes` (specs) and whose org_settings
 /// requisites are all at their V033 empty-string default must still render
-/// to a non-empty, valid PDF — never error. `device.notes` defaults to NULL
-/// on INSERT (not set by `seed_devices`); `org_db` is wired but untouched
+/// to a non-empty HTML document — never error. `device.notes` defaults to
+/// NULL on INSERT (not set by `seed_devices`); `org_db` is wired but untouched
 /// (all-defaults row from the V026/V033 migration seed).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_pdf_with_null_specs_and_empty_requisites_succeeds() {
@@ -608,13 +565,16 @@ async fn render_pdf_with_null_specs_and_empty_requisites_succeeds() {
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Старый И.И.").await;
 
-        let bytes = p
+        let html = p
             .acts
             .render_pdf(act.id)
             .await
             .expect("render_pdf must succeed with NULL specs + empty org requisites");
-        assert!(bytes.len() > 1000, "expected substantive PDF");
-        assert_eq!(&bytes[..4], b"%PDF", "missing PDF magic header");
+        assert!(html.len() > 1000, "expected substantive HTML");
+        assert!(
+            html.to_lowercase().contains("<html"),
+            "missing HTML document marker"
+        );
     })
     .await
     .expect("timeout");
@@ -622,8 +582,8 @@ async fn render_pdf_with_null_specs_and_empty_requisites_succeeds() {
 
 /// Phase 14 plan 03 — positive path: device.notes filled + org_settings
 /// requisites filled via `save_fields` (D-01/D-02/D-05) both surface in the
-/// PDF text (extracted via pdf_extract), proving the data actually flows
-/// through the render context instead of just "not erroring".
+/// rendered HTML, proving the data actually flows through the render context
+/// instead of just "not erroring".
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_pdf_with_filled_specs_and_requisites_surfaces_data() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -673,21 +633,20 @@ async fn render_pdf_with_filled_specs_and_requisites_surfaces_data() {
             .expect("save_fields");
 
         let act = create_handover_with_giver(&p.acts, &device_ids, "Новый Н.Н.").await;
-        let bytes = p
+        let html = p
             .acts
             .render_pdf(act.id)
             .await
             .expect("render_pdf with filled specs/requisites");
-        assert!(bytes.len() > 1000);
+        assert!(html.len() > 1000);
 
-        let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
         // Org requisites from org_settings (D-05) must reach the shipped
         // default template's header, proving the render context carries them
         // (the default act_handover template renders org.name/inn/kpp/address).
         assert!(
-            text.contains("Ромашка"),
-            "org_settings org_name missing from rendered PDF. Head: {:?}",
-            text.chars().take(500).collect::<String>()
+            html.contains("Ромашка"),
+            "org_settings org_name missing from rendered HTML. Head: {:?}",
+            html.chars().take(500).collect::<String>()
         );
     })
     .await

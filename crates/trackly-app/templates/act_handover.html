@@ -20,9 +20,13 @@
     act.items[].condition, act.items[].quantity
 
   Autoescape is ON (build_safe_html_env, T-16-01) — plain {{ var }}
-  interpolation is HTML-safe by construction; no `| safe` filter is used
-  anywhere in this file. The user may freely edit this file in VSCode; the
-  engine re-reads it from disk on every render (D-08).
+  interpolation is HTML-safe by construction. The single exception is
+  `org.logo_data_uri | safe` (see inline comment at its use site): that value
+  is exclusively server-constructed base64 + a hardcoded mime whitelist,
+  never user-controlled HTML — `| safe` only prevents autoescape from
+  HTML-entity-encoding the URI's `/` characters, which would otherwise
+  corrupt the `data:` scheme. The user may freely edit this file in VSCode;
+  the engine re-reads it from disk on every render (D-08).
 -#}
 <html lang="ru">
 <head>
@@ -115,7 +119,13 @@
   <div class="header">
     <div class="logo">
       {%- if org.logo_data_uri %}
-      <img src="{{ org.logo_data_uri }}" alt="Логотип">
+      {#- logo_data_uri is server-constructed exclusively from base64 output
+        (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+        hardcoded mime whitelist (act_service.rs) — `| safe` here does not
+        reopen T-16-01's XSS mitigation, it only prevents autoescape from
+        HTML-entity-encoding the `/` in "data:image/png;base64,..." into
+        `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
+      <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
       {%- endif %}
     </div>
     <div class="requisites">

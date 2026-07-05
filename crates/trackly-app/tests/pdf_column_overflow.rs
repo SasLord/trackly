@@ -102,16 +102,15 @@ fn long_name_truncated_does_not_overlap_inv_no() {
 }
 
 /// Full-pipeline contrast to `long_name_truncated_does_not_overlap_inv_no`
-/// above: that test proves `ItemsTable` still truncates its own (old,
-/// compact-table) columns with an ellipsis. This test proves the INVERSE for
-/// `Section::FieldRow`'s wrap behavior (260704-wxw replaced the default
-/// template's `Section::DeviceCard` long-field wrap-blocks from Phase 15 plan
-/// 02 with `field_row` sections, same wrap-not-truncate guarantee) — a long
-/// `complectation_at_time` value rendered through the real
-/// `act_handover.minijinja` template via the full `act_service::render_pdf`
-/// pipeline must wrap, never truncate with '…'. Both code paths coexist:
-/// `ItemsTable` truncation is untouched; `FieldRow` wrap-blocks don't
-/// truncate.
+/// above: that test proves the frozen krilla `ItemsTable` path still
+/// truncates its own (old, compact-table) columns with an ellipsis via direct
+/// `PdfRenderer::render_docspec` calls. This test proves the INVERSE for the
+/// active HTML pipeline (Phase 16): a long `complectation_at_time` value
+/// rendered through the real `act_handover.html` template via the full
+/// `act_service::render_pdf` pipeline must wrap (via CSS at print time), never
+/// truncate with '…' at generation time. Both code paths coexist: the frozen
+/// krilla `ItemsTable` truncation is untouched; the active HTML field-row
+/// blocks never truncate — word-wrap is left entirely to the browser's CSS.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn device_card_long_field_wraps_instead_of_truncating() {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -192,18 +191,16 @@ async fn device_card_long_field_wraps_instead_of_truncating() {
             .expect("set complectation_at_time");
     }
 
-    let bytes = acts.render_pdf(act.id).await.expect("render_pdf");
-    let text = pdf_extract::extract_text_from_mem(&bytes).expect("extract");
+    let html = acts.render_pdf(act.id).await.expect("render_pdf");
 
     assert!(
-        !text.contains('…'),
-        "DeviceCard long field must wrap instead of truncating with ellipsis. \
-         Head: {:?}",
-        text.chars().take(800).collect::<String>()
+        !html.contains('…'),
+        "long field must wrap, not truncate, in HTML output. Head: {:?}",
+        html.chars().take(800).collect::<String>()
     );
     assert!(
-        text.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
+        html.contains("СЕРЕДИНА-МАРКЕР-ЗНАЧЕНИЯ"),
         "middle-of-value marker missing — long field appears truncated. Head: {:?}",
-        text.chars().take(800).collect::<String>()
+        html.chars().take(800).collect::<String>()
     );
 }
