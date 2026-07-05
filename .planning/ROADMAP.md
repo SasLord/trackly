@@ -144,7 +144,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 2** *(depends on Wave 1)*
 
-- [ ] 16-02-PLAN.md — Wire act_service.rs: render_pdf/render_acceptance_pdf return HTML String, data: URI logo, AppCtx startup materialization
+- [x] 16-02-PLAN.md — Wire act_service.rs: render_pdf/render_acceptance_pdf return HTML String, data: URI logo, AppCtx startup materialization
 
 **Wave 3** *(depends on Wave 2, parallel plans — no file overlap)*
 
@@ -177,7 +177,7 @@ Trackly — портативное приложение для учёта тех
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
-| 16. Документы через HTML-печать | v1.2 | 1/5 | In Progress|  |
+| 16. Документы через HTML-печать | v1.2 | 2/5 | In Progress|  |
 
 ## Coverage
 

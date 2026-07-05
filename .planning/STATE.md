@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-05T07:55:13.931Z"
+last_updated: "2026-07-05T08:11:27.486Z"
 last_activity: 2026-07-05
 progress:
   total_phases: 19
   completed_phases: 18
   total_plans: 117
-  completed_plans: 113
+  completed_plans: 114
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 16 (documents-html-print) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-05
 
@@ -155,6 +155,7 @@ Last activity: 2026-07-05
 | Phase 15 P03 | 50 | 3 tasks | 5 files |
 | Phase 15 P04 | 25min | 2 tasks | 2 files |
 | Phase 16 P01 | 25min | 3 tasks | 6 files |
+| Phase 16 P02 | 30min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -347,6 +348,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: 15-04: DeviceCard measured via measure_device_card_height (mirrors draw-time wrap_text_to_width arithmetic) — never split across a page boundary; other section variants use a cheap pre-draw bounds check
 - [Phase ?]: [Phase 15]: 15-04: act_42.sha256 verified unchanged (not regenerated) — pagination bounds check never fires for the single-device fixture
 - [Phase 16]: 16-01: Task 3 (templates + build_safe_html_env) executed before Task 2 (html_templates.rs) to keep every intermediate commit compiling — include_str! in Task 2 depends on the .html files created in Task 3
+- [Phase ?]: 16-02: reused pipeline.organization.paths for templates dir resolution instead of adding a new ActService paths field + with_paths builder
+- [Phase ?]: 16-02: OrganizationService::read_logo_bytes added — reads legacy org.json logo file bytes+MIME for base64 data: URI embedding in render_acceptance_pdf
+- [Phase ?]: 16-02: Rule-3 fix folded Tauri/HTTP adapter type changes (acts.rs, templates.rs, http/acts.rs) into this plan to keep cargo build -p trackly-app green; full delivery UX rework remains Plan 16-03 scope
 
 ### Pending Todos
 
@@ -408,8 +412,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-05T07:55:13.923Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-07-05T08:11:27.481Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
