@@ -136,7 +136,24 @@ Trackly — портативное приложение для учёта тех
 
 **Success Criteria** (what must be TRUE): см. `16-SPEC.md` — Acceptance Criteria.
 
-**Plans**: TBD (создаются в /gsd-plan-phase)
+**Plans**: 5 plans in 4 waves
+
+**Wave 1**
+
+- [ ] 16-01-PLAN.md — HTML template contracts: act_handover.html/act_acceptance.html ported from .minijinja, pdf/html_templates.rs (resolver + materialize + fallback), build_safe_html_env (autoescape ON), Paths::templates_dir()
+
+**Wave 2** *(depends on Wave 1)*
+
+- [ ] 16-02-PLAN.md — Wire act_service.rs: render_pdf/render_acceptance_pdf return HTML String, data: URI logo, AppCtx startup materialization
+
+**Wave 3** *(depends on Wave 2, parallel plans — no file overlap)*
+
+- [ ] 16-03-PLAN.md — Tauri/HTTP adapters: String return type, text/html content-type, delete acts_open_pdf_in_system, regenerate bindings.ts
+- [ ] 16-05-PLAN.md — Backend tests: migrate existing full-pipeline tests off PDF assertions, new html_act_render.rs (D-14 coverage), krilla #[ignore] hygiene (D-13)
+
+**Wave 4** *(depends on Wave 3 — needs regenerated bindings.ts)*
+
+- [ ] 16-04-PLAN.md — Frontend: acts.ts/pdf.ts return-type update, PdfPreviewModal.svelte srcdoc + print, remove system-open button
 
 ## Progress
 
@@ -160,7 +177,7 @@ Trackly — портативное приложение для учёта тех
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
-| 16. Документы через HTML-печать | v1.2 | 0/? | Spec'd | — |
+| 16. Документы через HTML-печать | v1.2 | 0/5 | Planned | — |
 
 ## Coverage
 
@@ -201,4 +218,4 @@ Trackly — портативное приложение для учёта тех
 | ADV-01..05 (SSO/REST API наружу/Signature pad/доп. вендоры принтеров/Postgres) | Преждевременная сложность для текущего масштаба |
 
 ---
-*Last updated: 2026-07-04 — Phase 15 gap closure: 15-04-PLAN.md added (Wave 4) to close the WR-05/PDFA-02 pagination gap found by /gsd-verify-work (15-VERIFICATION.md, score 4/5).*
+*Last updated: 2026-07-05 — Phase 16 planned: 5 plans across 4 waves (16-01..16-05), all 8 SPEC requirements and D-01..D-14 decisions covered.*
