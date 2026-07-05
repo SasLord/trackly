@@ -137,3 +137,10 @@ None — no external service configuration required.
 ---
 *Phase: 16-documents-html-print*
 *Completed: 2026-07-05*
+
+## Self-Check: PASSED
+
+Verified all created/modified files present on disk (`acts.ts`, `PdfPreviewModal.svelte`,
+`ActsPage.svelte`, `DevicesPage.svelte`, `client.ts`, `deferred-items.md`, this SUMMARY);
+confirmed `pdf.ts` deleted. Verified commit hashes `2b25a90`, `aeeceed`, `2889439`, `55c38ae`
+present in `git log --oneline --all` (plan metadata commit `cadbc1d` also confirmed).
