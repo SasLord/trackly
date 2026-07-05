@@ -206,12 +206,10 @@ pub async fn handler_peek_next_number(
     ))
 }
 
-// Phase 16 (D-10): both handlers now return the HTML string produced by
-// ActService::render_pdf/render_acceptance_pdf (Plan 16-02) as
-// `text/html; charset=utf-8` instead of `application/pdf` bytes. Full
-// delivery UX (srcdoc iframe + browser print()) is Plan 16-03's scope; this
-// is the minimal content-type/type-plumbing fix required to keep
-// `trackly-app` compiling after the service-layer return type change.
+// Phase 16 (D-09/D-10): both handlers return the HTML string produced by
+// ActService::render_pdf/render_acceptance_pdf as `text/html; charset=utf-8`.
+// Printing/saving happens via the browser's print dialog (srcdoc iframe +
+// print()) on both desktop and LAN — no server-side canonical PDF anymore.
 pub async fn handler_render_pdf(
     State(ctx): State<AppCtx>,
     session: Session,

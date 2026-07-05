@@ -94,11 +94,10 @@ pub async fn build_acts_peek_next_number(ctx: &AppCtx, caller: &Identity) -> Res
 
 /// Мутация (PDF generation tied to act): требует `caller` с правом `MutateActs`.
 ///
-/// Phase 16 (D-10): возвращает HTML-строку, не PDF bytes — `ActService::render_pdf`
-/// изменил тип возврата на `Result<String, AppError>` (Plan 16-02). Полная
-/// адаптация delivery-слоя (srcdoc iframe UX, content-type, удаление
-/// `acts_open_pdf_in_system`) — Plan 16-03; здесь — минимальная правка типов,
-/// чтобы `trackly-app` продолжал компилироваться после смены сигнатуры сервиса.
+/// Phase 16 (D-09/D-10): возвращает HTML-строку, не PDF bytes —
+/// `ActService::render_pdf` возвращает `Result<String, AppError>` (Plan 16-02);
+/// печать выполняется через диалог браузера (`srcdoc` iframe + `print()`),
+/// system-viewer-опенер (`acts_open_pdf_in_system`) удалён (Plan 16-03).
 pub async fn build_acts_render_pdf(
     ctx: &AppCtx,
     caller: &Identity,
