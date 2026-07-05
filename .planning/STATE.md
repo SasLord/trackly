@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: executing
-last_updated: "2026-07-05T09:36:26.081Z"
+status: verifying
+last_updated: "2026-07-05T10:16:50.038Z"
 last_activity: 2026-07-05
 progress:
   total_phases: 19
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 117
-  completed_plans: 116
-  percent: 95
+  completed_plans: 117
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 16 (documents-html-print) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-05
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -158,6 +158,7 @@ Last activity: 2026-07-05
 | Phase 16 P02 | 30min | 3 tasks | 7 files |
 | Phase 16 P03 | 15min | 3 tasks | 3 files |
 | Phase 16 P05 | 45min | 3 tasks | 8 files |
+| Phase 16 P04 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -357,6 +358,9 @@ Recent decisions affecting current work:
 - [Phase 16]: 16-03: ui/src/bindings.ts is gitignored, never committed — regenerated via cargo test --test export_bindings, verified in place, no git commit for that file
 - [Phase ?]: 16-05: renamed render_with_missing_template_returns_notfound/render_with_broken_template_returns_validation to assert graceful fallback (embedded HTML default), not error
 - [Phase ?]: 16-05: Rule 1 bugfix — org.logo_data_uri needed | safe in both HTML templates; autoescape was entity-encoding the / in base64 data: URIs, corrupting the logo in production
+- [Phase ?]: 16-04: Save-as-PDF button removed entirely (not repurposed to save raw HTML) — browser print dialog already offers Save-as-PDF (D-09/Req 5)
+- [Phase ?]: 16-04: Rule 1 fix in client.ts (outside stated files_modified) — HTTP transport's binary-response branch wrongly converted text/html responses to number[]; added explicit text/html -> res.text() branch, required for D-09 dual-transport correctness
+- [Phase ?]: 16-04: templates_render_preview stale application/pdf content-type + Promise<number[]> frontend type left unfixed (dead code, zero UI callers) — logged to deferred-items.md
 
 ### Pending Todos
 
@@ -418,8 +422,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-05T09:36:21.808Z
-Stopped at: Completed 16-05-PLAN.md
+Last session: 2026-07-05T10:16:50.032Z
+Stopped at: Completed 16-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
