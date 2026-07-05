@@ -148,7 +148,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 3** *(depends on Wave 2, parallel plans — no file overlap)*
 
-- [ ] 16-03-PLAN.md — Tauri/HTTP adapters: String return type, text/html content-type, delete acts_open_pdf_in_system, regenerate bindings.ts
+- [x] 16-03-PLAN.md — Tauri/HTTP adapters: String return type, text/html content-type, delete acts_open_pdf_in_system, regenerate bindings.ts
 - [ ] 16-05-PLAN.md — Backend tests: migrate existing full-pipeline tests off PDF assertions, new html_act_render.rs (D-14 coverage), krilla #[ignore] hygiene (D-13)
 
 **Wave 4** *(depends on Wave 3 — needs regenerated bindings.ts)*
@@ -177,7 +177,7 @@ Trackly — портативное приложение для учёта тех
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
-| 16. Документы через HTML-печать | v1.2 | 2/5 | In Progress|  |
+| 16. Документы через HTML-печать | v1.2 | 3/5 | In Progress|  |
 
 ## Coverage
 

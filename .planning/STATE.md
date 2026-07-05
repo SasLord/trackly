@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-05T08:11:27.486Z"
+last_updated: "2026-07-05T08:20:46.208Z"
 last_activity: 2026-07-05
 progress:
   total_phases: 19
   completed_phases: 18
   total_plans: 117
-  completed_plans: 114
+  completed_plans: 115
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 16 (documents-html-print) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-05
 
@@ -156,6 +156,7 @@ Last activity: 2026-07-05
 | Phase 15 P04 | 25min | 2 tasks | 2 files |
 | Phase 16 P01 | 25min | 3 tasks | 6 files |
 | Phase 16 P02 | 30min | 3 tasks | 7 files |
+| Phase 16 P03 | 15min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -351,6 +352,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 16-02: reused pipeline.organization.paths for templates dir resolution instead of adding a new ActService paths field + with_paths builder
 - [Phase ?]: 16-02: OrganizationService::read_logo_bytes added — reads legacy org.json logo file bytes+MIME for base64 data: URI embedding in render_acceptance_pdf
 - [Phase ?]: 16-02: Rule-3 fix folded Tauri/HTTP adapter type changes (acts.rs, templates.rs, http/acts.rs) into this plan to keep cargo build -p trackly-app green; full delivery UX rework remains Plan 16-03 scope
+- [Phase 16]: 16-03: Task 1/2 (String return type, text/html content-type) already complete from Plan 16-02's Rule-3 fix — scope narrowed to deleting acts_open_pdf_in_system + regenerating bindings.ts
+- [Phase 16]: 16-03: ui/src/bindings.ts is gitignored, never committed — regenerated via cargo test --test export_bindings, verified in place, no git commit for that file
 
 ### Pending Todos
 
@@ -412,8 +415,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-05T08:11:27.481Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-07-05T08:20:46.202Z
+Stopped at: Completed 16-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
