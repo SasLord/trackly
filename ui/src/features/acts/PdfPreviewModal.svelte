@@ -1,24 +1,20 @@
 <script lang="ts">
-  // Phase 3 Plan 04: PDF preview modal.
+  // Phase 16: Document print-preview modal.
   //
-  // Renders the PDF in an <iframe> via a `blob:` URL — bypasses the
-  // pdfjs-dist worker config issue (Pitfall 8 in 03-RESEARCH.md).
+  // Renders the backend-generated HTML document directly in an <iframe> via
+  // `srcdoc` — no blob/object-URL lifecycle, no PDF bytes. Printing (and
+  // "Save as PDF") happens through the browser's native print dialog, which
+  // works identically in the desktop webview and any LAN browser (D-09).
   //
   // Buttons:
-  //   - Save as PDF → tauri-plugin-dialog save dialog → tauri-plugin-fs writeFile.
-  //   - Open in system viewer → write tmp file → tauri-plugin-shell open.
-  //   - Print → iframeEl.contentWindow.print().
-  //
-  // Blob URL lifecycle:
-  //   - $effect fetches PDF bytes when (open && actId) changes → creates Blob URL.
-  //   - Cleanup function revokes the URL when component unmounts or modal closes.
+  //   - Print → iframeEl.contentWindow.print() (offers "Save as PDF" natively).
+  //   - Закрыть.
 
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
-  import { fetchPdfBlob, revokePdfUrl } from '$lib/api/pdf';
 
   interface AcceptancePayload {
     deviceId: number;
@@ -32,8 +28,6 @@
     open: boolean;
     actId: number | null;
     title: string;
-    actNumberDisplay: string | null;
-    actDateUtc: number | null;
     onClose: () => void;
     /** Plan 03-05: 'handover' → render акта приёма-передачи (default);
      *  'acceptance' → render документа приёма устройства (DEV-14). */
@@ -42,60 +36,16 @@
     acceptancePayload?: AcceptancePayload | null;
   }
 
-  const {
-    open,
-    actId,
-    title,
-    actNumberDisplay,
-    actDateUtc,
-    onClose,
-    mode = 'handover',
-    acceptancePayload = null,
-  }: Props = $props();
+  const { open, actId, title, onClose, mode = 'handover', acceptancePayload = null }: Props =
+    $props();
 
-  let blobUrl = $state<string | null>(null);
-  let pdfBytes = $state<number[] | null>(null);
+  let htmlContent = $state<string | null>(null);
   let loading = $state(false);
   let errorMsg = $state<string | null>(null);
   // eslint-disable-next-line no-undef
   let iframeEl = $state<HTMLIFrameElement | null>(null);
 
-  function isoDateForFilename(unixSeconds: number | null): string {
-    if (unixSeconds === null) return 'без-даты';
-    const d = new Date(unixSeconds * 1000);
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-
-  // G-8b filename sanitization (T-03.1-05-03): user-provided strings (device
-  // name, act number override) могут содержать reserved chars или быть
-  // патологически длинными → защита от path injection и FS-level errors.
-  function sanitizeFilename(s: string): string {
-    // Replace reserved filesystem chars on Windows + Unix (* запрещён всеми).
-    return s.replace(/[/\\:*?"<>|]/g, '_').slice(0, 200);
-  }
-
-  function suggestedFilename(): string {
-    let raw: string;
-    if (mode === 'acceptance' && acceptancePayload) {
-      const deviceName = acceptancePayload.deviceName ?? `dev-${acceptancePayload.deviceId}`;
-      const date = isoDateForFilename(acceptancePayload.dateUtc);
-      raw = `Документ_приёма_${deviceName}_${date}.pdf`;
-    } else {
-      const number = actNumberDisplay ?? 'N';
-      const date = isoDateForFilename(actDateUtc);
-      // Return-акты (с suffix «в»/«в1»/«в2») — display number сам по себе
-      // отражает что это return; на этом этапе используем единый patron
-      // «Акт_приёма-передачи_№{number}_{date}.pdf» (return UI ещё не
-      // передаёт `mode='return'` в этот модал — отложено на Phase 4).
-      raw = `Акт_приёма-передачи_№${number}_${date}.pdf`;
-    }
-    return sanitizeFilename(raw);
-  }
-
-  function renderCall(): Promise<number[]> {
+  function renderCall(): Promise<string> {
     if (mode === 'acceptance') {
       if (!acceptancePayload) {
         return Promise.reject(new Error('acceptancePayload required for mode="acceptance"'));
@@ -119,12 +69,7 @@
 
   $effect(() => {
     if (!ready) {
-      // Cleanup on close
-      if (blobUrl !== null) {
-        revokePdfUrl(blobUrl);
-        blobUrl = null;
-      }
-      pdfBytes = null;
+      htmlContent = null;
       errorMsg = null;
       return;
     }
@@ -132,21 +77,12 @@
     loading = true;
     errorMsg = null;
     let cancelled = false;
-    let createdUrl: string | null = null;
 
     (async () => {
       try {
-        const result = await fetchPdfBlob(renderCall());
-        if (cancelled) {
-          revokePdfUrl(result.url);
-          return;
-        }
-        createdUrl = result.url;
-        blobUrl = result.url;
-        // Stash bytes for save/open without re-rendering.
-        // (Re-fetch from blob for save/open is awkward; keep raw bytes available.)
-        // We can pull them back from the blob via blob.arrayBuffer() in the handlers
-        // — but it's simpler to re-call backend if user saves. For now, attach.
+        const html = await renderCall();
+        if (cancelled) return;
+        htmlContent = html;
       } catch (e: unknown) {
         if (cancelled) return;
         const msg =
@@ -161,65 +97,8 @@
 
     return () => {
       cancelled = true;
-      if (createdUrl) {
-        revokePdfUrl(createdUrl);
-        if (blobUrl === createdUrl) blobUrl = null;
-      }
     };
   });
-
-  async function handleSave() {
-    if (!ready) return;
-    try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const path = await save({
-        defaultPath: suggestedFilename(),
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      });
-      if (!path) return;
-      // Re-fetch bytes (simplest reliable path; backend is fast).
-      const bytes = pdfBytes ?? (await renderCall());
-      pdfBytes = bytes;
-      const { writeFile } = await import('@tauri-apps/plugin-fs');
-      await writeFile(path, new Uint8Array(bytes));
-      pushToast('success', `PDF сохранён: ${path}`);
-    } catch (e: unknown) {
-      const msg =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message: unknown }).message)
-          : 'Не удалось сохранить PDF';
-      pushToast('error', msg);
-    }
-  }
-
-  async function handleOpen() {
-    if (!ready) return;
-    try {
-      const bytes = pdfBytes ?? (await renderCall());
-      pdfBytes = bytes;
-      // Write to a temp file via tauri-plugin-fs, then open via secure
-      // backend command. CR-02 (Phase 3.1 code review): frontend больше
-      // НЕ имеет capability shell:allow-open; acts_open_pdf_in_system
-      // validate-ит path (must be in $TEMP + .pdf extension).
-      const { writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-      const filename = `trackly-preview-${Date.now()}.pdf`;
-      await writeFile(filename, new Uint8Array(bytes), {
-        baseDir: BaseDirectory.Temp,
-      });
-      const { tempDir } = await import('@tauri-apps/api/path');
-      const tmp = await tempDir();
-      const full = `${tmp}${filename}`;
-      // Use apiCall wrapper для secure backend dispatch.
-      const { apiCall } = await import('$lib/api/client');
-      await apiCall<null>('acts_open_pdf_in_system', { path: full });
-    } catch (e: unknown) {
-      const msg =
-        e && typeof e === 'object' && 'message' in e
-          ? String((e as { message: unknown }).message)
-          : 'Не удалось открыть PDF в системном просмотрщике';
-      pushToast('error', msg);
-    }
-  }
 
   function handlePrint() {
     if (!ready) return;
@@ -246,8 +125,13 @@
         <p class="error-heading">Не удалось сгенерировать PDF</p>
         <p class="error-detail">{errorMsg}</p>
       </div>
-    {:else if blobUrl !== null}
-      <iframe bind:this={iframeEl} src={blobUrl} title="PDF Preview" class="pdf-iframe"></iframe>
+    {:else if htmlContent !== null}
+      <iframe
+        bind:this={iframeEl}
+        srcdoc={htmlContent}
+        title="Document Preview"
+        class="pdf-iframe"
+      ></iframe>
     {:else}
       <div class="state state-empty">
         <p>Нет данных для предпросмотра.</p>
@@ -257,14 +141,8 @@
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onClose}>Закрыть</Button>
-    <Button variant="secondary" onclick={handleOpen} disabled={loading || errorMsg !== null}>
-      Открыть в системном просмотрщике
-    </Button>
-    <Button variant="secondary" onclick={handlePrint} disabled={loading || errorMsg !== null}>
+    <Button variant="primary" onclick={handlePrint} disabled={loading || errorMsg !== null}>
       Печать
-    </Button>
-    <Button variant="primary" onclick={handleSave} disabled={loading || errorMsg !== null}>
-      Сохранить как PDF
     </Button>
   {/snippet}
 </Modal>

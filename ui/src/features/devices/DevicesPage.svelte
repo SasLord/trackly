@@ -307,8 +307,6 @@
   title={acceptancePayload
     ? `Печать документа приёма: ${acceptancePayload.deviceName}`
     : 'Печать документа приёма'}
-  actNumberDisplay={null}
-  actDateUtc={acceptancePayload ? acceptancePayload.dateUtc : null}
   mode="acceptance"
   {acceptancePayload}
   onClose={() => (acceptancePayload = null)}

@@ -253,8 +253,6 @@
   open={pdfModalOpen}
   actId={pdfModalAct ? pdfModalAct.id : null}
   title={pdfModalAct ? `Печать акта №${pdfModalAct.number}` : 'Печать акта'}
-  actNumberDisplay={pdfModalAct ? pdfModalAct.number : null}
-  actDateUtc={pdfModalAct ? pdfModalAct.created_at_utc : null}
   onClose={() => {
     pdfModalOpen = false;
     pdfModalAct = null;
