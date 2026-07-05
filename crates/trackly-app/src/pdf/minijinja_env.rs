@@ -38,6 +38,28 @@ pub fn build_safe_env() -> Environment<'static> {
     env
 }
 
+/// Build a fresh MiniJinja `Environment` configured for Trackly safe-mode,
+/// with autoescape unconditionally ON (Phase 16, D-01/D-02, T-16-01).
+///
+/// Sibling to [`build_safe_env`] — every safe-mode invariant is identical
+/// (`UndefinedBehavior::Strict`, `set_recursion_limit(64)`,
+/// `set_fuel(Some(100_000))`, no loader). The only difference is
+/// `AutoEscape::Html` instead of `AutoEscape::None`: every template rendered
+/// through this environment is HTML output (act_handover.html /
+/// act_acceptance.html), so `{{ var }}` interpolation must be HTML-escaped by
+/// default — this is the sole mitigation for T-16-01 (Tampering/Injection via
+/// device/org field interpolation). No `| safe` filter is used anywhere in
+/// the shipped templates.
+pub fn build_safe_html_env() -> Environment<'static> {
+    let mut env = Environment::new();
+    env.set_undefined_behavior(UndefinedBehavior::Strict);
+    env.set_auto_escape_callback(|_| AutoEscape::Html);
+    env.set_recursion_limit(64);
+    env.set_fuel(Some(100_000));
+    // DO NOT set a loader — filesystem includes are not allowed (T-16-02).
+    env
+}
+
 /// Render a template against `ctx` with both a hard fuel cap (set on the
 /// Environment) and a soft 5 s wall-clock timeout.
 ///

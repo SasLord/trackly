@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+{#- Default HTML template for Акт приёма-передачи (Phase 16, D-01/D-02/D-03).
+
+  Self-contained HTML5 document (inline <style>, no external CSS/CDN, D-11
+  data: URI logo) reproducing the Word-sample block order fixed in Phase 15's
+  act_handover.minijinja: 2-column header (logo + org requisites) -> centered
+  title -> number/date -> intro field_row -> per-item field_rows (label |
+  underlined value, no "Устройство №N") -> "Сроком до" -> optional parent-act
+  paragraph -> two-line signatures "Выдал/Получил".
+
+  Context variables (same shape as act_service::render_pdf's ctx, D-04, plus
+  org.logo_data_uri replacing org.logo_path per D-11):
+    org.name, org.inn, org.kpp, org.address, org.logo_data_uri,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn
+    act.number, act.suffix, act.date, act.date_human,
+    act.receiver_name, act.deadline, act.deadline_human,
+    act.location_name, act.items[], act.parent
+    act.items[].name, act.items[].inventory_no, act.items[].serial_no,
+    act.items[].model, act.items[].specs, act.items[].kit,
+    act.items[].condition, act.items[].quantity
+
+  Autoescape is ON (build_safe_html_env, T-16-01) — plain {{ var }}
+  interpolation is HTML-safe by construction; no `| safe` filter is used
+  anywhere in this file. The user may freely edit this file in VSCode; the
+  engine re-reads it from disk on every render (D-08).
+-#}
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Акт приема-передачи{% if act.number %} №{{ act.number }}{{ act.suffix | default('') }}{% endif %}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm;
+  }
+  body {
+    font-family: "DejaVu Sans", "Arial", sans-serif;
+    font-size: 11pt;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12pt;
+    align-items: flex-start;
+    margin-bottom: 16pt;
+  }
+  .header .logo img {
+    max-height: 60pt;
+    max-width: 120pt;
+  }
+  .header .requisites {
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 8pt 0 0 0;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 11pt;
+    margin: 4pt 0 12pt 0;
+  }
+  .field-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6pt;
+    margin: 4pt 0;
+  }
+  .field-row .label {
+    white-space: nowrap;
+  }
+  .field-row .value {
+    flex: 1;
+    border-bottom: 1px solid #000;
+    min-height: 1.2em;
+    padding: 0 2pt;
+  }
+  .intro {
+    margin: 4pt 0 10pt 0;
+  }
+  .device-block {
+    page-break-inside: avoid;
+    margin-bottom: 8pt;
+  }
+  .parent-note {
+    margin: 8pt 0;
+  }
+  .signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24pt;
+    margin-top: 30pt;
+    page-break-inside: avoid;
+  }
+  .signature .line {
+    border-bottom: 1px solid #000;
+    min-height: 1.4em;
+    margin-top: 4pt;
+  }
+  .signature .sublabel {
+    font-size: 9pt;
+    text-align: center;
+    margin-top: 2pt;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">
+      {%- if org.logo_data_uri %}
+      <img src="{{ org.logo_data_uri }}" alt="Логотип">
+      {%- endif %}
+    </div>
+    <div class="requisites">
+      {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
+      {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
+      {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
+      {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
+      {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+      {%- if org.okpo %}<div>ОКПО {{ org.okpo }}</div>{%- endif %}
+      {%- if org.ogrn %}<div>ОГРН {{ org.ogrn }}</div>{%- endif %}
+    </div>
+  </div>
+
+  <div class="title">Акт приема-передачи</div>
+  <div class="subtitle">№{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+
+  <div class="intro field-row">
+    <span class="label">Настоящим актом утверждаю, что мною:</span>
+    <span class="value">{{ act.receiver_name }}</span>
+  </div>
+  <div class="field-row">
+    <span class="value">&nbsp;</span>
+  </div>
+
+  {%- for item in act.items %}
+  <div class="device-block">
+    <div class="field-row">
+      <span class="label">было получено устройство:</span>
+      <span class="value">{{ item.name }}</span>
+    </div>
+    {%- if item.inventory_no %}
+    <div class="field-row">
+      <span class="label">Инвентарный номер:</span>
+      <span class="value">{{ item.inventory_no }}</span>
+    </div>
+    {%- endif %}
+    {%- if item.serial_no %}
+    <div class="field-row">
+      <span class="label">Серийный номер:</span>
+      <span class="value">{{ item.serial_no }}</span>
+    </div>
+    {%- endif %}
+    {%- if item.model %}
+    <div class="field-row">
+      <span class="label">Модель:</span>
+      <span class="value">{{ item.model }}</span>
+    </div>
+    {%- endif %}
+    {%- if item.kit %}
+    <div class="field-row">
+      <span class="label">Комплектация:</span>
+      <span class="value">{{ item.kit }}</span>
+    </div>
+    {%- endif %}
+    {%- if item.specs %}
+    <div class="field-row">
+      <span class="label">Технические характеристики:</span>
+      <span class="value">{{ item.specs }}</span>
+    </div>
+    {%- endif %}
+    {%- if item.condition %}
+    <div class="field-row">
+      <span class="label">Состояние:</span>
+      <span class="value">{{ item.condition }}</span>
+    </div>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+
+  {%- if act.deadline_human %}
+  <div class="field-row">
+    <span class="label">Сроком до:</span>
+    <span class="value">{{ act.deadline_human }}</span>
+  </div>
+  {%- elif act.deadline %}
+  <div class="field-row">
+    <span class="label">Сроком до:</span>
+    <span class="value">{{ act.deadline }}</span>
+  </div>
+  {%- endif %}
+
+  {%- if act.parent %}
+  <div class="parent-note">
+    По акту №{{ act.parent.number }} от {{ act.parent.date_human | default(act.parent.date | default("")) }}
+  </div>
+  {%- endif %}
+
+  <div class="signatures">
+    <div class="signature">
+      <div class="line"></div>
+      <div class="sublabel">Выдал</div>
+      <div class="sublabel">Подпись</div>
+      <div class="line"></div>
+      <div class="sublabel">ФИО</div>
+    </div>
+    <div class="signature">
+      <div class="line"></div>
+      <div class="sublabel">Получил</div>
+      <div class="sublabel">Подпись</div>
+      <div class="line"></div>
+      <div class="sublabel">ФИО</div>
+    </div>
+  </div>
+
+</body>
+</html>
