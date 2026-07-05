@@ -17,6 +17,11 @@
         { "path": "$DESKTOP/**/*.pdf" },
         { "path": "$DOWNLOAD/**/*.pdf" }
       ]
-    }
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$TEMP/*.html" }, { "path": "$TEMP/**/*.html" }]
+    },
+    "shell:allow-open"
   ]
 }

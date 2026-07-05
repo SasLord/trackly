@@ -35,6 +35,8 @@ const browserGlobals = {
   HTMLInputElement: 'readonly',
   HTMLTextAreaElement: 'readonly',
   HTMLSelectElement: 'readonly',
+  HTMLStyleElement: 'readonly',
+  DOMParser: 'readonly',
   Node: 'readonly',
   MutationObserver: 'readonly',
   ResizeObserver: 'readonly',

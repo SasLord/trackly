@@ -145,8 +145,14 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // TemplateEditor can render their `blob:` PDF URLs in <iframe>. Without
             // this, default-src 'self' blocks blob: framing and the preview is blank
             // (browser: "Refused to load blob:... neither frame-src nor default-src").
+            // GAP-16-01: img-src 'self' data: — the act HTML embeds the org logo as a
+            // data:image URI (act_handover.html). Without an explicit img-src it falls
+            // back to default-src 'self', which does NOT permit data:, so the logo is
+            // blocked in the LAN-browser preview and print (desktop opens file:// in the
+            // system browser outside this CSP, so it was unaffected — LAN-only symptom).
+            // data: images cannot execute scripts, so this does not weaken XSS defense.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
             ),
         ));
 

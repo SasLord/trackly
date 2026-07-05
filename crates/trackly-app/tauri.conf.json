@@ -35,5 +35,9 @@
       "signingIdentity": "-"
     }
   },
-  "plugins": {}
+  "plugins": {
+    "shell": {
+      "open": "^(https?://|file://|/|[A-Za-z]:[\\\\/]).*trackly-print-\\d+\\.html$"
+    }
+  }
 }

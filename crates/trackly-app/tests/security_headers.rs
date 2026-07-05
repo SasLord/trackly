@@ -89,6 +89,14 @@ async fn security_headers_present() {
             "CSP must include frame-src with blob: for PDF preview, got: {csp}"
         );
 
+        // GAP-16-01 regression: img-src must allow data: so the data:image org logo
+        // in the act HTML renders in the LAN-browser preview and print. Without it,
+        // the logo falls back to default-src 'self' (no data:) and is blocked.
+        assert!(
+            csp.contains("img-src") && csp.contains("data:"),
+            "CSP must include img-src with data: for the act logo, got: {csp}"
+        );
+
         ctx.shutdown.cancel();
     })
     .await
