@@ -55,8 +55,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::acts::devices_render_acceptance_pdf,
         // Phase 3.1 Plan 02 — G-5 person autocomplete
         crate::tauri_cmds::acts::acts_suggest_person,
-        // Phase 3.1 code review fix (CR-02) — secure shell::open wrapper
-        crate::tauri_cmds::acts::acts_open_pdf_in_system,
         crate::tauri_cmds::organization::organization_get,
         crate::tauri_cmds::templates::templates_get_active,
         crate::tauri_cmds::templates::templates_render_preview,
