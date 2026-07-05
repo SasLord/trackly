@@ -207,6 +207,11 @@ impl AppCtx {
         // Seed default templates on first run (idempotent).
         templates.seed_defaults_on_startup().await?;
 
+        // Phase 16: materialize embedded HTML defaults into templates/ (D-05),
+        // idempotent — separate from the frozen DB-template seed above.
+        let html_templates_dir = crate::pdf::html_templates::resolve_templates_dir(&paths_arc);
+        crate::pdf::html_templates::materialize_defaults_on_startup(&html_templates_dir)?;
+
         // Phase 7 Plan 02: OrgDbService (replaces OrganizationService for settings write layer).
         let org_db = Arc::new(OrgDbService::new(
             writer.clone(),
