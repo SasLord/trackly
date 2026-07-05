@@ -140,7 +140,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 1**
 
-- [ ] 16-01-PLAN.md — HTML template contracts: act_handover.html/act_acceptance.html ported from .minijinja, pdf/html_templates.rs (resolver + materialize + fallback), build_safe_html_env (autoescape ON), Paths::templates_dir()
+- [x] 16-01-PLAN.md — HTML template contracts: act_handover.html/act_acceptance.html ported from .minijinja, pdf/html_templates.rs (resolver + materialize + fallback), build_safe_html_env (autoescape ON), Paths::templates_dir()
 
 **Wave 2** *(depends on Wave 1)*
 
@@ -177,7 +177,7 @@ Trackly — портативное приложение для учёта тех
 | 13. Редизайн совместимости | v1.1 | 8/8 | Complete | 2026-06-26 |
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
-| 16. Документы через HTML-печать | v1.2 | 0/5 | Planned | — |
+| 16. Документы через HTML-печать | v1.2 | 1/5 | In Progress|  |
 
 ## Coverage
 

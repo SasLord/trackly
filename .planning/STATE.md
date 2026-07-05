@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-05T00:54:08.285Z"
-last_activity: 2026-07-05 -- Phase 16 planning complete
+last_updated: "2026-07-05T07:55:13.931Z"
+last_activity: 2026-07-05
 progress:
   total_phases: 19
   completed_phases: 18
   total_plans: 117
-  completed_plans: 112
+  completed_plans: 113
   percent: 95
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 15 — render-word-fidelity
+**Current focus:** Phase 16 — documents-html-print
 
 ## Current Position
 
-Phase: 15 (render-word-fidelity) — COMPLETE (4/4 plans)
-Plan: 4 of 4
+Phase: 16 (documents-html-print) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-05 -- Phase 16 planning complete
+Last activity: 2026-07-05
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -154,6 +154,7 @@ Last activity: 2026-07-05 -- Phase 16 planning complete
 | Phase 15 P02 | 35min | 3 tasks | 5 files |
 | Phase 15 P03 | 50 | 3 tasks | 5 files |
 | Phase 15 P04 | 25min | 2 tasks | 2 files |
+| Phase 16 P01 | 25min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -345,6 +346,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 15]: 15-04: Header renders once on page 1 only (WR-05 gap closure)
 - [Phase ?]: [Phase 15]: 15-04: DeviceCard measured via measure_device_card_height (mirrors draw-time wrap_text_to_width arithmetic) — never split across a page boundary; other section variants use a cheap pre-draw bounds check
 - [Phase ?]: [Phase 15]: 15-04: act_42.sha256 verified unchanged (not regenerated) — pagination bounds check never fires for the single-device fixture
+- [Phase 16]: 16-01: Task 3 (templates + build_safe_html_env) executed before Task 2 (html_templates.rs) to keep every intermediate commit compiling — include_str! in Task 2 depends on the .html files created in Task 3
 
 ### Pending Todos
 
@@ -406,9 +408,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-05T00:29:48.857Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-documents-html-print/16-CONTEXT.md
+Last session: 2026-07-05T07:55:13.923Z
+Stopped at: Completed 16-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
