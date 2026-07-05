@@ -206,6 +206,12 @@ pub async fn handler_peek_next_number(
     ))
 }
 
+// Phase 16 (D-10): both handlers now return the HTML string produced by
+// ActService::render_pdf/render_acceptance_pdf (Plan 16-02) as
+// `text/html; charset=utf-8` instead of `application/pdf` bytes. Full
+// delivery UX (srcdoc iframe + browser print()) is Plan 16-03's scope; this
+// is the minimal content-type/type-plumbing fix required to keep
+// `trackly-app` compiling after the service-layer return type change.
 pub async fn handler_render_pdf(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -214,13 +220,13 @@ pub async fn handler_render_pdf(
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    let bytes = build_acts_render_pdf(&ctx, &identity, p.act_id)
+    let html = build_acts_render_pdf(&ctx, &identity, p.act_id)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/pdf")],
-        bytes,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     ))
 }
 
@@ -232,7 +238,7 @@ pub async fn handler_render_acceptance_pdf(
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    let bytes = build_devices_render_acceptance_pdf(
+    let html = build_devices_render_acceptance_pdf(
         &ctx,
         &identity,
         p.device_id,
@@ -244,8 +250,8 @@ pub async fn handler_render_acceptance_pdf(
     .map_err(AppErrorResponse::from)?;
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/pdf")],
-        bytes,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     ))
 }
 

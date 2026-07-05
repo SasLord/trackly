@@ -140,4 +140,39 @@ impl OrganizationService {
             source_chain: format!("spawn_blocking safe_logo_canonical: {e}"),
         })?
     }
+
+    /// Читает байты логотипа из legacy `org.json`-пути (для embedding как
+    /// `data:` URI в HTML act-шаблонах — Phase 16 D-11).
+    ///
+    /// Использует уже проверенный `safe_logo_canonical` (path-traversal guard,
+    /// T-03-04-01) — читает файл только если он canonical и внутри
+    /// `paths.exe_dir()`. MIME выводится из расширения файла.
+    ///
+    /// - `Ok(None)` — логотип не настроен ИЛИ файл отсутствует.
+    /// - `Ok(Some((bytes, mime)))` — содержимое файла + MIME-тип.
+    pub async fn read_logo_bytes(
+        &self,
+        org: &OrgData,
+    ) -> Result<Option<(Vec<u8>, String)>, AppError> {
+        let canonical = match self.safe_logo_canonical(org).await? {
+            Some(path) => path,
+            None => return Ok(None),
+        };
+        let mime = match canonical
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|s| s.to_ascii_lowercase())
+        {
+            Some(ext) if ext == "png" => "image/png",
+            Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+            _ => "image/png",
+        }
+        .to_string();
+        let bytes = tokio::fs::read(&canonical)
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("read_logo_bytes: read {} failed: {e}", canonical.display()),
+            })?;
+        Ok(Some((bytes, mime)))
+    }
 }

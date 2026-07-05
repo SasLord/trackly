@@ -19,11 +19,13 @@ pub async fn build_templates_get_active(ctx: &AppCtx, kind: String) -> Result<St
 /// (для act_acceptance — sample_act_id трактуется как device_id). Phase 7
 /// расширит до полноценного редактора с sample-context (без зависимости от
 /// реальных IDs из БД).
+///
+/// Phase 16 (D-10): возвращает HTML-строку — см. `build_acts_render_pdf`.
 pub async fn build_templates_render_preview(
     ctx: &AppCtx,
     kind: String,
     sample_act_id: i64,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     match kind.as_str() {
         "act_handover" => ctx.acts.render_pdf(sample_act_id).await,
         "act_acceptance" => {
@@ -62,6 +64,6 @@ pub async fn templates_render_preview(
     state: tauri::State<'_, AppCtx>,
     kind: String,
     sample_act_id: i32,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     build_templates_render_preview(state.inner(), kind, sample_act_id as i64).await
 }

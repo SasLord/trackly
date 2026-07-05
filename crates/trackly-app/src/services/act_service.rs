@@ -1330,16 +1330,15 @@ impl ActService {
     // PDF render path (ACT-11, DEV-15 — Plan 04)
     // -----------------------------------------------------------------------
 
-    /// Render handover act → PDF bytes (D-PDF-Render-Path-01).
+    /// Render handover act → HTML string (D-PDF-Render-Path-01, Phase 16 D-10).
     ///
-    /// 3-stage pipeline:
+    /// Pipeline (rewired in Phase 16 Plan 02 — frozen krilla document-spec path removed):
     ///   1. Load full ActDto (with items + optional parent block).
-    ///   2. Load OrgData + active `act_handover` template body.
-    ///   3. Build MiniJinja context per D-PDF-Templates-Schema-01.
-    ///   4. Render template → JSON string (safe-mode + 5s timeout).
-    ///   5. Deserialize JSON → DocSpec (Validation если broken).
-    ///   6. krilla render → Vec<u8>.
-    pub async fn render_pdf(&self, act_id: i64) -> Result<Vec<u8>, AppError> {
+    ///   2. Load OrgData/org_settings requisites + logo bytes → base64 `data:` URI.
+    ///   3. Read `templates/act_handover.html` (file-first, embedded fallback).
+    ///   4. Build MiniJinja context per D-PDF-Templates-Schema-01.
+    ///   5. Render template → HTML string (autoescape-ON safe-mode + 5s timeout).
+    pub async fn render_pdf(&self, act_id: i64) -> Result<String, AppError> {
         let pipeline = self.pdf_pipeline()?;
         let act = self.get(act_id).await?;
         // D-05 (Phase 14 plan 03): org-реквизиты читаются из `org_settings`
@@ -1349,10 +1348,6 @@ impl ActService {
         // org_db не подключён (helper-фикстуры без with_org_db) — деградирует
         // в пустые реквизиты, не в ошибку рендера.
         let org_legacy = pipeline.organization.read().await?;
-        let safe_logo = pipeline
-            .organization
-            .safe_logo_canonical(&org_legacy)
-            .await?;
         let (org_dto, logo_bytes, logo_mime) = match pipeline.org_db {
             Some(org_db) => {
                 let (dto, logo_bytes, logo_mime) = org_db.get_for_pdf().await?;
@@ -1375,7 +1370,32 @@ impl ActService {
                 None,
             ),
         };
-        let template_src = pipeline.templates.get_active("act_handover").await?;
+        // T-16-05 mitigation: `logo_bytes` originates exclusively from
+        // `OrgDbService::get_for_pdf` (org_settings BLOB, written only via
+        // authenticated Settings UI) — never from request-supplied bytes.
+        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
+            use base64::Engine;
+            let mime = logo_mime.as_deref().unwrap_or("image/png");
+            format!(
+                "data:{mime};base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
+        });
+        // Phase 16 (D-04/D-10): read the HTML template source from
+        // templates/act_handover.html (file-first, embedded-default
+        // fallback) instead of the DB-backed `document_templates` table.
+        let templates_dir =
+            crate::pdf::html_templates::resolve_templates_dir(&pipeline.organization.paths);
+        let embedded_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "act_handover.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let template_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "act_handover.html",
+            embedded_default,
+        );
 
         // Optional parent block для return-актов (Plan 04 рендерит handover,
         // но для cascade — оставляем path).
@@ -1422,7 +1442,7 @@ impl ActService {
                 "email": org_dto.email,
                 "okpo": org_dto.okpo,
                 "ogrn": org_dto.ogrn,
-                "logo_path": safe_logo.map(|p| p.display().to_string()),
+                "logo_data_uri": logo_data_uri,
             },
             "act": {
                 "number": act.number_raw,
@@ -1444,48 +1464,61 @@ impl ActService {
         });
 
         let rendered = crate::pdf::minijinja_env::render_with_timeout(
-            &pipeline.pdf.minijinja_env,
-            "act_handover",
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "act_handover_html",
             &template_src,
             ctx,
         )
         .await?;
 
-        let mut spec: crate::pdf::docspec::DocSpec =
-            serde_json::from_str(&rendered).map_err(|e| AppError::Validation {
-                field: "template".to_string(),
-                message: format!("Шаблон не выдал валидный DocSpec JSON: {e}"),
-            })?;
-
-        // WR-03 fix: propagate the real org_settings BLOB logo bytes into the
-        // parsed DocSpec, bypassing the MiniJinja JSON round-trip (templates
-        // can't reasonably emit raw binary as JSON, so they never set this
-        // field — the Rust layer is the sole source of truth for
-        // `logo_bytes`). `logo_path` (org.json) remains the fallback the
-        // renderer already prioritizes correctly (logo_bytes wins when Some).
-        if let Some(bytes) = logo_bytes {
-            spec.header.logo_bytes = Some(bytes);
-            spec.header.logo_mime = logo_mime;
-        }
-
-        pipeline.pdf.render_docspec(&spec)
+        Ok(rendered)
     }
 
-    /// Render acceptance document (документ приёма устройства на склад) → PDF bytes.
+    /// Render acceptance document (документ приёма устройства на склад) → HTML string
+    /// (Phase 16 D-10).
     ///
-    /// Использует kind=`act_acceptance` шаблон. Контекст беднее handover'а —
-    /// одна позиция (device), плюс шапка организации и подписи.
+    /// Читает `templates/act_acceptance.html` (file-first, embedded fallback).
+    /// Контекст беднее handover'а — одна позиция (device), плюс шапка
+    /// организации и подписи.
     pub async fn render_acceptance_pdf(
         &self,
         device_id: i64,
         giver_name: String,
         receiver_name: String,
         date_utc: i64,
-    ) -> Result<Vec<u8>, AppError> {
+    ) -> Result<String, AppError> {
         let pipeline = self.pdf_pipeline()?;
         let org = pipeline.organization.read().await?;
-        let safe_logo = pipeline.organization.safe_logo_canonical(&org).await?;
-        let template_src = pipeline.templates.get_active("act_acceptance").await?;
+        // Phase 16 (D-11): legacy org.json logo has no BLOB storage — read the
+        // canonicalized local file's bytes (path-traversal-guarded via
+        // safe_logo_canonical) and embed as a base64 data: URI.
+        let logo_data_uri =
+            pipeline
+                .organization
+                .read_logo_bytes(&org)
+                .await?
+                .map(|(bytes, mime)| {
+                    use base64::Engine;
+                    format!(
+                        "data:{mime};base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(bytes)
+                    )
+                });
+        // Phase 16 (D-04/D-10): read the HTML template source from
+        // templates/act_acceptance.html (file-first, embedded-default
+        // fallback) instead of the DB-backed `document_templates` table.
+        let templates_dir =
+            crate::pdf::html_templates::resolve_templates_dir(&pipeline.organization.paths);
+        let embedded_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "act_acceptance.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let template_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "act_acceptance.html",
+            embedded_default,
+        );
 
         // Загрузить device.
         let readers = self.readers.clone();
@@ -1533,7 +1566,7 @@ impl ActService {
                 "inn": org.inn,
                 "kpp": org.kpp,
                 "address": org.address,
-                "logo_path": safe_logo.map(|p| p.display().to_string()),
+                "logo_data_uri": logo_data_uri,
             },
             "device": device_json,
             "document": {
@@ -1545,32 +1578,32 @@ impl ActService {
         });
 
         let rendered = crate::pdf::minijinja_env::render_with_timeout(
-            &pipeline.pdf.minijinja_env,
-            "act_acceptance",
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "act_acceptance_html",
             &template_src,
             ctx,
         )
         .await?;
 
-        let spec: crate::pdf::docspec::DocSpec =
-            serde_json::from_str(&rendered).map_err(|e| AppError::Validation {
-                field: "template".to_string(),
-                message: format!("Шаблон не выдал валидный DocSpec JSON: {e}"),
-            })?;
-
-        pipeline.pdf.render_docspec(&spec)
+        Ok(rendered)
     }
 
     /// Возвращает PDF-pipeline deps как refs или `Internal` если не подключены.
     /// `org_db` — Option-aware (D-05): helper-фикстуры (`ActService::new` без
     /// `with_org_db`) не падают, только org-контекст рендера деградирует к
     /// пустым реквизитам (см. `render_pdf`'s fallback branch).
+    ///
+    /// Phase 16: `templates`/`pdf` (`TemplateService`/`PdfRenderer`) больше не
+    /// читаются render_pdf/render_acceptance_pdf (HTML-путь читает шаблоны
+    /// через `html_templates::load_template`, не через фризнутый krilla
+    /// document-spec pipeline) — но их наличие остаётся частью guard-условия
+    /// "PDF pipeline подключён",
+    /// поэтому проверка `(Some, Some, Some)` сохранена без изменений; сами
+    /// значения в `PdfPipelineRefs` больше не прокидываются (были dead code).
     fn pdf_pipeline(&self) -> Result<PdfPipelineRefs<'_>, AppError> {
         match (&self.templates, &self.organization, &self.pdf) {
-            (Some(t), Some(o), Some(p)) => Ok(PdfPipelineRefs {
-                templates: t,
+            (Some(_), Some(o), Some(_)) => Ok(PdfPipelineRefs {
                 organization: o,
-                pdf: p,
                 org_db: self.org_db.as_ref(),
             }),
             _ => Err(AppError::Internal {
@@ -1581,9 +1614,7 @@ impl ActService {
 }
 
 struct PdfPipelineRefs<'a> {
-    templates: &'a Arc<TemplateService>,
     organization: &'a Arc<OrganizationService>,
-    pdf: &'a Arc<PdfRenderer>,
     org_db: Option<&'a Arc<OrgDbService>>,
 }
 

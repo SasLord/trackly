@@ -79,6 +79,10 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # disk (debug) so the LAN axum server can serve the Svelte SPA in a portable
 # build without shipping loose files next to the executable.
 rust-embed = { version = "8", features = ["mime-guess"] }
+# Phase 16: base64 data: URI encoding for logo embedding in HTML act templates.
+# Already resolved transitively at 0.22.1 (axum/krilla/rcgen/tauri) — pinned as
+# a direct dep explicitly, adding zero new supply-chain surface.
+base64 = "0.22"
 
 [build-dependencies]
 tauri-build = { workspace = true }

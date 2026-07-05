@@ -94,11 +94,17 @@ pub async fn build_acts_peek_next_number(ctx: &AppCtx, caller: &Identity) -> Res
 }
 
 /// Мутация (PDF generation tied to act): требует `caller` с правом `MutateActs`.
+///
+/// Phase 16 (D-10): возвращает HTML-строку, не PDF bytes — `ActService::render_pdf`
+/// изменил тип возврата на `Result<String, AppError>` (Plan 16-02). Полная
+/// адаптация delivery-слоя (srcdoc iframe UX, content-type, удаление
+/// `acts_open_pdf_in_system`) — Plan 16-03; здесь — минимальная правка типов,
+/// чтобы `trackly-app` продолжал компилироваться после смены сигнатуры сервиса.
 pub async fn build_acts_render_pdf(
     ctx: &AppCtx,
     caller: &Identity,
     act_id: i64,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.render_pdf(act_id).await
 }
@@ -114,6 +120,8 @@ pub async fn build_acts_suggest_person(
 }
 
 /// Мутация (acceptance PDF): требует `caller` с правом `MutateActs`.
+///
+/// Phase 16 (D-10): возвращает HTML-строку — см. комментарий у `build_acts_render_pdf`.
 pub async fn build_devices_render_acceptance_pdf(
     ctx: &AppCtx,
     caller: &Identity,
@@ -121,7 +129,7 @@ pub async fn build_devices_render_acceptance_pdf(
     giver_name: String,
     receiver_name: String,
     date_utc: i64,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts
         .render_acceptance_pdf(device_id, giver_name, receiver_name, date_utc)
@@ -214,7 +222,7 @@ pub async fn acts_peek_next_number(state: tauri::State<'_, AppCtx>) -> Result<i3
 pub async fn acts_render_pdf(
     state: tauri::State<'_, AppCtx>,
     act_id: i32,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_render_pdf(state.inner(), &caller, act_id as i64).await
 }
@@ -286,7 +294,7 @@ pub async fn devices_render_acceptance_pdf(
     giver_name: String,
     receiver_name: String,
     date_utc: i32,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_render_acceptance_pdf(
         state.inner(),
