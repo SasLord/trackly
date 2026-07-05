@@ -36,17 +36,17 @@ export const acts = {
 
   peekNextNumber: () => apiCall<number>('acts_peek_next_number'),
 
-  /** Plan 04 — PDF render handover акта (возвращает PDF bytes как number[]). */
-  renderPdf: (actId: number): Promise<number[]> => apiCall<number[]>('acts_render_pdf', { actId }),
+  /** Phase 16 — render handover акта, возвращает HTML-документ строкой. */
+  renderPdf: (actId: number): Promise<string> => apiCall<string>('acts_render_pdf', { actId }),
 
-  /** Plan 04 — PDF render документа приёма (acceptance) по device_id. */
+  /** Phase 16 — render документа приёма (acceptance) по device_id, возвращает HTML-документ строкой. */
   renderAcceptancePdf: (
     deviceId: number,
     giverName: string,
     receiverName: string,
     dateUtc: number,
-  ): Promise<number[]> =>
-    apiCall<number[]>('devices_render_acceptance_pdf', {
+  ): Promise<string> =>
+    apiCall<string>('devices_render_acceptance_pdf', {
       deviceId,
       giverName,
       receiverName,
