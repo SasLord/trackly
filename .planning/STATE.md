@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: milestone_complete
-last_updated: 2026-07-05T23:07:33.206Z
+status: completed
+last_updated: "2026-07-06T14:09:12.057Z"
 last_activity: 2026-07-05
 progress:
   total_phases: 19
@@ -11,7 +11,6 @@ progress:
   total_plans: 117
   completed_plans: 117
   percent: 100
-stopped_at: Milestone complete (Phase 16 was final phase)
 ---
 
 # Project State
@@ -175,6 +174,7 @@ Last activity: 2026-07-05
 - Phase 13 added (2026-06-25): Редизайн совместимости Принтеры↔Картриджи по уникальному наименованию/типу принтера (не per-device junction; сносит промежуточный UI/таблицы из Phase 12) + свёрнутые chip-задачи (kind-aware drum-state дефолт авто-возврата, лимит списка принтеров 500-vs-200). В милстоне v1.1.
 - Phase 14 added (2026-07-03): Данные и структура акта — миграции/схема для расширенных реквизитов организации, Комплектации, Технических характеристик, Срока до, мультиустройства и контекста рендера. Milestone v1.1.1 (PDFA-03, PDFA-04, PDFA-06).
 - Phase 15 added (2026-07-03): Рендер и соответствие образцу — дефолтный `.minijinja`-шаблон, мультиустройство через `ItemsTable`, двухстрочные подписи, regression-тесты PDF-пайплайна. Milestone v1.1.1 (PDFA-01, PDFA-02, PDFA-05, PDFA-07, PDFA-08).
+- Phase 17 added (2026-07-06): Отчёты и Шаблоны через HTML-печать — перевести экспорт Отчётов с krilla `render_docspec` на HTML-печать по паттерну Phase 16 (акты), переделать редактор Шаблонов в Настройках, убрать krilla из активного пути; закрывает отложенные пункты 16-HUMAN-UAT 2a (миграция Отчётов) и 2b (баг `reports_export_pdf` «Ошибка при создании PDF»). Milestone v1.2.
 
 ### Decisions
 
@@ -424,9 +424,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-05T10:16:50.032Z
-Stopped at: Completed 16-04-PLAN.md
-Resume file: None
+Last session: 2026-07-06T14:09:12.050Z
+Stopped at: Phase 17 context gathered
+Resume file: .planning/phases/17-html-krilla/17-CONTEXT.md
 
 ## Operator Next Steps
 
