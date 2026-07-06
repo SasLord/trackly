@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: completed
-last_updated: "2026-07-06T14:09:12.057Z"
-last_activity: 2026-07-05
+status: executing
+last_updated: "2026-07-06T15:45:34.726Z"
+last_activity: 2026-07-06 -- Phase 17 planning complete
 progress:
-  total_phases: 19
-  completed_phases: 19
-  total_plans: 117
-  completed_plans: 117
-  percent: 100
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 4
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 16
 Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-05
+Status: Ready to execute
+Last activity: 2026-07-06 -- Phase 17 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
