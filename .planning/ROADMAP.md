@@ -231,7 +231,7 @@ Trackly — портативное приложение для учёта тех
 
 **Success Criteria** (what must be TRUE): см. `17-SPEC.md` — Acceptance Criteria.
 
-**Plans**: 4 plans in 3 waves
+**Plans**: 4 plans in 4 waves
 
 **Wave 1**
 
@@ -241,10 +241,13 @@ Trackly — портативное приложение для учёта тех
 
 - [ ] 17-02-PLAN.md — TemplateService retarget: list_all_for_editor/update_body/reset_to_default/validate_preview → file I/O on templates/*.html (wire OrganizationService), Tauri/HTTP kind passthrough
 
-**Wave 3** *(depends on Wave 1 + Wave 2, parallel plans — no file overlap)*
+**Wave 3** *(depends on Wave 1 + Wave 2)*
+
+- [ ] 17-04-PLAN.md — Backend tests: html_report_render.rs (1/N rows, month grouping, empty), template_edit.rs rewritten for file-backed contract, krilla #[ignore] hygiene sweep + struct-field doc-comments
+
+**Wave 4** *(depends on Wave 3 — merged Rust tree guaranteed before bindings regeneration)*
 
 - [ ] 17-03-PLAN.md — Frontend: PdfPreviewModal mode='report', ReportsPage export/print via modal, TemplateEditor retargeted to file-backed HTML editor, bindings.ts regenerated
-- [ ] 17-04-PLAN.md — Backend tests: html_report_render.rs (1/N rows, month grouping, empty), template_edit.rs rewritten for file-backed contract, krilla #[ignore] hygiene sweep
 
 ## Phase 17 Requirement Coverage
 
@@ -259,4 +262,4 @@ Trackly — портативное приложение для учёта тех
 | Req-7 | 17-04 |
 
 ---
-*Last updated: 2026-07-06 — Phase 17 planned: 4 plans across 3 waves (17-01..17-04), all 7 SPEC requirements and D-01..D-13 decisions covered.*
+*Last updated: 2026-07-06 — Phase 17 planned: 4 plans across 4 waves (17-01..17-04), all 7 SPEC requirements and D-01..D-13 decisions covered.*
