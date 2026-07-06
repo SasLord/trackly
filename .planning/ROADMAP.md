@@ -9,7 +9,7 @@ Trackly — портативное приложение для учёта тех
 - ✅ **v1.0 — Базовый учёт** — Phases 1–8 (shipped 2026-06-19) → `milestones/v1.1-ROADMAP.md`
 - ✅ **v1.1 — AD, сотрудники и картриджная взаимосвязь** — Phases 9–13 (shipped 2026-06-26) → `milestones/v1.1-ROADMAP.md`
 - ✅ **v1.1.1 — PDF-акт по образцу Word (мультиустройство)** — Phases 14–15 (completed 2026-07-04)
-- 🚧 **v1.2 — Документы через HTML-печать** — Phase 16 (active)
+- 🚧 **v1.2 — Документы через HTML-печать** — Phases 16-17 (active)
 
 ## Phases
 
@@ -49,6 +49,7 @@ Trackly — портативное приложение для учёта тех
 **v1.2 — Документы через HTML-печать — ACTIVE**
 
 - [x] **Phase 16: Документы через HTML-печать** - Оба акта (приёма-передачи и приёмки устройства) генерируются из HTML-шаблонов (папка `templates/` рядом с exe + вшитый дефолт-fallback) и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN), визуально по образцу Word; krilla/DocSpec заморожен и не используется. (SPEC: 16-SPEC.md) (completed 2026-07-05)
+- [ ] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md)
 
 ## Phase Details
 
@@ -178,6 +179,7 @@ Trackly — портативное приложение для учёта тех
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
+| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 0/4 | Planned | — |
 
 ## Coverage
 
@@ -217,5 +219,44 @@ Trackly — портативное приложение для учёта тех
 | I18N-01..03 (Английская локализация) | Команда и пользователи русскоязычные; добавляется без архитектурных переделок |
 | ADV-01..05 (SSO/REST API наружу/Signature pad/доп. вендоры принтеров/Postgres) | Преждевременная сложность для текущего масштаба |
 
+### Phase 17: Отчёты и Шаблоны через HTML-печать (убрать krilla, как в актах)
+
+**Goal**: Экспорт Отчётов и редактор Шаблонов переходят с krilla/DocSpec на HTML-печать по паттерну Phase 16 (акты): `export_pdf` возвращает HTML-строку, печать/сохранение идёт через диалог браузера в превью-модалке (desktop + LAN), редактор Шаблонов правит HTML-файлы в `templates/`, и `krilla`/`DocSpec` полностью выведены из активного пути (заморожены, не удалены).
+
+**Depends on**: Phase 16 (контекст акта + HTML-печать актов зафиксированы)
+
+**Milestone**: v1.2 — Документы через HTML-печать
+
+**Spec**: `17-SPEC.md` (ambiguity 0.15)
+
+**Success Criteria** (what must be TRUE): см. `17-SPEC.md` — Acceptance Criteria.
+
+**Plans**: 4 plans in 3 waves
+
+**Wave 1**
+
+- [ ] 17-01-PLAN.md — Reports backend: templates/report.html + html_templates.rs registration, ReportService::export_pdf → HTML String (wire OrganizationService), Tauri/HTTP adapters text/html
+
+**Wave 2** *(depends on Wave 1 — shares context.rs construction block)*
+
+- [ ] 17-02-PLAN.md — TemplateService retarget: list_all_for_editor/update_body/reset_to_default/validate_preview → file I/O on templates/*.html (wire OrganizationService), Tauri/HTTP kind passthrough
+
+**Wave 3** *(depends on Wave 1 + Wave 2, parallel plans — no file overlap)*
+
+- [ ] 17-03-PLAN.md — Frontend: PdfPreviewModal mode='report', ReportsPage export/print via modal, TemplateEditor retargeted to file-backed HTML editor, bindings.ts regenerated
+- [ ] 17-04-PLAN.md — Backend tests: html_report_render.rs (1/N rows, month grouping, empty), template_edit.rs rewritten for file-backed contract, krilla #[ignore] hygiene sweep
+
+## Phase 17 Requirement Coverage
+
+| Requirement | Plan |
+|--------------|------|
+| Req-1 | 17-01 |
+| Req-2 | 17-01 |
+| Req-3 | 17-01 |
+| Req-4 | 17-03 |
+| Req-5 | 17-02, 17-03 |
+| Req-6 | 17-01, 17-02, 17-04 |
+| Req-7 | 17-04 |
+
 ---
-*Last updated: 2026-07-05 — Phase 16 planned: 5 plans across 4 waves (16-01..16-05), all 8 SPEC requirements and D-01..D-14 decisions covered.*
+*Last updated: 2026-07-06 — Phase 17 planned: 4 plans across 3 waves (17-01..17-04), all 7 SPEC requirements and D-01..D-13 decisions covered.*
