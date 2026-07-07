@@ -1,24 +1,30 @@
 // audit_log.action for cartridge install = 'custom:install' (verified in CartridgeTransitionOp::audit_action)
 //
 //! Document template editing integration tests — Phase 7 Plan 02 (GREEN),
-//! retargeted onto file-backed `templates/*.html` I/O by Phase 17 Plan 02.
+//! retargeted onto file-backed `templates/*.html` I/O by Phase 17 Plan 02,
+//! rewritten for the file-backed editor contract by Phase 17 Plan 04.
 //!
 //! Covers SET-07 (шаблоны документов: Акт, Документ приёма):
-//!   - Template body update (MiniJinja/HTML source stored in templates/*.html)
-//!   - Validation: template must be parseable by minijinja (no syntax errors)
-//!   - reset_to_default restores the bundled template from the binary
+//!   - Template body update writes directly to `templates/{kind}.html`
+//!   - `list_all_for_editor` reflects on-disk file state
+//!   - `reset_to_default` restores the embedded default on disk
+//!   - Validation: template must be parseable by minijinja (no syntax errors),
+//!     and a rejected update must leave the on-disk file untouched
+//!   - Unknown `kind` returns `NotFound` before any path is ever touched
 //!
 //! Phase 17 note: `list_all_for_editor`/`update_body`/`reset_to_default` no
 //! longer touch the DB-backed `document_templates` table (frozen, D-13) —
 //! they read/write `templates/*.html` files via `OrganizationService`'s
-//! `Paths`. `seed_defaults_on_startup`/`get_active` remain DB-backed and are
-//! intentionally NOT exercised here as an editor-state proxy anymore; these
-//! tests assert file-backed state exclusively via `list_all_for_editor`.
+//! `Paths`. The DB-backed seed/read path remains untouched and is
+//! intentionally NOT exercised here as an editor-state proxy anymore — these
+//! tests assert file-backed state exclusively via direct filesystem reads
+//! (`std::fs::read_to_string`) and `list_all_for_editor`.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{Mutex, MutexGuard};
+use trackly_app::pdf::html_templates::DEFAULT_HTML_TEMPLATES;
 use trackly_app::services::organization_service::OrganizationService;
 use trackly_app::services::TemplateService;
 use trackly_core::auth::Identity;
@@ -39,25 +45,29 @@ static ENV_GUARD: Mutex<()> = Mutex::const_new(());
 /// (file-first + embedded fallback) instead of the DB-backed
 /// `document_templates` table — wire `with_organization` pointed at a fresh
 /// tempdir via `TRACKLY_TEMPLATES_DIR`, mirroring production's
-/// `context.rs` wiring. Returns the `ENV_GUARD` lock alongside the service
-/// fixtures — the caller must keep the guard alive for the duration of the
-/// test so no other test thread can race-override the env var. `async` (not
-/// sync) because `tokio::sync::Mutex::lock` is async-aware.
+/// `context.rs` wiring. Returns the on-disk templates dir alongside the
+/// service fixtures so tests can assert directly against
+/// `templates_dir.join(...)` file contents. Returns the `ENV_GUARD` lock
+/// alongside the service fixtures — the caller must keep the guard alive for
+/// the duration of the test so no other test thread can race-override the
+/// env var. `async` (not sync) because `tokio::sync::Mutex::lock` is
+/// async-aware.
 async fn make_template_service() -> (
     TemplateService,
     tempfile::TempDir,
-    tempfile::TempDir,
+    std::path::PathBuf,
     MutexGuard<'static, ()>,
 ) {
     let guard = ENV_GUARD.lock().await;
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let templates_dir = tempfile::tempdir().expect("templates tempdir");
+    let templates_dir_path = templates_dir.path().to_path_buf();
     // SAFETY: guarded by ENV_GUARD for the duration of the test (guard held
     // via the returned tuple binding) — no other thread touches
     // TRACKLY_TEMPLATES_DIR concurrently.
     unsafe {
-        std::env::set_var("TRACKLY_TEMPLATES_DIR", templates_dir.path());
+        std::env::set_var("TRACKLY_TEMPLATES_DIR", &templates_dir_path);
     }
     let paths = Arc::new(
         trackly_infra::paths::Paths::resolve_for_exe_dir(std::path::PathBuf::from(
@@ -67,54 +77,156 @@ async fn make_template_service() -> (
     );
     let organization = Arc::new(OrganizationService::new(paths));
     let svc = TemplateService::new(writer, readers, clock).with_organization(organization);
-    (svc, dir, templates_dir, guard)
+    // Leak templates_dir's TempDir handle into `dir`'s return slot alongside
+    // it — both `dir` (writer/readers tempdir) and `templates_dir` (the
+    // on-disk templates tempdir) must outlive the test body. `dir` is
+    // returned for that purpose; `templates_dir` itself is intentionally
+    // NOT dropped here (its TempDir guard is kept alive by leaking it,
+    // since only its path is needed by callers).
+    std::mem::forget(templates_dir);
+    (svc, dir, templates_dir_path, guard)
 }
 
 fn admin_caller() -> Identity {
     Identity::trusted_admin()
 }
 
-/// Verify that update_body writes the new body to templates/act_handover.html
-/// and list_all_for_editor reflects it (body + is_default=false).
+fn embedded_default(kind: &str) -> &'static str {
+    let filename = format!("{kind}.html");
+    DEFAULT_HTML_TEMPLATES
+        .iter()
+        .find(|(f, _)| *f == filename)
+        .map(|(_, body)| *body)
+        .expect("kind must be a known DEFAULT_HTML_TEMPLATES entry")
+}
+
+/// Verify that `update_body` writes the new body directly to
+/// `templates/act_handover.html` on disk — asserted via `std::fs::read_to_string`,
+/// not the now-decoupled, frozen DB read path.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn template_update_and_render_uses_new_body() {
+async fn update_body_writes_file_to_disk() {
     tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, _dir, _templates_dir, _guard) = make_template_service().await;
+        let (svc, _dir, templates_dir, _guard) = make_template_service().await;
         let caller = admin_caller();
 
-        // Обновляем шаблон act_handover
         let new_body = "Акт приёма-передачи: {{ act_number }} — КАСТОМНЫЙ ШАБЛОН".to_string();
         svc.update_body(&caller, "act_handover", new_body.clone())
             .await
             .expect("update_body");
 
-        // Проверяем через list_all_for_editor (file-backed read)
+        let on_disk = std::fs::read_to_string(templates_dir.join("act_handover.html"))
+            .expect("act_handover.html must exist on disk after update_body");
+        assert_eq!(
+            on_disk, new_body,
+            "on-disk file must equal the body passed to update_body"
+        );
+    })
+    .await
+    .expect("update_body_writes_file_to_disk budget")
+}
+
+/// Verify that `list_all_for_editor` reflects a body written directly to
+/// disk (outside of `update_body`) — proves the read path is genuinely
+/// file-backed, not cached or DB-shadowed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_all_for_editor_reflects_disk_state() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir, templates_dir, _guard) = make_template_service().await;
+
+        let known_body = "<html>ПРЯМАЯ ЗАПИСЬ НА ДИСК — report.html</html>".to_string();
+        std::fs::write(templates_dir.join("report.html"), &known_body)
+            .expect("direct write to report.html");
+
         let items = svc
             .list_all_for_editor()
             .await
             .expect("list_all_for_editor");
-        let handover = items
+        let report = items
             .iter()
-            .find(|i| i.kind == "act_handover")
-            .expect("act_handover must be in list");
-        assert_eq!(handover.body, new_body);
+            .find(|i| i.kind == "report")
+            .expect("report must be in list");
+
+        assert_eq!(
+            report.body, known_body,
+            "list_all_for_editor must reflect the body written directly to disk"
+        );
         assert!(
-            !handover.is_default,
-            "is_default должен быть false после update_body"
+            !report.is_default,
+            "is_default must be false — on-disk body differs from the embedded default"
         );
     })
     .await
-    .expect("template_update_and_render_uses_new_body budget")
+    .expect("list_all_for_editor_reflects_disk_state budget")
 }
 
-/// Verify that a template with Jinja2 syntax errors is rejected with a validation error.
+/// Verify that `reset_to_default` restores the on-disk file to the embedded
+/// default body from `DEFAULT_HTML_TEMPLATES`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn template_invalid_syntax_rejected() {
+async fn reset_to_default_restores_embedded_body() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir, templates_dir, _guard) = make_template_service().await;
+        let caller = admin_caller();
+
+        let custom_body = "КАСТОМНОЕ ТЕЛО ШАБЛОНА — ПОЛНОСТЬЮ ИЗМЕНЕНО".to_string();
+        svc.update_body(&caller, "act_acceptance", custom_body.clone())
+            .await
+            .expect("update_body");
+
+        let changed_on_disk = std::fs::read_to_string(templates_dir.join("act_acceptance.html"))
+            .expect("act_acceptance.html must exist after update_body");
+        assert_eq!(changed_on_disk, custom_body, "sanity: update_body applied");
+
+        svc.reset_to_default(&caller, "act_acceptance")
+            .await
+            .expect("reset_to_default");
+
+        let restored = std::fs::read_to_string(templates_dir.join("act_acceptance.html"))
+            .expect("act_acceptance.html must exist after reset_to_default");
+        assert_eq!(
+            restored,
+            embedded_default("act_acceptance"),
+            "on-disk file must equal the embedded default after reset_to_default"
+        );
+    })
+    .await
+    .expect("reset_to_default_restores_embedded_body budget")
+}
+
+/// Verify that an unrecognized `kind` string is rejected with `NotFound`
+/// before any `templates_dir.join(...)` path is ever constructed — the
+/// allowlist-check contract from Plan 17-02 Task 1 must still hold.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_body_unknown_kind_returns_not_found() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir, _templates_dir, _guard) = make_template_service().await;
         let caller = admin_caller();
 
-        // Шаблон с синтаксической ошибкой MiniJinja
+        let result = svc
+            .update_body(&caller, "nonexistent_kind", "{}".to_string())
+            .await;
+
+        match result {
+            Err(trackly_core::error::AppError::NotFound { .. }) => {}
+            other => panic!("ожидали NotFound, получили: {other:?}"),
+        }
+    })
+    .await
+    .expect("update_body_unknown_kind_returns_not_found budget")
+}
+
+/// Verify that a template with MiniJinja syntax errors is rejected with a
+/// validation error, AND that the on-disk file is left completely untouched
+/// (read before/after, assert unchanged) — replaces the old "DB row
+/// unchanged" assertion with a "file unchanged" assertion.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_body_rejects_invalid_minijinja_syntax() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir, templates_dir, _guard) = make_template_service().await;
+        let caller = admin_caller();
+
+        let file_path = templates_dir.join("act_handover.html");
+        let before = std::fs::read_to_string(&file_path);
+
         let invalid_body = "{{ незакрытый тег {% for".to_string();
         let result = svc.update_body(&caller, "act_handover", invalid_body).await;
 
@@ -129,87 +241,23 @@ async fn template_invalid_syntax_rejected() {
             other => panic!("ожидали Validation, получили: {other:?}"),
         }
 
-        // Оригинальный шаблон должен остаться неизменным (embedded default,
-        // never written since update_body rejected before any file write).
-        let items = svc
-            .list_all_for_editor()
-            .await
-            .expect("list_all_for_editor");
-        let handover = items
-            .iter()
-            .find(|i| i.kind == "act_handover")
-            .expect("act_handover must be in list");
-        assert!(
-            !handover.body.contains("незакрытый"),
-            "оригинальный шаблон должен остаться после ошибки"
-        );
-        assert!(
-            handover.is_default,
-            "is_default должен остаться true — write never happened"
-        );
-    })
-    .await
-    .expect("template_invalid_syntax_rejected budget")
-}
-
-/// Verify that reset_to_default restores the bundled template, discarding user edits.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn template_reset_to_default_restores_builtin() {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, _dir, _templates_dir, _guard) = make_template_service().await;
-        let caller = admin_caller();
-
-        // Запоминаем дефолтный шаблон (embedded default from
-        // DEFAULT_HTML_TEMPLATES, via a fresh list_all_for_editor read).
-        let default_body = svc
-            .list_all_for_editor()
-            .await
-            .expect("list_all_for_editor")
-            .into_iter()
-            .find(|i| i.kind == "act_handover")
-            .expect("act_handover must be in list")
-            .body;
-
-        // Меняем шаблон
-        let custom_body = "КАСТОМНОЕ ТЕЛО ШАБЛОНА — ПОЛНОСТЬЮ ИЗМЕНЕНО".to_string();
-        svc.update_body(&caller, "act_handover", custom_body.clone())
-            .await
-            .expect("update_body");
-
-        // Убеждаемся что изменили
-        let changed = svc
-            .list_all_for_editor()
-            .await
-            .expect("list_all_for_editor")
-            .into_iter()
-            .find(|i| i.kind == "act_handover")
-            .expect("act_handover must be in list")
-            .body;
-        assert_eq!(changed, custom_body);
-
-        // Сбрасываем к дефолту
-        svc.reset_to_default(&caller, "act_handover")
-            .await
-            .expect("reset_to_default");
-
-        // Должно вернуться к дефолту
-        let items = svc
-            .list_all_for_editor()
-            .await
-            .expect("list_all_for_editor");
-        let handover = items
-            .iter()
-            .find(|i| i.kind == "act_handover")
-            .expect("act_handover must be in list");
+        let after = std::fs::read_to_string(&file_path);
         assert_eq!(
-            handover.body, default_body,
-            "reset_to_default должен восстановить дефолтный шаблон"
+            before.is_ok(),
+            after.is_ok(),
+            "file existence must not change (still absent, or still present)"
         );
         assert!(
-            handover.is_default,
-            "is_default должен быть true после reset_to_default"
+            !after.as_deref().unwrap_or_default().contains("незакрытый"),
+            "invalid body must never have been written to disk"
         );
+        if let (Ok(before), Ok(after)) = (before, after) {
+            assert_eq!(
+                before, after,
+                "on-disk file must remain unchanged after a rejected update_body call"
+            );
+        }
     })
     .await
-    .expect("template_reset_to_default_restores_builtin budget")
+    .expect("update_body_rejects_invalid_minijinja_syntax budget")
 }

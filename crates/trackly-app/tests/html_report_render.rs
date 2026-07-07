@@ -238,15 +238,7 @@ async fn html_report_org_header_present() {
     org.inn = "7701234567".to_string();
 
     let html = svc
-        .export_pdf(
-            &rows,
-            "Отчёт",
-            "Сентябрь 2026",
-            &org,
-            None,
-            None,
-            &columns,
-        )
+        .export_pdf(&rows, "Отчёт", "Сентябрь 2026", &org, None, None, &columns)
         .await
         .expect("export_pdf ok");
 
