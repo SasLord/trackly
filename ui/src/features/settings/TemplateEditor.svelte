@@ -15,13 +15,78 @@
   const KIND_LABELS: Record<string, string> = {
     act_handover: 'Акт приёма-передачи',
     act_acceptance: 'Документ приёмки товара',
+    report: 'Отчёт',
+  };
+
+  interface VariableEntry {
+    code: string;
+    desc: string;
+  }
+
+  // Plan 17-03 (D-12): per-kind variables panel — each entry mirrors the
+  // context documented in the corresponding templates/*.html doc-comment.
+  const VARIABLES_BY_KIND: Record<string, VariableEntry[]> = {
+    act_handover: [
+      { code: 'org.name', desc: 'название организации' },
+      { code: 'org.inn', desc: 'ИНН' },
+      { code: 'org.kpp', desc: 'КПП' },
+      { code: 'org.address', desc: 'адрес организации' },
+      { code: 'org.phone', desc: 'телефон' },
+      { code: 'org.fax', desc: 'факс' },
+      { code: 'org.email', desc: 'e-mail' },
+      { code: 'org.okpo', desc: 'ОКПО' },
+      { code: 'org.ogrn', desc: 'ОГРН' },
+      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      { code: 'act.number', desc: 'номер акта' },
+      { code: 'act.suffix', desc: 'суффикс номера' },
+      { code: 'act.date_human', desc: 'дата акта (человекочитаемая)' },
+      { code: 'act.receiver_name', desc: 'кто принял' },
+      { code: 'act.deadline_human', desc: 'срок до (человекочитаемый)' },
+      { code: 'act.location_name', desc: 'расположение' },
+      {
+        code: 'act.items[]',
+        desc: 'позиции: name, inventory_no, serial_no, model, specs, kit, condition, quantity',
+      },
+    ],
+    act_acceptance: [
+      { code: 'org.name', desc: 'название организации' },
+      { code: 'org.inn', desc: 'ИНН' },
+      { code: 'org.kpp', desc: 'КПП' },
+      { code: 'org.address', desc: 'адрес организации' },
+      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      { code: 'document.date_human', desc: 'дата приёма (человекочитаемая)' },
+      { code: 'document.giver_name', desc: 'кто передал' },
+      { code: 'document.receiver_name', desc: 'кто принял' },
+      { code: 'device.name', desc: 'наименование устройства' },
+      { code: 'device.inventory_no', desc: 'инвентарный номер' },
+      { code: 'device.serial_no', desc: 'серийный номер' },
+      { code: 'device.model', desc: 'модель' },
+      { code: 'device.condition', desc: 'состояние' },
+    ],
+    report: [
+      { code: 'org.name', desc: 'название организации' },
+      { code: 'org.inn', desc: 'ИНН' },
+      { code: 'org.kpp', desc: 'КПП' },
+      { code: 'org.address', desc: 'адрес организации' },
+      { code: 'org.phone', desc: 'телефон' },
+      { code: 'org.fax', desc: 'факс' },
+      { code: 'org.email', desc: 'e-mail' },
+      { code: 'org.okpo', desc: 'ОКПО' },
+      { code: 'org.ogrn', desc: 'ОГРН' },
+      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      { code: 'report_name', desc: 'название отчёта' },
+      { code: 'period_label', desc: 'описание периода' },
+      { code: 'columns', desc: 'список заголовков колонок (строки)' },
+      { code: 'groups[].month_label', desc: 'подпись месяца-раздела' },
+      { code: 'groups[].rows[]', desc: 'строки таблицы (список значений ячеек)' },
+    ],
   };
 
   let templates = $state<TemplateEditorItem[]>([]);
   let selectedKind = $state('act_handover');
   let body = $state('');
   let originalBody = $state('');
-  let blobUrl = $state<string | null>(null);
+  let previewHtml = $state<string | null>(null);
   let validating = $state(false);
   let saving = $state(false);
   let confirmReset = $state(false);
@@ -32,6 +97,9 @@
 
   // The currently selected template object
   const selectedTemplate = $derived(templates.find((t) => t.kind === selectedKind) ?? null);
+
+  // Plan 17-03 (D-12): per-kind variables panel content
+  const currentVariables = $derived(VARIABLES_BY_KIND[selectedKind] ?? []);
 
   async function loadTemplates() {
     try {
@@ -60,12 +128,6 @@
 
   onMount(() => {
     loadTemplates();
-    return () => {
-      // Cleanup blob URL on unmount
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-    };
   });
 
   // When selectedKind changes: update body from loaded templates
@@ -74,15 +136,12 @@
     if (found) {
       body = found.body;
       originalBody = found.body;
-      // Clear preview when switching templates. untrack so blobUrl is NOT a
-      // dependency of this effect — otherwise validateAndPreview() setting
-      // blobUrl re-triggers this effect, which immediately nulls it again and
-      // the preview never renders (G2-4).
+      // Clear preview when switching templates. untrack so previewHtml is NOT
+      // a dependency of this effect — otherwise validateAndPreview() setting
+      // previewHtml re-triggers this effect, which immediately nulls it again
+      // and the preview never renders (G2-4).
       untrack(() => {
-        if (blobUrl) {
-          URL.revokeObjectURL(blobUrl);
-          blobUrl = null;
-        }
+        previewHtml = null;
       });
     }
   });
@@ -91,15 +150,10 @@
     validating = true;
     try {
       // T-07-04-02: body is sent to backend for validation — never eval'd in browser
-      const bytes = await apiCall<number[]>('templates_validate_preview', {
+      previewHtml = await apiCall<string>('templates_validate_preview', {
         kind: selectedKind,
         body,
       });
-      const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-      blobUrl = URL.createObjectURL(blob);
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -170,26 +224,15 @@
     </select>
   </div>
 
-  <!-- Available variables panel (T-07-04-02: reference only — not executed in browser) -->
+  <!-- Available variables panel (T-07-04-02: reference only — not executed in browser).
+       Plan 17-03 (D-12): content is per-kind, driven by VARIABLES_BY_KIND. -->
   <details class="variables-panel">
     <summary class="variables-summary">Доступные переменные</summary>
     <div class="variables-grid">
       <div class="var-col">
-        <p class="var-item"><code>org_name</code> — название организации</p>
-        <p class="var-item"><code>inn</code> — ИНН</p>
-        <p class="var-item"><code>kpp</code> — КПП</p>
-        <p class="var-item"><code>org_address</code> — адрес организации</p>
-        <p class="var-item"><code>act_number</code> — номер акта</p>
-        <p class="var-item"><code>sub_number</code> — порядковый номер</p>
-      </div>
-      <div class="var-col">
-        <p class="var-item"><code>giver_name</code> — сдающий</p>
-        <p class="var-item"><code>receiver_name</code> — принимающий</p>
-        <p class="var-item"><code>handover_date</code> — дата приёма-передачи</p>
-        <p class="var-item">
-          <code>items</code> — массив: <code>name</code>, <code>qty</code>,
-          <code>condition</code>, <code>serial_number</code>
-        </p>
+        {#each currentVariables as v (v.code)}
+          <p class="var-item"><code>{v.code}</code> — {v.desc}</p>
+        {/each}
       </div>
     </div>
   </details>
@@ -210,7 +253,7 @@
   <!-- Footer action row -->
   <div class="footer-row">
     <Button variant="secondary" loading={validating} onclick={validateAndPreview}>
-      Проверить (превью PDF)
+      Проверить (превью)
     </Button>
     <Button variant="primary" loading={saving} onclick={saveTemplate}>Сохранить шаблон</Button>
     <Button variant="destructive" onclick={() => (confirmReset = true)}>
@@ -218,10 +261,10 @@
     </Button>
   </div>
 
-  <!-- PDF preview iframe (shown when blobUrl is set) -->
-  {#if blobUrl}
+  <!-- HTML preview iframe (Plan 17-03, D-11: srcdoc, no blob/PDF object URL) -->
+  {#if previewHtml}
     <div class="preview-wrapper">
-      <iframe src={blobUrl} title="Превью PDF" class="pdf-iframe"></iframe>
+      <iframe srcdoc={previewHtml} title="Превью" class="pdf-iframe"></iframe>
     </div>
   {/if}
 </section>
