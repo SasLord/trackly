@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: verifying
+status: gaps_found
 last_updated: "2026-07-07T02:16:19.053Z"
-last_activity: 2026-07-07
+last_activity: 2026-07-07 -- Phase 17 verified: gaps found (7/10 must-haves)
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 4
   completed_plans: 4
   percent: 100
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 ## Current Position
 
-Phase: 17 (html-krilla) — EXECUTING
+Phase: 17 (html-krilla) — GAPS FOUND (plans 4/4 done; phase-goal verification found gaps)
 Plan: 4 of 4
-Status: Phase complete — ready for verification
+Status: Verification gaps_found (7/10 must-haves) — gap closure needed before phase completes
 Last activity: 2026-07-07
 
 ### Phase 6 gap-closure decisions (2026-06-15)
