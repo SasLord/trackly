@@ -221,13 +221,18 @@ impl AppCtx {
         ));
 
         // Phase 7 Plan 03: ReportService + DashboardService.
-        let reports = Arc::new(ReportService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-            Arc::new(config.clone()),
-            pdf.clone(),
-        ));
+        // Phase 17: with_organization wires Paths for templates/report.html
+        // file-first resolution (mirrors ActService::with_pdf_pipeline).
+        let reports = Arc::new(
+            ReportService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                Arc::new(config.clone()),
+                pdf.clone(),
+            )
+            .with_organization(organization.clone()),
+        );
         let dashboard = Arc::new(DashboardService::new(
             writer.clone(),
             readers.clone(),

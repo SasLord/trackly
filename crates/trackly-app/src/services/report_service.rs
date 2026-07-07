@@ -23,10 +23,8 @@ use crate::dto::reports::{
     OrgSettingsDto, PeriodDto, ReportCountEntry, ReportCountsDto, ReportFilter, ReportResponse,
     ReportRow,
 };
-use crate::pdf::{
-    docspec::{DocSpec, HeaderBlock, Section},
-    PdfRenderer,
-};
+use crate::pdf::PdfRenderer;
+use crate::services::organization_service::OrganizationService;
 
 // ---------------------------------------------------------------------------
 // Russian month names for PDF month-separator headings
@@ -187,6 +185,13 @@ pub struct ReportService {
     pub clock: Arc<dyn Clock + Send + Sync>,
     pub config: Arc<AppConfig>,
     pub pdf: Arc<PdfRenderer>,
+    /// Phase 17: source of `Paths` for `templates/report.html` resolution
+    /// (file-first + embedded fallback, mirrors `ActService::organization`).
+    /// Option-typed so the existing 5 `ReportService::new(...)` call sites
+    /// (context.rs, http/health.rs, tauri_cmds/health.rs,
+    /// tests/report_csv_export.rs, tests/specta_roundtrip.rs) keep compiling
+    /// unchanged.
+    pub(crate) organization: Option<Arc<OrganizationService>>,
 }
 
 impl ReportService {
@@ -203,7 +208,16 @@ impl ReportService {
             clock,
             config,
             pdf,
+            organization: None,
         }
+    }
+
+    /// Builder: подключить `OrganizationService` (Phase 17) — источник
+    /// `Paths` для `templates/report.html` file-first resolution. Mirrors
+    /// `ActService::with_pdf_pipeline`'s organization wiring.
+    pub fn with_organization(mut self, organization: Arc<OrganizationService>) -> Self {
+        self.organization = Some(organization);
+        self
     }
 
     /// Get UTC+3 offset for Europe/Moscow (no DST since 2014).
@@ -504,10 +518,13 @@ impl ReportService {
     }
 
     // -----------------------------------------------------------------------
-    // PDF export (RPT-08)
+    // HTML export (RPT-08, Phase 17: migrated off krilla/DocSpec)
     // -----------------------------------------------------------------------
 
-    /// Export report as PDF bytes via DocSpec IR + krilla.
+    /// Export report as a self-contained HTML string, rendered from
+    /// `templates/report.html` (file-first + embedded fallback) via
+    /// `build_safe_html_env` (Phase 17, Req 1/2). Mirrors the HTML-print
+    /// pipeline shipped for acts in Phase 16 (`act_service.rs::render_pdf`).
     #[allow(clippy::too_many_arguments)]
     pub async fn export_pdf(
         &self,
@@ -518,25 +535,45 @@ impl ReportService {
         logo_bytes: Option<Vec<u8>>,
         logo_mime: Option<String>,
         columns: &[&str],
-    ) -> Result<Vec<u8>, AppError> {
-        let header = HeaderBlock {
-            org_name: org.org_name.clone(),
-            org_inn: org.inn.clone(),
-            org_kpp: org.kpp.clone(),
-            org_address: org.address.clone(),
-            logo_path: None,
-            logo_bytes,
-            logo_mime,
-            org_phone: org.phone.clone(),
-            org_fax: org.fax.clone(),
-            org_email: org.email.clone(),
-            org_okpo: org.okpo.clone(),
-            org_ogrn: org.ogrn.clone(),
-            act_label: report_name.to_string(),
-            date_label: period_label.to_string(),
-        };
+    ) -> Result<String, AppError> {
+        let organization = self
+            .organization
+            .as_ref()
+            .ok_or_else(|| AppError::Internal {
+                source_chain: "ReportService::export_pdf called without with_organization".into(),
+            })?;
 
-        let mut sections: Vec<Section> = Vec::new();
+        // T-17-01-01 mitigation: `logo_bytes` originates exclusively from
+        // `OrgDbService`-sourced org_settings BLOB (see build_reports_export_pdf
+        // caller) — never from request-supplied bytes.
+        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
+            use base64::Engine;
+            let mime = logo_mime.as_deref().unwrap_or("image/png");
+            format!(
+                "data:{mime};base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
+        });
+
+        // Phase 17 (D-02/D-08): read the HTML template source from
+        // templates/report.html (file-first, embedded-default fallback)
+        // via the same mechanism as the act templates (Phase 16).
+        let templates_dir = crate::pdf::html_templates::resolve_templates_dir(&organization.paths);
+        let embedded_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "report.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let template_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "report.html",
+            embedded_default,
+        );
+
+        // Month-grouping (D-04) — same algorithm as before, now accumulating
+        // serde_json group objects instead of DocSpec Sections. Empty-case
+        // fallback message lives in the template (D-07), not here.
+        let mut groups: Vec<serde_json::Value> = Vec::new();
         let mut current_month: Option<String> = None;
         let mut table_rows: Vec<Vec<String>> = Vec::new();
 
@@ -545,15 +582,11 @@ impl ReportService {
 
             if !month_key.is_empty() && Some(month_key) != current_month.as_deref() {
                 if !table_rows.is_empty() {
-                    sections.push(Section::ItemsTable {
-                        columns: columns.iter().map(|s| s.to_string()).collect(),
-                        rows: std::mem::take(&mut table_rows),
-                    });
+                    groups.push(serde_json::json!({
+                        "month_label": month_key_to_russian(current_month.as_deref().unwrap_or("")),
+                        "rows": std::mem::take(&mut table_rows),
+                    }));
                 }
-                sections.push(Section::Heading {
-                    level: 3,
-                    text: month_key_to_russian(month_key),
-                });
                 current_month = Some(month_key.to_string());
             }
 
@@ -561,26 +594,38 @@ impl ReportService {
         }
 
         if !table_rows.is_empty() {
-            sections.push(Section::ItemsTable {
-                columns: columns.iter().map(|s| s.to_string()).collect(),
-                rows: table_rows,
-            });
+            groups.push(serde_json::json!({
+                "month_label": month_key_to_russian(current_month.as_deref().unwrap_or("")),
+                "rows": table_rows,
+            }));
         }
 
-        if sections.is_empty() {
-            sections.push(Section::Paragraph {
-                text: "Нет данных за указанный период.".to_string(),
-                style: Default::default(),
-            });
-        }
+        let ctx = serde_json::json!({
+            "org": {
+                "name": org.org_name,
+                "inn": org.inn,
+                "kpp": org.kpp,
+                "address": org.address,
+                "phone": org.phone,
+                "fax": org.fax,
+                "email": org.email,
+                "okpo": org.okpo,
+                "ogrn": org.ogrn,
+                "logo_data_uri": logo_data_uri,
+            },
+            "report_name": report_name,
+            "period_label": period_label,
+            "columns": columns,
+            "groups": groups,
+        });
 
-        let spec = DocSpec {
-            title: report_name.to_string(),
-            header,
-            sections,
-        };
-
-        self.pdf.render_docspec(&spec)
+        crate::pdf::minijinja_env::render_with_timeout(
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "report_html",
+            &template_src,
+            ctx,
+        )
+        .await
     }
 }
 
@@ -1282,5 +1327,154 @@ mod tests {
         assert_eq!(month_key_to_russian("2026-09"), "Сентябрь 2026");
         assert_eq!(month_key_to_russian("2026-01"), "Январь 2026");
         assert_eq!(month_key_to_russian("2026-12"), "Декабрь 2026");
+    }
+
+    // -----------------------------------------------------------------------
+    // export_pdf HTML-render behavior tests (Phase 17, D-01..D-08)
+    // -----------------------------------------------------------------------
+
+    fn make_test_service() -> (ReportService, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (writer, readers, _guard) = trackly_infra::test_support::test_writer_and_readers();
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(trackly_infra::clock_impl::SystemClock);
+        let paths = Arc::new(
+            trackly_infra::Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths"),
+        );
+        let organization = Arc::new(OrganizationService::new(paths));
+        let pdf = Arc::new(PdfRenderer::new());
+        let svc = ReportService::new(writer, readers, clock, Arc::new(AppConfig::default()), pdf)
+            .with_organization(organization);
+        // Keep _guard (writer/readers tempdir) alive alongside the returned
+        // service by leaking it into the returned TempDir slot below — the
+        // writer/readers tempdir and the paths tempdir are independent, both
+        // must outlive the test body.
+        (svc, dir)
+    }
+
+    fn make_row(month_key: &str, device_name: &str, giver: &str) -> ReportRow {
+        ReportRow {
+            id: 1,
+            month_key: Some(month_key.to_string()),
+            number: Some("42".to_string()),
+            sub_number: None,
+            giver_name: Some(giver.to_string()),
+            receiver_name: Some("Иванов И.И.".to_string()),
+            handover_date_utc: Some(1_780_000_000),
+            location_name: Some("Склад №1".to_string()),
+            act_type: Some("handover".to_string()),
+            device_name: Some(device_name.to_string()),
+            quantity: Some(1),
+            code: None,
+            model_label: None,
+            status_name: None,
+        }
+    }
+
+    fn empty_org() -> OrgSettingsDto {
+        OrgSettingsDto {
+            org_name: String::new(),
+            inn: String::new(),
+            kpp: String::new(),
+            address: String::new(),
+            has_logo: false,
+            phone: String::new(),
+            fax: String::new(),
+            email: String::new(),
+            okpo: String::new(),
+            ogrn: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn export_pdf_non_empty_report_renders_month_groups_and_rows() {
+        let (svc, _dir) = make_test_service();
+        let rows = ReportResponse {
+            rows: vec![
+                make_row("2026-09", "Принтер HP LaserJet", "Петров П.П."),
+                make_row("2026-10", "Сканер Canon", "Сидоров С.С."),
+            ],
+            total: 2,
+        };
+        let columns = ["device_name", "giver_name", "receiver_name"];
+
+        let html = svc
+            .export_pdf(
+                &rows,
+                "Тестовый отчёт",
+                "Сентябрь-Октябрь 2026",
+                &empty_org(),
+                None,
+                None,
+                &columns,
+            )
+            .await
+            .expect("export_pdf ok");
+
+        assert!(
+            html.contains("Сентябрь 2026"),
+            "expected September 2026 month heading in HTML: {html}"
+        );
+        assert!(
+            html.contains("Октябрь 2026"),
+            "expected October 2026 month heading in HTML: {html}"
+        );
+        assert!(html.contains("Принтер HP LaserJet"));
+        assert!(html.contains("Сканер Canon"));
+        assert!(html.contains("Петров П.П."));
+        assert!(html.contains("Сидоров С.С."));
+        assert!(
+            !html.contains("DocSpec") && !html.contains("render_docspec"),
+            "HTML output must not reference DocSpec/render_docspec: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_pdf_empty_report_renders_no_data_message() {
+        let (svc, _dir) = make_test_service();
+        let rows = ReportResponse {
+            rows: vec![],
+            total: 0,
+        };
+        let columns = ["device_name"];
+
+        let html = svc
+            .export_pdf(
+                &rows,
+                "Пустой отчёт",
+                "Ноябрь 2026",
+                &empty_org(),
+                None,
+                None,
+                &columns,
+            )
+            .await
+            .expect("export_pdf ok");
+
+        assert!(
+            html.contains("Нет данных за указанный период."),
+            "expected empty-state message in HTML: {html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_pdf_renders_org_header_name() {
+        let (svc, _dir) = make_test_service();
+        let rows = ReportResponse {
+            rows: vec![make_row("2026-09", "Принтер", "Петров П.П.")],
+            total: 1,
+        };
+        let columns = ["device_name"];
+        let mut org = empty_org();
+        org.org_name = "ООО «Ромашка»".to_string();
+
+        let html = svc
+            .export_pdf(&rows, "Отчёт", "Сентябрь 2026", &org, None, None, &columns)
+            .await
+            .expect("export_pdf ok");
+
+        assert!(
+            html.contains("ООО «Ромашка»"),
+            "expected org name in HTML header: {html}"
+        );
     }
 }
