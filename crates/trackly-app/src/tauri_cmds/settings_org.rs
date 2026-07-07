@@ -278,16 +278,16 @@ pub async fn build_templates_reset_to_default(
     ctx.templates.reset_to_default(caller_identity, &kind).await
 }
 
-/// Validate template syntax + render preview PDF with dummy context.
+/// Validate template syntax + render an HTML preview with per-kind demo context.
 pub async fn build_templates_validate_preview(
     ctx: &AppCtx,
     caller_identity: &trackly_core::auth::Identity,
-    _kind: String,
+    kind: String,
     body: String,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     // ManageSettings check — only editors can preview
     authorize(caller_identity, &Action::ManageSettings)?;
-    ctx.templates.validate_preview(&body).await
+    ctx.templates.validate_preview(&kind, &body).await
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ pub async fn templates_validate_preview(
     state: tauri::State<'_, AppCtx>,
     kind: String,
     body: String,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_templates_validate_preview(state.inner(), &caller, kind, body).await
 }

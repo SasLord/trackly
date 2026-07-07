@@ -229,67 +229,49 @@ impl TemplateService {
                 })?;
         }
 
-        let kind_owned = kind.to_string();
-        let now = self.clock.unix_seconds();
-        self.writer
-            .execute(move |conn| {
-                let n = conn
-                    .execute(
-                        "UPDATE document_templates \
-                         SET body_minijinja=?2, is_default=0, \
-                             updated_at_utc=?3, version=version+1 \
-                         WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
-                        params![kind_owned, body, now],
-                    )
-                    .map_err(map_rusqlite)?;
-                if n == 0 {
-                    return Err(AppError::NotFound {
-                        entity: "document_template",
-                        id: 0,
-                    });
-                }
-                Ok(())
-            })
+        let filename = format!("{kind}.html");
+        if !crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .any(|(f, _)| *f == filename)
+        {
+            return Err(AppError::NotFound {
+                entity: "document_template",
+                id: 0,
+            });
+        }
+
+        let templates_dir = self.templates_dir()?;
+        tokio::fs::write(templates_dir.join(&filename), body)
             .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("write {filename}: {e}"),
+            })
     }
 
     /// Сбрасывает шаблон к встроенному дефолту. Требует `ManageSettings`.
+    ///
+    /// Phase 17: overwrites `templates/{kind}.html` with the embedded
+    /// `DEFAULT_HTML_TEMPLATES` body instead of `UPDATE document_templates`.
+    /// Same fixed-allowlist gate as `update_body` (T-17-02-01).
     pub async fn reset_to_default(&self, caller: &Identity, kind: &str) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
 
-        // Ищем дефолтный шаблон по kind в DEFAULT_TEMPLATES
-        let default_body = DEFAULT_TEMPLATES
+        let filename = format!("{kind}.html");
+        let default_body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
             .iter()
-            .find(|(k, _, _)| *k == kind)
-            .map(|(_, _, body)| *body)
+            .find(|(f, _)| *f == filename)
+            .map(|(_, body)| *body)
             .ok_or(AppError::NotFound {
                 entity: "default_template",
                 id: 0,
             })?;
 
-        let kind_owned = kind.to_string();
-        let body_owned = default_body.to_string();
-        let now = self.clock.unix_seconds();
-        self.writer
-            .execute(move |conn| {
-                let n = conn
-                    .execute(
-                        "UPDATE document_templates \
-                         SET body_minijinja=?2, is_default=1, \
-                             updated_at_utc=?3, version=version+1 \
-                         WHERE kind=?1 AND is_active=1 AND deleted_at_utc IS NULL",
-                        params![kind_owned, body_owned, now],
-                    )
-                    .map_err(map_rusqlite)?;
-                if n == 0 {
-                    return Err(AppError::NotFound {
-                        entity: "document_template",
-                        id: 0,
-                    });
-                }
-                Ok(())
-            })
+        let templates_dir = self.templates_dir()?;
+        tokio::fs::write(templates_dir.join(&filename), default_body)
             .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("reset write {filename}: {e}"),
+            })
     }
 
     /// Возвращает body активного шаблона для kind. Если нет активных
@@ -323,38 +305,102 @@ impl TemplateService {
         })?
     }
 
-    /// Validate template syntax + render a preview PDF with demo context.
+    /// Validate template syntax + render an HTML preview with demo context.
     ///
-    /// Used by TemplateEditor to let the user see the rendered output before saving.
-    /// The demo context mimics an act_handover document with placeholder data.
-    pub async fn validate_preview(&self, body: &str) -> Result<Vec<u8>, AppError> {
-        let env = build_safe_env();
+    /// Used by TemplateEditor to let the user see the rendered output before
+    /// saving. Phase 17: retargeted from the previous krilla round-trip
+    /// (MiniJinja render to a JSON string, parsed into an intermediate spec,
+    /// then rendered to PDF bytes) onto the same `build_safe_html_env` +
+    /// `render_with_timeout` pipeline the acts (Phase 16) and report (Plan
+    /// 17-01) render paths use — returns the rendered HTML string directly,
+    /// zero krilla references in this method's body.
+    ///
+    /// `kind` selects the per-kind demo context (`act_handover`,
+    /// `act_acceptance`, `report`) via `demo_context_for_kind` — any other
+    /// value degrades gracefully to the `act_handover` context rather than
+    /// erroring (preview should never crash on an unrecognized kind).
+    pub async fn validate_preview(&self, kind: &str, body: &str) -> Result<String, AppError> {
+        let demo_ctx = demo_context_for_kind(kind);
+        crate::pdf::minijinja_env::render_with_timeout(
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "_preview",
+            body,
+            demo_ctx,
+        )
+        .await
+    }
+}
 
-        // Demo context — mirrors act_handover.minijinja nested variable schema:
-        //   org.{name,inn,kpp,address,logo_path}
-        //   act.{number,suffix,date,date_human,giver_name,receiver_name,
-        //        location_name,deadline,deadline_human,parent,items[]}
-        //   act.items[].{name,inventory_no,serial_no,model,quantity}
-        // UndefinedBehavior::Strict requires every referenced variable to be present.
-        let demo_ctx = serde_json::json!({
-            "org": {
-                "name": "ООО Демо Организация",
-                "inn": "7700000000",
-                "kpp": "770000000",
-                "address": "г. Москва, ул. Примерная, д. 1",
-                "logo_path": null,
-                "phone": "(3919) 75-90-98",
-                "fax": "(3919) 75-08-59",
-                "email": "info@demo-org.ru",
-                "okpo": "10176125",
-                "ogrn": "1122452000714"
+/// Per-kind demo context for `TemplateService::validate_preview` (D-11/D-12
+/// from `17-CONTEXT.md`): the editor preview must work on an empty DB, using
+/// embedded sample data that covers every variable each `templates/*.html`
+/// file's doc-comment references. Any `kind` not matching one of the 3 known
+/// branches falls through to the `act_handover` context — preview degrades
+/// gracefully rather than erroring on an unrecognized kind.
+fn demo_context_for_kind(kind: &str) -> serde_json::Value {
+    // Shared org block — matches org_settings requisites referenced by all
+    // 3 templates' header blocks (org.name/inn/kpp/address/phone/fax/email/
+    // okpo/ogrn/logo_data_uri). `logo_data_uri: null` (D-11/D-08 — replaces
+    // the old krilla-era `org.logo_path` key, since act_handover.html /
+    // act_acceptance.html / report.html now all expect `logo_data_uri`).
+    let org = serde_json::json!({
+        "name": "ООО Демо Организация",
+        "inn": "7700000000",
+        "kpp": "770000000",
+        "address": "г. Москва, ул. Примерная, д. 1",
+        "logo_data_uri": null,
+        "phone": "(3919) 75-90-98",
+        "fax": "(3919) 75-08-59",
+        "email": "info@demo-org.ru",
+        "okpo": "10176125",
+        "ogrn": "1122452000714"
+    });
+
+    match kind {
+        "act_acceptance" => serde_json::json!({
+            "org": org,
+            "device": {
+                "name": "HP LaserJet Pro M404n",
+                "inventory_no": "ИНВ-001",
+                "serial_no": "SN-001",
+                "model": "LaserJet Pro M404n",
+                "condition": "Рабочее"
             },
+            "document": {
+                "giver_name": "Иванов И.И.",
+                "receiver_name": "Петров П.П.",
+                "date_human": "17 июня 2026"
+            }
+        }),
+        "report" => serde_json::json!({
+            "org": org,
+            "report_name": "Демо-отчёт: Акты приёма-передачи",
+            "period_label": "Сентябрь 2026",
+            "columns": ["Номер", "Устройство", "Сдал", "Принял", "Расположение"],
+            "groups": [
+                {
+                    "month_label": "Сентябрь 2026",
+                    "rows": [
+                        [
+                            "42",
+                            "HP LaserJet Pro M404n",
+                            "Иванов И.И.",
+                            "Петров П.П.",
+                            "Офис 101"
+                        ]
+                    ]
+                }
+            ]
+        }),
+        // "act_handover" and any unrecognized kind — degrade gracefully to
+        // the act_handover demo context rather than erroring.
+        _ => serde_json::json!({
+            "org": org,
             "act": {
                 "number": "42",
                 "suffix": null,
                 "date": "2026-06-17",
                 "date_human": "17 июня 2026",
-                "giver_name": "Иванов И.И.",
                 "receiver_name": "Петров П.П.",
                 "location_name": "Офис 101",
                 "deadline": null,
@@ -372,58 +418,8 @@ impl TemplateService {
                         "condition": "Новый в заводской упаковке"
                     }
                 ]
-            },
-            "return": {
-                "condition_default": "Рабочее",
-                "location_default": "Склад"
-            },
-            // G2-4: device and document keys required by act_acceptance.minijinja
-            "device": {
-                "name": "HP LaserJet Pro M404n",
-                "inventory_no": "ИНВ-001",
-                "serial_no": "SN-001",
-                "model": "LaserJet Pro M404n",
-                "condition": "Рабочее"
-            },
-            "document": {
-                "giver_name": "Иванов И.И.",
-                "receiver_name": "Петров П.П.",
-                "date_human": "17 июня 2026"
             }
-        });
-
-        // Render via MiniJinja (validates syntax + fuel)
-        let rendered_json = render_with_timeout(&env, "_preview", body, demo_ctx).await?;
-
-        // Parse rendered JSON into DocSpec and render PDF
-        let spec = serde_json::from_str::<DocSpec>(&rendered_json).unwrap_or_else(|_| {
-            // Fallback if body renders plain text (not DocSpec JSON)
-            DocSpec {
-                title: "Превью шаблона".to_string(),
-                header: HeaderBlock {
-                    org_name: "Организация".to_string(),
-                    org_inn: "".to_string(),
-                    org_kpp: "".to_string(),
-                    org_address: "".to_string(),
-                    logo_path: None,
-                    logo_bytes: None,
-                    logo_mime: None,
-                    org_phone: "".to_string(),
-                    org_fax: "".to_string(),
-                    org_email: "".to_string(),
-                    org_okpo: "".to_string(),
-                    org_ogrn: "".to_string(),
-                    act_label: "Превью шаблона".to_string(),
-                    date_label: "16.06.2026".to_string(),
-                },
-                sections: vec![Section::Paragraph {
-                    text: rendered_json.clone(),
-                    style: Default::default(),
-                }],
-            }
-        });
-
-        self.pdf.render_docspec(&spec)
+        }),
     }
 }
 
@@ -431,10 +427,18 @@ impl TemplateService {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use tokio::sync::{Mutex, MutexGuard};
     use trackly_infra::{
         clock_impl::SystemClock,
         db::{pools::ReaderPool, writer_worker::WriterHandle},
     };
+
+    /// Serializes tests that touch `TRACKLY_TEMPLATES_DIR` — `std::env` is
+    /// process-global and Rust test threads run in parallel by default
+    /// (mirrors the `ENV_GUARD` pattern in `pdf/html_templates.rs`). Uses
+    /// `tokio::sync::Mutex` (not `std::sync::Mutex`) because these tests hold
+    /// the guard across `.await` points (`clippy::await_holding_lock`).
+    static ENV_GUARD: Mutex<()> = Mutex::const_new(());
 
     fn build_test_db() -> (Arc<WriterHandle>, Arc<ReaderPool>) {
         let tmp = tempfile::NamedTempFile::new().unwrap();
@@ -448,42 +452,136 @@ mod tests {
         (writer, readers)
     }
 
-    /// G2-4: validate_preview with the default act_acceptance template must return
-    /// valid PDF bytes. Previously failed because demo_ctx lacked device/document keys.
-    #[tokio::test]
-    async fn validate_preview_act_acceptance_returns_pdf_bytes() {
+    /// Helper: build a `TemplateService` wired with `OrganizationService`
+    /// pointed at a fresh tempdir (via `TRACKLY_TEMPLATES_DIR`), mirroring
+    /// production's `with_organization` wiring in `context.rs`. Returns the
+    /// `ENV_GUARD` lock alongside the service/tempdir — the caller must keep
+    /// the guard alive for the duration of the test (held via the returned
+    /// tuple binding) so no other test thread can race-override the env var
+    /// while this test's `TemplateService` still reads it. `async` (not
+    /// sync) because `tokio::sync::Mutex::lock` is async-aware — this lets
+    /// the returned guard be held safely across the caller's `.await` points.
+    async fn build_test_svc_with_organization(
+    ) -> (TemplateService, tempfile::TempDir, MutexGuard<'static, ()>) {
+        let guard = ENV_GUARD.lock().await;
         let (writer, readers) = build_test_db();
         let clock =
             Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
-        let svc = TemplateService::new(writer, readers, clock);
+        let templates_tmp = tempfile::tempdir().unwrap();
+        // SAFETY: guarded by ENV_GUARD for the duration of the test (guard
+        // held via the returned tuple binding) — no other thread touches
+        // TRACKLY_TEMPLATES_DIR concurrently.
+        unsafe {
+            std::env::set_var("TRACKLY_TEMPLATES_DIR", templates_tmp.path());
+        }
+        let paths = Arc::new(
+            trackly_infra::paths::Paths::resolve_for_exe_dir(std::path::PathBuf::from(
+                "/does/not/matter",
+            ))
+            .unwrap(),
+        );
+        let organization =
+            Arc::new(crate::services::organization_service::OrganizationService::new(paths));
+        let svc = TemplateService::new(writer, readers, clock).with_organization(organization);
+        (svc, templates_tmp, guard)
+    }
 
-        // Use the embedded default act_acceptance template body.
-        let (_, _, body) = DEFAULT_TEMPLATES
+    /// Test 1 (Plan 17-02 Task 2 behavior): validate_preview("act_handover", body)
+    /// where body is the current act_handover.html file content returns
+    /// Ok(html) containing the act title marker — proves the demo context
+    /// covers every variable the real act_handover.html template references.
+    #[tokio::test]
+    async fn validate_preview_act_handover_returns_html_with_title_marker() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
             .iter()
-            .find(|(k, _, _)| *k == "act_acceptance")
-            .expect("act_acceptance default template must exist");
+            .find(|(f, _)| *f == "act_handover.html")
+            .map(|(_, body)| *body)
+            .expect("act_handover.html must exist in DEFAULT_HTML_TEMPLATES");
 
-        let result = svc.validate_preview(body).await;
+        let result = svc.validate_preview("act_handover", body).await;
         match result {
-            Ok(bytes) => {
-                assert!(!bytes.is_empty(), "PDF bytes must be non-empty");
+            Ok(html) => {
                 assert!(
-                    bytes.starts_with(b"%PDF"),
-                    "output must be a valid PDF (starts with %PDF)"
+                    html.contains("Акт приема-передачи"),
+                    "rendered HTML must contain the act title marker; got: {html}"
                 );
             }
+            Err(e) => panic!("validate_preview failed for act_handover: {e:?}"),
+        }
+    }
+
+    /// Test 2 (Plan 17-02 Task 2 behavior): validate_preview("report", body)
+    /// where body is the report.html content from Plan 17-01 returns
+    /// Ok(html) containing a non-empty month label — proves the report
+    /// demo-context branch supplies report_name/period_label/columns/groups.
+    #[tokio::test]
+    async fn validate_preview_report_returns_html_with_month_label() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "report.html")
+            .map(|(_, body)| *body)
+            .expect("report.html must exist in DEFAULT_HTML_TEMPLATES");
+
+        let result = svc.validate_preview("report", body).await;
+        match result {
+            Ok(html) => {
+                assert!(
+                    html.contains("Сентябрь 2026"),
+                    "rendered HTML must contain the demo month label; got: {html}"
+                );
+            }
+            Err(e) => panic!("validate_preview failed for report: {e:?}"),
+        }
+    }
+
+    /// Test 3 (Plan 17-02 Task 2 behavior): validate_preview with a body
+    /// referencing an undefined variable returns Err(AppError::Validation)
+    /// — Strict undefined behavior propagates as a render error, not a panic.
+    #[tokio::test]
+    async fn validate_preview_undefined_variable_returns_validation_error() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let result = svc
+            .validate_preview("act_handover", "{{ this_variable_does_not_exist }}")
+            .await;
+
+        match result {
+            Err(AppError::Validation { .. }) => {}
+            other => panic!("expected AppError::Validation, got {other:?}"),
+        }
+    }
+
+    /// act_acceptance branch of demo_context_for_kind must also render
+    /// without error (device/document keys present) — companion coverage
+    /// to Test 1/2 above for the third known kind.
+    #[tokio::test]
+    async fn validate_preview_act_acceptance_returns_html() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+
+        let body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "act_acceptance.html")
+            .map(|(_, body)| *body)
+            .expect("act_acceptance.html must exist in DEFAULT_HTML_TEMPLATES");
+
+        let result = svc.validate_preview("act_acceptance", body).await;
+        match result {
+            Ok(html) => assert!(!html.is_empty(), "rendered HTML must be non-empty"),
             Err(e) => panic!("validate_preview failed for act_acceptance: {e:?}"),
         }
     }
 
-    /// R3-3 / CR-02: update_body on a kind with no active row must return
-    /// AppError::NotFound instead of silently Ok(()) on 0 rows_affected.
+    /// R3-3 / CR-02 (Phase 17 retarget): update_body on a kind not in the
+    /// fixed DEFAULT_HTML_TEMPLATES allowlist must return AppError::NotFound
+    /// — T-17-02-01 mitigation, unrecognized kind never reaches the
+    /// templates_dir path join.
     #[tokio::test]
     async fn update_body_unknown_kind_returns_not_found() {
-        let (writer, readers) = build_test_db();
-        let clock =
-            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
-        let svc = TemplateService::new(writer, readers, clock);
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
         let admin = Identity::trusted_admin();
 
         let result = svc
@@ -498,34 +596,62 @@ mod tests {
         }
     }
 
-    /// GAP-S6: validate_preview with the default act_handover template must return
-    /// valid PDF bytes (len > 0). Previously failed with "undefined value" because
-    /// demo_ctx used flat keys instead of nested org/act objects.
+    /// list_all_for_editor reads the 3 known kinds from disk (file-first +
+    /// embedded fallback) instead of the DB — Phase 17 retarget.
     #[tokio::test]
-    async fn validate_preview_returns_pdf_bytes() {
-        let (writer, readers) = build_test_db();
-        let clock =
-            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
-        let svc = TemplateService::new(writer, readers, clock);
+    async fn list_all_for_editor_returns_all_known_kinds_from_files() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
 
-        // Use the embedded default act_handover template body.
-        let (_, _, body) = DEFAULT_TEMPLATES
+        let items = svc.list_all_for_editor().await.unwrap();
+        assert_eq!(items.len(), 3, "must return exactly 3 known kinds");
+        let kinds: Vec<&str> = items.iter().map(|i| i.kind.as_str()).collect();
+        assert!(kinds.contains(&"act_handover"));
+        assert!(kinds.contains(&"act_acceptance"));
+        assert!(kinds.contains(&"report"));
+        // No templates written to the fresh tempdir yet — every item must
+        // report is_default = true (body equals the embedded default).
+        assert!(items.iter().all(|i| i.is_default));
+    }
+
+    /// update_body writes to templates/{kind}.html on disk (not the DB) —
+    /// verified via a subsequent list_all_for_editor read showing the new
+    /// body and is_default = false.
+    #[tokio::test]
+    async fn update_body_writes_file_and_list_reflects_it() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        svc.update_body(&admin, "act_handover", "CUSTOM BODY".to_string())
+            .await
+            .unwrap();
+
+        let items = svc.list_all_for_editor().await.unwrap();
+        let item = items
             .iter()
-            .find(|(k, _, _)| *k == "act_handover")
-            .expect("act_handover default template must exist");
+            .find(|i| i.kind == "act_handover")
+            .expect("act_handover item must exist");
+        assert_eq!(item.body, "CUSTOM BODY");
+        assert!(!item.is_default);
+    }
 
-        let result = svc.validate_preview(body).await;
-        match result {
-            Ok(bytes) => {
-                assert!(!bytes.is_empty(), "PDF bytes must be non-empty");
-                // PDF magic bytes: %PDF
-                assert!(
-                    bytes.starts_with(b"%PDF"),
-                    "output must be a valid PDF (starts with %PDF)"
-                );
-            }
-            Err(e) => panic!("validate_preview failed: {e:?}"),
-        }
+    /// reset_to_default overwrites templates/{kind}.html with the embedded
+    /// default body — verified via a subsequent list_all_for_editor read.
+    #[tokio::test]
+    async fn reset_to_default_restores_embedded_default() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        svc.update_body(&admin, "act_handover", "CUSTOM BODY".to_string())
+            .await
+            .unwrap();
+        svc.reset_to_default(&admin, "act_handover").await.unwrap();
+
+        let items = svc.list_all_for_editor().await.unwrap();
+        let item = items
+            .iter()
+            .find(|i| i.kind == "act_handover")
+            .expect("act_handover item must exist");
+        assert!(item.is_default);
     }
 
     /// Quick task 260704-uw3 (the bug): an existing DB whose active

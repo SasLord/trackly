@@ -301,13 +301,13 @@ pub async fn handler_templates_validate_preview(
         .await
         .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
-    let bytes = build_templates_validate_preview(&ctx, &caller, p.kind, p.body)
+    let html = build_templates_validate_preview(&ctx, &caller, p.kind, p.body)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/pdf")],
-        bytes,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     ))
 }
 
