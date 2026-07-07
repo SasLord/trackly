@@ -89,3 +89,10 @@ None - no external service configuration required.
 ---
 *Phase: 17-html-krilla*
 *Completed: 2026-07-07*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-app/tests/devices_csv_import.rs
+- FOUND: .planning/phases/17-html-krilla/17-07-SUMMARY.md
+- FOUND commit: c8bee9c
+- FOUND commit: 86a282e
