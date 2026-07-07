@@ -197,11 +197,13 @@ impl AppCtx {
         // Step 12: Phase 3 Plan 04 PDF pipeline services.
         let paths_arc = Arc::new(paths);
         let organization = Arc::new(OrganizationService::new(paths_arc.clone()));
-        let templates = Arc::new(TemplateService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+        // Phase 17: with_organization wires Paths for templates/*.html
+        // file-first resolution (mirrors ActService::with_pdf_pipeline /
+        // ReportService::with_organization).
+        let templates = Arc::new(
+            TemplateService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_organization(organization.clone()),
+        );
         let pdf = Arc::new(PdfRenderer::new());
 
         // Seed default templates on first run (idempotent).

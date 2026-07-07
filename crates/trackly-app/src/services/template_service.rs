@@ -32,11 +32,8 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 
 use crate::dto::reports::TemplateEditorItem;
-use crate::pdf::{
-    docspec::{DocSpec, HeaderBlock, Section},
-    minijinja_env::{build_safe_env, render_with_timeout},
-    PdfRenderer,
-};
+use crate::pdf::PdfRenderer;
+use crate::services::organization_service::OrganizationService;
 
 /// Дефолтные шаблоны, embed'нутые в бинарь (`include_str!`). Сидятся в БД
 /// при первом запуске и при полной soft-delete всех версий kind'а.
@@ -59,6 +56,14 @@ pub struct TemplateService {
     pub readers: Arc<ReaderPool>,
     pub clock: Arc<dyn Clock + Send + Sync>,
     pub pdf: Arc<PdfRenderer>,
+    /// Phase 17: source of `Paths` for `templates/*.html` file-first
+    /// resolution used by the editor-facing methods (`list_all_for_editor`,
+    /// `update_body`, `reset_to_default`, `validate_preview`). Mirrors
+    /// `ActService::organization` / `ReportService::organization`. Optional
+    /// so the existing 3-arg `TemplateService::new(...)` call sites
+    /// (context.rs, http/health.rs, tauri_cmds/health.rs, and test fixtures)
+    /// keep compiling unchanged.
+    pub(crate) organization: Option<Arc<OrganizationService>>,
 }
 
 impl TemplateService {
@@ -72,7 +77,33 @@ impl TemplateService {
             readers,
             clock,
             pdf: Arc::new(PdfRenderer::new()),
+            organization: None,
         }
+    }
+
+    /// Builder: подключить `OrganizationService` (Phase 17) — источник
+    /// `Paths` для `templates/*.html` file-first resolution. Mirrors
+    /// `ActService::with_pdf_pipeline` / `ReportService::with_organization`.
+    pub fn with_organization(mut self, organization: Arc<OrganizationService>) -> Self {
+        self.organization = Some(organization);
+        self
+    }
+
+    /// Resolves the `templates/` directory via `self.organization`'s
+    /// `Paths`, or returns `AppError::Internal` if the service was
+    /// constructed without `with_organization` (should never happen in
+    /// production — `AppCtx::build` always chains it).
+    fn templates_dir(&self) -> Result<std::path::PathBuf, AppError> {
+        let organization = self
+            .organization
+            .as_ref()
+            .ok_or_else(|| AppError::Internal {
+                source_chain: "TemplateService::templates_dir called without with_organization"
+                    .into(),
+            })?;
+        Ok(crate::pdf::html_templates::resolve_templates_dir(
+            &organization.paths,
+        ))
     }
 
     /// Seeds missing default templates and auto-upgrades stale ones.
@@ -141,41 +172,45 @@ impl TemplateService {
             .await
     }
 
-    /// Возвращает все активные шаблоны для редактора (SET-07).
+    /// Возвращает все шаблоны для редактора (SET-07).
+    ///
+    /// Phase 17: retargeted from the DB-backed `document_templates` table
+    /// onto `templates/*.html` files — the same files the acts (Phase 16)
+    /// and report (Plan 17-01) render pipelines read via
+    /// `html_templates::{resolve_templates_dir, load_template,
+    /// DEFAULT_HTML_TEMPLATES}`. `id` is always `0` — file-backed items have
+    /// no numeric row id.
     pub async fn list_all_for_editor(&self) -> Result<Vec<TemplateEditorItem>, AppError> {
-        let readers = self.readers.clone();
-        tokio::task::spawn_blocking(move || -> Result<Vec<TemplateEditorItem>, AppError> {
-            let conn = readers.acquire();
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, kind, is_default, body_minijinja \
-                     FROM document_templates \
-                     WHERE is_active = 1 AND deleted_at_utc IS NULL",
-                )
-                .map_err(map_rusqlite)?;
-            let items: Vec<TemplateEditorItem> = stmt
-                .query_map([], |r| {
-                    Ok(TemplateEditorItem {
-                        id: r.get(0)?,
-                        kind: r.get(1)?,
-                        is_default: r.get::<_, bool>(2)?,
-                        body: r.get(3)?,
-                    })
-                })
-                .map_err(map_rusqlite)?
-                .filter_map(|r| r.ok())
-                .collect();
-            Ok(items)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking list_all_for_editor: {e}"),
-        })?
+        let templates_dir = self.templates_dir()?;
+        Ok(crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .map(|(filename, default_body)| {
+                let kind = filename.trim_end_matches(".html").to_string();
+                let body = crate::pdf::html_templates::load_template(
+                    &templates_dir,
+                    filename,
+                    default_body,
+                );
+                let is_default = body == *default_body;
+                TemplateEditorItem {
+                    id: 0,
+                    kind,
+                    body,
+                    is_default,
+                }
+            })
+            .collect())
     }
 
     /// Обновляет тело шаблона. Требует `ManageSettings`.
     ///
-    /// Валидирует синтаксис MiniJinja перед записью в БД.
+    /// Валидирует синтаксис MiniJinja перед записью на диск.
+    ///
+    /// Phase 17: writes `templates/{kind}.html` on disk instead of
+    /// `UPDATE document_templates`. `kind` is checked against the fixed
+    /// `DEFAULT_HTML_TEMPLATES` allowlist BEFORE any path join (T-17-02-01 —
+    /// no path-traversal surface, unrecognized `kind` never reaches
+    /// `templates_dir.join(...)`).
     pub async fn update_body(
         &self,
         caller: &Identity,
