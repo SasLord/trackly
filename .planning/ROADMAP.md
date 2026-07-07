@@ -49,7 +49,7 @@ Trackly — портативное приложение для учёта тех
 **v1.2 — Документы через HTML-печать — ACTIVE**
 
 - [x] **Phase 16: Документы через HTML-печать** - Оба акта (приёма-передачи и приёмки устройства) генерируются из HTML-шаблонов (папка `templates/` рядом с exe + вшитый дефолт-fallback) и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN), визуально по образцу Word; krilla/DocSpec заморожен и не используется. (SPEC: 16-SPEC.md) (completed 2026-07-05)
-- [ ] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md) (plans 7/7; gap-closure 17-05..17-07 planned 2026-07-07 — см. 17-VERIFICATION.md)
+- [x] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md) (plans 7/7; gap-closure 17-05..17-07 planned 2026-07-07 — см. 17-VERIFICATION.md) (completed 2026-07-07)
 
 ## Phase Details
 
@@ -179,7 +179,7 @@ Trackly — портативное приложение для учёта тех
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
-| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 6/7 | In Progress|  |
+| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete   | 2026-07-07 |
 
 ## Coverage
 
@@ -256,7 +256,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 6 (gap-closure)** *(depends on Wave 5 — confirms full-suite green after fixes)*
 
-- [ ] 17-07-PLAN.md — Req-7: воспроизвести/подтвердить cargo test -p trackly-app зелёный под задокументированным корректным вызовом (mock env vars + --test-threads=1 + prebuilt ui/dist); документировать в devices_csv_import.rs
+- [x] 17-07-PLAN.md — Req-7: воспроизвести/подтвердить cargo test -p trackly-app зелёный под задокументированным корректным вызовом (mock env vars + --test-threads=1 + prebuilt ui/dist); документировать в devices_csv_import.rs
 
 ## Phase 17 Requirement Coverage
 

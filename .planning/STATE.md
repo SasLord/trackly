@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-07T14:13:45.239Z"
+last_updated: "2026-07-07T15:08:17.357Z"
 last_activity: 2026-07-07
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 6
-  percent: 0
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 17 (html-krilla) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-07
 
@@ -165,6 +165,7 @@ Last activity: 2026-07-07
 | Phase 17 P03 | 25min | 3 tasks | 3 files |
 | Phase 17 P05 | 7min | 3 tasks | 3 files |
 | Phase 17 P06 | 15 min | 3 tasks | 4 files |
+| Phase 17 P07 | 40min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -378,6 +379,7 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-03: PdfPreviewModal mode=report is additive-only extension (no rewrite of print machinery); ReportsPage export+print unified onto one modal-opening trigger; TemplateEditor variables panel is per-kind data-driven (VARIABLES_BY_KIND) replacing static hardcoded block
 - [Phase ?]: 17-05: column_labels appended as new 8th arg to export_pdf (not replacing columns) — keeps row_field key-based cell resolution untouched
 - [Phase ?]: 17-05: disallowed logo_mime drops the logo entirely (logo_bytes=None) rather than falling back to a default mime
+- [Phase 17]: 17-07: full trackly-app test suite confirmed green (77 binaries, 0 failures) via background-monitored canonical CI invocation (mock env + --test-threads=1); closes Req-7's UNCERTAIN status with evidence, not hypothesis
 
 ### Pending Todos
 
@@ -439,8 +441,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T14:13:45.233Z
-Stopped at: Completed 17-03-PLAN.md
+Last session: 2026-07-07T15:08:17.351Z
+Stopped at: Completed 17-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
