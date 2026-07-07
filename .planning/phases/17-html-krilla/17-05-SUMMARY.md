@@ -112,3 +112,7 @@ None - no external service configuration required.
 ---
 *Phase: 17-html-krilla*
 *Completed: 2026-07-07*
+
+## Self-Check: PASSED
+
+All modified files exist on disk and all 4 commits (806f138, cd91f83, 25cd23b, a3d7b35) are present in git history.
