@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: executing
-last_updated: "2026-07-07T15:08:17.357Z"
+status: milestone_complete
+last_updated: 2026-07-07T15:33:50.417Z
 last_activity: 2026-07-07
 progress:
   total_phases: 1
   completed_phases: 1
   total_plans: 7
-  completed_plans: 7
+  completed_plans: 124
   percent: 100
+stopped_at: Milestone complete (Phase 17 was final phase)
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 17 — html-krilla
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 17 (html-krilla) — EXECUTING
-Plan: 4 of 7
-Status: Ready to execute
+Phase: 17
+Plan: Not started
+Status: Milestone complete
 Last activity: 2026-07-07
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -40,7 +41,7 @@ Last activity: 2026-07-07
 
 **Velocity:**
 
-- Total plans completed: 89
+- Total plans completed: 96
 - Average duration: —
 - Total execution time: —
 
@@ -60,6 +61,7 @@ Last activity: 2026-07-07
 | 13 | 8 | - | - |
 | 14 | 3 | - | - |
 | 16 | 5 | - | - |
+| 17 | 7 | - | - |
 
 **Recent Trend:**
 

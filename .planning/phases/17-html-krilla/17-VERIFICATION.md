@@ -1,7 +1,8 @@
 ---
 phase: 17-html-krilla
 verified: 2026-07-07T22:40:00Z
-status: human_needed
+status: passed
+human_verified: 2026-07-07 — LAN-browser Req-4 items confirmed by user (Отчёты «Печать / Экспорт PDF», Шаблоны «Проверить», Акты print); see 17-HUMAN-UAT.md (status: resolved)
 score: 10/10 must-haves verified
 overrides_applied: 0
 re_verification:
