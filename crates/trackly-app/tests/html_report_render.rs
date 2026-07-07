@@ -100,6 +100,7 @@ async fn html_report_single_row_renders_columns_and_month() {
         "receiver_name",
         "location_name",
     ];
+    let labels = ["Номер", "Устройства", "Сдал", "Принял", "Локация"];
 
     let html = svc
         .export_pdf(
@@ -110,6 +111,7 @@ async fn html_report_single_row_renders_columns_and_month() {
             None,
             None,
             &columns,
+            &labels,
         )
         .await
         .expect("export_pdf ok");
@@ -159,6 +161,7 @@ async fn html_report_multi_month_groups_render_separately() {
         total: 2,
     };
     let columns = ["number", "device_name", "giver_name", "receiver_name"];
+    let labels = ["Номер", "Устройства", "Сдал", "Принял"];
 
     let html = svc
         .export_pdf(
@@ -169,6 +172,7 @@ async fn html_report_multi_month_groups_render_separately() {
             None,
             None,
             &columns,
+            &labels,
         )
         .await
         .expect("export_pdf ok");
@@ -196,6 +200,7 @@ async fn html_report_empty_response_shows_no_data_message() {
         total: 0,
     };
     let columns = ["device_name"];
+    let labels = ["Устройства"];
 
     let html = svc
         .export_pdf(
@@ -206,6 +211,7 @@ async fn html_report_empty_response_shows_no_data_message() {
             None,
             None,
             &columns,
+            &labels,
         )
         .await
         .expect("export_pdf ok");
@@ -233,12 +239,22 @@ async fn html_report_org_header_present() {
         total: 1,
     };
     let columns = ["device_name"];
+    let labels = ["Устройства"];
     let mut org = empty_org();
     org.org_name = "ООО «Ромашка»".to_string();
     org.inn = "7701234567".to_string();
 
     let html = svc
-        .export_pdf(&rows, "Отчёт", "Сентябрь 2026", &org, None, None, &columns)
+        .export_pdf(
+            &rows,
+            "Отчёт",
+            "Сентябрь 2026",
+            &org,
+            None,
+            None,
+            &columns,
+            &labels,
+        )
         .await
         .expect("export_pdf ok");
 
@@ -271,6 +287,7 @@ async fn html_report_no_krilla_artifacts() {
         total: 0,
     };
     let columns = ["device_name"];
+    let labels = ["Устройства"];
 
     for rows in [&non_empty, &empty] {
         let html = svc
@@ -282,6 +299,7 @@ async fn html_report_no_krilla_artifacts() {
                 None,
                 None,
                 &columns,
+                &labels,
             )
             .await
             .expect("export_pdf ok");
@@ -297,4 +315,95 @@ async fn html_report_no_krilla_artifacts() {
             html.chars().take(80).collect::<String>()
         );
     }
+}
+
+/// Regression test for D-03/CR-01: the rendered header row must use the
+/// Russian labels supplied via `column_labels`, never the raw snake_case
+/// keys from `columns` — even though `columns` is still passed (and still
+/// used to resolve cell values via `row_field`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_report_header_uses_russian_labels_not_raw_keys() {
+    let (svc, _dir) = make_report_service();
+    let rows = ReportResponse {
+        rows: vec![make_row(
+            "2026-09",
+            "42",
+            "Принтер HP LaserJet",
+            "Петров П.П.",
+            "Сидоров С.С.",
+            "Склад №1",
+        )],
+        total: 1,
+    };
+    let columns = [
+        "number",
+        "device_name",
+        "giver_name",
+        "receiver_name",
+        "location_name",
+    ];
+    let labels = ["Номер", "Устройства", "Сдал", "Принял", "Локация"];
+
+    let html = svc
+        .export_pdf(
+            &rows,
+            "Тестовый отчёт",
+            "Сентябрь 2026",
+            &empty_org(),
+            None,
+            None,
+            &columns,
+            &labels,
+        )
+        .await
+        .expect("export_pdf ok");
+
+    assert!(
+        html.contains("<th>Сдал</th>"),
+        "expected Russian header label <th>Сдал</th> in HTML: {html}"
+    );
+    assert!(
+        !html.contains("giver_name"),
+        "raw snake_case key 'giver_name' must not leak into rendered header/output: {html}"
+    );
+}
+
+/// Regression test for WR-05: a disallowed logo mime must drop the logo
+/// entirely rather than being embedded (with any mime, spoofed or not) into
+/// the `data:` URI.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_report_disallowed_logo_mime_drops_logo() {
+    let (svc, _dir) = make_report_service();
+    let rows = ReportResponse {
+        rows: vec![make_row(
+            "2026-09",
+            "42",
+            "Принтер",
+            "Петров П.П.",
+            "Сидоров С.С.",
+            "Склад №1",
+        )],
+        total: 1,
+    };
+    let columns = ["device_name"];
+    let labels = ["Устройства"];
+
+    let html = svc
+        .export_pdf(
+            &rows,
+            "Отчёт",
+            "Сентябрь 2026",
+            &empty_org(),
+            Some(vec![1, 2, 3]),
+            Some("text/html".to_string()),
+            &columns,
+            &labels,
+        )
+        .await
+        .expect("export_pdf ok");
+
+    assert!(
+        !html.contains("<img src=\"data:"),
+        "disallowed logo mime must fully drop the logo, not embed it: {html}"
+    );
 }

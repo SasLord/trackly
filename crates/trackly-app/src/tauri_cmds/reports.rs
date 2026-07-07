@@ -412,3 +412,36 @@ pub async fn reports_get_report_counts(
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_reports_get_report_counts(state.inner(), &caller, domain, filter, period).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// D-03/CR-01 regression guard: `column_labels_for` must return exactly
+    /// as many labels as `columns_for` returns keys for every known
+    /// report_type, so `ctx["columns"]` (labels) and `row_field(row, col)`
+    /// (keys) stay index-aligned in `ReportService::export_pdf`.
+    #[test]
+    fn column_labels_for_is_index_aligned_with_columns_for() {
+        for report_type in [
+            "device_acts",
+            "device_returns",
+            "device_in_use",
+            "device_in_stock",
+            "cartridge_consumption",
+            "cartridge_refills",
+            "cartridge_in_use",
+            "cartridge_in_stock",
+        ] {
+            let cols = columns_for(report_type);
+            let labels = column_labels_for(report_type);
+            assert_eq!(
+                cols.len(),
+                labels.len(),
+                "columns_for({report_type:?}) has {} keys but column_labels_for({report_type:?}) has {} labels",
+                cols.len(),
+                labels.len()
+            );
+        }
+    }
+}

@@ -1430,6 +1430,7 @@ mod tests {
             total: 2,
         };
         let columns = ["device_name", "giver_name", "receiver_name"];
+        let labels = ["Устройства", "Сдал", "Принял"];
 
         let html = svc
             .export_pdf(
@@ -1440,6 +1441,7 @@ mod tests {
                 None,
                 None,
                 &columns,
+                &labels,
             )
             .await
             .expect("export_pdf ok");
@@ -1470,6 +1472,7 @@ mod tests {
             total: 0,
         };
         let columns = ["device_name"];
+        let labels = ["Устройства"];
 
         let html = svc
             .export_pdf(
@@ -1480,6 +1483,7 @@ mod tests {
                 None,
                 None,
                 &columns,
+                &labels,
             )
             .await
             .expect("export_pdf ok");
@@ -1498,11 +1502,21 @@ mod tests {
             total: 1,
         };
         let columns = ["device_name"];
+        let labels = ["Устройства"];
         let mut org = empty_org();
         org.org_name = "ООО «Ромашка»".to_string();
 
         let html = svc
-            .export_pdf(&rows, "Отчёт", "Сентябрь 2026", &org, None, None, &columns)
+            .export_pdf(
+                &rows,
+                "Отчёт",
+                "Сентябрь 2026",
+                &org,
+                None,
+                None,
+                &columns,
+                &labels,
+            )
             .await
             .expect("export_pdf ok");
 
