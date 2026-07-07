@@ -49,7 +49,7 @@ Trackly — портативное приложение для учёта тех
 **v1.2 — Документы через HTML-печать — ACTIVE**
 
 - [x] **Phase 16: Документы через HTML-печать** - Оба акта (приёма-передачи и приёмки устройства) генерируются из HTML-шаблонов (папка `templates/` рядом с exe + вшитый дефолт-fallback) и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN), визуально по образцу Word; krilla/DocSpec заморожен и не используется. (SPEC: 16-SPEC.md) (completed 2026-07-05)
-- [ ] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md) (plans 4/4; verification 2026-07-07: gaps found — см. 17-VERIFICATION.md)
+- [ ] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md) (plans 7/7; gap-closure 17-05..17-07 planned 2026-07-07 — см. 17-VERIFICATION.md)
 
 ## Phase Details
 
@@ -231,7 +231,7 @@ Trackly — портативное приложение для учёта тех
 
 **Success Criteria** (what must be TRUE): см. `17-SPEC.md` — Acceptance Criteria.
 
-**Plans**: 4 plans in 4 waves
+**Plans**: 7 plans in 6 waves (17-05..17-07 added 2026-07-07 as gap-closure after verification found gaps — см. 17-VERIFICATION.md)
 
 **Wave 1**
 
@@ -249,17 +249,26 @@ Trackly — портативное приложение для учёта тех
 
 - [x] 17-03-PLAN.md — Frontend: PdfPreviewModal mode='report', ReportsPage export/print via modal, TemplateEditor retargeted to file-backed HTML editor, bindings.ts regenerated
 
+**Wave 5 (gap-closure)** *(independent of each other — no file overlap)*
+
+- [ ] 17-05-PLAN.md — BLOCKER: column_labels_for(report_type) — русские подписи колонок вместо сырых ключей (D-03/CR-01); WR-05 logo mime allowlist enforcement; regression tests
+- [ ] 17-06-PLAN.md — WR-01: update_body валидирует тем же строгим build_safe_html_env, что и реальный рендер; WR-03: sandbox на preview-iframe (PdfPreviewModal.svelte, TemplateEditor.svelte) + checkpoint визуальной проверки
+
+**Wave 6 (gap-closure)** *(depends on Wave 5 — confirms full-suite green after fixes)*
+
+- [ ] 17-07-PLAN.md — Req-7: воспроизвести/подтвердить cargo test -p trackly-app зелёный под задокументированным корректным вызовом (mock env vars + --test-threads=1 + prebuilt ui/dist); документировать в devices_csv_import.rs
+
 ## Phase 17 Requirement Coverage
 
 | Requirement | Plan |
 |--------------|------|
-| Req-1 | 17-01 |
+| Req-1 | 17-01, 17-05 |
 | Req-2 | 17-01 |
 | Req-3 | 17-01 |
-| Req-4 | 17-03 |
-| Req-5 | 17-02, 17-03 |
+| Req-4 | 17-03, 17-06 |
+| Req-5 | 17-02, 17-03, 17-06 |
 | Req-6 | 17-01, 17-02, 17-04 |
-| Req-7 | 17-04 |
+| Req-7 | 17-04, 17-07 |
 
 ---
-*Last updated: 2026-07-06 — Phase 17 planned: 4 plans across 4 waves (17-01..17-04), all 7 SPEC requirements and D-01..D-13 decisions covered.*
+*Last updated: 2026-07-07 — Phase 17 gap-closure planned: 3 additional plans (17-05..17-07) across 2 waves, closing 17-VERIFICATION.md's blocker (D-03/CR-01) + 3 warnings (WR-01, WR-03, WR-05) + Req-7 full-suite-green uncertainty.*
