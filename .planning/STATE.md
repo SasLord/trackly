@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
-status: executing
-last_updated: "2026-07-07T02:04:31.276Z"
+status: verifying
+last_updated: "2026-07-07T02:16:19.053Z"
 last_activity: 2026-07-07
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 17 (html-krilla) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-07
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -162,6 +162,7 @@ Last activity: 2026-07-07
 | Phase 16 P04 | 20min | 2 tasks | 6 files |
 | Phase 17 P01 | 55min | 3 tasks | 6 files |
 | Phase 17 P04 | 50min | 3 tasks | 5 files |
+| Phase 17 P03 | 25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -372,6 +373,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 17-02: test env-var guard mutex switched to tokio::sync::Mutex (from std::sync::Mutex) since guards held across .await (clippy::await_holding_lock)
 - [Phase 17]: 17-04: html_report_render.rs negative-artifact assertion avoids literal DocSpec/render_docspec substrings to not trip the Req 6 grep gate on the test file itself
 - [Phase 17]: 17-04: fixed a Plan 17-01 unit test in report_service.rs whose negative-match assertion literally contained render_docspec/DocSpec strings, tripping the same Req 6 grep gate
+- [Phase 17]: 17-03: PdfPreviewModal mode=report is additive-only extension (no rewrite of print machinery); ReportsPage export+print unified onto one modal-opening trigger; TemplateEditor variables panel is per-kind data-driven (VARIABLES_BY_KIND) replacing static hardcoded block
 
 ### Pending Todos
 
@@ -433,8 +435,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T02:04:31.270Z
-Stopped at: Completed 17-04-PLAN.md
+Last session: 2026-07-07T02:16:19.046Z
+Stopped at: Completed 17-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
