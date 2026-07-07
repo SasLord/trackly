@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+{#- Default HTML template for Отчёты (Phase 17, D-01/D-02/D-03/D-04/D-05/D-07).
+
+  Self-contained HTML5 document (inline <style>, no external CSS/CDN) —
+  fresh "чистый современный вид" table design (zebra rows, distinct thead,
+  month-separator headings), NOT a direct port of the old DocSpec/krilla
+  layout. The organization header block below is copied verbatim from
+  act_handover.html (D-02) for visual consistency across all printed
+  documents.
+
+  Context variables (built in report_service.rs::export_pdf, D-04/D-05):
+    org.name, org.inn, org.kpp, org.address, org.logo_data_uri,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn
+    report_name (string) — human-readable report title
+    period_label (string) — human-readable period description
+    columns (list of Russian column-label strings, D-03 — Rust-supplied,
+      this template never hardcodes labels)
+    groups (list of { month_label: string, rows: list of cell-value lists
+      aligned to columns }, D-04/D-05 — computed in Rust, template only
+      iterates)
+
+  Autoescape is ON (build_safe_html_env, T-17-01-01) — plain {{ var }}
+  interpolation is HTML-safe by construction. The single exception is the
+  logo data URI (see inline comment at its use site, D-08): that value is
+  exclusively server-constructed base64 + a hardcoded mime whitelist,
+  never user-controlled HTML. The user may freely edit this file in
+  VSCode; the engine re-reads it from disk on every render.
+-#}
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>{{ report_name }}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm;
+  }
+  body {
+    font-family: "DejaVu Sans", "Arial", sans-serif;
+    font-size: 10.5pt;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 0;
+  }
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12pt;
+    align-items: flex-start;
+    margin-bottom: 16pt;
+  }
+  .header .logo img {
+    max-height: 60pt;
+    max-width: 120pt;
+  }
+  .header .requisites {
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .title {
+    text-align: center;
+    font-size: 15pt;
+    font-weight: bold;
+    margin: 8pt 0 0 0;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 10.5pt;
+    color: #555;
+    margin: 4pt 0 16pt 0;
+  }
+  h3.month-separator {
+    font-size: 11.5pt;
+    font-weight: bold;
+    color: #1a1a1a;
+    margin: 18pt 0 6pt 0;
+    padding-bottom: 3pt;
+    border-bottom: 2px solid #2c3e50;
+    page-break-after: avoid;
+  }
+  table.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10pt;
+    page-break-inside: auto;
+  }
+  table.report-table thead {
+    display: table-header-group;
+  }
+  table.report-table thead tr {
+    background-color: #2c3e50;
+  }
+  table.report-table thead th {
+    color: #fff;
+    font-weight: bold;
+    font-size: 9.5pt;
+    text-align: left;
+    padding: 6pt 8pt;
+    border-bottom: 1px solid #2c3e50;
+  }
+  table.report-table tbody tr {
+    page-break-inside: avoid;
+  }
+  table.report-table tbody tr:nth-child(even) {
+    background-color: #f2f4f6;
+  }
+  table.report-table tbody td {
+    padding: 5pt 8pt;
+    border-bottom: 1px solid #dde1e4;
+    font-size: 9.5pt;
+    vertical-align: top;
+  }
+  .empty-state {
+    margin: 20pt 0;
+    font-size: 11pt;
+    color: #555;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">
+      {%- if org.logo_data_uri %}
+      {#- logo_data_uri is server-constructed exclusively from base64 output
+        (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+        hardcoded mime whitelist (report_service.rs) — `| safe` here does not
+        reopen T-17-01-01's XSS mitigation, it only prevents autoescape from
+        HTML-entity-encoding the `/` in "data:image/png;base64,..." into
+        `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
+      <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
+      {%- endif %}
+    </div>
+    <div class="requisites">
+      {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
+      {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
+      {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
+      {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
+      {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+      {%- if org.okpo %}<div>ОКПО {{ org.okpo }}</div>{%- endif %}
+      {%- if org.ogrn %}<div>ОГРН {{ org.ogrn }}</div>{%- endif %}
+    </div>
+  </div>
+
+  <div class="title">{{ report_name }}</div>
+  <div class="subtitle">{{ period_label }}</div>
+
+  {%- if groups is not defined or groups | length == 0 %}
+  <p class="empty-state">Нет данных за указанный период.</p>
+  {%- else %}
+  {%- for group in groups %}
+  <h3 class="month-separator">{{ group.month_label }}</h3>
+  <table class="report-table">
+    <thead>
+      <tr>
+        {%- for col in columns %}
+        <th>{{ col }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in group.rows %}
+      <tr>
+        {%- for cell in row %}
+        <td>{{ cell }}</td>
+        {%- endfor %}
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endfor %}
+  {%- endif %}
+
+</body>
+</html>

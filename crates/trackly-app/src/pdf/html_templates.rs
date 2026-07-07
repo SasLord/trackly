@@ -36,6 +36,7 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
         "act_acceptance.html",
         include_str!("../../templates/act_acceptance.html"),
     ),
+    ("report.html", include_str!("../../templates/report.html")),
 ];
 
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins
