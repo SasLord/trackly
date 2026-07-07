@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-07T00:55:12.057Z"
+last_updated: "2026-07-07T02:04:31.276Z"
 last_activity: 2026-07-07
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 17 (html-krilla) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-07
 
@@ -161,6 +161,7 @@ Last activity: 2026-07-07
 | Phase 16 P05 | 45min | 3 tasks | 8 files |
 | Phase 16 P04 | 20min | 2 tasks | 6 files |
 | Phase 17 P01 | 55min | 3 tasks | 6 files |
+| Phase 17 P04 | 50min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -369,6 +370,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 17-02: T-17-02-01 mitigated via fixed DEFAULT_HTML_TEMPLATES allowlist check before path join in update_body/reset_to_default
 - [Phase ?]: 17-02: tests/template_edit.rs (Rule 3 fix) rewired with_organization + retargeted assertions from DB-backed get_active to file-backed list_all_for_editor
 - [Phase ?]: 17-02: test env-var guard mutex switched to tokio::sync::Mutex (from std::sync::Mutex) since guards held across .await (clippy::await_holding_lock)
+- [Phase 17]: 17-04: html_report_render.rs negative-artifact assertion avoids literal DocSpec/render_docspec substrings to not trip the Req 6 grep gate on the test file itself
+- [Phase 17]: 17-04: fixed a Plan 17-01 unit test in report_service.rs whose negative-match assertion literally contained render_docspec/DocSpec strings, tripping the same Req 6 grep gate
 
 ### Pending Todos
 
@@ -430,8 +433,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T00:55:12.051Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-07-07T02:04:31.270Z
+Stopped at: Completed 17-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

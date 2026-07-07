@@ -179,7 +179,7 @@ Trackly — портативное приложение для учёта тех
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
-| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 2/4 | In Progress|  |
+| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 3/4 | In Progress|  |
 
 ## Coverage
 
@@ -243,7 +243,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 3** *(depends on Wave 1 + Wave 2)*
 
-- [ ] 17-04-PLAN.md — Backend tests: html_report_render.rs (1/N rows, month grouping, empty), template_edit.rs rewritten for file-backed contract, krilla #[ignore] hygiene sweep + struct-field doc-comments
+- [x] 17-04-PLAN.md — Backend tests: html_report_render.rs (1/N rows, month grouping, empty), template_edit.rs rewritten for file-backed contract, krilla #[ignore] hygiene sweep + struct-field doc-comments
 
 **Wave 4** *(depends on Wave 3 — merged Rust tree guaranteed before bindings regeneration)*
 
