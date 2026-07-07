@@ -4,6 +4,22 @@
 //! Task 2 (Commit-тесты): проверяем `import_csv_commit` — добавляются в этом же файле.
 //!
 //! Каждый тест обёрнут в `tokio::time::timeout(30s)`.
+//!
+//! ВАЖНО (Phase 17, план 17-07): неотфильтрованный `cargo test -p trackly-app` (или
+//! `--workspace`) БЕЗ `-- --test-threads=1` может выглядеть как многоминутное зависание
+//! именно на интеграционных тестах этого крейта (в т.ч. в файлах вроде этого) — это
+//! ЗАДОКУМЕНТИРОВАННЫЙ класс проблемы, а НЕ дефект в `devices_csv_import.rs`. Причина:
+//! несколько `#[tokio::test]` внутри одного тест-бинарника поднимают tokio multi_thread
+//! runtime + tracing-appender non_blocking background thread + WriterHandle spawn_blocking;
+//! параллельный запуск таких тестов насыщает worker-потоки (см. комментарий в
+//! `.github/workflows/ci-fast.yml` рядом с шагом `cargo test`, наблюдалось 30+ минут
+//! зависания на ubuntu CI-раннере). Канонический корректный вызов (после `pnpm --dir ui
+//! build`, и убедившись, что нет другого параллельного `cargo`-процесса — project
+//! convention «один `cargo test` за раз»):
+//!
+//! ```text
+//! TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app -- --test-threads=1
+//! ```
 
 use std::sync::Arc;
 use std::time::Duration;
