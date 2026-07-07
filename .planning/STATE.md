@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-06T15:45:34.726Z"
-last_activity: 2026-07-06 -- Phase 17 planning complete
+last_updated: "2026-07-07T00:10:53.942Z"
+last_activity: 2026-07-07
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** Phase 17 — html-krilla
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
+Phase: 17 (html-krilla) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-06 -- Phase 17 planning complete
+Last activity: 2026-07-07
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -160,6 +160,7 @@ Last activity: 2026-07-06 -- Phase 17 planning complete
 | Phase 16 P03 | 15min | 3 tasks | 3 files |
 | Phase 16 P05 | 45min | 3 tasks | 8 files |
 | Phase 16 P04 | 20min | 2 tasks | 6 files |
+| Phase 17 P01 | 55min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -363,6 +364,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 16-04: Save-as-PDF button removed entirely (not repurposed to save raw HTML) — browser print dialog already offers Save-as-PDF (D-09/Req 5)
 - [Phase ?]: 16-04: Rule 1 fix in client.ts (outside stated files_modified) — HTTP transport's binary-response branch wrongly converted text/html responses to number[]; added explicit text/html -> res.text() branch, required for D-09 dual-transport correctness
 - [Phase ?]: 16-04: templates_render_preview stale application/pdf content-type + Promise<number[]> frontend type left unfixed (dead code, zero UI callers) — logged to deferred-items.md
+- [Phase ?]: 17-01: ReportService gained minimal organization: Option<Arc<OrganizationService>> field + with_organization builder (not full pipeline struct) since export_pdf only needs .paths for templates_dir resolution
 
 ### Pending Todos
 
@@ -424,9 +426,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-06T14:09:12.050Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-html-krilla/17-CONTEXT.md
+Last session: 2026-07-07T00:10:53.934Z
+Stopped at: Completed 17-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
