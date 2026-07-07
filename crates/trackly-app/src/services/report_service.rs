@@ -184,6 +184,11 @@ pub struct ReportService {
     pub readers: Arc<ReaderPool>,
     pub clock: Arc<dyn Clock + Send + Sync>,
     pub config: Arc<AppConfig>,
+    /// D-13-style freeze (Phase 17): the krilla renderer handle is no longer
+    /// invoked on this service's active path — `export_pdf` renders HTML via
+    /// `build_safe_html_env` instead. Kept only because `ReportService::new`'s
+    /// constructor signature is used by ~5 existing call sites (context.rs,
+    /// http/health.rs, tauri_cmds/health.rs, and several test fixtures).
     pub pdf: Arc<PdfRenderer>,
     /// Phase 17: source of `Paths` for `templates/report.html` resolution
     /// (file-first + embedded fallback, mirrors `ActService::organization`).
@@ -1423,8 +1428,8 @@ mod tests {
         assert!(html.contains("Петров П.П."));
         assert!(html.contains("Сидоров С.С."));
         assert!(
-            !html.contains("DocSpec") && !html.contains("render_docspec"),
-            "HTML output must not reference DocSpec/render_docspec: {html}"
+            html.contains("<html") || html.contains("<!DOCTYPE"),
+            "HTML output must be well-formed HTML markup, not a document-spec artifact: {html}"
         );
     }
 

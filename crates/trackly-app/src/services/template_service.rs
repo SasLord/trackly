@@ -55,6 +55,12 @@ pub struct TemplateService {
     pub writer: Arc<WriterHandle>,
     pub readers: Arc<ReaderPool>,
     pub clock: Arc<dyn Clock + Send + Sync>,
+    /// D-13-style freeze (Phase 17): the krilla renderer handle is no longer
+    /// invoked on this service's active path — `validate_preview` renders
+    /// HTML via `build_safe_html_env` instead. Kept only because
+    /// `TemplateService::new`'s constructor signature is used by ~10 existing
+    /// call sites (context.rs, http/health.rs, tauri_cmds/health.rs, and
+    /// numerous test fixtures).
     pub pdf: Arc<PdfRenderer>,
     /// Phase 17: source of `Paths` for `templates/*.html` file-first
     /// resolution used by the editor-facing methods (`list_all_for_editor`,
