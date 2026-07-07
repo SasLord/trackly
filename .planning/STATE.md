@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-07T00:10:53.942Z"
+last_updated: "2026-07-07T00:55:12.057Z"
 last_activity: 2026-07-07
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 17 (html-krilla) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-07
 
@@ -365,6 +365,10 @@ Recent decisions affecting current work:
 - [Phase ?]: 16-04: Rule 1 fix in client.ts (outside stated files_modified) — HTTP transport's binary-response branch wrongly converted text/html responses to number[]; added explicit text/html -> res.text() branch, required for D-09 dual-transport correctness
 - [Phase ?]: 16-04: templates_render_preview stale application/pdf content-type + Promise<number[]> frontend type left unfixed (dead code, zero UI callers) — logged to deferred-items.md
 - [Phase ?]: 17-01: ReportService gained minimal organization: Option<Arc<OrganizationService>> field + with_organization builder (not full pipeline struct) since export_pdf only needs .paths for templates_dir resolution
+- [Phase ?]: 17-02: TemplateService organization field + with_organization builder mirrors ActService/ReportService; validate_preview retargeted to HTML render
+- [Phase ?]: 17-02: T-17-02-01 mitigated via fixed DEFAULT_HTML_TEMPLATES allowlist check before path join in update_body/reset_to_default
+- [Phase ?]: 17-02: tests/template_edit.rs (Rule 3 fix) rewired with_organization + retargeted assertions from DB-backed get_active to file-backed list_all_for_editor
+- [Phase ?]: 17-02: test env-var guard mutex switched to tokio::sync::Mutex (from std::sync::Mutex) since guards held across .await (clippy::await_holding_lock)
 
 ### Pending Todos
 
@@ -426,8 +430,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T00:10:53.934Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-07-07T00:55:12.051Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

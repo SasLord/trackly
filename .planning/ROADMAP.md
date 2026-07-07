@@ -179,7 +179,7 @@ Trackly — портативное приложение для учёта тех
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
-| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 1/4 | In Progress|  |
+| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 2/4 | In Progress|  |
 
 ## Coverage
 
@@ -239,7 +239,7 @@ Trackly — портативное приложение для учёта тех
 
 **Wave 2** *(depends on Wave 1 — shares context.rs construction block)*
 
-- [ ] 17-02-PLAN.md — TemplateService retarget: list_all_for_editor/update_body/reset_to_default/validate_preview → file I/O on templates/*.html (wire OrganizationService), Tauri/HTTP kind passthrough
+- [x] 17-02-PLAN.md — TemplateService retarget: list_all_for_editor/update_body/reset_to_default/validate_preview → file I/O on templates/*.html (wire OrganizationService), Tauri/HTTP kind passthrough
 
 **Wave 3** *(depends on Wave 1 + Wave 2)*
 
