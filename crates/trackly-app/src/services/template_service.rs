@@ -210,13 +210,20 @@ impl TemplateService {
 
     /// Обновляет тело шаблона. Требует `ManageSettings`.
     ///
-    /// Валидирует синтаксис MiniJinja перед записью на диск.
+    /// Валидирует тело через `self.validate_preview` — тот же строгий
+    /// `build_safe_html_env` + demo-контекст пайплайн, что и реальный рендер
+    /// (WR-01 gap-closure, Plan 17-06): раньше валидация шла через отдельное
+    /// лениентное `minijinja::Environment::new()` (без autoescape, без
+    /// `UndefinedBehavior::Strict`), которое ловило только синтаксические
+    /// ошибки — шаблон с опечаткой в необъявленной переменной успешно
+    /// сохранялся и падал только при реальной печати. Теперь «Сохранить»
+    /// проходит тот же рендер, что и реальный документ.
     ///
     /// Phase 17: writes `templates/{kind}.html` on disk instead of
     /// `UPDATE document_templates`. `kind` is checked against the fixed
-    /// `DEFAULT_HTML_TEMPLATES` allowlist BEFORE any path join (T-17-02-01 —
-    /// no path-traversal surface, unrecognized `kind` never reaches
-    /// `templates_dir.join(...)`).
+    /// `DEFAULT_HTML_TEMPLATES` allowlist BEFORE any path join or render
+    /// (T-17-02-01 — no path-traversal surface, unrecognized `kind` never
+    /// reaches `templates_dir.join(...)`, and never triggers a render).
     pub async fn update_body(
         &self,
         caller: &Identity,
@@ -224,16 +231,6 @@ impl TemplateService {
         body: String,
     ) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
-
-        // Валидация синтаксиса MiniJinja
-        {
-            let mut env = minijinja::Environment::new();
-            env.add_template_owned("_validate", body.clone())
-                .map_err(|e| AppError::Validation {
-                    field: "body".to_string(),
-                    message: format!("Синтаксическая ошибка в шаблоне: {e}"),
-                })?;
-        }
 
         let filename = format!("{kind}.html");
         if !crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
@@ -245,6 +242,20 @@ impl TemplateService {
                 id: 0,
             });
         }
+
+        // Валидация тем же строгим пайплайном, что и реальный рендер
+        // (build_safe_html_env + demo_context_for_kind). Ремаппим поле
+        // ошибки на "body" — validate_preview возвращает field="template",
+        // но существующий UI/тестовый контракт update_body ожидает "body".
+        self.validate_preview(kind, &body)
+            .await
+            .map_err(|e| match e {
+                AppError::Validation { message, .. } => AppError::Validation {
+                    field: "body".to_string(),
+                    message,
+                },
+                other => other,
+            })?;
 
         let templates_dir = self.templates_dir()?;
         tokio::fs::write(templates_dir.join(&filename), body)

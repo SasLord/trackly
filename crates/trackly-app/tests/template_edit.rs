@@ -109,7 +109,7 @@ async fn update_body_writes_file_to_disk() {
         let (svc, _dir, templates_dir, _guard) = make_template_service().await;
         let caller = admin_caller();
 
-        let new_body = "Акт приёма-передачи: {{ act_number }} — КАСТОМНЫЙ ШАБЛОН".to_string();
+        let new_body = "Акт приёма-передачи: {{ act.number }} — КАСТОМНЫЙ ШАБЛОН".to_string();
         svc.update_body(&caller, "act_handover", new_body.clone())
             .await
             .expect("update_body");
@@ -260,4 +260,52 @@ async fn update_body_rejects_invalid_minijinja_syntax() {
     })
     .await
     .expect("update_body_rejects_invalid_minijinja_syntax budget")
+}
+
+/// WR-01 gap-closure (Plan 17-06): a template that is syntactically valid
+/// MiniJinja but references a top-level variable that does not exist in
+/// `demo_context_for_kind` must be rejected on save — the old bare-env
+/// validation (no `UndefinedBehavior::Strict`) let this through and it only
+/// failed at real render/print time. Asserts the same "field=body" contract
+/// and "file unchanged" invariant as `update_body_rejects_invalid_minijinja_syntax`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_body_rejects_undefined_top_level_variable() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir, templates_dir, _guard) = make_template_service().await;
+        let caller = admin_caller();
+
+        let file_path = templates_dir.join("act_handover.html");
+        let before = std::fs::read_to_string(&file_path);
+
+        let undefined_var_body = "{{ totally_undefined_marker }}".to_string();
+        let result = svc
+            .update_body(&caller, "act_handover", undefined_var_body)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "шаблон с необъявленной переменной должен быть отклонён"
+        );
+        match result {
+            Err(trackly_core::error::AppError::Validation { field, .. }) => {
+                assert_eq!(field, "body", "field должен быть 'body'");
+            }
+            other => panic!("ожидали Validation, получили: {other:?}"),
+        }
+
+        let after = std::fs::read_to_string(&file_path);
+        assert_eq!(
+            before.is_ok(),
+            after.is_ok(),
+            "file existence must not change (still absent, or still present)"
+        );
+        if let (Ok(before), Ok(after)) = (before, after) {
+            assert_eq!(
+                before, after,
+                "on-disk file must remain unchanged after a rejected update_body call"
+            );
+        }
+    })
+    .await
+    .expect("update_body_rejects_undefined_top_level_variable budget")
 }
