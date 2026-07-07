@@ -55,10 +55,14 @@
     cartridgeColors: _cartridgeColors,
     onFilterChange: _onFilterChange,
     onExportCsv,
-    onExportPdf,
+    // GAP-R4/Phase-17: «Экспорт PDF» and «Печать» now trigger the same
+    // preview+print modal, so the two buttons were merged into one
+    // («Печать / Экспорт PDF», wired to onPrint). These props are retained for
+    // parent compatibility but no longer rendered.
+    onExportPdf: _onExportPdf,
     onPrint,
     csvExporting,
-    pdfExporting,
+    pdfExporting: _pdfExporting,
   }: Props = $props();
 </script>
 
@@ -66,9 +70,6 @@
 <div class="export-buttons">
   <Button variant="secondary" size="sm" loading={csvExporting} onclick={onExportCsv}>
     Экспорт CSV
-  </Button>
-  <Button variant="secondary" size="sm" loading={pdfExporting} onclick={onExportPdf}>
-    Экспорт PDF
   </Button>
   <Button variant="ghost" size="sm" onclick={onPrint}>
     <svg
@@ -86,7 +87,7 @@
       <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
       <rect x="6" y="14" width="12" height="8"></rect>
     </svg>
-    Печать
+    Печать / Экспорт PDF
   </Button>
 </div>
 
