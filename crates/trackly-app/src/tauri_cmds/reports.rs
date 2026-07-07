@@ -149,14 +149,14 @@ pub async fn build_reports_export_csv(
     ctx.reports.export_csv(&rows, &cols).await
 }
 
-/// Export report rows as PDF bytes.
+/// Export report as an HTML string (Phase 17: migrated off krilla/DocSpec).
 pub async fn build_reports_export_pdf(
     ctx: &AppCtx,
     caller: &Identity,
     report_type: String,
     filter: ReportFilter,
     period: Option<PeriodDto>,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     authorize(caller, &Action::ReadData)?;
     let rows = fetch_report(ctx, &report_type, filter, period.clone()).await?;
     let org = ctx.org_db.get().await?;
@@ -347,7 +347,7 @@ pub async fn reports_export_pdf(
     report_type: String,
     filter: ReportFilter,
     period: Option<PeriodDto>,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_reports_export_pdf(state.inner(), &caller, report_type, filter, period).await
 }

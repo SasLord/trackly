@@ -2,7 +2,9 @@
 //!
 //! All handlers delegate to build_* helpers from tauri_cmds/reports.rs.
 //! Authentication: session_identity required for all handlers (any authenticated user).
-//! CSV export returns text/csv + UTF-8 BOM. PDF export returns application/pdf.
+//! CSV export returns text/csv + UTF-8 BOM. PDF export (Phase 17: migrated off
+//! krilla/DocSpec) now returns text/html; charset=utf-8 — an HTML document,
+//! not PDF bytes, mirroring the acts HTML-print pipeline (Phase 16).
 
 use axum::extract::State;
 use axum::{
@@ -199,7 +201,7 @@ pub async fn handler_export_csv(
     ))
 }
 
-/// Export report as PDF. Returns application/pdf.
+/// Export report as HTML (Phase 17). Returns text/html; charset=utf-8.
 pub async fn handler_export_pdf(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -208,13 +210,13 @@ pub async fn handler_export_pdf(
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    let bytes = build_reports_export_pdf(&ctx, &identity, p.report_type, p.filter, p.period)
+    let html = build_reports_export_pdf(&ctx, &identity, p.report_type, p.filter, p.period)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/pdf")],
-        bytes,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     ))
 }
 
