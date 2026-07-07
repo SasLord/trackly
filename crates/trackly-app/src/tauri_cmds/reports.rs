@@ -40,6 +40,33 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
     }
 }
 
+/// Russian column labels for HTML/PDF report headers (D-03/CR-01 fix).
+///
+/// Index-aligned with `columns_for(report_type)` — the same match arms, in
+/// the same order, one label per key. `columns_for` remains the source of
+/// truth for the underlying keys used by `row_field(row, col)` to resolve
+/// cell values; this function is used ONLY to build the header row shown to
+/// the user (`ctx["columns"]` in `ReportService::export_pdf`). Labels are
+/// sourced from `ui/src/features/reports/ReportsPage.svelte`'s
+/// `COLUMNS_MAP` so printed headers match the on-screen report table.
+fn column_labels_for(report_type: &str) -> Vec<&'static str> {
+    match report_type {
+        "device_acts" | "device_returns" => {
+            vec!["Номер", "Устройства", "Сдал", "Принял", "Локация"]
+        }
+        "device_in_use" | "device_in_stock" => {
+            vec!["Наименование", "Статус", "Расположение"]
+        }
+        "cartridge_consumption" | "cartridge_refills" => {
+            vec!["Код картриджа", "Модель", "Статус", "Локация"]
+        }
+        "cartridge_in_use" | "cartridge_in_stock" => {
+            vec!["Код", "Модель", "Статус", "Расположение"]
+        }
+        _ => vec!["ID"],
+    }
+}
+
 /// Human-readable report name (used in PDF header).
 fn report_display_name(report_type: &str) -> &'static str {
     match report_type {
@@ -179,6 +206,7 @@ pub async fn build_reports_export_pdf(
         None
     };
     let cols = columns_for(&report_type);
+    let labels = column_labels_for(&report_type);
     let report_name = report_display_name(&report_type);
     let period_label = period
         .as_ref()
@@ -193,6 +221,7 @@ pub async fn build_reports_export_pdf(
             logo_bytes,
             logo_mime,
             &cols,
+            &labels,
         )
         .await
 }

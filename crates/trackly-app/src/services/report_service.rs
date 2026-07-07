@@ -530,6 +530,13 @@ impl ReportService {
     /// `templates/report.html` (file-first + embedded fallback) via
     /// `build_safe_html_env` (Phase 17, Req 1/2). Mirrors the HTML-print
     /// pipeline shipped for acts in Phase 16 (`act_service.rs::render_pdf`).
+    ///
+    /// `columns` (keys, e.g. `"giver_name"`) remains the sole source of cell
+    /// values via `row_field(row, col)` — unchanged by the D-03/CR-01 fix.
+    /// `column_labels` (Russian labels, e.g. `"Сдал"`) is the NEW source of
+    /// the header row (`ctx["columns"]`); `columns_for`/`column_labels_for`
+    /// in `tauri_cmds/reports.rs` are index-aligned so `columns[i]` and
+    /// `column_labels[i]` refer to the same logical column.
     #[allow(clippy::too_many_arguments)]
     pub async fn export_pdf(
         &self,
@@ -540,6 +547,7 @@ impl ReportService {
         logo_bytes: Option<Vec<u8>>,
         logo_mime: Option<String>,
         columns: &[&str],
+        column_labels: &[&str],
     ) -> Result<String, AppError> {
         let organization = self
             .organization
@@ -620,7 +628,7 @@ impl ReportService {
             },
             "report_name": report_name,
             "period_label": period_label,
-            "columns": columns,
+            "columns": column_labels,
             "groups": groups,
         });
 
