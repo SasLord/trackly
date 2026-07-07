@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.1
 milestone_name: PDF-акт по образцу Word (мультиустройство)
 status: executing
-last_updated: "2026-07-07T13:28:23.385Z"
+last_updated: "2026-07-07T14:13:45.239Z"
 last_activity: 2026-07-07
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 17 (html-krilla) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-07-07
 
@@ -164,6 +164,7 @@ Last activity: 2026-07-07
 | Phase 17 P04 | 50min | 3 tasks | 5 files |
 | Phase 17 P03 | 25min | 3 tasks | 3 files |
 | Phase 17 P05 | 7min | 3 tasks | 3 files |
+| Phase 17 P06 | 15 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -438,7 +439,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T13:28:19.922Z
+Last session: 2026-07-07T14:13:45.233Z
 Stopped at: Completed 17-03-PLAN.md
 Resume file: None
 

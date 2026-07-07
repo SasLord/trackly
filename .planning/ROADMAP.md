@@ -179,7 +179,7 @@ Trackly — портативное приложение для учёта тех
 | 14. Данные и структура акта | v1.1.1 | 3/3 | Complete    | 2026-07-03 |
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
-| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 5/7 | In Progress|  |
+| 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 6/7 | In Progress|  |
 
 ## Coverage
 
@@ -252,7 +252,7 @@ Trackly — портативное приложение для учёта тех
 **Wave 5 (gap-closure)** *(independent of each other — no file overlap)*
 
 - [x] 17-05-PLAN.md — BLOCKER: column_labels_for(report_type) — русские подписи колонок вместо сырых ключей (D-03/CR-01); WR-05 logo mime allowlist enforcement; regression tests
-- [ ] 17-06-PLAN.md — WR-01: update_body валидирует тем же строгим build_safe_html_env, что и реальный рендер; WR-03: sandbox на preview-iframe (PdfPreviewModal.svelte, TemplateEditor.svelte) + checkpoint визуальной проверки
+- [x] 17-06-PLAN.md — WR-01: update_body валидирует тем же строгим build_safe_html_env, что и реальный рендер; WR-03: sandbox на preview-iframe (PdfPreviewModal.svelte, TemplateEditor.svelte) + checkpoint визуальной проверки
 
 **Wave 6 (gap-closure)** *(depends on Wave 5 — confirms full-suite green after fixes)*
 
