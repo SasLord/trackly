@@ -40,6 +40,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
+  import { apiCall } from '$lib/api/client';
 
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -51,16 +52,26 @@
     deviceName?: string;
   }
 
+  /** Plan 17-03 (D-09): reports_export_pdf self-fetch params for mode='report'. */
+  export interface ReportParams {
+    reportType: string;
+    filter: unknown;
+    period?: unknown;
+  }
+
   interface Props {
     open: boolean;
     actId: number | null;
     title: string;
     onClose: () => void;
     /** Plan 03-05: 'handover' → render акта приёма-передачи (default);
-     *  'acceptance' → render документа приёма устройства (DEV-14). */
-    mode?: 'handover' | 'acceptance';
+     *  'acceptance' → render документа приёма устройства (DEV-14);
+     *  'report' → render отчёта (Plan 17-03, D-09). */
+    mode?: 'handover' | 'acceptance' | 'report';
     /** Required when mode='acceptance'. */
     acceptancePayload?: AcceptancePayload | null;
+    /** Required when mode='report'. */
+    reportParams?: ReportParams | null;
   }
 
   const {
@@ -70,6 +81,7 @@
     onClose,
     mode = 'handover',
     acceptancePayload = null,
+    reportParams = null,
   }: Props = $props();
 
   let htmlContent = $state<string | null>(null);
@@ -88,6 +100,16 @@
         acceptancePayload.dateUtc,
       );
     }
+    if (mode === 'report') {
+      if (!reportParams) {
+        return Promise.reject(new Error('reportParams required for mode="report"'));
+      }
+      return apiCall<string>('reports_export_pdf', {
+        reportType: reportParams.reportType,
+        filter: reportParams.filter,
+        period: reportParams.period,
+      });
+    }
     if (actId === null) {
       return Promise.reject(new Error('actId required for mode="handover"'));
     }
@@ -95,7 +117,12 @@
   }
 
   const ready = $derived(
-    open && (mode === 'acceptance' ? acceptancePayload !== null : actId !== null),
+    open &&
+      (mode === 'acceptance'
+        ? acceptancePayload !== null
+        : mode === 'report'
+          ? reportParams !== null
+          : actId !== null),
   );
 
   $effect(() => {

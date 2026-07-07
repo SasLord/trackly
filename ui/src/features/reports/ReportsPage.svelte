@@ -10,6 +10,7 @@
   import PeriodSelector from './PeriodSelector.svelte';
   import ReportFilters from './ReportFilters.svelte';
   import ReportTable from './ReportTable.svelte';
+  import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
 
   type DomainKey = 'devices' | 'cartridges';
 
@@ -196,6 +197,10 @@
   // ---------------------------------------------------------------------------
   let csvExporting = $state(false);
   let pdfExporting = $state(false);
+  // Plan 17-03 (D-09/D-10): Экспорт PDF/Печать теперь открывают модалку
+  // предпросмотра+печати (PdfPreviewModal mode="report"), которая сама
+  // делает self-fetch reports_export_pdf — старый blob/download-путь удалён.
+  let reportModalOpen = $state(false);
 
   // ---------------------------------------------------------------------------
   // Filter dropdown data
@@ -377,89 +382,13 @@
       });
   }
 
+  // Plan 17-03 (D-10): both «Экспорт PDF» and «Печать» now open the same
+  // preview+print modal (PdfPreviewModal mode="report"), which self-fetches
+  // reports_export_pdf (now HTML, Phase 17-01) on open. The old blob/
+  // save-dialog download path and the separate printReport() function
+  // (which used to shell out to native file-save + open plugins) are gone.
   function exportPdf() {
-    pdfExporting = true;
-    apiCall<number[]>('reports_export_pdf', {
-      reportType: reportTypeKey(),
-      filter,
-      period: isSnapshot() ? undefined : period,
-    })
-      .then(async (bytes) => {
-        const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-        if (isTauri) {
-          try {
-            // Save via tauri-plugin-fs + open in system viewer
-            const { save } = await import('@tauri-apps/plugin-dialog');
-            const { writeFile } = await import('@tauri-apps/plugin-fs');
-            const { open: openPath } = await import('@tauri-apps/plugin-shell');
-            const filePath = await save({
-              title: 'Сохранить PDF',
-              defaultPath: 'отчёт.pdf',
-              filters: [{ name: 'PDF', extensions: ['pdf'] }],
-            });
-            if (filePath) {
-              await writeFile(filePath, new Uint8Array(bytes));
-              await openPath(filePath);
-            }
-          } catch {
-            // Fall back to blob download if tauri plugins unavailable
-            const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'отчёт.pdf';
-            a.click();
-            URL.revokeObjectURL(url);
-          }
-        } else {
-          const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'отчёт.pdf';
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      })
-      .catch(() => {
-        pushToast('error', 'Ошибка при создании PDF. Попробуйте ещё раз.');
-      })
-      .finally(() => {
-        pdfExporting = false;
-      });
-  }
-
-  async function printReport() {
-    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-    if (isTauri) {
-      // Generate PDF then open in system viewer
-      pdfExporting = true;
-      try {
-        const bytes = await apiCall<number[]>('reports_export_pdf', {
-          reportType: reportTypeKey(),
-          filter,
-          period: isSnapshot() ? undefined : period,
-        });
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const { writeFile } = await import('@tauri-apps/plugin-fs');
-        const { open: openPath } = await import('@tauri-apps/plugin-shell');
-        const filePath = await save({
-          title: 'Сохранить PDF для печати',
-          defaultPath: 'отчёт.pdf',
-          filters: [{ name: 'PDF', extensions: ['pdf'] }],
-        });
-        if (filePath) {
-          await writeFile(filePath, new Uint8Array(bytes));
-          await openPath(filePath);
-        }
-      } catch {
-        pushToast('error', 'Ошибка при создании PDF. Попробуйте ещё раз.');
-      } finally {
-        pdfExporting = false;
-      }
-    } else {
-      window.print();
-    }
+    reportModalOpen = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -539,7 +468,7 @@
         }}
         onExportCsv={exportCsv}
         onExportPdf={exportPdf}
-        onPrint={printReport}
+        onPrint={exportPdf}
         {csvExporting}
         {pdfExporting}
       />
@@ -554,6 +483,21 @@
       isSnapshot={isSnapshot()}
     />
   </div>
+
+  <PdfPreviewModal
+    open={reportModalOpen}
+    actId={null}
+    mode="report"
+    title="Печать отчёта"
+    reportParams={{
+      reportType: reportTypeKey(),
+      filter,
+      period: isSnapshot() ? undefined : period,
+    }}
+    onClose={() => {
+      reportModalOpen = false;
+    }}
+  />
 </div>
 
 <style lang="scss">
