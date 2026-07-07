@@ -264,7 +264,7 @@
   <!-- HTML preview iframe (Plan 17-03, D-11: srcdoc, no blob/PDF object URL) -->
   {#if previewHtml}
     <div class="preview-wrapper">
-      <iframe srcdoc={previewHtml} title="Превью" class="pdf-iframe"></iframe>
+      <iframe sandbox="" srcdoc={previewHtml} title="Превью" class="pdf-iframe"></iframe>
     </div>
   {/if}
 </section>

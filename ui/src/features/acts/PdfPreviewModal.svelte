@@ -285,7 +285,7 @@
       </div>
     {:else if htmlContent !== null}
       <div class="pdf-page-frame">
-        <iframe srcdoc={htmlContent} title="Document Preview" class="pdf-iframe"></iframe>
+        <iframe sandbox="" srcdoc={htmlContent} title="Document Preview" class="pdf-iframe"></iframe>
       </div>
     {:else}
       <div class="state state-empty">
