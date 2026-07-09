@@ -182,8 +182,22 @@ Trackly — портативное приложение для учёта тех
 4. Одинаковые по наименованию устройства объединены в раскрываемую группу; раскрыв группу, пользователь видит и может выбрать конкретный экземпляр с его инвентарным №, серийным №, моделью и состоянием.
 5. Если после фильтрации в списке остаётся единственная группа, она не отображается как группа — вместо неё сразу показывается плоский список устройств из этой группы.
 
-**Plans**: TBD
+**Plans**: 5 plans in 3 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 18-01-PLAN.md — Backend: list_grouped группировка name+model, сортировка count DESC, текстовый фильтр name/inv#/SN через FTS5 (AUTO-03/04/05 контракт)
+- [ ] 18-02-PLAN.md — dropdownAnchor.ts (portal-anchor слой) + первый потребитель LocationAutocomplete (AUTO-01)
+
+**Wave 2** *(depends on Wave 1 — 18-03 нужен dropdownAnchor.ts, 18-04 нужен backend-контракт + dropdownAnchor.ts; параллельны друг другу — нет пересечения файлов)*
+
+- [ ] 18-03-PLAN.md — PersonAutocomplete/DeviceAutocompleteField portal-миграция + AUTO-01 аудит 4 native-select компонентов
+- [ ] 18-04-PLAN.md — ActFormItemsTable: portal-дропдаун per-row, focus-open (AUTO-02), фильтрация (AUTO-03), рендер группы name+model+count (D-05)
+
+**Wave 3** *(depends on Wave 2 — тот же файл, что 18-04)*
+
+- [ ] 18-05-PLAN.md — ActFormItemsTable: drill-in по группе (AUTO-04 D-06/D-07), схлопывание единственной группы (AUTO-05 D-09), финальный чекпоинт
 
 ---
 
@@ -275,7 +289,7 @@ Trackly — портативное приложение для учёта тех
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
-| 18. Автокомплит и дропдауны | v1.1.2 | 0/TBD | Not started | - |
+| 18. Автокомплит и дропдауны | v1.1.2 | 0/5 | Not started | - |
 | 19. Акты — дата и редактирование | v1.1.2 | 0/TBD | Not started | - |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
@@ -373,11 +387,11 @@ Trackly — портативное приложение для учёта тех
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTO-01 | Phase 18 | Pending |
-| AUTO-02 | Phase 18 | Pending |
-| AUTO-03 | Phase 18 | Pending |
-| AUTO-04 | Phase 18 | Pending |
-| AUTO-05 | Phase 18 | Pending |
+| AUTO-01 | Phase 18 | Planned |
+| AUTO-02 | Phase 18 | Planned |
+| AUTO-03 | Phase 18 | Planned |
+| AUTO-04 | Phase 18 | Planned |
+| AUTO-05 | Phase 18 | Planned |
 | ACT-01 | Phase 19 | Pending |
 | ACT-02 | Phase 19 | Pending |
 | PRN-01 | Phase 20 | Pending |
@@ -388,4 +402,4 @@ Trackly — портативное приложение для учёта тех
 **Coverage:** 11/11 v1.1.2 requirements mapped ✓ — no orphans.
 
 ---
-*Last updated: 2026-07-09 — v1.1.2 roadmap appended: Phase 18 (Автокомплит и дропдауны, AUTO-01..05), Phase 19 (Акты — дата и редактирование, ACT-01/ACT-02), Phase 20 (Печать актов и организация, PRN-01/ORG-01/ORG-02), Phase 21 (коды картриджей/фотобарабанов, CRT-01). Phases 1–17 unchanged.*
+*Last updated: 2026-07-09 — Phase 18 planned: 5 plans in 3 waves (18-01..18-05), AUTO-01..05 mapped. Phase 19-21 still TBD.*

@@ -62,11 +62,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTO-01 | Phase 18 | Pending |
-| AUTO-02 | Phase 18 | Pending |
-| AUTO-03 | Phase 18 | Pending |
-| AUTO-04 | Phase 18 | Pending |
-| AUTO-05 | Phase 18 | Pending |
+| AUTO-01 | Phase 18 | Planned |
+| AUTO-02 | Phase 18 | Planned |
+| AUTO-03 | Phase 18 | Planned |
+| AUTO-04 | Phase 18 | Planned |
+| AUTO-05 | Phase 18 | Planned |
 | ACT-01 | Phase 19 | Pending |
 | ACT-02 | Phase 19 | Pending |
 | PRN-01 | Phase 20 | Pending |
