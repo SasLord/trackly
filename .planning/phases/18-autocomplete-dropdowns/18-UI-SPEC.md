@@ -40,7 +40,7 @@ shadcn-gate: не применяется (проект — vanilla Svelte 5, н�
 
 | Токен | Значение | Использование в фазе |
 |-------|----------|----------------------|
-| `--space-xs` | 4px | Вертикальный gap между строками мета-инфо внутри опции (SN / инв.№ / состояние) |
+| `--space-xs` | 4px | Вертикальный gap между строками мета-инфо внутри опции (SN / инв.№ / состояние); зазор portal-дропдауна от якоря |
 | `--space-sm` | 8px | Вертикальный padding элемента дропдауна (`var(--space-sm) var(--space-md)`), gap кнопки «← назад» |
 | `--space-md` | 16px | Горизонтальный padding элемента дропдауна и хедера группы |
 | `--space-lg` | 24px | — |
@@ -63,10 +63,10 @@ shadcn-gate: не применяется (проект — vanilla Svelte 5, н�
 |------|--------|-----|-------------|-------|
 | Body (наименование устройства, значение опции) | 14px | 400 | 1.5 | `--font-size-body`, `--font-weight-regular` |
 | Наименование в опции (акцент строки) | 14px | 500 | 1.5 | `--font-size-body`, `--font-weight-medium` |
-| Label (SN / инв.№ / модель / состояние, хедер группы, `×count`) | 13px | 400 | 1.4 | `--font-size-label`, `--font-weight-regular` |
-| `×count` бейдж и заголовок drill-in | 13px | 600 | 1.4 | `--font-size-label`, `--font-weight-semibold` |
+| Label (SN / инв.№ / модель / состояние, хедер группы) | 13px | 400 | 1.4 | `--font-size-label`, `--font-weight-regular` |
+| `×count` бейдж и заголовок drill-in (акцент) | 13px | 500 | 1.4 | `--font-size-label`, `--font-weight-medium` |
 
-Используются ровно 3 размера (14 / 13, плюс глобальные heading 20 / display 28 не задействованы в этой фазе) и 3 веса из глобальной шкалы (400 / 500 / 600). Новых размеров/весов не вводится.
+Используются ровно 2 веса из глобальной шкалы: **400 (regular)** для основного текста и мета-полей, **500 (medium)** для акцентных элементов (наименование в опции, `×count`-бейдж, заголовок drill-in). Вес 600 (semibold) в этой фазе НЕ используется. Задействованы 2 размера (14px body / 13px label); глобальные heading 20px / display 28px в пикере не применяются. Новых размеров/весов не вводится.
 
 ---
 
@@ -125,8 +125,8 @@ shadcn-gate: не применяется (проект — vanilla Svelte 5, н�
 | CSS position | `position: fixed` |
 | Ширина | Равна ширине инпута-якоря (`anchorRect.width`) |
 | Горизонталь | `left = anchorRect.left` |
-| Вертикаль (по умолчанию) | `top = anchorRect.bottom + 2px` (2px зазор — как текущий `top: calc(100% + 2px)`) |
-| Флип вверх | Если снизу не помещается `min(contentHeight, 240px)` до нижней кромки viewport → `bottom = viewportHeight - anchorRect.top + 2px` (раскрытие вверх) |
+| Вертикаль (по умолчанию) | `top = anchorRect.bottom + var(--space-xs)` (4px зазор на сетке) |
+| Флип вверх | Если снизу не помещается `min(contentHeight, 240px)` до нижней кромки viewport → `bottom = viewportHeight - anchorRect.top + var(--space-xs)` (раскрытие вверх) |
 | Репозиция | На `scroll` (capture, любой контейнер) и `resize` окна — пересчёт координат, дропдаун СЛЕДУЕТ за якорем (D-02). НЕ закрывать при скролле |
 | Закрытие | Клик вне (`mousedown` outside), `Escape`, выбор элемента, `blur` якоря без выбора |
 | z-index | `1000` (над модальным оверлеем; модалки в проекте < 1000) |
@@ -188,7 +188,7 @@ shadcn-gate: не применяется (проект — vanilla Svelte 5, н�
 |---------|-------|
 | `{name}` | `--font-size-body` 14px, `--font-weight-medium` 500, `--color-text-primary` |
 | `{model}` | `--font-size-label` 13px, `--color-text-secondary` (опускается если null) |
-| `×{count}` бейдж | `--font-size-label` 13px, `--font-weight-semibold` 600, `--color-accent`; выравнивание вправо (`margin-left: auto`) |
+| `×{count}` бейдж | `--font-size-label` 13px, `--font-weight-medium` 500, `--color-accent`; выравнивание вправо (`margin-left: auto`) |
 | chevron `›` (14×14) | опционально справа от бейджа для раскрываемых групп — сигнал drill-in |
 
 **D-08 — нераскрываемая группа:** если группа состоит ТОЛЬКО из несерийных И безынвентарных устройств с ОДНИМ состоянием — клик по строке группы **сразу выбирает** устройство (clone-семантика, qty вводится в колонке «Количество»), drill-in НЕ открывается, chevron НЕ показывается. Если состояния внутри разные — строки по состоянию (см. D-07 подгруппировка), клик по строке-подгруппе выбирает с указанием количества.
@@ -215,7 +215,7 @@ shadcn-gate: не применяется (проект — vanilla Svelte 5, н�
 | Серийный ИЛИ инвентаризированный | Отдельная строка: `SN {serial}` и/или `инв. {inv}` (что есть) + состояние | Выбор = qty 1 (жёстко) |
 | Несерийный И безынвентарный | Подгруппируются по состоянию (condition); одна строка на состояние: `Без номера · {состояние}` + `×{count}` + инпут количества | Выбор с указанием количества (cap по count) |
 
-Строка-хедер drill-in: кнопка «← Назад» слева (`--color-text-secondary`, hover `--color-text-primary`), название группы справа (`--font-size-label` 13px, `--color-text-secondary`). Разделитель `border-bottom: 1px solid var(--color-border)`.
+Строка-хедер drill-in: кнопка «← Назад» слева (`--color-text-secondary`, hover `--color-text-primary`), название группы справа (`--font-size-label` 13px, `--font-weight-medium` 500, `--color-text-secondary`). Разделитель `border-bottom: 1px solid var(--color-border)`.
 
 Мета-разделитель между полями строки — ` · ` (пробел-точка-пробел, `--color-text-muted`).
 
