@@ -49,11 +49,20 @@ pub struct DeviceFilter {
     pub location_id: Option<i64>,
     pub status_id: Option<i64>,
     pub state: Option<String>,
+    /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03).
+    /// Используется ТОЛЬКО внутри `list_grouped` при `group_by_condition=true` —
+    /// сопоставляет name/inventory_number/serial_number/model через
+    /// `build_fts_query` sanitizer + `devices_fts MATCH`. В `list()`/`export_csv`
+    /// поле остаётся неиспользуемым (pre-existing gap, вне скоупа Phase 18).
     pub name_prefix: Option<String>,
     /// Whether to include soft-deleted devices. Defaults to false.
     pub include_deleted: bool,
-    /// Если true — GROUP BY включает d.condition (для акт-формы).
-    /// Если false (по умолчанию) — без разбивки по condition (для страницы Устройств).
+    /// Если true (акт-форма/пикер устройства, Phase 18/D-04/D-05) — `list_grouped`
+    /// группирует по `(type_id, name, model)` (НЕ по condition), сортирует группы
+    /// по `count DESC` (остаток по убыванию), и поддерживает текстовый фильтр
+    /// через `name_prefix`.
+    /// Если false (по умолчанию, страница Устройств) — группировка по
+    /// `(type_id, name)`, сортировка по имени; поведение не изменено Phase 18.
     pub group_by_condition: bool,
 }
 
@@ -106,7 +115,12 @@ pub struct DeviceGroupRow {
     /// Total count in this group.
     pub count: i64,
     /// Number of distinct condition values in this group.
-    /// > 1 means the group has mixed conditions (only relevant when group_by_condition=false).
+    /// When `group_by_condition=false`: > 1 means the group has mixed conditions
+    /// (displayed as «разное» on the frontend).
+    /// When `group_by_condition=true` (Phase 18+): condition is NO LONGER part of
+    /// the group key (the key is `(type_id, name, model)`) — this field instead
+    /// signals to the frontend that a drill-in sub-grouping by condition is needed
+    /// (D-07), it does not reflect variation within the group key itself.
     pub condition_distinct_count: i64,
 }
 

@@ -197,11 +197,18 @@ pub struct DeviceFilter {
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
     pub state: Option<String>,
+    /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03).
+    /// Используется ТОЛЬКО в `list_grouped` при `group_by_condition=true` —
+    /// сопоставляет наименование/инвентарный №/серийный №/модель. В `list()`/
+    /// `export_csv` не используется (pre-existing gap, вне скоупа Phase 18).
     pub name_prefix: Option<String>,
     /// Включать ли мягко-удалённые устройства. По умолчанию false.
     pub include_deleted: bool,
-    /// Если true — GROUP BY включает condition (для акт-формы, сохраняет DEF-2B).
-    /// Если false (по умолчанию) — без разбивки по condition (для страницы Устройств).
+    /// Если true (акт-форма/пикер устройства, Phase 18/D-04/D-05) — группировка
+    /// по (type_id, name, model), сортировка по count DESC (остаток по убыванию),
+    /// текстовый фильтр по name_prefix активен.
+    /// Если false (по умолчанию, страница Устройств) — группировка по
+    /// (type_id, name), сортировка по имени; не изменено Phase 18.
     pub group_by_condition: bool,
 }
 
@@ -243,7 +250,11 @@ pub struct DeviceGroup {
     pub count: u64,
     pub ids: Vec<i32>,
     /// Количество различных значений condition в группе.
-    /// > 1 означает смешанную группу (отображается как «разное» на фронтенде).
+    /// При `group_by_condition=false`: > 1 означает смешанную группу (отображается
+    /// как «разное» на фронтенде).
+    /// При `group_by_condition=true` (Phase 18+): condition больше НЕ входит в
+    /// ключ группировки (ключ — (type_id, name, model)) — поле сигнализирует
+    /// фронтенду о необходимости drill-in подгруппировки по condition (D-07).
     #[specta(type = i32)]
     pub condition_distinct_count: i64,
 }

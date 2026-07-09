@@ -64,6 +64,56 @@ fn normalize_str(s: Option<&str>) -> Option<&str> {
     s.and_then(|v| if v.trim().is_empty() { None } else { Some(v) })
 }
 
+/// Плоское tuple-представление одной строки результата `list_grouped`.
+/// Порядок полей должен совпадать с колонками всех трёх SQL-веток
+/// (`sql_without_condition`, `sql_grouped_by_model_no_query`,
+/// `sql_grouped_by_model_with_query`) — все три используют идентичный SELECT-shape.
+type GroupRowTuple = (
+    i64,            // repr_id
+    i64,            // count (cnt)
+    String,         // id_list (GROUP_CONCAT)
+    i64,            // type_id
+    String,         // name
+    Option<String>, // model
+    Option<String>, // specs (notes)
+    Option<String>, // kit (complectation)
+    Option<String>, // state (condition)
+    i64,            // condition_distinct_count
+    Option<i64>,    // location_id
+    i64,            // status_id
+    i64,            // version
+    i64,            // created_at_utc
+    i64,            // updated_at_utc
+    Option<String>, // location_name
+    Option<String>, // inv_no
+    Option<String>, // serial_no
+);
+
+/// Маппинг строки результата `list_grouped` → плоский tuple.
+/// Переиспользуется всеми тремя SQL-ветками — избегает тройного дублирования closure.
+fn group_row_tuple(row: &rusqlite::Row<'_>) -> rusqlite::Result<GroupRowTuple> {
+    Ok((
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        row.get(3)?,
+        row.get(4)?,
+        row.get(5)?,
+        row.get(6)?,
+        row.get(7)?,
+        row.get(8)?,
+        row.get(9)?,
+        row.get(10)?,
+        row.get(11)?,
+        row.get(12)?,
+        row.get(13)?,
+        row.get(14)?,
+        row.get(15)?,
+        row.get(16)?,
+        row.get(17)?,
+    ))
+}
+
 /// Sanitize user input for FTS5 MATCH queries (T-02-04-01).
 ///
 /// - Splits on whitespace
@@ -910,28 +960,39 @@ impl DeviceRepository for SqliteDeviceRepository {
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Group devices by (type_id, name[, condition]) — ITEM-1 dual-mode.
+        // Group devices by (type_id, name[, model]) — ITEM-1 / Phase 18 dual-mode.
         //
         // Round 8 fix: the previous key included model/notes/complectation/condition/
         // location_id/status_id, which was too strict — two monitors with the same
         // Наименование but different locations or statuses would NOT collapse.
         //
-        // Round 9 fix (DEF-2B): condition was included in the group key.
+        // Round 9 fix (DEF-2B): condition was included in the group key for the
+        // true-branch. Phase 18 (D-05) supersedes this: condition is REMOVED from
+        // the true-branch group key and replaced with model — two devices with the
+        // same name but different model must now be split, while same name+model
+        // but different condition must now collapse (condition_distinct_count still
+        // signals the variation for frontend drill-in, D-07).
         //
-        // ITEM-1 fix: split into two static SQL branches controlled by filter.group_by_condition:
-        //   - false (default, DevicesPage): GROUP BY (type_id, name) — collapses mixed condition
-        //   - true (ActFormItemsTable): GROUP BY (type_id, name, condition) — preserves DEF-2B
+        // Static SQL branches controlled by filter.group_by_condition + text filter:
+        //   - group_by_condition=false (DevicesPage): GROUP BY (type_id, name) —
+        //     `sql_without_condition`, UNCHANGED by Phase 18.
+        //   - group_by_condition=true, no text filter: GROUP BY (type_id, name, model),
+        //     ORDER BY count DESC — `sql_grouped_by_model_no_query` (D-04/D-05).
+        //   - group_by_condition=true, text filter present: same grouping/sort PLUS
+        //     `devices_fts MATCH` — `sql_grouped_by_model_with_query` (AUTO-03).
         //
-        // Both branches include COUNT(DISTINCT d.condition) AS condition_distinct_count
-        // so the frontend can display «разное» for mixed-condition groups.
+        // All three branches include COUNT(DISTINCT d.condition) AS condition_distinct_count
+        // so the frontend can display «разное» / trigger drill-in.
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
         // list_grouped uses a manual query (not SELECT_DEVICES) because it aggregates.
         //
-        // Static strings — no format!() — SQL injection impossible (T-03.3-01).
+        // Static strings — no format!() with user text — SQL injection impossible
+        // (T-03.3-01 / T-18-01). The only user-controlled value is `match_expr`,
+        // built by `build_fts_query` and bound via `rusqlite::params!` as ?4.
 
-        let sql_with_condition = "SELECT
+        let sql_grouped_by_model_no_query = "SELECT
                    MIN(d.id)                            AS repr_id,
                    COUNT(*)                             AS cnt,
                    GROUP_CONCAT(d.id)                   AS id_list,
@@ -939,7 +1000,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.model)                         AS model,
                    MAX(d.notes)                         AS notes,
                    MAX(d.complectation)                 AS complectation,
-                   d.condition                          AS condition,
+                   MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT d.condition)          AS condition_distinct_count,
                    MAX(d.location_id)                   AS location_id,
                    MAX(d.status_id)                     AS status_id,
@@ -955,14 +1016,50 @@ impl DeviceRepository for SqliteDeviceRepository {
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
                      AND d2.name = d.name
-                     AND d2.condition IS d.condition
+                     AND d2.model IS d.model
                      AND d2.deleted_at_utc IS NULL
                      AND (?1 IS NULL OR d2.status_id = ?1)
                  )
                  WHERE d.deleted_at_utc IS NULL
                    AND (?1 IS NULL OR d.status_id = ?1)
-                 GROUP BY d.type_id, d.name, d.condition
-                 ORDER BY d.name
+                 GROUP BY d.type_id, d.name, d.model
+                 ORDER BY cnt DESC, d.name ASC
+                 LIMIT ?2 OFFSET ?3";
+
+        let sql_grouped_by_model_with_query = "SELECT
+                   MIN(d.id)                            AS repr_id,
+                   COUNT(*)                             AS cnt,
+                   GROUP_CONCAT(d.id)                   AS id_list,
+                   d.type_id, d.name,
+                   MAX(d.model)                         AS model,
+                   MAX(d.notes)                         AS notes,
+                   MAX(d.complectation)                 AS complectation,
+                   MAX(d.condition)                     AS condition,
+                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.status_id)                     AS status_id,
+                   MAX(d.version)                       AS version,
+                   MAX(d.created_at_utc)                AS created_at_utc,
+                   MAX(d.updated_at_utc)                AS updated_at_utc,
+                   l.name                               AS location_name,
+                   MAX(d.inventory_number)              AS inv_no,
+                   MAX(d.serial_number)                 AS serial_no
+                 FROM devices d
+                 JOIN devices_fts ON d.id = devices_fts.rowid
+                 LEFT JOIN locations l ON l.id = (
+                   SELECT MAX(d2.location_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.model IS d.model
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
+                 WHERE d.deleted_at_utc IS NULL
+                   AND (?1 IS NULL OR d.status_id = ?1)
+                   AND devices_fts MATCH ?4
+                 GROUP BY d.type_id, d.name, d.model
+                 ORDER BY cnt DESC, d.name ASC
                  LIMIT ?2 OFFSET ?3";
 
         let sql_without_condition = "SELECT
@@ -998,60 +1095,45 @@ impl DeviceRepository for SqliteDeviceRepository {
                  ORDER BY d.name
                  LIMIT ?2 OFFSET ?3";
 
-        let sql = if filter.group_by_condition {
-            sql_with_condition
+        // AUTO-03: text filter (name_prefix) only participates in SQL when
+        // group_by_condition=true — the false-branch (DevicesPage) keeps its
+        // pre-existing behaviour of ignoring name_prefix entirely.
+        let query_text = filter
+            .name_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+
+        let (sql, match_expr): (&str, Option<String>) = if filter.group_by_condition {
+            match query_text {
+                Some(text) => {
+                    let match_expr = build_fts_query(text);
+                    // Empty query after sanitization → return empty result set
+                    // immediately, mirroring `search_fts`'s behaviour.
+                    if match_expr.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    (sql_grouped_by_model_with_query, Some(match_expr))
+                }
+                None => (sql_grouped_by_model_no_query, None),
+            }
         } else {
-            sql_without_condition
+            (sql_without_condition, None)
         };
 
         let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
 
-        let rows = stmt
-            .query_map(rusqlite::params![status_id, limit, offset], |row| {
-                let repr_id: i64 = row.get(0)?;
-                let count: i64 = row.get(1)?;
-                let id_list: String = row.get(2)?;
-                let type_id: i64 = row.get(3)?;
-                let name: String = row.get(4)?;
-                let model: Option<String> = row.get(5)?;
-                let specs: Option<String> = row.get(6)?; // notes
-                let kit: Option<String> = row.get(7)?; // complectation
-                let state: Option<String> = row.get(8)?; // condition
-                let condition_distinct_count: i64 = row.get(9)?;
-                let location_id: Option<i64> = row.get(10)?;
-                let status_id: i64 = row.get(11)?;
-                let version: i64 = row.get(12)?;
-                let created_at_utc: i64 = row.get(13)?;
-                let updated_at_utc: i64 = row.get(14)?;
-                let location_name: Option<String> = row.get(15)?;
-                // MAX aggregates: for count==1 these equal the device's actual values;
-                // for count>1 the UI hides inv/serial columns via colspan, so the value
-                // is present but not displayed (no regression for multi-device groups).
-                let inv_no: Option<String> = row.get(16)?;
-                let serial_no: Option<String> = row.get(17)?;
-
-                Ok((
-                    repr_id,
-                    count,
-                    id_list,
-                    type_id,
-                    name,
-                    model,
-                    specs,
-                    kit,
-                    state,
-                    condition_distinct_count,
-                    location_id,
-                    status_id,
-                    version,
-                    created_at_utc,
-                    updated_at_utc,
-                    location_name,
-                    inv_no,
-                    serial_no,
-                ))
-            })
-            .map_err(map_rusqlite)?;
+        let rows = match &match_expr {
+            Some(match_expr) => stmt
+                .query_map(
+                    rusqlite::params![status_id, limit, offset, match_expr],
+                    group_row_tuple,
+                )
+                .map_err(map_rusqlite)?,
+            None => stmt
+                .query_map(rusqlite::params![status_id, limit, offset], group_row_tuple)
+                .map_err(map_rusqlite)?,
+        };
 
         let mut groups = Vec::new();
         for row_result in rows {
