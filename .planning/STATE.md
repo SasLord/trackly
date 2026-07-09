@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-07-09T13:02:17.702Z"
 last_activity: 2026-07-09
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** v1.1.2 roadmap created — 4 phases (18-21), awaiting phase planning
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 18 — Автокомплит и дропдауны (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-07-09 — Milestone v1.1.2 started
+Status: Roadmap created; next `/gsd-plan-phase 18`
+Last activity: 2026-07-09 — Roadmap v1.1.2 written (Phase 18-21, 11/11 requirements mapped)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -182,6 +182,10 @@ Last activity: 2026-07-09 — Milestone v1.1.2 started
 - Phase 14 added (2026-07-03): Данные и структура акта — миграции/схема для расширенных реквизитов организации, Комплектации, Технических характеристик, Срока до, мультиустройства и контекста рендера. Milestone v1.1.1 (PDFA-03, PDFA-04, PDFA-06).
 - Phase 15 added (2026-07-03): Рендер и соответствие образцу — дефолтный `.minijinja`-шаблон, мультиустройство через `ItemsTable`, двухстрочные подписи, regression-тесты PDF-пайплайна. Milestone v1.1.1 (PDFA-01, PDFA-02, PDFA-05, PDFA-07, PDFA-08).
 - Phase 17 added (2026-07-06): Отчёты и Шаблоны через HTML-печать — перевести экспорт Отчётов с krilla `render_docspec` на HTML-печать по паттерну Phase 16 (акты), переделать редактор Шаблонов в Настройках, убрать krilla из активного пути; закрывает отложенные пункты 16-HUMAN-UAT 2a (миграция Отчётов) и 2b (баг `reports_export_pdf` «Ошибка при создании PDF»). Milestone v1.2.
+- Phase 18 added (2026-07-09): Автокомплит и дропдауны — все автокомплиты через portal в `body`; выбор устройства в актах: открытие по фокусу, рабочая фильтрация, группировка одинаковых устройств с раскрытием, схлопывание единственной группы. Milestone v1.1.2 (AUTO-01..05).
+- Phase 19 added (2026-07-09): Акты — дата и редактирование — дата «Когда отдали» сохраняется как дата акта; кнопка «Редактировать» становится рабочей (требует диагностики первопричины перед фиксом). Milestone v1.1.2 (ACT-01, ACT-02).
+- Phase 20 added (2026-07-09): Печать актов и организация — полный org-контекст в шапке device-акта; безопасный SVG-логотип (санитизация/data: URI, без исполняемых скриптов); вторая строка адреса в печатных формах. Milestone v1.1.2 (PRN-01, ORG-01, ORG-02).
+- Phase 21 added (2026-07-09): Точечные фиксы — формат автокода картриджа `C-XXXX`, фотобарабана `D-XXXX`. Milestone v1.1.2 (CRT-01).
 
 ### Decisions
 
@@ -448,4 +452,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Roadmap created for v1.1.1 (Phase 14–15). Next: `/gsd-plan-phase 14`.
+- Roadmap created for v1.1.2 (Phase 18–21). Next: `/gsd-plan-phase 18`.

@@ -62,22 +62,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTO-01 | — | Pending |
-| AUTO-02 | — | Pending |
-| AUTO-03 | — | Pending |
-| AUTO-04 | — | Pending |
-| AUTO-05 | — | Pending |
-| ACT-01 | — | Pending |
-| ACT-02 | — | Pending |
-| PRN-01 | — | Pending |
-| ORG-01 | — | Pending |
-| ORG-02 | — | Pending |
-| CRT-01 | — | Pending |
+| AUTO-01 | Phase 18 | Pending |
+| AUTO-02 | Phase 18 | Pending |
+| AUTO-03 | Phase 18 | Pending |
+| AUTO-04 | Phase 18 | Pending |
+| AUTO-05 | Phase 18 | Pending |
+| ACT-01 | Phase 19 | Pending |
+| ACT-02 | Phase 19 | Pending |
+| PRN-01 | Phase 20 | Pending |
+| ORG-01 | Phase 20 | Pending |
+| ORG-02 | Phase 20 | Pending |
+| CRT-01 | Phase 21 | Pending |
 
 **Coverage:**
 - v1.1.2 requirements: 11 total
-- Mapped to phases: 0/11 (заполняется роадмапом)
-- Unmapped: 11
+- Mapped to phases: 11/11 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-07*
