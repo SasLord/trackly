@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: Roadmap created; next `/gsd-plan-phase 18`
-last_updated: "2026-07-09T13:56:49.459Z"
-last_activity: 2026-07-09 — Roadmap v1.1.2 written (Phase 18-21, 11/11 requirements mapped)
+status: executing
+last_updated: "2026-07-09T23:22:43.650Z"
+last_activity: 2026-07-09 -- Phase 18 planning complete
 progress:
   total_phases: 21
   completed_phases: 20
-  total_plans: 124
+  total_plans: 129
   completed_plans: 124
   percent: 95
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 18 — Автокомплит и дропдауны (not started)
 Plan: —
-Status: Roadmap created; next `/gsd-plan-phase 18`
-Last activity: 2026-07-09 — Roadmap v1.1.2 written (Phase 18-21, 11/11 requirements mapped)
+Status: Ready to execute
+Last activity: 2026-07-09 -- Phase 18 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -446,9 +446,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-09T13:56:49.452Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-autocomplete-dropdowns/18-CONTEXT.md
+Last session: 2026-07-09T14:17:19.184Z
+Stopped at: Phase 18 UI-SPEC approved
+Resume file: .planning/phases/18-autocomplete-dropdowns/18-UI-SPEC.md
 
 ## Operator Next Steps
 
