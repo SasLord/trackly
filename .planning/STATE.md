@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: planning
-last_updated: "2026-07-09T13:02:17.702Z"
-last_activity: 2026-07-09
+status: Roadmap created; next `/gsd-plan-phase 18`
+last_updated: "2026-07-09T13:56:49.459Z"
+last_activity: 2026-07-09 — Roadmap v1.1.2 written (Phase 18-21, 11/11 requirements mapped)
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 21
+  completed_phases: 20
+  total_plans: 124
+  completed_plans: 124
+  percent: 95
 ---
 
 # Project State
@@ -446,9 +446,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-07T15:08:17.351Z
-Stopped at: Completed 17-07-PLAN.md
-Resume file: None
+Last session: 2026-07-09T13:56:49.452Z
+Stopped at: Phase 18 context gathered
+Resume file: .planning/phases/18-autocomplete-dropdowns/18-CONTEXT.md
 
 ## Operator Next Steps
 
