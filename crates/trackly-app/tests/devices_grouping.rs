@@ -495,14 +495,17 @@ async fn grouping_groups_devices_with_same_name_and_different_location() {
 }
 
 // ---------------------------------------------------------------------------
-// grouping_groups_devices_with_same_name_and_different_condition
+// grouping_groups_devices_with_same_name_and_model_ignores_condition
 // ---------------------------------------------------------------------------
-// DEF-2B: two devices with the same Наименование but different condition/state
-// must appear as TWO separate groups (condition is now part of the group key).
-// Updated to use group_by_condition: true (ITEM-1).
+// D-05 (Phase 18): two devices with the same Наименование+model but different
+// condition/state must now COLLAPSE into ONE group — condition is no longer
+// part of the true-branch group key (model is). condition_distinct_count
+// signals the mixed condition for frontend drill-in (D-07).
+// Was: grouping_groups_devices_with_same_name_and_different_condition
+// (asserted the pre-Phase-18 condition-splits-groups behaviour, DEF-2B/ITEM-1).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn grouping_groups_devices_with_same_name_and_different_condition() {
+async fn grouping_groups_devices_with_same_name_and_model_ignores_condition() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
@@ -527,30 +530,30 @@ async fn grouping_groups_devices_with_same_name_and_different_condition() {
 
         assert_eq!(
             groups.len(),
-            2,
-            "DEF-2B: две клавиатуры с разными состояниями должны быть 2 группы, получили {} групп",
+            1,
+            "D-05: одинаковый name+model, разный condition → ОДНА группа, получили {} групп",
             groups.len()
         );
-        // Each group has count=1.
-        assert!(
-            groups.iter().all(|g| g.count == 1),
-            "каждая condition-группа должна содержать ровно 1 устройство"
+        assert_eq!(groups[0].count, 2, "count группы должен быть 2");
+        assert_eq!(
+            groups[0].condition_distinct_count, 2,
+            "condition_distinct_count должен сигнализировать смешанный condition (D-07)"
         );
     })
     .await
-    .expect("grouping_groups_devices_with_same_name_and_different_condition exceeded 30s");
+    .expect("grouping_groups_devices_with_same_name_and_model_ignores_condition exceeded 30s");
 }
 
 // ---------------------------------------------------------------------------
-// condition_key_splits_groups (DEF-2B)
+// model_key_splits_groups_condition_does_not (D-04/D-05, Phase 18)
 // ---------------------------------------------------------------------------
-// Два устройства с одинаковым name+model, но разным condition → две отдельные группы.
-// Дополнительно проверяет, что repr.state каждой группы соответствует её condition
-// (т.е. LEFT JOIN для location_name фильтрует по condition — нет cross-contamination repr).
-// Updated to use group_by_condition: true (ITEM-1).
+// Два устройства с одинаковым name+model, но разным condition → ОДНА группа
+// (condition больше не входит в ключ группировки true-ветки), condition_distinct_count
+// сигнализирует о смешанном condition для drill-in (D-07).
+// Was: condition_key_splits_groups (asserted old condition-key-splits behaviour).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn condition_key_splits_groups() {
+async fn model_key_splits_groups_condition_does_not() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
@@ -577,25 +580,18 @@ async fn condition_key_splits_groups() {
 
         assert_eq!(
             groups.len(),
-            2,
-            "разный condition → две группы, получили {} групп",
+            1,
+            "D-05: одинаковый name+model, разный condition → ОДНА группа, получили {} групп",
             groups.len()
         );
-
-        // Repr.state не cross-contaminated — каждая группа несёт своё значение condition.
-        let states: std::collections::HashSet<Option<String>> =
-            groups.iter().map(|g| g.repr.state.clone()).collect();
-        assert!(
-            states.contains(&Some("Новое".to_string())),
-            "группа с condition='Новое' должна присутствовать, states={states:?}"
-        );
-        assert!(
-            states.contains(&Some("Хорошее".to_string())),
-            "группа с condition='Хорошее' должна присутствовать, states={states:?}"
+        assert_eq!(groups[0].count, 2, "count группы должен быть 2");
+        assert_eq!(
+            groups[0].condition_distinct_count, 2,
+            "condition_distinct_count должен сигнализировать смешанный condition (D-07)"
         );
     })
     .await
-    .expect("condition_key_splits_groups exceeded 30s");
+    .expect("model_key_splits_groups_condition_does_not exceeded 30s");
 }
 
 // ---------------------------------------------------------------------------
@@ -662,12 +658,14 @@ async fn grouping_page_mode_ignores_condition() {
 }
 
 // ---------------------------------------------------------------------------
-// grouping_act_form_keeps_condition_split (ITEM-1b)
+// grouping_act_form_groups_by_name_and_model_not_condition (D-04/D-05, Phase 18)
 // ---------------------------------------------------------------------------
-// group_by_condition=true + два устройства с разным condition → 2 группы.
+// group_by_condition=true + два устройства с одинаковым name+model (оба None),
+// но разным condition → ОДНА группа (condition больше не входит в ключ).
+// Was: grouping_act_form_keeps_condition_split (asserted old 2-groups behaviour).
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn grouping_act_form_keeps_condition_split() {
+async fn grouping_act_form_groups_by_name_and_model_not_condition() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
@@ -690,17 +688,14 @@ async fn grouping_act_form_keeps_condition_split() {
 
         assert_eq!(
             groups.len(),
-            2,
-            "ITEM-1b: group_by_condition=true → разные condition остаются 2 группами, получили {} групп",
+            1,
+            "D-05: одинаковый name+model (оба None), разный condition → ОДНА группа, получили {} групп",
             groups.len()
         );
-        assert!(
-            groups.iter().all(|g| g.count == 1),
-            "ITEM-1b: каждая condition-группа должна содержать ровно 1 устройство"
-        );
+        assert_eq!(groups[0].count, 2, "count группы должен быть 2");
     })
     .await
-    .expect("grouping_act_form_keeps_condition_split exceeded 30s");
+    .expect("grouping_act_form_groups_by_name_and_model_not_condition exceeded 30s");
 }
 
 // ---------------------------------------------------------------------------
@@ -782,4 +777,225 @@ async fn condition_key_same_condition_collapses() {
     })
     .await
     .expect("condition_key_same_condition_collapses exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_true_branch_splits_by_model (D-05, Phase 18)
+// ---------------------------------------------------------------------------
+// Два устройства с одинаковым name, но РАЗНЫМ model, group_by_condition=true
+// → 2 отдельные группы (модель — часть ключа группировки true-ветки).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_true_branch_splits_by_model() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d1 = non_unique_device("Принтер HP", 1);
+        d1.model = Some("M404".to_string());
+
+        let mut d2 = non_unique_device("Принтер HP", 1);
+        d2.model = Some("M405".to_string());
+
+        svc.create(d1).await.expect("create model=M404");
+        svc.create(d2).await.expect("create model=M405");
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            2,
+            "D-05: одинаковое name, разный model → 2 группы (НЕ схлопывать), получили {} групп",
+            groups.len()
+        );
+        assert!(
+            groups.iter().all(|g| g.count == 1),
+            "каждая model-группа должна содержать ровно 1 устройство"
+        );
+    })
+    .await
+    .expect("grouping_true_branch_splits_by_model exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_true_branch_sorts_by_count_desc (D-04, Phase 18)
+// ---------------------------------------------------------------------------
+// 3 разноимённых группы с count 1/5/3, group_by_condition=true → порядок
+// групп строго по убыванию count (5, затем 3, затем 1), не по алфавиту.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_true_branch_sorts_by_count_desc() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // "Алоэ" (count=1) would sort first alphabetically, but must sort LAST by count.
+        svc.create(non_unique_device("Алоэ", 1))
+            .await
+            .expect("create count=1 group");
+        for _ in 0..5 {
+            svc.create(non_unique_device("Яблоко", 1))
+                .await
+                .expect("create count=5 group");
+        }
+        for _ in 0..3 {
+            svc.create(non_unique_device("Вишня", 1))
+                .await
+                .expect("create count=3 group");
+        }
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 3, "должно быть 3 группы");
+        let counts: Vec<u64> = groups.iter().map(|g| g.count).collect();
+        assert_eq!(
+            counts,
+            vec![5u64, 3, 1],
+            "D-04: порядок групп должен быть строго по убыванию count, получили {counts:?}"
+        );
+    })
+    .await
+    .expect("grouping_true_branch_sorts_by_count_desc exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_true_branch_filters_by_name_text (AUTO-03, Phase 18)
+// ---------------------------------------------------------------------------
+// name_prefix="Lenovo" (group_by_condition=true) → возвращает только группу,
+// чьё наименование матчится FTS5-токеном "Lenovo".
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_true_branch_filters_by_name_text() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        svc.create(non_unique_device("Ноутбук Lenovo X1", 1))
+            .await
+            .expect("create Lenovo");
+        svc.create(non_unique_device("Монитор Dell", 1))
+            .await
+            .expect("create Dell");
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            name_prefix: Some("Lenovo".to_string()),
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "AUTO-03: фильтр 'Lenovo' должен вернуть только 1 группу, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].repr.name, "Ноутбук Lenovo X1");
+    })
+    .await
+    .expect("grouping_true_branch_filters_by_name_text exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_true_branch_filters_by_inventory_and_serial (AUTO-03, Phase 18)
+// ---------------------------------------------------------------------------
+// Текстовый фильтр не ограничен именем — доказывает матч по inventory_number.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_true_branch_filters_by_inventory_and_serial() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let mut d = non_unique_device("Сервер Dell", 1);
+        d.inventory_no = Some("INV-777".to_string());
+        svc.create(d).await.expect("create with inv INV-777");
+
+        svc.create(non_unique_device("Другое устройство", 1))
+            .await
+            .expect("create unrelated device");
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            name_prefix: Some("INV-777".to_string()),
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "AUTO-03: фильтр по инвентарному № должен найти устройство, получили {} групп",
+            groups.len()
+        );
+        assert_eq!(groups[0].repr.name, "Сервер Dell");
+    })
+    .await
+    .expect("grouping_true_branch_filters_by_inventory_and_serial exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_true_branch_query_sanitizes_special_chars (T-18-01)
+// ---------------------------------------------------------------------------
+// FTS5 спецсимволы во входном тексте не должны вызывать Err/панику —
+// build_fts_query sanitizer превращает их в безопасные литералы.
+// Образец: devices_search.rs::search_quotes_user_input_with_special_chars.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_true_branch_query_sanitizes_special_chars() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        svc.create(non_unique_device("Принтер", 1))
+            .await
+            .expect("create");
+
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+
+        let tricky_queries = [
+            "(AND OR)",
+            "NOT foo",
+            "\"unmatched quote",
+            "NEAR(x y)",
+            "foo*bar",
+        ];
+
+        for q in &tricky_queries {
+            let filter = DeviceFilter {
+                group_by_condition: true,
+                name_prefix: Some(q.to_string()),
+                ..Default::default()
+            };
+            let result = svc.list_grouped(filter, page).await;
+            assert!(
+                result.is_ok(),
+                "T-18-01: запрос '{q}' должен выполниться без ошибки FTS5 синтаксиса, получили: {result:?}"
+            );
+        }
+    })
+    .await
+    .expect("grouping_true_branch_query_sanitizes_special_chars exceeded 30s");
 }
