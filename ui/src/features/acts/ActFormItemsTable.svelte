@@ -13,7 +13,7 @@
   import { devices } from '$lib/api/devices';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
-  import type { DeviceGroup } from '../../bindings';
+  import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   export interface FormItemRow {
     device_id: number | null;
@@ -74,6 +74,21 @@
   let activeIndexByRow = $state<Record<number, number>>({});
   const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
 
+  // Plan 18-05 (AUTO-04/D-06/D-07 + AUTO-05/D-09): drill-in view-mode per row.
+  // 'groups' — список групп (Plan 18-04 поведение); 'members' — раскрытая
+  // группа (клик по раскрываемой группе ИЛИ auto-flatten единственной группы).
+  let viewModeByRow = $state<Record<number, 'groups' | 'members'>>({});
+  let drillGroupByRow = $state<Record<number, DeviceGroup | null>>({});
+  let membersByRow = $state<Record<number, DeviceDto[]>>({});
+  // Локально введённое количество для под-группы (несерийные/безынвентарные,
+  // сгруппированные по state) внутри drill-in/flatten member-списка. Ключ —
+  // `${idx}:${subgroupKey}`.
+  let memberQtyByRow = $state<Record<string, number>>({});
+
+  type MemberRow =
+    | { kind: 'instance'; key: string; device: DeviceDto }
+    | { kind: 'subgroup'; key: string; state: string | null; devices: DeviceDto[] };
+
   function makeEmpty(): FormItemRow {
     return { device_id: null, quantity: 1, device_label: '', query: '', picked: false };
   }
@@ -91,6 +106,12 @@
   }
 
   function handleQueryInput(idx: number, v: string) {
+    // Plan 18-05 (UI-SPEC "изменение текста фильтра сбрасывает view-mode строки
+    // обратно к списку групп"): любое изменение ввода прерывает drill-in.
+    viewModeByRow[idx] = 'groups';
+    drillGroupByRow[idx] = null;
+    membersByRow[idx] = [];
+
     const next = items.map((it, i) =>
       i === idx ? { ...it, query: v, picked: false, device_id: null, device_label: '' } : it,
     );
@@ -132,6 +153,9 @@
       suggestionsByRow[idx] = filtered;
       activeIndexByRow[idx] = -1;
       openByRow[idx] = true;
+      viewModeByRow[idx] = 'groups';
+      drillGroupByRow[idx] = null;
+      membersByRow[idx] = [];
     } catch {
       suggestionsByRow[idx] = [];
       activeIndexByRow[idx] = -1;
@@ -139,6 +163,132 @@
     } finally {
       loadingByRow[idx] = false;
     }
+  }
+
+  /** D-08: группа НЕ раскрывается, только если condition_distinct_count<=1 И у
+   *  представителя нет ни serial_no, ни inventory_no — иначе раскрывается
+   *  (смешанный condition ИЛИ наличие серийного/инвентарного номера). */
+  function isExpandable(g: DeviceGroup): boolean {
+    return g.condition_distinct_count > 1 || !!g.repr.serial_no || !!g.repr.inventory_no;
+  }
+
+  /** AUTO-04/D-06: клик по раскрываемой группе — заменяет список группами на
+   *  её экземпляры (devices.listByIds), не закрывая дропдаун. */
+  async function drillInto(idx: number, g: DeviceGroup) {
+    const selectedIds = getSelectedIds(idx);
+    const ids = g.ids.filter((id) => !selectedIds.has(id));
+    loadingByRow[idx] = true;
+    try {
+      membersByRow[idx] = await devices.listByIds(ids);
+    } catch {
+      membersByRow[idx] = [];
+    } finally {
+      loadingByRow[idx] = false;
+    }
+    drillGroupByRow[idx] = g;
+    viewModeByRow[idx] = 'members';
+  }
+
+  /** Клик по строке группы: раскрываемая группа → drill-in; иначе (D-08) —
+   *  прямой clone-выбор через существующий pickGroup (без изменений). */
+  function handleGroupClick(idx: number, g: DeviceGroup) {
+    if (isExpandable(g)) {
+      void drillInto(idx, g);
+    } else {
+      pickGroup(idx, g);
+    }
+  }
+
+  /** D-06: кнопка «← Назад» — возврат от member-списка к списку групп. */
+  function backToGroups(idx: number) {
+    viewModeByRow[idx] = 'groups';
+    drillGroupByRow[idx] = null;
+    membersByRow[idx] = [];
+  }
+
+  /** D-07: партиционирует member-список раскрытой/схлопнутой группы на
+   *  отдельные строки серийных/инвентарных экземпляров и client-side
+   *  под-группы по state для несерийных/безынвентарных. Инстансы идут первыми
+   *  (порядок из devices.listByIds), затем под-группы (порядок вставки в Map)
+   *  — соответствует ASCII-макету UI-SPEC. */
+  function memberRows(idx: number): MemberRow[] {
+    const members = membersByRow[idx] ?? [];
+    const rows: MemberRow[] = [];
+    const subgroups = new Map<string | null, DeviceDto[]>();
+    for (const d of members) {
+      if (d.serial_no || d.inventory_no) {
+        rows.push({ kind: 'instance', key: `d-${d.id}`, device: d });
+      } else {
+        const key = d.state ?? null;
+        const list = subgroups.get(key) ?? [];
+        list.push(d);
+        subgroups.set(key, list);
+      }
+    }
+    for (const [state, devs] of subgroups) {
+      rows.push({ kind: 'subgroup', key: `sg-${state ?? '_'}`, state, devices: devs });
+    }
+    return rows;
+  }
+
+  /** Текущее (или дефолтное = 1) введённое количество для под-группы row в
+   *  строке idx — сбрасывается автоматически при уходе с member-view, т.к.
+   *  ключ включает idx и очищается вместе с остальным view-mode state. */
+  function subgroupQty(idx: number, row: Extract<MemberRow, { kind: 'subgroup' }>): number {
+    return memberQtyByRow[`${idx}:${row.key}`] ?? Math.min(1, row.devices.length);
+  }
+
+  function handleMemberQtyInput(
+    idx: number,
+    row: Extract<MemberRow, { kind: 'subgroup' }>,
+    v: string,
+  ) {
+    const parsed = parseInt(v, 10);
+    let qty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    if (qty > MAX_CLONE_QTY) qty = MAX_CLONE_QTY;
+    // Cap = размеру ЭТОЙ под-группы (не всей group.count) — per Task 1 action.
+    if (qty > row.devices.length) qty = row.devices.length;
+    memberQtyByRow[`${idx}:${row.key}`] = qty;
+  }
+
+  /** D-07: выбор устройства из drill-in/flatten member-списка — зеркалит
+   *  присваивания pickGroup() в items[idx], но источник — конкретный
+   *  DeviceDto (не DeviceGroup.repr) + явный qty + явный набор group_ids
+   *  (id одного экземпляра ИЛИ id'ы под-группы по state). */
+  function pickDevice(idx: number, d: DeviceDto, quantity: number, groupIds: number[]) {
+    // D-07: серийный ИЛИ инвентаризированный экземпляр — qty жёстко 1
+    // (qtyMax() тоже даст 1 для has_serial=true, эта проверка синхронизирует
+    // items[idx].quantity сразу, без промежуточного некорректного значения).
+    const hasSerial = !!d.serial_no || !!d.inventory_no;
+    const label = d.serial_no
+      ? d.inventory_no
+        ? `${d.name} (SN ${d.serial_no}, инв. ${d.inventory_no})`
+        : `${d.name} (SN ${d.serial_no})`
+      : d.inventory_no
+        ? `${d.name} (инв. ${d.inventory_no})`
+        : `${d.name}${d.model ? ` · ${d.model}` : ''} ×${groupIds.length}`;
+    const next = items.map((it, i) =>
+      i === idx
+        ? {
+            ...it,
+            device_id: d.id,
+            device_label: label,
+            query: label,
+            picked: true,
+            has_serial: hasSerial,
+            quantity: hasSerial ? 1 : quantity,
+            stock_available: groupIds.length,
+            group_ids: groupIds,
+          }
+        : it,
+    );
+    onChange(next);
+    suggestionsByRow[idx] = [];
+    openByRow[idx] = false;
+    activeIndexByRow[idx] = -1;
+    viewModeByRow[idx] = 'groups';
+    drillGroupByRow[idx] = null;
+    membersByRow[idx] = [];
   }
 
   /** AUTO-02/D-03: фокус на поле открывает список немедленно (delay 0), без
@@ -163,6 +313,13 @@
       return;
     }
     if (!openByRow[idx]) return;
+    // Plan 18-05: клавиатурная навигация ArrowUp/Down/Enter/Tab этой функции
+    // адресована списку групп (visibleGroups); в member-режиме (drill-in /
+    // AUTO-05 auto-flatten) рендерится другой список строк (инстансы +
+    // под-группы по state, часть с инлайн-инпутом количества) — применение
+    // group-навигации здесь выбрало бы неверный элемент (Rule 1 bug guard).
+    // «← Назад» (Escape/клик) остаётся доступным через backToGroups().
+    if (viewModeByRow[idx] === 'members') return;
     const list = visibleGroups(idx);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -323,7 +480,114 @@
               use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
               bind:this={rowDropdownEls[idx]}
             >
-              {#if visibleGroups(idx).length === 0}
+              {#if viewModeByRow[idx] === 'members'}
+                <!-- Plan 18-05 Task 1 (AUTO-04/D-06/D-07 drill-in) -->
+                <li class="drill-header">
+                  <button
+                    type="button"
+                    class="drill-back"
+                    onmousedown={(e) => e.preventDefault()}
+                    onclick={() => backToGroups(idx)}
+                  >
+                    ← Назад
+                  </button>
+                  <span class="drill-title"
+                    >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
+                      ? ` · ${drillGroupByRow[idx]?.repr.model}`
+                      : ''}</span
+                  >
+                </li>
+                {#if memberRows(idx).length === 0}
+                  <li class="dropdown-empty">Ничего не найдено</li>
+                {:else}
+                  {#each memberRows(idx) as mrow (mrow.key)}
+                    {#if mrow.kind === 'instance'}
+                      <li>
+                        <button
+                          type="button"
+                          class="opt member-instance"
+                          role="option"
+                          aria-selected="false"
+                          onmousedown={(e) => e.preventDefault()}
+                          onclick={() => pickDevice(idx, mrow.device, 1, [mrow.device.id])}
+                        >
+                          <span class="opt-row">
+                            {#if mrow.device.serial_no}
+                              <span class="opt-sn">SN {mrow.device.serial_no}</span>
+                            {/if}
+                            {#if mrow.device.inventory_no}
+                              <span class="opt-inv">инв. {mrow.device.inventory_no}</span>
+                            {/if}
+                            <span class="opt-state">{mrow.device.state ?? '—'}</span>
+                          </span>
+                        </button>
+                      </li>
+                    {:else}
+                      <li>
+                        <!-- HTML content-model: числовой <input> НЕЛЬЗЯ вложить в <button>
+                             (double-fire риск) — под-группа рендерится как div[role=option]. -->
+                        <div
+                          class="opt member-subgroup"
+                          role="option"
+                          tabindex="0"
+                          aria-selected="false"
+                          onmousedown={(e) => e.preventDefault()}
+                          onclick={() =>
+                            pickDevice(
+                              idx,
+                              mrow.devices[0],
+                              subgroupQty(idx, mrow),
+                              mrow.devices.map((d) => d.id),
+                            )}
+                          onkeydown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              pickDevice(
+                                idx,
+                                mrow.devices[0],
+                                subgroupQty(idx, mrow),
+                                mrow.devices.map((d) => d.id),
+                              );
+                            }
+                          }}
+                        >
+                          <span class="opt-row">
+                            <span class="member-subgroup-label">Без номера · {mrow.state ?? '—'}</span>
+                            <span class="opt-count">×{mrow.devices.length}</span>
+                          </span>
+                          <input
+                            type="number"
+                            class="member-qty-input"
+                            min="1"
+                            max={mrow.devices.length}
+                            value={String(subgroupQty(idx, mrow))}
+                            onclick={(e) => e.stopPropagation()}
+                            onmousedown={(e) => e.stopPropagation()}
+                            oninput={(e) =>
+                              handleMemberQtyInput(
+                                idx,
+                                mrow,
+                                (e.currentTarget as HTMLInputElement).value,
+                              )}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                pickDevice(
+                                  idx,
+                                  mrow.devices[0],
+                                  subgroupQty(idx, mrow),
+                                  mrow.devices.map((d) => d.id),
+                                );
+                              }
+                            }}
+                          />
+                        </div>
+                      </li>
+                    {/if}
+                  {/each}
+                {/if}
+              {:else if visibleGroups(idx).length === 0}
                 <li class="dropdown-empty">Ничего не найдено</li>
               {:else}
                 {#each visibleGroups(idx) as g, i (g.repr.id)}
@@ -334,12 +598,14 @@
                       class:active={i === (activeIndexByRow[idx] ?? -1)}
                       role="option"
                       aria-selected={i === (activeIndexByRow[idx] ?? -1)}
-                      onclick={() => pickGroup(idx, g)}
+                      onmousedown={(e) => e.preventDefault()}
+                      onclick={() => handleGroupClick(idx, g)}
                     >
                       <div class="opt-row">
                         <span class="opt-name">{g.repr.name}</span>
                         {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
                         <span class="opt-count">×{g.count}</span>
+                        {#if isExpandable(g)}<span class="opt-chevron">›</span>{/if}
                       </div>
                       {#if g.repr.serial_no}
                         <span class="opt-sn">SN {g.repr.serial_no}</span>
@@ -499,6 +765,76 @@
     color: var(--color-text-muted);
     font-size: var(--font-size-body);
     list-style: none;
+  }
+
+  // Plan 18-05 (AUTO-04/D-06): chevron-сигнал drill-in справа от ×count у
+  // раскрываемых групп верхнего уровня.
+  :global(.opt-chevron) {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-label);
+  }
+
+  // Plan 18-05 (AUTO-04/D-06): заголовок drill-in — «← Назад» + название
+  // раскрытой группы (UI-SPEC AUTO-04 "Строка-хедер drill-in").
+  :global(.drill-header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--color-border);
+    list-style: none;
+  }
+  :global(.drill-back) {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-label);
+    color: var(--color-text-secondary);
+    &:hover {
+      color: var(--color-text-primary);
+    }
+  }
+  :global(.drill-title) {
+    font-size: var(--font-size-label);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  // Plan 18-05 (AUTO-04/D-07): подпись «Без номера · {state}» под-группы —
+  // Label-стиль (13px/400), а НЕ акцентное наименование группы уровня 1.
+  :global(.member-subgroup-label) {
+    font-size: var(--font-size-label);
+    font-weight: 400;
+    color: var(--color-text-secondary);
+  }
+
+  // Plan 18-05 (AUTO-04/D-07): под-группа рендерится как div[role=option] (не
+  // <button>) т.к. содержит вложенный <input type="number"> — невалидный
+  // content-model внутри <button>. Наследует .opt (flex-column/padding/hover),
+  // добавляет только позиционирование инпута количества.
+  :global(.member-subgroup) {
+    cursor: pointer;
+  }
+  :global(.member-qty-input) {
+    width: 64px;
+    height: 28px;
+    padding: 0 var(--space-sm);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-label);
+    align-self: flex-start;
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
   }
 
   .loading-row {
