@@ -8,10 +8,11 @@
   //
   // Каждая позиция: { device_id, quantity, device_label } где device_label —
   // human-readable (name + inv_no), нужный только для UI.
-  import Input from '$lib/components/Input.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { devices } from '$lib/api/devices';
+  import { portal } from '$lib/utils/portal';
+  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
   import type { DeviceGroup } from '../../bindings';
 
   export interface FormItemRow {
@@ -64,6 +65,10 @@
   let suggestionsByRow = $state<Record<number, DeviceGroup[]>>({});
   let loadingByRow = $state<Record<number, boolean>>({});
   let openByRow = $state<Record<number, boolean>>({});
+  // Plan 18-04 (AUTO-01): raw <input> refs per-row — Input.svelte не поддерживает
+  // bind:this (нет ref-forwarding), а use:dropdownAnchor нужен реальный anchorEl.
+  let rowInputEls = $state<Record<number, HTMLInputElement | null>>({});
+  let rowDropdownEls = $state<Record<number, HTMLUListElement | null>>({});
   const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
 
   function makeEmpty(): FormItemRow {
@@ -204,29 +209,40 @@
       <div class="tr" role="row">
         <div class="td col-num">{idx + 1}</div>
         <div class="td col-device" class:has-error={!!errFor(idx, 'device_id')}>
-          <Input
+          <input
             type="text"
+            bind:this={rowInputEls[idx]}
+            class="device-input"
+            class:invalid={!!errFor(idx, 'device_id')}
             value={row.query}
             placeholder="Устройство со склада"
-            invalid={!!errFor(idx, 'device_id')}
-            oninput={(v) => handleQueryInput(idx, v)}
+            autocomplete="off"
+            aria-autocomplete="list"
+            oninput={(e) => handleQueryInput(idx, (e.currentTarget as HTMLInputElement).value)}
           />
           {#if loadingByRow[idx]}
             <div class="loading-row"><Spinner size="sm" /></div>
           {/if}
           {#if openByRow[idx] && suggestionsByRow[idx]?.length > 0}
-            <ul class="dropdown" role="listbox">
+            <ul
+              class="dropdown"
+              role="listbox"
+              use:portal
+              use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
+              bind:this={rowDropdownEls[idx]}
+            >
               {#each suggestionsByRow[idx].filter((g) => !g.ids.some( (id) => getSelectedIds(idx).has(id), )) as g (g.repr.id)}
                 <li>
                   <button type="button" class="opt" onclick={() => pickGroup(idx, g)}>
-                    <span class="opt-name">{g.repr.name}</span>
-                    {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
+                    <div class="opt-row">
+                      <span class="opt-name">{g.repr.name}</span>
+                      {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
+                      <span class="opt-count">×{g.count}</span>
+                    </div>
                     {#if g.repr.serial_no}
                       <span class="opt-sn">SN {g.repr.serial_no}</span>
                     {:else if g.repr.inventory_no}
                       <span class="opt-inv">инв. {g.repr.inventory_no}</span>
-                    {:else}
-                      <span class="opt-count">×{g.count}</span>
                     {/if}
                     {#if g.repr.state}
                       <span class="opt-state">{g.repr.state}</span>
@@ -314,11 +330,13 @@
     justify-content: flex-end;
   }
 
-  .dropdown {
-    position: absolute;
-    top: 40px;
-    left: 0;
-    right: 0;
+  // Plan 18-04 (AUTO-01): дропдаун перенесён use:portal в <body>, поэтому scoped
+  // CSS компонента до него (и его потомков) не доходит — нужен :global().
+  // Позиция (position/top/left/width/bottom) управляется JS через
+  // use:dropdownAnchor, здесь только визуал (UI-SPEC AUTO-01).
+  :global(.dropdown) {
+    position: fixed;
+    z-index: 1000;
     max-height: 240px;
     overflow: auto;
     background: var(--color-surface-raised, var(--color-surface));
@@ -327,10 +345,9 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    z-index: 10;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-elev-2);
   }
-  .opt {
+  :global(.opt) {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -343,28 +360,42 @@
     color: var(--color-text-primary);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
-
-    &:hover {
-      background: var(--color-surface-sunken);
-    }
   }
-  .opt-name {
+  :global(.opt:hover),
+  :global(.opt.active) {
+    background: var(--color-surface-sunken);
+  }
+  :global(.opt-row) {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+  }
+  :global(.opt-name) {
     font-weight: 500;
   }
-  .opt-inv,
-  .opt-sn,
-  .opt-model {
+  :global(.opt-inv),
+  :global(.opt-sn),
+  :global(.opt-model) {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
   }
-  .opt-count {
+  :global(.opt-count) {
+    margin-left: auto;
     font-size: var(--font-size-label);
     color: var(--color-accent, var(--color-text-secondary));
-    font-weight: 600;
+    font-weight: 500;
   }
-  .opt-state {
+  :global(.opt-state) {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
+  }
+  :global(.dropdown-empty) {
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-body);
+    list-style: none;
   }
 
   .loading-row {
@@ -389,6 +420,33 @@
   .add-row {
     padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--color-border);
+  }
+
+  // Plan 18-04 (AUTO-01/D-05): raw <input> заменяет Input.svelte (нет
+  // ref-forwarding) — визуальная эквивалентность сохраняется теми же CSS-
+  // свойствами, что .qty-input ниже.
+  .device-input {
+    display: block;
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--space-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-focus);
+    }
+    &.invalid {
+      border-color: var(--color-destructive);
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+    }
   }
 
   // G-3 / W-5 — qty input native styling согласован с Input.svelte tokens.
