@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: executing
-last_updated: "2026-07-10T00:27:39.126Z"
+status: verifying
+last_updated: "2026-07-10T21:50:13.414Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 21
-  completed_phases: 20
+  completed_phases: 21
   total_plans: 129
-  completed_plans: 128
-  percent: 95
+  completed_plans: 129
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 18 (autocomplete-dropdowns) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-10
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -171,6 +171,7 @@ Last activity: 2026-07-10
 | Phase 18 P02 | 12min | - tasks | - files |
 | Phase 18 P03 | 9min | 3 tasks | 6 files |
 | Phase 18 P04 | 25min | 2 tasks | 1 files |
+| Phase 18 P18-05 | 40min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -395,6 +396,9 @@ Recent decisions affecting current work:
 - [Phase 18]: 18-03: Select/CartridgeSelect/GroupedPrinterSelect/PrinterSelect documented AUTO-01-compliant by construction (native <select>, no custom overlay) after re-reading each source, per T-18-07 mitigation
 - [Phase ?]: 18-04: raw <input> replaces Input.svelte for device picker (no ref-forwarding); openByRow[idx] alone gates dropdown visibility, empty-state renders inside
 - [Phase ?]: 18-04: activeIndexByRow keyboard-nav highlighting added as Rule 2 completeness fix alongside the plan's ArrowUp/Down/Enter/Tab handler
+- [Phase ?]: 18-05: единственная оставшаяся после фильтрации группа всегда разворачивается через drillInto (auto-flatten), единый код-путь с обычным drill-in (AUTO-05/D-09)
+- [Phase ?]: 18-05: количество устройства задаётся только в колонке «Количество» таблицы позиций — spinner убран из дропдауна пикера (checkpoint fix)
+- [Phase ?]: 18-05: isExpandable требует ids.length>1 — единственный экземпляр не раскрывается, клик сразу выбирает (checkpoint fix)
 
 ### Pending Todos
 
@@ -456,8 +460,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-10T00:26:14.134Z
-Stopped at: Completed 18-03-PLAN.md
+Last session: 2026-07-10T21:50:13.406Z
+Stopped at: Completed 18-05-PLAN.md (AUTO-04/AUTO-05, checkpoint approved)
 Resume file: None
 
 ## Operator Next Steps
