@@ -69,6 +69,9 @@
   // bind:this (нет ref-forwarding), а use:dropdownAnchor нужен реальный anchorEl.
   let rowInputEls = $state<Record<number, HTMLInputElement | null>>({});
   let rowDropdownEls = $state<Record<number, HTMLUListElement | null>>({});
+  // Plan 18-04 (AUTO-02/AUTO-03): индекс активного (клавиатурного) элемента
+  // дропдауна по строке; -1 = нет активного.
+  let activeIndexByRow = $state<Record<number, number>>({});
   const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
 
   function makeEmpty(): FormItemRow {
@@ -93,42 +96,107 @@
     );
     onChange(next);
 
+    // AUTO-03: пустой ввод теперь валиден — backend (Plan 18-01) возвращает
+    // top-20-по-остатку при пустом name_prefix, ранний return убран.
     if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
-    if (v.trim().length < 1) {
+    debounceTimers[idx] = setTimeout(() => {
+      void fetchGroups(idx, v.trim());
+    }, 250);
+  }
+
+  /** AUTO-02/AUTO-03: общая fetch-логика, переиспользуемая и debounced-веткой
+   *  ввода (handleQueryInput), и focus-веткой (handleFocus, delay 0). Дропдаун
+   *  остаётся ОТКРЫТЫМ даже при нуле совпадений — рендерит empty-state вместо
+   *  закрытия (UI-SPEC Copywriting Contract «Ничего не найдено»). */
+  async function fetchGroups(idx: number, query: string) {
+    loadingByRow[idx] = true;
+    try {
+      // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
+      // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
+      // group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1).
+      const groups = await devices.listGrouped(
+        {
+          type_id: null,
+          location_id: null,
+          status_id: 1,
+          state: null,
+          name_prefix: query,
+          include_deleted: false,
+          group_by_condition: true,
+        },
+        { offset: 0, limit: 20 },
+      );
+      // DEF-2A: exclude groups whose IDs overlap with already-picked rows.
+      const selectedIds = getSelectedIds(idx);
+      const filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
+      suggestionsByRow[idx] = filtered;
+      activeIndexByRow[idx] = -1;
+      openByRow[idx] = true;
+    } catch {
       suggestionsByRow[idx] = [];
+      activeIndexByRow[idx] = -1;
+      openByRow[idx] = true;
+    } finally {
+      loadingByRow[idx] = false;
+    }
+  }
+
+  /** AUTO-02/D-03: фокус на поле открывает список немедленно (delay 0), без
+   *  ввода текста — реплицирует LocationAutocomplete.handleFocus. */
+  function handleFocus(idx: number) {
+    if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
+    void fetchGroups(idx, (items[idx]?.query ?? '').trim());
+  }
+
+  /** AUTO-02: клавиатурная навигация по дропдауну строки — реплицирует
+   *  LocationAutocomplete.handleKeydown, адаптировано под per-row state. */
+  function handleRowKeydown(idx: number, e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       openByRow[idx] = false;
       return;
     }
-    debounceTimers[idx] = setTimeout(async () => {
-      loadingByRow[idx] = true;
-      try {
-        // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
-        // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
-        // group_by_condition: true — сохраняет DEF-2B разбивку по condition (ITEM-1).
-        const groups = await devices.listGrouped(
-          {
-            type_id: null,
-            location_id: null,
-            status_id: 1,
-            state: null,
-            name_prefix: v.trim(),
-            include_deleted: false,
-            group_by_condition: true,
-          },
-          { offset: 0, limit: 20 },
-        );
-        // DEF-2A: exclude groups whose IDs overlap with already-picked rows.
-        const selectedIds = getSelectedIds(idx);
-        const filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
-        suggestionsByRow[idx] = filtered;
-        openByRow[idx] = filtered.length > 0;
-      } catch {
-        suggestionsByRow[idx] = [];
-        openByRow[idx] = false;
-      } finally {
-        loadingByRow[idx] = false;
+    if (e.key === 'ArrowDown' && !openByRow[idx]) {
+      e.preventDefault();
+      handleFocus(idx);
+      return;
+    }
+    if (!openByRow[idx]) return;
+    const list = visibleGroups(idx);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (list.length === 0) return;
+      const cur = activeIndexByRow[idx] ?? -1;
+      activeIndexByRow[idx] = (cur + 1) % list.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.length === 0) return;
+      const cur = activeIndexByRow[idx] ?? -1;
+      activeIndexByRow[idx] = cur <= 0 ? list.length - 1 : cur - 1;
+    } else if (e.key === 'Enter') {
+      const cur = activeIndexByRow[idx] ?? -1;
+      if (cur >= 0 && cur < list.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        pickGroup(idx, list[cur]);
       }
-    }, 250);
+    } else if (e.key === 'Tab') {
+      const cur = activeIndexByRow[idx] ?? -1;
+      if (cur >= 0 && cur < list.length) {
+        pickGroup(idx, list[cur]);
+      }
+      openByRow[idx] = false;
+    }
+  }
+
+  /** DEF-2A dedup применённый к текущим suggestions строки — используется и
+   *  в разметке (список опций + empty-state gate), и в keyboard-навигации,
+   *  чтобы оба пути видели один и тот же видимый список. */
+  function visibleGroups(idx: number): DeviceGroup[] {
+    const list = suggestionsByRow[idx] ?? [];
+    const selectedIds = getSelectedIds(idx);
+    return list.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
   }
 
   function pickGroup(idx: number, g: DeviceGroup) {
@@ -160,6 +228,7 @@
     onChange(next);
     suggestionsByRow[idx] = [];
     openByRow[idx] = false;
+    activeIndexByRow[idx] = -1;
   }
 
   function handleQtyInput(idx: number, v: string) {
@@ -192,6 +261,27 @@
   function errFor(idx: number, field: string): string | null {
     return fieldErrors[`items[${idx}].${field}`] ?? null;
   }
+
+  /** AUTO-01: закрыть дропдаун строки при клике вне И её input, И её портированного
+   *  (перенесённого в <body>) dropdown — по аналогии с LocationAutocomplete,
+   *  но по массиву строк, т.к. в этой таблице несколько независимых пикеров. */
+  function handleClickOutside(e: MouseEvent) {
+    const target = e.target as Node;
+    for (const key of Object.keys(openByRow)) {
+      const i = Number(key);
+      if (!openByRow[i]) continue;
+      const insideInput = rowInputEls[i]?.contains(target) ?? false;
+      const insideDropdown = rowDropdownEls[i]?.contains(target) ?? false;
+      if (!insideInput && !insideDropdown) {
+        openByRow[i] = false;
+      }
+    }
+  }
+
+  $effect(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  });
 </script>
 
 <div class="items">
@@ -219,11 +309,13 @@
             autocomplete="off"
             aria-autocomplete="list"
             oninput={(e) => handleQueryInput(idx, (e.currentTarget as HTMLInputElement).value)}
+            onfocus={() => handleFocus(idx)}
+            onkeydown={(e) => handleRowKeydown(idx, e)}
           />
           {#if loadingByRow[idx]}
             <div class="loading-row"><Spinner size="sm" /></div>
           {/if}
-          {#if openByRow[idx] && suggestionsByRow[idx]?.length > 0}
+          {#if openByRow[idx]}
             <ul
               class="dropdown"
               role="listbox"
@@ -231,25 +323,36 @@
               use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
               bind:this={rowDropdownEls[idx]}
             >
-              {#each suggestionsByRow[idx].filter((g) => !g.ids.some( (id) => getSelectedIds(idx).has(id), )) as g (g.repr.id)}
-                <li>
-                  <button type="button" class="opt" onclick={() => pickGroup(idx, g)}>
-                    <div class="opt-row">
-                      <span class="opt-name">{g.repr.name}</span>
-                      {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
-                      <span class="opt-count">×{g.count}</span>
-                    </div>
-                    {#if g.repr.serial_no}
-                      <span class="opt-sn">SN {g.repr.serial_no}</span>
-                    {:else if g.repr.inventory_no}
-                      <span class="opt-inv">инв. {g.repr.inventory_no}</span>
-                    {/if}
-                    {#if g.repr.state}
-                      <span class="opt-state">{g.repr.state}</span>
-                    {/if}
-                  </button>
-                </li>
-              {/each}
+              {#if visibleGroups(idx).length === 0}
+                <li class="dropdown-empty">Ничего не найдено</li>
+              {:else}
+                {#each visibleGroups(idx) as g, i (g.repr.id)}
+                  <li>
+                    <button
+                      type="button"
+                      class="opt"
+                      class:active={i === (activeIndexByRow[idx] ?? -1)}
+                      role="option"
+                      aria-selected={i === (activeIndexByRow[idx] ?? -1)}
+                      onclick={() => pickGroup(idx, g)}
+                    >
+                      <div class="opt-row">
+                        <span class="opt-name">{g.repr.name}</span>
+                        {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
+                        <span class="opt-count">×{g.count}</span>
+                      </div>
+                      {#if g.repr.serial_no}
+                        <span class="opt-sn">SN {g.repr.serial_no}</span>
+                      {:else if g.repr.inventory_no}
+                        <span class="opt-inv">инв. {g.repr.inventory_no}</span>
+                      {/if}
+                      {#if g.repr.state}
+                        <span class="opt-state">{g.repr.state}</span>
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              {/if}
             </ul>
           {/if}
           {#if errFor(idx, 'device_id')}
