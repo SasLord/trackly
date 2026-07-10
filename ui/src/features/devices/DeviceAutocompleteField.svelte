@@ -26,6 +26,8 @@
   import { onMount } from 'svelte';
   import { devices } from './api';
   import { apiCall } from '$lib/api/client';
+  import { portal } from '$lib/utils/portal';
+  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 
   type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state' | 'location';
 
@@ -71,6 +73,7 @@
   );
 
   let wrapperEl = $state<HTMLDivElement | null>(null);
+  let dropdownEl = $state<HTMLDivElement | null>(null);
   // G-4 (Phase 3.1 Plan 06): inputEl reference для explicit blur() в select(),
   // чтобы при click на suggestion dropdown definitively закрылся и не reopen-ил
   // на refocus до явного нового keystroke. Эквивалентно `justSelected` flag
@@ -260,9 +263,10 @@
   }
 
   function handleClickOutside(e: MouseEvent) {
-    if (wrapperEl && !wrapperEl.contains(e.target as Node)) {
-      open = false;
-    }
+    const target = e.target as Node;
+    const insideWrapper = wrapperEl?.contains(target) ?? false;
+    const insideDropdown = dropdownEl?.contains(target) ?? false;
+    if (!insideWrapper && !insideDropdown) open = false;
   }
 
   $effect(() => {
@@ -307,7 +311,13 @@
   {/if}
 
   {#if open}
-    <div class="dropdown" role="listbox">
+    <div
+      class="dropdown"
+      role="listbox"
+      use:portal
+      use:dropdownAnchor={{ anchorEl: inputEl, maxHeight: 200 }}
+      bind:this={dropdownEl}
+    >
       {#if field !== 'name' && suggestions.length > 0 && (contextName || contextStatusId)}
         <header class="dropdown-header">
           {#if contextName && contextStatusId}
@@ -406,21 +416,24 @@
     resize: vertical;
   }
 
-  .dropdown {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    z-index: 50;
+  /*
+   * Дропдаун перенесён use:portal в <body>, поэтому scoped CSS компонента до
+   * него не доходит — нужен :global(). Позиция (position/top/left/width/bottom)
+   * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
+   */
+  :global(.dropdown) {
+    position: fixed;
+    z-index: 1000;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow-elev-2);
     max-height: 200px;
     overflow-y: auto;
   }
 
-  .dropdown-header {
+  /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
+  :global(.dropdown-header) {
     padding: var(--space-xs) var(--space-sm);
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
@@ -429,15 +442,15 @@
     font-style: italic;
   }
 
-  .dropdown-loading,
-  .dropdown-empty {
+  :global(.dropdown-loading),
+  :global(.dropdown-empty) {
     padding: var(--space-sm);
     font-size: var(--font-size-label);
     color: var(--color-text-muted);
     text-align: center;
   }
 
-  .dropdown-item {
+  :global(.dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--space-xs) var(--space-sm);
@@ -449,14 +462,12 @@
     color: var(--color-text-primary);
     text-align: left;
     cursor: pointer;
-
-    &:hover {
-      background: var(--color-surface-sunken);
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-      color: var(--color-accent);
-    }
+  }
+  :global(.dropdown-item:hover) {
+    background: var(--color-surface-sunken);
+  }
+  :global(.dropdown-item.active) {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    color: var(--color-accent);
   }
 </style>
