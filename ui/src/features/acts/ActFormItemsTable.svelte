@@ -80,13 +80,11 @@
   let viewModeByRow = $state<Record<number, 'groups' | 'members'>>({});
   let drillGroupByRow = $state<Record<number, DeviceGroup | null>>({});
   let membersByRow = $state<Record<number, DeviceDto[]>>({});
-  // Plan 18-05 Task 2 (AUTO-05/D-09): скрывает заголовок «← Назад» / название
-  // группы при auto-flatten единственной оставшейся группы.
-  let showDrillHeaderByRow = $state<Record<number, boolean>>({});
-  // Локально введённое количество для под-группы (несерийные/безынвентарные,
-  // сгруппированные по state) внутри drill-in/flatten member-списка. Ключ —
-  // `${idx}:${subgroupKey}`.
-  let memberQtyByRow = $state<Record<string, number>>({});
+  // Plan 18-05 (checkpoint fix #1): в member-view sticky-заголовок с названием
+  // группы показывается ВСЕГДА (в т.ч. при auto-flatten единственной группы),
+  // но кнопка «← Назад» — только когда пользователь пришёл кликом по группе
+  // (showBackByRow=true), а не auto-flatten (false).
+  let showBackByRow = $state<Record<number, boolean>>({});
 
   type MemberRow =
     | { kind: 'instance'; key: string; device: DeviceDto }
@@ -114,7 +112,7 @@
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
-    showDrillHeaderByRow[idx] = true;
+    showBackByRow[idx] = false;
 
     const next = items.map((it, i) =>
       i === idx ? { ...it, query: v, picked: false, device_id: null, device_label: '' } : it,
@@ -169,32 +167,34 @@
 
     // Plan 18-05 Task 2 (AUTO-05/D-09): если после фильтрации осталась ровно
     // одна группа — она НЕ отображается как строка группы, а сразу
-    // разворачивается в плоский member-список (тот же механизм, что и
-    // обычный drill-in, но без заголовка «← Назад»). Применяется одинаково
-    // и для раскрываемых, и для нераскрываемых (D-08) групп — упрощает
-    // поведение (предпочтительный вариант per 18-05-PLAN Task 2 action).
+    // разворачивается в плоский member-список с sticky-заголовком группы, но
+    // БЕЗ кнопки «← Назад» (showBack=false — пользователь не «нырял» вручную).
     if (filtered.length === 1) {
       await drillInto(idx, filtered[0], false);
     } else {
       viewModeByRow[idx] = 'groups';
       drillGroupByRow[idx] = null;
       membersByRow[idx] = [];
-      showDrillHeaderByRow[idx] = true;
+      showBackByRow[idx] = false;
     }
   }
 
-  /** D-08: группа НЕ раскрывается, только если condition_distinct_count<=1 И у
-   *  представителя нет ни serial_no, ни inventory_no — иначе раскрывается
-   *  (смешанный condition ИЛИ наличие серийного/инвентарного номера). */
+  /** Раскрываемость группы (checkpoint fix #4 + D-08):
+   *  - если в группе ровно один экземпляр (`ids.length === 1`) — НЕ раскрывается,
+   *    клик сразу выбирает это устройство (независимо от serial/inventory);
+   *  - иначе раскрывается только при смешанном condition ИЛИ наличии
+   *    серийного/инвентарного номера у представителя (несерийные с одним
+   *    condition — D-08 прямой clone-выбор). */
   function isExpandable(g: DeviceGroup): boolean {
+    if (g.ids.length <= 1) return false;
     return g.condition_distinct_count > 1 || !!g.repr.serial_no || !!g.repr.inventory_no;
   }
 
   /** AUTO-04/D-06: клик по раскрываемой группе — заменяет список группами на
-   *  её экземпляры (devices.listByIds), не закрывая дропдаун. showHeader=false
-   *  используется Task 2's AUTO-05 auto-flatten (единственная оставшаяся
-   *  группа не должна показывать заголовок «← Назад»). */
-  async function drillInto(idx: number, g: DeviceGroup, showHeader: boolean = true) {
+   *  её экземпляры (devices.listByIds), не закрывая дропдаун. showBack
+   *  различает ручной drill-in (true → кнопка «← Назад») и AUTO-05
+   *  auto-flatten (false → sticky-заголовок группы без «← Назад»). */
+  async function drillInto(idx: number, g: DeviceGroup, showBack: boolean = true) {
     const selectedIds = getSelectedIds(idx);
     const ids = g.ids.filter((id) => !selectedIds.has(id));
     loadingByRow[idx] = true;
@@ -207,7 +207,7 @@
     }
     drillGroupByRow[idx] = g;
     viewModeByRow[idx] = 'members';
-    showDrillHeaderByRow[idx] = showHeader;
+    showBackByRow[idx] = showBack;
   }
 
   /** Клик по строке группы: раскрываемая группа → drill-in; иначе (D-08) —
@@ -225,9 +225,7 @@
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
-    // Task 2: следующее обычное раскрытие группы снова должно показать
-    // заголовок (только auto-flatten подавляет его).
-    showDrillHeaderByRow[idx] = true;
+    showBackByRow[idx] = false;
   }
 
   /** D-07: партиционирует member-список раскрытой/схлопнутой группы на
@@ -255,34 +253,13 @@
     return rows;
   }
 
-  /** Текущее (или дефолтное = 1) введённое количество для под-группы row в
-   *  строке idx — сбрасывается автоматически при уходе с member-view, т.к.
-   *  ключ включает idx и очищается вместе с остальным view-mode state. */
-  function subgroupQty(idx: number, row: Extract<MemberRow, { kind: 'subgroup' }>): number {
-    return memberQtyByRow[`${idx}:${row.key}`] ?? Math.min(1, row.devices.length);
-  }
-
-  function handleMemberQtyInput(
-    idx: number,
-    row: Extract<MemberRow, { kind: 'subgroup' }>,
-    v: string,
-  ) {
-    const parsed = parseInt(v, 10);
-    let qty = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    if (qty > MAX_CLONE_QTY) qty = MAX_CLONE_QTY;
-    // Cap = размеру ЭТОЙ под-группы (не всей group.count) — per Task 1 action.
-    if (qty > row.devices.length) qty = row.devices.length;
-    memberQtyByRow[`${idx}:${row.key}`] = qty;
-  }
-
   /** D-07: выбор устройства из drill-in/flatten member-списка — зеркалит
    *  присваивания pickGroup() в items[idx], но источник — конкретный
-   *  DeviceDto (не DeviceGroup.repr) + явный qty + явный набор group_ids
-   *  (id одного экземпляра ИЛИ id'ы под-группы по state). */
-  function pickDevice(idx: number, d: DeviceDto, quantity: number, groupIds: number[]) {
-    // D-07: серийный ИЛИ инвентаризированный экземпляр — qty жёстко 1
-    // (qtyMax() тоже даст 1 для has_serial=true, эта проверка синхронизирует
-    // items[idx].quantity сразу, без промежуточного некорректного значения).
+   *  DeviceDto (не DeviceGroup.repr) + явный набор group_ids (id одного
+   *  экземпляра ИЛИ id'ы под-группы по state). Количество (для несерийных)
+   *  правится позже в колонке «Количество» таблицы — здесь клик только
+   *  выбирает устройство (checkpoint fix #2: спиннер убран из дропдауна). */
+  function pickDevice(idx: number, d: DeviceDto, groupIds: number[]) {
     const hasSerial = !!d.serial_no || !!d.inventory_no;
     const label = d.serial_no
       ? d.inventory_no
@@ -300,7 +277,10 @@
             query: label,
             picked: true,
             has_serial: hasSerial,
-            quantity: hasSerial ? 1 : quantity,
+            // Серийный/инвентарный экземпляр — qty жёстко 1; несерийная
+            // под-группа — clamp текущего qty к размеру под-группы (правится
+            // в колонке «Количество», как pickGroup).
+            quantity: hasSerial ? 1 : Math.min(it.quantity, groupIds.length),
             stock_available: groupIds.length,
             group_ids: groupIds,
           }
@@ -313,7 +293,7 @@
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
-    showDrillHeaderByRow[idx] = true;
+    showBackByRow[idx] = false;
   }
 
   /** AUTO-02/D-03: фокус на поле открывает список немедленно (delay 0), без
@@ -507,8 +487,11 @@
             >
               {#if viewModeByRow[idx] === 'members'}
                 <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
-                {#if showDrillHeaderByRow[idx] !== false}
-                  <li class="drill-header">
+                <!-- checkpoint fix #1: sticky-заголовок группы ВСЕГДА виден в
+                     member-view (в т.ч. при auto-flatten); «← Назад» — только
+                     при ручном drill-in (showBackByRow). -->
+                <li class="drill-header">
+                  {#if showBackByRow[idx]}
                     <button
                       type="button"
                       class="drill-back"
@@ -517,13 +500,13 @@
                     >
                       ← Назад
                     </button>
-                    <span class="drill-title"
-                      >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
-                        ? ` · ${drillGroupByRow[idx]?.repr.model}`
-                        : ''}</span
-                    >
-                  </li>
-                {/if}
+                  {/if}
+                  <span class="drill-title"
+                    >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
+                      ? ` · ${drillGroupByRow[idx]?.repr.model}`
+                      : ''}</span
+                  >
+                </li>
                 {#if memberRows(idx).length === 0}
                   <li class="dropdown-empty">Ничего не найдено</li>
                 {:else}
@@ -536,7 +519,7 @@
                           role="option"
                           aria-selected="false"
                           onmousedown={(e) => e.preventDefault()}
-                          onclick={() => pickDevice(idx, mrow.device, 1, [mrow.device.id])}
+                          onclick={() => pickDevice(idx, mrow.device, [mrow.device.id])}
                         >
                           <span class="opt-row">
                             {#if mrow.device.serial_no}
@@ -546,70 +529,33 @@
                               <span class="opt-inv">инв. {mrow.device.inventory_no}</span>
                             {/if}
                             <span class="opt-state">{mrow.device.state ?? '—'}</span>
+                            <!-- reserved chevron-slot (пустой) — column-align ×count -->
+                            <span class="opt-chevron" aria-hidden="true"></span>
                           </span>
                         </button>
                       </li>
                     {:else}
                       <li>
-                        <!-- HTML content-model: числовой <input> НЕЛЬЗЯ вложить в <button>
-                             (double-fire риск) — под-группа рендерится как div[role=option]. -->
-                        <div
+                        <button
+                          type="button"
                           class="opt member-subgroup"
                           role="option"
-                          tabindex="0"
                           aria-selected="false"
                           onmousedown={(e) => e.preventDefault()}
                           onclick={() =>
                             pickDevice(
                               idx,
                               mrow.devices[0],
-                              subgroupQty(idx, mrow),
                               mrow.devices.map((d) => d.id),
                             )}
-                          onkeydown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              pickDevice(
-                                idx,
-                                mrow.devices[0],
-                                subgroupQty(idx, mrow),
-                                mrow.devices.map((d) => d.id),
-                              );
-                            }
-                          }}
                         >
                           <span class="opt-row">
                             <span class="member-subgroup-label">Без номера · {mrow.state ?? '—'}</span>
                             <span class="opt-count">×{mrow.devices.length}</span>
+                            <!-- reserved chevron-slot (пустой) — column-align ×count -->
+                            <span class="opt-chevron" aria-hidden="true"></span>
                           </span>
-                          <input
-                            type="number"
-                            class="member-qty-input"
-                            min="1"
-                            max={mrow.devices.length}
-                            value={String(subgroupQty(idx, mrow))}
-                            onclick={(e) => e.stopPropagation()}
-                            onmousedown={(e) => e.stopPropagation()}
-                            oninput={(e) =>
-                              handleMemberQtyInput(
-                                idx,
-                                mrow,
-                                (e.currentTarget as HTMLInputElement).value,
-                              )}
-                            onkeydown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                pickDevice(
-                                  idx,
-                                  mrow.devices[0],
-                                  subgroupQty(idx, mrow),
-                                  mrow.devices.map((d) => d.id),
-                                );
-                              }
-                            }}
-                          />
-                        </div>
+                        </button>
                       </li>
                     {/if}
                   {/each}
@@ -632,7 +578,11 @@
                         <span class="opt-name">{g.repr.name}</span>
                         {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
                         <span class="opt-count">×{g.count}</span>
-                        {#if isExpandable(g)}<span class="opt-chevron">›</span>{/if}
+                        <!-- checkpoint fix #3: chevron-slot зарезервирован ВСЕГДА
+                             (пустой у нераскрываемых) — все ×count в один столбец -->
+                        <span class="opt-chevron" aria-hidden={!isExpandable(g)}
+                          >{isExpandable(g) ? '›' : ''}</span
+                        >
                       </div>
                       {#if g.repr.serial_no}
                         <span class="opt-sn">SN {g.repr.serial_no}</span>
@@ -794,22 +744,33 @@
     list-style: none;
   }
 
-  // Plan 18-05 (AUTO-04/D-06): chevron-сигнал drill-in справа от ×count у
-  // раскрываемых групп верхнего уровня.
+  // Plan 18-05 (AUTO-04/D-06 + checkpoint fix #3): chevron-сигнал drill-in
+  // справа от ×count. Слот зарезервирован ФИКСИРОВАННОЙ ширины ВСЕГДА (даже
+  // пустой у нераскрываемых/member-строк), чтобы бейджи ×count всех типов
+  // строк выстроились в один вертикальный столбец.
   :global(.opt-chevron) {
+    flex: 0 0 auto;
+    width: 12px;
+    text-align: center;
     color: var(--color-text-secondary);
     font-size: var(--font-size-label);
   }
 
-  // Plan 18-05 (AUTO-04/D-06): заголовок drill-in — «← Назад» + название
-  // раскрытой группы (UI-SPEC AUTO-04 "Строка-хедер drill-in").
+  // Plan 18-05 (AUTO-04/D-06 + checkpoint fix #1): заголовок drill-in —
+  // опциональная «← Назад» + название раскрытой группы. Sticky-закреплён
+  // сверху скроллируемого дропдауна с непрозрачным фоном + тенью, чтобы
+  // member-строки не просвечивали под ним при прокрутке.
   :global(.drill-header) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
+    background: var(--color-surface-raised, var(--color-surface));
     border-bottom: 1px solid var(--color-border);
+    box-shadow: var(--shadow-elev-1, 0 1px 2px rgba(0, 0, 0, 0.08));
     list-style: none;
   }
   :global(.drill-back) {
@@ -836,32 +797,6 @@
     font-size: var(--font-size-label);
     font-weight: 400;
     color: var(--color-text-secondary);
-  }
-
-  // Plan 18-05 (AUTO-04/D-07): под-группа рендерится как div[role=option] (не
-  // <button>) т.к. содержит вложенный <input type="number"> — невалидный
-  // content-model внутри <button>. Наследует .opt (flex-column/padding/hover),
-  // добавляет только позиционирование инпута количества.
-  :global(.member-subgroup) {
-    cursor: pointer;
-  }
-  :global(.member-qty-input) {
-    width: 64px;
-    height: 28px;
-    padding: 0 var(--space-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
-    align-self: flex-start;
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
-    }
   }
 
   .loading-row {
