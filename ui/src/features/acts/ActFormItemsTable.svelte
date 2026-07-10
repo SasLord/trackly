@@ -80,6 +80,9 @@
   let viewModeByRow = $state<Record<number, 'groups' | 'members'>>({});
   let drillGroupByRow = $state<Record<number, DeviceGroup | null>>({});
   let membersByRow = $state<Record<number, DeviceDto[]>>({});
+  // Plan 18-05 Task 2 (AUTO-05/D-09): скрывает заголовок «← Назад» / название
+  // группы при auto-flatten единственной оставшейся группы.
+  let showDrillHeaderByRow = $state<Record<number, boolean>>({});
   // Локально введённое количество для под-группы (несерийные/безынвентарные,
   // сгруппированные по state) внутри drill-in/flatten member-списка. Ключ —
   // `${idx}:${subgroupKey}`.
@@ -107,10 +110,11 @@
 
   function handleQueryInput(idx: number, v: string) {
     // Plan 18-05 (UI-SPEC "изменение текста фильтра сбрасывает view-mode строки
-    // обратно к списку групп"): любое изменение ввода прерывает drill-in.
+    // обратно к списку групп"): любое изменение ввода прерывает drill-in/flatten.
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
+    showDrillHeaderByRow[idx] = true;
 
     const next = items.map((it, i) =>
       i === idx ? { ...it, query: v, picked: false, device_id: null, device_label: '' } : it,
@@ -131,6 +135,7 @@
    *  закрытия (UI-SPEC Copywriting Contract «Ничего не найдено»). */
   async function fetchGroups(idx: number, query: string) {
     loadingByRow[idx] = true;
+    let filtered: DeviceGroup[] = [];
     try {
       // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
       // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
@@ -149,19 +154,32 @@
       );
       // DEF-2A: exclude groups whose IDs overlap with already-picked rows.
       const selectedIds = getSelectedIds(idx);
-      const filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
+      filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
       suggestionsByRow[idx] = filtered;
       activeIndexByRow[idx] = -1;
       openByRow[idx] = true;
-      viewModeByRow[idx] = 'groups';
-      drillGroupByRow[idx] = null;
-      membersByRow[idx] = [];
     } catch {
       suggestionsByRow[idx] = [];
       activeIndexByRow[idx] = -1;
       openByRow[idx] = true;
+      filtered = [];
     } finally {
       loadingByRow[idx] = false;
+    }
+
+    // Plan 18-05 Task 2 (AUTO-05/D-09): если после фильтрации осталась ровно
+    // одна группа — она НЕ отображается как строка группы, а сразу
+    // разворачивается в плоский member-список (тот же механизм, что и
+    // обычный drill-in, но без заголовка «← Назад»). Применяется одинаково
+    // и для раскрываемых, и для нераскрываемых (D-08) групп — упрощает
+    // поведение (предпочтительный вариант per 18-05-PLAN Task 2 action).
+    if (filtered.length === 1) {
+      await drillInto(idx, filtered[0], false);
+    } else {
+      viewModeByRow[idx] = 'groups';
+      drillGroupByRow[idx] = null;
+      membersByRow[idx] = [];
+      showDrillHeaderByRow[idx] = true;
     }
   }
 
@@ -173,8 +191,10 @@
   }
 
   /** AUTO-04/D-06: клик по раскрываемой группе — заменяет список группами на
-   *  её экземпляры (devices.listByIds), не закрывая дропдаун. */
-  async function drillInto(idx: number, g: DeviceGroup) {
+   *  её экземпляры (devices.listByIds), не закрывая дропдаун. showHeader=false
+   *  используется Task 2's AUTO-05 auto-flatten (единственная оставшаяся
+   *  группа не должна показывать заголовок «← Назад»). */
+  async function drillInto(idx: number, g: DeviceGroup, showHeader: boolean = true) {
     const selectedIds = getSelectedIds(idx);
     const ids = g.ids.filter((id) => !selectedIds.has(id));
     loadingByRow[idx] = true;
@@ -187,6 +207,7 @@
     }
     drillGroupByRow[idx] = g;
     viewModeByRow[idx] = 'members';
+    showDrillHeaderByRow[idx] = showHeader;
   }
 
   /** Клик по строке группы: раскрываемая группа → drill-in; иначе (D-08) —
@@ -204,6 +225,9 @@
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
+    // Task 2: следующее обычное раскрытие группы снова должно показать
+    // заголовок (только auto-flatten подавляет его).
+    showDrillHeaderByRow[idx] = true;
   }
 
   /** D-07: партиционирует member-список раскрытой/схлопнутой группы на
@@ -289,6 +313,7 @@
     viewModeByRow[idx] = 'groups';
     drillGroupByRow[idx] = null;
     membersByRow[idx] = [];
+    showDrillHeaderByRow[idx] = true;
   }
 
   /** AUTO-02/D-03: фокус на поле открывает список немедленно (delay 0), без
@@ -481,22 +506,24 @@
               bind:this={rowDropdownEls[idx]}
             >
               {#if viewModeByRow[idx] === 'members'}
-                <!-- Plan 18-05 Task 1 (AUTO-04/D-06/D-07 drill-in) -->
-                <li class="drill-header">
-                  <button
-                    type="button"
-                    class="drill-back"
-                    onmousedown={(e) => e.preventDefault()}
-                    onclick={() => backToGroups(idx)}
-                  >
-                    ← Назад
-                  </button>
-                  <span class="drill-title"
-                    >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
-                      ? ` · ${drillGroupByRow[idx]?.repr.model}`
-                      : ''}</span
-                  >
-                </li>
+                <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
+                {#if showDrillHeaderByRow[idx] !== false}
+                  <li class="drill-header">
+                    <button
+                      type="button"
+                      class="drill-back"
+                      onmousedown={(e) => e.preventDefault()}
+                      onclick={() => backToGroups(idx)}
+                    >
+                      ← Назад
+                    </button>
+                    <span class="drill-title"
+                      >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
+                        ? ` · ${drillGroupByRow[idx]?.repr.model}`
+                        : ''}</span
+                    >
+                  </li>
+                {/if}
                 {#if memberRows(idx).length === 0}
                   <li class="dropdown-empty">Ничего не найдено</li>
                 {:else}
