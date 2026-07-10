@@ -13,6 +13,12 @@
   // mirrors the existing D-13/D-14 "compatibility not configured" fallback
   // logic, just reversed (printers-by-cartridge instead of
   // cartridges-by-printer).
+  //
+  // AUTO-01: этот компонент оборачивает нативный <select> — браузер рендерит
+  // option-popup вне DOM-дерева страницы, поэтому overflow: hidden модалки его
+  // не обрезает; portal/anchor-слой (см. dropdownAnchor.ts) здесь не требуется.
+  // Единственный position: absolute элемент в файле — декоративная
+  // caret-иконка (pointer-events: none), не кликабельный список.
   import type { PrinterDto } from '../../bindings-phase6';
 
   interface Props {

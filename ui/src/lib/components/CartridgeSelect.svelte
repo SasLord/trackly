@@ -3,6 +3,12 @@
   // for OperationModal's request-centric install flow. Modeled directly on
   // GroupedPrinterSelect.svelte (DISC-03 — cartridges have no natural
   // location-group, so this is the same select shell without grouping).
+  //
+  // AUTO-01: этот компонент оборачивает нативный <select> — браузер рендерит
+  // option-popup вне DOM-дерева страницы, поэтому overflow: hidden модалки его
+  // не обрезает; portal/anchor-слой (см. dropdownAnchor.ts) здесь не требуется.
+  // Единственный position: absolute элемент в файле — декоративная
+  // caret-иконка (pointer-events: none), не кликабельный список.
   import type { CartridgeDto } from '../../bindings';
 
   interface Props {

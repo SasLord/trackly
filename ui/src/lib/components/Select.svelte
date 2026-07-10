@@ -1,4 +1,9 @@
 <script lang="ts">
+  // AUTO-01: этот компонент оборачивает нативный <select> — браузер рендерит
+  // option-popup вне DOM-дерева страницы, поэтому overflow: hidden модалки его
+  // не обрезает; portal/anchor-слой (см. dropdownAnchor.ts) здесь не требуется.
+  // Единственный position: absolute элемент в файле — декоративная
+  // caret-иконка (pointer-events: none), не кликабельный список.
   import type { Snippet } from 'svelte';
 
   interface Props {
