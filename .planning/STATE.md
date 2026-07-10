@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-10T00:19:11.143Z"
+last_updated: "2026-07-10T00:27:39.126Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 21
   completed_phases: 20
   total_plans: 129
-  completed_plans: 127
+  completed_plans: 128
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 18 (autocomplete-dropdowns) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-10
 
@@ -170,6 +170,7 @@ Last activity: 2026-07-10
 | Phase 18 P01 | 20min | 2 tasks | 4 files |
 | Phase 18 P02 | 12min | - tasks | - files |
 | Phase 18 P03 | 9min | 3 tasks | 6 files |
+| Phase 18 P04 | 25min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -392,6 +393,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Phase 18 Plan 02: dropdownAnchor.ts wraps .dropdown AND .dropdown-item in :global() (not just .dropdown) — matches DeviceContextMenu.svelte precedent, avoids scoped-CSS pruning risk on portaled nodes; box-shadow --shadow-md -> --shadow-elev-2 (unused token fix)
 - [Phase 18]: 18-03: PersonAutocomplete/DeviceAutocompleteField migrated to portal + dropdownAnchor recipe from Plan 18-02; DeviceAutocompleteField passes maxHeight:200 to match its 200px CSS max-height
 - [Phase 18]: 18-03: Select/CartridgeSelect/GroupedPrinterSelect/PrinterSelect documented AUTO-01-compliant by construction (native <select>, no custom overlay) after re-reading each source, per T-18-07 mitigation
+- [Phase ?]: 18-04: raw <input> replaces Input.svelte for device picker (no ref-forwarding); openByRow[idx] alone gates dropdown visibility, empty-state renders inside
+- [Phase ?]: 18-04: activeIndexByRow keyboard-nav highlighting added as Rule 2 completeness fix alongside the plan's ArrowUp/Down/Enter/Tab handler
 
 ### Pending Todos
 
@@ -453,7 +456,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-10T00:19:11.136Z
+Last session: 2026-07-10T00:26:14.134Z
 Stopped at: Completed 18-03-PLAN.md
 Resume file: None
 

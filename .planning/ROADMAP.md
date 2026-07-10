@@ -193,7 +193,7 @@ Trackly — портативное приложение для учёта тех
 **Wave 2** *(depends on Wave 1 — 18-03 нужен dropdownAnchor.ts, 18-04 нужен backend-контракт + dropdownAnchor.ts; параллельны друг другу — нет пересечения файлов)*
 
 - [x] 18-03-PLAN.md — PersonAutocomplete/DeviceAutocompleteField portal-миграция + AUTO-01 аудит 4 native-select компонентов
-- [ ] 18-04-PLAN.md — ActFormItemsTable: portal-дропдаун per-row, focus-open (AUTO-02), фильтрация (AUTO-03), рендер группы name+model+count (D-05)
+- [x] 18-04-PLAN.md — ActFormItemsTable: portal-дропдаун per-row, focus-open (AUTO-02), фильтрация (AUTO-03), рендер группы name+model+count (D-05)
 
 **Wave 3** *(depends on Wave 2 — тот же файл, что 18-04)*
 
@@ -289,7 +289,7 @@ Trackly — портативное приложение для учёта тех
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
-| 18. Автокомплит и дропдауны | v1.1.2 | 3/5 | In Progress|  |
+| 18. Автокомплит и дропдауны | v1.1.2 | 4/5 | In Progress|  |
 | 19. Акты — дата и редактирование | v1.1.2 | 0/TBD | Not started | - |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
