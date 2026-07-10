@@ -5,6 +5,8 @@
   // префикса показывает первые 20 расположений).
 
   import { apiCall } from '$lib/api/client';
+  import { portal } from '$lib/utils/portal';
+  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 
   interface Props {
     value: string;
@@ -29,6 +31,7 @@
   let activeIndex = $state(-1);
   let wrapperEl = $state<HTMLDivElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
+  let dropdownEl = $state<HTMLDivElement | null>(null);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let suppress = $state(false);
 
@@ -105,7 +108,10 @@
   }
 
   function handleClickOutside(e: MouseEvent) {
-    if (wrapperEl && !wrapperEl.contains(e.target as Node)) open = false;
+    const target = e.target as Node;
+    const insideWrapper = wrapperEl?.contains(target) ?? false;
+    const insideDropdown = dropdownEl?.contains(target) ?? false;
+    if (!insideWrapper && !insideDropdown) open = false;
   }
 
   $effect(() => {
@@ -132,7 +138,13 @@
   />
 
   {#if open && suggestions.length > 0}
-    <div class="dropdown" role="listbox">
+    <div
+      class="dropdown"
+      role="listbox"
+      use:portal
+      use:dropdownAnchor={{ anchorEl: inputEl }}
+      bind:this={dropdownEl}
+    >
       {#each suggestions as s, i (s)}
         <button
           type="button"
@@ -183,20 +195,23 @@
       cursor: not-allowed;
     }
   }
-  .dropdown {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    z-index: 50;
-    background: var(--color-surface);
+  /*
+   * Дропдаун перенесён use:portal в <body>, поэтому scoped CSS компонента до
+   * него не доходит — нужен :global(). Позиция (position/top/left/width/bottom)
+   * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
+   */
+  :global(.dropdown) {
+    position: fixed;
+    z-index: 1000;
+    background: var(--color-surface-raised);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-elev-2);
     max-height: 240px;
     overflow-y: auto;
   }
-  .dropdown-item {
+  /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
+  :global(.dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--space-sm) var(--space-md);
@@ -207,9 +222,9 @@
     font-family: inherit;
     font-size: var(--font-size-body);
     cursor: pointer;
-    &:hover,
-    &.active {
-      background: var(--color-surface-hover);
-    }
+  }
+  :global(.dropdown-item:hover),
+  :global(.dropdown-item.active) {
+    background: var(--color-surface-hover);
   }
 </style>
