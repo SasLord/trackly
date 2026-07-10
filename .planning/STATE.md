@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-09T23:22:43.650Z"
-last_activity: 2026-07-09 -- Phase 18 planning complete
+last_updated: "2026-07-10T00:06:36.626Z"
+last_activity: 2026-07-10
 progress:
   total_phases: 21
   completed_phases: 20
   total_plans: 129
-  completed_plans: 124
+  completed_plans: 125
   percent: 95
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** v1.1.2 roadmap created — 4 phases (18-21), awaiting phase planning
+**Current focus:** Phase 18 — autocomplete-dropdowns
 
 ## Current Position
 
-Phase: 18 — Автокомплит и дропдауны (not started)
-Plan: —
+Phase: 18 (autocomplete-dropdowns) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-09 -- Phase 18 planning complete
+Last activity: 2026-07-10
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -167,6 +167,7 @@ Last activity: 2026-07-09 -- Phase 18 planning complete
 | Phase 17 P05 | 7min | 3 tasks | 3 files |
 | Phase 17 P06 | 15 min | 3 tasks | 4 files |
 | Phase 17 P07 | 40min | 2 tasks | 1 files |
+| Phase 18 P01 | 20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -385,6 +386,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 17-05: column_labels appended as new 8th arg to export_pdf (not replacing columns) — keeps row_field key-based cell resolution untouched
 - [Phase ?]: 17-05: disallowed logo_mime drops the logo entirely (logo_bytes=None) rather than falling back to a default mime
 - [Phase 17]: 17-07: full trackly-app test suite confirmed green (77 binaries, 0 failures) via background-monitored canonical CI invocation (mock env + --test-threads=1); closes Req-7's UNCERTAIN status with evidence, not hypothesis
+- [Phase 18]: 18-01: list_grouped true-branch group key = (type_id,name,model) (D-05), sort by count DESC (D-04), name_prefix drives FTS5 text filter via build_fts_query (AUTO-03); false-branch untouched
 
 ### Pending Todos
 
@@ -446,9 +448,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-09T14:17:19.184Z
-Stopped at: Phase 18 UI-SPEC approved
-Resume file: .planning/phases/18-autocomplete-dropdowns/18-UI-SPEC.md
+Last session: 2026-07-10T00:06:36.619Z
+Stopped at: Completed 18-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
