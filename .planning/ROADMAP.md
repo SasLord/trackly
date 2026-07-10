@@ -188,7 +188,7 @@ Trackly — портативное приложение для учёта тех
 **Wave 1**
 
 - [x] 18-01-PLAN.md — Backend: list_grouped группировка name+model, сортировка count DESC, текстовый фильтр name/inv#/SN через FTS5 (AUTO-03/04/05 контракт)
-- [ ] 18-02-PLAN.md — dropdownAnchor.ts (portal-anchor слой) + первый потребитель LocationAutocomplete (AUTO-01)
+- [x] 18-02-PLAN.md — dropdownAnchor.ts (portal-anchor слой) + первый потребитель LocationAutocomplete (AUTO-01)
 
 **Wave 2** *(depends on Wave 1 — 18-03 нужен dropdownAnchor.ts, 18-04 нужен backend-контракт + dropdownAnchor.ts; параллельны друг другу — нет пересечения файлов)*
 
@@ -289,7 +289,7 @@ Trackly — портативное приложение для учёта тех
 | 15. Рендер и соответствие образцу | v1.1.1 | 4/4 | Complete   | 2026-07-04 |
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
-| 18. Автокомплит и дропдауны | v1.1.2 | 1/5 | In Progress|  |
+| 18. Автокомплит и дропдауны | v1.1.2 | 2/5 | In Progress|  |
 | 19. Акты — дата и редактирование | v1.1.2 | 0/TBD | Not started | - |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
