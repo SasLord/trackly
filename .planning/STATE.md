@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-10T00:13:03.729Z"
+last_updated: "2026-07-10T00:19:11.143Z"
 last_activity: 2026-07-10
 progress:
   total_phases: 21
   completed_phases: 20
   total_plans: 129
-  completed_plans: 126
+  completed_plans: 127
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 18 (autocomplete-dropdowns) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-10
 
@@ -169,6 +169,7 @@ Last activity: 2026-07-10
 | Phase 17 P07 | 40min | 2 tasks | 1 files |
 | Phase 18 P01 | 20min | 2 tasks | 4 files |
 | Phase 18 P02 | 12min | - tasks | - files |
+| Phase 18 P03 | 9min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -389,6 +390,8 @@ Recent decisions affecting current work:
 - [Phase 17]: 17-07: full trackly-app test suite confirmed green (77 binaries, 0 failures) via background-monitored canonical CI invocation (mock env + --test-threads=1); closes Req-7's UNCERTAIN status with evidence, not hypothesis
 - [Phase 18]: 18-01: list_grouped true-branch group key = (type_id,name,model) (D-05), sort by count DESC (D-04), name_prefix drives FTS5 text filter via build_fts_query (AUTO-03); false-branch untouched
 - [Phase ?]: Phase 18 Plan 02: dropdownAnchor.ts wraps .dropdown AND .dropdown-item in :global() (not just .dropdown) — matches DeviceContextMenu.svelte precedent, avoids scoped-CSS pruning risk on portaled nodes; box-shadow --shadow-md -> --shadow-elev-2 (unused token fix)
+- [Phase 18]: 18-03: PersonAutocomplete/DeviceAutocompleteField migrated to portal + dropdownAnchor recipe from Plan 18-02; DeviceAutocompleteField passes maxHeight:200 to match its 200px CSS max-height
+- [Phase 18]: 18-03: Select/CartridgeSelect/GroupedPrinterSelect/PrinterSelect documented AUTO-01-compliant by construction (native <select>, no custom overlay) after re-reading each source, per T-18-07 mitigation
 
 ### Pending Todos
 
@@ -450,8 +453,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-10T00:13:03.722Z
-Stopped at: Completed 18-01-PLAN.md
+Last session: 2026-07-10T00:19:11.136Z
+Stopped at: Completed 18-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
