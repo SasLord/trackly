@@ -33,7 +33,7 @@
     return `${d.getUTCDate()} ${MONTHS_RU[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   }
 
-  const dateLabel = $derived(formatDate(act.created_at_utc));
+  const dateLabel = $derived(formatDate(act.handover_date_utc));
   const itemsCount = $derived(act.items.length);
   // act.number is already formatted (D-Numbering-01) — e.g. "42" / "42в1".
 

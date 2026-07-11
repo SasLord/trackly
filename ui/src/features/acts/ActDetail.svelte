@@ -40,7 +40,7 @@
     return `${d.getUTCDate()} ${MONTHS_RU[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   }
 
-  const headerDate = $derived(act ? formatDate(act.created_at_utc) : null);
+  const headerDate = $derived(act ? formatDate(act.handover_date_utc) : null);
   const deadlineLabel = $derived(act?.deadline_utc != null ? formatDate(act.deadline_utc) : null);
 </script>
 
