@@ -37,12 +37,15 @@
   // State
   // ----------------------------------------------------------------------------
   // G-2 (Phase 3.1 Plan 04): дата фактической передачи (когда отдали).
-  // Default = today UTC (browser-local будет хорошо для пользователя в МСК).
+  // Default = today UTC. Plan 19-08 (IN-01): UTC accessors match
+  // unixToIso()/isoToUnix() below — a single TZ convention across the
+  // create-default, edit-prefill and round-trip paths, no day-boundary
+  // off-by-one against browser-local calendar accessors.
   function todayISO(): string {
     const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
 
