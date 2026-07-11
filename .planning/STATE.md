@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T16:12:17.436Z"
+last_updated: "2026-07-11T17:49:40.721Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 134
-  completed_plans: 132
+  completed_plans: 133
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-11
 
@@ -176,6 +176,7 @@ Last activity: 2026-07-11
 | Phase 19 P01 | 14min | 3 tasks | 7 files |
 | Phase 19 P02 | 11min | 3 tasks | 4 files |
 | Phase 19 P03 | 25min | 2 tasks | 2 files |
+| Phase 19 P04 | 45min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -410,6 +411,9 @@ Recent decisions affecting current work:
 - [Phase 19]: 19-03: update_act_header_in_tx's unconditional SET fields always resolved to Some(..) in ActPatch construction (never left as outer None)
 - [Phase 19]: 19-03: custom:update_remove chosen as distinct audit action for edit-driven device removal (vs delete_soft's custom:undo); payload_json still carries act_id for bulk-undo compat
 - [Phase 19]: 19-03: requirements-completed left empty (not ACT-02) — requirement spans plans 19-02..19-05, only backend half done here (matches 19-02's precedent)
+- [Phase ?]: 19-04: build_acts_update mirrors build_acts_create's single-DTO shape (id/expected_version live inside ActUpdateDto, not split args)
+- [Phase ?]: 19-04: RBAC regression landed as Case 42 (grepped actual max 41 first, not a stale plan-suggested number)
+- [Phase ?]: 19-04: requirements-completed left empty (not ACT-02) -- transport wiring only; Plan 19-05 closes the user-visible UI loop
 
 ### Pending Todos
 
@@ -471,9 +475,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T16:12:17.423Z
-Stopped at: Completed 19-03-PLAN.md
-Resume file: 19-04-PLAN.md
+Last session: 2026-07-11T17:49:40.712Z
+Stopped at: Completed 19-04-PLAN.md
+Resume file: 19-05-PLAN.md
 
 ## Operator Next Steps
 
