@@ -72,6 +72,8 @@ pub struct ActDto {
     pub created_at_utc: i64,
     #[specta(type = i32)]
     pub updated_at_utc: i64,
+    #[specta(type = i32)]
+    pub handover_date_utc: i64,
     pub items: Vec<ActItemDto>,
     /// IDs of linked return acts (for handover). Plan 02: always `[]`.
     /// Plan 03 (return lifecycle) populates this list; UI loads the full
@@ -317,6 +319,7 @@ pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64
         archived: row.archived,
         created_at_utc: row.created_at_utc,
         updated_at_utc: row.updated_at_utc,
+        handover_date_utc: row.handover_date_utc,
         items,
         return_ids,
     }
