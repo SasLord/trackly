@@ -756,15 +756,55 @@ impl ActService {
                 // 7. Retained (unchanged device_id set) rows: overwrite
                 // complectation_at_time только если the matching item's
                 // value is Some (D-04 комплектация edit on retained rows).
+                // WR-03: only fire the UPDATE + audit row when the incoming
+                // value actually DIFFERS from what's stored — a no-op
+                // resubmit of the same комплектация must write neither.
                 for &dev_id in &unchanged {
                     if let Some(item) = payload.items.iter().find(|i| i.device_id == dev_id) {
                         if let Some(v) = &item.complectation_at_time {
-                            tx.execute(
-                                "UPDATE act_items SET complectation_at_time = ?1 \
-                                 WHERE act_id = ?2 AND device_id = ?3",
-                                params![v, payload.id, dev_id],
-                            )
-                            .map_err(map_rusqlite)?;
+                            let stored: Option<String> = tx
+                                .query_row(
+                                    "SELECT complectation_at_time FROM act_items \
+                                     WHERE act_id = ?1 AND device_id = ?2",
+                                    params![payload.id, dev_id],
+                                    |r| r.get(0),
+                                )
+                                .map_err(map_rusqlite)?;
+                            if stored.as_deref() != Some(v.as_str()) {
+                                tx.execute(
+                                    "UPDATE act_items SET complectation_at_time = ?1 \
+                                     WHERE act_id = ?2 AND device_id = ?3",
+                                    params![v, payload.id, dev_id],
+                                )
+                                .map_err(map_rusqlite)?;
+
+                                let before_json = serde_json::json!({
+                                    "device_id": dev_id,
+                                    "complectation_at_time": stored,
+                                })
+                                .to_string();
+                                let after_json = serde_json::json!({
+                                    "device_id": dev_id,
+                                    "complectation_at_time": v,
+                                })
+                                .to_string();
+                                audit_repo.insert(
+                                    &tx,
+                                    AuditEntry {
+                                        entity_type: "act_item",
+                                        entity_id: payload.id,
+                                        action: "custom:act_item_complectation_edit",
+                                        user_id: user_id_opt,
+                                        before_json: Some(before_json),
+                                        after_json: Some(after_json),
+                                        payload_json: Some(
+                                            serde_json::json!({ "act_id": payload.id })
+                                                .to_string(),
+                                        ),
+                                        created_at_utc: now,
+                                    },
+                                )?;
+                            }
                         }
                     }
                 }

@@ -19,6 +19,7 @@
 //!
 //! Coverage (Plan 19-07, gap closure, 2 tests):
 //!   12. rename_with_return_frees_old_number (WR-01)
+//!   13. complectation_edit_writes_audit (WR-03)
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -896,4 +897,98 @@ async fn rename_with_return_frees_old_number() {
     })
     .await
     .expect("rename_with_return_frees_old_number budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 13 (Plan 19-07, WR-03): complectation_edit_writes_audit
+// ---------------------------------------------------------------------------
+//
+// Editing a retained item's `complectation_at_time` must emit exactly one
+// `custom:act_item_complectation_edit` audit row with before/after JSON.
+// Resubmitting the SAME value must write no additional row (no-op guard).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn complectation_edit_writes_audit() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+
+        let mut update = update_dto_from(&handover, &device_ids);
+        update.items[0].complectation_at_time = Some("Кабель, коробка".into());
+        svc.update(update)
+            .await
+            .expect("complectation edit on retained item should succeed");
+
+        let readers = svc.readers.clone();
+        let (count, before_json, after_json): (i64, Option<String>, Option<String>) = {
+            let readers = readers.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM audit_log \
+                         WHERE action = 'custom:act_item_complectation_edit'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .expect("count audit rows");
+                let (before_json, after_json): (Option<String>, Option<String>) = conn
+                    .query_row(
+                        "SELECT before_json, after_json FROM audit_log \
+                         WHERE action = 'custom:act_item_complectation_edit' \
+                         ORDER BY id DESC LIMIT 1",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .expect("read audit row");
+                (count, before_json, after_json)
+            })
+            .await
+            .expect("spawn_blocking")
+        };
+        assert_eq!(count, 1, "first комплектация edit writes exactly one audit row");
+        assert!(
+            before_json
+                .as_deref()
+                .map(|s| s.contains("null"))
+                .unwrap_or(false),
+            "before_json should reflect the prior (unset) комплектация: {before_json:?}"
+        );
+        assert!(
+            after_json
+                .as_deref()
+                .map(|s| s.contains("Кабель, коробка"))
+                .unwrap_or(false),
+            "after_json should reflect the new комплектация: {after_json:?}"
+        );
+
+        // Resubmit the SAME комплектация value — no additional audit row.
+        let handover_after = svc.get(handover.id).await.expect("re-fetch handover");
+        let mut update2 = update_dto_from(&handover_after, &device_ids);
+        update2.items[0].complectation_at_time = Some("Кабель, коробка".into());
+        svc.update(update2)
+            .await
+            .expect("no-op complectation resubmit should succeed");
+
+        let count2: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_log \
+                 WHERE action = 'custom:act_item_complectation_edit'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count audit rows after no-op")
+        })
+        .await
+        .expect("spawn_blocking");
+        assert_eq!(
+            count2, 1,
+            "resubmitting the same комплектация must write no additional audit row"
+        );
+    })
+    .await
+    .expect("complectation_edit_writes_audit budget");
 }
