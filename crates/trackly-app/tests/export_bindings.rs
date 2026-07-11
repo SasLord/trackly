@@ -232,6 +232,15 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("acts_create"),
         "bindings.ts missing acts_create command"
     );
+    // Phase 19 Plan 04 — ACT-02 act edit transports
+    assert!(
+        contents.contains("ActUpdateDto"),
+        "bindings.ts missing ActUpdateDto type"
+    );
+    assert!(
+        contents.contains("acts_update"),
+        "bindings.ts missing acts_update command"
+    );
     assert!(
         contents.contains("acts_counts"),
         "bindings.ts missing acts_counts command"

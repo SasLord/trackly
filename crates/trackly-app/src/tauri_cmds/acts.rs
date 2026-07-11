@@ -13,7 +13,8 @@
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActsCountsDto, Pagination,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto, ActsCountsDto,
+    Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -80,6 +81,18 @@ pub async fn build_acts_delete(
 ) -> Result<(), AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.delete_soft(id, version).await
+}
+
+/// Мутация (ACT-02): требует `caller` с правом `MutateActs`.
+/// `id`/`expected_version` живут внутри `ActUpdateDto` (single-DTO shape,
+/// как у `build_acts_create`) — не split-args, как у `build_acts_return`.
+pub async fn build_acts_update(
+    ctx: &AppCtx,
+    caller: &Identity,
+    payload: ActUpdateDto,
+) -> Result<ActDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
+    ctx.acts.update(payload).await
 }
 
 pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {
@@ -198,6 +211,16 @@ pub async fn acts_delete(
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_delete(state.inner(), &caller, id as i64, version as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_update(
+    state: tauri::State<'_, AppCtx>,
+    payload: ActUpdateDto,
+) -> Result<ActDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_update(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]
