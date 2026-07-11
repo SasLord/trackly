@@ -742,6 +742,83 @@ async fn grouping_condition_distinct_count_mixed() {
 }
 
 // ---------------------------------------------------------------------------
+// grouping_condition_distinct_count_counts_null_as_distinct (WR-04)
+// ---------------------------------------------------------------------------
+// SQLite's COUNT(DISTINCT x) ignores NULL — a group with одно устройство БЕЗ
+// condition (NULL) и одно С condition="Новое" раньше сообщал
+// condition_distinct_count=1, что подавляло D-07 drill-in и клонировало
+// смешанную группу как однородную. COALESCE(d.condition, ' ') в SQL должен
+// считать NULL отдельным бакетом → distinct_count == 2 для такой группы.
+// Проверяем оба режима (true-branch с model-ключом и false-branch).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_condition_distinct_count_counts_null_as_distinct() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // non_unique_device: state=None → condition IS NULL в БД.
+        svc.create(non_unique_device("Проектор", 1))
+            .await
+            .expect("create condition=NULL");
+        // device_with_condition("Проектор", "Новое"): тот же name + model
+        // ("Model X"), condition="Новое" — должны схлопнуться в одну группу.
+        svc.create(device_with_condition("Проектор", "Новое"))
+            .await
+            .expect("create condition=Новое");
+
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+
+        // true-branch (group_by_condition=true, D-04/D-05 model-key grouping) —
+        // основной путь для drill-in в форме акта.
+        let filter_true = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
+        let groups_true = svc
+            .list_grouped(filter_true, page)
+            .await
+            .expect("list_grouped (group_by_condition=true)");
+        assert_eq!(
+            groups_true.len(),
+            1,
+            "WR-04: одинаковый name+model (NULL + Новое condition) → ОДНА группа, получили {} групп",
+            groups_true.len()
+        );
+        assert_eq!(
+            groups_true[0].condition_distinct_count, 2,
+            "WR-04: condition_distinct_count должен считать NULL как отдельный бакет (true-branch), получено {}",
+            groups_true[0].condition_distinct_count
+        );
+
+        // false-branch (group_by_condition=false, DevicesPage grouping).
+        let filter_false = DeviceFilter {
+            group_by_condition: false,
+            ..Default::default()
+        };
+        let groups_false = svc
+            .list_grouped(filter_false, page)
+            .await
+            .expect("list_grouped (group_by_condition=false)");
+        assert_eq!(
+            groups_false.len(),
+            1,
+            "WR-04: false-branch тоже должен схлопнуть в ОДНУ группу, получили {} групп",
+            groups_false.len()
+        );
+        assert_eq!(
+            groups_false[0].condition_distinct_count, 2,
+            "WR-04: condition_distinct_count должен считать NULL как отдельный бакет (false-branch), получено {}",
+            groups_false[0].condition_distinct_count
+        );
+    })
+    .await
+    .expect("grouping_condition_distinct_count_counts_null_as_distinct exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
 // condition_key_same_condition_collapses (DEF-2B)
 // ---------------------------------------------------------------------------
 // Два устройства с одинаковым name + одинаковым condition → одна группа count=2.

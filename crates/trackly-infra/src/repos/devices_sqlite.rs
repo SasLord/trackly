@@ -981,8 +981,18 @@ impl DeviceRepository for SqliteDeviceRepository {
         //   - group_by_condition=true, text filter present: same grouping/sort PLUS
         //     `devices_fts MATCH` — `sql_grouped_by_model_with_query` (AUTO-03).
         //
-        // All three branches include COUNT(DISTINCT d.condition) AS condition_distinct_count
+        // All three branches include COUNT(DISTINCT ...) AS condition_distinct_count
         // so the frontend can display «разное» / trigger drill-in.
+        //
+        // WR-04 (Phase 18 code review): SQLite's COUNT(DISTINCT x) ignores NULL —
+        // a group whose members have conditions {NULL, "Новое"} used to report
+        // condition_distinct_count=1, suppressing drill-in (D-07) and silently
+        // cloning a mixed-condition group as if uniform. COALESCE(d.condition, ' ')
+        // maps NULL to a distinct sentinel bucket so mixed NULL/non-NULL groups
+        // report distinct_count >= 2. ' ' (space) cannot collide with a real
+        // condition value because condition strings are trimmed/normalized on
+        // write (empty-string normalized to NULL, Pitfall #12) — no real
+        // condition value is a lone space.
         //
         // Representative row: MIN(id) for deterministic ordering.
         // GROUP_CONCAT(id) parsed to extract all IDs (T-02-04-06).
@@ -1001,7 +1011,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.notes)                         AS notes,
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
-                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
                    MAX(d.location_id)                   AS location_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
@@ -1035,7 +1045,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.notes)                         AS notes,
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
-                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
                    MAX(d.location_id)                   AS location_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
@@ -1071,7 +1081,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.notes)                         AS notes,
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
-                   COUNT(DISTINCT d.condition)          AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
                    MAX(d.location_id)                   AS location_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
