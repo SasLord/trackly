@@ -31,6 +31,8 @@
   let selectedAct = $state<ActDto | null>(null);
   let detailLoading = $state(false);
   let createModalOpen = $state(false);
+  let editModalOpen = $state(false);
+  let editTargetAct = $state<ActDto | null>(null);
   let returnModalOpen = $state(false);
   let returnTargetAct = $state<ActDto | null>(null);
   let pdfModalOpen = $state(false);
@@ -136,6 +138,23 @@
     returnModalOpen = true;
   }
 
+  // Plan 19-05 (ACT-02): reuse the `act` argument directly (no acts.get(act.id)
+  // re-fetch) — onEdit is only ever invoked from ActDetail where act === selectedAct,
+  // and selectedAct is already guaranteed fresh via the acts.get(id) $effect above
+  // (Pitfall 5 — only acts.get(id) populates outstanding_device_ids).
+  function handleEdit(act: ActDto) {
+    editTargetAct = act;
+    editModalOpen = true;
+  }
+
+  function handleEditSaved(act: ActDto) {
+    editModalOpen = false;
+    editTargetAct = null;
+    selectedActId = act.id;
+    refresh();
+    refreshCounts();
+  }
+
   function handlePrint(act: ActDto) {
     pdfModalAct = act;
     pdfModalOpen = true;
@@ -225,6 +244,7 @@
           loading={detailLoading}
           onCreate={openCreate}
           onDelete={handleDelete}
+          onEdit={handleEdit}
           onReturn={handleReturn}
           onPrint={handlePrint}
         />
@@ -237,6 +257,17 @@
   open={createModalOpen}
   onClose={() => (createModalOpen = false)}
   onSaved={handleSaved}
+/>
+
+<ActFormModal
+  mode="edit"
+  initialAct={editTargetAct}
+  open={editModalOpen}
+  onClose={() => {
+    editModalOpen = false;
+    editTargetAct = null;
+  }}
+  onSaved={handleEditSaved}
 />
 
 <ReturnModal
