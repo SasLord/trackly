@@ -6,7 +6,7 @@
 
 ## Summary
 
-This phase has no external-library risk at all — every finding below comes from reading the actual `trackly` codebase, not from training-data assumptions. ACT-01 is a narrow, low-risk display/sort/render fix: `ActDto` does not currently expose `handover_date_utc` to the frontend at all (only `created_at_utc`/`updated_at_utc`), and five call sites (2 SQL `ORDER BY`, 2 HTML-render date fields, 2 Svelte date derivations) read `created_at_utc` where they must read `handover_date_utc` instead. No migration is needed — the column has existed since V015.
+This phase has no external-library risk at all — every finding below comes from reading the actual `trackly` codebase, not from training-data assumptions. ACT-01 is a narrow, low-risk display/sort/render fix: `ActDto` does not currently expose `handover_date_utc` to the frontend at all (only `created_at_utc`/`updated_at_utc`), and six call sites (2 SQL `ORDER BY`, 2 HTML-render date fields — act block + parent block, 2 Svelte date derivations) read `created_at_utc` where they must read `handover_date_utc` instead. No migration is needed — the column has existed since V015.
 
 ACT-02 is the real work: there is no `update`/`patch` path for acts anywhere in the stack (confirmed — grep found zero `fn update`/`fn patch` on `ActService`, `ActRepository`, or `SqliteActRepository`). It must be built from scratch, but the codebase already contains every primitive needed, cleanly factored and directly reusable:
 - **Optimistic-lock CAS pattern** — copy `SqliteActRepository::soft_delete_in_tx`'s `UPDATE ... WHERE id=? AND version=?` + `affected==0` → distinguish `NotFound` vs `OptimisticLockMismatch` — already used by `delete_soft` end-to-end (Tauri/HTTP/UI already handle `OptimisticLockMismatch` as HTTP 409).
@@ -14,7 +14,7 @@ ACT-02 is the real work: there is no `update`/`patch` path for acts anywhere in 
 - **Delta reconciliation "add device like create"** — copy the device-loop body of `ActService::create` (status-guard on `на_складе`, transition to `в_работе` + location, per-device audit row with `payload_json: {"act_id":..,"kind":"handover"}`).
 - **D-08 "already returned" guard** — do NOT write new SQL for this. `populate_outstanding_device_ids`'s `EXCEPT` query (device_ids in `act_items` minus device_ids consumed by active return-acts) is exactly the "is this device still free to edit" predicate. A device NOT in that outstanding set is bound to a completed return and must be protected from removal/replacement; header edits stay unrestricted per D-05.
 
-**Primary recommendation:** Add `handover_date_utc` to `ActDto`/`act_dto_from_row` and switch the 5 read-side call sites (ACT-01); add `ActService::update` following the exact transactional/audit/CAS conventions of `create`/`do_return`/`delete_soft` (ACT-02), reusing `populate_outstanding_device_ids`'s query for D-08 and `select_device_mutations_for_act` for D-06 restore. No new crates, no schema migration.
+**Primary recommendation:** Add `handover_date_utc` to `ActDto`/`act_dto_from_row` and switch the 6 read-side call sites (ACT-01); add `ActService::update` following the exact transactional/audit/CAS conventions of `create`/`do_return`/`delete_soft` (ACT-02), reusing `populate_outstanding_device_ids`'s query for D-08 and `select_device_mutations_for_act` for D-06 restore. No new crates, no schema migration.
 
 ## Architectural Responsibility Map
 
@@ -282,7 +282,7 @@ Not applicable — this is not a rename/refactor/migration phase. No renamed ide
 
 ## Code Examples
 
-### ACT-01: the exact 5 call sites needing `created_at_utc` → `handover_date_utc`
+### ACT-01: the exact 6 call sites needing `created_at_utc` → `handover_date_utc`
 
 ```rust
 // Source: crates/trackly-infra/src/repos/acts_sqlite.rs:537 (list())
@@ -353,12 +353,15 @@ Not applicable in the "external ecosystem changed" sense — nothing here tracks
 | A2 | `update` should support only the canonical `device_ids[]` positions model (no legacy clone-on-handover quantity>1 path) for new positions added during an edit | Architecture Patterns, Pattern 3 | Low risk — if wrong, simply extends the add-path to also accept the legacy quantity+clone shape, mirroring `create`'s dual-path; no data-model conflict either way |
 | A3 | Header-editable `№` (act number) requires re-running `create`'s uniqueness check (including soft-deleted acts) and an audit entry mirroring `custom:act_number_override` | Anti-Patterns, Code Examples | If wrong / skipped, reintroduces the duplicate-act-number bug class `create`'s existing check was built to prevent |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Scope of "комплектация/технические характеристики" editability (D-04)**
    - What we know: Schema has no act-header column for either; both map to per-item columns/live fields (`act_items.complectation_at_time`, `devices.notes` via `item.specs`). No existing UI precedent for editing either.
    - What's unclear: Whether the user's intent in D-04 was per-item editing (schema-consistent, low risk) or something else entirely (act-level free text — would need a new column).
    - Recommendation: Planner should either (a) explicitly scope this as "per-position `condition_at_time`/`complectation_at_time` free-text inputs added to retained rows in edit mode, `specs`/device.notes untouched," documented as a plan-time decision, or (b) flag back to `/gsd-discuss-phase 19` for a quick clarifying pass before planning proceeds. Given `mode: yolo` and `auto_advance: true` in config, recommend (a) with the schema-consistent interpretation, documented plainly in the plan's Decisions section so it's auditable.
+   - **RESOLVED (2026-07-11, user confirmation during plan-phase):** Only «комплектация» is editable in Phase 19, per-item via `act_items.complectation_at_time` on retained rows. «Технические характеристики» (`devices.notes` / `item.specs`) are OUT of scope this phase and stay read-only. CONTEXT.md D-04 amended to record this narrowed scope. Encoded in Plans 19-02 (`ActUpdateItemDto`) and 19-05 (UI excludes any specs/device.notes input).
+
+   - **RESOLVED:** Extend `ActPatch` with the missing header fields + `expected_version`; items travel as a DTO-only `ActUpdateDto` field destructured in the service layer (per recommendation). Encoded in Plan 19-02.
 
 2. **`ActPatch` (domain/acts.rs:110) — extend or replace?**
    - What we know: It exists, is currently unused anywhere, lacks `handover_date_utc`/`number`/`items`.
@@ -369,6 +372,8 @@ Not applicable in the "external ecosystem changed" sense — nothing here tracks
    - What we know: `create`/`do_return`/`delete_soft`(service)/`delete_soft`(repo, trait) are inconsistent — `delete_soft` IS on the `ActRepository` trait; `create`/`do_return` are NOT (they're orchestrated ad-hoc inside `ActService` using `*_in_tx` helpers on the concrete `SqliteActRepository`).
    - What's unclear: Whether `update`'s header-write belongs on the trait (like `delete_soft`) or as a private `_in_tx` helper (like `insert_act_in_tx`).
    - Recommendation: Given `update`'s device-delta logic (added/removed reconciliation, audit writes, D-08 guard) must live in `ActService` regardless (it needs `devices_repo`/`audit_repo`, not just `acts_repo`), keep the acts-table header UPDATE as a `_in_tx` helper on `SqliteActRepository` (e.g. `update_act_header_in_tx`), consistent with `insert_act_in_tx`'s precedent — do not add `update` to the trait unless a future caller needs it through the trait's `Conn`-generic abstraction (none currently does).
+
+   - **RESOLVED:** Keep the acts-table header UPDATE as a private `update_act_header_in_tx` helper on `SqliteActRepository` (consistent with `insert_act_in_tx`); device-delta orchestration lives in `ActService::update`. Not added to the `ActRepository` trait. Encoded in Plans 19-02/19-03.
 
 ## Environment Availability
 
