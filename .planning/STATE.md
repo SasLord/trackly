@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: executing
-last_updated: "2026-07-11T17:49:40.721Z"
+status: verifying
+last_updated: "2026-07-11T17:58:06.255Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
-  completed_phases: 21
+  completed_phases: 22
   total_plans: 134
-  completed_plans: 133
-  percent: 95
+  completed_plans: 134
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 19 (acts-date-edit) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -177,6 +177,7 @@ Last activity: 2026-07-11
 | Phase 19 P02 | 11min | 3 tasks | 4 files |
 | Phase 19 P03 | 25min | 2 tasks | 2 files |
 | Phase 19 P04 | 45min | 3 tasks | 6 files |
+| Phase 19 P05 | 20min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -414,6 +415,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 19-04: build_acts_update mirrors build_acts_create's single-DTO shape (id/expected_version live inside ActUpdateDto, not split args)
 - [Phase ?]: 19-04: RBAC regression landed as Case 42 (grepped actual max 41 first, not a stale plan-suggested number)
 - [Phase ?]: 19-04: requirements-completed left empty (not ACT-02) -- transport wiring only; Plan 19-05 closes the user-visible UI loop
+- [Phase 19]: Plan 19-05: edit-mode prefill sources directly from initialAct (acts.get(id) result), bypassing live device search since existing act positions are в_работе, not на_складе
+- [Phase 19]: Plan 19-05: second, independent ActFormModal instance (mode=edit) added in ActsPage rather than threading shared create/edit state through one modal
+- [Phase 19]: Plan 19-05: D-07 edit-button gating deliberately omits !act.archived — archived handover acts remain editable, unlike Возврат
 
 ### Pending Todos
 
@@ -475,9 +479,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T17:49:40.712Z
-Stopped at: Completed 19-04-PLAN.md
-Resume file: 19-05-PLAN.md
+Last session: 2026-07-11T17:58:06.247Z
+Stopped at: Completed 19-05-PLAN.md (phase 19 complete, ready for verification)
+Resume file: None
 
 ## Operator Next Steps
 
