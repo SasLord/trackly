@@ -15,6 +15,7 @@ import type {
   ActListResponse,
   ActReturnDto,
   ActsCountsDto,
+  ActUpdateDto,
   Pagination,
 } from '../../bindings';
 
@@ -25,6 +26,9 @@ export const acts = {
   get: (id: number) => apiCall<ActDto>('acts_get', { id }),
 
   create: (payload: ActCreateDto) => apiCall<ActDto>('acts_create', { payload }),
+
+  /** Phase 19 Plan 04 — редактирование существующего акта (ACT-02). */
+  update: (payload: ActUpdateDto) => apiCall<ActDto>('acts_update', { payload }),
 
   /** Plan 03-03 — оформление возврата по handover-акту. */
   doReturn: (actId: number, payload: ActReturnDto) =>
