@@ -769,7 +769,96 @@ impl ActService {
                     }
                 }
 
-                // TODO(Plan 19-03 Task 2): removed-device restore (D-06) + D-08 outstanding guard + number uniqueness re-check (A3) land here
+                // 8a. D-08 guard: a `removed` device_id that has already been
+                // consumed by a completed/active return is rejected — this
+                // must be checked for ALL removed devices BEFORE any of
+                // their mutations run (validate-then-mutate). If even one
+                // removed device fails this guard, the WHOLE update aborts
+                // (transaction rollback on any Err before commit).
+                let removed: Vec<i64> = d_old.difference(&d_new).copied().collect();
+                let outstanding = populate_outstanding_device_ids_in_tx(&tx, payload.id)?;
+                for &removed_id in &removed {
+                    if !outstanding.contains(&removed_id) {
+                        return Err(AppError::Conflict {
+                            reason: format!(
+                                "Устройство id={} уже возвращено по акту возврата — \
+                                 редактирование позиции невозможно",
+                                removed_id
+                            ),
+                        });
+                    }
+                }
+
+                // 8b. Number uniqueness re-check (A3) — same rule as `create`,
+                // only re-run when the number actually changes.
+                if let Some(n) = payload.number_override {
+                    if n != act.number {
+                        let exists: bool = tx
+                            .query_row(
+                                "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 LIMIT 1)",
+                                params![n],
+                                |r| r.get(0),
+                            )
+                            .map_err(map_rusqlite)?;
+                        if exists {
+                            return Err(AppError::Conflict {
+                                reason: format!("Акт №{n} уже существует"),
+                            });
+                        }
+                    }
+                }
+
+                // 8c. Removed devices: restore to the MOST RECENT prior state
+                // (Pitfall 2 — NOT the original pre-handover state) via
+                // `select_latest_device_mutation`'s `DESC LIMIT 1` lookup,
+                // then delete the act_items row.
+                for &removed_id in &removed {
+                    let before_json = audit_repo
+                        .select_latest_device_mutation(&tx, payload.id, removed_id)?
+                        .ok_or_else(|| AppError::Internal {
+                            source_chain: format!(
+                                "update: no audit trail for outstanding device {removed_id} \
+                                 on act {}",
+                                payload.id
+                            ),
+                        })?;
+                    let snapshot: serde_json::Value = serde_json::from_str(&before_json)
+                        .map_err(|e| AppError::Internal {
+                            source_chain: format!(
+                                "update: corrupt before_json for device {removed_id}: {e}"
+                            ),
+                        })?;
+                    let restored = devices_repo.restore_from_snapshot_in_tx(
+                        &tx,
+                        removed_id,
+                        &snapshot,
+                        now,
+                    )?;
+                    let after_json =
+                        device_snapshot_json(&restored).map_err(|e| AppError::Internal {
+                            source_chain: format!("update remove after_json: {e}"),
+                        })?;
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "device",
+                            entity_id: removed_id,
+                            action: "custom:update_remove",
+                            user_id: user_id_opt,
+                            before_json: Some(before_json),
+                            after_json: Some(after_json),
+                            payload_json: Some(
+                                serde_json::json!({ "act_id": payload.id }).to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                    tx.execute(
+                        "DELETE FROM act_items WHERE act_id = ?1 AND device_id = ?2",
+                        params![payload.id, removed_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
 
                 // 9. Build ActPatch + CAS header UPDATE. The 5 original
                 // header fields are unconditional in `update_act_header_in_tx`'s
@@ -787,6 +876,31 @@ impl ActService {
                     expected_version: payload.expected_version,
                 };
                 acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
+
+                // 9b. If the number actually changed, audit it distinctly
+                // (mirrors `create`'s `custom:act_number_override` shape).
+                if let Some(n) = payload.number_override {
+                    if n != act.number {
+                        let override_payload_json = serde_json::json!({
+                            "requested": n,
+                            "previous": act.number,
+                        })
+                        .to_string();
+                        audit_repo.insert(
+                            &tx,
+                            AuditEntry {
+                                entity_type: "act",
+                                entity_id: payload.id,
+                                action: "custom:act_number_override",
+                                user_id: user_id_opt,
+                                before_json: None,
+                                after_json: None,
+                                payload_json: Some(override_payload_json),
+                                created_at_utc: now,
+                            },
+                        )?;
+                    }
+                }
 
                 // 10. Final audit row for the header edit (real before/after
                 // diff, unlike `create`'s tail which only has an after_json).
@@ -2201,6 +2315,33 @@ fn populate_outstanding_device_ids(
         }
     }
     Ok(())
+}
+
+/// `_in_tx` twin of `populate_outstanding_device_ids` (Phase 19, ACT-02 D-08
+/// guard) — same `EXCEPT` predicate, but operates on an open write
+/// `Transaction` and returns the outstanding `HashSet<i64>` directly instead
+/// of mutating a slice of `ActItemDto`. Used by `ActService::update` to
+/// reject removal of a device_id already consumed by a completed/active
+/// return, BEFORE any device mutation for that removal runs.
+fn populate_outstanding_device_ids_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    act_id: i64,
+) -> Result<std::collections::HashSet<i64>, AppError> {
+    let mut stmt = tx
+        .prepare(
+            "SELECT device_id FROM act_items WHERE act_id = ?1 \
+             EXCEPT \
+             SELECT rai.device_id FROM act_items rai \
+               JOIN acts ra ON ra.id = rai.act_id \
+              WHERE ra.parent_act_id = ?1 AND ra.deleted_at_utc IS NULL",
+        )
+        .map_err(map_rusqlite)?;
+    let outstanding: std::collections::HashSet<i64> = stmt
+        .query_map(params![act_id], |r| r.get::<_, i64>(0))
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(map_rusqlite)?;
+    Ok(outstanding)
 }
 
 // `ActItemRow` re-export (unused yet — plan 03 will consume).
