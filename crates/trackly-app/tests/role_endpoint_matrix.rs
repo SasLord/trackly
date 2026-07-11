@@ -314,6 +314,24 @@ async fn role_endpoint_matrix_test() {
             }
         });
 
+        // Phase 19 Plan 04 (ACT-02): acts_update — id/expected_version don't
+        // need to reference a real act, RBAC must reject before any lookup.
+        let act_update_payload = json!({
+            "payload": {
+                "id": 1,
+                "expected_version": 1,
+                "number_override": null,
+                "giver_name": "Тест Тестов",
+                "receiver_name": "Тест2 Тестов",
+                "location_id": null,
+                "location_name": null,
+                "notes": null,
+                "deadline_utc": null,
+                "handover_date_utc": null,
+                "items": []
+            }
+        });
+
         let cartridge_payload = json!({
             "payload": {
                 "model_id": 1,
@@ -1389,6 +1407,27 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 41: Employee → printers_get_compatible_aggregates → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 42 (Plan 19-04, ACT-02 transports): Employee session →
+        // POST /api/v1/acts_update → 403 Forbidden. RBAC (Action::MutateActs)
+        // must reject before any act lookup — id/expected_version don't need
+        // to reference a real row.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/acts_update",
+                act_update_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 42: Employee → acts_update → expected 403, got {status}"
             );
         }
 
