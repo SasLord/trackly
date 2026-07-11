@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T19:18:01.212Z"
-last_activity: 2026-07-11 -- Phase 19 planning complete
+last_updated: "2026-07-11T19:35:23.079Z"
+last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 137
-  completed_plans: 134
+  completed_plans: 135
   percent: 95
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 5 of 5
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-07-11 -- Phase 19 planning complete
+Last activity: 2026-07-11
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -178,6 +178,7 @@ Last activity: 2026-07-11 -- Phase 19 planning complete
 | Phase 19 P03 | 25min | 2 tasks | 2 files |
 | Phase 19 P04 | 45min | 3 tasks | 6 files |
 | Phase 19 P05 | 20min | 3 tasks | 5 files |
+| Phase 19 P06 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -418,6 +419,7 @@ Recent decisions affecting current work:
 - [Phase 19]: Plan 19-05: edit-mode prefill sources directly from initialAct (acts.get(id) result), bypassing live device search since existing act positions are в_работе, not на_складе
 - [Phase 19]: Plan 19-05: second, independent ActFormModal instance (mode=edit) added in ActsPage rather than threading shared create/edit state through one modal
 - [Phase 19]: Plan 19-05: D-07 edit-button gating deliberately omits !act.archived — archived handover acts remain editable, unlike Возврат
+- [Phase 19-06]: recompute_parent_archived call gated on added/removed non-empty, placed after CAS header UPDATE and before final-audit fetch — Closes CR-01 — archived was never recomputed on update()'s device-set mutations; recompute must run after CAS (both bump version) to avoid spurious OptimisticLockMismatch, and gating preserves the header-only version+1 contract
 
 ### Pending Todos
 
@@ -479,8 +481,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T17:58:06.247Z
-Stopped at: Completed 19-05-PLAN.md (phase 19 complete, ready for verification)
+Last session: 2026-07-11T19:35:23.071Z
+Stopped at: Completed 19-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
