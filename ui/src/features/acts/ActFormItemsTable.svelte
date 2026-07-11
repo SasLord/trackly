@@ -332,7 +332,10 @@
             // Серийный/инвентарный экземпляр — qty жёстко 1; несерийная
             // под-группа — clamp текущего qty к размеру под-группы (правится
             // в колонке «Количество», как pickGroup).
-            quantity: hasSerial ? 1 : Math.min(it.quantity, groupIds.length),
+            // WR-02 (Plan 19-08): в edit-режиме добавляемая строка — ровно
+            // одно устройство (ActUpdateItemDto не несёт quantity/device_ids),
+            // поэтому qty жёстко клампится к 1 независимо от размера группы.
+            quantity: hasSerial || mode === 'edit' ? 1 : Math.min(it.quantity, groupIds.length),
             stock_available: groupIds.length,
             group_ids: groupIds,
           }
@@ -444,7 +447,8 @@
             picked: true,
             has_serial: hasSerial,
             // W-5: если выбранное устройство имеет serial — clamp qty=1.
-            quantity: hasSerial ? 1 : Math.min(it.quantity, g.count),
+            // WR-02 (Plan 19-08): edit-режим — та же логика, что и в pickDevice.
+            quantity: hasSerial || mode === 'edit' ? 1 : Math.min(it.quantity, g.count),
             stock_available: g.count,
             group_ids: g.ids,
           }
@@ -678,16 +682,26 @@
           {/if}
         </div>
         <div class="td col-qty" class:has-error={!!errFor(idx, 'quantity')}>
-          <input
-            type="number"
-            class="input qty-input"
-            class:invalid={!!errFor(idx, 'quantity')}
-            value={String(row.quantity)}
-            min="1"
-            max={qtyMax(row)}
-            disabled={row.has_serial}
-            oninput={(e) => handleQtyInput(idx, (e.currentTarget as HTMLInputElement).value)}
-          />
+          {#if mode === 'edit'}
+            <!-- WR-02 (Plan 19-08): edit-режим — добавляемая строка всегда
+                 ровно одно устройство (ActUpdateItemDto несёт только
+                 device_id, без quantity/device_ids). Показываем статичную
+                 «1» вместо редактируемого спиннера, чтобы видимое
+                 количество не вводило в заблуждение относительно того, что
+                 будет сохранено. -->
+            <span class="qty-fixed">1</span>
+          {:else}
+            <input
+              type="number"
+              class="input qty-input"
+              class:invalid={!!errFor(idx, 'quantity')}
+              value={String(row.quantity)}
+              min="1"
+              max={qtyMax(row)}
+              disabled={row.has_serial}
+              oninput={(e) => handleQtyInput(idx, (e.currentTarget as HTMLInputElement).value)}
+            />
+          {/if}
           {#if errFor(idx, 'quantity')}
             <p class="row-error">{errFor(idx, 'quantity')}</p>
           {/if}
@@ -1019,6 +1033,18 @@
       border-color: var(--color-destructive);
       box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
     }
+  }
+
+  // WR-02 (Plan 19-08): static qty display in edit mode — no spinner control,
+  // same height/alignment as .qty-input so the row layout doesn't shift.
+  .qty-fixed {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 var(--space-md);
+    color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
   }
 
   .hint-warn {
