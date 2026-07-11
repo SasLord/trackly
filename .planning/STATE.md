@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T15:03:13.257Z"
+last_updated: "2026-07-11T16:12:17.436Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 134
-  completed_plans: 131
+  completed_plans: 132
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-11
 
@@ -175,6 +175,7 @@ Last activity: 2026-07-11
 | Phase 18 P18-05 | 40min | 3 tasks | 1 files |
 | Phase 19 P01 | 14min | 3 tasks | 7 files |
 | Phase 19 P02 | 11min | 3 tasks | 4 files |
+| Phase 19 P03 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -406,6 +407,9 @@ Recent decisions affecting current work:
 - [Phase 19]: 19-01: html_act_render.rs tests assert on act.date_human (RU) not act.date (ISO) — the act_handover.html template only renders date_human; ISO field is unused in markup
 - [Phase 19]: 19-02: update_act_header_in_tx SET clause unconditional for 5 original header fields, COALESCE-only for handover_date_utc/number — Plan 19-03 must resolve values before calling
 - [Phase 19]: 19-02: complectation_at_time semantics documented on ActUpdateItemDto (retained vs newly-added device); specs (тех.характеристики) intentionally excluded from update DTO
+- [Phase 19]: 19-03: update_act_header_in_tx's unconditional SET fields always resolved to Some(..) in ActPatch construction (never left as outer None)
+- [Phase 19]: 19-03: custom:update_remove chosen as distinct audit action for edit-driven device removal (vs delete_soft's custom:undo); payload_json still carries act_id for bulk-undo compat
+- [Phase 19]: 19-03: requirements-completed left empty (not ACT-02) — requirement spans plans 19-02..19-05, only backend half done here (matches 19-02's precedent)
 
 ### Pending Todos
 
@@ -467,9 +471,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T15:03:04.427Z
-Stopped at: Completed 19-01-PLAN.md
-Resume file: None
+Last session: 2026-07-11T16:12:17.423Z
+Stopped at: Completed 19-03-PLAN.md
+Resume file: 19-04-PLAN.md
 
 ## Operator Next Steps
 
