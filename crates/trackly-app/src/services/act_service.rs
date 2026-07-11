@@ -896,9 +896,24 @@ impl ActService {
                 }
 
                 // 9b. If the number actually changed, audit it distinctly
-                // (mirrors `create`'s `custom:act_number_override` shape).
+                // (mirrors `create`'s `custom:act_number_override` shape) AND
+                // cascade the new number to any child return acts (WR-01).
+                // Return acts store a COPY of the parent's `number` (see
+                // `do_return`'s INSERT) rather than a live reference; without
+                // this cascade the old number stays "in use" forever by the
+                // orphaned return rows, permanently blocking reuse by the
+                // step-8b uniqueness check. Return rows keep a distinct
+                // `sub_number`, so the shared UNIQUE(number, COALESCE(sub_number,0))
+                // index cannot be violated by this cascade.
                 if let Some(n) = payload.number_override {
                     if n != act.number {
+                        tx.execute(
+                            "UPDATE acts SET number = ?1, updated_at_utc = ?2 \
+                             WHERE parent_act_id = ?3 AND deleted_at_utc IS NULL",
+                            params![n, now, payload.id],
+                        )
+                        .map_err(map_rusqlite)?;
+
                         let override_payload_json = serde_json::json!({
                             "requested": n,
                             "previous": act.number,

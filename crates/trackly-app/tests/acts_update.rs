@@ -12,6 +12,13 @@
 //!   7. reject_removal_of_returned_device (D-08)
 //!   8. header_edit_free_even_with_existing_return (D-08 non-overfire)
 //!   9. number_change_rejects_duplicate (A3)
+//!
+//! Coverage (Plan 19-06, CR-01 gap closure, 2 tests):
+//!   10. remove_last_outstanding_archives_act
+//!   11. add_device_to_archived_unarchives
+//!
+//! Coverage (Plan 19-07, gap closure, 2 tests):
+//!   12. rename_with_return_frees_old_number (WR-01)
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -807,4 +814,86 @@ async fn add_device_to_archived_unarchives() {
     })
     .await
     .expect("add_device_to_archived_unarchives budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 12 (Plan 19-07, WR-01): rename_with_return_frees_old_number
+// ---------------------------------------------------------------------------
+//
+// Return acts store a COPY of the parent handover's `number` (see
+// `do_return`'s INSERT). Renaming the handover must cascade the new number
+// to those child return rows in the same transaction, otherwise the old
+// number stays permanently "in use" by the orphaned return row and the
+// step-8b uniqueness check blocks its reuse forever. This test FAILS before
+// the cascade (creating a fresh act with the freed number hits the orphaned
+// return row's stale number) and PASSES after.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rename_with_return_frees_old_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let old_number = handover.number_raw;
+
+        // Return the single device — creates a return act copying `old_number`.
+        let returned_item = handover
+            .items
+            .iter()
+            .find(|it| it.device_id == device_ids[0])
+            .expect("item for device 0");
+        svc.do_return(
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some("Хорошее".into()),
+                bulk_location_id: Some(loc_a),
+                bulk_location_name: None,
+                apply_to_all: true,
+                items: vec![ActReturnItemDto {
+                    act_item_id: returned_item.id,
+                    device_id: returned_item.device_id,
+                    device_ids: vec![returned_item.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                }],
+            },
+        )
+        .await
+        .expect("do_return device 0");
+
+        let handover_after_return = svc.get(handover.id).await.expect("re-fetch handover");
+
+        // Rename the handover to a fresh, unrelated number.
+        let mut update = update_dto_from(&handover_after_return, &device_ids);
+        update.number_override = Some(90000);
+        svc.update(update).await.expect("rename handover to a free number");
+
+        // The OLD number must now be reusable — create a brand-new handover
+        // that explicitly requests it.
+        let device_ids_c = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let act_c = svc
+            .create(ActCreateDto {
+                number_override: Some(old_number),
+                giver_name: "Д".into(),
+                receiver_name: "Е".into(),
+                location_id: Some(loc_a),
+                location_name: None,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: vec![ActItemNewDto {
+                    device_id: device_ids_c[0],
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                }],
+            })
+            .await
+            .expect("old number must be reusable after the rename cascade freed it");
+        assert_eq!(act_c.number_raw, old_number);
+    })
+    .await
+    .expect("rename_with_return_frees_old_number budget");
 }
