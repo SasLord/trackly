@@ -217,10 +217,17 @@ Trackly — портативное приложение для учёта тех
 2. Кнопка «Редактировать» на карточке существующего акта активна (не задизейблена).
 3. Нажатие «Редактировать» открывает форму со всеми текущими данными акта, и внесённые изменения сохраняются без ошибок.
 
-**Plans**: TBD
+**Plans**: 5 plans in 5 waves
 **UI hint**: yes
 
-**Note**: ACT-02 — известный симптом «не работает» без подтверждённой первопричины. Планирование фазы должно включать шаг диагностики (execute/debug) перед реализацией фикса — не предполагать тривиальность причины заранее.
+**Note**: ACT-02 — диагностика проведена в ходе research/planning: причина «не работает» — `ActService::update` физически не существовал в бэкенде (подтверждено grep по кодовой базе), а не баг в существующей логике.
+
+Plans:
+- [ ] 19-01-PLAN.md — ACT-01: handover_date_utc в ActDto + переключение 5 read-сайтов (сортировка, PDF, список, карточка)
+- [ ] 19-02-PLAN.md — ACT-02 контракты: ActPatch, ActUpdateDto/ActUpdateItemDto, update_act_header_in_tx, select_latest_device_mutation
+- [ ] 19-03-PLAN.md — ACT-02 backend: ActService::update (CAS, D-05/D-06/D-07/D-08, номер-уникальность) + 9 интеграционных тестов
+- [ ] 19-04-PLAN.md — ACT-02 транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
+- [ ] 19-05-PLAN.md — ACT-02 UI: ActFormBody/ActFormModal edit-режим, ActDetail D-07-гейтинг, ActsPage-оркестрация
 
 ---
 
@@ -392,8 +399,8 @@ Trackly — портативное приложение для учёта тех
 | AUTO-03 | Phase 18 | Planned |
 | AUTO-04 | Phase 18 | Planned |
 | AUTO-05 | Phase 18 | Planned |
-| ACT-01 | Phase 19 | Pending |
-| ACT-02 | Phase 19 | Pending |
+| ACT-01 | Phase 19 | Planned |
+| ACT-02 | Phase 19 | Planned |
 | PRN-01 | Phase 20 | Pending |
 | ORG-01 | Phase 20 | Pending |
 | ORG-02 | Phase 20 | Pending |
@@ -402,4 +409,4 @@ Trackly — портативное приложение для учёта тех
 **Coverage:** 11/11 v1.1.2 requirements mapped ✓ — no orphans.
 
 ---
-*Last updated: 2026-07-09 — Phase 18 planned: 5 plans in 3 waves (18-01..18-05), AUTO-01..05 mapped. Phase 19-21 still TBD.*
+*Last updated: 2026-07-11 — Phase 19 planned: 5 plans in 5 waves (19-01..19-05), ACT-01/ACT-02 mapped. Phase 20-21 still TBD.*
