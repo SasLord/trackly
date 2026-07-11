@@ -515,7 +515,7 @@
           {/if}
           {#if openByRow[idx]}
             <ul
-              class="dropdown"
+              class="dropdown--items"
               role="listbox"
               use:portal
               use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
@@ -716,7 +716,14 @@
   // CSS компонента до него (и его потомков) не доходит — нужен :global().
   // Позиция (position/top/left/width/bottom) управляется JS через
   // use:dropdownAnchor, здесь только визуал (UI-SPEC AUTO-01).
-  :global(.dropdown) {
+  //
+  // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
+  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
+  // ActFormItemsTable) — без namespace-класса на корне глобальные правила
+  // .dropdown/.dropdown-empty коллизируют с остальными (последний
+  // подключённый stylesheet выигрывает). Все правила ниже скопированы под
+  // :global(.dropdown--items ...).
+  :global(.dropdown--items) {
     position: fixed;
     z-index: 1000;
     max-height: 240px;
@@ -729,7 +736,7 @@
     list-style: none;
     box-shadow: var(--shadow-elev-2);
   }
-  :global(.opt) {
+  :global(.dropdown--items .opt) {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -743,36 +750,36 @@
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
   }
-  :global(.opt:hover),
-  :global(.opt.active) {
+  :global(.dropdown--items .opt:hover),
+  :global(.dropdown--items .opt.active) {
     background: var(--color-surface-sunken);
   }
-  :global(.opt-row) {
+  :global(.dropdown--items .opt-row) {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
     width: 100%;
   }
-  :global(.opt-name) {
+  :global(.dropdown--items .opt-name) {
     font-weight: 500;
   }
-  :global(.opt-inv),
-  :global(.opt-sn),
-  :global(.opt-model) {
+  :global(.dropdown--items .opt-inv),
+  :global(.dropdown--items .opt-sn),
+  :global(.dropdown--items .opt-model) {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
   }
-  :global(.opt-count) {
+  :global(.dropdown--items .opt-count) {
     margin-left: auto;
     font-size: var(--font-size-label);
     color: var(--color-accent, var(--color-text-secondary));
     font-weight: 500;
   }
-  :global(.opt-state) {
+  :global(.dropdown--items .opt-state) {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
   }
-  :global(.dropdown-empty) {
+  :global(.dropdown--items .dropdown-empty) {
     padding: var(--space-xl);
     text-align: center;
     color: var(--color-text-muted);
@@ -784,7 +791,7 @@
   // справа от ×count. Слот зарезервирован ФИКСИРОВАННОЙ ширины ВСЕГДА (даже
   // пустой у нераскрываемых/member-строк), чтобы бейджи ×count всех типов
   // строк выстроились в один вертикальный столбец.
-  :global(.opt-chevron) {
+  :global(.dropdown--items .opt-chevron) {
     flex: 0 0 auto;
     width: 12px;
     text-align: center;
@@ -796,7 +803,7 @@
   // опциональная «← Назад» + название раскрытой группы. Sticky-закреплён
   // сверху скроллируемого дропдауна с непрозрачным фоном + тенью, чтобы
   // member-строки не просвечивали под ним при прокрутке.
-  :global(.drill-header) {
+  :global(.dropdown--items .drill-header) {
     position: sticky;
     top: 0;
     z-index: 1;
@@ -809,7 +816,7 @@
     box-shadow: var(--shadow-elev-1, 0 1px 2px rgba(0, 0, 0, 0.08));
     list-style: none;
   }
-  :global(.drill-back) {
+  :global(.dropdown--items .drill-back) {
     background: transparent;
     border: none;
     cursor: pointer;
@@ -821,7 +828,7 @@
       color: var(--color-text-primary);
     }
   }
-  :global(.drill-title) {
+  :global(.dropdown--items .drill-title) {
     font-size: var(--font-size-label);
     font-weight: 500;
     color: var(--color-text-secondary);
@@ -829,7 +836,7 @@
 
   // Plan 18-05 (AUTO-04/D-07): подпись «Без номера · {state}» под-группы —
   // Label-стиль (13px/400), а НЕ акцентное наименование группы уровня 1.
-  :global(.member-subgroup-label) {
+  :global(.dropdown--items .member-subgroup-label) {
     font-size: var(--font-size-label);
     font-weight: 400;
     color: var(--color-text-secondary);

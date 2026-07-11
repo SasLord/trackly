@@ -312,7 +312,7 @@
 
   {#if open}
     <div
-      class="dropdown"
+      class="dropdown--device"
       role="listbox"
       use:portal
       use:dropdownAnchor={{ anchorEl: inputEl, maxHeight: 200 }}
@@ -421,7 +421,13 @@
    * него не доходит — нужен :global(). Позиция (position/top/left/width/bottom)
    * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
    */
-  :global(.dropdown) {
+  // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
+  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
+  // ActFormItemsTable) — без namespace-класса на корне глобальные правила
+  // .dropdown/.dropdown-item/... коллизируют между компонентами (последний
+  // подключённый stylesheet выигрывает). Все правила ниже скопированы под
+  // :global(.dropdown--device ...).
+  :global(.dropdown--device) {
     position: fixed;
     z-index: 1000;
     background: var(--color-surface);
@@ -433,7 +439,7 @@
   }
 
   /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
-  :global(.dropdown-header) {
+  :global(.dropdown--device .dropdown-header) {
     padding: var(--space-xs) var(--space-sm);
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
@@ -442,15 +448,15 @@
     font-style: italic;
   }
 
-  :global(.dropdown-loading),
-  :global(.dropdown-empty) {
+  :global(.dropdown--device .dropdown-loading),
+  :global(.dropdown--device .dropdown-empty) {
     padding: var(--space-sm);
     font-size: var(--font-size-label);
     color: var(--color-text-muted);
     text-align: center;
   }
 
-  :global(.dropdown-item) {
+  :global(.dropdown--device .dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--space-xs) var(--space-sm);
@@ -463,10 +469,10 @@
     text-align: left;
     cursor: pointer;
   }
-  :global(.dropdown-item:hover) {
+  :global(.dropdown--device .dropdown-item:hover) {
     background: var(--color-surface-sunken);
   }
-  :global(.dropdown-item.active) {
+  :global(.dropdown--device .dropdown-item.active) {
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     color: var(--color-accent);
   }

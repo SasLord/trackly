@@ -206,7 +206,7 @@
   />
 
   {#if open}
-    <div class="dropdown" role="listbox" use:portal use:dropdownAnchor={{ anchorEl: inputEl }} bind:this={dropdownEl}>
+    <div class="dropdown--person" role="listbox" use:portal use:dropdownAnchor={{ anchorEl: inputEl }} bind:this={dropdownEl}>
       {#if loading}
         <div class="dropdown-loading">Загружаем подсказки…</div>
       {:else if suggestions.length === 0}
@@ -278,7 +278,13 @@
    * него не доходит — нужен :global(). Позиция (position/top/left/width/bottom)
    * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
    */
-  :global(.dropdown) {
+  // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
+  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
+  // ActFormItemsTable) — без namespace-класса на корне глобальные правила
+  // .dropdown/.dropdown-item/... коллизируют между компонентами (последний
+  // подключённый stylesheet выигрывает). Все правила ниже скопированы под
+  // :global(.dropdown--person ...).
+  :global(.dropdown--person) {
     position: fixed;
     z-index: 1000;
     background: var(--color-surface);
@@ -290,14 +296,14 @@
   }
 
   /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
-  :global(.dropdown-loading),
-  :global(.dropdown-empty) {
+  :global(.dropdown--person .dropdown-loading),
+  :global(.dropdown--person .dropdown-empty) {
     padding: var(--space-sm) var(--space-md);
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
   }
 
-  :global(.dropdown-item) {
+  :global(.dropdown--person .dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--space-sm) var(--space-md);
@@ -309,8 +315,8 @@
     font-size: var(--font-size-body);
     cursor: pointer;
   }
-  :global(.dropdown-item:hover),
-  :global(.dropdown-item.active) {
+  :global(.dropdown--person .dropdown-item:hover),
+  :global(.dropdown--person .dropdown-item.active) {
     background: var(--color-surface-hover);
   }
 </style>

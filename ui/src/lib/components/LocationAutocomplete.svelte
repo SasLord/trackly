@@ -139,7 +139,7 @@
 
   {#if open && suggestions.length > 0}
     <div
-      class="dropdown"
+      class="dropdown--location"
       role="listbox"
       use:portal
       use:dropdownAnchor={{ anchorEl: inputEl }}
@@ -200,7 +200,13 @@
    * него не доходит — нужен :global(). Позиция (position/top/left/width/bottom)
    * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
    */
-  :global(.dropdown) {
+  // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
+  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
+  // ActFormItemsTable) — без namespace-класса на корне глобальные правила
+  // .dropdown/.dropdown-item/... коллизируют между компонентами (последний
+  // подключённый stylesheet выигрывает). Все правила ниже скопированы под
+  // :global(.dropdown--location ...).
+  :global(.dropdown--location) {
     position: fixed;
     z-index: 1000;
     background: var(--color-surface-raised);
@@ -211,7 +217,7 @@
     overflow-y: auto;
   }
   /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
-  :global(.dropdown-item) {
+  :global(.dropdown--location .dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--space-sm) var(--space-md);
@@ -223,8 +229,8 @@
     font-size: var(--font-size-body);
     cursor: pointer;
   }
-  :global(.dropdown-item:hover),
-  :global(.dropdown-item.active) {
+  :global(.dropdown--location .dropdown-item:hover),
+  :global(.dropdown--location .dropdown-item.active) {
     background: var(--color-surface-hover);
   }
 </style>
