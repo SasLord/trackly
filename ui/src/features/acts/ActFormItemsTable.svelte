@@ -36,6 +36,11 @@
     stock_available?: number;
     /** UAT Fix #3/#4: все device_ids в группе (для backend submit без cloning). */
     group_ids?: number[];
+    /** Plan 19-05 (ACT-02): комплектация на момент акта (act_items.complectation_at_time).
+     *  Only ever populated by ActFormBody's edit-mode prefill (itemsFromInitialAct) — its
+     *  presence (not its value) is what distinguishes a RETAINED position from a row
+     *  freshly added during this edit session, which never has this field set. */
+    complectation_at_time?: string | null;
   }
 
   // G-3 / T-03.1-02 mirror: backend MAX_CLONE_QTY = 1000.
@@ -54,10 +59,20 @@
   interface Props {
     items: FormItemRow[];
     fieldErrors: Record<string, string>;
+    mode?: 'create' | 'edit';
     onChange: (_items: FormItemRow[]) => void;
   }
 
-  const { items, fieldErrors, onChange }: Props = $props();
+  const { items, fieldErrors, mode = 'create', onChange }: Props = $props();
+
+  /** Plan 19-05: complectation_at_time is only ever set by ActFormBody's edit-mode
+   *  prefill — a fresh row (added during THIS edit session) never has it. */
+  function handleComplectationInput(idx: number, v: string) {
+    const next = items.map((it, i) =>
+      i === idx ? { ...it, complectation_at_time: v } : it,
+    );
+    onChange(next);
+  }
 
   // Per-row search state — keyed by row index. Reset when the row is mutated.
   // UAT Fix #3: changed DeviceDto[] → DeviceGroup[] чтобы dropdown показывал
@@ -680,6 +695,24 @@
         <div class="td col-actions">
           <Button variant="ghost" size="sm" onclick={() => removeRow(idx)}>×</Button>
         </div>
+        {#if mode === 'edit' && row.picked && row.device_id !== null && row.complectation_at_time !== undefined}
+          <!-- Plan 19-05 (ACT-02/D-04): комплектация editable ONLY on retained
+               positions (rows prefilled from initialAct — see FormItemRow doc
+               comment). «Технические характеристики» (devices.notes) stays
+               read-only/out of scope, no input rendered anywhere for it. -->
+          <div class="td col-complectation">
+            <label class="label" for={`complectation-${idx}`}>Комплектация</label>
+            <input
+              id={`complectation-${idx}`}
+              type="text"
+              class="input"
+              value={row.complectation_at_time ?? ''}
+              placeholder="Комплектация"
+              oninput={(e) =>
+                handleComplectationInput(idx, (e.currentTarget as HTMLInputElement).value)}
+            />
+          </div>
+        {/if}
       </div>
     {/each}
   {/if}
@@ -734,6 +767,40 @@
   .col-actions {
     display: flex;
     justify-content: flex-end;
+  }
+  // Plan 19-05 (ACT-02/D-04): комплектация row spans the full grid width,
+  // rendered directly beneath the device/qty/actions row it belongs to.
+  .col-complectation {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding-top: var(--space-xs);
+
+    .label {
+      font-size: var(--font-size-label);
+      font-weight: 500;
+      color: var(--color-text-secondary);
+    }
+    .input {
+      display: block;
+      width: 100%;
+      height: 36px;
+      padding: 0 var(--space-md);
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-family-base);
+      font-size: var(--font-size-body);
+      line-height: var(--line-height-body);
+
+      &:focus-visible {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px var(--color-accent-focus);
+      }
+    }
   }
 
   // Plan 18-04 (AUTO-01): дропдаун перенесён use:portal в <body>, поэтому scoped

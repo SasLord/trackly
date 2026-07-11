@@ -13,25 +13,29 @@
   import ActNumberField from './ActNumberField.svelte';
   import ActFormItemsTable from './ActFormItemsTable.svelte';
   import type { FormItemRow } from './ActFormItemsTable.svelte';
-  import type { ActCreateDto, ActDto } from '../../bindings';
+  import type { ActCreateDto, ActDto, ActUpdateDto } from '../../bindings';
 
   interface Props {
+    mode?: 'create' | 'edit';
+    initialAct?: ActDto | null;
     onSaved: (_act: ActDto) => void;
     onLoading: (_l: boolean) => void;
     onCanSubmitChange: (_c: boolean) => void;
     onRegisterSubmit: (_fn: () => void) => void;
   }
 
-  const { onSaved, onLoading, onCanSubmitChange, onRegisterSubmit }: Props = $props();
+  const {
+    mode = 'create',
+    initialAct = null,
+    onSaved,
+    onLoading,
+    onCanSubmitChange,
+    onRegisterSubmit,
+  }: Props = $props();
 
   // ----------------------------------------------------------------------------
   // State
   // ----------------------------------------------------------------------------
-  let numberOverride = $state<number | null>(null);
-  let giverName = $state('');
-  let receiverName = $state('');
-  let location = $state('');
-  let deadlineISO = $state(''); // YYYY-MM-DD picker value
   // G-2 (Phase 3.1 Plan 04): дата фактической передачи (когда отдали).
   // Default = today UTC (browser-local будет хорошо для пользователя в МСК).
   function todayISO(): string {
@@ -41,11 +45,51 @@
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   }
-  let handoverDateISO = $state(todayISO());
-  let notes = $state('');
-  let items = $state<FormItemRow[]>([
-    { device_id: null, quantity: 1, device_label: '', query: '', picked: false },
-  ]);
+
+  // Plan 19-05 (ACT-02): unix seconds (UTC midnight) -> YYYY-MM-DD, the inverse
+  // of isoToUnix below. Used only to prefill DatePicker inputs in edit mode.
+  function unixToIso(unixSeconds: number | null | undefined): string {
+    if (unixSeconds === null || unixSeconds === undefined) return '';
+    const d = new Date(unixSeconds * 1000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  const isEditPrefill = mode === 'edit' && initialAct !== null;
+
+  /** Plan 19-05: prefilled from initialAct.items directly (bypassing the
+   *  live на_складе search path) — existing positions are в_работе, not
+   *  на_складе, so a live re-search would never find them (RESEARCH.md
+   *  "wrinkle"). New rows added during this edit session still go through
+   *  the normal on-warehouse picker unchanged. */
+  function itemsFromInitialAct(act: ActDto): FormItemRow[] {
+    return act.items.map((it) => ({
+      device_id: it.device_id,
+      quantity: 1,
+      device_label: it.device_name,
+      query: '',
+      picked: true,
+      group_ids: [],
+      complectation_at_time: it.complectation_at_time,
+    }));
+  }
+
+  let numberOverride = $state<number | null>(isEditPrefill ? initialAct!.number_raw : null);
+  let giverName = $state(isEditPrefill ? initialAct!.giver_name : '');
+  let receiverName = $state(isEditPrefill ? initialAct!.receiver_name : '');
+  let location = $state(isEditPrefill ? (initialAct!.location ?? '') : '');
+  let deadlineISO = $state(isEditPrefill ? unixToIso(initialAct!.deadline_utc) : ''); // YYYY-MM-DD picker value
+  let handoverDateISO = $state(
+    isEditPrefill ? unixToIso(initialAct!.handover_date_utc) : todayISO(),
+  );
+  let notes = $state(isEditPrefill ? (initialAct!.notes ?? '') : '');
+  let items = $state<FormItemRow[]>(
+    isEditPrefill
+      ? itemsFromInitialAct(initialAct!)
+      : [{ device_id: null, quantity: 1, device_label: '', query: '', picked: false }],
+  );
 
   let loading = $state(false);
   let submitting = $state(false);
@@ -86,39 +130,69 @@
     fieldErrors = {};
 
     try {
-      // Build payload — drop any incomplete item rows.
-      // UAT Fix #3/#4: device_ids[] = первые `quantity` штук из group_ids
-      // (если выбрана группа) — backend использует именно эти devices без
-      // клонирования; legacy fallback (group_ids пуст) — старый clone path.
-      const payloadItems = items
-        .filter((it) => it.device_id !== null && it.quantity >= 1)
-        .map((it) => {
-          const groupIds = it.group_ids ?? [];
-          const deviceIds = groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [];
-          return {
-            device_id: it.device_id as number,
-            device_ids: deviceIds,
-            quantity: it.quantity,
-          };
-        });
+      let saved: ActDto;
 
-      const payload: ActCreateDto = {
-        number_override: numberOverride,
-        giver_name: giverName.trim(),
-        receiver_name: receiverName.trim(),
-        // location_id wiring TODO: Phase 2 currently stores `location` as text;
-        // sending null means «not picked» — service is tolerant per Plan 02 spec.
-        location_id: null,
-        location_name: location.trim().length > 0 ? location.trim() : null,
-        notes: notes.trim() || null,
-        deadline_utc: isoToUnix(deadlineISO),
-        handover_date_utc: isoToUnix(handoverDateISO),
-        items: payloadItems,
-      };
+      if (mode === 'edit') {
+        // Plan 19-05 (ACT-02): full-replacement items set — only device_id +
+        // complectation_at_time travel over the wire (no quantity/device_ids
+        // clone-expansion; retained/removed/added is diffed server-side).
+        const updatePayload: ActUpdateDto = {
+          id: initialAct!.id,
+          expected_version: initialAct!.version,
+          number_override: numberOverride,
+          giver_name: giverName.trim(),
+          receiver_name: receiverName.trim(),
+          location_id: null,
+          location_name: location.trim().length > 0 ? location.trim() : null,
+          notes: notes.trim() || null,
+          deadline_utc: isoToUnix(deadlineISO),
+          handover_date_utc: isoToUnix(handoverDateISO),
+          items: items
+            .filter((it) => it.device_id !== null)
+            .map((it) => ({
+              device_id: it.device_id as number,
+              complectation_at_time: it.complectation_at_time ?? null,
+            })),
+        };
 
-      const created = await acts.create(payload);
-      pushToast('success', `Создан акт №${created.number}`);
-      onSaved(created);
+        saved = await acts.update(updatePayload);
+        pushToast('success', `Акт №${saved.number} обновлён`);
+      } else {
+        // Build payload — drop any incomplete item rows.
+        // UAT Fix #3/#4: device_ids[] = первые `quantity` штук из group_ids
+        // (если выбрана группа) — backend использует именно эти devices без
+        // клонирования; legacy fallback (group_ids пуст) — старый clone path.
+        const payloadItems = items
+          .filter((it) => it.device_id !== null && it.quantity >= 1)
+          .map((it) => {
+            const groupIds = it.group_ids ?? [];
+            const deviceIds = groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [];
+            return {
+              device_id: it.device_id as number,
+              device_ids: deviceIds,
+              quantity: it.quantity,
+            };
+          });
+
+        const payload: ActCreateDto = {
+          number_override: numberOverride,
+          giver_name: giverName.trim(),
+          receiver_name: receiverName.trim(),
+          // location_id wiring TODO: Phase 2 currently stores `location` as text;
+          // sending null means «not picked» — service is tolerant per Plan 02 spec.
+          location_id: null,
+          location_name: location.trim().length > 0 ? location.trim() : null,
+          notes: notes.trim() || null,
+          deadline_utc: isoToUnix(deadlineISO),
+          handover_date_utc: isoToUnix(handoverDateISO),
+          items: payloadItems,
+        };
+
+        saved = await acts.create(payload);
+        pushToast('success', `Создан акт №${saved.number}`);
+      }
+
+      onSaved(saved);
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
         const err = e as {
@@ -135,11 +209,19 @@
             number: err.message ?? 'Конфликт номера',
           };
           pushToast('error', err.message ?? 'Конфликт номера акта');
+        } else if (err.code === 'OptimisticLockMismatch') {
+          pushToast(
+            'error',
+            'Акт был изменён другим пользователем — обновите страницу и попробуйте снова.',
+          );
         } else {
-          pushToast('error', err.message ?? 'Не удалось создать акт');
+          pushToast(
+            'error',
+            err.message ?? (mode === 'edit' ? 'Не удалось сохранить акт' : 'Не удалось создать акт'),
+          );
         }
       } else {
-        pushToast('error', 'Не удалось создать акт');
+        pushToast('error', mode === 'edit' ? 'Не удалось сохранить акт' : 'Не удалось создать акт');
       }
     } finally {
       loading = false;
@@ -234,7 +316,7 @@
   </div>
 
   <h3 class="section-heading">Позиции</h3>
-  <ActFormItemsTable {items} {fieldErrors} onChange={(next) => (items = next)} />
+  <ActFormItemsTable {items} {fieldErrors} {mode} onChange={(next) => (items = next)} />
 </form>
 
 <style lang="scss">
