@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T22:13:24.690Z"
-last_activity: 2026-07-11 -- Phase 19 planning complete
+last_updated: "2026-07-11T22:19:07.573Z"
+last_activity: 2026-07-12 -- Plan 19-09 complete (D-09/D-10 gap closure)
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 139
-  completed_plans: 137
+  completed_plans: 138
   percent: 95
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 8 of 8 (WR-02/IN-01 gap closure complete; 19-07 pending)
-Status: Ready to execute
-Last activity: 2026-07-11 -- Phase 19 planning complete
+Plan: 9 of 10 (19-09 gap closure D-09/D-10 complete; 19-10 pending)
+Status: Ready to execute 19-10
+Last activity: 2026-07-12 -- Plan 19-09 complete (D-09/D-10 gap closure)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -181,6 +181,7 @@ Last activity: 2026-07-11 -- Phase 19 planning complete
 | Phase 19 P06 | 25min | 2 tasks | 2 files |
 | Phase 19 P08 | 5min | 2 tasks | 3 files |
 | Phase 19 P07 | 20 min | 2 tasks | 2 files |
+| Phase 19 P09 | 12min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -427,6 +428,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 19-08: todayISO() switched to getUTCFullYear/getUTCMonth/getUTCDate, unifying with unixToIso()/isoToUnix() UTC convention (IN-01)
 - [Phase 19]: 19-07: WR-01 cascades renamed act number to child return acts in the same tx (option a) instead of excluding act_type='return' from the uniqueness check — preserves do_return's copy-parent-number invariant
 - [Phase 19]: 19-07: WR-03 audits retained-item complectacia edits (custom:act_item_complectation_edit) gated on stored != incoming value, so a no-op resubmit writes zero audit rows
+- [Phase ?]: 19-09: retained-vs-new row marker for act-edit device cell is complectation_at_time !== undefined (not row.picked) — row.picked is also true for a device freshly chosen during the current edit session; only complectation_at_time (set exclusively by itemsFromInitialAct) distinguishes a retained/prefilled position
+- [Phase ?]: 19-09: ActFormBody.svelte left untouched after комплектация UI removal — itemsFromInitialAct prefill and the edit payload's complectation_at_time mapping still round-trip the value unchanged even though the editable input was removed from ActFormItemsTable
 
 ### Pending Todos
 
@@ -488,9 +491,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T20:05:25.943Z
-Stopped at: Completed 19-07-PLAN.md
-Resume file: None
+Last session: 2026-07-11T22:19:07.565Z
+Stopped at: Completed 19-09-PLAN.md
+Resume file: 19-10-PLAN.md
 
 ## Operator Next Steps
 

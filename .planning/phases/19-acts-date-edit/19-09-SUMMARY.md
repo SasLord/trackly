@@ -75,11 +75,24 @@ Each task was committed atomically:
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 3 - Blocking] Corrected stale STATE.md phase-position tracking**
+- **Found during:** State-update step (after both tasks committed)
+- **Issue:** STATE.md's `Current Position` still read "Plan: 8 of 8" / "Status: Phase complete — ready for verification" from before Phase 19 was extended with gap-closure plans 19-09/19-10. Running `gsd-sdk query state.advance-plan` against this stale position reported `reason: "last_plan"` and silently flipped the top-level frontmatter `status` to `verifying`, which would have signaled the phase was done while `19-10-PLAN.md` is still outstanding.
+- **Fix:** Manually corrected `status: executing`, `Plan: 9 of 10 (19-09 gap closure D-09/D-10 complete; 19-10 pending)`, and `Status: Ready to execute 19-10` in `.planning/STATE.md`. `completed_plans` (137→138, correctly incremented by the SDK call) and all other frontmatter fields left as-is.
+- **Files modified:** `.planning/STATE.md`
+- **Verification:** Re-read STATE.md after the edit; position now correctly reflects plan 9 of 10 with 19-10 pending.
+- **Committed in:** final metadata commit (this plan)
+
+---
+
+**Total deviations:** 1 auto-fixed (1 blocking — state-tracking correctness, no source-code impact).
+**Impact on plan:** No effect on the delivered feature; purely a project-tracking correction so the phase isn't mistakenly treated as complete before 19-10 runs.
 
 ## Issues Encountered
 
-None. Both tasks' acceptance-criteria grep assertions passed on first attempt; `svelte-check` and `pnpm --dir ui build` were clean without any auto-fixes needed.
+None in the implementation itself. Both tasks' acceptance-criteria grep assertions passed on first attempt; `svelte-check` and `pnpm --dir ui build` were clean without any code auto-fixes needed. See "Deviations from Plan" above for a state-tracking correction unrelated to the code changes.
 
 ## User Setup Required
 
