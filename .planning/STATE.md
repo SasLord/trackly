@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T14:46:00.862Z"
+last_updated: "2026-07-11T15:03:13.257Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 134
-  completed_plans: 130
+  completed_plans: 131
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-11
 
@@ -174,6 +174,7 @@ Last activity: 2026-07-11
 | Phase 18 P04 | 25min | 2 tasks | 1 files |
 | Phase 18 P18-05 | 40min | 3 tasks | 1 files |
 | Phase 19 P01 | 14min | 3 tasks | 7 files |
+| Phase 19 P02 | 11min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -403,6 +404,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 18-05: isExpandable требует ids.length>1 — единственный экземпляр не раскрывается, клик сразу выбирает (checkpoint fix)
 - [Phase 19]: 19-01: ui/src/bindings.ts is gitignored — Task 1 regeneration verified but produces no committed diff (only Rust ActDto struct change is committed)
 - [Phase 19]: 19-01: html_act_render.rs tests assert on act.date_human (RU) not act.date (ISO) — the act_handover.html template only renders date_human; ISO field is unused in markup
+- [Phase 19]: 19-02: update_act_header_in_tx SET clause unconditional for 5 original header fields, COALESCE-only for handover_date_utc/number — Plan 19-03 must resolve values before calling
+- [Phase 19]: 19-02: complectation_at_time semantics documented on ActUpdateItemDto (retained vs newly-added device); specs (тех.характеристики) intentionally excluded from update DTO
 
 ### Pending Todos
 
@@ -464,7 +467,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T14:45:50.842Z
+Last session: 2026-07-11T15:03:04.427Z
 Stopped at: Completed 19-01-PLAN.md
 Resume file: None
 
