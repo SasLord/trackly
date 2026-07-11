@@ -349,7 +349,18 @@
     // под-группы по state, часть с инлайн-инпутом количества) — применение
     // group-навигации здесь выбрало бы неверный элемент (Rule 1 bug guard).
     // «← Назад» (Escape/клик) остаётся доступным через backToGroups().
-    if (viewModeByRow[idx] === 'members') return;
+    if (viewModeByRow[idx] === 'members') {
+      // WR-02: в groups-режиме открытый дропдаун глотает Enter через
+      // preventDefault()/stopPropagation() (ветка ниже). В member/drill-in
+      // режиме навигация обрабатывается кликом (нет ArrowUp/Down-выбора),
+      // но Enter должен ТАК ЖЕ подавляться, иначе он всплывает к native
+      // <form> submit прямо во время выбора устройства в раскрытой группе.
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     const list = visibleGroups(idx);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
