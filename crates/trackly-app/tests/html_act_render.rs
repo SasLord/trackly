@@ -7,8 +7,11 @@
 use std::sync::Arc;
 
 use rusqlite::params;
-use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::act::{
+    ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto,
+};
 use trackly_app::pdf::PdfRenderer;
+use trackly_app::services::act_service::{format_iso_date, format_ru_date};
 use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -115,6 +118,34 @@ async fn create_handover(
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
+        items: device_ids
+            .iter()
+            .map(|&id| ActItemNewDto {
+                device_id: id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            })
+            .collect(),
+    };
+    svc.create(payload).await.expect("create handover")
+}
+
+async fn create_handover_with_handover_date(
+    svc: &ActService,
+    device_ids: &[i64],
+    giver: &str,
+    receiver: &str,
+    handover_date_utc: i64,
+) -> trackly_app::dto::act::ActDto {
+    let payload = ActCreateDto {
+        number_override: None,
+        giver_name: giver.to_string(),
+        receiver_name: receiver.to_string(),
+        location_id: None,
+        location_name: None,
+        notes: None,
+        deadline_utc: None,
+        handover_date_utc: Some(handover_date_utc),
         items: device_ids
             .iter()
             .map(|&id| ActItemNewDto {
@@ -387,5 +418,125 @@ async fn html_is_offline_safe_no_external_links() {
         !acceptance_html.to_lowercase().contains("http://")
             && !acceptance_html.to_lowercase().contains("https://"),
         "acceptance HTML must not contain any http(s):// reference (offline/no-CDN guarantee)"
+    );
+}
+
+/// ACT-01 (Phase 19 Plan 01): `render_pdf`'s `act.date`/`act.date_human` must
+/// derive from `handover_date_utc` (the user-entered «Когда отдали» date),
+/// not `created_at_utc` (the row-insertion timestamp, which `SystemClock`
+/// sets to "now" at create time). Uses a fixture where the two values are
+/// deliberately far apart so the assertion cannot pass vacuously.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_render_pdf_act_date_uses_handover_date_not_created_at() {
+    let p = make_full_pipeline().await;
+    let device_id = seed_device(&p.writer, "HTML-DateSource-Ноутбук").await;
+
+    // 2020-09-13 UTC — far from "now" (act creation time via SystemClock).
+    let handover_date_utc: i64 = 1_600_000_000;
+    let act = create_handover_with_handover_date(
+        &p.acts,
+        &[device_id],
+        "Даталов Д.Д.",
+        "Приемов П.П.",
+        handover_date_utc,
+    )
+    .await;
+
+    assert_ne!(
+        act.handover_date_utc, act.created_at_utc,
+        "fixture invariant broken: handover_date_utc must differ from created_at_utc"
+    );
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    let expected_iso = format_iso_date(act.handover_date_utc);
+    let expected_ru = format_ru_date(act.handover_date_utc);
+    let wrong_iso = format_iso_date(act.created_at_utc);
+
+    assert!(
+        html.contains(&expected_iso),
+        "expected handover_date_utc-derived ISO date {expected_iso:?} in rendered HTML. \
+         Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
+    assert!(
+        html.contains(&expected_ru),
+        "expected handover_date_utc-derived RU date {expected_ru:?} in rendered HTML. \
+         Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
+    assert!(
+        !html.contains(&wrong_iso),
+        "created_at_utc-derived ISO date {wrong_iso:?} must NOT appear in rendered HTML \
+         (it would prove the date source regressed back to created_at_utc)"
+    );
+}
+
+/// ACT-01: the parent block on a return-act's rendered HTML must also
+/// reflect `handover_date_utc` (of the parent handover act), not
+/// `created_at_utc`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
+    let p = make_full_pipeline().await;
+    let device_id = seed_device(&p.writer, "HTML-DateSource-Parent-Ноутбук").await;
+
+    let handover_date_utc: i64 = 1_600_000_000;
+    let handover = create_handover_with_handover_date(
+        &p.acts,
+        &[device_id],
+        "Даталов Д.Д.",
+        "Приемов П.П.",
+        handover_date_utc,
+    )
+    .await;
+
+    assert_ne!(
+        handover.handover_date_utc, handover.created_at_utc,
+        "fixture invariant broken: handover_date_utc must differ from created_at_utc"
+    );
+
+    let first_item = handover.items.first().expect("at least one item");
+    let return_act = p
+        .acts
+        .do_return(
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some("Хорошее".into()),
+                bulk_location_id: None,
+                bulk_location_name: None,
+                apply_to_all: true,
+                items: vec![ActReturnItemDto {
+                    act_item_id: first_item.id,
+                    device_id: first_item.device_id,
+                    device_ids: vec![first_item.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                }],
+            },
+        )
+        .await
+        .expect("do_return");
+
+    let html = p
+        .acts
+        .render_pdf(return_act.id)
+        .await
+        .expect("render_pdf return act");
+
+    let expected_iso = format_iso_date(handover.handover_date_utc);
+    let wrong_iso = format_iso_date(handover.created_at_utc);
+
+    assert!(
+        html.contains(&expected_iso),
+        "expected parent's handover_date_utc-derived ISO date {expected_iso:?} in rendered \
+         return-act HTML. Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
+    assert!(
+        !html.contains(&wrong_iso),
+        "parent's created_at_utc-derived ISO date {wrong_iso:?} must NOT appear in rendered \
+         HTML (it would prove the parent-block date source regressed back to created_at_utc)"
     );
 }
