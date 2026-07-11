@@ -67,9 +67,19 @@
             <Button variant="secondary" size="sm" disabled>Печать</Button>
           </span>
         {/if}
-        <Button variant="secondary" size="sm" onclick={() => onEdit?.(act)} disabled={!onEdit}>
-          Редактировать
-        </Button>
+        {#if onEdit && act.act_type === 'handover'}
+          <Button variant="secondary" size="sm" onclick={() => onEdit(act)}>Редактировать</Button>
+        {:else}
+          <span title="Редактировать можно только акты выдачи (handover)">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!onEdit || act.act_type !== 'handover'}
+            >
+              Редактировать
+            </Button>
+          </span>
+        {/if}
         {#if onReturn && act.act_type === 'handover' && !act.archived}
           <Button variant="secondary" size="sm" onclick={() => onReturn(act)}>Возврат</Button>
         {:else}

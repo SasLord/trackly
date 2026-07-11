@@ -9,11 +9,13 @@
 
   interface Props {
     open: boolean;
+    mode?: 'create' | 'edit';
+    initialAct?: ActDto | null;
     onClose: () => void;
     onSaved: (_act: ActDto) => void;
   }
 
-  const { open, onClose, onSaved }: Props = $props();
+  const { open, mode = 'create', initialAct = null, onClose, onSaved }: Props = $props();
 
   let openInstanceCounter = $state(0);
   let _wasOpen = $state(false);
@@ -31,9 +33,16 @@
   let bodySubmitFn = $state<(() => void) | null>(null);
 </script>
 
-<Modal {open} title="Новый акт" size="xwide" {onClose}>
+<Modal
+  {open}
+  title={mode === 'edit' ? `Редактировать акт №${initialAct?.number}` : 'Новый акт'}
+  size="xwide"
+  {onClose}
+>
   {#key openInstanceCounter}
     <ActFormBody
+      {mode}
+      {initialAct}
       {onSaved}
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(c) => (formCanSubmit = c)}
@@ -49,7 +58,9 @@
       disabled={!formCanSubmit}
       onclick={() => bodySubmitFn?.()}
     >
-      {#if formLoading}Создание…{:else}Создать акт{/if}
+      {#if mode === 'edit'}
+        {#if formLoading}Сохранение…{:else}Сохранить{/if}
+      {:else if formLoading}Создание…{:else}Создать акт{/if}
     </Button>
   {/snippet}
 </Modal>
