@@ -877,6 +877,24 @@ impl ActService {
                 };
                 acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
 
+                // 9a. Recompute acts.archived (CR-01 gap closure) whenever the
+                // item set actually changed. `update_act_header_in_tx` just
+                // ran a CAS `WHERE version = expected_version` bump; this
+                // recompute bumps `version` again unconditionally on
+                // `WHERE id`. It MUST run AFTER the CAS header UPDATE above —
+                // running it BEFORE would advance version past
+                // expected_version, making the CAS match 0 rows and raising a
+                // spurious OptimisticLockMismatch. It also MUST run before
+                // step 10's final-audit fetch so `act_after`/the returned
+                // ActDto reflect the double bump. Gated on add/remove so
+                // header-only edits (added and removed both empty) keep the
+                // single version+1 contract asserted by
+                // `header_only_edit_does_not_touch_devices` — archived can
+                // only change when the outstanding-device count changes.
+                if !added.is_empty() || !removed.is_empty() {
+                    recompute_parent_archived(&tx, payload.id, now)?;
+                }
+
                 // 9b. If the number actually changed, audit it distinctly
                 // (mirrors `create`'s `custom:act_number_override` shape).
                 if let Some(n) = payload.number_override {
