@@ -94,3 +94,10 @@ None - no external service configuration required.
 ---
 *Phase: 19-acts-date-edit*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/acts/ActFormItemsTable.svelte
+- FOUND: .planning/phases/19-acts-date-edit/19-09-SUMMARY.md
+- FOUND: commit 8f0107c (Task 1)
+- FOUND: commit b7dd271 (Task 2)
