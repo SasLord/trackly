@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: verifying
-last_updated: "2026-07-10T21:50:13.414Z"
+status: milestone_complete
+last_updated: 2026-07-11T09:23:42.226Z
 last_activity: 2026-07-10
 progress:
   total_phases: 21
@@ -11,6 +11,7 @@ progress:
   total_plans: 129
   completed_plans: 129
   percent: 100
+stopped_at: Milestone complete (Phase 18 was final phase)
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 18 — autocomplete-dropdowns
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 18 (autocomplete-dropdowns) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-07-10
+Phase: 18
+Plan: Not started
+Status: Milestone complete
+Last activity: 2026-07-11
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +41,7 @@ Last activity: 2026-07-10
 
 **Velocity:**
 
-- Total plans completed: 96
+- Total plans completed: 101
 - Average duration: —
 - Total execution time: —
 
@@ -61,6 +62,7 @@ Last activity: 2026-07-10
 | 14 | 3 | - | - |
 | 16 | 5 | - | - |
 | 17 | 7 | - | - |
+| 18 | 5 | - | - |
 
 **Recent Trend:**
 
