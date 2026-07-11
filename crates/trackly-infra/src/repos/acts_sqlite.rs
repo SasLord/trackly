@@ -292,7 +292,7 @@ impl SqliteActRepository {
              WHERE a.id IN (SELECT id FROM act_text_hits \
                              UNION SELECT id FROM device_text_hits) \
                AND {where_filters} \
-             ORDER BY a.created_at_utc DESC, a.id DESC \
+             ORDER BY a.handover_date_utc DESC, a.id DESC \
              LIMIT ?6 OFFSET ?7"
         );
 
@@ -534,7 +534,7 @@ impl ActRepository for SqliteActRepository {
                    (?1 = 1 OR a.deleted_at_utc IS NULL) AND
                    (?2 IS NULL OR a.act_type = ?2) AND
                    (?3 IS NULL OR a.archived = ?3)
-                 ORDER BY a.created_at_utc DESC, a.id DESC
+                 ORDER BY a.handover_date_utc DESC, a.id DESC
                  LIMIT ?4 OFFSET ?5"
             ))
             .map_err(map_rusqlite)?;

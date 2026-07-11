@@ -1403,8 +1403,8 @@ impl ActService {
             let parent = self.get(parent_id).await?;
             Some(serde_json::json!({
                 "number": parent.number,
-                "date_human": format_ru_date(parent.created_at_utc),
-                "date": format_iso_date(parent.created_at_utc),
+                "date_human": format_ru_date(parent.handover_date_utc),
+                "date": format_iso_date(parent.handover_date_utc),
             }))
         } else {
             None
@@ -1447,8 +1447,8 @@ impl ActService {
             "act": {
                 "number": act.number_raw,
                 "suffix": suffix,
-                "date": format_iso_date(act.created_at_utc),
-                "date_human": format_ru_date(act.created_at_utc),
+                "date": format_iso_date(act.handover_date_utc),
+                "date_human": format_ru_date(act.handover_date_utc),
                 "giver_name": act.giver_name,
                 "receiver_name": act.receiver_name,
                 "deadline": act.deadline_utc.map(format_iso_date),
