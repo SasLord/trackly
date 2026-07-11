@@ -90,3 +90,10 @@ Both gap-closure items (WR-02, IN-01) from `19-REVIEW.md` are closed. `svelte-ch
 ---
 *Phase: 19-acts-date-edit*
 *Completed: 2026-07-12*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/19-acts-date-edit/19-08-SUMMARY.md
+- FOUND: 704cb99 (Task 1 commit)
+- FOUND: 26dbf31 (Task 2 commit)
+- FOUND: 7c7bd73 (SUMMARY commit)
