@@ -221,16 +221,29 @@ Trackly — портативное приложение для учёта тех
 **UI hint**: yes
 
 **Note**: ACT-02 — диагностика проведена в ходе research/planning: причина «не работает» — `ActService::update` физически не существовал в бэкенде (подтверждено grep по кодовой базе), а не баг в существующей логике.
-
 Plans:
+**Wave 1**
+
 - [x] 19-01-PLAN.md — ACT-01: handover_date_utc в ActDto + переключение 5 read-сайтов (сортировка, PDF, список, карточка)
-- [x] 19-02-PLAN.md — ACT-02 контракты: ActPatch, ActUpdateDto/ActUpdateItemDto, update_act_header_in_tx, select_latest_device_mutation
-- [x] 19-03-PLAN.md — ACT-02 backend: ActService::update (CAS, D-05/D-06/D-07/D-08, номер-уникальность) + 9 интеграционных тестов
-- [x] 19-04-PLAN.md — ACT-02 транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
-- [x] 19-05-PLAN.md — ACT-02 UI: ActFormBody/ActFormModal edit-режим, ActDetail D-07-гейтинг, ActsPage-оркестрация
 - [ ] 19-06-PLAN.md — Gap CR-01 (BLOCKER): update() пересчитывает archived (recompute_parent_archived, gated) + 2 regression-теста
-- [ ] 19-07-PLAN.md — Gap WR-01/WR-03: каскад номера на return-акты + аудит изменения комплектации
 - [ ] 19-08-PLAN.md — Gap WR-02/IN-01: edit-режим форсирует single-device rows + todayISO() на UTC
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 19-02-PLAN.md — ACT-02 контракты: ActPatch, ActUpdateDto/ActUpdateItemDto, update_act_header_in_tx, select_latest_device_mutation
+- [ ] 19-07-PLAN.md — Gap WR-01/WR-03: каскад номера на return-акты + аудит изменения комплектации
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 19-03-PLAN.md — ACT-02 backend: ActService::update (CAS, D-05/D-06/D-07/D-08, номер-уникальность) + 9 интеграционных тестов
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 19-04-PLAN.md — ACT-02 транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 19-05-PLAN.md — ACT-02 UI: ActFormBody/ActFormModal edit-режим, ActDetail D-07-гейтинг, ActsPage-оркестрация
 
 ---
 
