@@ -8,6 +8,7 @@
   //
   // Каждая позиция: { device_id, quantity, device_label } где device_label —
   // human-readable (name + inv_no), нужный только для UI.
+  import { onDestroy } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { devices } from '$lib/api/devices';
@@ -73,6 +74,17 @@
   // дропдауна по строке; -1 = нет активного.
   let activeIndexByRow = $state<Record<number, number>>({});
   const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
+
+  // WR-05: removeRow() очищает debounceTimers[idx] удаляемой строки, но при
+  // размонтировании ВСЕЙ таблицы (модал закрыт) прочие ещё pending таймеры
+  // не отменялись — компонент мог размонтироваться и таймеры всё равно
+  // issue-или бы API-запрос, записывая результат в $state уже мёртвого
+  // компонента.
+  onDestroy(() => {
+    for (const key of Object.keys(debounceTimers)) {
+      clearTimeout(debounceTimers[Number(key)]);
+    }
+  });
 
   // Plan 18-05 (AUTO-04/D-06/D-07 + AUTO-05/D-09): drill-in view-mode per row.
   // 'groups' — список групп (Plan 18-04 поведение); 'members' — раскрытая

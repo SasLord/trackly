@@ -4,6 +4,7 @@
   // Также (UAT-fix #3): dropdown открывается СРАЗУ на focus (даже для пустого
   // префикса показывает первые 20 расположений).
 
+  import { onDestroy } from 'svelte';
   import { apiCall } from '$lib/api/client';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
@@ -42,6 +43,15 @@
       suggestions = [];
     }
   }
+
+  // WR-05: scheduleFetch() (вызывается и из handleInput, и из handleFocus,
+  // и из handleKeydown ArrowDown) не отменял pending-таймер на unmount —
+  // компонент мог размонтироваться с ещё не сработавшим debounce-таймером,
+  // который потом всё равно issue-ил API-запрос и писал в $state уже
+  // мёртвого компонента.
+  onDestroy(() => {
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+  });
 
   function scheduleFetch(prefix: string, delayMs: number) {
     if (debounceTimer !== null) clearTimeout(debounceTimer);

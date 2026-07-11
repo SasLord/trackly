@@ -13,7 +13,7 @@
   // открывается на programmatic re-render. Идентичный подход c
   // DeviceAutocompleteField.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { acts } from '$lib/api/acts';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
@@ -59,6 +59,15 @@
       lastSelected = value;
       suppressDropdown = true;
     }
+  });
+
+  // WR-05: и fetch $effect ниже, и handleFocus() планируют debounce-таймер в
+  // одну и ту же переменную debounceTimer, но ни один из путей не отменял
+  // pending-таймер на unmount — компонент мог размонтироваться (модал
+  // закрыт) с ещё не сработавшим таймером, который потом всё равно issue-ил
+  // API-запрос и писал в $state уже мёртвого компонента.
+  onDestroy(() => {
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
   });
 
   $effect(() => {
