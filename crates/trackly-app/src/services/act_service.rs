@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use rusqlite::params;
-use trackly_core::domain::acts::{ActItemRow, ActRow, ActType};
+use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
@@ -29,7 +29,7 @@ use trackly_infra::repos::{SqliteActRepository, SqliteAuditLogRepository, Sqlite
 
 use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
-    ActReturnItemDto, ActsCountsDto, Pagination,
+    ActReturnItemDto, ActUpdateDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
@@ -502,6 +502,337 @@ impl ActService {
 
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(act_id)
+            })
+            .await?;
+
+        self.get(act_id).await
+    }
+
+    // -----------------------------------------------------------------------
+    // update (ACT-02, Phase 19 plan 03) — edit existing handover act
+    // -----------------------------------------------------------------------
+
+    fn validate_update(p: &ActUpdateDto) -> Result<(), AppError> {
+        if p.giver_name.trim().is_empty() {
+            return Err(AppError::Validation {
+                field: "giver_name".into(),
+                message: "Поле «Сдал» обязательно".into(),
+            });
+        }
+        if p.receiver_name.trim().is_empty() {
+            return Err(AppError::Validation {
+                field: "receiver_name".into(),
+                message: "Поле «Принял» обязательно".into(),
+            });
+        }
+        if p.items.is_empty() {
+            return Err(AppError::Validation {
+                field: "items".into(),
+                message: "Добавьте хотя бы одну позицию".into(),
+            });
+        }
+        if p.items.len() > 100 {
+            return Err(AppError::Validation {
+                field: "items".into(),
+                message: "Максимум 100 позиций в одном акте".into(),
+            });
+        }
+        // Dedup: same device_id не может встречаться дважды в items (flat
+        // check — ActUpdateItemDto's cardinality is one device_id per item,
+        // unlike ActCreateDto's quantity/device_ids[] sub-list).
+        let mut seen_device_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        for (idx, it) in p.items.iter().enumerate() {
+            if !seen_device_ids.insert(it.device_id) {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].device_id"),
+                    message: format!(
+                        "Устройство id={} включено в акт более одного раза",
+                        it.device_id
+                    ),
+                });
+            }
+        }
+        if let Some(n) = p.number_override {
+            if n < 1 {
+                return Err(AppError::Validation {
+                    field: "number_override".into(),
+                    message: "Номер акта должен быть ≥ 1".into(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Edit an existing handover act's header + item set (ACT-02).
+    ///
+    /// `payload.items` is a FULL replacement set — added/retained/removed
+    /// device_ids are computed by diffing against the act's current
+    /// `act_items`. D-05: header-only edits (same device_id set) never touch
+    /// device rows. D-06: added devices transition на_складе→в_работе exactly
+    /// like `create`; removed devices are restored to their MOST RECENT prior
+    /// state (not the original pre-handover state — Pitfall 2). D-07: only
+    /// `ActType::Handover` acts are editable — enforced server-side,
+    /// independent of the UI's disabled-button state. D-08: a `removed`
+    /// device_id that has already been consumed by a completed/active return
+    /// is rejected, aborting the WHOLE update (no partial writes).
+    pub async fn update(&self, payload: ActUpdateDto) -> Result<ActDto, AppError> {
+        Self::validate_update(&payload)?;
+        let now = self.clock.unix_seconds();
+        let acts_repo = self.acts_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let devices_repo = self.devices_repo.clone();
+        let user_id_opt: Option<i64> = None;
+
+        let act_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // 1. Load act (incl. soft-deleted flag).
+                let act = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
+                if act.deleted_at_utc.is_some() {
+                    return Err(AppError::NotFound {
+                        entity: "act",
+                        id: payload.id,
+                    });
+                }
+
+                // 2. D-07: only handover acts are editable — server-side,
+                // authoritative regardless of what any client sends.
+                if act.act_type != ActType::Handover {
+                    return Err(AppError::Validation {
+                        field: "id".into(),
+                        message: "Редактировать можно только акты выдачи (handover)".into(),
+                    });
+                }
+
+                // 3. Defense-in-depth CAS pre-check. The structural guarantee
+                // is `update_act_header_in_tx`'s own `WHERE version=?` clause
+                // — this early check just gives a cleaner error path before
+                // any device work starts.
+                if act.version != payload.expected_version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "act",
+                        id: payload.id,
+                        expected: payload.expected_version,
+                        actual: act.version,
+                    });
+                }
+
+                // 4. Resolve device_statuses ids (mirrors `create`).
+                let in_work_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'в_работе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='в_работе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+                let on_warehouse_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'на_складе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='на_складе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+
+                // 5. Compute delta between current act_items and the payload's
+                // full replacement set.
+                let d_old: std::collections::HashSet<i64> = {
+                    let mut stmt = tx
+                        .prepare("SELECT device_id FROM act_items WHERE act_id = ?1")
+                        .map_err(map_rusqlite)?;
+                    let ids: std::collections::HashSet<i64> = stmt
+                        .query_map(params![payload.id], |r| r.get::<_, i64>(0))
+                        .map_err(map_rusqlite)?
+                        .collect::<rusqlite::Result<_>>()
+                        .map_err(map_rusqlite)?;
+                    ids
+                };
+                let d_new: std::collections::HashSet<i64> =
+                    payload.items.iter().map(|i| i.device_id).collect();
+                let added: Vec<i64> = d_new.difference(&d_old).copied().collect();
+                let unchanged: Vec<i64> = d_old.intersection(&d_new).copied().collect();
+
+                // Resolve location once — name (autocomplete) takes priority
+                // over `location_id`, mirrors `create`'s pattern.
+                let resolved_location_id: Option<i64> =
+                    if let Some(name) = payload.location_name.as_deref() {
+                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                    } else {
+                        payload.location_id
+                    };
+
+                // 6. Added devices: status guard (same shape as `create`'s
+                // device_ids[] path) THEN the add-loop body copied verbatim
+                // from `create` (before/after snapshot, status+location
+                // transition, audit "update"/"handover").
+                for &dev_id in &added {
+                    let d = devices_repo.get_in_tx(&tx, dev_id)?;
+                    if d.status_id != on_warehouse_status_id {
+                        return Err(AppError::Conflict {
+                            reason: format!(
+                                "Устройство id={} больше не на складе — обновите список и \
+                                 повторите.",
+                                dev_id
+                            ),
+                        });
+                    }
+                }
+                for &dev_id in &added {
+                    let before = devices_repo.get_in_tx(&tx, dev_id)?;
+                    let before_json =
+                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
+                            source_chain: format!("before_json: {e}"),
+                        })?;
+                    let after = devices_repo.update_status_and_location_in_tx(
+                        &tx,
+                        dev_id,
+                        in_work_status_id,
+                        resolved_location_id,
+                        now,
+                    )?;
+                    let after_json =
+                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
+                            source_chain: format!("after_json: {e}"),
+                        })?;
+                    let payload_json = serde_json::json!({
+                        "act_id": payload.id,
+                        "kind": "handover",
+                    })
+                    .to_string();
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "device",
+                            entity_id: dev_id,
+                            action: "update",
+                            user_id: user_id_opt,
+                            before_json: Some(before_json),
+                            after_json: Some(after_json),
+                            payload_json: Some(payload_json),
+                            created_at_utc: now,
+                        },
+                    )?;
+
+                    // INSERT act_items row for the newly added position.
+                    // `complectation_at_time`: matching item's value if
+                    // Some, else fall back to the source device's live kit
+                    // (mirrors `create`'s `source_before.kit` default).
+                    let complectation: Option<String> = payload
+                        .items
+                        .iter()
+                        .find(|i| i.device_id == dev_id)
+                        .and_then(|i| i.complectation_at_time.clone())
+                        .or_else(|| before.kit.clone());
+                    tx.execute(
+                        "INSERT INTO act_items \
+                         (act_id, device_id, quantity, condition_at_time, \
+                          complectation_at_time, parent_act_item_id) \
+                         VALUES (?1, ?2, 1, ?3, ?4, NULL)",
+                        params![
+                            payload.id,
+                            dev_id,
+                            before.state.as_deref(),
+                            complectation,
+                        ],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
+
+                // 7. Retained (unchanged device_id set) rows: overwrite
+                // complectation_at_time только если the matching item's
+                // value is Some (D-04 комплектация edit on retained rows).
+                for &dev_id in &unchanged {
+                    if let Some(item) = payload.items.iter().find(|i| i.device_id == dev_id) {
+                        if let Some(v) = &item.complectation_at_time {
+                            tx.execute(
+                                "UPDATE act_items SET complectation_at_time = ?1 \
+                                 WHERE act_id = ?2 AND device_id = ?3",
+                                params![v, payload.id, dev_id],
+                            )
+                            .map_err(map_rusqlite)?;
+                        }
+                    }
+                }
+
+                // TODO(Plan 19-03 Task 2): removed-device restore (D-06) + D-08 outstanding guard + number uniqueness re-check (A3) land here
+
+                // 9. Build ActPatch + CAS header UPDATE. The 5 original
+                // header fields are unconditional in `update_act_header_in_tx`'s
+                // SQL (per Plan 19-02) — always supply resolved Some(..)
+                // values; `handover_date_utc`/`number` use COALESCE semantics
+                // (None = no change).
+                let patch = ActPatch {
+                    giver_name: Some(payload.giver_name.clone()),
+                    receiver_name: Some(payload.receiver_name.clone()),
+                    location_id: Some(resolved_location_id),
+                    notes: Some(payload.notes.clone()),
+                    deadline_utc: Some(payload.deadline_utc),
+                    handover_date_utc: payload.handover_date_utc,
+                    number: payload.number_override,
+                    expected_version: payload.expected_version,
+                };
+                acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
+
+                // 10. Final audit row for the header edit (real before/after
+                // diff, unlike `create`'s tail which only has an after_json).
+                let act_after = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
+                let before_json = serde_json::to_string(&serde_json::json!({
+                    "giver_name": act.giver_name,
+                    "receiver_name": act.receiver_name,
+                    "location_id": act.location_id,
+                    "notes": act.notes,
+                    "deadline_utc": act.deadline_utc,
+                    "handover_date_utc": act.handover_date_utc,
+                    "number": act.number,
+                    "version": act.version,
+                }))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("act before_json: {e}"),
+                })?;
+                let after_json = serde_json::to_string(&serde_json::json!({
+                    "giver_name": act_after.giver_name,
+                    "receiver_name": act_after.receiver_name,
+                    "location_id": act_after.location_id,
+                    "notes": act_after.notes,
+                    "deadline_utc": act_after.deadline_utc,
+                    "handover_date_utc": act_after.handover_date_utc,
+                    "number": act_after.number,
+                    "version": act_after.version,
+                }))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("act after_json: {e}"),
+                })?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "act",
+                        entity_id: payload.id,
+                        action: "update",
+                        user_id: user_id_opt,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(payload.id)
             })
             .await?;
 
