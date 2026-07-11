@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: executing
-last_updated: "2026-07-11T19:41:05.156Z"
+status: verifying
+last_updated: "2026-07-11T20:05:25.951Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
-  completed_phases: 21
+  completed_phases: 22
   total_plans: 137
-  completed_plans: 136
-  percent: 95
+  completed_plans: 137
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 19 (acts-date-edit) — EXECUTING
 Plan: 8 of 8 (WR-02/IN-01 gap closure complete; 19-07 pending)
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -180,6 +180,7 @@ Last activity: 2026-07-11
 | Phase 19 P05 | 20min | 3 tasks | 5 files |
 | Phase 19 P06 | 25min | 2 tasks | 2 files |
 | Phase 19 P08 | 5min | 2 tasks | 3 files |
+| Phase 19 P07 | 20 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -424,6 +425,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 19-08: WR-02 closed via option (a) — clamp UI quantity to 1 in edit mode (schema-consistent per D-06) rather than extend ActUpdateItemDto with quantity/device_ids
 - [Phase ?]: 19-08: edit-mode qty column renders static '1' span, not a disabled input, to avoid a misleading spinner control
 - [Phase ?]: 19-08: todayISO() switched to getUTCFullYear/getUTCMonth/getUTCDate, unifying with unixToIso()/isoToUnix() UTC convention (IN-01)
+- [Phase 19]: 19-07: WR-01 cascades renamed act number to child return acts in the same tx (option a) instead of excluding act_type='return' from the uniqueness check — preserves do_return's copy-parent-number invariant
+- [Phase 19]: 19-07: WR-03 audits retained-item complectacia edits (custom:act_item_complectation_edit) gated on stored != incoming value, so a no-op resubmit writes zero audit rows
 
 ### Pending Todos
 
@@ -485,8 +488,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T19:40:36.996Z
-Stopped at: Completed 19-08-PLAN.md
+Last session: 2026-07-11T20:05:25.943Z
+Stopped at: Completed 19-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
