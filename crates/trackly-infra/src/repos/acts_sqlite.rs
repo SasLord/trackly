@@ -8,7 +8,7 @@
 //! closure — see D-Counter-Acts-01).
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use trackly_core::domain::acts::{ActCounts, ActFilter, ActRow, ActType, Pagination};
+use trackly_core::domain::acts::{ActCounts, ActFilter, ActPatch, ActRow, ActType, Pagination};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 
@@ -358,6 +358,70 @@ impl SqliteActRepository {
 
         tx.execute("DELETE FROM act_items WHERE act_id = ?1", params![id])
             .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
+    /// CAS header UPDATE for act editing (Phase 19, ACT-02).
+    ///
+    /// Touches only the mutable header fields: `giver_name`, `receiver_name`,
+    /// `location_id`, `notes`, `deadline_utc`, `handover_date_utc` (D-01/D-04),
+    /// and `number` (D-04 override, `COALESCE`d — only applied if
+    /// `patch.number` is `Some`). Does NOT touch `sub_number`, `parent_act_id`,
+    /// `act_type` (immutable identity fields) or `created_at_utc` (D-02:
+    /// purely internal). Lock check is folded into the single `UPDATE`
+    /// statement itself (not a separate read-then-write), structurally
+    /// preventing a TOCTOU race — same pattern as `soft_delete_in_tx`.
+    ///
+    /// No caller yet — `ActService::update` (Plan 19-03) is the first and
+    /// only caller.
+    pub fn update_act_header_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        id: i64,
+        patch: &ActPatch,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let affected = tx
+            .execute(
+                "UPDATE acts SET giver_name = ?1, receiver_name = ?2, \
+                 location_id = ?3, notes = ?4, deadline_utc = ?5, \
+                 handover_date_utc = COALESCE(?6, handover_date_utc), \
+                 number = COALESCE(?7, number), \
+                 version = version + 1, updated_at_utc = ?8 \
+                 WHERE id = ?9 AND version = ?10 AND deleted_at_utc IS NULL",
+                params![
+                    patch.giver_name,
+                    patch.receiver_name,
+                    patch.location_id,
+                    patch.notes,
+                    patch.deadline_utc,
+                    patch.handover_date_utc,
+                    patch.number,
+                    now_utc,
+                    id,
+                    patch.expected_version,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+
+        if affected == 0 {
+            let actual: Option<i64> = tx
+                .query_row("SELECT version FROM acts WHERE id = ?1", params![id], |r| {
+                    r.get(0)
+                })
+                .optional()
+                .map_err(map_rusqlite)?;
+            return match actual {
+                None => Err(AppError::NotFound { entity: "act", id }),
+                Some(actual) => Err(AppError::OptimisticLockMismatch {
+                    entity: "act",
+                    id,
+                    expected: patch.expected_version,
+                    actual,
+                }),
+            };
+        }
+
         Ok(())
     }
 }

@@ -9,7 +9,7 @@
 //! NB: V008 declares `audit_log` as a hard-delete table (no `deleted_at_utc`
 //! / no `version`). Retention is owned by Phase 7 scheduled tasks.
 
-use rusqlite::{params, Transaction};
+use rusqlite::{params, OptionalExtension, Transaction};
 use trackly_core::error::AppError;
 
 use crate::error_conversions::map_rusqlite;
@@ -87,6 +87,38 @@ impl SqliteAuditLogRepository {
             out.push(row.map_err(map_rusqlite)?);
         }
         Ok(out)
+    }
+
+    /// SELECT the single most-recent device-mutation snapshot linked to a
+    /// given act, for one specific device (Phase 19, ACT-02).
+    ///
+    /// Unlike `select_device_mutations_for_act` (which returns ALL rows in
+    /// chronological ASC order for full-act LIFO undo), this returns just the
+    /// single row immediately preceding the most recent edit — `ORDER BY
+    /// created_at_utc DESC, id DESC LIMIT 1` (Pitfall 2: taking the FIRST
+    /// (ASC) row instead would restore to the ORIGINAL creation-time
+    /// snapshot rather than the state right before the most recent edit).
+    ///
+    /// No caller yet — `ActService::update` (Plan 19-03) is the first and
+    /// only caller.
+    pub fn select_latest_device_mutation(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        device_id: i64,
+    ) -> Result<Option<String>, AppError> {
+        tx.query_row(
+            "SELECT before_json FROM audit_log \
+             WHERE entity_type = 'device' \
+               AND entity_id = ?2 \
+               AND json_extract(payload_json, '$.act_id') = ?1 \
+               AND before_json IS NOT NULL \
+             ORDER BY created_at_utc DESC, id DESC LIMIT 1",
+            params![act_id, device_id],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
     }
 }
 
