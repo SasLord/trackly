@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-11T19:35:23.079Z"
+last_updated: "2026-07-11T19:41:05.156Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
   total_plans: 137
-  completed_plans: 135
+  completed_plans: 136
   percent: 95
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 19 (acts-date-edit) — EXECUTING
-Plan: 2 of 8
+Plan: 8 of 8 (WR-02/IN-01 gap closure complete; 19-07 pending)
 Status: Ready to execute
 Last activity: 2026-07-11
 
@@ -179,6 +179,7 @@ Last activity: 2026-07-11
 | Phase 19 P04 | 45min | 3 tasks | 6 files |
 | Phase 19 P05 | 20min | 3 tasks | 5 files |
 | Phase 19 P06 | 25min | 2 tasks | 2 files |
+| Phase 19 P08 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -420,6 +421,9 @@ Recent decisions affecting current work:
 - [Phase 19]: Plan 19-05: second, independent ActFormModal instance (mode=edit) added in ActsPage rather than threading shared create/edit state through one modal
 - [Phase 19]: Plan 19-05: D-07 edit-button gating deliberately omits !act.archived — archived handover acts remain editable, unlike Возврат
 - [Phase 19-06]: recompute_parent_archived call gated on added/removed non-empty, placed after CAS header UPDATE and before final-audit fetch — Closes CR-01 — archived was never recomputed on update()'s device-set mutations; recompute must run after CAS (both bump version) to avoid spurious OptimisticLockMismatch, and gating preserves the header-only version+1 contract
+- [Phase ?]: 19-08: WR-02 closed via option (a) — clamp UI quantity to 1 in edit mode (schema-consistent per D-06) rather than extend ActUpdateItemDto with quantity/device_ids
+- [Phase ?]: 19-08: edit-mode qty column renders static '1' span, not a disabled input, to avoid a misleading spinner control
+- [Phase ?]: 19-08: todayISO() switched to getUTCFullYear/getUTCMonth/getUTCDate, unifying with unixToIso()/isoToUnix() UTC convention (IN-01)
 
 ### Pending Todos
 
@@ -481,8 +485,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T19:35:23.071Z
-Stopped at: Completed 19-06-PLAN.md
+Last session: 2026-07-11T19:40:36.996Z
+Stopped at: Completed 19-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

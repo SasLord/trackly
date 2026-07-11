@@ -226,7 +226,7 @@ Plans:
 
 - [x] 19-01-PLAN.md — ACT-01: handover_date_utc в ActDto + переключение 5 read-сайтов (сортировка, PDF, список, карточка)
 - [x] 19-06-PLAN.md — Gap CR-01 (BLOCKER): update() пересчитывает archived (recompute_parent_archived, gated) + 2 regression-теста
-- [ ] 19-08-PLAN.md — Gap WR-02/IN-01: edit-режим форсирует single-device rows + todayISO() на UTC
+- [x] 19-08-PLAN.md — Gap WR-02/IN-01: edit-режим форсирует single-device rows + todayISO() на UTC
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -313,7 +313,7 @@ Plans:
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
 | 18. Автокомплит и дропдауны | v1.1.2 | 5/5 | Complete    | 2026-07-11 |
-| 19. Акты — дата и редактирование | v1.1.2 | 6/8 | In Progress|  |
+| 19. Акты — дата и редактирование | v1.1.2 | 7/8 | In Progress|  |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
 
