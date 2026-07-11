@@ -528,31 +528,40 @@
       <div class="tr" role="row">
         <div class="td col-num">{idx + 1}</div>
         <div class="td col-device" class:has-error={!!errFor(idx, 'device_id')}>
-          <input
-            type="text"
-            bind:this={rowInputEls[idx]}
-            class="device-input"
-            class:invalid={!!errFor(idx, 'device_id')}
-            value={row.query}
-            placeholder="Устройство со склада"
-            autocomplete="off"
-            aria-autocomplete="list"
-            oninput={(e) => handleQueryInput(idx, (e.currentTarget as HTMLInputElement).value)}
-            onfocus={() => handleFocus(idx)}
-            onkeydown={(e) => handleRowKeydown(idx, e)}
-          />
-          {#if loadingByRow[idx]}
-            <div class="loading-row"><Spinner size="sm" /></div>
-          {/if}
-          {#if openByRow[idx]}
-            <ul
-              class="dropdown--items"
-              role="listbox"
-              use:portal
-              use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
-              bind:this={rowDropdownEls[idx]}
-            >
-              {#if viewModeByRow[idx] === 'members'}
+          {#if mode === 'edit' && row.complectation_at_time !== undefined}
+            <!-- Plan 19-09 (ACT-02/D-10): retained edit-mode position — itemsFromInitialAct
+                 sets query: '' for prefilled rows, so the picker input would render blank
+                 ("Устройство со склада" placeholder) even though the device is already set.
+                 complectation_at_time !== undefined is the retained-position marker (see
+                 FormItemRow doc comment) — fresh rows added during this edit session never
+                 have it set, and create mode never sets it either. -->
+            <span class="device-readonly">{row.device_label}</span>
+          {:else}
+            <input
+              type="text"
+              bind:this={rowInputEls[idx]}
+              class="device-input"
+              class:invalid={!!errFor(idx, 'device_id')}
+              value={row.query}
+              placeholder="Устройство со склада"
+              autocomplete="off"
+              aria-autocomplete="list"
+              oninput={(e) => handleQueryInput(idx, (e.currentTarget as HTMLInputElement).value)}
+              onfocus={() => handleFocus(idx)}
+              onkeydown={(e) => handleRowKeydown(idx, e)}
+            />
+            {#if loadingByRow[idx]}
+              <div class="loading-row"><Spinner size="sm" /></div>
+            {/if}
+            {#if openByRow[idx]}
+              <ul
+                class="dropdown--items"
+                role="listbox"
+                use:portal
+                use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
+                bind:this={rowDropdownEls[idx]}
+              >
+                {#if viewModeByRow[idx] === 'members'}
                 <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
                 <!-- checkpoint fix #1: sticky-заголовок группы ВСЕГДА виден в
                      member-view (в т.ч. при auto-flatten); «← Назад» — только
@@ -676,6 +685,7 @@
                 {/each}
               {/if}
             </ul>
+            {/if}
           {/if}
           {#if errFor(idx, 'device_id')}
             <p class="row-error">{errFor(idx, 'device_id')}</p>
@@ -1043,6 +1053,20 @@
     height: 36px;
     padding: 0 var(--space-md);
     color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+  }
+
+  // Plan 19-09 (ACT-02/D-10): read-only device name for retained edit-mode
+  // positions — filled non-editable cell, visually matching .device-input
+  // minus the border/background/focus (a static label, mirrors .qty-fixed).
+  .device-readonly {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 var(--space-md);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
   }
