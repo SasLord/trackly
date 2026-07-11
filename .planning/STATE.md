@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: milestone_complete
-last_updated: 2026-07-11T09:23:42.226Z
-last_activity: 2026-07-10
+status: completed
+last_updated: "2026-07-11T09:59:47.207Z"
+last_activity: 2026-07-11
 progress:
-  total_phases: 21
+  total_phases: 22
   completed_phases: 21
   total_plans: 129
   completed_plans: 129
-  percent: 100
-stopped_at: Milestone complete (Phase 18 was final phase)
+  percent: 95
 ---
 
 # Project State
@@ -462,9 +461,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-10T21:50:13.406Z
-Stopped at: Completed 18-05-PLAN.md (AUTO-04/AUTO-05, checkpoint approved)
-Resume file: None
+Last session: 2026-07-11T09:59:47.199Z
+Stopped at: Phase 19 context gathered
+Resume file: .planning/phases/19-acts-date-edit/19-CONTEXT.md
 
 ## Operator Next Steps
 
