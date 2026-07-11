@@ -106,7 +106,11 @@ pub struct ActReturnItem {
     pub location_id_override: Option<i64>,
 }
 
-/// Partial update for an act (used by Phase 7 admin UI; minimal usage in Phase 3).
+/// Partial update for an act. First real consumer: `ActService::update`
+/// (Phase 19 Plan 03), which builds this from `ActUpdateDto`
+/// (`trackly-app::dto::act`) to edit an existing handover act's header
+/// fields under an optimistic-lock (`expected_version`) CAS guard — see
+/// `crate::repos::acts_sqlite::update_act_header_in_tx` (trackly-infra).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ActPatch {
     pub giver_name: Option<String>,
@@ -114,6 +118,15 @@ pub struct ActPatch {
     pub location_id: Option<Option<i64>>,
     pub notes: Option<Option<String>>,
     pub deadline_utc: Option<Option<i64>>,
+    /// Phase 19 (D-01/D-04): explicit override of the act's handover date
+    /// («Когда отдали»). `None` = no change requested.
+    pub handover_date_utc: Option<i64>,
+    /// Phase 19 (D-04): explicit № override. `None` = no rename requested.
+    pub number: Option<i64>,
+    /// CAS token — always required (mirrors `soft_delete_in_tx`'s `version`
+    /// argument), never `Option`. Compared against `acts.version` in
+    /// `update_act_header_in_tx`'s `WHERE` clause.
+    pub expected_version: i64,
 }
 
 /// Full act row as returned from the repository read path.
