@@ -216,6 +216,68 @@ pub struct ActItemNewDto {
     pub quantity: i64,
 }
 
+/// Payload sent by the UI when editing an existing act's header + item set
+/// (Phase 19, ACT-02). Consumed by `ActService::update` (Plan 19-03), which
+/// destructures the header fields into `trackly_core::domain::acts::ActPatch`
+/// and diffs `items` against the act's current `act_items`.
+///
+/// `items` is a **full replacement set**, not a delta — the service computes
+/// added/retained/removed device_ids by comparing this list against what is
+/// currently persisted for the act.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct ActUpdateDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    /// CAS token — must match the act's current `version` or the update is
+    /// rejected (`AppError::OptimisticLockMismatch`).
+    #[specta(type = i32)]
+    pub expected_version: i64,
+    /// `None` = no rename requested (act keeps its current `number`).
+    #[specta(type = Option<i32>)]
+    pub number_override: Option<i64>,
+    pub giver_name: String,
+    pub receiver_name: String,
+    #[specta(type = Option<i32>)]
+    pub location_id: Option<i64>,
+    /// UX-friendly: name-based location (mirrors `ActCreateDto.location_name`).
+    #[serde(default)]
+    pub location_name: Option<String>,
+    pub notes: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub deadline_utc: Option<i64>,
+    /// Phase 19 (D-01/D-04): edit the act's «Когда отдали» date.
+    /// `None` = no change requested (mirrors `ActCreateDto.handover_date_utc`).
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub handover_date_utc: Option<i64>,
+    /// Full replacement set of items — see struct-level doc comment.
+    pub items: Vec<ActUpdateItemDto>,
+}
+
+/// Single item line in `ActUpdateDto.items`.
+///
+/// `complectation_at_time` semantics (resolves RESEARCH.md Open Question 1 /
+/// Pitfall 4):
+/// - For a `device_id` **retained** across the edit (present both before and
+///   after): `Some(v)` overwrites `act_items.complectation_at_time` for that
+///   row; `None` leaves the existing value unchanged.
+/// - For a **newly added** `device_id`: `None` falls back to the source
+///   device's current `kit` value (mirrors `create`'s `source_before.kit`
+///   default, see `act_service.rs:416`).
+///
+/// «Технические характеристики» (`ActItemDto.specs`, backed by the live
+/// `devices.notes` column) has **no** corresponding field here and stays
+/// read-only/out of scope for this phase — it is a live device attribute
+/// read at render time, not an act-owned snapshot, and editing it would mean
+/// mutating device data as an act-edit side effect (a materially different,
+/// unreviewed security surface not covered by D-05/D-06).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct ActUpdateItemDto {
+    #[specta(type = i32)]
+    pub device_id: i64,
+    pub complectation_at_time: Option<String>,
+}
+
 /// Switch-bar counters returned by `acts_counts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActsCountsDto {
@@ -387,5 +449,43 @@ mod tests {
             "snake_case 'number_override'"
         );
         assert!(!s.contains("numberOverride"), "must NOT use camelCase");
+    }
+
+    #[test]
+    fn act_update_dto_snake_case_json_invariant() {
+        let dto = ActUpdateDto {
+            id: 1,
+            expected_version: 3,
+            number_override: Some(7),
+            giver_name: "А".into(),
+            receiver_name: "Б".into(),
+            location_id: None,
+            location_name: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: Some(1_700_000_000),
+            items: vec![ActUpdateItemDto {
+                device_id: 5,
+                complectation_at_time: Some("кабель, коробка".into()),
+            }],
+        };
+        let s = serde_json::to_string(&dto).expect("ser");
+        assert!(s.contains("expected_version"), "snake_case 'expected_version'");
+        assert!(!s.contains("expectedVersion"), "must NOT use camelCase");
+        assert!(s.contains("number_override"), "snake_case 'number_override'");
+        assert!(!s.contains("numberOverride"), "must NOT use camelCase");
+        assert!(
+            s.contains("handover_date_utc"),
+            "snake_case 'handover_date_utc'"
+        );
+        assert!(!s.contains("handoverDateUtc"), "must NOT use camelCase");
+        assert!(
+            s.contains("complectation_at_time"),
+            "snake_case 'complectation_at_time'"
+        );
+        assert!(
+            !s.contains("complectationAtTime"),
+            "must NOT use camelCase"
+        );
     }
 }
