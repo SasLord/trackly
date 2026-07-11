@@ -98,11 +98,36 @@
     onChange([...items, makeEmpty()]);
   }
 
+  /** WR-01: индекс-ключевые transient-мапы дропдауна (10 штук) должны следовать
+   *  за сдвигом строк при удалении — иначе после removeRow(idx) все строки
+   *  после idx показывают состояние (открытый дропдаун/drill-in) ПРЕДЫДУЩЕГО
+   *  жильца этого индекса. shift() удаляет запись под idx и сдвигает все
+   *  записи с ключом > idx на -1, сохраняя записи с ключом < idx нетронутыми. */
+  function shiftRowState<T>(m: Record<number, T>, idx: number): Record<number, T> {
+    const out: Record<number, T> = {};
+    for (const k of Object.keys(m)) {
+      const i = Number(k);
+      if (i < idx) out[i] = m[i];
+      else if (i > idx) out[i - 1] = m[i];
+    }
+    return out;
+  }
+
   function removeRow(idx: number) {
     const next = items.filter((_, i) => i !== idx);
-    delete suggestionsByRow[idx];
-    delete loadingByRow[idx];
-    delete openByRow[idx];
+    // WR-05: удаляемая строка могла иметь pending debounce-таймер — если его
+    // не отменить, поздний fetch запишет результат в реиндексированные мапы
+    // сдвинутой строки (stale write).
+    if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
+    delete debounceTimers[idx];
+    suggestionsByRow = shiftRowState(suggestionsByRow, idx);
+    loadingByRow = shiftRowState(loadingByRow, idx);
+    openByRow = shiftRowState(openByRow, idx);
+    viewModeByRow = shiftRowState(viewModeByRow, idx);
+    drillGroupByRow = shiftRowState(drillGroupByRow, idx);
+    membersByRow = shiftRowState(membersByRow, idx);
+    activeIndexByRow = shiftRowState(activeIndexByRow, idx);
+    showBackByRow = shiftRowState(showBackByRow, idx);
     onChange(next);
   }
 
