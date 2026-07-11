@@ -217,7 +217,7 @@ Trackly — портативное приложение для учёта тех
 2. Кнопка «Редактировать» на карточке существующего акта активна (не задизейблена).
 3. Нажатие «Редактировать» открывает форму со всеми текущими данными акта, и внесённые изменения сохраняются без ошибок.
 
-**Plans**: 5 plans in 5 waves
+**Plans**: 8 plans (19-01..19-05 + gap-closure 19-06..19-08)
 **UI hint**: yes
 
 **Note**: ACT-02 — диагностика проведена в ходе research/planning: причина «не работает» — `ActService::update` физически не существовал в бэкенде (подтверждено grep по кодовой базе), а не баг в существующей логике.
@@ -228,6 +228,9 @@ Plans:
 - [x] 19-03-PLAN.md — ACT-02 backend: ActService::update (CAS, D-05/D-06/D-07/D-08, номер-уникальность) + 9 интеграционных тестов
 - [x] 19-04-PLAN.md — ACT-02 транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
 - [x] 19-05-PLAN.md — ACT-02 UI: ActFormBody/ActFormModal edit-режим, ActDetail D-07-гейтинг, ActsPage-оркестрация
+- [ ] 19-06-PLAN.md — Gap CR-01 (BLOCKER): update() пересчитывает archived (recompute_parent_archived, gated) + 2 regression-теста
+- [ ] 19-07-PLAN.md — Gap WR-01/WR-03: каскад номера на return-акты + аудит изменения комплектации
+- [ ] 19-08-PLAN.md — Gap WR-02/IN-01: edit-режим форсирует single-device rows + todayISO() на UTC
 
 ---
 
