@@ -150,7 +150,13 @@
   function handleEditSaved(act: ActDto) {
     editModalOpen = false;
     editTargetAct = null;
+    // D-11: selectedActId = act.id is a no-op when the edited act is already
+    // selected (the detail $effect is keyed on selectedActId), leaving the
+    // detail card stale. Assign selectedAct directly — act is the fresh full
+    // ActDto returned by acts.update() (server self.get) — mirroring how
+    // handleReturnSuccess refreshes the detail immediately below.
     selectedActId = act.id;
+    selectedAct = act;
     refresh();
     refreshCounts();
   }
