@@ -67,27 +67,11 @@
             <Button variant="secondary" size="sm" disabled>Печать</Button>
           </span>
         {/if}
-        {#if onEdit && act.act_type === 'handover'}
+        {#if onEdit && act.act_type === 'handover' && !act.archived}
           <Button variant="secondary" size="sm" onclick={() => onEdit(act)}>Редактировать</Button>
-        {:else}
-          <span title="Редактировать можно только акты выдачи (handover)">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={!onEdit || act.act_type !== 'handover'}
-            >
-              Редактировать
-            </Button>
-          </span>
         {/if}
         {#if onReturn && act.act_type === 'handover' && !act.archived}
           <Button variant="secondary" size="sm" onclick={() => onReturn(act)}>Возврат</Button>
-        {:else}
-          <span
-            title={act.archived ? 'Акт уже в Архиве' : 'Возврат доступен только для handover-актов'}
-          >
-            <Button variant="secondary" size="sm" disabled>Возврат</Button>
-          </span>
         {/if}
         <Button variant="destructive" size="sm" onclick={() => onDelete(act)}>Удалить</Button>
       </div>
