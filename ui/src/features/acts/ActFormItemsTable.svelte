@@ -570,8 +570,13 @@
                           onclick={() => pickDevice(idx, mrow.device, [mrow.device.id])}
                         >
                           <span class="opt-row">
+                            <!-- checkpoint fix (round 2) #2: ОБА номера, если оба
+                                 заполнены (SN · инв.), иначе только заполненный. -->
                             {#if mrow.device.serial_no}
                               <span class="opt-sn">SN {mrow.device.serial_no}</span>
+                            {/if}
+                            {#if mrow.device.serial_no && mrow.device.inventory_no}
+                              <span class="opt-sep"> · </span>
                             {/if}
                             {#if mrow.device.inventory_no}
                               <span class="opt-inv">инв. {mrow.device.inventory_no}</span>
@@ -632,10 +637,17 @@
                           >{isExpandable(g) ? '›' : ''}</span
                         >
                       </div>
-                      {#if g.repr.serial_no}
-                        <span class="opt-sn">SN {g.repr.serial_no}</span>
-                      {:else if g.repr.inventory_no}
-                        <span class="opt-inv">инв. {g.repr.inventory_no}</span>
+                      <!-- checkpoint fix (round 2) #1/#2: серийный/инвентарный №
+                           показываем ТОЛЬКО у одиночного устройства
+                           (g.ids.length === 1) — у раскрываемой группы номера у
+                           каждого экземпляра свои, показ repr-номера вводит в
+                           заблуждение. И показываем ОБА номера, если оба есть. -->
+                      {#if g.ids.length === 1 && (g.repr.serial_no || g.repr.inventory_no)}
+                        <span class="opt-meta-row">
+                          {#if g.repr.serial_no}<span class="opt-sn">SN {g.repr.serial_no}</span>{/if}
+                          {#if g.repr.serial_no && g.repr.inventory_no}<span class="opt-sep"> · </span>{/if}
+                          {#if g.repr.inventory_no}<span class="opt-inv">инв. {g.repr.inventory_no}</span>{/if}
+                        </span>
                       {/if}
                       {#if g.repr.state}
                         <span class="opt-state">{g.repr.state}</span>
@@ -790,6 +802,18 @@
   :global(.dropdown--items .opt-state) {
     font-size: var(--font-size-label);
     color: var(--color-text-secondary);
+  }
+  // checkpoint fix (round 2) #2: строка «SN … · инв. …» одиночного устройства —
+  // inline-ряд обоих номеров через middot-разделитель (UI-SPEC мета-разделитель).
+  :global(.dropdown--items .opt-meta-row) {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--font-size-label);
+  }
+  :global(.dropdown--items .opt-sep) {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-label);
   }
   :global(.dropdown--items .dropdown-empty) {
     padding: var(--space-xl);
