@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: completed
-last_updated: "2026-07-11T09:59:47.207Z"
+status: executing
+last_updated: "2026-07-11T14:46:00.862Z"
 last_activity: 2026-07-11
 progress:
   total_phases: 22
   completed_phases: 21
-  total_plans: 129
-  completed_plans: 129
+  total_plans: 134
+  completed_plans: 130
   percent: 95
 ---
 
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** Phase 19 — acts-date-edit
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
-Status: Milestone complete
+Phase: 19 (acts-date-edit) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-07-11
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -173,6 +173,7 @@ Last activity: 2026-07-11
 | Phase 18 P03 | 9min | 3 tasks | 6 files |
 | Phase 18 P04 | 25min | 2 tasks | 1 files |
 | Phase 18 P18-05 | 40min | 3 tasks | 1 files |
+| Phase 19 P01 | 14min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -400,6 +401,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 18-05: единственная оставшаяся после фильтрации группа всегда разворачивается через drillInto (auto-flatten), единый код-путь с обычным drill-in (AUTO-05/D-09)
 - [Phase ?]: 18-05: количество устройства задаётся только в колонке «Количество» таблицы позиций — spinner убран из дропдауна пикера (checkpoint fix)
 - [Phase ?]: 18-05: isExpandable требует ids.length>1 — единственный экземпляр не раскрывается, клик сразу выбирает (checkpoint fix)
+- [Phase 19]: 19-01: ui/src/bindings.ts is gitignored — Task 1 regeneration verified but produces no committed diff (only Rust ActDto struct change is committed)
+- [Phase 19]: 19-01: html_act_render.rs tests assert on act.date_human (RU) not act.date (ISO) — the act_handover.html template only renders date_human; ISO field is unused in markup
 
 ### Pending Todos
 
@@ -461,9 +464,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T09:59:47.199Z
-Stopped at: Phase 19 context gathered
-Resume file: .planning/phases/19-acts-date-edit/19-CONTEXT.md
+Last session: 2026-07-11T14:45:50.842Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

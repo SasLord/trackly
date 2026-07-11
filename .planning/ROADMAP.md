@@ -223,7 +223,7 @@ Trackly — портативное приложение для учёта тех
 **Note**: ACT-02 — диагностика проведена в ходе research/planning: причина «не работает» — `ActService::update` физически не существовал в бэкенде (подтверждено grep по кодовой базе), а не баг в существующей логике.
 
 Plans:
-- [ ] 19-01-PLAN.md — ACT-01: handover_date_utc в ActDto + переключение 5 read-сайтов (сортировка, PDF, список, карточка)
+- [x] 19-01-PLAN.md — ACT-01: handover_date_utc в ActDto + переключение 5 read-сайтов (сортировка, PDF, список, карточка)
 - [ ] 19-02-PLAN.md — ACT-02 контракты: ActPatch, ActUpdateDto/ActUpdateItemDto, update_act_header_in_tx, select_latest_device_mutation
 - [ ] 19-03-PLAN.md — ACT-02 backend: ActService::update (CAS, D-05/D-06/D-07/D-08, номер-уникальность) + 9 интеграционных тестов
 - [ ] 19-04-PLAN.md — ACT-02 транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
@@ -297,7 +297,7 @@ Plans:
 | 16. Документы через HTML-печать | v1.2 | 5/5 | Complete    | 2026-07-05 |
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
 | 18. Автокомплит и дропдауны | v1.1.2 | 5/5 | Complete    | 2026-07-11 |
-| 19. Акты — дата и редактирование | v1.1.2 | 0/TBD | Not started | - |
+| 19. Акты — дата и редактирование | v1.1.2 | 1/5 | In Progress|  |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
 
