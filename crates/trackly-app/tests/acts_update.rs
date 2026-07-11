@@ -672,3 +672,139 @@ async fn number_change_rejects_duplicate() {
     .await
     .expect("number_change_rejects_duplicate budget");
 }
+
+// ---------------------------------------------------------------------------
+// Test 10 (CR-01 gap closure): remove_last_outstanding_archives_act
+// ---------------------------------------------------------------------------
+//
+// `update()` mutates the act's device set but historically never recomputed
+// `acts.archived` (unlike `do_return`/`delete_soft`). Removing the last
+// outstanding position from a partially-returned act must flip `archived`
+// to `true` (handover_total <= returned_total).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn remove_last_outstanding_archives_act() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 2, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+
+        // Partial return: return device 0 only, device 1 stays outstanding.
+        let returned_item = handover
+            .items
+            .iter()
+            .find(|it| it.device_id == device_ids[0])
+            .expect("item for device 0");
+        svc.do_return(
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some("Хорошее".into()),
+                bulk_location_id: Some(loc_a),
+                bulk_location_name: None,
+                apply_to_all: true,
+                items: vec![ActReturnItemDto {
+                    act_item_id: returned_item.id,
+                    device_id: returned_item.device_id,
+                    device_ids: vec![returned_item.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                }],
+            },
+        )
+        .await
+        .expect("do_return device 0");
+
+        // Re-fetch to get the version bumped by do_return's own
+        // recompute_parent_archived call (still archived=false — 1/2 returned).
+        let handover_after_return = svc.get(handover.id).await.expect("re-fetch handover");
+        assert!(
+            !handover_after_return.archived,
+            "still partially outstanding before edit (1 of 2 returned)"
+        );
+
+        // Remove the last outstanding device (device 1), keeping only the
+        // already-returned device 0 in the item set.
+        let update = update_dto_from(&handover_after_return, &[device_ids[0]]);
+        let updated = svc.update(update).await.expect("remove last outstanding device");
+
+        assert!(
+            updated.archived,
+            "act must become archived once its last outstanding device is removed \
+             (handover_total=1, returned_total=1)"
+        );
+    })
+    .await
+    .expect("remove_last_outstanding_archives_act budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 11 (CR-01 gap closure): add_device_to_archived_unarchives
+// ---------------------------------------------------------------------------
+//
+// Adding a fresh outstanding device to an already-archived act must flip
+// `archived` back to `false` (handover_total > returned_total again), and
+// the newly-added device must transition to в_работе.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn add_device_to_archived_unarchives() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+
+        // Fully return the single device — act becomes archived.
+        let returned_item = handover
+            .items
+            .iter()
+            .find(|it| it.device_id == device_ids[0])
+            .expect("item for device 0");
+        svc.do_return(
+            handover.id,
+            ActReturnDto {
+                bulk_condition: Some("Хорошее".into()),
+                bulk_location_id: Some(loc_a),
+                bulk_location_name: None,
+                apply_to_all: true,
+                items: vec![ActReturnItemDto {
+                    act_item_id: returned_item.id,
+                    device_id: returned_item.device_id,
+                    device_ids: vec![returned_item.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    location_id_override: None,
+                    location_name_override: None,
+                }],
+            },
+        )
+        .await
+        .expect("do_return device 0");
+
+        let handover_after_return = svc.get(handover.id).await.expect("re-fetch handover");
+        assert!(
+            handover_after_return.archived,
+            "single device fully returned → archived"
+        );
+
+        // Add a fresh на_складе device to the item set.
+        let extra_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_id = extra_ids[0];
+        let new_device_ids = vec![device_ids[0], extra_id];
+        let update = update_dto_from(&handover_after_return, &new_device_ids);
+        let updated = svc.update(update).await.expect("add device to archived act");
+
+        assert!(
+            !updated.archived,
+            "adding an outstanding device must unarchive the act \
+             (handover_total=2, returned_total=1)"
+        );
+
+        let post_extra = read_device_snap(&svc, extra_id).await;
+        assert_eq!(post_extra.status_id, 2, "newly added device transitions to в_работе");
+    })
+    .await
+    .expect("add_device_to_archived_unarchives budget");
+}
