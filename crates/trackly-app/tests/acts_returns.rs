@@ -16,6 +16,14 @@
 //!   - return_with_duplicate_device_id_rejected (CR-03 dedup)
 //!   - return_quantity_exceeds_handover_rejected (CR-04 quantity bound)
 //!
+//! Phase 22 Plan 02 (ACT-03, Pitfall 1 fix / D-12) additions:
+//!   - create_persists_giver_receiver_from_payload — `do_return` persists
+//!     the payload's OWN submitted giver_name/receiver_name, not the
+//!     parent's hard-copied values (the pre-existing write-site bug).
+//!   - create_falls_back_to_parent_swap_when_giver_receiver_absent —
+//!     back-compat: `None` payload fields still fall back to the historical
+//!     parent-swap default.
+//!
 //! Каждый тест wrapped в `tokio::time::timeout(30s)` (S-6).
 
 use std::sync::Arc;
@@ -924,4 +932,110 @@ async fn return_quantity_exceeds_handover_rejected() {
     })
     .await
     .expect("quantity_overflow budget");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 22 Plan 02 (ACT-03, Pitfall 1 fix / D-12): do_return's own
+// giver_name/receiver_name write-site
+// ---------------------------------------------------------------------------
+
+// Test 13: explicit giver_name/receiver_name in the payload persist EXACTLY
+// as submitted, NOT the parent's own (unswapped) values — proves the
+// pre-existing silent-drop bug (act_service.rs's old `return_row`
+// construction: `giver_name: parent.giver_name.clone()`) is fixed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_persists_giver_receiver_from_payload() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        // create_handover uses giver="Иванов И.И." / receiver="Петров П.П.".
+        let handover = create_handover(&svc, &device_ids).await;
+
+        let payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            giver_name: Some("Сидоров С.С.".into()),
+            receiver_name: Some("Кузнецов К.К.".into()),
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: handover.items[0].id,
+                device_id: handover.items[0].device_id,
+                device_ids: vec![handover.items[0].device_id],
+                quantity: 1,
+                condition_override: None,
+                location_id_override: None,
+                location_name_override: None,
+            }],
+        };
+        let ret = svc
+            .do_return(handover.id, payload)
+            .await
+            .expect("do_return with explicit giver/receiver");
+
+        assert_eq!(
+            ret.giver_name, "Сидоров С.С.",
+            "return must persist the submitted giver_name exactly, not parent's"
+        );
+        assert_eq!(
+            ret.receiver_name, "Кузнецов К.К.",
+            "return must persist the submitted receiver_name exactly, not parent's"
+        );
+        assert_ne!(
+            ret.giver_name, handover.giver_name,
+            "must NOT be the parent's own (unswapped) giver_name — pre-existing bug regression"
+        );
+        assert_ne!(
+            ret.receiver_name, handover.receiver_name,
+            "must NOT be the parent's own (unswapped) receiver_name — pre-existing bug regression"
+        );
+    })
+    .await
+    .expect("create_persists_giver_receiver_from_payload budget");
+}
+
+// Test 14: back-compat — when the payload omits giver_name/receiver_name
+// (`None`), `do_return` falls back to the historical parent-swap default.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_falls_back_to_parent_swap_when_giver_receiver_absent() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+
+        let payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: None,
+            bulk_location_name: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: handover.items[0].id,
+                device_id: handover.items[0].device_id,
+                device_ids: vec![handover.items[0].device_id],
+                quantity: 1,
+                condition_override: None,
+                location_id_override: None,
+                location_name_override: None,
+            }],
+        };
+        let ret = svc
+            .do_return(handover.id, payload)
+            .await
+            .expect("do_return without giver/receiver (back-compat)");
+
+        assert_eq!(
+            ret.giver_name, handover.receiver_name,
+            "back-compat fallback: return giver_name = parent's receiver_name (swap)"
+        );
+        assert_eq!(
+            ret.receiver_name, handover.giver_name,
+            "back-compat fallback: return receiver_name = parent's giver_name (swap)"
+        );
+    })
+    .await
+    .expect("create_falls_back_to_parent_swap_when_giver_receiver_absent budget");
 }

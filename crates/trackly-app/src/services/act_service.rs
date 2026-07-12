@@ -1217,8 +1217,21 @@ impl ActService {
                     sub_number: Some(sub_number),
                     parent_act_id: Some(act_id),
                     act_type: ActType::Return,
-                    giver_name: parent.giver_name.clone(),
-                    receiver_name: parent.receiver_name.clone(),
+                    // Phase 22 (ACT-03, Pitfall 1 fix / D-12): use the
+                    // payload's own submitted giver/receiver when present —
+                    // previously hard-copied from `parent.*` even though
+                    // `ReturnModal.svelte` collected these fields locally and
+                    // never sent them. `None` falls back to the historical
+                    // parent-swap default (back-compat with any
+                    // not-yet-updated client).
+                    giver_name: payload
+                        .giver_name
+                        .clone()
+                        .unwrap_or_else(|| parent.receiver_name.clone()),
+                    receiver_name: payload
+                        .receiver_name
+                        .clone()
+                        .unwrap_or_else(|| parent.giver_name.clone()),
                     location_id: resolved_bulk_location_id,
                     location: None,
                     notes: None,
@@ -1228,8 +1241,14 @@ impl ActService {
                     updated_at_utc: now,
                     deleted_at_utc: None,
                     version: 1,
-                    // Return-акты наследуют parent.handover_date_utc.
-                    handover_date_utc: parent.handover_date_utc,
+                    // Phase 22 (ACT-03, D-05): a return's «Дата возврата» is
+                    // now its OWN field, no longer inherited from
+                    // `parent.handover_date_utc`. `None` falls back to `now`
+                    // (back-compat with clients not yet sending this field) —
+                    // this is a deliberate semantic break from the pre-Phase-22
+                    // inheritance model (see V034 backfill migration for
+                    // historical rows).
+                    handover_date_utc: payload.handover_date_utc.unwrap_or(now),
                     parent_number: None,
                     sibling_return_count: None,
                 };
