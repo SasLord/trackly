@@ -313,7 +313,7 @@ Plans:
 
 **Wave 2** *(depends on Wave 1)*
 
-- [ ] 22-02-PLAN.md — Backend: do_return giver/receiver/date фикс (Pitfall 1, D-05/D-12) + ActService::update_return (D-09/D-10/D-11) + 11 интеграционных тестов
+- [x] 22-02-PLAN.md — Backend: do_return giver/receiver/date фикс (Pitfall 1, D-05/D-12) + ActService::update_return (D-09/D-10/D-11) + 11 интеграционных тестов
 
 **Wave 3** *(depends on Wave 2)*
 
@@ -355,7 +355,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 1/4 | In Progress|  |
+| 22. Правка возвратов | v1.1.2 | 2/4 | In Progress|  |
 
 ## Coverage
 

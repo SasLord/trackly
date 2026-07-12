@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-12T15:03:18.907Z"
+last_updated: "2026-07-12T23:13:02.157Z"
 last_activity: 2026-07-12
 progress:
   total_phases: 23
   completed_phases: 22
   total_plans: 143
-  completed_plans: 140
+  completed_plans: 141
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 ## Current Position
 
 Phase: 22 (return-act-edit) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-12
 
@@ -184,6 +184,7 @@ Last activity: 2026-07-12
 | Phase 19 P09 | 12min | 2 tasks | 1 files |
 | Phase 19 P10 | 8min | 2 tasks | 2 files |
 | Phase 22 P01 | 76min | 4 tasks | 11 files |
+| Phase 22 P02 | 240min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -437,6 +438,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 19-10: Редактировать/Возврат buttons on ActDetail converted from disabled-placeholder to bare omission, gated on act_type==='handover' && !act.archived — closes D-12/D-13; return-act editing stays out of scope
 - [Phase 22]: 22-01: D-07 implemented this plan (compute-on-read archived_at_utc, no new column, no migration) per user decision 2026-07-12
 - [Phase 22]: 22-01: ActReturnDto new fields (giver_name/receiver_name/handover_date_utc) are Option<T> + serde(default) back-compat; write-site consumption deferred to Plan 22-02
+- [Phase ?]: [Phase 22]: 22-02: do_return write-site fix persists payload's own giver/receiver/handover_date_utc (D-05/D-12/Pitfall 1); None falls back to parent-swap/now for back-compat
+- [Phase ?]: [Phase 22]: 22-02: update_return() clones Phase 19's update() inverted to ActType::Return (added=newly-returned; removed=un-return restore; retained-with-change=re-apply) in one single-writer tx
+- [Phase ?]: [Phase 22]: 22-02: D-11 guard = 3-field snapshot compare (status_id+location_id+state) vs return's own after_json; validate-then-mutate, Conflict aborts whole tx, no force-override (catches reissue AND manual relocation)
 
 ### Pending Todos
 
@@ -498,7 +502,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-12T15:03:18.899Z
+Last session: 2026-07-12T23:12:34.903Z
 Stopped at: Completed 22-01-PLAN.md
 Resume file: None
 
