@@ -42,6 +42,14 @@
 
   const headerDate = $derived(act ? formatDate(act.handover_date_utc) : null);
   const deadlineLabel = $derived(act?.deadline_utc != null ? formatDate(act.deadline_utc) : null);
+  // D-07 (Phase 22): compute-on-read «Дата архивации» — backend populates
+  // archived_at_utc only for fully-returned (archived) parent handover acts,
+  // and only on acts.get() responses (never list()/search()). Never renders
+  // for non-archived acts or for a return-act's own detail view (returns
+  // never archive, so archived is always false there by construction).
+  const archivedAtLabel = $derived(
+    act && act.archived && act.archived_at_utc != null ? formatDate(act.archived_at_utc) : null,
+  );
 </script>
 
 <div class="act-detail" aria-live="polite">
@@ -83,6 +91,9 @@
         <ActHeaderField label="Сдал" value={act.giver_name} />
         <ActHeaderField label="Принял" value={act.receiver_name} />
         <ActHeaderField label="Дата" value={headerDate} />
+        {#if archivedAtLabel}
+          <ActHeaderField label="Дата архивации" value={archivedAtLabel} />
+        {/if}
         <ActHeaderField label="Сроком до" value={deadlineLabel} />
         <ActHeaderField label="Расположение" value={act.location ?? null} />
         <ActHeaderField label="Заметки" value={act.notes ?? null} />
