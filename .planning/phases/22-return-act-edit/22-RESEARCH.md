@@ -160,7 +160,9 @@ ui/src/features/acts/ReturnModal.svelte              # mode: 'create' | 'edit' p
                                                       #   Дата возврата DatePicker (reuse ActFormBody's
                                                       #   unixToIso/isoToUnix/todayISO pattern verbatim);
                                                       #   drop the giver/receiver auto-swap when mode==='edit'
-                                                      #   (prefill directly from editTarget's own values, D-12)
+                                                      #   (prefill directly from editTarget's own values, D-12);
+                                                      #   CREATE-mode payload literal also fixed to send
+                                                      #   giver_name/receiver_name/handover_date_utc (Pitfall 1)
 ui/src/features/acts/ReturnItemsTable.svelte         # no structural change — rows already carry condition/location;
                                                       #   edit mode just seeds `checked` per row from whether the
                                                       #   device is already in returnAct.items
@@ -285,7 +287,7 @@ Not applicable — this is not a rename/refactor/migration phase in the sense th
 **What goes wrong:** For every return act created **before** this phase ships, `acts.giver_name`/`acts.receiver_name` on the return row are copies of the **parent's own unswapped** values (`act_service.rs:1220-1221`: `giver_name: parent.giver_name.clone()`), NOT what the user typed into the ReturnModal's «Кто возвращает»/«Кто принимает» fields (which were captured in local Svelte state but never included in the `ActReturnDto` payload sent to `acts.doReturn` — confirmed by reading the full `ActReturnDto` struct at `dto/act.rs:126-136`, which has no giver/receiver fields at all, and `ReturnModal.svelte`'s `handleSubmit` payload construction at line 112-118, which never references `giverName`/`receiverName`). Opening an EXISTING return act for edit will therefore prefill «Кто возвращает» with the ORIGINAL giver's name (not the person who actually returned it), which is silently wrong data, not a display bug.
 **Why it happens:** The swap logic exists only in the UI's *display* (lines 60-61 of `ReturnModal.svelte`) — it was never connected to a backend field because `do_return`'s return-row construction never accepted these as inputs.
 **How to avoid:** This phase MUST extend `ActReturnDto` (not just a new edit-only DTO) with `giver_name: Option<String>`/`receiver_name: Option<String>`, switch `do_return`'s write-site to use them (falling back to the existing parent-swap default when `None`, for backward compatibility with any client not yet updated), and accept that for return acts created before this fix, the prefilled ФИО will show the historically-wrong (parent-copied) values — there is no way to recover the "actually returned by" name for old rows since it was never persisted. Flag this as a known, accepted limitation (no migration can fix data that was never captured).
-**Warning signs:** A plan that treats D-12 as "just read `act.giver_name`/`act.receiver_name` for prefill" without also fixing `do_return`'s write path has only fixed the edit half of the bug — new returns created after this phase but with the create-form's giver/receiver still unwired will continue to produce wrong data.
+**Warning signs:** A plan that treats D-12 as "just read `act.giver_name`/`act.receiver_name` for prefill" without also fixing `do_return`'s write path has only fixed the edit half of the bug — new returns created after this phase but with the create-form's giver/receiver still unwired will continue to produce wrong data. **RESOLVED for this phase:** Plan 22-02 Task 1 fixes the backend write-site; Plan 22-04 Task 1 fixes the frontend create-mode payload literal to actually send `giver_name`/`receiver_name`/`handover_date_utc` — both halves are wired end-to-end in this phase's plan set, not deferred.
 
 ### Pitfall 2: `ActItemDto` has no location field at all — return-edit prefill cannot show "Расположение" without a DTO/SQL extension
 **What goes wrong:** `load_items_for_act`'s SQL (`act_service.rs`, `load_items_for_act` helper) selects `d.name, d.inventory_number, d.serial_number, d.model, d.notes` — no `location_id`/`location` column. `ActItemDto` (`dto/act.rs:94-116`) has no location field either. The return-edit form needs to prefill "Расположение" for each already-returned row (D-13), which requires the device's current location — this data is simply not on the wire today for ANY act item (handover or return).
@@ -394,17 +396,28 @@ Apply identically in `ReturnModal.svelte`: `let returnDateISO = $state(isEditPre
 | A3 | «Дата архивации» (D-07) does not need a stored column or an `ActDto`-exposed field for THIS phase, since ACT-03's actual success criteria only mention `archived` flag consistency, not a UI display of an archival date | Alternatives Considered, Architectural Responsibility Map | If a UI display IS actually wanted this phase (CONTEXT.md's D-07 wording is ambiguous on this), the compute-on-read query (`MAX(handover_date_utc) FROM acts WHERE act_type='return' AND parent_act_id=? AND deleted_at_utc IS NULL`) can be added to `ActDto` as an optional field with zero schema risk — just extra scope, not a design change. |
 | A4 | The new return-update command surface should be a single-DTO shape (`ActUpdateReturnDto` carrying `id`+`expected_version`), following `build_acts_update`'s convention, rather than split-args like the legacy `build_acts_return` | Alternatives Considered | Low risk — either shape works; this is purely a code-organization preference already implicitly endorsed by Phase 19's own comment noting the split-args style as the older, less-preferred convention (`tauri_cmds/acts.rs:86-88`). |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `do_return`'s giver/receiver fix accept a required or optional payload field?**
    - What we know: `ActReturnDto` currently has no such fields at all; adding them as `Option<String>` (matching `ActCreateDto.location_name`'s optional-with-fallback style) preserves backward compatibility with any not-yet-updated client (falls back to the existing parent-swap default).
    - What's unclear: Whether the planner wants to make the frontend's `ReturnModal` create-mode submission REQUIRE these fields (since the UI already collects them, just never sent them) or keep them optional at the DTO level for defense-in-depth.
-   - Recommendation: `Option<String>` at the DTO level (defense-in-depth, back-compat), but the frontend's create-mode submission should ALWAYS send the current `giverName`/`receiverName` state (no reason not to, since the UI already has them) — closing the gap end-to-end in one plan, not leaving the DTO field theoretically-optional-but-practically-always-sent.
+   - RESOLVED: Yes — `Option<String>` at the DTO level (defense-in-depth, back-compat via Plan
+     22-01's `#[serde(default)]` annotations), AND the frontend's create-mode submission ALWAYS
+     sends the current `giverName`/`receiverName` state AND the new "Дата возврата" value,
+     wired end-to-end in THIS phase: Plan 22-01 adds the DTO fields, Plan 22-02 Task 1 fixes
+     `do_return`'s write-site to consume them, and Plan 22-04 Task 1's create-mode payload
+     literal now sends `giver_name`/`receiver_name`/`handover_date_utc` on every new return —
+     closing the gap completely rather than leaving the DTO field
+     theoretically-optional-but-never-sent.
 
 2. **Does the return-edit form need a proactive UI hint for D-11-unsafe rows, or is server-side-only rejection acceptable for this phase's MVP scope?**
    - What we know: Phase 19's equivalent guard (D-08) was implemented server-side-only, with the UI simply surfacing the resulting error toast on a rejected submit — no proactive graying-out of "unsafe" rows.
    - What's unclear: Whether return-edit's UX bar is higher (since D-11 conflicts may be more commonly hit than D-08's, given devices flow in and out of stock more often than acts get deleted).
-   - Recommendation: Match Phase 19's precedent (server-side-only, error-toast-on-reject) for MVP — a proactive hint would require exposing per-item safety state on `ActItemDto`, which is additional DTO surface not strictly required by CONTEXT.md's decisions. Flag as a possible follow-up gap-closure item if live UAT surfaces friction, same pattern as Phase 19's D-09..D-13 gap-closure round.
+   - RESOLVED: Adopt the stated recommendation — match Phase 19's precedent (server-side-only
+     rejection, error-toast-on-reject) for this phase's MVP scope. No proactive per-row UI hint
+     is built in Plan 22-04; `ActItemDto` gets no additional "is this row safe to edit" field.
+     If live UAT surfaces friction, treat as a gap-closure candidate for a follow-up round,
+     mirroring Phase 19's D-09..D-13 gap-closure pattern.
 
 ## Environment Availability
 
@@ -485,9 +498,9 @@ Skipped — no external tool/service/runtime dependency introduced by this phase
 - `crates/trackly-app/src/services/device_service.rs` :190-276 — `DeviceService::update` (confirms the manual device-page edit path exists and can independently change location/condition — basis for Pattern 4's 3-field check, not status-only)
 - `crates/trackly-core/src/domain/devices.rs` :32-43 — `DevicePatch` (confirms independent location_id/state/status_id fields)
 - `crates/trackly-core/src/domain/acts.rs` (full file read) — `ActRow` (handover_date_utc at line 155, NOT line 141 as CONTEXT.md cited — drifted), `ActPatch` (struct at line 115, doc-comment starting 109 — CONTEXT.md's ":110" is close), `ActType`
-- `crates/trackly-app/src/dto/act.rs` (full file read) — `ActDto` (already has `handover_date_utc`, confirmed exact match to CONTEXT.md's citation), `ActReturnDto` :126 (confirmed exact — no giver/receiver fields, Pitfall 1 basis), `ActReturnItemDto` :149 (confirmed exact), `ActUpdateDto` :228 (confirmed exact), `ActUpdateItemDto` :275 (confirmed exact), `ActItemDto` :94-116 (confirmed no location field, Pitfall 2 basis)
+- `crates/trackly-app/src/dto/act.rs` (full file read) — `ActDto` (already has `handover_date_utc`, confirmed exact match to CONTEXT.md's citation), `ActReturnDto` :126 (confirmed exact — no giver/receiver fields, Pitfall 1 basis), `ActReturnItemDto` :149 (confirmed exact), `ActUpdateDto` :228 (confirmed exact), `ActUpdateItemDto` :275 (confirmed exact), `ActItemDto` :94-116 (confirmed no location field, Pitfall 2 basis) — module doc confirms "Snake_case JSON (S-2)" with no `rename_all` on any struct in this file, verified against the currently-generated `ui/src/bindings.ts` where every existing act DTO ships snake_case field names
 - `crates/trackly-app/src/tauri_cmds/acts.rs` (full command list read) — `build_acts_return`/`build_acts_update`/`build_acts_delete` patterns
-- `crates/trackly-app/src/http/acts.rs` — router pattern (:293-312), confirms `/api/v1/acts_update` route to mirror
+- `crates/trackly-app/src/http/acts.rs` — router pattern (:293-312), confirms `/api/v1/acts_update` route to mirror; wrapper payload structs (`UpdatePayload`, `ReturnPayload`, etc.) use `#[serde(rename_all = "camelCase")]` at the WRAPPER level only (affects multi-word wrapper-owned fields like `act_id` → `actId`), not the inner DTO's own fields
 - `ui/src/lib/api/acts.ts` — client shape (`acts.update`, `acts.doReturn`)
 - `ui/src/features/acts/ReturnModal.svelte` (full file read) — prefill from `outstanding_device_ids` (confirmed exact :47-48), giver/receiver swap (confirmed exact :59-64), `handleSubmit`/payload (confirmed exact :104-118, confirms payload NEVER includes giver/receiver — Pitfall 1 direct evidence)
 - `ui/src/features/acts/ReturnItemsTable.svelte`, `ui/src/features/acts/returnPayload.ts` (full file reads) — row shape, `buildReturnItems` per-row-split/coalesce logic (directly reusable for edit submission)
