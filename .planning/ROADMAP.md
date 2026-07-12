@@ -317,7 +317,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2)*
 
-- [ ] 22-03-PLAN.md — Транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
+- [x] 22-03-PLAN.md — Транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
 
 **Wave 4** *(depends on Wave 3)*
 
@@ -355,7 +355,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 2/4 | In Progress|  |
+| 22. Правка возвратов | v1.1.2 | 3/4 | In Progress|  |
 
 ## Coverage
 
