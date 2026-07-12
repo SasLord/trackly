@@ -113,6 +113,14 @@ pub struct ActItemDto {
     /// Заполняется только для handover-актов; для return-актов всегда `[]`.
     #[specta(type = Vec<i32>)]
     pub outstanding_device_ids: Vec<i64>,
+    /// Phase 22 (ACT-03, Pitfall 2): текущее расположение устройства
+    /// (`devices.location_id`/joined `locations.name`), нужно для prefill
+    /// «Расположение» в форме редактирования возврата. Populated by
+    /// `load_items_for_act`'s `LEFT JOIN locations dl`; `None` when the
+    /// device has no location set.
+    #[specta(type = Option<i32>)]
+    pub device_location_id: Option<i64>,
+    pub device_location: Option<String>,
 }
 
 /// Payload sent by the UI when оформляет возврат по handover-акту.
@@ -133,6 +141,22 @@ pub struct ActReturnDto {
     pub bulk_location_name: Option<String>,
     pub apply_to_all: bool,
     pub items: Vec<ActReturnItemDto>,
+    /// Phase 22 (ACT-03, Pitfall 1 fix / D-12): who actually returned the
+    /// device(s). Previously collected by `ReturnModal.svelte` but never
+    /// sent to the backend — `do_return` hard-copied `parent.giver_name`
+    /// instead. `None` = fall back to the existing parent-swap default
+    /// (back-compat with not-yet-updated clients).
+    #[serde(default)]
+    pub giver_name: Option<String>,
+    /// See `giver_name` doc — same rationale, `receiver_name` side.
+    #[serde(default)]
+    pub receiver_name: Option<String>,
+    /// Phase 22 (ACT-03, D-05): «Дата возврата» — when devices were
+    /// actually returned. `None` = fall back to `parent.handover_date_utc`
+    /// (back-compat; existing V034-backfilled semantics).
+    #[serde(default)]
+    #[specta(type = Option<i32>)]
+    pub handover_date_utc: Option<i64>,
 }
 
 /// Один пункт возврата в `ActReturnDto`.
@@ -276,6 +300,50 @@ pub struct ActUpdateItemDto {
     #[specta(type = i32)]
     pub device_id: i64,
     pub complectation_at_time: Option<String>,
+}
+
+/// Payload sent by the UI when editing an existing **return** act (Phase 22,
+/// ACT-03). Mirrors `ActUpdateDto`'s shape 1:1 EXCEPT:
+/// - no `number_override` — return numbers never change (out of scope, D-10).
+/// - adds `bulk_condition`/`bulk_location_id`/`bulk_location_name`/
+///   `apply_to_all`, mirroring `ActReturnDto`'s own bulk-apply fields.
+/// - `items: Vec<ActReturnItemDto>` — REUSES the existing return-item type
+///   (not a new `ActUpdateReturnItemDto`); `device_ids[]`/`condition_override`/
+///   `location_name_override` already match a full-replacement-set shape.
+/// - `handover_date_utc` is a REQUIRED (non-`Option`) field — unlike
+///   `ActUpdateDto`'s optional "no-change-requested" semantics, D-04 requires
+///   the edit form to always show and submit a populated «Дата возврата».
+///
+/// `items` is a **full replacement set**, not a delta — `ActService::update_return`
+/// (Plan 22-02) computes added/retained/removed device_ids by comparing this
+/// list against what is currently persisted for the return act.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct ActUpdateReturnDto {
+    #[specta(type = i32)]
+    pub id: i64,
+    /// CAS token — must match the return act's current `version` or the
+    /// update is rejected (`AppError::OptimisticLockMismatch`).
+    #[specta(type = i32)]
+    pub expected_version: i64,
+    pub giver_name: String,
+    pub receiver_name: String,
+    #[specta(type = Option<i32>)]
+    pub location_id: Option<i64>,
+    #[serde(default)]
+    pub location_name: Option<String>,
+    pub notes: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub deadline_utc: Option<i64>,
+    /// «Дата возврата» — REQUIRED, D-04. See struct-level doc comment.
+    #[specta(type = i32)]
+    pub handover_date_utc: i64,
+    pub bulk_condition: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub bulk_location_id: Option<i64>,
+    pub bulk_location_name: Option<String>,
+    pub apply_to_all: bool,
+    /// Full replacement set of items — see struct-level doc comment.
+    pub items: Vec<ActReturnItemDto>,
 }
 
 /// Switch-bar counters returned by `acts_counts`.
@@ -487,5 +555,74 @@ mod tests {
             !s.contains("complectationAtTime"),
             "must NOT use camelCase"
         );
+    }
+
+    #[test]
+    fn act_update_return_dto_snake_case_json_invariant() {
+        let dto = ActUpdateReturnDto {
+            id: 1,
+            expected_version: 3,
+            giver_name: "А".into(),
+            receiver_name: "Б".into(),
+            location_id: None,
+            location_name: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: 1_700_000_000,
+            bulk_condition: Some("Хорошее".into()),
+            bulk_location_id: Some(9),
+            bulk_location_name: Some("Склад".into()),
+            apply_to_all: true,
+            items: vec![ActReturnItemDto {
+                act_item_id: 5,
+                device_id: 10,
+                device_ids: vec![10],
+                quantity: 1,
+                condition_override: None,
+                location_id_override: None,
+                location_name_override: None,
+            }],
+        };
+        let s = serde_json::to_string(&dto).expect("ser");
+        assert!(s.contains("expected_version"), "snake_case 'expected_version'");
+        assert!(!s.contains("expectedVersion"), "must NOT use camelCase");
+        assert!(
+            s.contains("handover_date_utc"),
+            "snake_case 'handover_date_utc'"
+        );
+        assert!(!s.contains("handoverDateUtc"), "must NOT use camelCase");
+        assert!(s.contains("bulk_condition"), "snake_case 'bulk_condition'");
+        assert!(!s.contains("bulkCondition"), "must NOT use camelCase");
+        assert!(
+            s.contains("bulk_location_id"),
+            "snake_case 'bulk_location_id'"
+        );
+        assert!(!s.contains("bulkLocationId"), "must NOT use camelCase");
+        assert!(
+            s.contains("bulk_location_name"),
+            "snake_case 'bulk_location_name'"
+        );
+        assert!(!s.contains("bulkLocationName"), "must NOT use camelCase");
+        assert!(s.contains("apply_to_all"), "snake_case 'apply_to_all'");
+        assert!(!s.contains("applyToAll"), "must NOT use camelCase");
+        assert!(s.contains("\"items\""), "snake_case 'items'");
+    }
+
+    #[test]
+    fn act_return_dto_back_compat_omitted_giver_receiver_date() {
+        // Simulates an old/not-yet-updated client that omits giver_name,
+        // receiver_name, and handover_date_utc entirely — proves the
+        // #[serde(default)] back-compat contract holds (Pitfall 1 fix).
+        let json = r#"{
+            "bulk_condition": null,
+            "bulk_location_id": null,
+            "bulk_location_name": null,
+            "apply_to_all": true,
+            "items": []
+        }"#;
+        let dto: ActReturnDto = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(dto.giver_name, None);
+        assert_eq!(dto.receiver_name, None);
+        assert_eq!(dto.handover_date_utc, None);
     }
 }
