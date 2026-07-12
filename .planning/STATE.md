@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: verifying
-last_updated: "2026-07-12T09:00:48.473Z"
-last_activity: 2026-07-12
+status: executing
+last_updated: "2026-07-12T13:37:09.549Z"
+last_activity: 2026-07-12 -- Phase 22 planning complete
 progress:
   total_phases: 23
   completed_phases: 22
-  total_plans: 139
+  total_plans: 143
   completed_plans: 139
   percent: 96
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 19 (acts-date-edit) — COMPLETE (10/10 plans)
 Plan: 10 of 10 (19-10 gap closure D-11/D-12/D-13 complete)
-Status: Phase 19 complete — ready for verification; Phase 20 (Печать актов и организация) not yet started
-Last activity: 2026-07-12
+Status: Ready to execute
+Last activity: 2026-07-12 -- Phase 22 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
