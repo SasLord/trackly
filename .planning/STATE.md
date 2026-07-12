@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: executing
-last_updated: "2026-07-12T23:23:40.544Z"
+status: verifying
+last_updated: "2026-07-12T23:34:38.444Z"
 last_activity: 2026-07-12
 progress:
   total_phases: 23
-  completed_phases: 22
+  completed_phases: 23
   total_plans: 143
-  completed_plans: 142
-  percent: 96
+  completed_plans: 143
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 22 (return-act-edit) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-12
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -186,6 +186,7 @@ Last activity: 2026-07-12
 | Phase 22 P01 | 76min | 4 tasks | 11 files |
 | Phase 22 P02 | 240min | 2 tasks | 5 files |
 | Phase 22 P03 | 25m | 2 tasks | 6 files |
+| Phase 22 P04 | 25min | 4 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -444,6 +445,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 22]: 22-02: D-11 guard = 3-field snapshot compare (status_id+location_id+state) vs return's own after_json; validate-then-mutate, Conflict aborts whole tx, no force-override (catches reissue AND manual relocation)
 - [Phase 22]: 22-03: acts_update_return reuses Action::MutateActs (no new RBAC surface) — same gate as acts_update/acts_return/acts_delete, proven by role_endpoint_matrix Case 43
 - [Phase 22]: 22-03: bindings.ts stays generated-only — regenerated via cargo test --test export_bindings, never hand-edited; only Rust command/DTO + export_bindings.rs assertions + acts.ts are committed
+- [Phase 22]: 22-04: ReturnModal edit mode defaults applyToAll=false on open — preserves per-row saved condition/location from editTarget.items instead of discarding behind an unset bulk field
+- [Phase 22]: 22-04: single ReturnModal instance reused for create+edit via mode/editTarget/parentAct props (not a second modal component)
+- [Phase 22]: 22-04: ActUpdateReturnDto unused location_id/location_name/notes/deadline_utc fields sent as null from edit payload — confirmed unread by ActService::update_return
 
 ### Pending Todos
 
@@ -505,8 +509,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-12T23:23:36.026Z
-Stopped at: Completed 22-03-PLAN.md
+Last session: 2026-07-12T23:34:38.436Z
+Stopped at: Completed 22-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

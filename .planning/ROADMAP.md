@@ -321,7 +321,7 @@ Plans:
 
 **Wave 4** *(depends on Wave 3)*
 
-- [ ] 22-04-PLAN.md — UI: ReturnModal edit-режим (dual prefill, дата возврата, ФИО без swap) + ActDetail/ActsPage-оркестрация
+- [x] 22-04-PLAN.md — UI: ReturnModal edit-режим (dual prefill, дата возврата, ФИО без swap) + ActDetail/ActsPage-оркестрация
 
 **Note**: Отменяет D-07 (Фаза 19) в части «return-акты нередактируемы». Семантика — полная правка возврата (выбрана пользователем 2026-07-12): можно менять состав/состояние/дату, backend пересобирает эффекты по дельте (как правка handover-акта). Источник: 19-CONTEXT.md → Deferred Ideas.
 
@@ -355,7 +355,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 3/4 | In Progress|  |
+| 22. Правка возвратов | v1.1.2 | 4/4 | Complete   | 2026-07-12 |
 
 ## Coverage
 
