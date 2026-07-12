@@ -67,7 +67,7 @@
             <Button variant="secondary" size="sm" disabled>Печать</Button>
           </span>
         {/if}
-        {#if onEdit && act.act_type === 'handover' && !act.archived}
+        {#if onEdit && (act.act_type === 'handover' || act.act_type === 'return') && !act.archived}
           <Button variant="secondary" size="sm" onclick={() => onEdit(act)}>Редактировать</Button>
         {/if}
         {#if onReturn && act.act_type === 'handover' && !act.archived}

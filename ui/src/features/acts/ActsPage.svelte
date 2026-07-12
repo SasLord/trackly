@@ -35,6 +35,9 @@
   let editTargetAct = $state<ActDto | null>(null);
   let returnModalOpen = $state(false);
   let returnTargetAct = $state<ActDto | null>(null);
+  let returnMode = $state<'create' | 'edit'>('create');
+  let returnEditTargetAct = $state<ActDto | null>(null);
+  let returnEditParentAct = $state<ActDto | null>(null);
   let pdfModalOpen = $state(false);
   let pdfModalAct = $state<ActDto | null>(null);
   let searchQuery = $state('');
@@ -135,6 +138,7 @@
   }
   function handleReturn(act: ActDto) {
     returnTargetAct = act;
+    returnMode = 'create';
     returnModalOpen = true;
   }
 
@@ -142,7 +146,28 @@
   // re-fetch) — onEdit is only ever invoked from ActDetail where act === selectedAct,
   // and selectedAct is already guaranteed fresh via the acts.get(id) $effect above
   // (Pitfall 5 — only acts.get(id) populates outstanding_device_ids).
-  function handleEdit(act: ActDto) {
+  //
+  // Phase 22 (ACT-03): return-act rows branch into the ReturnModal edit path
+  // instead — that dialog needs BOTH the return's own items (act) AND the
+  // parent's still-outstanding items (addable rows), so the parent is
+  // fetched here before opening the modal.
+  async function handleEdit(act: ActDto) {
+    if (act.act_type === 'return') {
+      try {
+        const parent = await acts.get(act.parent_act_id!);
+        returnEditTargetAct = act;
+        returnEditParentAct = parent;
+        returnMode = 'edit';
+        returnModalOpen = true;
+      } catch (e: unknown) {
+        const msg =
+          e && typeof e === 'object' && 'message' in e
+            ? String((e as { message: unknown }).message)
+            : 'Не удалось загрузить родительский акт';
+        pushToast('error', msg);
+      }
+      return;
+    }
     editTargetAct = act;
     editModalOpen = true;
   }
@@ -166,13 +191,24 @@
     pdfModalOpen = true;
   }
 
-  function handleReturnSuccess(_returnDto: ActDto, _parentArchived: boolean) {
+  function handleReturnSuccess(returnDto: ActDto, _parentArchived: boolean) {
+    const wasEdit = returnMode === 'edit';
     returnModalOpen = false;
     returnTargetAct = null;
+    returnEditTargetAct = null;
+    returnEditParentAct = null;
+    returnMode = 'create';
     // Refresh list + counts; selected act всё ещё может смотреться, обновим его detail.
     refresh();
     refreshCounts();
-    if (selectedActId !== null) {
+    if (wasEdit && selectedActId === returnDto.id) {
+      // D-11 (Phase 19 pattern, reused): assign the fresh ActDto directly —
+      // selectedActId = returnDto.id would be a no-op here (already
+      // selected), leaving the detail-view keyed $effect stale. onSuccess
+      // already receives the server's fresh response, so no second fetch
+      // (and no second click) is needed.
+      selectedAct = returnDto;
+    } else if (selectedActId !== null) {
       acts
         .get(selectedActId)
         .then((a) => {
@@ -279,9 +315,15 @@
 <ReturnModal
   open={returnModalOpen}
   act={returnTargetAct}
+  mode={returnMode}
+  editTarget={returnEditTargetAct}
+  parentAct={returnEditParentAct}
   onClose={() => {
     returnModalOpen = false;
     returnTargetAct = null;
+    returnEditTargetAct = null;
+    returnEditParentAct = null;
+    returnMode = 'create';
   }}
   onSuccess={handleReturnSuccess}
 />
