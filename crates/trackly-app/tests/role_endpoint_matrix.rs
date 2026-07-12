@@ -332,6 +332,28 @@ async fn role_endpoint_matrix_test() {
             }
         });
 
+        // Phase 22 Plan 03 (ACT-03): acts_update_return — id/expected_version
+        // don't need to reference a real return act, RBAC must reject before
+        // any lookup (same shape precedent as act_update_payload above).
+        let act_update_return_payload = json!({
+            "payload": {
+                "id": 1,
+                "expected_version": 1,
+                "giver_name": "Тест",
+                "receiver_name": "Тест2",
+                "location_id": null,
+                "location_name": null,
+                "notes": null,
+                "deadline_utc": null,
+                "handover_date_utc": 0,
+                "bulk_condition": null,
+                "bulk_location_id": null,
+                "bulk_location_name": null,
+                "apply_to_all": false,
+                "items": []
+            }
+        });
+
         let cartridge_payload = json!({
             "payload": {
                 "model_id": 1,
@@ -1428,6 +1450,27 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 42: Employee → acts_update → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 43 (Plan 22-03, ACT-03 transports): Employee session →
+        // POST /api/v1/acts_update_return → 403 Forbidden. Same
+        // authorize(&Action::MutateActs) gate as acts_update/acts_return/
+        // acts_delete — RBAC must reject before any act lookup.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/acts_update_return",
+                act_update_return_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 43: Employee → acts_update_return → expected 403, got {status}"
             );
         }
 

@@ -275,4 +275,38 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("devices_render_acceptance_pdf"),
         "bindings.ts missing devices_render_acceptance_pdf command"
     );
+
+    // Phase 22 Plan 03 — ACT-03 return-act edit transports
+    assert!(
+        contents.contains("ActUpdateReturnDto"),
+        "bindings.ts missing ActUpdateReturnDto type"
+    );
+    assert!(
+        contents.contains("acts_update_return"),
+        "bindings.ts missing acts_update_return command"
+    );
+    // ActReturnDto's extended fields (Plan 22-01, D-05/D-12) — snake_case on
+    // the TS side, matching every other act DTO field in this module (no
+    // rename_all on any struct in dto/act.rs, "Snake_case JSON (S-2)").
+    assert!(
+        contents.contains("giver_name"),
+        "bindings.ts missing ActReturnDto.giver_name field"
+    );
+    assert!(
+        contents.contains("receiver_name"),
+        "bindings.ts missing ActReturnDto.receiver_name field"
+    );
+    assert!(
+        contents.contains("handover_date_utc"),
+        "bindings.ts missing ActReturnDto.handover_date_utc field"
+    );
+    // ActItemDto's extended per-row location fields (Plan 22-01, Pitfall 2).
+    assert!(
+        contents.contains("device_location_id"),
+        "bindings.ts missing ActItemDto.device_location_id field"
+    );
+    assert!(
+        contents.contains("device_location"),
+        "bindings.ts missing ActItemDto.device_location field"
+    );
 }
