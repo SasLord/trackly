@@ -120,6 +120,35 @@ impl SqliteAuditLogRepository {
         .optional()
         .map_err(map_rusqlite)
     }
+
+    /// SELECT the single most-recent device-mutation `(before_json,
+    /// after_json)` pair linked to a given act, for one specific device
+    /// (Phase 22, ACT-03 — D-11 safety check).
+    ///
+    /// Sibling of `select_latest_device_mutation`, same `ORDER BY
+    /// created_at_utc DESC, id DESC LIMIT 1` predicate, but returns both
+    /// columns in one query round-trip: `before_json` is the un-return
+    /// restore basis, `after_json` is the D-11 drift-comparison basis
+    /// ("what this act's own most-recent mutation set the device to").
+    pub fn select_latest_device_mutation_pair(
+        &self,
+        tx: &Transaction<'_>,
+        act_id: i64,
+        device_id: i64,
+    ) -> Result<Option<(String, String)>, AppError> {
+        tx.query_row(
+            "SELECT before_json, after_json FROM audit_log \
+             WHERE entity_type = 'device' \
+               AND entity_id = ?2 \
+               AND json_extract(payload_json, '$.act_id') = ?1 \
+               AND before_json IS NOT NULL \
+             ORDER BY created_at_utc DESC, id DESC LIMIT 1",
+            params![act_id, device_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +216,84 @@ mod tests {
         assert_eq!(rows[0].0, 7);
         assert!(rows[0].1.contains("\"name\":\"A\""));
 
+        tx.commit().expect("commit");
+    }
+
+    #[test]
+    fn select_latest_device_mutation_pair_returns_newest_row_for_act() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqliteAuditLogRepository;
+
+        let tx = conn.transaction().expect("tx");
+
+        // Two rows for the SAME device_id under two DIFFERENT act_ids.
+        repo.insert(
+            &tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: 7,
+                action: "update",
+                user_id: None,
+                before_json: Some("{\"status_id\":1}".into()),
+                after_json: Some("{\"status_id\":2}".into()),
+                payload_json: Some("{\"act_id\":42,\"kind\":\"handover\"}".into()),
+                created_at_utc: 1_700_000_000,
+            },
+        )
+        .expect("insert act 42 row");
+
+        repo.insert(
+            &tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: 7,
+                action: "update",
+                user_id: None,
+                before_json: Some("{\"status_id\":2}".into()),
+                after_json: Some("{\"status_id\":3}".into()),
+                payload_json: Some("{\"act_id\":50,\"kind\":\"return\"}".into()),
+                created_at_utc: 1_700_000_001,
+            },
+        )
+        .expect("insert act 50 row (older, for act 50)");
+
+        // Newer THIRD row for the same device_id AND the same act_id as the
+        // first row (act 42) — must be the one returned for act_id=42.
+        repo.insert(
+            &tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: 7,
+                action: "custom:update_remove",
+                user_id: None,
+                before_json: Some("{\"status_id\":2}".into()),
+                after_json: Some("{\"status_id\":4}".into()),
+                payload_json: Some("{\"act_id\":42,\"kind\":\"return\"}".into()),
+                created_at_utc: 1_700_000_002,
+            },
+        )
+        .expect("insert newest act 42 row");
+
+        let pair = repo
+            .select_latest_device_mutation_pair(&tx, 42, 7)
+            .expect("select")
+            .expect("row exists");
+        assert_eq!(pair.0, "{\"status_id\":2}", "before_json of newest act-42 row");
+        assert_eq!(pair.1, "{\"status_id\":4}", "after_json of newest act-42 row");
+
+        tx.commit().expect("commit");
+    }
+
+    #[test]
+    fn select_latest_device_mutation_pair_returns_none_when_no_match() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqliteAuditLogRepository;
+
+        let tx = conn.transaction().expect("tx");
+        let pair = repo
+            .select_latest_device_mutation_pair(&tx, 999, 999)
+            .expect("select");
+        assert!(pair.is_none(), "no matching audit rows → Ok(None)");
         tx.commit().expect("commit");
     }
 }

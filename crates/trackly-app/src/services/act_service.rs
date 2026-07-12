@@ -2306,9 +2306,11 @@ fn load_items_for_act(
     let mut stmt = conn
         .prepare(
             "SELECT ai.id, ai.device_id, ai.quantity, ai.condition_at_time, ai.complectation_at_time, \
-                    d.name, d.inventory_number, d.serial_number, d.model, d.notes \
+                    d.name, d.inventory_number, d.serial_number, d.model, d.notes, \
+                    dl.id AS device_location_id, dl.name AS device_location \
                FROM act_items ai \
                JOIN devices d ON d.id = ai.device_id \
+               LEFT JOIN locations dl ON d.location_id = dl.id \
               WHERE ai.act_id = ?1 \
               ORDER BY ai.id ASC",
         )
@@ -2332,6 +2334,10 @@ fn load_items_for_act(
                 // только подгружает joined-device fields. Initialized to empty;
                 // populate_outstanding_device_ids() fills handover-acts.
                 outstanding_device_ids: Vec::new(),
+                // Phase 22 (ACT-03, Pitfall 2): текущее расположение устройства,
+                // нужно для prefill «Расположение» в форме редактирования возврата.
+                device_location_id: r.get(10)?,
+                device_location: r.get(11)?,
             })
         })
         .map_err(map_rusqlite)?;
