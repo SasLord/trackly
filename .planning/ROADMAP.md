@@ -309,7 +309,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 22-01-PLAN.md — Контракты: ActUpdateReturnDto + ActReturnDto/ActItemDto extend, select_latest_device_mutation_pair, V034 backfill миграция
+- [x] 22-01-PLAN.md — Контракты: ActUpdateReturnDto + ActReturnDto/ActItemDto extend, select_latest_device_mutation_pair, V034 backfill миграция
 
 **Wave 2** *(depends on Wave 1)*
 
@@ -355,7 +355,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 0/4 | Planned | - |
+| 22. Правка возвратов | v1.1.2 | 1/4 | In Progress|  |
 
 ## Coverage
 

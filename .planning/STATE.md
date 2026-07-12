@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-12T13:37:09.549Z"
-last_activity: 2026-07-12 -- Phase 22 planning complete
+last_updated: "2026-07-12T15:03:18.907Z"
+last_activity: 2026-07-12
 progress:
   total_phases: 23
   completed_phases: 22
   total_plans: 143
-  completed_plans: 139
+  completed_plans: 140
   percent: 96
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 19 — acts-date-edit
+**Current focus:** Phase 22 — return-act-edit
 
 ## Current Position
 
-Phase: 19 (acts-date-edit) — COMPLETE (10/10 plans)
-Plan: 10 of 10 (19-10 gap closure D-11/D-12/D-13 complete)
+Phase: 22 (return-act-edit) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-12 -- Phase 22 planning complete
+Last activity: 2026-07-12
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -183,6 +183,7 @@ Last activity: 2026-07-12 -- Phase 22 planning complete
 | Phase 19 P07 | 20 min | 2 tasks | 2 files |
 | Phase 19 P09 | 12min | 2 tasks | 1 files |
 | Phase 19 P10 | 8min | 2 tasks | 2 files |
+| Phase 22 P01 | 76min | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -434,6 +435,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 19-09: ActFormBody.svelte left untouched after комплектация UI removal — itemsFromInitialAct prefill and the edit payload's complectation_at_time mapping still round-trip the value unchanged even though the editable input was removed from ActFormItemsTable
 - [Phase ?]: 19-10: handleEditSaved assigns selectedAct = act directly (fresh ActDto from acts.update()) for immediate reactive detail refresh, closing D-11 stale-detail bug (selectedActId=act.id alone is a no-op when the act is already selected)
 - [Phase ?]: 19-10: Редактировать/Возврат buttons on ActDetail converted from disabled-placeholder to bare omission, gated on act_type==='handover' && !act.archived — closes D-12/D-13; return-act editing stays out of scope
+- [Phase 22]: 22-01: D-07 implemented this plan (compute-on-read archived_at_utc, no new column, no migration) per user decision 2026-07-12
+- [Phase 22]: 22-01: ActReturnDto new fields (giver_name/receiver_name/handover_date_utc) are Option<T> + serde(default) back-compat; write-site consumption deferred to Plan 22-02
 
 ### Pending Todos
 
@@ -495,9 +498,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-12T09:00:48.466Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-return-act-edit/22-CONTEXT.md
+Last session: 2026-07-12T15:03:18.899Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
