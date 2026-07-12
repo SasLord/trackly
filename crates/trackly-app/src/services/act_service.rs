@@ -29,7 +29,7 @@ use trackly_infra::repos::{SqliteActRepository, SqliteAuditLogRepository, Sqlite
 
 use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
-    ActReturnItemDto, ActUpdateDto, ActsCountsDto, Pagination,
+    ActReturnItemDto, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
@@ -1453,6 +1453,530 @@ impl ActService {
 
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(return_act_id)
+            })
+            .await?;
+
+        self.get(return_act_id).await
+    }
+
+    // -----------------------------------------------------------------------
+    // update_return (ACT-03, Phase 22 plan 02) — edit existing return act
+    // -----------------------------------------------------------------------
+
+    fn validate_update_return(p: &ActUpdateReturnDto) -> Result<(), AppError> {
+        // D-10: an empty item set is rejected up-front — use `delete_soft`
+        // to fully undo a return instead (mirrors `validate_update`'s own
+        // items-non-empty check, `act_service.rs:528-533`).
+        if p.items.is_empty() {
+            return Err(AppError::Validation {
+                field: "items".into(),
+                message: "Добавьте хотя бы одну позицию".into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Edit an existing **return** act's header + item set (ACT-03).
+    ///
+    /// `payload.items` is a FULL replacement set — added/retained/removed
+    /// device_ids are computed by diffing against the return's current
+    /// `act_items`, mirroring `update()`'s own D-06 delta but with an
+    /// INVERTED direction: an "added" device_id here is a newly-returned
+    /// outstanding device (в_работе → на_складе, reusing `do_return`'s
+    /// per-device loop body), a "removed" device_id is an "un-return"
+    /// (restored to its prior в_работе state via the same audit-snapshot
+    /// mechanism `delete_soft`'s `ActType::Return` branch uses).
+    ///
+    /// D-11: any `removed` device, or any `retained` device whose payload
+    /// requests an actual condition/location change, is rejected with
+    /// `AppError::Conflict` if its CURRENT `(status_id, location_id, state)`
+    /// diverges from what THIS return's own most-recent mutation set —
+    /// covers both a later-handover reissue AND a manual device-page
+    /// relocation. No force-override.
+    ///
+    /// D-10: an empty `items` set is rejected server-side before the
+    /// transaction opens (`validate_update_return`).
+    pub async fn update_return(&self, payload: ActUpdateReturnDto) -> Result<ActDto, AppError> {
+        Self::validate_update_return(&payload)?;
+        let now = self.clock.unix_seconds();
+        let acts_repo = self.acts_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let devices_repo = self.devices_repo.clone();
+        let user_id_opt: Option<i64> = None;
+
+        let return_act_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // 1. Load act (incl. soft-deleted flag).
+                let act = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
+                if act.deleted_at_utc.is_some() {
+                    return Err(AppError::NotFound {
+                        entity: "act",
+                        id: payload.id,
+                    });
+                }
+
+                // 2. Type-guard — INVERTED vs `update()`: only Return acts
+                // are editable via this method.
+                if act.act_type != ActType::Return {
+                    return Err(AppError::Validation {
+                        field: "id".into(),
+                        message: "Редактировать можно только акты возврата".into(),
+                    });
+                }
+
+                // 3. Defense-in-depth CAS pre-check. The structural guarantee
+                // is `update_act_header_in_tx`'s own `WHERE version=?` clause.
+                if act.version != payload.expected_version {
+                    return Err(AppError::OptimisticLockMismatch {
+                        entity: "act",
+                        id: payload.id,
+                        expected: payload.expected_version,
+                        actual: act.version,
+                    });
+                }
+
+                let parent_act_id = act
+                    .parent_act_id
+                    .expect("return act always has parent_act_id");
+
+                // 4. Resolve device_statuses ids (mirrors `do_return`).
+                let in_work_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'в_работе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='в_работе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+                let on_warehouse_status_id: i64 = tx
+                    .query_row(
+                        "SELECT id FROM device_statuses WHERE code = 'на_складе'",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| match e {
+                        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+                            source_chain:
+                                "device_statuses missing code='на_складе' — V014 not applied?"
+                                    .into(),
+                        },
+                        other => map_rusqlite(other),
+                    })?;
+
+                // 5. Resolve bulk_location_name → id (имя приоритетнее id,
+                // mirrors `do_return`).
+                let resolved_bulk_location_id: Option<i64> =
+                    if let Some(name) = payload.bulk_location_name.as_deref() {
+                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                    } else {
+                        payload.bulk_location_id
+                    };
+
+                // 6. Build per-device effective (quantity, condition,
+                // location) map from the payload's items — mirrors
+                // `do_return`'s per-item override resolution exactly
+                // (per-row override wins, `apply_to_all` bulk fallback else
+                // None).
+                let mut effective_by_device: std::collections::HashMap<
+                    i64,
+                    (i64, Option<String>, Option<i64>),
+                > = std::collections::HashMap::new();
+                for item in &payload.items {
+                    let dids = effective_device_ids(item);
+                    let per_device_qty: i64 = if item.device_ids.is_empty() {
+                        item.quantity
+                    } else {
+                        1
+                    };
+                    let effective_condition: Option<String> =
+                        item.condition_override.clone().or_else(|| {
+                            if payload.apply_to_all {
+                                payload.bulk_condition.clone()
+                            } else {
+                                None
+                            }
+                        });
+                    let per_row_loc_id: Option<i64> =
+                        if let Some(name) = item.location_name_override.as_deref() {
+                            devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
+                        } else {
+                            item.location_id_override
+                        };
+                    let effective_location: Option<i64> = per_row_loc_id.or({
+                        if payload.apply_to_all {
+                            resolved_bulk_location_id
+                        } else {
+                            None
+                        }
+                    });
+                    for &device_id in &dids {
+                        effective_by_device.insert(
+                            device_id,
+                            (per_device_qty, effective_condition.clone(), effective_location),
+                        );
+                    }
+                }
+
+                // 7. Compute delta between current act_items (this return's
+                // own, NOT the parent's) and the payload's full replacement
+                // set.
+                let d_old: std::collections::HashSet<i64> = {
+                    let mut stmt = tx
+                        .prepare("SELECT device_id FROM act_items WHERE act_id = ?1")
+                        .map_err(map_rusqlite)?;
+                    let ids: std::collections::HashSet<i64> = stmt
+                        .query_map(params![payload.id], |r| r.get::<_, i64>(0))
+                        .map_err(map_rusqlite)?
+                        .collect::<rusqlite::Result<_>>()
+                        .map_err(map_rusqlite)?;
+                    ids
+                };
+                let d_new: std::collections::HashSet<i64> =
+                    effective_by_device.keys().copied().collect();
+                let added: Vec<i64> = d_new.difference(&d_old).copied().collect();
+                let removed: Vec<i64> = d_old.difference(&d_new).copied().collect();
+                let retained: Vec<i64> = d_old.intersection(&d_new).copied().collect();
+
+                // 8a. VALIDATE `added`: must belong to the parent handover's
+                // act_items (mirrors `do_return`'s existence check,
+                // `act_service.rs:1143-1163`) AND be currently 'в_работе'
+                // (mirrors `do_return`'s status guard, `:1286`) — BEFORE any
+                // mutation runs (validate-then-mutate).
+                for &dev_id in &added {
+                    let exists: bool = tx
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM act_items \
+                             WHERE act_id = ?1 AND device_id = ?2 LIMIT 1)",
+                            params![parent_act_id, dev_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    if !exists {
+                        return Err(AppError::Validation {
+                            field: "items".into(),
+                            message: format!(
+                                "device_id={} не принадлежит родительскому акту",
+                                dev_id
+                            ),
+                        });
+                    }
+                    let d = devices_repo.get_in_tx(&tx, dev_id)?;
+                    if d.status_id != in_work_status_id {
+                        return Err(AppError::Conflict {
+                            reason: format!(
+                                "Устройство id={} уже не в работе — возможно, оно уже возвращено",
+                                dev_id
+                            ),
+                        });
+                    }
+                }
+
+                // 8b. D-11 guard (Pattern 4): for every `removed` device AND
+                // every `retained` device whose payload requests an actual
+                // condition/location change, compare the device's CURRENT
+                // `(status_id, location_id, state)` against what THIS
+                // return's own most-recent mutation set
+                // (`select_latest_device_mutation_pair`'s `after_json`) —
+                // reject with `Conflict` on any mismatch, BEFORE any
+                // mutation runs. Devices in `retained` with NO requested
+                // value change skip this check entirely (an unrelated no-op
+                // resubmit must not be blocked).
+                let mut retained_with_change: Vec<i64> = Vec::new();
+                for &dev_id in &retained {
+                    let (_, eff_condition, eff_location) = effective_by_device
+                        .get(&dev_id)
+                        .cloned()
+                        .unwrap_or((1, None, None));
+                    let stored_condition: Option<String> = tx
+                        .query_row(
+                            "SELECT condition_at_time FROM act_items \
+                             WHERE act_id = ?1 AND device_id = ?2",
+                            params![payload.id, dev_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    let current = devices_repo.get_in_tx(&tx, dev_id)?;
+                    let condition_changed = eff_condition
+                        .as_deref()
+                        .map(|c| Some(c) != stored_condition.as_deref())
+                        .unwrap_or(false);
+                    let location_changed = eff_location
+                        .map(|l| Some(l) != current.location_id)
+                        .unwrap_or(false);
+                    if condition_changed || location_changed {
+                        retained_with_change.push(dev_id);
+                    }
+                }
+
+                for &dev_id in removed.iter().chain(retained_with_change.iter()) {
+                    let (_before_json, after_json) = audit_repo
+                        .select_latest_device_mutation_pair(&tx, payload.id, dev_id)?
+                        .ok_or_else(|| AppError::Internal {
+                            source_chain: format!(
+                                "update_return: no audit trail for device {dev_id} on return \
+                                 act {}",
+                                payload.id
+                            ),
+                        })?;
+                    let expected: serde_json::Value = serde_json::from_str(&after_json)
+                        .map_err(|e| AppError::Internal {
+                            source_chain: format!(
+                                "update_return: corrupt after_json for device {dev_id}: {e}"
+                            ),
+                        })?;
+                    let current = devices_repo.get_in_tx(&tx, dev_id)?;
+                    let safe = expected.get("status_id").and_then(|v| v.as_i64())
+                        == Some(current.status_id)
+                        && expected.get("location_id").and_then(|v| v.as_i64())
+                            == current.location_id
+                        && expected.get("state").and_then(|v| v.as_str())
+                            == current.state.as_deref();
+                    if !safe {
+                        return Err(AppError::Conflict {
+                            reason: format!(
+                                "Устройство id={} изменилось после этого возврата (другой акт \
+                                 или изменение вручную) — редактирование строки невозможно",
+                                dev_id
+                            ),
+                        });
+                    }
+                }
+
+                // 9. MUTATE `removed` — un-return: restore to the MOST
+                // RECENT prior state (same Pitfall-2-class DESC LIMIT 1
+                // lookup `update()` uses), then delete the act_items row.
+                for &removed_id in &removed {
+                    let before_json = audit_repo
+                        .select_latest_device_mutation(&tx, payload.id, removed_id)?
+                        .ok_or_else(|| AppError::Internal {
+                            source_chain: format!(
+                                "update_return: no audit trail for device {removed_id} on \
+                                 return act {}",
+                                payload.id
+                            ),
+                        })?;
+                    let snapshot: serde_json::Value = serde_json::from_str(&before_json)
+                        .map_err(|e| AppError::Internal {
+                            source_chain: format!(
+                                "update_return: corrupt before_json for device {removed_id}: {e}"
+                            ),
+                        })?;
+                    let restored = devices_repo.restore_from_snapshot_in_tx(
+                        &tx,
+                        removed_id,
+                        &snapshot,
+                        now,
+                    )?;
+                    let after_json =
+                        device_snapshot_json(&restored).map_err(|e| AppError::Internal {
+                            source_chain: format!("update_return remove after_json: {e}"),
+                        })?;
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "device",
+                            entity_id: removed_id,
+                            action: "custom:update_remove",
+                            user_id: user_id_opt,
+                            before_json: Some(before_json),
+                            after_json: Some(after_json),
+                            payload_json: Some(
+                                serde_json::json!({ "act_id": payload.id }).to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                    tx.execute(
+                        "DELETE FROM act_items WHERE act_id = ?1 AND device_id = ?2",
+                        params![payload.id, removed_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
+
+                // 10. MUTATE `added` — newly returned outstanding devices:
+                // в_работе → на_складе (reuses `do_return`'s per-device
+                // transition), INSERT act_items row.
+                for &added_id in &added {
+                    let before = devices_repo.get_in_tx(&tx, added_id)?;
+                    let before_json =
+                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
+                            source_chain: format!("update_return add before_json: {e}"),
+                        })?;
+                    let (qty, condition, location) = effective_by_device
+                        .get(&added_id)
+                        .cloned()
+                        .unwrap_or((1, None, None));
+                    let after = devices_repo.update_full_in_tx(
+                        &tx,
+                        added_id,
+                        on_warehouse_status_id,
+                        location,
+                        condition.as_deref(),
+                        now,
+                    )?;
+                    let after_json =
+                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
+                            source_chain: format!("update_return add after_json: {e}"),
+                        })?;
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "device",
+                            entity_id: added_id,
+                            action: "update",
+                            user_id: user_id_opt,
+                            before_json: Some(before_json),
+                            after_json: Some(after_json),
+                            payload_json: Some(
+                                serde_json::json!({ "act_id": payload.id, "kind": "return" })
+                                    .to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                    acts_repo.insert_act_item_in_tx(
+                        &tx,
+                        payload.id,
+                        added_id,
+                        qty,
+                        condition.as_deref(),
+                        before.kit.as_deref(),
+                    )?;
+                }
+
+                // 11. MUTATE `retained_with_change` — condition/location
+                // edit on an already-returned device: re-apply на_складе
+                // with the new condition/location, UPDATE
+                // act_items.condition_at_time (gated by D-11 above; a no-op
+                // resubmit writes nothing per the `retained_with_change`
+                // filter).
+                for &dev_id in &retained_with_change {
+                    let before = devices_repo.get_in_tx(&tx, dev_id)?;
+                    let before_json =
+                        device_snapshot_json(&before).map_err(|e| AppError::Internal {
+                            source_chain: format!("update_return retained before_json: {e}"),
+                        })?;
+                    let (_, condition, location) = effective_by_device
+                        .get(&dev_id)
+                        .cloned()
+                        .unwrap_or((1, None, None));
+                    let after = devices_repo.update_full_in_tx(
+                        &tx,
+                        dev_id,
+                        on_warehouse_status_id,
+                        location,
+                        condition.as_deref(),
+                        now,
+                    )?;
+                    let after_json =
+                        device_snapshot_json(&after).map_err(|e| AppError::Internal {
+                            source_chain: format!("update_return retained after_json: {e}"),
+                        })?;
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "device",
+                            entity_id: dev_id,
+                            action: "update",
+                            user_id: user_id_opt,
+                            before_json: Some(before_json),
+                            after_json: Some(after_json),
+                            payload_json: Some(
+                                serde_json::json!({ "act_id": payload.id, "kind": "return" })
+                                    .to_string(),
+                            ),
+                            created_at_utc: now,
+                        },
+                    )?;
+                    tx.execute(
+                        "UPDATE act_items SET condition_at_time = ?1 \
+                         WHERE act_id = ?2 AND device_id = ?3",
+                        params![condition, payload.id, dev_id],
+                    )
+                    .map_err(map_rusqlite)?;
+                }
+
+                // 12. Header CAS write — `update_act_header_in_tx` REUSED
+                // UNCHANGED from Phase 19 (zero `act_type` branching in that
+                // helper). `number: None` guarantees return numbers never
+                // change (out of scope, D-10). `notes`/`deadline_utc` are
+                // always cleared to `None` — return acts have no such fields
+                // in the edit form.
+                let patch = ActPatch {
+                    giver_name: Some(payload.giver_name.clone()),
+                    receiver_name: Some(payload.receiver_name.clone()),
+                    location_id: Some(resolved_bulk_location_id),
+                    notes: Some(None),
+                    deadline_utc: Some(None),
+                    handover_date_utc: Some(payload.handover_date_utc),
+                    number: None,
+                    expected_version: payload.expected_version,
+                };
+                acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
+
+                // 13. Recompute the PARENT's archived flag whenever the
+                // item-count-changing delta was non-empty (mirrors
+                // `update()`'s own gate, and `do_return`/`delete_soft`'s
+                // Return branch, which always call this unconditionally on
+                // their own single-direction deltas).
+                if !added.is_empty() || !removed.is_empty() {
+                    recompute_parent_archived(&tx, parent_act_id, now)?;
+                }
+
+                // 14. Final audit row for the header edit (real before/after
+                // diff).
+                let act_after = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
+                let before_json = serde_json::to_string(&serde_json::json!({
+                    "giver_name": act.giver_name,
+                    "receiver_name": act.receiver_name,
+                    "location_id": act.location_id,
+                    "notes": act.notes,
+                    "deadline_utc": act.deadline_utc,
+                    "handover_date_utc": act.handover_date_utc,
+                    "number": act.number,
+                    "version": act.version,
+                }))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("act before_json: {e}"),
+                })?;
+                let after_json = serde_json::to_string(&serde_json::json!({
+                    "giver_name": act_after.giver_name,
+                    "receiver_name": act_after.receiver_name,
+                    "location_id": act_after.location_id,
+                    "notes": act_after.notes,
+                    "deadline_utc": act_after.deadline_utc,
+                    "handover_date_utc": act_after.handover_date_utc,
+                    "number": act_after.number,
+                    "version": act_after.version,
+                }))
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("act after_json: {e}"),
+                })?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "act",
+                        entity_id: payload.id,
+                        action: "update",
+                        user_id: user_id_opt,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(payload.id)
             })
             .await?;
 

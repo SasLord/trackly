@@ -491,6 +491,17 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
         "fixture invariant broken: handover_date_utc must differ from created_at_utc"
     );
 
+    // Phase 22 (D-05): a return's `handover_date_utc` is now its OWN field
+    // (no longer inherited from the parent) — pass an explicit value here,
+    // distinct from both the parent's `handover_date_utc` and `created_at_utc`,
+    // so this fixture stays deterministic and independent of `do_return`'s
+    // back-compat `now()` fallback (used only when this field is omitted).
+    let return_date_utc: i64 = 1_650_000_000;
+    assert_ne!(
+        return_date_utc, handover_date_utc,
+        "fixture invariant: return's own date must differ from the parent's"
+    );
+
     let first_item = handover.items.first().expect("at least one item");
     let return_act = p
         .acts
@@ -503,7 +514,7 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
                 apply_to_all: true,
                 giver_name: None,
                 receiver_name: None,
-                handover_date_utc: None,
+                handover_date_utc: Some(return_date_utc),
                 items: vec![ActReturnItemDto {
                     act_item_id: first_item.id,
                     device_id: first_item.device_id,
