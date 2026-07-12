@@ -107,6 +107,9 @@ async fn partial_return_keeps_handover_active() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: first_item.id,
                 device_id: first_item.device_id,
@@ -160,6 +163,9 @@ async fn full_return_archives_handover() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: handover
                 .items
                 .iter()
@@ -212,6 +218,9 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
                         device_id: it0.device_id,
@@ -236,6 +245,9 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: handover.items[1..]
                         .iter()
                         .map(|it| ActReturnItemDto {
@@ -311,6 +323,9 @@ async fn bulk_apply_with_per_row_override() {
             bulk_location_id: Some(bulk_loc_id),
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![
                 ActReturnItemDto {
                     act_item_id: handover.items[0].id,
@@ -392,6 +407,9 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: false,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: handover.items[0].id,
                 device_id: handover.items[0].device_id,
@@ -445,6 +463,9 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
                         device_id: it0.device_id,
@@ -466,6 +487,9 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: it1.id,
                         device_id: it1.device_id,
@@ -522,6 +546,9 @@ async fn return_does_not_increment_act_counter() {
                 bulk_location_id: None,
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
@@ -593,6 +620,9 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
                 bulk_location_id: None,
                 bulk_location_name: None,
                 apply_to_all: false,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
@@ -648,6 +678,9 @@ async fn return_twice_same_device_rejected() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: item.id,
                 device_id: item.device_id,
@@ -717,6 +750,9 @@ async fn return_with_duplicate_act_item_id_rejected() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![dup_item.clone(), dup_item],
         };
         let err = svc
@@ -762,6 +798,9 @@ async fn return_with_duplicate_device_id_rejected() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![
                 ActReturnItemDto {
                     act_item_id: item.id,
@@ -827,6 +866,9 @@ async fn return_quantity_exceeds_handover_rejected() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: item.id,
                 device_id: item.device_id,

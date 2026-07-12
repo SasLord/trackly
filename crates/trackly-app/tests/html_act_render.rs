@@ -501,6 +501,9 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
                 bulk_location_id: None,
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: first_item.id,
                     device_id: first_item.device_id,

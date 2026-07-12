@@ -197,6 +197,9 @@ async fn search_filters_by_tab() {
             bulk_location_id: None,
             bulk_location_name: Some("Склад".into()),
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![trackly_app::dto::act::ActReturnItemDto {
                 act_item_id,
                 device_id: device_ids[1],

@@ -328,6 +328,9 @@ async fn reject_update_on_return_act() {
                     bulk_location_id: Some(loc_a),
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: handover.items[0].id,
                         device_id: handover.items[0].device_id,
@@ -516,6 +519,9 @@ async fn reject_removal_of_returned_device() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: returned_item.id,
                     device_id: returned_item.device_id,
@@ -588,6 +594,9 @@ async fn header_edit_free_even_with_existing_return() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: returned_item.id,
                     device_id: returned_item.device_id,
@@ -711,6 +720,9 @@ async fn remove_last_outstanding_archives_act() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: returned_item.id,
                     device_id: returned_item.device_id,
@@ -777,6 +789,9 @@ async fn add_device_to_archived_unarchives() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: returned_item.id,
                     device_id: returned_item.device_id,
@@ -851,6 +866,9 @@ async fn rename_with_return_frees_old_number() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: returned_item.id,
                     device_id: returned_item.device_id,

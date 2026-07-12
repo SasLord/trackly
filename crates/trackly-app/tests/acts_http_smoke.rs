@@ -201,6 +201,9 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: handover.items[0].id,
                 device_id,

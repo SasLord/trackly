@@ -211,6 +211,9 @@ async fn delete_handover_with_partial_return_cascades_undo() {
                 bulk_location_id: Some(loc_a),
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: handover.items[0].id,
                     device_id: handover.items[0].device_id,
@@ -273,6 +276,9 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
                     bulk_location_id: Some(loc_a),
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: handover
                         .items
                         .iter()

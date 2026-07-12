@@ -179,6 +179,9 @@ async fn full_lifecycle_then_undo() {
             bulk_location_id: None,
             bulk_location_name: Some("Склад A".into()),
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: act_items[..2]
                 .iter()
                 .map(|&(item_id, dev_id)| ActReturnItemDto {
@@ -208,6 +211,9 @@ async fn full_lifecycle_then_undo() {
             bulk_location_id: None,
             bulk_location_name: Some("Склад A".into()),
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: act_items[2].0,
                 device_id: act_items[2].1,

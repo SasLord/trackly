@@ -158,6 +158,9 @@ async fn recompute_parent_archived_count_based() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![
                 ActReturnItemDto {
                     act_item_id: it0.id,
@@ -196,6 +199,9 @@ async fn recompute_parent_archived_count_based() {
             bulk_location_id: None,
             bulk_location_name: None,
             apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
             items: vec![ActReturnItemDto {
                 act_item_id: it2.id,
                 device_id: it2.device_id,
@@ -346,6 +352,9 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![
                         ActReturnItemDto {
                             act_item_id: it0.id,
@@ -423,6 +432,9 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![
                         ActReturnItemDto {
                             act_item_id: it0.id,
@@ -458,6 +470,9 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: it2.id,
                         device_id: it2.device_id,
@@ -545,6 +560,9 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items,
                 },
             )
@@ -615,6 +633,9 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
                 bulk_location_id: None,
                 bulk_location_name: None,
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: it0.id,
                     device_id: it0.device_id,
@@ -693,6 +714,9 @@ async fn cardinality_bound_rejects_extra_device_id() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items: vec![ActReturnItemDto {
                         act_item_id: it0.id,
                         device_id: it0.device_id,
@@ -895,6 +919,9 @@ async fn undo_return_restores_archived_to_false() {
                     bulk_location_id: None,
                     bulk_location_name: None,
                     apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
                     items,
                 },
             )
@@ -1023,6 +1050,9 @@ async fn handover_via_location_name_sets_device_location_id() {
                 bulk_location_id: None,
                 bulk_location_name: Some(return_location_name.into()),
                 apply_to_all: true,
+                giver_name: None,
+                receiver_name: None,
+                handover_date_utc: None,
                 items: vec![ActReturnItemDto {
                     act_item_id: it0.id,
                     device_id: it0.device_id,
