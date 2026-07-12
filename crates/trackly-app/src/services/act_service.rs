@@ -1465,7 +1465,12 @@ impl ActService {
             } else {
                 Vec::new()
             };
-            Ok(act_dto_from_row(row, items, return_ids))
+            // D-07 (Phase 22): capture `archived` before `row` is moved into
+            // act_dto_from_row (ActRow is not Copy).
+            let archived = row.archived;
+            let mut dto = act_dto_from_row(row, items, return_ids);
+            dto.archived_at_utc = compute_archived_at_utc(&conn, id, archived)?;
+            Ok(dto)
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -2346,6 +2351,32 @@ fn load_items_for_act(
         out.push(row.map_err(map_rusqlite)?);
     }
     Ok(out)
+}
+
+/// D-07 (Phase 22) — «Дата архивации», compute-on-read: `MAX(handover_date_utc)`
+/// among `parent_act_id`'s non-deleted `act_type='return'` children, populated
+/// ONLY when `archived == true`. No stored column, no migration.
+///
+/// `!archived` short-circuits with `Ok(None)` — no query. Uses `query_row`
+/// (NOT `.optional()`) because a `MAX()` aggregate over zero matching rows
+/// still returns one row with a SQL `NULL`, not `QueryReturnedNoRows`;
+/// `.optional()` would be the wrong tool here and could mask a real query
+/// error.
+fn compute_archived_at_utc(
+    conn: &rusqlite::Connection,
+    parent_act_id: i64,
+    archived: bool,
+) -> Result<Option<i64>, AppError> {
+    if !archived {
+        return Ok(None);
+    }
+    conn.query_row(
+        "SELECT MAX(handover_date_utc) FROM acts \
+          WHERE parent_act_id = ?1 AND act_type = 'return' AND deleted_at_utc IS NULL",
+        params![parent_act_id],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .map_err(map_rusqlite)
 }
 
 /// G-10 / G-12 (Phase 03.1): for each handover-act item, fill

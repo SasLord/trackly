@@ -80,6 +80,17 @@ pub struct ActDto {
     /// return rows separately via `acts_get` if needed.
     #[specta(type = Vec<i32>)]
     pub return_ids: Vec<i64>,
+    /// D-07 (Phase 22) — «Дата архивации», derived read-time attribute,
+    /// `MAX(handover_date_utc)` among the act's non-deleted `act_type='return'`
+    /// children, populated ONLY when `archived == true`. No stored column,
+    /// no migration (user decision 2026-07-12: compute-on-read over a stored
+    /// `archived_at_utc` column — avoids a second source of truth that would
+    /// need explicit recompute/clear on every un-return). Only
+    /// `ActService::get()` populates this field in this phase; `list()`/
+    /// `search()` leave it `None` (out of scope for this revision — only
+    /// `ActDetail.svelte`'s single-act view needs to display it).
+    #[specta(type = Option<i32>)]
+    pub archived_at_utc: Option<i64>,
 }
 
 /// Single item line on an act (resolved with the joined device fields).
@@ -452,6 +463,7 @@ pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64
         handover_date_utc: row.handover_date_utc,
         items,
         return_ids,
+        archived_at_utc: None,
     }
 }
 
