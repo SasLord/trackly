@@ -13,8 +13,8 @@
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto, ActsCountsDto,
-    Pagination,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto,
+    ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -93,6 +93,19 @@ pub async fn build_acts_update(
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.update(payload).await
+}
+
+/// Мутация (ACT-03): требует `caller` с правом `MutateActs`. Same `Action`
+/// variant as `build_acts_update`/`build_acts_return`/`build_acts_delete` —
+/// no new RBAC surface. `id`/`expected_version` live inside `ActUpdateReturnDto`
+/// (single-DTO shape, mirroring `build_acts_update`).
+pub async fn build_acts_update_return(
+    ctx: &AppCtx,
+    caller: &Identity,
+    payload: ActUpdateReturnDto,
+) -> Result<ActDto, AppError> {
+    authorize(caller, &Action::MutateActs)?;
+    ctx.acts.update_return(payload).await
 }
 
 pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {
@@ -221,6 +234,16 @@ pub async fn acts_update(
 ) -> Result<ActDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_update(state.inner(), &caller, payload).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn acts_update_return(
+    state: tauri::State<'_, AppCtx>,
+    payload: ActUpdateReturnDto,
+) -> Result<ActDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_acts_update_return(state.inner(), &caller, payload).await
 }
 
 #[tauri::command]

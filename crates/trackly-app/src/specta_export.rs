@@ -50,6 +50,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::acts::acts_delete,
         // Phase 19 Plan 04 — ACT-02 act edit (header + device reconciliation)
         crate::tauri_cmds::acts::acts_update,
+        // Phase 22 Plan 03 — ACT-03 return-act edit (delta reconciliation)
+        crate::tauri_cmds::acts::acts_update_return,
         crate::tauri_cmds::acts::acts_counts,
         crate::tauri_cmds::acts::acts_peek_next_number,
         // Phase 3 Plan 04 — PDF render + Organization + Templates

@@ -13,8 +13,8 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto, ActsCountsDto,
-    Pagination,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto,
+    ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
 use crate::error_axum::AppErrorResponse;
@@ -22,7 +22,8 @@ use crate::http::auth::session_identity;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
     build_acts_peek_next_number, build_acts_render_pdf, build_acts_return, build_acts_search,
-    build_acts_suggest_person, build_acts_update, build_devices_render_acceptance_pdf,
+    build_acts_suggest_person, build_acts_update, build_acts_update_return,
+    build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
@@ -63,6 +64,12 @@ pub struct DeletePayload {
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePayload {
     pub payload: ActUpdateDto,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReturnPayload {
+    pub payload: ActUpdateReturnDto,
 }
 
 #[derive(serde::Deserialize)]
@@ -200,6 +207,21 @@ pub async fn handler_update(
     ))
 }
 
+pub async fn handler_update_return(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<UpdateReturnPayload>,
+) -> Result<Json<ActDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_acts_update_return(&ctx, &identity, p.payload)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_counts(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -299,6 +321,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/acts_return", post(handler_return))
         .route("/api/v1/acts_delete", post(handler_delete))
         .route("/api/v1/acts_update", post(handler_update))
+        .route("/api/v1/acts_update_return", post(handler_update_return))
         .route("/api/v1/acts_counts", post(handler_counts))
         .route(
             "/api/v1/acts_peek_next_number",
