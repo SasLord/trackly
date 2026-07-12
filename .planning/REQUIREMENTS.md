@@ -70,7 +70,7 @@
 | AUTO-05 | Phase 18 | Planned |
 | ACT-01 | Phase 19 | Complete |
 | ACT-02 | Phase 19 | Complete |
-| ACT-03 | Phase 22 | Pending |
+| ACT-03 | Phase 22 | Planned |
 | PRN-01 | Phase 20 | Pending |
 | ORG-01 | Phase 20 | Pending |
 | ORG-02 | Phase 20 | Pending |

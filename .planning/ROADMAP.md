@@ -304,8 +304,24 @@ Plans:
 2. Нажатие «Редактировать» открывает диалог «Возврат по акту №XXX», предзаполненный теми же значениями (состав возвращаемых устройств, состояние, дата, кто), что были на момент оформления возврата.
 3. Изменения возврата сохраняются без ошибок; эффекты на устройства (статус/локация/история) пересобираются по дельте, а derived-флаги (в т.ч. `archived` родительского акта) остаются согласованными.
 
-**Plans**: TBD
+**Plans**: 4 plans in 4 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 22-01-PLAN.md — Контракты: ActUpdateReturnDto + ActReturnDto/ActItemDto extend, select_latest_device_mutation_pair, V034 backfill миграция
+
+**Wave 2** *(depends on Wave 1)*
+
+- [ ] 22-02-PLAN.md — Backend: do_return giver/receiver/date фикс (Pitfall 1, D-05/D-12) + ActService::update_return (D-09/D-10/D-11) + 11 интеграционных тестов
+
+**Wave 3** *(depends on Wave 2)*
+
+- [ ] 22-03-PLAN.md — Транспорты: Tauri-команда + HTTP-хендлер + RBAC-тест + frontend-клиент + bindings
+
+**Wave 4** *(depends on Wave 3)*
+
+- [ ] 22-04-PLAN.md — UI: ReturnModal edit-режим (dual prefill, дата возврата, ФИО без swap) + ActDetail/ActsPage-оркестрация
 
 **Note**: Отменяет D-07 (Фаза 19) в части «return-акты нередактируемы». Семантика — полная правка возврата (выбрана пользователем 2026-07-12): можно менять состав/состояние/дату, backend пересобирает эффекты по дельте (как правка handover-акта). Источник: 19-CONTEXT.md → Deferred Ideas.
 
@@ -339,7 +355,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 0/TBD | Not started | - |
+| 22. Правка возвратов | v1.1.2 | 0/4 | Planned | - |
 
 ## Coverage
 
@@ -449,4 +465,4 @@ Plans:
 **Coverage:** 11/11 v1.1.2 requirements mapped ✓ — no orphans.
 
 ---
-*Last updated: 2026-07-11 — Phase 19 planned: 5 plans in 5 waves (19-01..19-05), ACT-01/ACT-02 mapped. Phase 20-21 still TBD.*
+*Last updated: 2026-07-12 — Phase 22 planned: 4 plans in 4 waves (22-01..22-04), ACT-03 mapped. Phase 20-21 still TBD.*
