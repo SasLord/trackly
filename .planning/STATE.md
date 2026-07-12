@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: executing
-last_updated: "2026-07-11T22:24:04.054Z"
-last_activity: 2026-07-12 -- Plan 19-10 complete (D-11/D-12/D-13 gap closure); Phase 19 done
+status: verifying
+last_updated: "2026-07-12T09:00:48.473Z"
+last_activity: 2026-07-12
 progress:
-  total_phases: 22
+  total_phases: 23
   completed_phases: 22
   total_plans: 139
   completed_plans: 139
-  percent: 100
+  percent: 96
 ---
 
 # Project State
@@ -495,9 +495,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-11T22:24:04.046Z
-Stopped at: Completed 19-10-PLAN.md
-Resume file: None
+Last session: 2026-07-12T09:00:48.466Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-return-act-edit/22-CONTEXT.md
 
 ## Operator Next Steps
 
