@@ -99,8 +99,18 @@ impl SqliteAuditLogRepository {
     /// (ASC) row instead would restore to the ORIGINAL creation-time
     /// snapshot rather than the state right before the most recent edit).
     ///
-    /// No caller yet — `ActService::update` (Plan 19-03) is the first and
-    /// only caller.
+    /// Callers: `ActService::update`'s handover-edit removed-device restore,
+    /// and `ActService::update_return`'s un-return restore (Phase 22).
+    ///
+    /// CR-02 (Phase 22 gap-closure): excludes rows tagged `action =
+    /// 'custom:return_item_edit'` — those rows are written by
+    /// `update_return`'s retained-edit loop and capture an intermediate
+    /// within-act mutation snapshot, not the act's own original device
+    /// mutation. A caller restoring a device's pre-mutation state (un-return,
+    /// handover-edit-removal) must never pick up that intermediate snapshot
+    /// instead of the act's true original mutation. This exclusion is inert
+    /// for the handover-edit caller, which never writes rows with that
+    /// action tag.
     pub fn select_latest_device_mutation(
         &self,
         tx: &Transaction<'_>,
@@ -113,6 +123,7 @@ impl SqliteAuditLogRepository {
                AND entity_id = ?2 \
                AND json_extract(payload_json, '$.act_id') = ?1 \
                AND before_json IS NOT NULL \
+               AND action != 'custom:return_item_edit' \
              ORDER BY created_at_utc DESC, id DESC LIMIT 1",
             params![act_id, device_id],
             |r| r.get::<_, String>(0),

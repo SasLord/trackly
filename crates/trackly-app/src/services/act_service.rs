@@ -1866,6 +1866,17 @@ impl ActService {
                 // act_items.condition_at_time (gated by D-11 above; a no-op
                 // resubmit writes nothing per the `retained_with_change`
                 // filter).
+                //
+                // CR-02: this loop's device audit rows are tagged with a
+                // DISTINCT action (`custom:return_item_edit`), NOT the
+                // return's own original device-mutation action ("update").
+                // These rows capture a within-return retained-edit snapshot,
+                // not the return's true pre-return state — if step 9's
+                // un-return restore picked one of these up via its
+                // `DESC LIMIT 1` lookup, it would restore the device to the
+                // WRONG (post-return, pre-edit) snapshot instead of its
+                // original в_работе state. `select_latest_device_mutation`
+                // excludes this action for exactly that reason.
                 for &dev_id in &retained_with_change {
                     let before = devices_repo.get_in_tx(&tx, dev_id)?;
                     let before_json =
@@ -1897,7 +1908,7 @@ impl ActService {
                         AuditEntry {
                             entity_type: "device",
                             entity_id: dev_id,
-                            action: "update",
+                            action: "custom:return_item_edit",
                             user_id: user_id_opt,
                             before_json: Some(before_json),
                             after_json: Some(after_json),
