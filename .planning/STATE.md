@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: milestone_complete
+status: executing
 last_updated: 2026-07-13T15:30:46.825Z
 last_activity: 2026-07-13
 progress:
   total_phases: 23
-  completed_phases: 23
+  completed_phases: 21
   total_plans: 145
   completed_plans: 145
-  percent: 100
-stopped_at: Milestone complete (Phase 22 was final phase)
+  percent: 91
+stopped_at: Phase 22 complete; milestone v1.1.2 NOT done — phases 20 & 21 unplanned/unstarted
 ---
 
 # Project State
@@ -21,13 +21,14 @@ stopped_at: Milestone complete (Phase 22 was final phase)
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Milestone complete
+**Current focus:** Phase 20 — Печать актов и организация (не спланирована)
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
-Status: Milestone complete
+Phase: 22 (return-act-edit) — COMPLETE (6/6 plans, ACT-03 done)
+Milestone v1.1.2: NOT complete — phases 20 (PRN-01/ORG-01/ORG-02) & 21 (CRT-01) unplanned/unstarted
+Plan: Next up — plan Phase 20 or Phase 21 (both independent of Phase 22)
+Status: Executing (milestone in progress)
 Last activity: 2026-07-13
 
 ### Phase 6 gap-closure decisions (2026-06-15)
