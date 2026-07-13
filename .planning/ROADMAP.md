@@ -325,7 +325,7 @@ Plans:
 
 **Wave 5** *(gap closure, depends on Wave 4 — code-review blockers)*
 
-- [ ] 22-05-PLAN.md — CR-01 (retained/added loops NULL location data loss) + CR-02 (un-return restores wrong post-edit snapshot) + 4 регрессионных теста
+- [x] 22-05-PLAN.md — CR-01 (retained/added loops NULL location data loss) + CR-02 (un-return restores wrong post-edit snapshot) + 4 регрессионных теста
 
 **Wave 6** *(gap closure, depends on Wave 5 — code-review warnings)*
 
@@ -363,7 +363,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 4/6 | In Progress | - |
+| 22. Правка возвратов | v1.1.2 | 5/6 | In Progress|  |
 
 ## Coverage
 
