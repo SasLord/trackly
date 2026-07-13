@@ -264,7 +264,7 @@ Plans:
 3. Загруженный SVG-логотип встраивается безопасно — санитизируется или вставляется только через `<img src="data:...">`, так что встроенный `<script>` не исполняется ни в превью, ни при печати.
 4. В настройках организации есть поле «Вторая строка адреса»; заполненное значение отображается отдельной строкой в печатных формах.
 
-**Plans**: 5 plans in 3 waves
+**Plans**: 6 plans in 3 waves
 **UI hint**: yes
 
 **Wave 1**
@@ -280,6 +280,7 @@ Plans:
 **Wave 3** *(depends on Wave 2 — нужны и render-фикс, и шаблоны)*
 
 - [ ] 20-05-PLAN.md — Regression-тесты: PRN-01 паритет acceptance/handover, ORG-01 SVG-`<script>` img-only (D-09), ORG-02 address_line2 в report.html
+- [ ] 20-06-PLAN.md — Auto-upgrade-untouched-defaults (D-12): доводит правки 20-03 до УЖЕ существующих установок (не только fresh installs), regression-тест на пред-материализованный старый файл
 
 ---
 
