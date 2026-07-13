@@ -518,10 +518,14 @@ async fn reject_edit_after_manual_device_relocation() {
         assert_eq!(dev_after.status_id, dev_before.status_id, "status unchanged (на_складе)");
         assert_eq!(dev_after.location_id, Some(loc_c), "location manually changed");
 
-        // update_return attempts to edit condition ONLY (no location
-        // override) — apply_to_all=false isolates the intent to the
-        // condition field, but D-11 still fires because the 3-field
-        // snapshot compare catches the drifted location too.
+        // update_return attempts to edit condition (apply_to_all=false
+        // isolates the intent per-row) with a location override supplied
+        // (WR-01 requires it when apply_to_all=false — see
+        // `reject_update_return_missing_override_when_apply_to_all_false`
+        // for that check in isolation). The override here does not need to
+        // match the device's drifted location: D-11 still fires because the
+        // 3-field snapshot compare catches the drifted location regardless
+        // of what value this edit's own location override carries.
         let mut update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_b);
         update.apply_to_all = false;
         update.bulk_condition = None;
@@ -532,7 +536,7 @@ async fn reject_edit_after_manual_device_relocation() {
             device_ids: vec![dev_id],
             quantity: 1,
             condition_override: Some("Б/У".into()),
-            location_id_override: None,
+            location_id_override: Some(loc_b),
             location_name_override: None,
         }];
 
@@ -858,4 +862,120 @@ async fn un_return_after_retained_edit_restores_original_pre_return_state() {
     })
     .await
     .expect("un_return_after_retained_edit_restores_original_pre_return_state budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 15: reject_update_return_duplicate_device_id_across_items (WR-01)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reject_update_return_duplicate_device_id_across_items() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_a).await;
+
+        let mut update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_a);
+        // Duplicate the same device_id in a second item — must be rejected
+        // server-side, not silently collapsed via last-write-wins.
+        let dup = update.items[0].clone();
+        update.items.push(dup);
+
+        let err = svc
+            .update_return(update)
+            .await
+            .expect_err("duplicate device_id across items must be rejected");
+        match err {
+            AppError::Validation { field, .. } => {
+                assert!(field.contains("device_ids"), "field={field}")
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    })
+    .await
+    .expect("reject_update_return_duplicate_device_id_across_items budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 16: reject_update_return_missing_override_when_apply_to_all_false (WR-01)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reject_update_return_missing_override_when_apply_to_all_false() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_a).await;
+
+        let mut update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_a);
+        update.apply_to_all = false;
+        // Leave the item's own condition_override/location_*_override at
+        // their helper-default None — this must be rejected server-side.
+
+        let err = svc
+            .update_return(update)
+            .await
+            .expect_err("missing per-item override with apply_to_all=false must be rejected");
+        match err {
+            AppError::Validation { .. } => {}
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    })
+    .await
+    .expect("reject_update_return_missing_override_when_apply_to_all_false budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 17: reject_add_when_device_already_returned_elsewhere_under_parent (WR-03)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reject_add_when_device_already_returned_elsewhere_under_parent() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Склад-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 2, loc_a, "Новое").await;
+        let dev_x = device_ids[0];
+        let dev_y = device_ids[1];
+        let p = create_handover_with_location(&svc, &device_ids, loc_a).await;
+
+        // r1: return dev_x only — 1 of 2 returned, parent p NOT archived.
+        let _r1 = do_return_for(&svc, &p, &[dev_x], "Хорошее", loc_b).await;
+
+        // Re-issue dev_x via a SECOND, UNRELATED handover under a DIFFERENT
+        // parent — dev_x becomes в_работе again; r1's act_items row for
+        // dev_x is untouched.
+        create_handover_with_location(&svc, &[dev_x], loc_a).await;
+        let reissued = read_device_snap(&svc, dev_x).await;
+        assert_eq!(reissued.status_id, 2, "dev_x re-issued, в_работе again");
+
+        // r2: a SIBLING return under the SAME parent p, for dev_y.
+        let r2 = do_return_for(&svc, &p, &[dev_y], "Хорошее", loc_b).await;
+
+        // Attempt to add dev_x to r2 — passes the existence check (belongs
+        // to p's act_items) and the status guard (в_работе, due to the
+        // re-issue), but the WR-03 bound must reject it:
+        // handover_qty=1, already_returned=1 (from r1), per_device_qty=1
+        // -> 1+1>1.
+        let update = update_return_dto_from(&r2, &[dev_y, dev_x], "Хорошее", loc_b);
+        let err = svc
+            .update_return(update)
+            .await
+            .expect_err("adding a device already covered by a sibling return must be rejected");
+        match err {
+            AppError::Validation { .. } => {}
+            other => panic!("expected Validation, got {other:?}"),
+        }
+
+        // No partial mutation leaked — r2 still has only 1 item.
+        let r2_after = svc.get(r2.id).await.expect("re-fetch r2");
+        assert_eq!(r2_after.items.len(), 1, "r2 unchanged after rejected edit");
+    })
+    .await
+    .expect("reject_add_when_device_already_returned_elsewhere_under_parent budget");
 }

@@ -1473,6 +1473,47 @@ impl ActService {
                 message: "Добавьте хотя бы одну позицию".into(),
             });
         }
+        // WR-01 (22-REVIEW.md): mirror `validate_return`'s three checks so
+        // the edit path has server-side parity with the create path — a raw
+        // HTTP payload must not be able to bypass these via `update_return`
+        // just because the UI happens to always send well-formed data.
+        // Deliberately NOT mirrored here: `validate_return`'s `act_item_id`
+        // dedup check — the edit path's items are built with
+        // `act_item_id: 0` as a structural placeholder (`update_return`
+        // never reads `item.act_item_id`), so that dedup would reject every
+        // legitimate multi-item edit payload.
+        let mut seen_device_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        for (idx, it) in p.items.iter().enumerate() {
+            let dids = effective_device_ids(it);
+            if dids.is_empty() {
+                return Err(AppError::Validation {
+                    field: format!("items[{idx}].device_ids"),
+                    message: "Укажите хотя бы один device_id к возврату".into(),
+                });
+            }
+            for &did in &dids {
+                if !seen_device_ids.insert(did) {
+                    return Err(AppError::Validation {
+                        field: format!("items[{idx}].device_ids"),
+                        message: format!("device_id={} продублирован в возврате", did),
+                    });
+                }
+            }
+            if !p.apply_to_all {
+                if it.condition_override.is_none() {
+                    return Err(AppError::Validation {
+                        field: format!("items[{idx}].condition_override"),
+                        message: "Состояние обязательно (apply_to_all = false)".into(),
+                    });
+                }
+                if it.location_id_override.is_none() && it.location_name_override.is_none() {
+                    return Err(AppError::Validation {
+                        field: format!("items[{idx}].location_id_override"),
+                        message: "Расположение обязательно (apply_to_all = false)".into(),
+                    });
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1675,6 +1716,48 @@ impl ActService {
                             reason: format!(
                                 "Устройство id={} уже не в работе — возможно, оно уже возвращено",
                                 dev_id
+                            ),
+                        });
+                    }
+
+                    // WR-03 (22-REVIEW.md): port `do_return`'s
+                    // already_returned/handover_qty bound (`:1318-1347`) —
+                    // without it, a device re-issued via an UNRELATED
+                    // handover and then added here could be double-covered
+                    // by two sibling return act_items rows under the same
+                    // parent, beyond what was actually handed out.
+                    let per_device_qty: i64 = effective_by_device
+                        .get(&dev_id)
+                        .cloned()
+                        .unwrap_or((1, None, None))
+                        .0;
+                    let handover_qty: i64 = tx
+                        .query_row(
+                            "SELECT COALESCE(SUM(quantity), 0) FROM act_items \
+                             WHERE act_id = ?1 AND device_id = ?2",
+                            params![parent_act_id, dev_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    let already_returned: i64 = tx
+                        .query_row(
+                            "SELECT COALESCE(SUM(rai.quantity), 0) \
+                             FROM act_items rai \
+                             JOIN acts ra ON ra.id = rai.act_id \
+                             WHERE ra.parent_act_id = ?1 \
+                               AND rai.device_id = ?2 \
+                               AND ra.deleted_at_utc IS NULL",
+                            params![parent_act_id, dev_id],
+                            |r| r.get(0),
+                        )
+                        .map_err(map_rusqlite)?;
+                    if per_device_qty + already_returned > handover_qty {
+                        return Err(AppError::Validation {
+                            field: "items".into(),
+                            message: format!(
+                                "Возврат превышает выданное количество для устройства id={}: \
+                                 уже возвращено {} + текущее {} > выдано {}",
+                                dev_id, already_returned, per_device_qty, handover_qty,
                             ),
                         });
                     }
