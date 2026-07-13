@@ -71,9 +71,9 @@
 | ACT-01 | Phase 19 | Complete |
 | ACT-02 | Phase 19 | Complete |
 | ACT-03 | Phase 22 | Complete |
-| PRN-01 | Phase 20 | Pending |
-| ORG-01 | Phase 20 | Pending |
-| ORG-02 | Phase 20 | Pending |
+| PRN-01 | Phase 20 | Planned |
+| ORG-01 | Phase 20 | Planned |
+| ORG-02 | Phase 20 | Planned |
 | CRT-01 | Phase 21 | Pending |
 
 **Coverage:**

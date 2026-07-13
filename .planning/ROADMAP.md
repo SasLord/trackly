@@ -264,8 +264,22 @@ Plans:
 3. Загруженный SVG-логотип встраивается безопасно — санитизируется или вставляется только через `<img src="data:...">`, так что встроенный `<script>` не исполняется ни в превью, ни при печати.
 4. В настройках организации есть поле «Вторая строка адреса»; заполненное значение отображается отдельной строкой в печатных формах.
 
-**Plans**: TBD
+**Plans**: 5 plans in 3 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 20-01-PLAN.md — Контракты: миграция V035 (address_line2), OrgPatch/OrgSettingsDto, 3 SQL-сайта org_db_service.rs, компиляция всего крейта
+
+**Wave 2** *(depends on Wave 1 — параллельны друг другу, нет пересечения файлов)*
+
+- [ ] 20-02-PLAN.md — PRN-01: render_acceptance_pdf на org_db.get_for_pdf() (D-02/D-03/D-11), address_line2 в ctx render_pdf/report_service
+- [ ] 20-03-PLAN.md — Шаблоны: act_acceptance.html паритет с act_handover.html (D-01), address_line2 во всех трёх шаблонах (D-06)
+- [ ] 20-04-PLAN.md — Настройки: поле «Адрес (2-я строка)» в OrgSettings.svelte (D-05), регенерация bindings.ts
+
+**Wave 3** *(depends on Wave 2 — нужны и render-фикс, и шаблоны)*
+
+- [ ] 20-05-PLAN.md — Regression-тесты: PRN-01 паритет acceptance/handover, ORG-01 SVG-`<script>` img-only (D-09), ORG-02 address_line2 в report.html
 
 ---
 
@@ -361,7 +375,7 @@ Plans:
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
 | 18. Автокомплит и дропдауны | v1.1.2 | 5/5 | Complete    | 2026-07-11 |
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
-| 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
+| 20. Печать актов и организация | v1.1.2 | 0/5 | Planned | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 
@@ -465,9 +479,9 @@ Plans:
 | AUTO-05 | Phase 18 | Planned |
 | ACT-01 | Phase 19 | Planned |
 | ACT-02 | Phase 19 | Planned |
-| PRN-01 | Phase 20 | Pending |
-| ORG-01 | Phase 20 | Pending |
-| ORG-02 | Phase 20 | Pending |
+| PRN-01 | Phase 20 | Planned |
+| ORG-01 | Phase 20 | Planned |
+| ORG-02 | Phase 20 | Planned |
 | CRT-01 | Phase 21 | Pending |
 
 **Coverage:** 11/11 v1.1.2 requirements mapped ✓ — no orphans.
