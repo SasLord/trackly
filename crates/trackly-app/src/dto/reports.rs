@@ -185,6 +185,8 @@ pub struct OrgPatch {
     pub email: String,
     pub okpo: String,
     pub ogrn: String,
+    /// Second address line (ORG-02, Phase 20). Empty string = not filled in.
+    pub address_line2: String,
 }
 
 /// Logo upload/download DTO (SET-02).
@@ -218,6 +220,8 @@ pub struct OrgSettingsDto {
     pub email: String,
     pub okpo: String,
     pub ogrn: String,
+    /// Second address line (ORG-02, Phase 20). Empty string = not filled in.
+    pub address_line2: String,
 }
 
 // ---------------------------------------------------------------------------
