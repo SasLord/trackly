@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: verifying
-last_updated: "2026-07-13T01:49:38.583Z"
+last_updated: "2026-07-13T14:53:16.503Z"
 last_activity: 2026-07-13
 progress:
   total_phases: 23
-  completed_phases: 22
+  completed_phases: 23
   total_plans: 145
-  completed_plans: 144
-  percent: 96
+  completed_plans: 145
+  percent: 100
 ---
 
 # Project State
@@ -188,6 +188,7 @@ Last activity: 2026-07-13
 | Phase 22 P03 | 25m | 2 tasks | 6 files |
 | Phase 22 P04 | 25min | 4 tasks | 3 files |
 | Phase 22 P05 | 96min | 2 tasks | 3 files |
+| Phase 22 P22-06 | 60 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -451,6 +452,10 @@ Recent decisions affecting current work:
 - [Phase 22]: 22-04: ActUpdateReturnDto unused location_id/location_name/notes/deadline_utc fields sent as null from edit payload — confirmed unread by ActService::update_return
 - [Phase 22]: 22-05: CR-01 fix applied at consumption point (location.or(before.location_id) before update_full_in_tx), preserving None='no override' semantics upstream — avoids breaking D-11 change detection which relies on None meaning no location override was requested
 - [Phase 22]: 22-05: CR-02 fix tags retained-edit audit rows with custom:return_item_edit and excludes that action from select_latest_device_mutation — generalizes correctly across multiple retained edits before un-return, unlike a status-based filter; select_latest_device_mutation_pair (D-11 drift check) left untouched since it needs the newest row including retained-edits
+- [Phase ?]: 22-06: validate_update_return mirrors validate_return (dedup/non-empty/per-item-override) MINUS act_item_id dedup (edit items use act_item_id:0 placeholder) — closes WR-01 raw-HTTP gap
+- [Phase ?]: 22-06: update_return step 8a added-loop ports do_return's already_returned+qty<=handover_qty bound (WR-03)
+- [Phase ?]: 22-06: parent_act_id .expect() -> AppError::Internal domain error inside single-writer closure (WR-02) — no panic path poisons the write task
+- [Phase ?]: 22-06: V034 comment corrected (WR-04) — one-time backfill, NOT safe to re-run manually post-Phase-22; comment edit changes refinery checksum so existing dev DBs must be recreated (tests use fresh temp DBs, unaffected)
 
 ### Pending Todos
 
@@ -512,7 +517,7 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-13T01:49:38.576Z
+Last session: 2026-07-13T14:52:50.760Z
 Stopped at: Completed 22-05-PLAN.md (CR-01 + CR-02 gap-closure)
 Resume file: None
 

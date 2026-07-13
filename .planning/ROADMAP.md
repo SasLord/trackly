@@ -329,7 +329,7 @@ Plans:
 
 **Wave 6** *(gap closure, depends on Wave 5 — code-review warnings)*
 
-- [ ] 22-06-PLAN.md — WR-01 (validate_update_return parity) + WR-02 (panic→domain error) + WR-03 (over-return qty guard) + WR-04 (V034 comment fix) + IN-01 (baseline comment) + 4 регрессионных теста
+- [x] 22-06-PLAN.md — WR-01 (validate_update_return parity) + WR-02 (panic→domain error) + WR-03 (over-return qty guard) + WR-04 (V034 comment fix) + IN-01 (baseline comment) + 4 регрессионных теста
 
 **Note**: Отменяет D-07 (Фаза 19) в части «return-акты нередактируемы». Семантика — полная правка возврата (выбрана пользователем 2026-07-12): можно менять состав/состояние/дату, backend пересобирает эффекты по дельте (как правка handover-акта). Источник: 19-CONTEXT.md → Deferred Ideas. Waves 5-6 добавлены после `22-REVIEW.md` (2026-07-12, standard-depth code review нашёл 2 BLOCKER + 4 WARNING + 1 INFO дефекта delta-движка update_return).
 
@@ -363,7 +363,7 @@ Plans:
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
 | 20. Печать актов и организация | v1.1.2 | 0/TBD | Not started | - |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
-| 22. Правка возвратов | v1.1.2 | 5/6 | In Progress|  |
+| 22. Правка возвратов | v1.1.2 | 6/6 | Complete   | 2026-07-13 |
 
 ## Coverage
 
