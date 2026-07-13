@@ -1815,11 +1815,18 @@ impl ActService {
                         .get(&added_id)
                         .cloned()
                         .unwrap_or((1, None, None));
+                    // CR-01: unlike `do_return`'s DEF-3 create-time contract
+                    // (where an empty location on a brand-new return is an
+                    // accepted caller error), an edit that never touched
+                    // location must not wipe the device's already-established
+                    // location — preserve it when no new location was
+                    // supplied.
+                    let effective_location = location.or(before.location_id);
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         added_id,
                         on_warehouse_status_id,
-                        location,
+                        effective_location,
                         condition.as_deref(),
                         now,
                     )?;
@@ -1869,11 +1876,15 @@ impl ActService {
                         .get(&dev_id)
                         .cloned()
                         .unwrap_or((1, None, None));
+                    // CR-01: same location-preservation fix as the `added`
+                    // loop above — a condition-only edit must not NULL the
+                    // device's current location.
+                    let effective_location = location.or(before.location_id);
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         dev_id,
                         on_warehouse_status_id,
-                        location,
+                        effective_location,
                         condition.as_deref(),
                         now,
                     )?;
