@@ -14,9 +14,14 @@
 -- captures this.
 --
 -- No schema change — the handover_date_utc column already exists since
--- V015. Safe to run once (refinery never re-runs applied migrations); the
--- UPDATE is naturally idempotent (re-running it is a no-op once
--- handover_date_utc already equals created_at_utc for return rows).
+-- V015. This UPDATE is a ONE-TIME historical backfill. It is safe ONLY
+-- because refinery never re-runs an already-applied migration — it is
+-- NOT safe to run manually after Phase 22 ships, because
+-- `ActService::update_return` (D-05) intentionally lets a return's
+-- handover_date_utc diverge from its created_at_utc (the user can edit
+-- «Дата возврата» independently of when the return row was created). A
+-- manual re-run of this exact UPDATE statement would silently overwrite
+-- every user-edited «Дата возврата» back to the row's creation timestamp.
 
 UPDATE acts SET handover_date_utc = created_at_utc WHERE act_type = 'return';
 

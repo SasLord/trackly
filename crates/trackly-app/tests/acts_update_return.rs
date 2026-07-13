@@ -979,3 +979,47 @@ async fn reject_add_when_device_already_returned_elsewhere_under_parent() {
     .await
     .expect("reject_add_when_device_already_returned_elsewhere_under_parent budget");
 }
+
+// ---------------------------------------------------------------------------
+// Test 18: update_return_null_parent_act_id_returns_error_not_panic (WR-02)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_return_null_parent_act_id_returns_error_not_panic() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_a).await;
+
+        // Corrupt the return row directly via SQL — simulates data
+        // corruption / a bad import / a future migration bug (mirrors the
+        // direct-SQL pattern `seed_devices_with_state`/`seed_location`
+        // already use in this file).
+        let ret_id = ret.id;
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE acts SET parent_act_id = NULL WHERE id = ?1",
+                    params![ret_id],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("corrupt parent_act_id");
+
+        let update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_a);
+        let err = svc
+            .update_return(update)
+            .await
+            .expect_err("NULL parent_act_id must return an error, not panic the writer task");
+        assert!(
+            matches!(err, AppError::Internal { .. }),
+            "expected Internal, got {err:?}"
+        );
+    })
+    .await
+    .expect("update_return_null_parent_act_id_returns_error_not_panic budget");
+}

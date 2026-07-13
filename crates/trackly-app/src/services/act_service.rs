@@ -1579,9 +1579,19 @@ impl ActService {
                     });
                 }
 
-                let parent_act_id = act
-                    .parent_act_id
-                    .expect("return act always has parent_act_id");
+                // WR-02 (22-REVIEW.md): a NULL `parent_act_id` (data
+                // corruption, a bad import, a future migration bug) must
+                // degrade to a domain error, never a panic — this runs
+                // inside the single dedicated writer task, and per
+                // CLAUDE.md's single-writer architecture a panic here can
+                // poison the entire process's write path, not just this
+                // request.
+                let parent_act_id = act.parent_act_id.ok_or_else(|| AppError::Internal {
+                    source_chain: format!(
+                        "update_return: return act {} has NULL parent_act_id",
+                        payload.id
+                    ),
+                })?;
 
                 // 4. Resolve device_statuses ids (mirrors `do_return`).
                 let in_work_status_id: i64 = tx
@@ -1788,6 +1798,20 @@ impl ActService {
                         )
                         .map_err(map_rusqlite)?;
                     let current = devices_repo.get_in_tx(&tx, dev_id)?;
+                    // IN-01 (22-REVIEW.md): `condition_changed` and
+                    // `location_changed` deliberately use two DIFFERENT
+                    // baselines — `condition_changed` compares against the
+                    // STORED `act_items.condition_at_time` (there is no live
+                    // "condition" column change source other than this
+                    // snapshot), while `location_changed` compares against
+                    // the device's LIVE `location_id` (there is no per-item
+                    // location column on `act_items` to compare against
+                    // instead). Both treat a `None` effective value as "no
+                    // change" (`unwrap_or(false)`) — this code path cannot
+                    // express "clear this field", only "leave unchanged" or
+                    // "set to X". This asymmetry is intentional given the
+                    // current schema; documented here so a future
+                    // maintainer does not assume a single shared baseline.
                     let condition_changed = eff_condition
                         .as_deref()
                         .map(|c| Some(c) != stored_condition.as_deref())
