@@ -723,3 +723,84 @@ async fn edit_persists_giver_receiver() {
     .await
     .expect("edit_persists_giver_receiver budget");
 }
+
+// ---------------------------------------------------------------------------
+// Test 12: retained_edit_condition_only_preserves_location (CR-01)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn retained_edit_condition_only_preserves_location() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Склад-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let device_id = device_ids[0];
+
+        let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_b).await;
+
+        // Condition-only edit: apply_to_all stays true, but the bulk
+        // location is left empty (CR-01 repro — none of the earlier tests
+        // exercise this because `update_return_dto_from` always supplies a
+        // bulk location).
+        let mut update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_b);
+        update.bulk_location_id = None;
+        update.bulk_location_name = None;
+
+        svc.update_return(update)
+            .await
+            .expect("update_return condition-only edit");
+
+        let post = read_device_snap(&svc, device_id).await;
+        assert_eq!(
+            post.location_id,
+            Some(loc_b),
+            "location must be preserved (not NULLed) when only condition changes"
+        );
+        assert_eq!(
+            post.condition.as_deref(),
+            Some("Б/У"),
+            "condition DID change"
+        );
+    })
+    .await
+    .expect("retained_edit_condition_only_preserves_location budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 13: add_outstanding_device_without_bulk_location_preserves_current_location (CR-01)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn add_outstanding_device_without_bulk_location_preserves_current_location() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Склад-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 2, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+
+        // Return only device 0 — device 1 stays outstanding at loc_a.
+        let ret = do_return_for(&svc, &handover, &[device_ids[0]], "Хорошее", loc_b).await;
+        let extra_id = device_ids[1];
+
+        // Add device 1 to the same return with NO bulk/per-row location.
+        let mut update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
+        update.bulk_location_id = None;
+        update.bulk_location_name = None;
+
+        svc.update_return(update)
+            .await
+            .expect("update_return add outstanding without bulk location");
+
+        let post_extra = read_device_snap(&svc, extra_id).await;
+        assert_eq!(
+            post_extra.location_id,
+            Some(loc_a),
+            "device 1's ORIGINAL pre-add location must be preserved, not NULLed"
+        );
+    })
+    .await
+    .expect("add_outstanding_device_without_bulk_location_preserves_current_location budget");
+}
