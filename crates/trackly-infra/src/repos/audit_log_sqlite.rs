@@ -296,4 +296,57 @@ mod tests {
         assert!(pair.is_none(), "no matching audit rows → Ok(None)");
         tx.commit().expect("commit");
     }
+
+    #[test]
+    fn select_latest_device_mutation_excludes_return_item_edit_action() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqliteAuditLogRepository;
+
+        let tx = conn.transaction().expect("tx");
+
+        // Older row: the return's own original device mutation.
+        repo.insert(
+            &tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: 7,
+                action: "update",
+                user_id: None,
+                before_json: Some("{\"status_id\":2}".into()),
+                after_json: Some("{\"status_id\":1}".into()),
+                payload_json: Some("{\"act_id\":42,\"kind\":\"return\"}".into()),
+                created_at_utc: 1_700_000_000,
+            },
+        )
+        .expect("insert older 'update' row");
+
+        // Newer row: a within-return retained-edit mutation — must be
+        // EXCLUDED from select_latest_device_mutation's restore lookup
+        // (CR-02).
+        repo.insert(
+            &tx,
+            AuditEntry {
+                entity_type: "device",
+                entity_id: 7,
+                action: "custom:return_item_edit",
+                user_id: None,
+                before_json: Some("{\"status_id\":3}".into()),
+                after_json: Some("{\"status_id\":1}".into()),
+                payload_json: Some("{\"act_id\":42,\"kind\":\"return\"}".into()),
+                created_at_utc: 1_700_000_001,
+            },
+        )
+        .expect("insert newer 'custom:return_item_edit' row");
+
+        let before_json = repo
+            .select_latest_device_mutation(&tx, 42, 7)
+            .expect("select")
+            .expect("row exists");
+        assert_eq!(
+            before_json, "{\"status_id\":2}",
+            "must skip the newer excluded-action row and return the older 'update' row"
+        );
+
+        tx.commit().expect("commit");
+    }
 }

@@ -804,3 +804,58 @@ async fn add_outstanding_device_without_bulk_location_preserves_current_location
     .await
     .expect("add_outstanding_device_without_bulk_location_preserves_current_location budget");
 }
+
+// ---------------------------------------------------------------------------
+// Test 14: un_return_after_retained_edit_restores_original_pre_return_state (CR-02)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn un_return_after_retained_edit_restores_original_pre_return_state() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Склад-B").await;
+        let loc_c = seed_location(&svc.writer, "Кабинет-C").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 2, loc_a, "Новое").await;
+        let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
+        let dev1 = device_ids[0];
+        let dev2 = device_ids[1];
+
+        // 1. do_return both devices: в_работе/loc_a/Новое -> на_складе/loc_b/Хорошее.
+        let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_b).await;
+
+        // 2. Edit dev1's condition+location within the same return (a THIRD
+        // location, distinct from both pre-return and post-return states) —
+        // writes dev1's custom:return_item_edit audit row (step 11).
+        let update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_c);
+        let updated = svc
+            .update_return(update)
+            .await
+            .expect("update_return retained edit on dev1+dev2");
+
+        // 3. Un-return dev1 (remove it, keep dev2 so D-10's non-empty guard
+        // doesn't trip).
+        let update2 = update_return_dto_from(&updated, &[dev2], "Хорошее", loc_b);
+        svc.update_return(update2)
+            .await
+            .expect("update_return un-return dev1 after retained edit");
+
+        // dev1 must restore to its TRUE pre-return state (в_работе, loc_a,
+        // "Новое") — NOT the intermediate post-return/pre-edit state
+        // (на_складе, loc_c, "Б/У") that the buggy code would restore.
+        let post_dev1 = read_device_snap(&svc, dev1).await;
+        assert_eq!(post_dev1.status_id, 2, "restored to в_работе (true pre-return state)");
+        assert_eq!(
+            post_dev1.location_id,
+            Some(loc_a),
+            "restored to original pre-return location, not loc_b or loc_c"
+        );
+        assert_eq!(
+            post_dev1.condition.as_deref(),
+            Some("Новое"),
+            "restored to original pre-return condition, not Хорошее or Б/У"
+        );
+    })
+    .await
+    .expect("un_return_after_retained_edit_restores_original_pre_return_state budget");
+}
