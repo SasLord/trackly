@@ -64,6 +64,7 @@ async fn org_settings_save_and_load_round_trip() {
             email: "info@test.ru".to_string(),
             okpo: "12345678".to_string(),
             ogrn: "1027700123456".to_string(),
+            address_line2: String::new(),
         };
         svc.save_fields(&caller, patch).await.expect("save_fields");
 

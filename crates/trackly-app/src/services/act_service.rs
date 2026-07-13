@@ -2560,6 +2560,7 @@ impl ActService {
                     email: String::new(),
                     okpo: String::new(),
                     ogrn: String::new(),
+                    address_line2: String::new(),
                 },
                 None,
                 None,
