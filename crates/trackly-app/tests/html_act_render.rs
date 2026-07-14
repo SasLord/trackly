@@ -23,6 +23,7 @@ use trackly_infra::test_support::test_writer_and_readers;
 use trackly_infra::Paths;
 
 const LOGO_PNG: &[u8] = include_bytes!("fixtures/logo_test.png");
+const LOGO_SVG_WITH_SCRIPT: &[u8] = include_bytes!("fixtures/logo_test_with_script.svg");
 
 struct Pipeline {
     acts: ActService,
@@ -315,6 +316,60 @@ async fn html_acceptance_full_org_parity_with_handover() {
             acceptance_html.chars().take(500).collect::<String>()
         );
     }
+}
+
+/// ORG-01/D-09 (Plan 20-05, Task 2): an SVG logo containing an embedded
+/// `<script>` tag must be embedded EXCLUSIVELY as a `data:` URI inside
+/// `<img>` — the raw `<script>` must never appear as literal, executable
+/// markup in the rendered document DOM. Locks the core security invariant
+/// with a concrete adversarial payload rather than a one-time review.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_svg_logo_with_script_embeds_img_only_no_inline_script() {
+    let p = make_full_pipeline().await;
+
+    let org_db = Arc::new(OrgDbService::new(
+        p.writer.clone(),
+        p._readers.clone(),
+        Arc::new(SystemClock),
+        Arc::new(Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths")),
+    ));
+    org_db
+        .save_logo(
+            &Identity::trusted_admin(),
+            LOGO_SVG_WITH_SCRIPT.to_vec(),
+            "image/svg+xml".to_string(),
+        )
+        .await
+        .expect("save_logo");
+
+    let device_id = seed_device(&p.writer, "HTML-XSS-Ноутбук").await;
+    let act = create_handover(&p.acts, &[device_id], "Выдалов В.В.", "Получилов П.П.").await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    // (a) The raw <script> tag must never appear inline in the rendered DOM.
+    assert!(
+        !html.contains("<script>"),
+        "SVG-embedded <script> must NOT appear as literal markup in the \
+         rendered document (ORG-01/D-09 XSS invariant). Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
+    // (b) Sanity check: the logo DID embed as a data: URI, so (a) is not
+    // vacuously true because the logo silently failed to embed.
+    assert!(
+        html.contains("data:image/svg+xml;base64,"),
+        "SVG logo must embed as a data: URI (proves the <script> absence \
+         assertion is non-vacuous). Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
+    // (c) The logo is embedded exclusively via <img src="data:...">, not as
+    // inline <svg>/raw markup elsewhere in the document.
+    assert!(
+        html.contains("<img src=\"data:image/svg+xml;base64,"),
+        "SVG logo must be embedded exclusively via <img src=\"data:...\">. \
+         Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
 }
 
 /// D-14 item 2: 1-vs-N devices — a multi-device handover renders every
