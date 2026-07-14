@@ -9,7 +9,7 @@
   documents.
 
   Context variables (built in report_service.rs::export_pdf, D-04/D-05):
-    org.name, org.inn, org.kpp, org.address, org.logo_data_uri,
+    org.name, org.inn, org.kpp, org.address, org.address_line2, org.logo_data_uri,
     org.phone, org.fax, org.email, org.okpo, org.ogrn
     report_name (string) — human-readable report title
     period_label (string) — human-readable period description
@@ -136,6 +136,7 @@
       {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
       {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
       {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.address_line2 %}<div>{{ org.address_line2 }}</div>{%- endif %}
       {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
       {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
       {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
