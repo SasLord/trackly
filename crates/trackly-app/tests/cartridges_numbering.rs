@@ -1,7 +1,7 @@
 //! Cartridge auto-code numbering integration tests — Plan 04-03 (GREEN phase).
 //!
 //! Covers:
-//!   - 50 concurrent creates produce 50 unique codes in C-NNNNNN format.
+//!   - 50 concurrent creates produce 50 unique codes in C-NNNN format (min 4 digits).
 //!   - Counter is never lost on UNIQUE collision: retry loop increments again.
 
 use std::collections::HashSet;
@@ -71,13 +71,13 @@ async fn concurrent_50_unique_codes() {
         let unique: HashSet<&str> = codes.iter().map(|s| s.as_str()).collect();
         assert_eq!(unique.len(), 50, "all 50 codes must be unique");
 
-        // All in C-NNNNNN format (C- prefix + 6 ASCII digits = 8 chars)
+        // All in C-NNNN format (C- prefix + minimum 4 ASCII digits = min 6 chars)
         for code in &codes {
             assert!(
-                code.len() == 8
+                code.len() >= 6
                     && code.starts_with("C-")
                     && code[2..].chars().all(|c| c.is_ascii_digit()),
-                "code must be C-NNNNNN format, got: {}",
+                "code must be C-NNNN format (minimum 4 digits), got: {}",
                 code
             );
         }
