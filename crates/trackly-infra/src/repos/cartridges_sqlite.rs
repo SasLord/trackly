@@ -111,7 +111,7 @@ impl SqliteCartridgeRepository {
     /// - `code_override = Some(s)`: validate UNIQUE; return `(s, false)` or
     ///   `AppError::Conflict` on collision (D-Code-Override-01).
     /// - `code_override = None`: increment the kind-specific counter
-    ///   (`cartridge_seq`→`C-NNNNNN` / `drum_seq`→`D-NNNNNN`) in a retry loop
+    ///   (`cartridge_seq`→`C-NNNN` / `drum_seq`→`D-NNNN`) in a retry loop
     ///   until a unique code is found (D-Code-01). The counter is never lost.
     ///
     /// Returns `(code, was_auto)`.
@@ -138,7 +138,7 @@ impl SqliteCartridgeRepository {
         }
 
         // Префикс и счётчик зависят от вида расходника: фотобарабаны (kind 2) →
-        // D-NNNNNN из drum_seq; картриджи (kind 1) → C-NNNNNN из cartridge_seq.
+        // D-NNNN из drum_seq; картриджи (kind 1) → C-NNNN из cartridge_seq.
         let (counter_name, prefix) = if kind_id == 2 {
             ("drum_seq", 'D')
         } else {
@@ -148,7 +148,7 @@ impl SqliteCartridgeRepository {
         // Auto-code: increment counter + retry loop (counter never lost on collision).
         loop {
             let seq = increment_counter_in_tx(tx, counter_name)?;
-            let candidate = format!("{prefix}-{seq:06}");
+            let candidate = format!("{prefix}-{seq:04}");
             let exists: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM cartridges WHERE code = ?1 LIMIT 1)",
