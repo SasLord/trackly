@@ -213,6 +213,12 @@ impl AppCtx {
         // idempotent — separate from the frozen DB-template seed above.
         let html_templates_dir = crate::pdf::html_templates::resolve_templates_dir(&paths_arc);
         crate::pdf::html_templates::materialize_defaults_on_startup(&html_templates_dir)?;
+        // Phase 20 (D-12): auto-upgrade on-disk templates that are still byte-
+        // identical to a known prior bundled default. materialize handles
+        // MISSING files (insert-only); this handles EXISTING-but-untouched files
+        // so bundle changes (header parity, address_line2) reach existing
+        // installs — never overwriting user-customized templates.
+        crate::pdf::html_templates::upgrade_untouched_defaults_on_startup(&html_templates_dir)?;
 
         // Phase 7 Plan 02: OrgDbService (replaces OrganizationService for settings write layer).
         let org_db = Arc::new(OrgDbService::new(
