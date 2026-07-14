@@ -640,6 +640,7 @@ impl ReportService {
                 "inn": org.inn,
                 "kpp": org.kpp,
                 "address": org.address,
+                "address_line2": org.address_line2,
                 "phone": org.phone,
                 "fax": org.fax,
                 "email": org.email,

@@ -2633,6 +2633,7 @@ impl ActService {
                 "inn": org_dto.inn,
                 "kpp": org_dto.kpp,
                 "address": org_dto.address,
+                "address_line2": org_dto.address_line2,
                 "phone": org_dto.phone,
                 "fax": org_dto.fax,
                 "email": org_dto.email,
