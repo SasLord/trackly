@@ -265,6 +265,52 @@ async fn html_report_org_header_present() {
     );
 }
 
+/// ORG-02 (Plan 20-05, Task 3): a populated `address_line2` renders as its
+/// own line in the report org header, completing ORG-02 coverage across all
+/// three printed document types (acts covered by html_act_render.rs Task 1,
+/// report covered here). The empty-org case exercises the `{% if %}` guard
+/// identically to the already-tested phone/fax/email guards, so no separate
+/// negative assertion is needed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_report_org_header_shows_address_line2() {
+    let (svc, _dir) = make_report_service();
+    let rows = ReportResponse {
+        rows: vec![make_row(
+            "2026-09",
+            "42",
+            "Принтер",
+            "Петров П.П.",
+            "Сидоров С.С.",
+            "Склад №1",
+        )],
+        total: 1,
+    };
+    let columns = ["device_name"];
+    let labels = ["Устройства"];
+    let mut org = empty_org();
+    org.org_name = "ООО Ромашка".to_string();
+    org.address_line2 = "офис 305, корпус 2".to_string();
+
+    let html = svc
+        .export_pdf(
+            &rows,
+            "Отчёт",
+            "Сентябрь 2026",
+            &org,
+            None,
+            None,
+            &columns,
+            &labels,
+        )
+        .await
+        .expect("export_pdf ok");
+
+    assert!(
+        html.contains("офис 305, корпус 2"),
+        "expected address_line2 in report org header (ORG-02): {html}"
+    );
+}
+
 /// Negative assertion: the returned string is HTML text, not accidentally
 /// still PDF bytes encoded as a string (proves the krilla migration is
 /// complete for every fixture shape exercised above).
