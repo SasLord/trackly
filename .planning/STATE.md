@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-14T00:26:43.056Z"
+last_updated: "2026-07-14T00:31:43.722Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 24
   completed_phases: 23
   total_plans: 151
-  completed_plans: 148
+  completed_plans: 149
   percent: 96
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 Phase: 20 (print-acts-org) — EXECUTING
 Milestone v1.1.2: NOT complete — phases 20 (PRN-01/ORG-01/ORG-02) & 21 (CRT-01) unplanned/unstarted
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-07-14
 
@@ -194,6 +194,7 @@ Last activity: 2026-07-14
 | Phase 20 P01 | 25min | 3 tasks | 8 files |
 | Phase 20 P02 | 15min | 2 tasks | 2 files |
 | Phase 20 P03 | 10min | 2 tasks | 3 files |
+| Phase 20 P04 | 8min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -464,6 +465,7 @@ Recent decisions affecting current work:
 - [Phase 20]: 20-01: V035 is next-sequential migration (after V034); address_line2 appended as LAST field/column everywhere (no ordinal shift to existing columns), per D-04/D-10
 - [Phase 20]: 20-01: embed_migrations! stale incremental-build cache — touching crates/trackly-infra/src/db/migrations.rs forces rebuild if new migration files aren't picked up by test runs
 - [Phase 20]: 20-02: render_acceptance_pdf rewritten to org_db.get_for_pdf() parity with render_pdf; read_logo_bytes/org.json legacy path fully removed (D-11); address_line2 propagated to all 3 render ctx sites (D-07)
+- [Phase 20]: OrgSettings.svelte address_line2 wired; bindings.ts regenerated (gitignored, no commit needed)
 
 ### Pending Todos
 
@@ -525,8 +527,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-14T00:26:43.048Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-07-14T00:31:43.714Z
+Stopped at: Completed 20-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
