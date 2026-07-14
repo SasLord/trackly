@@ -1,6 +1,6 @@
 ---
 slug: org-logo-preview
-status: awaiting_human_verify
+status: resolved
 trigger: |
   В Настройках, раздел Организация, если загрузить svg логотип то он не отображается в превью.
   А в Акте при Печати — вставляется правильно. Если подключиться через web-браузер, то там в
@@ -24,7 +24,7 @@ updated: 2026-07-14
 
 ## Current Focus
 
-status: fixing
+status: resolved
 
 reasoning_checkpoint:
   hypothesis: "Settings preview <img> gets a typeless blob: URL. (A) SVG needs an explicit image/svg+xml type or the browser won't render it → blank SVG on desktop; (B) server-mode CSP img-src is 'self' data: (no blob:) so ANY blob: URL is blocked in the LAN browser → blank PNG and SVG there."
