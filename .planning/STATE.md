@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: verifying
-last_updated: "2026-07-14T14:40:54.403Z"
+status: ready_to_plan
+last_updated: 2026-07-14T17:12:05.414Z
 last_activity: 2026-07-14
 progress:
   total_phases: 25
@@ -11,6 +11,7 @@ progress:
   total_plans: 152
   completed_plans: 152
   percent: 100
+stopped_at: Phase 21 complete (1/1) — ready to discuss Phase 22
 ---
 
 # Project State
@@ -20,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 21 — cartridge-drum-codes
+**Current focus:** Phase 22 — return act edit
 
 ## Current Position
 
-Phase: 21 (cartridge-drum-codes) — COMPLETE
+Phase: 22
 Milestone v1.1.2: near-complete — Phase 21 (CRT-01) executed 2026-07-14; Phase 22 (return-act-edit) executed, 2 human-UAT tests still pending
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-07-14 -- Phase 21 plan 01 executed (CRT-01 closed)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-14
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -41,7 +42,7 @@ Last activity: 2026-07-14 -- Phase 21 plan 01 executed (CRT-01 closed)
 
 **Velocity:**
 
-- Total plans completed: 113
+- Total plans completed: 114
 - Average duration: —
 - Total execution time: —
 
@@ -65,6 +66,7 @@ Last activity: 2026-07-14 -- Phase 21 plan 01 executed (CRT-01 closed)
 | 18 | 5 | - | - |
 | 22 | 6 | - | - |
 | 20 | 6 | - | - |
+| 21 | 1 | - | - |
 
 **Recent Trend:**
 
