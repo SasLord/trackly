@@ -10,6 +10,7 @@ use rusqlite::params;
 use trackly_app::dto::act::{
     ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto,
 };
+use trackly_app::dto::reports::OrgPatch;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::act_service::format_ru_date;
 use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
@@ -237,6 +238,83 @@ async fn html_acceptance_contains_required_blocks() {
         html.contains("Принялов П.П."),
         "receiver name missing from rendered HTML"
     );
+}
+
+/// PRN-01/ORG-02 (Plan 20-05, Task 1): `render_acceptance_pdf` must be at
+/// full org-requisite parity with `render_pdf` — every field populated via
+/// the production write path (`OrgDbService::save_fields`), including the
+/// new `address_line2` (ORG-02), must appear in BOTH rendered HTML strings.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_acceptance_full_org_parity_with_handover() {
+    let p = make_full_pipeline().await;
+
+    let org_db = Arc::new(OrgDbService::new(
+        p.writer.clone(),
+        p._readers.clone(),
+        Arc::new(SystemClock),
+        Arc::new(Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths")),
+    ));
+    org_db
+        .save_fields(
+            &Identity::trusted_admin(),
+            OrgPatch {
+                org_name: "ООО Паритет".into(),
+                inn: "7712345678".into(),
+                kpp: "771201001".into(),
+                address: "г. Москва, ул. Тестовая, д. 1".into(),
+                phone: "+7 495 000-00-00".into(),
+                fax: "+7 495 000-00-01".into(),
+                email: "info@paritet.test".into(),
+                okpo: "12345678".into(),
+                ogrn: "1027700000000".into(),
+                address_line2: "офис 305, корпус 2".into(),
+            },
+        )
+        .await
+        .expect("save_fields");
+
+    let device_id = seed_device(&p.writer, "HTML-Паритет-Ноутбук").await;
+    let handover_act =
+        create_handover(&p.acts, &[device_id], "Выдалов В.В.", "Получилов П.П.").await;
+
+    let handover_html = p
+        .acts
+        .render_pdf(handover_act.id)
+        .await
+        .expect("render_pdf");
+    let acceptance_html = p
+        .acts
+        .render_acceptance_pdf(
+            device_id,
+            "Отдалов О.О.".to_string(),
+            "Принялов П.П.".to_string(),
+            1_700_000_000,
+        )
+        .await
+        .expect("render_acceptance_pdf");
+
+    let expected = [
+        "7712345678",         // inn
+        "+7 495 000-00-00",   // phone
+        "+7 495 000-00-01",   // fax
+        "info@paritet.test",  // email
+        "12345678",           // okpo
+        "1027700000000",      // ogrn
+        "офис 305, корпус 2", // address_line2
+    ];
+    for value in expected {
+        assert!(
+            handover_html.contains(value),
+            "expected {value:?} in handover (render_pdf) HTML. Head: {:?}",
+            handover_html.chars().take(500).collect::<String>()
+        );
+        assert!(
+            acceptance_html.contains(value),
+            "expected {value:?} in acceptance (render_acceptance_pdf) HTML — \
+             PRN-01 parity failure. Head: {:?}",
+            acceptance_html.chars().take(500).collect::<String>()
+        );
+    }
 }
 
 /// D-14 item 2: 1-vs-N devices — a multi-device handover renders every
