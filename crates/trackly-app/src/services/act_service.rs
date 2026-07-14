@@ -2684,22 +2684,50 @@ impl ActService {
         date_utc: i64,
     ) -> Result<String, AppError> {
         let pipeline = self.pdf_pipeline()?;
-        let org = pipeline.organization.read().await?;
-        // Phase 16 (D-11): legacy org.json logo has no BLOB storage — read the
-        // canonicalized local file's bytes (path-traversal-guarded via
-        // safe_logo_canonical) and embed as a base64 data: URI.
-        let logo_data_uri =
-            pipeline
-                .organization
-                .read_logo_bytes(&org)
-                .await?
-                .map(|(bytes, mime)| {
-                    use base64::Engine;
-                    format!(
-                        "data:{mime};base64,{}",
-                        base64::engine::general_purpose::STANDARD.encode(bytes)
-                    )
-                });
+        // Phase 20 (D-02/D-03/D-11): org-реквизиты и логотип читаются
+        // исключительно из `org_settings` через `OrgDbService::get_for_pdf` —
+        // тот же путь, что уже использует `render_pdf` (handover) и
+        // `report_service::export_pdf`. Legacy `pipeline.organization`
+        // (org.json) больше НЕ читается для реквизитов/логотипа acceptance —
+        // `org_legacy` используется только как структурный degrade-fallback
+        // для None-ветки (org_db не подключён, напр. лёгкие тест-фикстуры без
+        // `with_org_db`), зеркаля defensive-форму `render_pdf`.
+        let org_legacy = pipeline.organization.read().await?;
+        let (org_dto, logo_bytes, logo_mime) = match pipeline.org_db {
+            Some(org_db) => {
+                let (dto, logo_bytes, logo_mime) = org_db.get_for_pdf().await?;
+                (dto, logo_bytes, logo_mime)
+            }
+            None => (
+                crate::dto::reports::OrgSettingsDto {
+                    org_name: org_legacy.name.clone(),
+                    inn: org_legacy.inn.clone(),
+                    kpp: org_legacy.kpp.clone(),
+                    address: org_legacy.address.clone(),
+                    has_logo: false,
+                    phone: String::new(),
+                    fax: String::new(),
+                    email: String::new(),
+                    okpo: String::new(),
+                    ogrn: String::new(),
+                    address_line2: String::new(),
+                },
+                None,
+                None,
+            ),
+        };
+        // T-20-02-03 mitigation (mirrors T-16-05): `logo_bytes` originates
+        // exclusively from `OrgDbService::get_for_pdf` (org_settings BLOB,
+        // written only via authenticated Settings UI) — never from
+        // request-supplied bytes.
+        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
+            use base64::Engine;
+            let mime = logo_mime.as_deref().unwrap_or("image/png");
+            format!(
+                "data:{mime};base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
+        });
         // Phase 16 (D-04/D-10): read the HTML template source from
         // templates/act_acceptance.html (file-first, embedded-default
         // fallback) instead of the DB-backed `document_templates` table.
@@ -2758,10 +2786,16 @@ impl ActService {
 
         let ctx = serde_json::json!({
             "org": {
-                "name": org.name,
-                "inn": org.inn,
-                "kpp": org.kpp,
-                "address": org.address,
+                "name": org_dto.org_name,
+                "inn": org_dto.inn,
+                "kpp": org_dto.kpp,
+                "address": org_dto.address,
+                "address_line2": org_dto.address_line2,
+                "phone": org_dto.phone,
+                "fax": org_dto.fax,
+                "email": org_dto.email,
+                "okpo": org_dto.okpo,
+                "ogrn": org_dto.ogrn,
                 "logo_data_uri": logo_data_uri,
             },
             "device": device_json,
