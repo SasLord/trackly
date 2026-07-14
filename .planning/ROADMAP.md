@@ -273,7 +273,7 @@ Plans:
 
 **Wave 2** *(depends on Wave 1 — параллельны друг другу, нет пересечения файлов)*
 
-- [ ] 20-02-PLAN.md — PRN-01: render_acceptance_pdf на org_db.get_for_pdf() (D-02/D-03/D-11), address_line2 в ctx render_pdf/report_service
+- [x] 20-02-PLAN.md — PRN-01: render_acceptance_pdf на org_db.get_for_pdf() (D-02/D-03/D-11), address_line2 в ctx render_pdf/report_service
 - [ ] 20-03-PLAN.md — Шаблоны: act_acceptance.html паритет с act_handover.html (D-01), address_line2 во всех трёх шаблонах (D-06)
 - [ ] 20-04-PLAN.md — Настройки: поле «Адрес (2-я строка)» в OrgSettings.svelte (D-05), регенерация bindings.ts
 
@@ -376,7 +376,7 @@ Plans:
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
 | 18. Автокомплит и дропдауны | v1.1.2 | 5/5 | Complete    | 2026-07-11 |
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
-| 20. Печать актов и организация | v1.1.2 | 1/6 | In Progress|  |
+| 20. Печать актов и организация | v1.1.2 | 2/6 | In Progress|  |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 
