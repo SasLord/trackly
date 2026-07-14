@@ -356,8 +356,11 @@ impl TemplateService {
 /// gracefully rather than erroring on an unrecognized kind.
 fn demo_context_for_kind(kind: &str) -> serde_json::Value {
     // Shared org block — matches org_settings requisites referenced by all
-    // 3 templates' header blocks (org.name/inn/kpp/address/phone/fax/email/
-    // okpo/ogrn/logo_data_uri). `logo_data_uri: null` (D-11/D-08 — replaces
+    // 3 templates' header blocks (org.name/inn/kpp/address/address_line2/
+    // phone/fax/email/okpo/ogrn/logo_data_uri). `address_line2` (Phase 20,
+    // ORG-02) must be present or the templates' `{% if org.address_line2 %}`
+    // guard errors under UndefinedBehavior::Strict.
+    // `logo_data_uri: null` (D-11/D-08 — replaces
     // the old krilla-era `org.logo_path` key, since act_handover.html /
     // act_acceptance.html / report.html now all expect `logo_data_uri`).
     let org = serde_json::json!({
@@ -365,6 +368,7 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
         "inn": "7700000000",
         "kpp": "770000000",
         "address": "г. Москва, ул. Примерная, д. 1",
+        "address_line2": "офис 305, корпус 2",
         "logo_data_uri": null,
         "phone": "(3919) 75-90-98",
         "fax": "(3919) 75-08-59",
