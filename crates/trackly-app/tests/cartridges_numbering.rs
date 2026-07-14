@@ -35,7 +35,7 @@ async fn seed_model(svc: &CartridgeService) -> i64 {
     .id
 }
 
-/// Spawn 50 concurrent creates; verify all 50 codes are unique and in C-NNNNNN format.
+/// Spawn 50 concurrent creates; verify all 50 codes are unique and in C-NNNN format (min 4 digits).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_50_unique_codes() {
     tokio::time::timeout(Duration::from_secs(60), async {

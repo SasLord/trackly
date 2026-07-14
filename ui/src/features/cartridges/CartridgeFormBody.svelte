@@ -51,7 +51,7 @@
   ];
   const stateOptions = $derived(kindId === 2 ? DRUM_STATES : CARTRIDGE_STATES);
   const stateLabel = $derived(kindId === 2 ? 'Состояние' : 'Состояние заряда');
-  const codePlaceholder = $derived(kindId === 2 ? 'D-XXXXXX' : 'C-XXXXXX');
+  const codePlaceholder = $derived(kindId === 2 ? 'D-XXXX' : 'C-XXXX');
 
   // Form fields — initialised from target (edit) or defaults (create)
   let code = $state(target?.code ?? '');
