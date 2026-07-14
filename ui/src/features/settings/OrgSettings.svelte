@@ -16,12 +16,14 @@
     email: string;
     okpo: string;
     ogrn: string;
+    address_line2: string;
   }
 
   let orgName = $state('');
   let inn = $state('');
   let kpp = $state('');
   let address = $state('');
+  let addressLine2 = $state('');
   let hasLogo = $state(false);
   let phone = $state('');
   let fax = $state('');
@@ -43,6 +45,7 @@
       inn = dto.inn;
       kpp = dto.kpp;
       address = dto.address;
+      addressLine2 = dto.address_line2;
       hasLogo = dto.has_logo;
       phone = dto.phone;
       fax = dto.fax;
@@ -93,6 +96,7 @@
           inn,
           kpp,
           address,
+          address_line2: addressLine2,
           phone,
           fax,
           email,
@@ -252,6 +256,17 @@
         type="text"
         bind:value={address}
         placeholder="г. Москва, ул. Примерная, д. 1"
+      />
+    </div>
+
+    <div class="form-field form-field--full">
+      <label class="form-label" for="org-address-line2">Адрес (2-я строка)</label>
+      <input
+        id="org-address-line2"
+        class="form-input"
+        type="text"
+        bind:value={addressLine2}
+        placeholder="офис 305, корпус 2"
       />
     </div>
 
