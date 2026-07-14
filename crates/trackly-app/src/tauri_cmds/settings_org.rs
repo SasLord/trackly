@@ -10,7 +10,9 @@ use std::path::Path;
 use tauri_plugin_shell::ShellExt;
 
 use crate::context::AppCtx;
-use crate::dto::reports::{BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem};
+use crate::dto::reports::{
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
+};
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};
@@ -33,8 +35,8 @@ pub async fn build_settings_save_org_fields(
     ctx.org_db.save_fields(caller_identity, patch).await
 }
 
-pub async fn build_settings_get_org_logo(ctx: &AppCtx) -> Result<Vec<u8>, AppError> {
-    Ok(ctx.org_db.get_logo_bytes().await?.unwrap_or_default())
+pub async fn build_settings_get_org_logo(ctx: &AppCtx) -> Result<OrgLogoDto, AppError> {
+    ctx.org_db.get_logo().await
 }
 
 pub async fn build_settings_save_org_logo(
@@ -312,7 +314,9 @@ pub async fn settings_save_org_fields(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn settings_get_org_logo(state: tauri::State<'_, AppCtx>) -> Result<Vec<u8>, AppError> {
+pub async fn settings_get_org_logo(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<OrgLogoDto, AppError> {
     build_settings_get_org_logo(state.inner()).await
 }
 

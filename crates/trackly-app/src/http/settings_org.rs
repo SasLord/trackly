@@ -18,7 +18,9 @@ use tower_sessions::Session;
 use trackly_core::auth::{authorize, Action};
 
 use crate::context::AppCtx;
-use crate::dto::reports::{BackupConfigPatch, OrgPatch, OrgSettingsDto, TemplateEditorItem};
+use crate::dto::reports::{
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
+};
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
@@ -102,7 +104,7 @@ pub async fn handler_get_org(
 pub async fn handler_get_org_logo(
     State(ctx): State<AppCtx>,
     session: Session,
-) -> Result<Json<Vec<u8>>, AppErrorResponse> {
+) -> Result<Json<OrgLogoDto>, AppErrorResponse> {
     let _identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

@@ -30,7 +30,17 @@
   let email = $state('');
   let okpo = $state('');
   let ogrn = $state('');
-  let logoObjectUrl = $state<string | null>(null);
+  // Logo DTO from backend (settings_get_org_logo). logo_bytes/logo_mime are
+  // omitted/null when no logo is stored.
+  interface OrgLogoDto {
+    logo_bytes?: number[] | null;
+    logo_mime?: string | null;
+  }
+
+  // Preview <img> src. A `data:${mime};base64,...` URL — carries the stored MIME
+  // so SVG renders (needs explicit image/svg+xml) and it is permitted by the
+  // server-mode CSP `img-src 'self' data:` (blob: URLs are blocked there).
+  let logoSrc = $state<string | null>(null);
   let saving = $state(false);
   let uploading = $state(false);
   let logoError = $state<string | null>(null);
@@ -66,25 +76,28 @@
 
   async function loadLogo() {
     try {
-      const bytes = await apiCall<number[]>('settings_get_org_logo', {});
-      const ua = new Uint8Array(bytes);
-      const blob = new Blob([ua]);
-      if (logoObjectUrl) {
-        URL.revokeObjectURL(logoObjectUrl);
+      const dto = await apiCall<OrgLogoDto>('settings_get_org_logo', {});
+      if (!dto.logo_bytes || dto.logo_bytes.length === 0) {
+        logoSrc = null;
+        return;
       }
-      logoObjectUrl = URL.createObjectURL(blob);
+      const mime = dto.logo_mime || 'image/png';
+      // Build a data: URL. Base64-encode the bytes (chunked to avoid blowing the
+      // call-stack in String.fromCharCode for larger — up to 512 KiB — logos).
+      const ua = new Uint8Array(dto.logo_bytes);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < ua.length; i += chunk) {
+        binary += String.fromCharCode(...ua.subarray(i, i + chunk));
+      }
+      logoSrc = `data:${mime};base64,${btoa(binary)}`;
     } catch {
-      logoObjectUrl = null;
+      logoSrc = null;
     }
   }
 
   onMount(() => {
     loadOrg();
-    return () => {
-      if (logoObjectUrl) {
-        URL.revokeObjectURL(logoObjectUrl);
-      }
-    };
   });
 
   async function saveOrg() {
@@ -202,10 +215,7 @@
     try {
       await apiCall<void>('settings_remove_org_logo', {});
       hasLogo = false;
-      if (logoObjectUrl) {
-        URL.revokeObjectURL(logoObjectUrl);
-        logoObjectUrl = null;
-      }
+      logoSrc = null;
       pushToast('success', 'Логотип удалён');
     } catch (e: unknown) {
       const msg =
@@ -335,10 +345,10 @@
   <div class="logo-section">
     <h3 class="subsection-title">Логотип организации</h3>
     <div class="logo-area">
-      {#if hasLogo && logoObjectUrl}
+      {#if hasLogo && logoSrc}
         <div class="logo-display">
           <!-- T-07-04-05: render as <img> — NOT raw SVG/HTML, scripts are blocked in img context -->
-          <img src={logoObjectUrl} alt="Логотип организации" class="logo-img" />
+          <img src={logoSrc} alt="Логотип организации" class="logo-img" />
           <div class="logo-actions">
             <Button variant="ghost" size="sm" onclick={removeLogo}>Удалить логотип</Button>
             <Button variant="secondary" size="sm" loading={uploading} onclick={uploadLogo}>

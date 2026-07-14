@@ -19,7 +19,7 @@ use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::Paths;
 
-use crate::dto::reports::OrgSettingsDto;
+use crate::dto::reports::{OrgLogoDto, OrgSettingsDto};
 use crate::services::organization_service::OrgData;
 
 const LOGO_MAX_BYTES: usize = 512 * 1024; // 512 KiB (T-07-02-01 + T-07-02-04)
@@ -186,6 +186,34 @@ impl OrgDbService {
                 .map_err(map_rusqlite)
             })
             .await
+    }
+
+    /// Возвращает лого-BLOB вместе с его MIME-типом как `OrgLogoDto`.
+    ///
+    /// Используется превью в Настройках (ORG logo preview): фронтенд строит
+    /// `data:${mime};base64,...` URL, чтобы (а) корректно рендерить SVG (нужен
+    /// явный `image/svg+xml`) и (б) обходить server-mode CSP `img-src 'self' data:`,
+    /// который блокирует `blob:` URL в браузере. `logo_bytes`/`logo_mime` = None,
+    /// если лого не загружено.
+    pub async fn get_logo(&self) -> Result<OrgLogoDto, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<OrgLogoDto, AppError> {
+            let conn = readers.acquire();
+            let result: rusqlite::Result<(Option<Vec<u8>>, Option<String>)> = conn.query_row(
+                "SELECT logo_blob, logo_mime FROM org_settings WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            );
+            let (logo_bytes, logo_mime) = result.map_err(map_rusqlite)?;
+            Ok(OrgLogoDto {
+                logo_bytes,
+                logo_mime,
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking OrgDbService::get_logo: {e}"),
+        })?
     }
 
     /// Возвращает сырые байты лого или None если лого нет.
