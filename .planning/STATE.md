@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: ready_to_plan
-last_updated: 2026-07-14T12:36:10.807Z
+status: ready_to_execute
+last_updated: 2026-07-14T21:13:00.000Z
 last_activity: 2026-07-14
 progress:
   total_phases: 24
   completed_phases: 23
-  total_plans: 151
+  total_plans: 152
   completed_plans: 151
   percent: 96
-stopped_at: Phase 20 complete (6/6) — ready to discuss Phase 22
+stopped_at: Phase 21 planned (1/1 plan, plan-checker PASS) — ready to execute
 ---
 
 # Project State
@@ -21,13 +21,13 @@ stopped_at: Phase 20 complete (6/6) — ready to discuss Phase 22
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 22 — return act edit
+**Current focus:** Phase 21 — cartridge/drum autocodes (C-XXXX / D-XXXX)
 
 ## Current Position
 
-Phase: 22
-Milestone v1.1.2: NOT complete — phases 20 (PRN-01/ORG-01/ORG-02) & 21 (CRT-01) unplanned/unstarted
-Plan: Not started
+Phase: 21
+Milestone v1.1.2: near-complete — Phase 21 (CRT-01) planned & ready to execute; Phase 22 (return-act-edit) executed, 2 human-UAT tests still pending
+Plan: Phase 21 planned (21-01-PLAN.md, plan-checker PASS) — not yet executed
 Status: Ready to plan
 Last activity: 2026-07-14
 
