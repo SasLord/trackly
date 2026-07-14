@@ -39,6 +39,45 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
     ("report.html", include_str!("../../templates/report.html")),
 ];
 
+/// Registry of previously-shipped default bodies, keyed by filename (D-12).
+///
+/// `template_service.rs`'s DB-backed templates detect "untouched" via an
+/// explicit `is_default` BOOLEAN column, flipped to 0 the moment a user calls
+/// `update_body`. File-based templates have no such companion metadata slot —
+/// a template is just bytes on disk. So `upgrade_untouched_defaults_on_startup`
+/// detects "untouched" STRUCTURALLY: the on-disk body is byte-identical to the
+/// current bundled default (already-current, no-op) OR to any body in this
+/// registry (a known prior default → provably not user-customized → safe to
+/// upgrade). Anything else is treated as user-customized and never overwritten.
+///
+/// **Extension point:** whenever a body in `DEFAULT_HTML_TEMPLATES` changes
+/// again in a future phase, the PRE-CHANGE body MUST be captured as a new
+/// snapshot (a new sibling directory, e.g. `_legacy_defaults/v21/`) and added
+/// here as an additional entry in that filename's slice — otherwise installs
+/// that predate THAT phase stop being recognized as untouched and silently
+/// stop receiving upgrades. Forgetting this only causes a MISSED upgrade (file
+/// stays on older-but-valid content), never a wrongful overwrite.
+pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
+    (
+        "act_handover.html",
+        &[include_str!(
+            "../../templates/_legacy_defaults/v20/act_handover.html"
+        )],
+    ),
+    (
+        "act_acceptance.html",
+        &[include_str!(
+            "../../templates/_legacy_defaults/v20/act_acceptance.html"
+        )],
+    ),
+    (
+        "report.html",
+        &[include_str!(
+            "../../templates/_legacy_defaults/v20/report.html"
+        )],
+    ),
+];
+
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins
 /// when set (non-empty); otherwise falls back to `paths.templates_dir()`
 /// (`<exe_dir>/templates`).
@@ -72,6 +111,52 @@ pub fn materialize_defaults_on_startup(templates_dir: &Path) -> Result<(), AppEr
             })?;
             tracing::info!("Materialized default HTML template at {}", path.display());
         }
+    }
+    Ok(())
+}
+
+/// Auto-upgrades on-disk template files that are provably untouched by the
+/// user, so bundled-default changes reach installs that already materialized
+/// these files in a prior phase — not only fresh installs (D-12).
+///
+/// `materialize_defaults_on_startup` is insert-only and `load_template` always
+/// prefers the on-disk copy, so without this pass a template edited in the
+/// bundle (e.g. Phase 20's header/`address_line2` changes) never reaches any
+/// existing install. This function runs immediately after materialize and, for
+/// each embedded default:
+///
+/// - file missing/unreadable → `continue` (materialize owns the missing case);
+/// - on-disk content == current bundled default → `continue` (already current);
+/// - on-disk content == any `KNOWN_LEGACY_DEFAULTS` snapshot for this filename
+///   → overwrite with the current default (provably untouched → safe upgrade);
+/// - otherwise → leave untouched (user-customized; fail closed — D-12's core
+///   safety property, never overwrite ambiguous content).
+pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(), AppError> {
+    for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
+        let path = templates_dir.join(filename);
+        let on_disk = match std::fs::read_to_string(&path) {
+            Ok(body) => body,
+            Err(_) => continue, // missing/unreadable — materialize owns this case
+        };
+        if &on_disk == current_default {
+            continue; // already current — no write
+        }
+        let legacy_bodies = KNOWN_LEGACY_DEFAULTS
+            .iter()
+            .find(|(name, _)| name == filename)
+            .map(|(_, bodies)| *bodies)
+            .unwrap_or(&[]);
+        if legacy_bodies.iter().any(|legacy| *legacy == on_disk) {
+            std::fs::write(&path, current_default).map_err(|e| AppError::Internal {
+                source_chain: format!("write({}) failed: {e}", path.display()),
+            })?;
+            tracing::info!(
+                "Auto-upgraded untouched default HTML template at {}",
+                path.display()
+            );
+        }
+        // else: user-customized (matches neither current nor any known legacy
+        // default) — leave untouched, fail closed.
     }
     Ok(())
 }
@@ -138,6 +223,76 @@ mod tests {
 
         let contents = std::fs::read_to_string(&handover_path).expect("still exists");
         assert_eq!(contents, "<html>CUSTOM EDIT</html>");
+    }
+
+    /// D-12 Test 1: a pre-materialized OLD (legacy) file — the exact shape a
+    /// Phase 16/17 install has on disk — gets upgraded to the current bundled
+    /// body. Uses pre-existing legacy content, NOT a fresh/empty dir, so it
+    /// fails if `upgrade_untouched_defaults_on_startup` is reverted to a no-op.
+    #[test]
+    fn upgrade_replaces_untouched_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // Pre-populate disk with the OLD (pre-Phase-20) content for each file.
+        for (filename, _current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let legacy = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .and_then(|(_, bodies)| bodies.first())
+                .expect("legacy snapshot registered for filename");
+            std::fs::write(dir.path().join(filename), legacy).expect("write legacy body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let contents =
+                std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded to the current bundled body"
+            );
+        }
+    }
+
+    /// D-12 Test 2: a user-customized file (matches neither the current default
+    /// nor any known legacy default) is NEVER overwritten — the fail-closed
+    /// safety guarantee (T-20-06-01 mitigation).
+    #[test]
+    fn upgrade_leaves_user_customized_file_untouched() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let custom = "<html>МОЙ КАСТОМНЫЙ ШАБЛОН</html>";
+        let path = dir.path().join("act_handover.html");
+        std::fs::write(&path, custom).expect("write custom body");
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        let contents = std::fs::read_to_string(&path).expect("still exists");
+        assert_eq!(contents, custom, "user-customized file must not be overwritten");
+    }
+
+    /// D-12 Test 3: a file already on the current bundled body is a no-op —
+    /// no wrongful rewrite, content stays identical.
+    #[test]
+    fn upgrade_is_noop_when_file_already_current() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let current = DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(name, _)| *name == "act_handover.html")
+            .map(|(_, body)| *body)
+            .expect("act_handover.html default present");
+        let path = dir.path().join("act_handover.html");
+        std::fs::write(&path, current).expect("write current body");
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        let contents = std::fs::read_to_string(&path).expect("still exists");
+        assert_eq!(contents, current, "already-current file must be unchanged");
     }
 
     #[test]
