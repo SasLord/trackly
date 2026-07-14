@@ -34,7 +34,7 @@
 
 ### Картриджи (CRT)
 
-- [ ] **CRT-01**: Автоматически присваиваемый Код нового картриджа имеет формат `C-XXXX` (вместо `C-XXXXXX`), а нового фотобарабана — `D-XXXX`.
+- [x] **CRT-01**: Автоматически присваиваемый Код нового картриджа имеет формат `C-XXXX` (вместо `C-XXXXXX`), а нового фотобарабана — `D-XXXX`.
 
 ## Future Requirements
 
@@ -74,7 +74,7 @@
 | PRN-01 | Phase 20 | Complete |
 | ORG-01 | Phase 20 | Complete |
 | ORG-02 | Phase 20 | Complete |
-| CRT-01 | Phase 21 | Pending |
+| CRT-01 | Phase 21 | Complete |
 
 **Coverage:**
 - v1.1.2 requirements: 11 total

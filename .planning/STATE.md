@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: ready_to_execute
-last_updated: 2026-07-14T21:13:00.000Z
+status: verifying
+last_updated: "2026-07-14T14:40:54.403Z"
 last_activity: 2026-07-14
 progress:
-  total_phases: 24
-  completed_phases: 23
+  total_phases: 25
+  completed_phases: 25
   total_plans: 152
-  completed_plans: 151
-  percent: 96
-stopped_at: Phase 21 planned (1/1 plan, plan-checker PASS) — ready to execute
+  completed_plans: 152
+  percent: 100
 ---
 
 # Project State
@@ -21,15 +20,15 @@ stopped_at: Phase 21 planned (1/1 plan, plan-checker PASS) — ready to execute
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 21 — cartridge/drum autocodes (C-XXXX / D-XXXX)
+**Current focus:** Phase 21 — cartridge-drum-codes
 
 ## Current Position
 
-Phase: 21
-Milestone v1.1.2: near-complete — Phase 21 (CRT-01) planned & ready to execute; Phase 22 (return-act-edit) executed, 2 human-UAT tests still pending
-Plan: Phase 21 planned (21-01-PLAN.md, plan-checker PASS) — not yet executed
-Status: Ready to plan
-Last activity: 2026-07-14
+Phase: 21 (cartridge-drum-codes) — COMPLETE
+Milestone v1.1.2: near-complete — Phase 21 (CRT-01) executed 2026-07-14; Phase 22 (return-act-edit) executed, 2 human-UAT tests still pending
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-07-14 -- Phase 21 plan 01 executed (CRT-01 closed)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -197,6 +196,7 @@ Last activity: 2026-07-14
 | Phase 20 P02 | 15min | 2 tasks | 2 files |
 | Phase 20 P03 | 10min | 2 tasks | 3 files |
 | Phase 20 P04 | 8min | 2 tasks | 1 files |
+| Phase 21 P01 | 22min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -468,6 +468,8 @@ Recent decisions affecting current work:
 - [Phase 20]: 20-01: embed_migrations! stale incremental-build cache — touching crates/trackly-infra/src/db/migrations.rs forces rebuild if new migration files aren't picked up by test runs
 - [Phase 20]: 20-02: render_acceptance_pdf rewritten to org_db.get_for_pdf() parity with render_pdf; read_logo_bytes/org.json legacy path fully removed (D-11); address_line2 propagated to all 3 render ctx sites (D-07)
 - [Phase 20]: OrgSettings.svelte address_line2 wired; bindings.ts regenerated (gitignored, no commit needed)
+- [Phase 21]: 21-01: format!("{prefix}-{seq:04}") is minimum-width, not fixed — no migration needed; existing 6-digit codes stay valid distinct strings
+- [Phase 21]: 21-01: cartridges_numbering.rs assertion widened to len >= 6 (min 4 digits) per plan spec, forward-compatible with counters > 9999
 
 ### Pending Todos
 
@@ -529,8 +531,8 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-14T00:31:43.714Z
-Stopped at: Completed 20-04-PLAN.md
+Last session: 2026-07-14T14:40:54.395Z
+Stopped at: Completed 21-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
