@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
 status: executing
-last_updated: "2026-07-13T23:25:07.748Z"
-last_activity: 2026-07-13 -- Phase 20 planning complete
+last_updated: "2026-07-14T00:06:52.480Z"
+last_activity: 2026-07-13
 progress:
   total_phases: 24
   completed_phases: 23
   total_plans: 151
-  completed_plans: 145
+  completed_plans: 146
   percent: 96
 ---
 
@@ -20,15 +20,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 20 — Печать актов и организация (не спланирована)
+**Current focus:** Phase 20 — print-acts-org
 
 ## Current Position
 
-Phase: 22 (return-act-edit) — COMPLETE (6/6 plans, ACT-03 done)
+Phase: 20 (print-acts-org) — EXECUTING
 Milestone v1.1.2: NOT complete — phases 20 (PRN-01/ORG-01/ORG-02) & 21 (CRT-01) unplanned/unstarted
-Plan: Next up — plan Phase 20 or Phase 21 (both independent of Phase 22)
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-13 -- Phase 20 planning complete
+Last activity: 2026-07-13
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -191,6 +191,7 @@ Last activity: 2026-07-13 -- Phase 20 planning complete
 | Phase 22 P04 | 25min | 4 tasks | 3 files |
 | Phase 22 P05 | 96min | 2 tasks | 3 files |
 | Phase 22 P22-06 | 60 | 2 tasks | 3 files |
+| Phase 20 P01 | 25min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -458,6 +459,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 22-06: update_return step 8a added-loop ports do_return's already_returned+qty<=handover_qty bound (WR-03)
 - [Phase ?]: 22-06: parent_act_id .expect() -> AppError::Internal domain error inside single-writer closure (WR-02) — no panic path poisons the write task
 - [Phase ?]: 22-06: V034 comment corrected (WR-04) — one-time backfill, NOT safe to re-run manually post-Phase-22; comment edit changes refinery checksum so existing dev DBs must be recreated (tests use fresh temp DBs, unaffected)
+- [Phase 20]: 20-01: V035 is next-sequential migration (after V034); address_line2 appended as LAST field/column everywhere (no ordinal shift to existing columns), per D-04/D-10
+- [Phase 20]: 20-01: embed_migrations! stale incremental-build cache — touching crates/trackly-infra/src/db/migrations.rs forces rebuild if new migration files aren't picked up by test runs
 
 ### Pending Todos
 
@@ -519,9 +522,9 @@ un-automatable human-verify items (no FE test runner by design).
 
 ## Session Continuity
 
-Last session: 2026-07-13T16:18:41.410Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-print-acts-org/20-CONTEXT.md
+Last session: 2026-07-14T00:06:52.472Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
