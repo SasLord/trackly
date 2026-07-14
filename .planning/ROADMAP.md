@@ -279,7 +279,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2 — нужны и render-фикс, и шаблоны)*
 
-- [ ] 20-05-PLAN.md — Regression-тесты: PRN-01 паритет acceptance/handover, ORG-01 SVG-`<script>` img-only (D-09), ORG-02 address_line2 в report.html
+- [x] 20-05-PLAN.md — Regression-тесты: PRN-01 паритет acceptance/handover, ORG-01 SVG-`<script>` img-only (D-09), ORG-02 address_line2 в report.html
 - [ ] 20-06-PLAN.md — Auto-upgrade-untouched-defaults (D-12): доводит правки 20-03 до УЖЕ существующих установок (не только fresh installs), regression-тест на пред-материализованный старый файл
 
 ---
@@ -376,7 +376,7 @@ Plans:
 | 17. Отчёты и Шаблоны через HTML-печать | v1.2 | 7/7 | Complete    | 2026-07-07 |
 | 18. Автокомплит и дропдауны | v1.1.2 | 5/5 | Complete    | 2026-07-11 |
 | 19. Акты — дата и редактирование | v1.1.2 | 10/10 | Complete   | 2026-07-11 |
-| 20. Печать актов и организация | v1.1.2 | 4/6 | In Progress|  |
+| 20. Печать актов и организация | v1.1.2 | 5/6 | In Progress|  |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 0/TBD | Not started | - |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 
