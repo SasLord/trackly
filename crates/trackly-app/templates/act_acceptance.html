@@ -7,8 +7,9 @@
   header (logo + org requisites) -> heading -> date/giver/receiver key-value
   rows -> device key-value rows -> single signature block.
 
-  Context (smaller than handover — see act_service::render_acceptance_pdf):
-    org.{name,inn,kpp,address,logo_data_uri}
+  Context (full org header, brought to parity with act_handover.html per
+  PRN-01/D-01/D-02/D-03 — Phase 20):
+    org.{name,inn,kpp,address,address_line2,logo_data_uri,phone,fax,email,okpo,ogrn}
     device.{name,inventory_no,serial_no,model,condition}
     document.{giver_name, receiver_name, date_human}
 
@@ -104,6 +105,12 @@
       {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
       {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
       {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.address_line2 %}<div>{{ org.address_line2 }}</div>{%- endif %}
+      {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
+      {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
+      {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+      {%- if org.okpo %}<div>ОКПО {{ org.okpo }}</div>{%- endif %}
+      {%- if org.ogrn %}<div>ОГРН {{ org.ogrn }}</div>{%- endif %}
     </div>
   </div>
 
