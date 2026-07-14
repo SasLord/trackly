@@ -1431,20 +1431,20 @@ mod tests {
         let (code1, was_auto) =
             SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code1");
         assert!(was_auto);
-        assert_eq!(code1, "C-000001");
+        assert_eq!(code1, "C-0001");
         tx.commit().expect("commit");
 
         let tx2 = conn.transaction().expect("tx2");
         let (code2, _) =
             SqliteCartridgeRepository::assign_code_in_tx(&tx2, None, 1, now).expect("code2");
-        assert_eq!(code2, "C-000002");
+        assert_eq!(code2, "C-0002");
         tx2.commit().expect("commit");
     }
 
     #[test]
     fn assign_code_drum_uses_d_prefix_and_separate_counter() {
-        // UAT round 3 №4: фотобарабаны (kind 2) получают код D-NNNNNN из
-        // отдельного счётчика drum_seq, не конфликтуя с C-NNNNNN картриджей.
+        // UAT round 3 №4: фотобарабаны (kind 2) получают код D-NNNN из
+        // отдельного счётчика drum_seq, не конфликтуя с C-NNNN картриджей.
         let (mut conn, _g) = fresh_conn();
         let now = 1_700_000_000_i64;
 
@@ -1457,9 +1457,9 @@ mod tests {
             SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("drum2");
         tx.commit().expect("commit");
 
-        assert_eq!(c_code, "C-000001");
-        assert_eq!(d_code, "D-000001");
-        assert_eq!(d_code2, "D-000002");
+        assert_eq!(c_code, "C-0001");
+        assert_eq!(d_code, "D-0001");
+        assert_eq!(d_code2, "D-0002");
     }
 
     #[test]
