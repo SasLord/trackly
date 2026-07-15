@@ -20,6 +20,9 @@
 //! Coverage (Plan 19-07, gap closure, 2 tests):
 //!   12. rename_with_return_frees_old_number (WR-01)
 //!   13. complectation_edit_writes_audit (WR-03)
+//!
+//! Coverage (Quick task 260715-gt2, regression, 1 test):
+//!   14. add_multiple_positions_transitions_all_devices
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -261,6 +264,75 @@ async fn add_position_transitions_device() {
     })
     .await
     .expect("add_position budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 2b (GT2 260715-gt2 regression): add_multiple_positions_transitions_all_devices
+// ---------------------------------------------------------------------------
+//
+// `add_position_transitions_device` above only ever exercises adding exactly
+// ONE new device. The UI is about to start relying on `update()` correctly
+// handling N>1 newly-added devices in a single call (multi-qty positions).
+// This locks in that the `added: Vec<i64>` loop in `ActService::update`
+// (act_service.rs) is N-safe, not just N=1-safe.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn add_multiple_positions_transitions_all_devices() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_ids = seed_devices_with_state(&svc.writer, 3, loc_a, "Новое").await;
+
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        // All 3 extra devices start на_складе.
+        for &id in &extra_ids {
+            let pre = read_device_snap(&svc, id).await;
+            assert_eq!(pre.status_id, 1, "extra device {id} starts на_складе");
+        }
+
+        let mut new_device_ids = device_ids.clone();
+        new_device_ids.extend(&extra_ids);
+        let update = update_dto_from(&handover, &new_device_ids);
+
+        let updated = svc.update(update).await.expect("update add multiple positions");
+        assert_eq!(updated.items.len(), 4, "act now has 4 items (1 original + 3 new)");
+        for &id in &extra_ids {
+            assert!(
+                updated.items.iter().any(|it| it.device_id == id),
+                "new device {id} present in updated items"
+            );
+        }
+
+        let readers = svc.readers.clone();
+        let act_id = handover.id;
+        for &id in &extra_ids {
+            let post = read_device_snap(&svc, id).await;
+            assert_eq!(post.status_id, 2, "device {id} now в_работе");
+            assert_eq!(post.location_id, Some(loc_b), "device {id} at act's location");
+
+            let readers = readers.clone();
+            let count: i64 = tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                conn.query_row(
+                    "SELECT COUNT(*) FROM audit_log \
+                     WHERE entity_type = 'device' AND entity_id = ?1 AND action = 'update' \
+                       AND json_extract(payload_json, '$.act_id') = ?2 \
+                       AND json_extract(payload_json, '$.kind') = 'handover'",
+                    params![id, act_id],
+                    |r| r.get(0),
+                )
+                .expect("count audit")
+            })
+            .await
+            .expect("spawn_blocking");
+            assert_eq!(count, 1, "one audit row for newly added device {id}");
+        }
+    })
+    .await
+    .expect("add_multiple_positions budget");
 }
 
 // ---------------------------------------------------------------------------
