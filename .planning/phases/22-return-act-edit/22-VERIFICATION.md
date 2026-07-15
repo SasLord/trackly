@@ -1,7 +1,8 @@
 ---
 phase: 22-return-act-edit
 verified: 2026-07-13T15:02:52Z
-status: human_needed
+status: verified
+human_verification_completed: 2026-07-15  # 2/2 live UAT passed, see 22-HUMAN-UAT.md
 score: 21/21 must-haves verified
 overrides_applied: 0
 human_verification:
