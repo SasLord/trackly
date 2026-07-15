@@ -297,8 +297,15 @@ async fn add_multiple_positions_transitions_all_devices() {
         new_device_ids.extend(&extra_ids);
         let update = update_dto_from(&handover, &new_device_ids);
 
-        let updated = svc.update(update).await.expect("update add multiple positions");
-        assert_eq!(updated.items.len(), 4, "act now has 4 items (1 original + 3 new)");
+        let updated = svc
+            .update(update)
+            .await
+            .expect("update add multiple positions");
+        assert_eq!(
+            updated.items.len(),
+            4,
+            "act now has 4 items (1 original + 3 new)"
+        );
         for &id in &extra_ids {
             assert!(
                 updated.items.iter().any(|it| it.device_id == id),
@@ -311,7 +318,11 @@ async fn add_multiple_positions_transitions_all_devices() {
         for &id in &extra_ids {
             let post = read_device_snap(&svc, id).await;
             assert_eq!(post.status_id, 2, "device {id} now в_работе");
-            assert_eq!(post.location_id, Some(loc_b), "device {id} at act's location");
+            assert_eq!(
+                post.location_id,
+                Some(loc_b),
+                "device {id} at act's location"
+            );
 
             let readers = readers.clone();
             let count: i64 = tokio::task::spawn_blocking(move || {
