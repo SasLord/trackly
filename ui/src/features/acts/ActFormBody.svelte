@@ -136,9 +136,37 @@
       let saved: ActDto;
 
       if (mode === 'edit') {
-        // Plan 19-05 (ACT-02): full-replacement items set — only device_id +
-        // complectation_at_time travel over the wire (no quantity/device_ids
-        // clone-expansion; retained/removed/added is diffed server-side).
+        // Plan 19-05 (ACT-02): full-replacement items set — device_id +
+        // complectation_at_time travel over the wire (retained/removed/added
+        // is diffed server-side). GT2 (260715-gt2): a RETAINED row
+        // (complectation_at_time !== undefined) still emits exactly one
+        // entry, unchanged. A FRESHLY-ADDED row (complectation_at_time
+        // === undefined) with quantity > 1 now expands via group_ids —
+        // mirrors the create-branch expansion below (groupIds.slice(0,
+        // it.quantity)) — falling back to [device_id] if group_ids is
+        // empty/absent (defensive, mirrors serialised single-instance picks).
+        // ActUpdateItemDto itself is unchanged (still one device_id +
+        // complectation_at_time per entry); multi-qty travels as N entries.
+        const updateItems = items
+          .filter((it) => it.device_id !== null)
+          .flatMap((it) => {
+            if (it.complectation_at_time !== undefined) {
+              return [
+                {
+                  device_id: it.device_id as number,
+                  complectation_at_time: it.complectation_at_time ?? null,
+                },
+              ];
+            }
+            const groupIds = it.group_ids ?? [];
+            const deviceIds =
+              groupIds.length > 0 ? groupIds.slice(0, it.quantity) : [it.device_id as number];
+            return deviceIds.map((deviceId) => ({
+              device_id: deviceId,
+              complectation_at_time: null,
+            }));
+          });
+
         const updatePayload: ActUpdateDto = {
           id: initialAct!.id,
           expected_version: initialAct!.version,
@@ -150,12 +178,7 @@
           notes: notes.trim() || null,
           deadline_utc: isoToUnix(deadlineISO),
           handover_date_utc: isoToUnix(handoverDateISO),
-          items: items
-            .filter((it) => it.device_id !== null)
-            .map((it) => ({
-              device_id: it.device_id as number,
-              complectation_at_time: it.complectation_at_time ?? null,
-            })),
+          items: updateItems,
         };
 
         saved = await acts.update(updatePayload);
