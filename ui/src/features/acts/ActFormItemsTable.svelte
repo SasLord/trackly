@@ -37,13 +37,16 @@
     /** UAT Fix #3/#4: все device_ids в группе (для backend submit без cloning). */
     group_ids?: number[];
     /** Plan 19-05 (ACT-02) / Plan 19-09 (D-09): комплектация на момент акта
-     *  (act_items.complectation_at_time). UI-editable input was REMOVED in Plan 19-09 —
-     *  the field is retained for two reasons: (a) it round-trips the existing
-     *  комплектация value unchanged through ActFormBody's edit payload mapping, and
-     *  (b) its presence (not its value) is the RETAINED-position marker: only ever
-     *  populated by ActFormBody's edit-mode prefill (itemsFromInitialAct), so a fresh
-     *  row added during this edit session never has it set — this is what the
-     *  read-only device cell (Plan 19-09/D-10) uses to distinguish retained vs. new rows. */
+     *  (act_items.complectation_at_time). UI-editable input was REMOVED in Plan 19-09
+     *  for RETAINED rows — GT2 (260715-gt2) supersedes that statement for FRESH rows
+     *  only (freshly-added, non-serial edit-mode positions gained a qty-editable
+     *  input; комплектация itself is still not user-editable in either case). The
+     *  retained-position marker semantics of this field are UNCHANGED and still
+     *  load-bearing: its presence (not its value) is the RETAINED-position marker —
+     *  only ever populated by ActFormBody's edit-mode prefill (itemsFromInitialAct),
+     *  so a fresh row added during this edit session never has it set. This is what
+     *  the read-only device cell (Plan 19-09/D-10, ~line 532) and the qty-cell gate
+     *  (~line 696) both use to distinguish retained vs. new rows. */
     complectation_at_time?: string | null;
   }
 
@@ -327,10 +330,15 @@
             // Серийный/инвентарный экземпляр — qty жёстко 1; несерийная
             // под-группа — clamp текущего qty к размеру под-группы (правится
             // в колонке «Количество», как pickGroup).
-            // WR-02 (Plan 19-08): в edit-режиме добавляемая строка — ровно
-            // одно устройство (ActUpdateItemDto не несёт quantity/device_ids),
-            // поэтому qty жёстко клампится к 1 независимо от размера группы.
-            quantity: hasSerial || mode === 'edit' ? 1 : Math.min(it.quantity, groupIds.length),
+            // WR-02 (Plan 19-08) forced qty=1 in edit mode because
+            // ActUpdateItemDto carried only one device_id per entry with no
+            // expansion path. Superseded by GT2 (260715-gt2): freshly-added,
+            // non-serial edit-mode positions are now qty-editable like
+            // create mode — ActUpdateItemDto itself is unchanged (still one
+            // device_id + complectation_at_time per entry); multi-qty
+            // travels over the wire via submit-side group_ids expansion in
+            // ActFormBody, not a DTO change.
+            quantity: hasSerial ? 1 : Math.min(it.quantity, groupIds.length),
             stock_available: groupIds.length,
             group_ids: groupIds,
           }
@@ -442,8 +450,9 @@
             picked: true,
             has_serial: hasSerial,
             // W-5: если выбранное устройство имеет serial — clamp qty=1.
-            // WR-02 (Plan 19-08): edit-режим — та же логика, что и в pickDevice.
-            quantity: hasSerial || mode === 'edit' ? 1 : Math.min(it.quantity, g.count),
+            // WR-02 (Plan 19-08) forced qty=1 in edit mode; superseded by
+            // GT2 (260715-gt2) — see the matching comment in pickDevice above.
+            quantity: hasSerial ? 1 : Math.min(it.quantity, g.count),
             stock_available: g.count,
             group_ids: g.ids,
           }
@@ -687,13 +696,15 @@
           {/if}
         </div>
         <div class="td col-qty" class:has-error={!!errFor(idx, 'quantity')}>
-          {#if mode === 'edit'}
-            <!-- WR-02 (Plan 19-08): edit-режим — добавляемая строка всегда
-                 ровно одно устройство (ActUpdateItemDto несёт только
-                 device_id, без quantity/device_ids). Показываем статичную
-                 «1» вместо редактируемого спиннера, чтобы видимое
-                 количество не вводило в заблуждение относительно того, что
-                 будет сохранено. -->
+          {#if mode === 'edit' && (row.complectation_at_time !== undefined || row.has_serial)}
+            <!-- WR-02 (Plan 19-08) originally forced qty=1 for EVERY edit-mode
+                 row. Superseded by GT2 (260715-gt2): now only RETAINED positions
+                 (complectation_at_time !== undefined — see FormItemRow doc
+                 comment) and serialised positions (has_serial, W-5, unchanged
+                 in every mode) show the static "1". A freshly-added, non-serial
+                 edit-mode row falls through to the editable, group-bounded
+                 input below, exactly like create mode — submit-side expansion
+                 into N ActUpdateItemDto entries happens in ActFormBody. -->
             <span class="qty-fixed">1</span>
           {:else}
             <input
