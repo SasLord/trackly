@@ -1,5 +1,31 @@
 # Milestones: Trackly
 
+## v1.1.2 — Пост-релизные доработки UX и печати
+
+**Shipped:** 2026-07-15
+**Phases:** 18–22 (5 фаз, 28 планов)
+**Git range:** `feat(18-01)` → milestone close (2026-07-10 → 2026-07-15)
+
+Источник: 6 подтверждённых пользователем замечаний после релиза v1.1.1, развёрнутые в 12 требований (AUTO-01..05, ACT-01/02/03, PRN-01, ORG-01/02, CRT-01) по 5 фазам. Все 12 — satisfied.
+
+**Key accomplishments:**
+
+- **Фаза 18 (AUTO-01..05) — Автокомплит и дропдауны.** Переиспользуемый `use:dropdownAnchor` + `use:portal`: дропдауны выходят за пределы overflow-контейнеров (модалка акта / таблица), репозиционируются на capture-scroll/resize, флипаются вверх у нижней кромки. Device-picker с focus-open (мгновенная выдача топ-20 групп по остатку), реальная многополевая FTS-фильтрация (name/inventory_no/serial_no/model), группировка по name+model с сортировкой count DESC. Нативные `<select>`-обёртки оставлены на браузерном popup.
+- **Фаза 19 (ACT-01/02) — Акты: дата и редактирование.** Точная дата передачи (`handover_date_utc`) + полноценная правка handover-акта: шапка + дельта позиций (add/remove со сменой состояния устройства), оптимистическая блокировка (CAS `WHERE version=?`), пересчёт `archived` в транзакции, каскад переименования номера на дочерние возвраты, аудит правок комплектации.
+- **Фаза 20 (PRN-01/ORG-01/ORG-02) — Печать актов и реквизиты организации.** Поле `address_line2`, паритет HTML-шаблонов для handover и acceptance, авто-апгрейд нетронутых дефолтных шаблонов на старте (не затирая пользовательские правки).
+- **Фаза 21 (CRT-01) — Коды картриджей/фотобарабанов.** Поля кодов на моделях расходников.
+- **Фаза 22 (ACT-03) — Правка возвратов.** Диалог правки ReturnModal с полным предзаполнением из собственных данных возврата, дельта-пересборка состояния устройств, guard'ы D-10 (пустой набор) / D-11 (device-drift), новый мутирующий путь `acts_update_return` с RBAC-паритетом на обоих транспортах.
+
+**Quality gates (закрыто на этапе close, 2026-07-15):**
+
+- UAT: Фаза 19 — 7/7 passed; Фаза 22 — 2/2 passed (live).
+- Security: `19-SECURITY.md` (26/26 threats closed), `22-SECURITY.md` (20/20 closed, тесты прогнаны). threats_open: 0.
+- Nyquist: Фаза 22 — nyquist_compliant (18/18 тестов green); Фаза 18 — backend automated (AUTO-03/04/05), UI manual-only (нет FE-харнесса по соглашению проекта).
+
+**Known deferred items at close:** 5 (see STATE.md → Deferred Items) — Фаза 18 SECURITY.md, 5 Info code-review findings (Фаза 18), 3 defense-in-depth WARNINGs (Фаза 20, раскрыты), отсутствие HTTP role-matrix кейса для settings_save_org_fields, историческая docs-опечатка «11 vs 12».
+
+---
+
 History of shipped milestones. Newest first.
 
 ---

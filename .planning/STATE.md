@@ -2,34 +2,32 @@
 gsd_state_version: 1.0
 milestone: v1.1.2
 milestone_name: Пост-релизные доработки UX и печати
-status: ready_to_plan
-last_updated: 2026-07-14T17:12:05.414Z
-last_activity: 2026-07-14
+status: Awaiting next milestone
+last_updated: "2026-07-15T00:15:42.258Z"
+last_activity: 2026-07-15 — Milestone v1.1.2 completed and archived
 progress:
   total_phases: 25
   completed_phases: 25
   total_plans: 152
   completed_plans: 152
   percent: 100
-stopped_at: Phase 21 complete (1/1) — ready to discuss Phase 22
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-26 after v1.1 milestone)
+See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 22 — return act edit
+**Current focus:** Planning next milestone (v1.1.2 shipped 2026-07-15)
 
 ## Current Position
 
-Phase: 22
-Milestone v1.1.2: near-complete — Phase 21 (CRT-01) executed 2026-07-14; Phase 22 (return-act-edit) executed, 2 human-UAT tests still pending
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-07-14
+Phase: Milestone v1.1.2 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-15 — Milestone v1.1.2 completed and archived
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -513,6 +511,19 @@ un-automatable human-verify items (no FE test runner by design).
 | quick_task | 260618-vtm-backup-date-schedule-template-fixes | done (recorded complete ✓ in Quick Tasks table; no separate record file) | 2026-06-26 |
 | quick_task | 260621-r8x-fix-fk-constraint-on-request-accept-assi | done (recorded complete ✓ in Quick Tasks table; no separate record file) | 2026-06-26 |
 
+Items acknowledged and deferred at **v1.1.2** milestone close on 2026-07-15. The
+v1.1.2 audit assessed all as `tech_debt` (no critical blockers). Major UAT / security /
+Nyquist gaps for phases 18–22 were CLOSED before archiving (see
+`milestones/v1.1.2-MILESTONE-AUDIT.md` → Close-Time Resolution). What remains:
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| security | 18 — no SECURITY.md (backend list_grouped + UI; low risk, T-18-07 no-custom-overlay confirmed by code re-read) | deferred | 2026-07-15 |
+| code_review | 18 — 5 Info-level findings (IN-01..05, advisory, non-blocking) | deferred | 2026-07-15 |
+| security | 20 — 3 defense-in-depth WARNINGs (WR-01/02/03) already disclosed in 20-SECURITY.md, non-blocking | deferred | 2026-07-15 |
+| test_coverage | cross-phase — no HTTP role-matrix case for settings_save_org_fields Employee→403 (guard structurally present) | deferred | 2026-07-15 |
+| docs | historical "11 vs 12" requirement miscount (12 REQ-IDs actually defined & satisfied) | deferred | 2026-07-15 |
+
 ## Quick Tasks Completed
 
 | Date | Slug | Summary | Status |
@@ -539,4 +550,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Roadmap created for v1.1.2 (Phase 18–21). Next: `/gsd-plan-phase 18`.
+- Start the next milestone with /gsd-new-milestone

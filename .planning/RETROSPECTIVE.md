@@ -2,6 +2,55 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v1.1.2 — Пост-релизные доработки UX и печати
+
+**Shipped:** 2026-07-15
+**Phases:** 5 (18–22) | **Plans:** 28
+
+### What Was Built
+Пост-релизная волна по обратной связи с v1.1.1: portal-дропдауны + device-picker с
+группировкой и FTS-фильтрацией (18), редактирование handover-актов + точная дата передачи
+с оптимистической блокировкой и дельта-реконсиляцией устройств (19), печать актов с
+реквизитами организации и второй строкой адреса + авто-апгрейд нетронутых HTML-шаблонов (20),
+коды картриджей/фотобарабанов (21), редактирование возвратов с дельта-пересборкой состояния
+устройств и guard'ами D-10/D-11 (22).
+
+### What Worked
+- **Plan-time threat models окупились на close.** Все 10+6 планов фаз 19/22 несли
+  `<threat_model>` блоки; retroactive `/gsd-secure-phase` свёлся к верификации mitigations
+  по коду (26/26 и 20/20 closed) вместо STRIDE с нуля — быстро и с точными file:line
+  доказательствами.
+- **Общий `build_*`-хелпер на оба транспорта** (Tauri + axum) снова не дал разойтись
+  авторизации: `build_acts_update` / `build_acts_update_return` → единая `Action::MutateActs`,
+  подтверждено role-matrix кейсами 42/43.
+- **Дельта-движок устройств переиспользован** между handover-правкой (19) и правкой
+  возвратов (22) через `select_latest_device_mutation` / `recompute_parent_archived`.
+
+### What Was Inefficient
+- **Quality-гейты накопились до close.** UAT (19: 7, 22: 2), SECURITY (18/19/22) и Nyquist
+  (18/22) не закрывались по ходу фаз — пришлось догонять единым проходом перед архивацией.
+  Milestone-аудит поймал это как `tech_debt`, но лучше бы гейты шли inline после каждой фазы.
+- **`milestone.complete` SDK сгенерировал мусорный MILESTONES-энтри** (25 фаз/152 плана/306
+  задач вместо 5/28 + «One-liner:»/«Goal:» строки со всех фаз проекта) — пришлось переписывать
+  вручную. Двойной вызов команды удвоил энтри.
+
+### Patterns Established
+- Retroactive-secure для phase с plan-time register = «verify, don't re-scan» (constraint
+  `register_authored_at_plan_time: true`).
+- UI-фазы без FE-харнесса: backend-контракт автоматизируется (devices_grouping.rs), чисто-UI
+  поведение — `manual-only` в VALIDATION.md + подтверждается live-UAT/ui-review. Nyquist
+  `partial` — честный статус, не блокер.
+
+### Key Lessons
+- Гонять `/gsd-secure-phase` и `/gsd-validate-phase` сразу после `/gsd-verify-work` каждой
+  фазы, а не пачкой на close.
+- Проверять авто-сгенерированный MILESTONES-энтри — `summary-extract` берёт заголовки со
+  ВСЕХ фаз, не только milestone-скоупа.
+
+### Cost Observations
+- Model mix: близко к 100% opus (main) + sonnet (security/nyquist аудиторы).
+- Sessions: close выполнен в одну сессию (UAT 19/22 → secure 19/22 → validate 18/22 → archive).
+
 ## Milestone: v1.1 — AD, сотрудники и картриджная взаимосвязь
 
 **Shipped:** 2026-06-26
