@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-raised:#ffffff; --tr-surface-sunken:#e4e8f0; --tr-overlay:rgba(20,26,38,.45);
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-text-inverse:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-hover:#2350bd; --tr-accent-active:#1c4299; --tr-accent-soft:rgba(43,95,217,.10); --tr-on-accent:#ffffff;
+  --tr-success:#12894e; --tr-warning:#b9720c; --tr-danger:#cf3b3b; --tr-info:#2b5fd9;
+  --tr-row-hover:#f1f4fa; --tr-row-selected:rgba(43,95,217,.09);
+  --tr-n-0:#ffffff; --tr-n-50:#f4f6f9; --tr-n-100:#e9edf3; --tr-n-200:#d8dee9; --tr-n-300:#c1c9d7; --tr-n-400:#9aa3b5; --tr-n-500:#6f7889; --tr-n-600:#515a6c; --tr-n-700:#3a4251; --tr-n-800:#272d3a; --tr-n-900:#191e28; --tr-n-950:#10141c;
+  --tr-elev-0:none;
+  --tr-elev-1:0 1px 2px rgba(16,22,34,.07),0 1px 1px rgba(16,22,34,.04);
+  --tr-elev-2:0 2px 6px rgba(16,22,34,.09),0 1px 2px rgba(16,22,34,.06);
+  --tr-elev-3:0 10px 28px rgba(16,22,34,.13),0 3px 8px rgba(16,22,34,.08);
+  --tr-elev-4:0 20px 52px rgba(16,22,34,.20),0 6px 14px rgba(16,22,34,.10);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-raised:#1c222c; --tr-surface-sunken:#0a0d12; --tr-overlay:rgba(0,0,0,.6);
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-text-inverse:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-hover:#7099ff; --tr-accent-active:#4b78e8; --tr-accent-soft:rgba(91,139,255,.16); --tr-on-accent:#0e1218;
+  --tr-success:#2fbf74; --tr-warning:#e5a13a; --tr-danger:#f26565; --tr-info:#5b8bff;
+  --tr-row-hover:#1c222c; --tr-row-selected:rgba(91,139,255,.14);
+  --tr-n-0:#ffffff; --tr-n-50:#f4f6f9; --tr-n-100:#e9edf3; --tr-n-200:#d8dee9; --tr-n-300:#c1c9d7; --tr-n-400:#9aa3b5; --tr-n-500:#6f7889; --tr-n-600:#515a6c; --tr-n-700:#3a4251; --tr-n-800:#272d3a; --tr-n-900:#191e28; --tr-n-950:#10141c;
+  --tr-elev-0:none;
+  --tr-elev-1:0 1px 2px rgba(0,0,0,.5);
+  --tr-elev-2:0 3px 10px rgba(0,0,0,.55),0 1px 2px rgba(0,0,0,.5);
+  --tr-elev-3:0 12px 30px rgba(0,0,0,.6),0 3px 8px rgba(0,0,0,.5);
+  --tr-elev-4:0 22px 56px rgba(0,0,0,.7),0 6px 16px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+a{color:var(--tr-accent);text-decoration:none;}
+a:hover{color:var(--tr-accent-hover);}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="min-height:100vh;background:var(--tr-bg);color:var(--tr-text-primary);font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px;line-height:1.5;">
+
+  <header style="position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;height:56px;padding:0 24px;background:var(--tr-surface);border-bottom:1px solid var(--tr-border);box-shadow:var(--tr-elev-1);">
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+      <span style="width:12px;height:12px;border-radius:3px;background:var(--tr-accent);flex:none;"></span>
+      <span style="font-size:15px;font-weight:600;">Trackly</span>
+      <span style="font-size:13px;color:var(--tr-text-tertiary);white-space:nowrap;">· Основы дизайн-системы</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;padding:3px;background:var(--tr-surface-sunken);border-radius:7px;">
+      <button onClick="{{ setLight }}" style="height:30px;padding:0 14px;border:none;border-radius:5px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:{{ lightBg }};color:{{ lightColor }};box-shadow:{{ lightShadow }};">Светлая</button>
+      <button onClick="{{ setDark }}" style="height:30px;padding:0 14px;border:none;border-radius:5px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:{{ darkBg }};color:{{ darkColor }};box-shadow:{{ darkShadow }};">Тёмная</button>
+    </div>
+  </header>
+
+  <main style="max-width:1120px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px;">
+
+    <!-- COLOR SECTIONS -->
+    <sc-for list="{{ colorSections }}" as="sec" hint-placeholder-count="4">
+      <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+        <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+          <h3 style="margin:0;font-size:16px;font-weight:600;">{{ sec.title }}</h3>
+          <span style="font-size:12px;color:var(--tr-text-tertiary);">{{ sec.caption }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:10px;padding:16px 18px;">
+          <sc-for list="{{ sec.items }}" as="item" hint-placeholder-count="5">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;border:1px solid var(--tr-border);border-radius:6px;background:var(--tr-bg);">
+              <span style="width:40px;height:40px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 1px rgba(128,128,140,.28);background:{{ item.val }};"></span>
+              <span style="min-width:0;line-height:1.35;">
+                <span style="display:block;font-size:13px;font-weight:600;color:var(--tr-text-primary);">{{ item.ru }}</span>
+                <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="display:block;font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);margin-top:1px;">{{ item.code }}</span></sc-if>
+                <span style="display:block;font-size:11px;color:var(--tr-text-tertiary);font-variant-numeric:tabular-nums;">{{ item.val }}</span>
+                <span style="display:block;font-size:11px;color:var(--tr-text-tertiary);text-wrap:pretty;margin-top:2px;">{{ item.note }}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <!-- SEMANTIC -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Семантические цвета</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">Статусы устройств, картриджей и заявок — сплошной цвет + мягкая подложка для бейджей</span>
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        <sc-for list="{{ semantic }}" as="s" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+            <span style="width:40px;height:40px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 1px rgba(128,128,140,.28);background:{{ s.solid }};"></span>
+            <span style="min-width:150px;line-height:1.35;">
+              <span style="display:block;font-size:14px;font-weight:600;">{{ s.ru }}</span>
+              <span style="display:block;font-size:12px;color:var(--tr-text-tertiary);">{{ s.desc }}</span>
+            </span>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;font-size:12px;font-weight:600;background:{{ s.soft }};color:{{ s.textc }};">{{ s.sample }}</span>
+            <span style="display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:6px;font-size:13px;font-weight:600;background:{{ s.solid }};color:var(--tr-on-accent);">{{ s.sample }}</span>
+            <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">{{ s.code }}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- NEUTRAL RAMP -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Нейтральная шкала</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">Холодно-синеватый серый (hue ≈ 225°) — из него выводятся поверхности, текст и границы обеих тем</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:6px;padding:16px 18px;">
+        <sc-for list="{{ ramp }}" as="c" hint-placeholder-count="12">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
+            <span style="height:52px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(128,128,140,.22);background:{{ c.val }};"></span>
+            <span style="font-size:11px;font-weight:600;text-align:center;">{{ c.label }}</span>
+            <span style="font-size:10px;color:var(--tr-text-tertiary);text-align:center;font-variant-numeric:tabular-nums;">{{ c.val }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- TYPOGRAPHY -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Типографика</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">Системный шрифт · база 14px · веса 400 / 500 / 600 · моно для идентификаторов</span>
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        <sc-for list="{{ type }}" as="t" hint-placeholder-count="9">
+          <div style="display:flex;align-items:baseline;gap:20px;padding:12px 18px;border-bottom:1px solid var(--tr-border);">
+            <span style="width:190px;flex:none;line-height:1.4;">
+              <span style="display:block;font-size:13px;font-weight:600;">{{ t.ru }}</span>
+              <span style="display:block;font-size:11px;color:var(--tr-text-tertiary);font-variant-numeric:tabular-nums;">{{ t.spec }}</span>
+              <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="display:block;font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">{{ t.code }}</span></sc-if>
+            </span>
+            <span style="min-width:0;text-wrap:pretty;color:var(--tr-text-primary);font-size:{{ t.size }}px;font-weight:{{ t.weight }};line-height:{{ t.lh }};">{{ t.sample }}</span>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:baseline;gap:20px;padding:12px 18px;">
+          <span style="width:190px;flex:none;line-height:1.4;">
+            <span style="display:block;font-size:13px;font-weight:600;">Моноширинный</span>
+            <span style="display:block;font-size:11px;color:var(--tr-text-tertiary);font-variant-numeric:tabular-nums;">13px · 500 · tabular</span>
+            <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="display:block;font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">--tr-font-mono</span></sc-if>
+          </span>
+          <span style="font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;">INV-0342 · SN-DL5540-A2 · № A-000142</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPACING -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Шкала отступов · 8pt</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">Кратно 8px, с полушагами 4 и 12 для плотных таблиц и контролов</span>
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        <sc-for list="{{ spacing }}" as="s" hint-placeholder-count="11">
+          <div style="display:flex;align-items:center;gap:16px;padding:7px 18px;border-bottom:1px solid var(--tr-border);">
+            <span style="width:64px;flex:none;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;">{{ s.n }} px</span>
+            <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="width:130px;flex:none;font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">{{ s.code }}</span></sc-if>
+            <span style="height:12px;border-radius:2px;background:var(--tr-accent);width:{{ s.n }}px;"></span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- RADII -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Радиусы</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">Скругления сдержанные — инструмент, не витрина</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:16px 18px;">
+        <sc-for list="{{ radii }}" as="r" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+            <span style="width:100%;height:64px;background:var(--tr-accent-soft);box-shadow:inset 0 0 0 1.5px var(--tr-accent);border-radius:{{ r.n }}px;"></span>
+            <span style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;">{{ r.label }}</span>
+            <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">{{ r.code }}</span></sc-if>
+            <span style="font-size:11px;color:var(--tr-text-tertiary);text-align:center;">{{ r.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- ELEVATION -->
+    <section style="background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:8px;box-shadow:var(--tr-elev-1);overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:10px;padding:14px 18px;border-bottom:1px solid var(--tr-border);flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:16px;font-weight:600;">Тени и уровни</h3>
+        <span style="font-size:12px;color:var(--tr-text-tertiary);">5 уровней. В тёмной теме тени плотнее, глубину держат ещё и границы</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;padding:20px 18px;background:var(--tr-bg);">
+        <sc-for list="{{ elevation }}" as="e" hint-placeholder-count="5">
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;min-height:110px;padding:14px;background:var(--tr-surface-raised);border:1px solid var(--tr-border);border-radius:8px;box-shadow:{{ e.shadow }};text-align:center;">
+            <span style="font-size:14px;font-weight:600;">{{ e.lvl }}</span>
+            <sc-if value="{{ showCode }}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;color:var(--tr-accent);">{{ e.code }}</span></sc-if>
+            <span style="font-size:11px;color:var(--tr-text-tertiary);text-wrap:pretty;">{{ e.use }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;,&quot;section&quot;:&quot;Тема&quot;},&quot;showCode&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Тема&quot;}}">
+class Component extends DCLogic {
+  state = { theme: null, showCode: null };
+
+  palettes = {
+    light: {
+      'bg':'#eef1f6','surface':'#ffffff','surface-raised':'#ffffff','surface-sunken':'#e4e8f0','overlay':'rgba(20,26,38,.45)',
+      'text-primary':'#1b2230','text-secondary':'#586074','text-tertiary':'#8891a4','text-disabled':'#aab2c1','text-inverse':'#ffffff',
+      'border':'#e1e6ef','border-strong':'#c9d0dd','focus-ring':'rgba(43,95,217,.35)',
+      'accent':'#2b5fd9','accent-hover':'#2350bd','accent-active':'#1c4299','accent-soft':'rgba(43,95,217,.10)',
+      'success':'#12894e','success-soft':'rgba(18,137,78,.12)','success-text':'#0f7343',
+      'warning':'#b9720c','warning-soft':'rgba(185,114,12,.14)','warning-text':'#8f590a',
+      'danger':'#cf3b3b','danger-soft':'rgba(207,59,59,.12)','danger-text':'#b02f2f',
+      'info':'#2b5fd9','info-soft':'rgba(43,95,217,.10)','info-text':'#2350bd',
+      'n-0':'#ffffff','n-50':'#f4f6f9','n-100':'#e9edf3','n-200':'#d8dee9','n-300':'#c1c9d7','n-400':'#9aa3b5','n-500':'#6f7889','n-600':'#515a6c','n-700':'#3a4251','n-800':'#272d3a','n-900':'#191e28','n-950':'#10141c',
+    },
+    dark: {
+      'bg':'#0e1218','surface':'#161b23','surface-raised':'#1c222c','surface-sunken':'#0a0d12','overlay':'rgba(0,0,0,.6)',
+      'text-primary':'#e7ebf2','text-secondary':'#9aa3b4','text-tertiary':'#6b7486','text-disabled':'#4d5566','text-inverse':'#0e1218',
+      'border':'#272e3a','border-strong':'#39414f','focus-ring':'rgba(91,139,255,.45)',
+      'accent':'#5b8bff','accent-hover':'#7099ff','accent-active':'#4b78e8','accent-soft':'rgba(91,139,255,.16)',
+      'success':'#2fbf74','success-soft':'rgba(47,191,116,.16)','success-text':'#4fd08c',
+      'warning':'#e5a13a','warning-soft':'rgba(229,161,58,.16)','warning-text':'#f0b45a',
+      'danger':'#f26565','danger-soft':'rgba(242,101,101,.16)','danger-text':'#ff8080',
+      'info':'#5b8bff','info-soft':'rgba(91,139,255,.16)','info-text':'#8fb0ff',
+      'n-0':'#ffffff','n-50':'#f4f6f9','n-100':'#e9edf3','n-200':'#d8dee9','n-300':'#c1c9d7','n-400':'#9aa3b5','n-500':'#6f7889','n-600':'#515a6c','n-700':'#3a4251','n-800':'#272d3a','n-900':'#191e28','n-950':'#10141c',
+    },
+  };
+
+  renderVals() {
+    const theme = this.state.theme ?? (this.props.theme ?? 'light');
+    const showCode = this.state.showCode ?? (this.props.showCode ?? true);
+    const isDark = theme === 'dark';
+    const p = this.palettes[theme];
+    const it = (ru, key, note) => ({ ru, code: '--tr-' + key, val: p[key], note: note || '' });
+
+    const colorSections = [
+      { title: 'Бренд и акцент', caption: 'Синий-«электрик» — ключевые действия, ссылки, активные строки',
+        items: [
+          it('Акцент', 'accent', 'Основные действия, ссылки, активная навигация'),
+          it('Акцент · ховер', 'accent-hover'),
+          it('Акцент · нажатие', 'accent-active'),
+          it('Акцент · подложка', 'accent-soft', 'Фон бейджей и выделенных строк таблицы'),
+          it('Кольцо фокуса', 'focus-ring', 'Обводка :focus-visible, 3px'),
+        ] },
+      { title: 'Поверхности', caption: 'Слои интерфейса от холста до оверлея',
+        items: [
+          it('Холст', 'bg', 'Фон приложения и сайдбара'),
+          it('Поверхность', 'surface', 'Таблицы, панели, контент'),
+          it('Поднятая', 'surface-raised', 'Поповеры, дропдауны, тултипы'),
+          it('Утопленная', 'surface-sunken', 'Поля ввода, треки, вкладки'),
+          it('Оверлей', 'overlay', 'Затемнение под модальным окном'),
+        ] },
+      { title: 'Текст', caption: 'Иерархия по контрасту, все проходят AA на своих фонах',
+        items: [
+          it('Основной', 'text-primary', 'Заголовки, значения, данные'),
+          it('Вторичный', 'text-secondary', 'Метки полей, подписи'),
+          it('Третичный', 'text-tertiary', 'Плейсхолдеры, мета, счётчики'),
+          it('Отключённый', 'text-disabled', 'Disabled-контролы'),
+          it('Инверсный', 'text-inverse', 'Текст на акценте'),
+        ] },
+      { title: 'Границы и фокус', caption: 'Разделители плотных таблиц и форм',
+        items: [
+          it('Граница', 'border', 'Строки таблиц, разделители, карточки'),
+          it('Граница · сильная', 'border-strong', 'Контур инпутов, заголовки таблиц'),
+          it('Кольцо фокуса', 'focus-ring', 'Единое для всех интерактивных элементов'),
+        ] },
+    ];
+
+    const ramp = ['n-0','n-50','n-100','n-200','n-300','n-400','n-500','n-600','n-700','n-800','n-900','n-950']
+      .map(k => ({ label: k.replace('n-',''), val: p[k] }));
+
+    const semantic = [
+      { ru: 'Успех', key: 'success', desc: 'Заправлен · в норме · закрыто', sample: 'Заправлен' },
+      { ru: 'Предупреждение', key: 'warning', desc: 'Мало тонера · требует внимания', sample: 'Мало тонера' },
+      { ru: 'Опасность', key: 'danger', desc: 'Списано · неисправно · ошибка', sample: 'Списано' },
+      { ru: 'Информация', key: 'info', desc: 'Выдан · нейтральный акцент', sample: 'Выдан' },
+    ].map(s => ({ ...s, solid: p[s.key], soft: p[s.key+'-soft'], textc: p[s.key+'-text'], code: '--tr-' + s.key + ' · -soft · -text' }));
+
+    const type = [
+      { ru: 'Дисплей', code: '--tr-text-display', spec: '30px · 600 · 1.15', size: '30', weight: '600', lh: '1.15', sample: 'Приём-передача техники' },
+      { ru: 'Заголовок H2', code: '--tr-text-h2', spec: '24px · 600 · 1.25', size: '24', weight: '600', lh: '1.25', sample: 'Список устройств организации' },
+      { ru: 'Заголовок H3', code: '--tr-text-h3', spec: '20px · 600 · 1.3', size: '20', weight: '600', lh: '1.3', sample: 'Акт приёма-передачи № A-000142' },
+      { ru: 'Подзаголовок', code: '--tr-text-subtitle', spec: '16px · 600 · 1.4', size: '16', weight: '600', lh: '1.4', sample: 'Последние заявки на обслуживание' },
+      { ru: 'Текст', code: '--tr-text-body', spec: '14px · 400 · 1.5', size: '14', weight: '400', lh: '1.5', sample: 'Основной текст интерфейса, описания карточек и ячейки таблиц устройств.' },
+      { ru: 'Текст · акцент', code: '--tr-text-body-strong', spec: '14px · 600 · 1.5', size: '14', weight: '600', lh: '1.5', sample: 'Ноутбук Dell Latitude 5540' },
+      { ru: 'Подпись', code: '--tr-text-label', spec: '13px · 500 · 1.4', size: '13', weight: '500', lh: '1.4', sample: 'Инвентарный номер устройства' },
+      { ru: 'Мелкий', code: '--tr-text-caption', spec: '12px · 500 · 1.35', size: '12', weight: '500', lh: '1.35', sample: 'обновлено 5 минут назад' },
+      { ru: 'Микро', code: '--tr-text-micro', spec: '11px · 500 · 1.3', size: '11', weight: '500', lh: '1.3', sample: 'ВСЕГО 342 · НА СКЛАДЕ 143' },
+    ];
+
+    const spacing = [
+      { n: '2', name: '3xs' }, { n: '4', name: '2xs' }, { n: '8', name: 'xs' }, { n: '12', name: 'sm' },
+      { n: '16', name: 'md' }, { n: '20', name: 'lg' }, { n: '24', name: 'xl' }, { n: '32', name: '2xl' },
+      { n: '40', name: '3xl' }, { n: '48', name: '4xl' }, { n: '64', name: '5xl' },
+    ].map(s => ({ ...s, code: '--tr-space-' + s.name }));
+
+    const radii = [
+      { n: '4', label: '4px · xs', code: '--tr-radius-xs', use: 'Теги, чипы, бейджи' },
+      { n: '6', label: '6px · sm', code: '--tr-radius-sm', use: 'Кнопки, поля ввода' },
+      { n: '8', label: '8px · md', code: '--tr-radius-md', use: 'Карточки, панели' },
+      { n: '12', label: '12px · lg', code: '--tr-radius-lg', use: 'Модальные окна' },
+      { n: '999', label: 'full', code: '--tr-radius-full', use: 'Пилюли, аватары, свитчи' },
+    ];
+
+    const elevation = [
+      { lvl: 'Уровень 0', code: '--tr-elev-0', shadow: 'var(--tr-elev-0)', use: 'Заподлицо: таблицы, разделители' },
+      { lvl: 'Уровень 1', code: '--tr-elev-1', shadow: 'var(--tr-elev-1)', use: 'Карточки, панели, шапка' },
+      { lvl: 'Уровень 2', code: '--tr-elev-2', shadow: 'var(--tr-elev-2)', use: 'Дропдауны, поповеры, тултипы' },
+      { lvl: 'Уровень 3', code: '--tr-elev-3', shadow: 'var(--tr-elev-3)', use: 'Модальные окна, диалоги' },
+      { lvl: 'Уровень 4', code: '--tr-elev-4', shadow: 'var(--tr-elev-4)', use: 'Командная палитра, оверлеи' },
+    ];
+
+    const seg = (active) => ({
+      bg: active ? p['surface'] : 'transparent',
+      color: active ? p['accent'] : p['text-secondary'],
+      shadow: active ? (isDark ? '0 1px 2px rgba(0,0,0,.5)' : '0 1px 2px rgba(16,22,34,.12)') : 'none',
+    });
+    const l = seg(!isDark), d = seg(isDark);
+
+    return {
+      theme, isDark, showCode,
+      setLight: () => this.setState({ theme: 'light' }),
+      setDark: () => this.setState({ theme: 'dark' }),
+      lightBg: l.bg, lightColor: l.color, lightShadow: l.shadow,
+      darkBg: d.bg, darkColor: d.color, darkShadow: d.shadow,
+      colorSections, ramp, semantic, type, spacing, radii, elevation,
+    };
+  }
+}
+</script>
+</body>
+</html>

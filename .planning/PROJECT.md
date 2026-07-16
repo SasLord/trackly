@@ -23,6 +23,37 @@ Trackly поставляет полный учёт устройств / акто
 
 Полная история — `.planning/MILESTONES.md`; детали фаз — `.planning/milestones/`.
 
+## Current Milestone: v1.2 Редизайн UI и дизайн-система
+
+**Goal:** Перевести интерфейс на новую дизайн-систему (спроектирована в Claude Design) — единый слой
+токенов, переработанные примитивы и все окна — не потеряв плотность рабочего инструмента.
+
+**Target features:**
+- Новый слой токенов `--tr-*` для обеих тем: поверхности, 5 уровней текста, акцент с hover/active/soft,
+  семантика с парами `-soft`/`-text`, нейтральная шкала n-0…n-950, 5 уровней теней
+- Миграция шкал **по значению** (space / radius / font-size) без сдвига вёрстки
+- Переработка примитивов: Button, Input / Select / Textarea / Checkbox, Badge, Modal, Tabs (switch-bar)
+- Переработка строк таблицы: DeviceListRow + DeviceGroupRow (группы, hover/выбрана, пилюля счётчика)
+- Новый компонент Dropdown / комбобокс
+- Переработка **всех окон** (~12): Дашборд, Устройства, Акты, Картриджи, Принтеры, Заявки, Отчёты,
+  Настройки, Пользователи, Логин/Pending/Blocked, EmployeeLayout
+- Попутно: чистка ~40 захардкоженных hex + фикс двух багов неопределённых токенов
+  (`--font-size-sm` в PersonAutocomplete, `--radius-lg` в трёх auth-экранах)
+
+**Key context:**
+- Референс дизайна — `.planning/reference/design-system-v2/` (11 файлов из Claude Design).
+  Формат `.dc.html` — это **спецификация, а не переносимый код** (Design Canvas: `<x-dc>`, `sc-for`,
+  `{{ }}`, класс `DCLogic`, нужен `support.js`). Значения CSS извлекаются, разметка — нет.
+- **Ловушка миграции:** новая система переиспользует имена шкал с другими значениями
+  (`xs` 4→8px, `sm` 8→12px, `lg` 24→20px, `xl` 32→24px; radius `sm` 4→6px). Мигрировать **по значению,
+  а не по имени** — иначе 642 использования `--space-*` тихо поедут без единой ошибки сборки.
+- 105 из 118 svelte-файлов уже ходят через токены — смена значений разойдётся по UI сама.
+- **Дизайн покрывает 2 окна из ~12** (Дашборд, Список устройств). Раскладку остальных придётся
+  выводить из компонентной системы — готового макета на них нет.
+- **Открытый вопрос (решается в `/gsd-ui-phase`):** новый дизайн вводит `transition: background .12s,
+  box-shadow .12s` на кнопках, что противоречит прошлому решению UI-SPEC §Motion (`transition: none`
+  в `Button.svelte:46`, введено ради корректного переключения темы).
+
 ## Last Milestone: v1.1.2 Пост-релизные доработки UX и печати ✅ (shipped 2026-07-15)
 
 <details>
@@ -85,9 +116,9 @@ Kerberos/NTLM (ADV-01), английская локализация (I18N), Wind
 
 <!-- Current scope. Building toward these. -->
 
-Активного milestone нет — v1.1.2 завершён и заархивирован. Следующий цикл начинается через
-`/gsd-new-milestone` (создаст свежий `.planning/REQUIREMENTS.md`). Все прошлые требования
-остаются в Validated. Кандидаты на будущее — в «Backlog (v2 и далее)» и «Out of Scope» ниже.
+**v1.2 — Редизайн UI и дизайн-система** (started 2026-07-16). Требования определяются; трассировка
+появится в `.planning/REQUIREMENTS.md` и `.planning/ROADMAP.md`. Все прошлые требования остаются
+в Validated. Кандидаты на будущее — в «Backlog (v2 и далее)» и «Out of Scope» ниже.
 
 ### Out of Scope
 
@@ -179,4 +210,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 13: Редизайн совместимости Принтеры↔Картриджи** (completed 2026-06-26) — V032 миграция: `printer_brand`+`printer_model` → единый `printer_name`, снос per-device junction (V029); `cartridges_sqlite.rs` матчит совместимость по `devices.name` (case-insensitive + TRIM, D-05 pass-through только в selection-фильтре); удалены 4 V029-команды, новая read-only `printers_get_compatible_aggregates` (агрегаты по статусу); карточка принтера: агрегаты совместимости + блок данных устройства (через `DeviceFormModal`) + установленный картридж по коду; `ModelFormModal` — единый free-text-блок «Совместимые принтеры»; kind-aware дефолт авто-возврата фотобарабана (state 5 «Изношенный»); снят лимит списка принтеров; `suggest_compat_printer` re-sourced с free-text истории на `devices.name`. Завершает milestone v1.1. (SPEC-13-R1..R8)
 
 ---
-*Last updated: 2026-07-15 after v1.1.2 milestone — shipped фазы 18–22 (28 планов, 12/12 требований). Quality-гейты (UAT/SECURITY/Nyquist) закрыты на этапе close. Активного milestone нет; следующий — через /gsd-new-milestone.*
+*Last updated: 2026-07-16 — начат milestone v1.2 «Редизайн UI и дизайн-система» (фазы с 23). Дизайн-система спроектирована в Claude Design, референс — .planning/reference/design-system-v2/. Предыдущий milestone v1.1.2 (фазы 18–22, 12/12 требований) завершён и заархивирован 2026-07-15.*

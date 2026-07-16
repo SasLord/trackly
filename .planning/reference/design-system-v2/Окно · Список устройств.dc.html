@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-raised:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-hover:#2350bd; --tr-accent-soft:rgba(43,95,217,.10); --tr-accent-text:#2350bd;
+  --tr-row-hover:#f1f4fa; --tr-row-selected:rgba(43,95,217,.09); --tr-group:#e9edf5; --tr-group-hover:#e0e6f2;
+  --tr-success-soft:rgba(18,137,78,.12); --tr-success-text:#0f7343;
+  --tr-warning-soft:rgba(185,114,12,.14); --tr-warning-text:#8f590a;
+  --tr-danger-soft:rgba(207,59,59,.12); --tr-danger-text:#b02f2f;
+  --tr-elev-1:0 1px 2px rgba(16,22,34,.07),0 1px 1px rgba(16,22,34,.04);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-raised:#1c222c; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-hover:#7099ff; --tr-accent-soft:rgba(91,139,255,.16); --tr-accent-text:#8fb0ff;
+  --tr-row-hover:#1c222c; --tr-row-selected:rgba(91,139,255,.14); --tr-group:#1a212b; --tr-group-hover:#20293563;
+  --tr-success-soft:rgba(47,191,116,.16); --tr-success-text:#4fd08c;
+  --tr-warning-soft:rgba(229,161,58,.16); --tr-warning-text:#f0b45a;
+  --tr-danger-soft:rgba(242,101,101,.16); --tr-danger-text:#ff8080;
+  --tr-elev-1:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:#d6dae2;}
+[data-theme="dark"] body,body:has([data-theme="dark"]){background:#05070a;}
+input::placeholder{color:var(--tr-text-tertiary);}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="height:720px;display:flex;background:var(--tr-surface);color:var(--tr-text-primary);font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px;overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width:236px;flex:none;background:var(--tr-bg);border-right:1px solid var(--tr-border);display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;height:56px;padding:0 16px;border-bottom:1px solid var(--tr-border);font-size:16px;font-weight:600;">
+      <span style="width:11px;height:11px;border-radius:3px;background:var(--tr-accent);"></span>Trackly
+    </div>
+    <nav style="flex:1;padding:8px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="10">
+        <sc-if value="{{ n.divider }}" hint-placeholder-val="{{ false }}"><span style="height:1px;background:var(--tr-border);margin:6px 8px;"></span></sc-if>
+        <sc-if value="{{ n.item }}" hint-placeholder-val="{{ true }}"><a style="{{ n.style }}">{{ n.label }}</a></sc-if>
+      </sc-for>
+    </nav>
+    <div style="padding:14px 16px;border-top:1px solid var(--tr-border);">
+      <div style="display:flex;flex-direction:column;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tr-border);">
+        <span style="font-size:14px;font-weight:600;">А. Платов</span><span style="font-size:12px;color:var(--tr-text-tertiary);">Администратор</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span style="font-size:12px;color:var(--tr-text-secondary);">Оформление</span>
+        <div style="{{ segWrap }}">
+          <sc-for list="{{ themeSeg }}" as="s" hint-placeholder-count="3">
+            <button type="button" title="{{ s.title }}" onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.title }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main style="flex:1;display:flex;flex-direction:column;min-width:0;">
+    <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 24px;border-bottom:1px solid var(--tr-border);flex:none;">
+      <h1 style="margin:0;font-size:20px;font-weight:600;">Устройства</h1>
+      <div style="display:flex;gap:8px;">
+        <button style="{{ btnPrimary }}">+ Создать устройство</button>
+        <button style="{{ btnSecondary }}">Импорт CSV</button>
+        <button style="{{ btnSecondary }}">Экспорт CSV</button>
+      </div>
+    </header>
+
+    <div style="flex:1;overflow:auto;padding:20px 24px;background:var(--tr-surface);">
+
+      <!-- FILTERS -->
+      <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--tr-border);margin-bottom:14px;">
+        <div style="position:relative;display:flex;align-items:center;">
+          <span style="position:absolute;left:12px;color:var(--tr-text-tertiary);display:flex;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </span>
+          <input placeholder="Поиск по наименованию, инвентарному, серийному, модели" style="width:100%;height:36px;padding:0 12px 0 34px;background:var(--tr-surface);color:var(--tr-text-primary);border:1px solid var(--tr-border-strong);border-radius:6px;font-family:inherit;font-size:14px;outline:none;">
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+          <div style="display:flex;gap:2px;border-bottom:1px solid var(--tr-border);overflow-x:auto;">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+              <button onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }} <span style="{{ t.badgeStyle }}">{{ t.count }}</span></button>
+            </sc-for>
+          </div>
+          <label onClick="{{ toggleGroup }}" style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;white-space:nowrap;user-select:none;">
+            <span style="{{ groupBox }}"><sc-if value="{{ grouped }}" hint-placeholder-val="{{ true }}"><span style="width:10px;height:6px;border-left:2px solid var(--tr-on-accent);border-bottom:2px solid var(--tr-on-accent);transform:rotate(-45deg) translate(0,-1px);"></span></sc-if></span>
+            <span style="font-size:14px;color:var(--tr-text-secondary);">Группировать похожие</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TABLE -->
+      <div style="border:1px solid var(--tr-border);border-radius:8px;overflow:hidden;box-shadow:var(--tr-elev-1);">
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;min-width:860px;">
+            <thead>
+              <tr>
+                <sc-for list="{{ cols }}" as="c" hint-placeholder-count="8"><th style="{{ c.style }}">{{ c.label }}</th></sc-for>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+                <tr onClick="{{ r.onClick }}" style="{{ r.trStyle }}">
+                  <sc-if value="{{ r.isGroup }}" hint-placeholder-val="{{ false }}">
+                    <td colspan="4" style="{{ r.nameCell }}"><span style="{{ r.chevStyle }}">▸</span>{{ r.name }}</td>
+                    <td style="{{ r.mutedCell }}">Разные</td>
+                    <td style="{{ r.mutedCell }}">{{ r.cond }}</td>
+                    <td style="{{ r.tdBase }}"><span style="{{ r.badgeStyle }}">{{ r.status }}</span></td>
+                    <td style="{{ r.pillCell }}"><span style="{{ r.pillStyle }}">{{ r.count }} шт.</span></td>
+                  </sc-if>
+                  <sc-if value="{{ r.isDevice }}" hint-placeholder-val="{{ true }}">
+                    <td style="{{ r.nameCell }}">{{ r.name }}</td>
+                    <td style="{{ r.monoCell }}">{{ r.inv }}</td>
+                    <td style="{{ r.monoCell }}">{{ r.sn }}</td>
+                    <td style="{{ r.tdBase }}">{{ r.model }}</td>
+                    <td style="{{ r.locCell }}">{{ r.loc }}</td>
+                    <td style="{{ r.tdBase }}">{{ r.cond }}</td>
+                    <td style="{{ r.tdBase }}"><span style="{{ r.badgeStyle }}">{{ r.status }}</span></td>
+                    <td style="{{ r.dotsCell }}">⋯</td>
+                  </sc-if>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid var(--tr-border);font-size:13px;color:var(--tr-text-secondary);background:var(--tr-bg);">{{ footer }}</div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;,&quot;system&quot;],&quot;default&quot;:&quot;system&quot;,&quot;tsType&quot;:&quot;'light'|'dark'|'system'&quot;}}">
+class Component extends DCLogic {
+  state = { pref:null, sysDark:false, tab:0, grouped:true, expanded:{1:true} };
+
+  componentDidMount(){
+    this.mq = window.matchMedia('(prefers-color-scheme: dark)');
+    this.setState({ sysDark:this.mq.matches });
+    this.mqHandler = e => this.setState({ sysDark:e.matches });
+    this.mq.addEventListener('change', this.mqHandler);
+  }
+  componentWillUnmount(){ this.mq && this.mq.removeEventListener('change', this.mqHandler); }
+
+  model = [
+    { type:'group', name:'Принтер HP LaserJet M404', cond:'разное', tone:'accent', status:'В работе', count:12,
+      children:[
+        { name:'HP LaserJet M404', inv:'INV-0201', sn:'SN-HPM404-01', model:'LaserJet M404dn', loc:'Каб. 214 · Бухгалтерия', cond:'Б/у', tone:'accent', status:'В работе' },
+        { name:'HP LaserJet M404', inv:'INV-0202', sn:'SN-HPM404-02', model:'LaserJet M404dn', loc:'Каб. 118 · Отдел кадров', cond:'Б/у', tone:'accent', status:'В работе' },
+      ] },
+    { type:'group', name:'Ноутбук Dell Latitude 5540', cond:'Новое', tone:'neutral', status:'На складе', count:3,
+      children:[
+        { name:'Dell Latitude 5540', inv:'INV-0341', sn:'SN-DL5540-A1', model:'Latitude 5540', loc:'Склад №1', cond:'Новое', tone:'neutral', status:'На складе' },
+        { name:'Dell Latitude 5540', inv:'INV-0344', sn:'SN-DL5540-A2', model:'Latitude 5540', loc:'Каб. 305 · ИТ-отдел', cond:'Б/у', tone:'accent', status:'В работе' },
+        { name:'Dell Latitude 5540', inv:'INV-0349', sn:'SN-DL5540-A3', model:'Latitude 5540', loc:'Склад №1', cond:'Новое', tone:'neutral', status:'На складе' },
+      ] },
+    { type:'device', name:'МФУ Kyocera ECOSYS M2040', inv:'INV-0338', sn:'SN-KY2040-77', model:'ECOSYS M2040dn', loc:'Каб. 101 · Приёмная', cond:'Б/у', tone:'accent', status:'В работе' },
+    { type:'group', name:'Ноутбук Lenovo ThinkPad E14', cond:'разное', tone:'neutral', status:'На складе', count:5,
+      children:[
+        { name:'Lenovo ThinkPad E14', inv:'INV-0410', sn:'SN-LN-E14-11', model:'ThinkPad E14 Gen 5', loc:'Склад №1', cond:'Новое', tone:'neutral', status:'На складе' },
+        { name:'Lenovo ThinkPad E14', inv:'INV-0411', sn:'SN-LN-E14-12', model:'ThinkPad E14 Gen 5', loc:'Каб. 207 · Продажи', cond:'Б/у', tone:'accent', status:'В работе' },
+      ] },
+    { type:'device', name:'Картридж HP CF259A', inv:'INV-0402', sn:'—', model:'CF259A', loc:'Каб. 214 · HP M404', cond:'Ресурс 8%', tone:'warning', status:'Мало тонера' },
+    { type:'device', name:'Принтер HP LaserJet M15', inv:'INV-0335', sn:'SN-HPM15-02', model:'LaserJet M15w', loc:'—', cond:'Неисправно', tone:'danger', status:'Списано' },
+  ];
+
+  navItems = [
+    ['Дашборд',0],['Карта',0],['div'],['Устройства',1],['Акты',0],['div'],
+    ['Принтеры',0],['Картриджи',0],['Заявки',0],['div'],['Отчёты',0],['Пользователи',0],
+  ];
+
+  badge(tone){
+    const T={ neutral:{background:'var(--tr-surface-sunken)',color:'var(--tr-text-secondary)'},
+      accent:{background:'var(--tr-accent-soft)',color:'var(--tr-accent-text)'},
+      warning:{background:'var(--tr-warning-soft)',color:'var(--tr-warning-text)'},
+      danger:{background:'var(--tr-danger-soft)',color:'var(--tr-danger-text)'} };
+    return { display:'inline-flex',alignItems:'center',height:'22px',padding:'0 10px',borderRadius:'11px',fontSize:'12px',fontWeight:600,...T[tone] };
+  }
+
+  renderVals(){
+    const pref = this.state.pref ?? (this.props.theme ?? 'system');
+    const theme = pref==='system' ? (this.state.sysDark?'dark':'light') : pref;
+    const grouped = this.state.grouped;
+    const tabData = [['Все','342'],['На складе','143'],['В работе','176'],['На ремонте','15'],['Списано','8']];
+
+    const th={ textAlign:'left',fontSize:'12px',fontWeight:600,color:'var(--tr-text-secondary)',padding:'0 10px',height:'36px',whiteSpace:'nowrap',borderBottom:'2px solid var(--tr-border-strong)',background:'var(--tr-bg)' };
+    const cols=['Наименование','Инвентарный №','Серийный №','Модель','Расположение','Состояние','Статус',''].map((label,i)=>({label,style:i===7?{...th,width:'40px'}:th}));
+
+    const tdBase=()=>({ padding:'0 10px',height:'40px',borderBottom:'1px solid var(--tr-border)',whiteSpace:'nowrap',verticalAlign:'middle',color:'var(--tr-text-primary)' });
+    const mono=()=>({ ...tdBase(),fontFamily:"ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace",fontVariantNumeric:'tabular-nums',color:'var(--tr-text-secondary)',fontSize:'13px' });
+
+    const deviceRow=(d,child)=>{
+      const nameCell={ ...tdBase(),fontWeight: child?400:500 };
+      if(child) nameCell.paddingLeft='34px';
+      return { isDevice:true,isGroup:false,onClick:()=>{},
+        trStyle:{ background:'transparent',cursor:'default',transition:'background .1s' },
+        name:d.name,inv:d.inv,sn:d.sn,model:d.model,loc:d.loc,cond:d.cond,status:d.status,
+        nameCell,monoCell:mono(),tdBase:tdBase(),
+        locCell:{ ...tdBase(),color:d.loc==='—'?'var(--tr-text-tertiary)':'var(--tr-text-primary)' },
+        badgeStyle:this.badge(d.tone),
+        dotsCell:{ ...tdBase(),color:'var(--tr-text-tertiary)',textAlign:'center',cursor:'pointer' } };
+    };
+
+    const rows=[];
+    this.model.forEach((m,i)=>{
+      if(m.type==='device'){ rows.push(deviceRow(m,false)); return; }
+      if(!grouped){ m.children.forEach(c=>rows.push(deviceRow(c,false))); return; }
+      const exp=!!this.state.expanded[i];
+      rows.push({ isGroup:true,isDevice:false,onClick:()=>this.setState(s=>({expanded:{...s.expanded,[i]:!s.expanded[i]}})),
+        trStyle:{ background:'var(--tr-group)',cursor:'pointer' },
+        name:m.name,cond:m.cond,status:m.status,count:m.count,
+        nameCell:{ ...tdBase(),fontWeight:600 },
+        chevStyle:{ display:'inline-flex',width:'18px',height:'18px',alignItems:'center',justifyContent:'center',color:'var(--tr-text-secondary)',marginRight:'4px',verticalAlign:'middle',transform:exp?'rotate(90deg)':'none',transition:'transform .15s' },
+        mutedCell:{ ...tdBase(),color:'var(--tr-text-tertiary)' },
+        tdBase:tdBase(),badgeStyle:this.badge(m.tone),
+        pillCell:{ ...tdBase(),textAlign:'center' },
+        pillStyle:{ display:'inline-flex',alignItems:'center',height:'20px',padding:'0 9px',borderRadius:'10px',fontSize:'11px',fontWeight:600,background:'var(--tr-accent-soft)',color:'var(--tr-accent-text)',border:'1px solid var(--tr-accent)' } });
+      if(exp) m.children.forEach(c=>rows.push(deviceRow(c,true)));
+    });
+
+    const groups=this.model.filter(m=>m.type==='group').length;
+    const singles=this.model.filter(m=>m.type==='device').length;
+
+    const tabStyle=(a)=>({ display:'inline-flex',alignItems:'center',gap:'6px',height:'34px',padding:'0 12px',background:'transparent',border:'none',borderBottom:'2px solid '+(a?'var(--tr-accent)':'transparent'),marginBottom:'-1px',fontFamily:'inherit',fontSize:'14px',fontWeight:a?600:500,color:a?'var(--tr-accent-text)':'var(--tr-text-secondary)',cursor:'pointer',whiteSpace:'nowrap',borderRadius:'6px 6px 0 0' });
+    const tabBadge=(a)=>({ display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:'18px',height:'18px',padding:'0 5px',borderRadius:'9px',fontSize:'11px',fontWeight:600,background:a?'var(--tr-accent-soft)':'var(--tr-surface-sunken)',color:a?'var(--tr-accent-text)':'var(--tr-text-secondary)' });
+    const tabs=tabData.map(([label,count],i)=>({ label,count,onClick:()=>this.setState({tab:i}),style:tabStyle(i===this.state.tab),badgeStyle:tabBadge(i===this.state.tab) }));
+
+    const navStyle=(a)=>({ display:'block',height:'38px',lineHeight:'38px',padding:'0 12px',borderRadius:'6px',fontSize:'14px',textDecoration:'none',cursor:'pointer',color:a?'var(--tr-accent-text)':'var(--tr-text-secondary)',background:a?'var(--tr-accent-soft)':'transparent',fontWeight:a?600:400,boxShadow:a?'inset 3px 0 0 var(--tr-accent)':'none' });
+    const nav=this.navItems.map(n=> n[0]==='div' ? {divider:true,item:false} : {divider:false,item:true,label:n[0],style:navStyle(!!n[1])});
+
+    const btn={ height:'36px',padding:'0 16px',borderRadius:'6px',fontFamily:'inherit',fontSize:'14px',fontWeight:600,cursor:'pointer',border:'1px solid transparent',whiteSpace:'nowrap' };
+    const groupBox={ width:'18px',height:'18px',flex:'none',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'5px',border:'1.5px solid '+(grouped?'var(--tr-accent)':'var(--tr-border-strong)'),background:grouped?'var(--tr-accent)':'var(--tr-surface)' };
+
+    const segWrap={ display:'flex',padding:'2px',gap:'2px',background:'var(--tr-surface-sunken)',border:'1px solid var(--tr-border)',borderRadius:'8px' };
+    const segBtn=(a)=>({ flex:1,display:'inline-flex',alignItems:'center',justifyContent:'center',height:'26px',border:'none',borderRadius:'6px',cursor:'pointer',padding:'0 4px',fontFamily:'inherit',fontSize:'12px',fontWeight:600,color:a?'var(--tr-text-primary)':'var(--tr-text-tertiary)',background:a?'var(--tr-surface-raised)':'transparent',boxShadow:a?'var(--tr-elev-1)':'none',transition:'background .12s,color .12s' });
+    const themeSeg=[['light','Светлая'],['system','Системная'],['dark','Тёмная']].map(([v,title])=>({ value:v,title,onClick:()=>this.setState({pref:v}),style:segBtn(pref===v) }));
+
+    return {
+      theme,grouped,cols,rows,tabs,nav,segWrap,themeSeg,pref,
+      footer:`Групп: ${groups} · одиночных: ${singles} · всего устройств: 342`,
+      toggleGroup:()=>this.setState(s=>({grouped:!s.grouped})),
+      btnPrimary:{ ...btn,background:'var(--tr-accent)',color:'var(--tr-on-accent)',borderColor:'var(--tr-accent)' },
+      btnSecondary:{ ...btn,background:'var(--tr-surface)',color:'var(--tr-text-primary)',borderColor:'var(--tr-border-strong)' },
+      groupBox,
+    };
+  }
+}
+</script>
+</body>
+</html>

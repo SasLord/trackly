@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-hover:#2350bd; --tr-accent-active:#1c4299;
+  --tr-danger:#cf3b3b; --tr-danger-hover:#b83232; --tr-danger-active:#9d2929; --tr-danger-ring:rgba(207,59,59,.32);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-hover:#7099ff; --tr-accent-active:#4b78e8;
+  --tr-danger:#f26565; --tr-danger-hover:#ff7d7d; --tr-danger-active:#e05555; --tr-danger-ring:rgba(242,101,101,.42);
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+@keyframes tr-spin{to{transform:rotate(360deg);}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Кнопки</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">5 вариантов · размеры sm (28px) / md (36px) · состояния обычное / наведение / фокус / нажатие / отключено / загрузка</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section data-theme="{{ th.key }}" style="background:var(--tr-bg);border:1px solid var(--tr-border);border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-bottom:16px;">
+            <span style="width:9px;height:9px;border-radius:2px;background:var(--tr-accent);"></span>
+            <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-secondary);">{{ th.label }}</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding:0 0 8px 96px;">
+            <sc-for list="{{ variants }}" as="v" hint-placeholder-count="5">
+              <span style="width:150px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);">{{ v.label }}</span>
+            </sc-for>
+          </div>
+
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:10px;padding:5px 0;">
+              <span style="width:86px;flex:none;font-size:12px;color:var(--tr-text-tertiary);">{{ row.label }}</span>
+              <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="5">
+                <span style="width:150px;flex:none;display:flex;justify-content:flex-start;">
+                  <button disabled="{{ c.disabled }}" style="{{ c.style }}">
+                    <sc-if value="{{ c.loading }}" hint-placeholder-val="{{ false }}"><span style="{{ spinner }}"></span></sc-if>
+                    {{ c.text }}
+                  </button>
+                </span>
+              </sc-for>
+            </div>
+          </sc-for>
+
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--tr-border);">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">Размер sm (28px)</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <sc-for list="{{ smCells }}" as="c" hint-placeholder-count="5">
+                <button style="{{ c.style }}">{{ c.text }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  base(size) {
+    return {
+      display:'inline-flex', alignItems:'center', justifyContent:'center', gap:'6px',
+      borderRadius:'6px', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap',
+      cursor:'pointer', border:'1px solid transparent', transition:'background .12s,box-shadow .12s',
+      ...(size==='sm' ? {height:'28px', padding:'0 12px', fontSize:'13px'} : {height:'36px', padding:'0 16px', fontSize:'14px'}),
+    };
+  }
+
+  styleFor(variant, state, size) {
+    const s = this.base(size);
+    const ring = (c) => `0 0 0 3px ${c}`;
+    const V = {
+      primary:   { def:{background:'var(--tr-accent)',color:'var(--tr-on-accent)',borderColor:'var(--tr-accent)'},
+                   hover:{background:'var(--tr-accent-hover)',borderColor:'var(--tr-accent-hover)'},
+                   active:{background:'var(--tr-accent-active)',borderColor:'var(--tr-accent-active)'},
+                   ring:'var(--tr-focus-ring)' },
+      secondary: { def:{background:'var(--tr-surface)',color:'var(--tr-text-primary)',borderColor:'var(--tr-border-strong)'},
+                   hover:{background:'var(--tr-surface-sunken)',borderColor:'var(--tr-border-strong)'},
+                   active:{background:'var(--tr-surface-sunken)',borderColor:'var(--tr-text-tertiary)'},
+                   ring:'var(--tr-focus-ring)', focusBorder:'var(--tr-accent)' },
+      destructive:{ def:{background:'var(--tr-danger)',color:'var(--tr-on-accent)',borderColor:'var(--tr-danger)'},
+                   hover:{background:'var(--tr-danger-hover)',borderColor:'var(--tr-danger-hover)'},
+                   active:{background:'var(--tr-danger-active)',borderColor:'var(--tr-danger-active)'},
+                   ring:'var(--tr-danger-ring)' },
+      ghost:     { def:{background:'transparent',color:'var(--tr-text-primary)',borderColor:'transparent'},
+                   hover:{background:'var(--tr-surface-sunken)'},
+                   active:{background:'var(--tr-surface-sunken)',borderColor:'var(--tr-border)'},
+                   ring:'var(--tr-focus-ring)', focusBorder:'var(--tr-accent)' },
+    };
+    if (variant === 'link') {
+      const l = { ...s, background:'transparent', borderColor:'transparent', color:'var(--tr-accent)',
+        textDecoration:'underline', textUnderlineOffset:'2px', height:'auto', padding:'2px 2px' };
+      if (state==='hover') l.color='var(--tr-accent-hover)';
+      if (state==='active') l.color='var(--tr-accent-active)';
+      if (state==='focus') { l.boxShadow=ring('var(--tr-focus-ring)'); l.borderRadius='4px'; l.textDecoration='none'; }
+      if (state==='disabled') { l.color='var(--tr-text-disabled)'; l.cursor='not-allowed'; l.textDecoration='none'; }
+      if (state==='loading') { l.color='var(--tr-text-tertiary)'; l.textDecoration='none'; }
+      return l;
+    }
+    const v = V[variant];
+    Object.assign(s, v.def);
+    if (state==='hover') Object.assign(s, v.hover);
+    if (state==='active') Object.assign(s, v.active);
+    if (state==='focus') { s.boxShadow=ring(v.ring); if (v.focusBorder) s.borderColor=v.focusBorder; }
+    if (state==='disabled') { s.opacity=0.45; s.cursor='not-allowed'; if (variant==='ghost') s.color='var(--tr-text-disabled)'; }
+    if (state==='loading') { s.opacity=0.85; s.cursor='default'; }
+    return s;
+  }
+
+  renderVals() {
+    const variants = [
+      { key:'primary', label:'Основная', text:'Создать акт' },
+      { key:'secondary', label:'Вторичная', text:'Отмена' },
+      { key:'destructive', label:'Опасное', text:'Удалить' },
+      { key:'ghost', label:'Призрак', text:'Подробнее' },
+      { key:'link', label:'Ссылка', text:'Открыть' },
+    ];
+    const states = [
+      { key:'default', label:'Обычное' },
+      { key:'hover', label:'Наведение' },
+      { key:'focus', label:'Фокус' },
+      { key:'active', label:'Нажатие' },
+      { key:'disabled', label:'Отключено' },
+      { key:'loading', label:'Загрузка' },
+    ];
+    const rows = states.map(st => ({
+      label: st.label,
+      cells: variants.map(v => ({
+        style: this.styleFor(v.key, st.key, 'md'),
+        text: st.key==='loading' ? 'Сохранение…' : v.text,
+        disabled: st.key==='disabled',
+        loading: st.key==='loading' && v.key!=='link',
+      })),
+    }));
+    const smCells = variants.map(v => ({ style: this.styleFor(v.key,'default','sm'), text: v.text }));
+    const spinner = {
+      width:'12px', height:'12px', border:'2px solid currentColor', borderTopColor:'transparent',
+      borderRadius:'50%', opacity:0.7, display:'inline-block', animation:'tr-spin .7s linear infinite',
+    };
+    return {
+      themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ],
+      variants, rows, smCells, spinner,
+    };
+  }
+}
+</script>
+</body>
+</html>

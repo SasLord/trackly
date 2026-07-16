@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd;
+  --tr-accent:#2b5fd9; --tr-accent-soft:rgba(43,95,217,.10); --tr-accent-text:#2350bd;
+  --tr-row-hover:#f1f4fa; --tr-row-selected:rgba(43,95,217,.09); --tr-group:#e9edf5;
+  --tr-success-soft:rgba(18,137,78,.12); --tr-success-text:#0f7343;
+  --tr-warning-soft:rgba(185,114,12,.14); --tr-warning-text:#8f590a;
+  --tr-danger-soft:rgba(207,59,59,.12); --tr-danger-text:#b02f2f;
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f;
+  --tr-accent:#5b8bff; --tr-accent-soft:rgba(91,139,255,.16); --tr-accent-text:#8fb0ff;
+  --tr-row-hover:#1c222c; --tr-row-selected:rgba(91,139,255,.14); --tr-group:#1a212b;
+  --tr-success-soft:rgba(47,191,116,.16); --tr-success-text:#4fd08c;
+  --tr-warning-soft:rgba(229,161,58,.16); --tr-warning-text:#f0b45a;
+  --tr-danger-soft:rgba(242,101,101,.16); --tr-danger-text:#ff8080;
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Строка таблицы и строка-группа</h2>
+    <p style="margin:0 0 14px;font-size:13px;color:#586074;">Плотная строка 40px · моно для идентификаторов · строка-группа со свёрткой и счётчиком · состояния: обычная / наведение / выбрана</p>
+
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px;font-size:12px;color:#586074;">
+      <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:22px;height:14px;border-radius:3px;background:#f1f4fa;border:1px solid #d3d8e2;"></span>наведение</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:22px;height:14px;border-radius:3px;background:rgba(43,95,217,.12);border-left:3px solid #2b5fd9;"></span>выбрана</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:22px;height:14px;border-radius:3px;background:#e9edf5;border:1px solid #d3d8e2;"></span>группа</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr;gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section style="border:1px solid #d3d8e2;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="padding:8px 14px;background:#f2f4f8;border-bottom:1px solid #e1e6ef;font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#586074;">{{ th.label }}</div>
+          <div data-theme="{{ th.key }}" style="background:var(--tr-surface);overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:14px;color:var(--tr-text-primary);min-width:820px;">
+              <thead>
+                <tr>
+                  <sc-for list="{{ cols }}" as="c" hint-placeholder-count="8">
+                    <th style="{{ c.style }}">{{ c.label }}</th>
+                  </sc-for>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+                  <tr style="{{ r.trStyle }}">
+                    <sc-if value="{{ r.isGroup }}" hint-placeholder-val="{{ false }}">
+                      <td colspan="4" style="{{ r.nameCell }}"><span style="{{ r.chevStyle }}">▸</span>{{ r.name }}</td>
+                      <td style="{{ r.mutedCell }}">Разные</td>
+                      <td style="{{ r.mutedCell }}">{{ r.cond }}</td>
+                      <td style="{{ r.tdBase }}"><span style="{{ r.badgeStyle }}">{{ r.status }}</span></td>
+                      <td style="{{ r.pillCell }}"><span style="{{ r.pillStyle }}">{{ r.count }}</span></td>
+                    </sc-if>
+                    <sc-if value="{{ r.isDevice }}" hint-placeholder-val="{{ true }}">
+                      <td style="{{ r.nameCell }}">{{ r.name }}</td>
+                      <td style="{{ r.monoCell }}">{{ r.inv }}</td>
+                      <td style="{{ r.monoCell }}">{{ r.sn }}</td>
+                      <td style="{{ r.tdBase }}">{{ r.model }}</td>
+                      <td style="{{ r.locCell }}">{{ r.loc }}</td>
+                      <td style="{{ r.tdBase }}">{{ r.cond }}</td>
+                      <td style="{{ r.tdBase }}"><span style="{{ r.badgeStyle }}">{{ r.status }}</span></td>
+                      <td style="{{ r.dotsCell }}">⋯</td>
+                    </sc-if>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const th = { textAlign:'left', fontSize:'12px', fontWeight:600, color:'var(--tr-text-secondary)',
+      padding:'0 10px', height:'34px', whiteSpace:'nowrap', borderBottom:'2px solid var(--tr-border-strong)' };
+    const cols = ['Наименование','Инвентарный №','Серийный №','Модель','Расположение','Состояние','Статус',''].map((label,i) =>
+      ({ label, style: i===7 ? { ...th, width:'36px' } : th }));
+
+    const TONE = {
+      neutral:{ background:'var(--tr-surface-sunken)', color:'var(--tr-text-secondary)' },
+      accent:{ background:'var(--tr-accent-soft)', color:'var(--tr-accent-text)' },
+      warning:{ background:'var(--tr-warning-soft)', color:'var(--tr-warning-text)' },
+      danger:{ background:'var(--tr-danger-soft)', color:'var(--tr-danger-text)' },
+    };
+    const badge = (tone) => ({ display:'inline-flex', alignItems:'center', height:'22px', padding:'0 10px',
+      borderRadius:'11px', fontSize:'12px', fontWeight:600, ...TONE[tone] });
+
+    const tdBase = (last) => ({ padding:'0 10px', height:'40px', borderBottom: last ? 'none' : '1px solid var(--tr-border)', whiteSpace:'nowrap', verticalAlign:'middle' });
+    const mono = (last) => ({ ...tdBase(last), fontFamily:"ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace", fontVariantNumeric:'tabular-nums', color:'var(--tr-text-secondary)', fontSize:'13px' });
+
+    const rowBg = (st) => st==='hover' ? 'var(--tr-row-hover)' : st==='selected' ? 'var(--tr-row-selected)' : 'transparent';
+
+    const device = (d) => {
+      const last = !!d.last;
+      const nameCell = { ...tdBase(last), fontWeight: d.indent ? 400 : 500 };
+      if (d.indent) nameCell.paddingLeft = d.state==='selected' ? '29px' : '32px';
+      if (d.state==='selected') nameCell.borderLeft = '3px solid var(--tr-accent)';
+      return {
+        isDevice:true, isGroup:false,
+        trStyle:{ background: rowBg(d.state), cursor:'default' },
+        name:d.name, inv:d.inv, sn:d.sn, model:d.model, loc:d.loc, cond:d.cond, status:d.label,
+        nameCell, monoCell:mono(last), tdBase:tdBase(last),
+        locCell:{ ...tdBase(last), color: d.loc==='—' ? 'var(--tr-text-tertiary)' : 'var(--tr-text-primary)' },
+        badgeStyle:badge(d.tone),
+        dotsCell:{ ...tdBase(last), color:'var(--tr-text-tertiary)', textAlign:'center', cursor:'pointer' },
+      };
+    };
+    const group = (g) => ({
+      isGroup:true, isDevice:false,
+      trStyle:{ background:'var(--tr-group)', cursor:'pointer' },
+      name:g.name, cond:g.cond, status:g.label, count:g.count,
+      nameCell:{ ...tdBase(false), fontWeight:600 },
+      chevStyle:{ display:'inline-flex', width:'18px', height:'18px', alignItems:'center', justifyContent:'center',
+        color:'var(--tr-text-secondary)', marginRight:'4px', verticalAlign:'middle',
+        transform: g.expanded ? 'rotate(90deg)' : 'none', transition:'transform .15s' },
+      mutedCell:{ ...tdBase(false), color:'var(--tr-text-tertiary)' },
+      tdBase:tdBase(false),
+      badgeStyle:badge(g.tone),
+      pillCell:{ ...tdBase(false), textAlign:'center' },
+      pillStyle:{ display:'inline-flex', alignItems:'center', height:'20px', padding:'0 9px', borderRadius:'10px',
+        fontSize:'11px', fontWeight:600, background:'var(--tr-accent-soft)', color:'var(--tr-accent-text)', border:'1px solid var(--tr-accent)' },
+    });
+
+    const rows = [
+      group({ name:'Принтер HP LaserJet M404', cond:'разное', tone:'accent', label:'В работе', count:'12 шт.', expanded:false }),
+      group({ name:'Ноутбук Dell Latitude 5540', cond:'Новое', tone:'neutral', label:'На складе', count:'3 шт.', expanded:true }),
+      device({ name:'Dell Latitude 5540', inv:'INV-0341', sn:'SN-DL5540-A1', model:'Latitude 5540', loc:'Склад №1', cond:'Новое', tone:'neutral', label:'На складе', indent:true, state:'default' }),
+      device({ name:'Dell Latitude 5540', inv:'INV-0344', sn:'SN-DL5540-A2', model:'Latitude 5540', loc:'Каб. 305 · ИТ-отдел', cond:'Б/у', tone:'accent', label:'В работе', indent:true, state:'hover' }),
+      device({ name:'Dell Latitude 5540', inv:'INV-0349', sn:'SN-DL5540-A3', model:'Latitude 5540', loc:'Склад №1', cond:'Новое', tone:'neutral', label:'На складе', indent:true, state:'selected' }),
+      device({ name:'МФУ Kyocera ECOSYS M2040', inv:'INV-0338', sn:'SN-KY2040-77', model:'ECOSYS M2040dn', loc:'Каб. 101 · Приёмная', cond:'Б/у', tone:'accent', label:'В работе', state:'default' }),
+      device({ name:'Картридж HP CF259A', inv:'INV-0402', sn:'—', model:'CF259A', loc:'Каб. 214 · HP M404', cond:'Ресурс 8%', tone:'warning', label:'Мало тонера', state:'default' }),
+      device({ name:'Принтер HP LaserJet M15', inv:'INV-0335', sn:'SN-HPM15-02', model:'LaserJet M15w', loc:'—', cond:'Неисправно', tone:'danger', label:'Списано', state:'default', last:true }),
+    ];
+
+    return { themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ], cols, rows };
+  }
+}
+</script>
+</body>
+</html>

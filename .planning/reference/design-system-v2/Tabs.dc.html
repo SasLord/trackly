@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-soft:rgba(43,95,217,.14); --tr-accent-text:#2350bd;
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-soft:rgba(91,139,255,.20); --tr-accent-text:#8fb0ff;
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Вкладки · switch-bar</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">Фильтр-статусы со счётчиками · подчёркивание активной вкладки · интерактивный пример + матрица состояний</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section data-theme="{{ th.key }}" style="background:var(--tr-bg);border:1px solid var(--tr-border);border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-bottom:18px;">
+            <span style="width:9px;height:9px;border-radius:2px;background:var(--tr-accent);"></span>
+            <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-secondary);">{{ th.label }}</span>
+          </div>
+
+          <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">Интерактивно — кликните вкладку</div>
+          <div style="display:flex;gap:2px;border-bottom:1px solid var(--tr-border);margin-bottom:6px;overflow-x:auto;">
+            <sc-for list="{{ liveTabs }}" as="t" hint-placeholder-count="5">
+              <button onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }} <span style="{{ t.badgeStyle }}">{{ t.count }}</span></button>
+            </sc-for>
+          </div>
+          <div style="font-size:12px;color:var(--tr-text-tertiary);margin-bottom:20px;">Активна: «{{ activeLabel }}»</div>
+
+          <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">Состояния</div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <sc-for list="{{ stateRows }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:14px;padding:5px 0;">
+                <span style="width:96px;flex:none;font-size:12px;color:var(--tr-text-tertiary);">{{ r.label }}</span>
+                <span style="border-bottom:1px solid var(--tr-border);padding-bottom:1px;">
+                  <span style="{{ r.style }}">{{ r.text }} <span style="{{ r.badgeStyle }}">{{ r.count }}</span></span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--tr-border);">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">Сегментированный вариант</div>
+            <div style="display:inline-flex;gap:3px;padding:3px;background:var(--tr-surface-sunken);border-radius:7px;">
+              <sc-for list="{{ segTabs }}" as="s" hint-placeholder-count="3">
+                <span style="{{ s.style }}">{{ s.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { active: 0 };
+
+  tabStyle(state) {
+    const s = { display:'inline-flex', alignItems:'center', gap:'6px', height:'34px', padding:'0 12px',
+      background:'transparent', border:'none', borderBottom:'2px solid transparent', marginBottom:'-1px',
+      fontFamily:'inherit', fontSize:'14px', fontWeight:500, color:'var(--tr-text-secondary)',
+      cursor:'pointer', whiteSpace:'nowrap', borderRadius:'6px 6px 0 0', outline:'none' };
+    if (state==='active') { s.color='var(--tr-accent-text)'; s.borderBottomColor='var(--tr-accent)'; s.fontWeight=600; }
+    if (state==='hover') { s.color='var(--tr-text-primary)'; s.background='var(--tr-surface-sunken)'; }
+    if (state==='focus') { s.color='var(--tr-text-primary)'; s.boxShadow='0 0 0 3px var(--tr-focus-ring)'; }
+    if (state==='disabled') { s.color='var(--tr-text-disabled)'; s.cursor='not-allowed'; }
+    return s;
+  }
+  badgeStyle(state) {
+    const b = { display:'inline-flex', alignItems:'center', justifyContent:'center', minWidth:'18px', height:'18px',
+      padding:'0 5px', borderRadius:'9px', fontSize:'11px', fontWeight:600, lineHeight:1,
+      background:'var(--tr-surface-sunken)', color:'var(--tr-text-secondary)' };
+    if (state==='active') { b.background='var(--tr-accent-soft)'; b.color='var(--tr-accent-text)'; }
+    if (state==='disabled') { b.color='var(--tr-text-disabled)'; }
+    return b;
+  }
+
+  renderVals() {
+    const data = [
+      { label:'Все', count:'342' }, { label:'На складе', count:'143' }, { label:'В работе', count:'176' },
+      { label:'На ремонте', count:'15' }, { label:'Списано', count:'8' },
+    ];
+    const active = this.state.active;
+    const liveTabs = data.map((t,i) => ({
+      label:t.label, count:t.count,
+      style:this.tabStyle(i===active ? 'active' : 'default'),
+      badgeStyle:this.badgeStyle(i===active ? 'active' : 'default'),
+      onClick:() => this.setState({ active:i }),
+    }));
+
+    const stateRows = [
+      { label:'Обычная', st:'default', text:'На складе', count:'143' },
+      { label:'Активная', st:'active', text:'В работе', count:'176' },
+      { label:'Наведение', st:'hover', text:'На ремонте', count:'15' },
+      { label:'Фокус', st:'focus', text:'Все', count:'342' },
+      { label:'Отключена', st:'disabled', text:'Списано', count:'8' },
+    ].map(r => ({ ...r, style:this.tabStyle(r.st), badgeStyle:this.badgeStyle(r.st) }));
+
+    const segStyle = (act) => ({ display:'inline-flex', alignItems:'center', height:'28px', padding:'0 12px',
+      borderRadius:'5px', fontSize:'13px', fontWeight:600, cursor:'pointer',
+      background: act ? 'var(--tr-surface)' : 'transparent', color: act ? 'var(--tr-accent-text)' : 'var(--tr-text-secondary)',
+      boxShadow: act ? '0 1px 2px rgba(16,22,34,.12)' : 'none' });
+    const segTabs = [ {label:'Список', act:true}, {label:'Карта', act:false}, {label:'Таблица', act:false} ].map(s => ({ label:s.label, style:segStyle(s.act) }));
+
+    return {
+      themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ],
+      liveTabs, activeLabel:data[active].label, stateRows, segTabs,
+    };
+  }
+}
+</script>
+</body>
+</html>

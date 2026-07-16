@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd;
+  --tr-accent:#2b5fd9; --tr-accent-soft:rgba(43,95,217,.10); --tr-accent-text:#2350bd;
+  --tr-success:#12894e; --tr-success-soft:rgba(18,137,78,.12); --tr-success-text:#0f7343;
+  --tr-warning:#b9720c; --tr-warning-soft:rgba(185,114,12,.14); --tr-warning-text:#8f590a;
+  --tr-danger:#cf3b3b; --tr-danger-soft:rgba(207,59,59,.12); --tr-danger-text:#b02f2f;
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f;
+  --tr-accent:#5b8bff; --tr-accent-soft:rgba(91,139,255,.16); --tr-accent-text:#8fb0ff;
+  --tr-success:#2fbf74; --tr-success-soft:rgba(47,191,116,.16); --tr-success-text:#4fd08c;
+  --tr-warning:#e5a13a; --tr-warning-soft:rgba(229,161,58,.16); --tr-warning-text:#f0b45a;
+  --tr-danger:#f26565; --tr-danger-soft:rgba(242,101,101,.16); --tr-danger-text:#ff8080;
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Бейджи-статусы</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">Статусы устройств, картриджей и заявок · мягкая подложка (по умолчанию), сплошной, с точкой и счётчик-пилюля</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section data-theme="{{ th.key }}" style="background:var(--tr-bg);border:1px solid var(--tr-border);border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-bottom:18px;">
+            <span style="width:9px;height:9px;border-radius:2px;background:var(--tr-accent);"></span>
+            <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-secondary);">{{ th.label }}</span>
+          </div>
+
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+            <div style="margin-bottom:18px;">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">{{ g.title }}</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <sc-for list="{{ g.items }}" as="b" hint-placeholder-count="5">
+                  <span style="{{ b.style }}"><sc-if value="{{ b.dot }}" hint-placeholder-val="{{ false }}"><span style="{{ b.dotStyle }}"></span></sc-if>{{ b.text }}</span>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const pill = () => ({ display:'inline-flex', alignItems:'center', gap:'6px', height:'22px', padding:'0 10px',
+      borderRadius:'11px', fontSize:'12px', fontWeight:600, whiteSpace:'nowrap', lineHeight:1 });
+    const TONE = {
+      neutral: { soft:{background:'var(--tr-surface-sunken)',color:'var(--tr-text-secondary)'}, solid:{background:'var(--tr-border-strong)',color:'var(--tr-text-primary)'}, dot:'var(--tr-text-tertiary)' },
+      accent:  { soft:{background:'var(--tr-accent-soft)',color:'var(--tr-accent-text)'}, solid:{background:'var(--tr-accent)',color:'var(--tr-on-accent)'}, dot:'var(--tr-accent)' },
+      success: { soft:{background:'var(--tr-success-soft)',color:'var(--tr-success-text)'}, solid:{background:'var(--tr-success)',color:'var(--tr-on-accent)'}, dot:'var(--tr-success)' },
+      warning: { soft:{background:'var(--tr-warning-soft)',color:'var(--tr-warning-text)'}, solid:{background:'var(--tr-warning)',color:'var(--tr-on-accent)'}, dot:'var(--tr-warning)' },
+      danger:  { soft:{background:'var(--tr-danger-soft)',color:'var(--tr-danger-text)'}, solid:{background:'var(--tr-danger)',color:'var(--tr-on-accent)'}, dot:'var(--tr-danger)' },
+    };
+    const dotStyle = (tone) => ({ width:'7px', height:'7px', borderRadius:'50%', flex:'none', background:TONE[tone].dot });
+    const soft = (tone,text) => ({ text, style:{ ...pill(), ...TONE[tone].soft } });
+    const solid = (tone,text) => ({ text, style:{ ...pill(), ...TONE[tone].solid } });
+    const dot = (tone,text) => ({ text, dot:true, dotStyle:dotStyle(tone), style:{ ...pill(), ...TONE[tone].soft } });
+
+    const statuses = [
+      ['neutral','На складе'], ['accent','Выдан'], ['accent','В работе'], ['success','Заправлен'], ['warning','Мало тонера'], ['warning','На ремонте'], ['danger','Списано'], ['danger','Неисправно'],
+    ];
+
+    const groups = [
+      { title:'По умолчанию — мягкая подложка', items: statuses.map(([t,x]) => soft(t,x)) },
+      { title:'Сплошной — для акцентных выделений', items: [['accent','Выдан'],['success','Заправлен'],['warning','Мало тонера'],['danger','Списано']].map(([t,x]) => solid(t,x)) },
+      { title:'С индикатором-точкой', items: [['success','В сети'],['warning','Ожидает'],['danger','Ошибка'],['neutral','Оффлайн']].map(([t,x]) => dot(t,x)) },
+      { title:'Счётчик-пилюля', items: [
+          { text:'12 шт.', style:{ ...pill(), background:'var(--tr-accent-soft)', color:'var(--tr-accent-text)', border:'1px solid var(--tr-accent)', borderRadius:'11px', padding:'0 9px', height:'20px', fontSize:'11px' } },
+          { text:'342', style:{ ...pill(), background:'var(--tr-surface-sunken)', color:'var(--tr-text-secondary)', borderRadius:'11px', minWidth:'18px', height:'18px', padding:'0 6px', fontSize:'11px', justifyContent:'center' } },
+      ] },
+    ];
+
+    return { themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ], groups };
+  }
+}
+</script>
+</body>
+</html>

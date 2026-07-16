@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1.2
-milestone_name: Пост-релизные доработки UX и печати
-status: Awaiting next milestone
-last_updated: "2026-07-15T00:15:42.258Z"
-last_activity: 2026-07-15 — Milestone v1.1.2 completed and archived
+milestone: v1.2
+milestone_name: Редизайн UI и дизайн-система
+status: planning
+last_updated: "2026-07-16T15:46:46.745Z"
+last_activity: 2026-07-16
 progress:
-  total_phases: 25
-  completed_phases: 25
-  total_plans: 152
-  completed_plans: 152
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.1.2 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-15 — Quick task 260715-gt2: editable qty for new positions when editing an act
+Status: Defining requirements
+Last activity: 2026-07-16 — Milestone v1.2 started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 

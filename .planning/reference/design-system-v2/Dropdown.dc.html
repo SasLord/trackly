@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-raised:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-soft:rgba(43,95,217,.10); --tr-accent-text:#2350bd;
+  --tr-row-hover:#f1f4fa; --tr-row-selected:rgba(43,95,217,.09);
+  --tr-elev-2:0 2px 6px rgba(16,22,34,.09),0 1px 2px rgba(16,22,34,.06);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-raised:#1c222c; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-soft:rgba(91,139,255,.16); --tr-accent-text:#8fb0ff;
+  --tr-row-hover:#1c222c; --tr-row-selected:rgba(91,139,255,.14);
+  --tr-elev-2:0 3px 10px rgba(0,0,0,.55),0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+input::placeholder{color:var(--tr-text-tertiary);}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Выпадающий список · комбобокс</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">Выбор устройства со склада · плоский список и список с группами (счётчик, переход внутрь) · строки-варианты: обычная / подсвеченная / выбранная</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));gap:20px;align-items:start;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section data-theme="{{ th.key }}" style="background:var(--tr-bg);border:1px solid var(--tr-border);border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-bottom:18px;">
+            <span style="width:9px;height:9px;border-radius:2px;background:var(--tr-accent);"></span>
+            <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-secondary);">{{ th.label }}</span>
+          </div>
+
+          <!-- INTERACTIVE, WITH GROUPS -->
+          <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">С группами — интерактивно, кликните позицию</div>
+          <div style="position:relative;margin-bottom:24px;">
+            <div style="{{ fieldStyle }}">
+              <input placeholder="Устройство со склада" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:inherit;font-size:14px;color:var(--tr-text-primary);">
+              <span style="color:var(--tr-text-tertiary);font-size:10px;flex:none;">▼</span>
+            </div>
+            <div style="{{ panelStyle }}">
+              <sc-if value="{{ inGroup }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ goBack }}" style="display:flex;align-items:center;gap:8px;width:100%;height:38px;padding:0 12px;border:none;border-bottom:1px solid var(--tr-border);background:var(--tr-surface-sunken);font-family:inherit;font-size:13px;color:var(--tr-text-secondary);cursor:pointer;text-align:left;">
+                  <span style="font-size:13px;">←</span><span style="font-weight:600;color:var(--tr-text-primary);">Назад</span>
+                  <span style="color:var(--tr-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">· {{ groupTitle }}</span>
+                </button>
+              </sc-if>
+              <div style="max-height:280px;overflow-y:auto;">
+                <sc-for list="{{ options }}" as="o" hint-placeholder-count="5">
+                  <button onClick="{{ o.onClick }}" style="{{ o.rowStyle }}">
+                    <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;text-align:left;">
+                      <span style="display:flex;align-items:baseline;gap:8px;min-width:0;">
+                        <span style="font-size:14px;font-weight:600;color:var(--tr-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ o.name }}</span>
+                        <sc-if value="{{ o.hasMeta }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;color:var(--tr-text-tertiary);white-space:nowrap;">{{ o.meta }}</span></sc-if>
+                      </span>
+                      <sc-if value="{{ o.hasSub }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:var(--tr-text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ o.sub }}</span></sc-if>
+                    </span>
+                    <span style="display:flex;align-items:center;gap:6px;flex:none;">
+                      <span style="min-width:34px;text-align:right;font-size:13px;font-weight:600;color:var(--tr-accent-text);font-variant-numeric:tabular-nums;">{{ o.count }}</span>
+                      <span style="width:12px;flex:none;text-align:center;color:var(--tr-text-tertiary);font-size:13px;"><sc-if value="{{ o.isGroup }}" hint-placeholder-val="{{ false }}">›</sc-if></span>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <!-- STATIC, NO GROUPS -->
+          <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:10px;">Без групп — плоский список</div>
+          <div style="position:relative;margin-bottom:8px;">
+            <div style="{{ fieldStyleFlat }}">
+              <span style="flex:1;min-width:0;font-size:14px;color:var(--tr-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Kyocera ECOSYS M2040dn</span>
+              <span style="color:var(--tr-text-tertiary);font-size:10px;flex:none;">▼</span>
+            </div>
+            <div style="{{ panelStyleFlat }}">
+              <div style="padding:6px 12px;border-bottom:1px solid var(--tr-border);">
+                <div style="{{ searchBoxStyle }}">
+                  <span style="color:var(--tr-text-tertiary);font-size:13px;">⌕</span>
+                  <input value="kyoc" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:inherit;font-size:13px;color:var(--tr-text-primary);">
+                </div>
+              </div>
+              <div style="max-height:240px;overflow-y:auto;">
+                <sc-for list="{{ flatOptions }}" as="o" hint-placeholder-count="5">
+                  <div style="{{ o.rowStyle }}">
+                    <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
+                      <span style="font-size:14px;font-weight:500;color:var(--tr-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ o.name }}</span>
+                      <sc-if value="{{ o.hasSub }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:var(--tr-text-tertiary);font-family:ui-monospace,'SF Mono','Segoe UI Mono',Menlo,Consolas,monospace;">{{ o.sub }}</span></sc-if>
+                    </span>
+                    <sc-if value="{{ o.selected }}" hint-placeholder-val="{{ false }}"><span style="color:var(--tr-accent);font-size:14px;font-weight:700;flex:none;">✓</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { group: null };
+
+  data = [
+    { name:'Фильтр-удлинитель КУБ (PowerCube)', meta:'SPG-B-10-White (02671)', sub:'Новый в заводской упаковке, не вскрытый', count:'×9', group:false },
+    { name:'Физический ключ защиты Guardant', meta:'Guardant Sign', sub:'Новый в заводской упаковке, не вскрытый', count:'×6', group:true,
+      instances:[
+        'инв. 00603 254','инв. 00604 254','инв. 00605 254','инв. 02866 254','инв. 02867 254','инв. 02868 254',
+      ] },
+    { name:'Pantum BM5100dn', meta:'', sub:'', count:'×3', group:false },
+    { name:'Системный блок', meta:'BAA-103', sub:'Новый в заводской упаковке, вскрытый, настроенное рабочее окружение (ОС)', count:'×3', group:true,
+      instances:['инв. SMU-31-0000090','инв. SMU-31-0000091','инв. SMU-31-0000092'] },
+    { name:'DVD-ROM ASUS', meta:'SDRW-08U9M-U', sub:'Новое', count:'×2', group:false },
+  ];
+
+  rowStyle(state) {
+    const s = { display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', width:'100%',
+      minHeight:'46px', padding:'8px 12px', border:'none', borderBottom:'1px solid var(--tr-border)',
+      background:'transparent', fontFamily:'inherit', cursor:'pointer', textAlign:'left' };
+    if (state==='hover') s.background='var(--tr-row-hover)';
+    if (state==='selected') s.background='var(--tr-row-selected)';
+    return s;
+  }
+
+  renderVals() {
+    const group = this.state.group;
+    const inGroup = group != null;
+    const g = inGroup ? this.data[group] : null;
+
+    let options;
+    if (inGroup) {
+      options = g.instances.map((inv,i) => ({
+        name: inv, meta:'', hasMeta:false, sub: g.sub, hasSub:true, count:'', isGroup:false,
+        rowStyle: this.rowStyle(i===1 ? 'hover' : 'default'),
+        onClick: () => {},
+      }));
+    } else {
+      options = this.data.map((d,i) => ({
+        name:d.name, meta:d.meta, hasMeta:!!d.meta, sub:d.sub, hasSub:!!d.sub, count:d.count, isGroup:d.group,
+        rowStyle: this.rowStyle(i===1 ? 'hover' : 'default'),
+        onClick: d.group ? (() => this.setState({ group:i })) : (() => {}),
+      }));
+    }
+
+    const flatOptions = [
+      { name:'Комплект A4Tech клавиатура + мышь', sub:'KK-3330S USB (Black)', hasSub:true, selected:false, st:'default' },
+      { name:'Монитор AOC Q27B3MA', sub:'', hasSub:false, selected:false, st:'default' },
+      { name:'Kyocera ECOSYS M2040dn', sub:'SN VCF7Y79171 · инв. SMU-31-0000123', hasSub:true, selected:true, st:'selected' },
+      { name:'Kyocera ECOSYS M2540dn', sub:'', hasSub:false, selected:false, st:'hover' },
+      { name:'printer-192-168-1-100', sub:'Pantum BM5100ADN', hasSub:true, selected:false, st:'default' },
+    ].map(o => ({ ...o, rowStyle: this.rowStyle(o.st) }));
+
+    const field = (focus) => ({ display:'flex', alignItems:'center', gap:'10px', height:'36px', padding:'0 12px',
+      background:'var(--tr-surface)', border:'1px solid ' + (focus?'var(--tr-accent)':'var(--tr-border-strong)'),
+      borderRadius:'6px', boxShadow: focus?'0 0 0 3px var(--tr-focus-ring)':'none' });
+    const panel = { position:'relative', marginTop:'4px', left:0, right:0,
+      background:'var(--tr-surface-raised)', border:'1px solid var(--tr-border)', borderRadius:'8px',
+      boxShadow:'var(--tr-elev-2)', overflow:'hidden' };
+
+    return {
+      themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ],
+      inGroup, groupTitle: g ? (g.name + (g.meta ? ' · ' + g.meta : '')) : '',
+      goBack: () => this.setState({ group:null }),
+      options, flatOptions,
+      fieldStyle: field(true), fieldStyleFlat: field(false),
+      panelStyle: panel, panelStyleFlat: panel,
+      searchBoxStyle: { display:'flex', alignItems:'center', gap:'8px', height:'30px', padding:'0 10px',
+        background:'var(--tr-surface-sunken)', borderRadius:'5px' },
+    };
+  }
+}
+</script>
+</body>
+</html>

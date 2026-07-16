@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-raised:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd;
+  --tr-accent:#2b5fd9; --tr-accent-hover:#2350bd; --tr-accent-soft:rgba(43,95,217,.10); --tr-accent-text:#2350bd;
+  --tr-row-hover:#f1f4fa;
+  --tr-success:#12894e; --tr-success-soft:rgba(18,137,78,.12); --tr-success-text:#0f7343;
+  --tr-warning:#b9720c; --tr-warning-soft:rgba(185,114,12,.14); --tr-warning-text:#8f590a;
+  --tr-danger:#cf3b3b; --tr-danger-soft:rgba(207,59,59,.12); --tr-danger-text:#b02f2f;
+  --tr-elev-1:0 1px 2px rgba(16,22,34,.07),0 1px 1px rgba(16,22,34,.04);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-raised:#1c222c; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f;
+  --tr-accent:#5b8bff; --tr-accent-hover:#7099ff; --tr-accent-soft:rgba(91,139,255,.16); --tr-accent-text:#8fb0ff;
+  --tr-row-hover:#1c222c;
+  --tr-success:#2fbf74; --tr-success-soft:rgba(47,191,116,.16); --tr-success-text:#4fd08c;
+  --tr-warning:#e5a13a; --tr-warning-soft:rgba(229,161,58,.16); --tr-warning-text:#f0b45a;
+  --tr-danger:#f26565; --tr-danger-soft:rgba(242,101,101,.16); --tr-danger-text:#ff8080;
+  --tr-elev-1:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:#d6dae2;}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="height:720px;display:flex;background:var(--tr-surface);color:var(--tr-text-primary);font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px;overflow:hidden;">
+
+  <aside style="width:236px;flex:none;background:var(--tr-bg);border-right:1px solid var(--tr-border);display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:9px;height:56px;padding:0 16px;border-bottom:1px solid var(--tr-border);font-size:16px;font-weight:600;">
+      <span style="width:11px;height:11px;border-radius:3px;background:var(--tr-accent);"></span>Trackly
+    </div>
+    <nav style="flex:1;padding:8px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="12">
+        <sc-if value="{{ n.divider }}" hint-placeholder-val="{{ false }}"><span style="height:1px;background:var(--tr-border);margin:6px 8px;"></span></sc-if>
+        <sc-if value="{{ n.item }}" hint-placeholder-val="{{ true }}"><a style="{{ n.style }}">{{ n.label }}</a></sc-if>
+      </sc-for>
+    </nav>
+    <div style="padding:14px 16px;border-top:1px solid var(--tr-border);">
+      <div style="display:flex;flex-direction:column;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--tr-border);">
+        <span style="font-size:14px;font-weight:600;">А. Платов</span><span style="font-size:12px;color:var(--tr-text-tertiary);">Администратор</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span style="font-size:12px;color:var(--tr-text-secondary);">Оформление</span>
+        <div style="{{ segWrap }}">
+          <sc-for list="{{ themeSeg }}" as="s" hint-placeholder-count="3">
+            <button type="button" title="{{ s.title }}" onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.title }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1;display:flex;flex-direction:column;min-width:0;">
+    <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px;padding:0 24px;border-bottom:1px solid var(--tr-border);flex:none;">
+      <h1 style="margin:0;font-size:20px;font-weight:600;">Дашборд</h1>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <select style="height:32px;padding:0 8px;border-radius:6px;border:1px solid var(--tr-border-strong);background:var(--tr-surface);color:var(--tr-text-primary);font-family:inherit;font-size:13px;cursor:pointer;">
+          <option>Июль</option><option>Июнь</option><option>Май</option>
+        </select>
+        <select style="height:32px;padding:0 8px;border-radius:6px;border:1px solid var(--tr-border-strong);background:var(--tr-surface);color:var(--tr-text-primary);font-family:inherit;font-size:13px;cursor:pointer;">
+          <option>2026</option><option>2025</option>
+        </select>
+        <button style="{{ btnPrimary }}">+ Создать акт</button>
+      </div>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:24px;background:var(--tr-surface);">
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;">
+        <sc-for list="{{ stats }}" as="c" hint-placeholder-count="4">
+          <div style="border:1px solid var(--tr-border);border-radius:8px;padding:16px;background:var(--tr-surface);box-shadow:var(--tr-elev-1);min-width:0;">
+            <div style="font-size:13px;color:var(--tr-text-secondary);">{{ c.title }}</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
+              <span style="font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;">{{ c.value }}</span>
+              <span style="font-size:13px;color:var(--tr-text-tertiary);">{{ c.unit }}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;">
+              <sc-for list="{{ c.rows }}" as="r" hint-placeholder-count="2">
+                <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:11px;background:var(--tr-surface-sunken);font-size:12px;color:var(--tr-text-secondary);white-space:nowrap;">{{ r.label }}<strong style="color:var(--tr-text-primary);font-variant-numeric:tabular-nums;">{{ r.value }}</strong></span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start;margin-bottom:16px;">
+        <div style="border:1px solid var(--tr-border);border-radius:8px;padding:18px;background:var(--tr-surface);box-shadow:var(--tr-elev-1);min-width:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">Динамика расхода картриджей</h3>
+            <div style="display:flex;gap:14px;">
+              <sc-for list="{{ periods }}" as="p" hint-placeholder-count="3">
+                <button type="button" onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <div style="display:flex;flex-direction:column;justify-content:space-between;height:210px;padding-bottom:20px;font-size:11px;color:var(--tr-text-tertiary);text-align:right;">
+              <sc-for list="{{ chart.ticks }}" as="t" hint-placeholder-count="6"><span>{{ t }}</span></sc-for>
+            </div>
+            <div style="flex:1;position:relative;height:210px;">
+              <div style="position:absolute;left:0;right:0;top:0;bottom:20px;">
+                <sc-for list="{{ chart.grid }}" as="g" hint-placeholder-count="6"><div style="{{ g.style }}"></div></sc-for>
+              </div>
+              <div style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;">
+                <sc-for list="{{ chart.months }}" as="m" hint-placeholder-count="3">
+                  <div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;">
+                    <div style="{{ m.barsStyle }}">
+                      <sc-for list="{{ m.bars }}" as="b" hint-placeholder-count="3">
+                        <div style="{{ b.wrapStyle }}">
+                          <div style="{{ b.fill }}"></div>
+                          <span style="{{ b.labelStyle }}">{{ b.label }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <span style="height:20px;line-height:20px;font-size:11px;color:var(--tr-text-tertiary);">{{ m.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;padding-top:14px;border-top:1px solid var(--tr-border);">
+            <sc-for list="{{ chart.legend }}" as="s" hint-placeholder-count="3">
+              <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--tr-text-secondary);">
+                <span style="width:10px;height:10px;border-radius:50%;background:{{ s.color }};"></span>{{ s.name }}
+              </span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--tr-border);border-radius:8px;overflow:hidden;box-shadow:var(--tr-elev-1);">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--tr-border);background:var(--tr-bg);">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">Низкий остаток</h3>
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;font-size:12px;font-weight:600;background:var(--tr-warning-soft);color:var(--tr-warning-text);">5</span>
+          </div>
+          <sc-for list="{{ lowStock }}" as="l" hint-placeholder-count="5">
+            <div style="padding:11px 16px;border-bottom:1px solid var(--tr-border);display:flex;align-items:center;gap:10px;">
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--tr-warning);flex:none;"></span>
+              <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ l.name }}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--tr-warning-text);font-variant-numeric:tabular-nums;flex:none;">{{ l.pct }}%</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.7fr 1fr;gap:16px;align-items:start;">
+        <div style="border:1px solid var(--tr-border);border-radius:8px;overflow:hidden;box-shadow:var(--tr-elev-1);">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--tr-border);background:var(--tr-bg);">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">Последние заявки</h3>
+            <a style="font-size:13px;color:var(--tr-accent);cursor:pointer;">Все заявки →</a>
+          </div>
+          <sc-for list="{{ requests }}" as="r" hint-placeholder-count="4">
+            <div style="{{ r.rowStyle }}">
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                <span style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.title }}</span>
+                <span style="font-size:12px;color:var(--tr-text-tertiary);">{{ r.meta }}</span>
+              </span>
+              <span style="{{ r.badgeStyle }}">{{ r.status }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="border:1px solid var(--tr-border);border-radius:8px;overflow:hidden;box-shadow:var(--tr-elev-1);">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--tr-border);background:var(--tr-bg);">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">Мониторинг картриджей</h3>
+          </div>
+          <sc-for list="{{ cartridges }}" as="c" hint-placeholder-count="4">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--tr-border);display:flex;flex-direction:column;gap:7px;">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+                <span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.name }}</span>
+                <span style="font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:{{ c.pctColor }};flex:none;">{{ c.pct }}%</span>
+              </div>
+              <div style="height:6px;border-radius:3px;background:var(--tr-surface-sunken);overflow:hidden;">
+                <div style="height:100%;border-radius:3px;width:{{ c.pct }}%;background:{{ c.pctColor }};"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;,&quot;system&quot;],&quot;default&quot;:&quot;system&quot;,&quot;tsType&quot;:&quot;'light'|'dark'|'system'&quot;}}">
+class Component extends DCLogic {
+  state = { pref:null, sysDark:false, period:3 };
+  componentDidMount(){
+    this.mq = window.matchMedia('(prefers-color-scheme: dark)');
+    this.setState({ sysDark:this.mq.matches });
+    this.mqHandler = e => this.setState({ sysDark:e.matches });
+    this.mq.addEventListener('change', this.mqHandler);
+  }
+  componentWillUnmount(){ this.mq && this.mq.removeEventListener('change', this.mqHandler); }
+  navItems = [
+    ['Дашборд',1],['Карта',0],['div'],['Устройства',0],['Акты',0],['div'],
+    ['Принтеры',0],['Картриджи',0],['Заявки',0],['div'],['Отчёты',0],['Пользователи',0],['div'],['Настройки',0],
+  ];
+  renderVals(){
+    const pref = this.state.pref ?? (this.props.theme ?? 'system');
+    const theme = pref==='system' ? (this.state.sysDark?'dark':'light') : pref;
+
+    const segWrap={ display:'flex',padding:'2px',gap:'2px',background:'var(--tr-surface-sunken)',border:'1px solid var(--tr-border)',borderRadius:'8px' };
+    const segBtn=(a)=>({ flex:1,display:'inline-flex',alignItems:'center',justifyContent:'center',height:'26px',border:'none',borderRadius:'6px',cursor:'pointer',padding:'0 4px',fontFamily:'inherit',fontSize:'12px',fontWeight:600,color:a?'var(--tr-text-primary)':'var(--tr-text-tertiary)',background:a?'var(--tr-surface-raised)':'transparent',boxShadow:a?'var(--tr-elev-1)':'none',transition:'background .12s,color .12s' });
+    const themeSeg=[['light','Светлая'],['system','Системная'],['dark','Тёмная']].map(([v,title])=>({ value:v,title,onClick:()=>this.setState({pref:v}),style:segBtn(pref===v) }));
+
+    const stats=[
+      { title:'Устройства',value:'40',unit:'в базе',rows:[['В работе','8'],['На складе','32']] },
+      { title:'Заявки',value:'0',unit:'активных',rows:[['Новые','0'],['В работе','0'],['Выполнены','1']] },
+      { title:'Картриджи',value:'16',unit:'всего',rows:[['В работе','3'],['На складе','11'],['Списано','2']] },
+      { title:'Принтеры',value:'2',unit:'онлайн',rows:[['Офлайн','5'],['Проблемные','5']] },
+    ].map(c=>({ ...c, rows:c.rows.map(r=>({label:r[0],value:r[1]})) }));
+    const lowStock=[
+      { name:'Cactus CS-DL-5120',pct:4 },{ name:'Cactus CS-TL-5120',pct:6 },
+      { name:'Cactus CSP-W1106',pct:9 },{ name:'Pantum TL-5120x',pct:11 },{ name:'e-Line TK-1170',pct:13 },
+    ];
+
+    const period=this.state.period;
+    const monthNames=['Авг','Сен','Окт','Ноя','Дек','Янв','Фев','Мар','Апр','Май','Июн','Июл'];
+    const series=[
+      { name:'Cactus CS-DL-5120',color:'#3b6fe0',data:[3,4,2,5,3,4,2,3,4,0,5,0] },
+      { name:'Cactus CS-TL-5120',color:'#1a9d5f',data:[1,2,1,3,2,1,2,1,2,0,1,0] },
+      { name:'Cactus CSP-W1106',color:'#d8820e',data:[2,1,3,2,1,2,3,1,2,0,2,0] },
+    ];
+    const visIdx=[]; for(let i=12-period;i<12;i++) visIdx.push(i);
+    let yMax=5; visIdx.forEach(i=>series.forEach(s=>{ if(s.data[i]>yMax) yMax=s.data[i]; }));
+    const ticks=[]; for(let t=yMax;t>=0;t--) ticks.push(t);
+    const grid=[]; for(let t=0;t<=yMax;t++) grid.push({ style:{ position:'absolute',left:0,right:0,bottom:(t/yMax*100)+'%',height:'1px',background:'var(--tr-border)' } });
+    const barW=period<=3?16:period<=6?10:6;
+    const gap=period<=3?5:period<=6?3:2;
+    const months=visIdx.map(i=>({
+      label:monthNames[i],
+      barsStyle:{ flex:1,width:'100%',display:'flex',alignItems:'flex-end',justifyContent:'center',gap:gap+'px' },
+      bars:series.map(s=>{
+        const v=s.data[i], h=v/yMax*100;
+        return { val:v,label:v>0?String(v):'',
+          wrapStyle:{ position:'relative',width:barW+'px',height:'100%',display:'flex',alignItems:'flex-end' },
+          fill:{ width:'100%',height:h+'%',background:s.color,borderRadius:'2px 2px 0 0' },
+          labelStyle:{ position:'absolute',bottom:h+'%',left:'50%',transform:'translate(-50%,-3px)',fontSize:'9px',fontWeight:600,color:'var(--tr-text-secondary)',whiteSpace:'nowrap' } };
+      }),
+    }));
+    const chart={ ticks,grid,months,legend:series.map(s=>({name:s.name,color:s.color})) };
+    const pStyle=(a)=>({ background:'transparent',border:'none',padding:'2px 1px 5px',fontFamily:'inherit',fontSize:'13px',fontWeight:a?600:500,cursor:'pointer',color:a?'var(--tr-accent-text)':'var(--tr-text-secondary)',borderBottom:'2px solid '+(a?'var(--tr-accent)':'transparent') });
+    const periods=[['3 мес.',3],['6 мес.',6],['12 мес.',12]].map(([label,v])=>({ label,onClick:()=>this.setState({period:v}),style:pStyle(period===v) }));
+
+    const badge=(tone)=>{
+      const T={ neutral:{background:'var(--tr-surface-sunken)',color:'var(--tr-text-secondary)'},
+        accent:{background:'var(--tr-accent-soft)',color:'var(--tr-accent-text)'},
+        warning:{background:'var(--tr-warning-soft)',color:'var(--tr-warning-text)'},
+        success:{background:'var(--tr-success-soft)',color:'var(--tr-success-text)'} };
+      return { display:'inline-flex',alignItems:'center',height:'22px',padding:'0 10px',borderRadius:'11px',fontSize:'12px',fontWeight:600,flex:'none',...T[tone] };
+    };
+    const rowStyle=(last)=>({ display:'flex',alignItems:'center',justifyContent:'space-between',gap:'12px',padding:'12px 16px',borderBottom:last?'none':'1px solid var(--tr-border)' });
+    const reqData=[
+      { title:'Замена картриджа',meta:'HP LaserJet M404 · каб. 214',status:'Новая',tone:'warning' },
+      { title:'Выдача ноутбука',meta:'Петров П.П. · Отдел продаж',status:'В работе',tone:'accent' },
+      { title:'Ремонт МФУ',meta:'Kyocera ECOSYS M2040 · каб. 101',status:'В работе',tone:'accent' },
+      { title:'Установка ПО',meta:'Иванова М.С. · Бухгалтерия',status:'Закрыта',tone:'success' },
+    ];
+    const requests=reqData.map((r,i)=>({ ...r,rowStyle:rowStyle(i===reqData.length-1),badgeStyle:badge(r.tone) }));
+
+    const cart=[
+      { name:'HP CF259A · каб. 214',pct:8 },
+      { name:'Kyocera TK-1170 · каб. 101',pct:19 },
+      { name:'Canon 057 · каб. 305',pct:34 },
+      { name:'Samsung MLT-D111 · склад',pct:62 },
+    ].map(c=>({ ...c,pctColor: c.pct<15?'var(--tr-danger)':c.pct<35?'var(--tr-warning)':'var(--tr-success)' }));
+
+    const navStyle=(a)=>({ display:'block',height:'38px',lineHeight:'38px',padding:'0 12px',borderRadius:'6px',fontSize:'14px',textDecoration:'none',cursor:'pointer',color:a?'var(--tr-accent-text)':'var(--tr-text-secondary)',background:a?'var(--tr-accent-soft)':'transparent',fontWeight:a?600:400,boxShadow:a?'inset 3px 0 0 var(--tr-accent)':'none' });
+    const nav=this.navItems.map(n=> n[0]==='div' ? {divider:true,item:false} : {divider:false,item:true,label:n[0],style:navStyle(!!n[1])});
+
+    const btn={ height:'36px',padding:'0 16px',borderRadius:'6px',fontFamily:'inherit',fontSize:'14px',fontWeight:600,cursor:'pointer',border:'1px solid var(--tr-accent)',background:'var(--tr-accent)',color:'var(--tr-on-accent)',whiteSpace:'nowrap' };
+
+    return {
+      theme,stats,lowStock,chart,periods,requests,cartridges:cart,nav,btnPrimary:btn,
+      segWrap,themeSeg,
+    };
+  }
+}
+</script>
+</body>
+</html>

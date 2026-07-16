@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0;
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-text-disabled:#aab2c1; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-danger:#cf3b3b; --tr-danger-ring:rgba(207,59,59,.28); --tr-danger-text:#b02f2f;
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12;
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-text-disabled:#4d5566; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-danger:#f26565; --tr-danger-ring:rgba(242,101,101,.40); --tr-danger-text:#ff8080;
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+input::placeholder,textarea::placeholder{color:var(--tr-text-tertiary);}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Поля ввода</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">Input · Select · Textarea · Checkbox · высота контролов 36px, радиус 6px · состояния обычное / фокус / ошибка / отключено</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section data-theme="{{ th.key }}" style="background:var(--tr-bg);border:1px solid var(--tr-border);border-radius:10px;padding:18px;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="display:inline-flex;align-items:center;gap:7px;margin-bottom:18px;">
+            <span style="width:9px;height:9px;border-radius:2px;background:var(--tr-accent);"></span>
+            <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-secondary);">{{ th.label }}</span>
+          </div>
+
+          <!-- text inputs, 4 states -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;">
+            <sc-for list="{{ inputs }}" as="f" hint-placeholder-count="4">
+              <div style="min-width:0;">
+                <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">{{ f.label }}</label>
+                <div style="{{ f.wrap }}">
+                  <input value="{{ f.value }}" placeholder="{{ f.placeholder }}" disabled="{{ f.disabled }}" style="{{ f.style }}">
+                </div>
+                <div style="{{ f.hintStyle }}">{{ f.hint }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- select + textarea -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin-top:16px;">
+            <div style="min-width:0;">
+              <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">Тип устройства</label>
+              <div style="position:relative;">
+                <select style="{{ selectStyle }}"><option>Принтер</option><option>Ноутбук</option><option>МФУ</option></select>
+                <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--tr-text-tertiary);font-size:10px;">▼</span>
+              </div>
+            </div>
+            <div style="min-width:0;grid-row:span 2;">
+              <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">Комментарий</label>
+              <textarea rows="4" style="{{ textareaStyle }}">Передан в отдел бухгалтерии, состояние рабочее.</textarea>
+            </div>
+            <div style="min-width:0;">
+              <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-disabled);margin-bottom:6px;">Локация (заблокировано)</label>
+              <div style="position:relative;">
+                <select disabled="{{ true }}" style="{{ selectDisabledStyle }}"><option>Склад №1</option></select>
+                <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--tr-text-disabled);font-size:10px;">▼</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- checkboxes / radio -->
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--tr-border);">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tr-text-tertiary);margin-bottom:12px;">Флажки и переключатели</div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <sc-for list="{{ checks }}" as="c" hint-placeholder-count="4">
+                <label style="{{ c.rowStyle }}">
+                  <span style="{{ c.boxStyle }}"><sc-if value="{{ c.checked }}" hint-placeholder-val="{{ false }}"><span style="{{ c.markStyle }}"></span></sc-if></span>
+                  <span>{{ c.label }}</span>
+                </label>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  ctrlBase() {
+    return {
+      display:'block', width:'100%', boxSizing:'border-box', height:'36px', padding:'0 12px',
+      background:'var(--tr-surface)', color:'var(--tr-text-primary)',
+      border:'1px solid var(--tr-border-strong)', borderRadius:'6px',
+      fontFamily:'inherit', fontSize:'14px', lineHeight:'1.5', outline:'none',
+    };
+  }
+  renderVals() {
+    const inputStyle = (state) => {
+      const s = this.ctrlBase();
+      if (state==='focus') { s.borderColor='var(--tr-accent)'; s.boxShadow='0 0 0 3px var(--tr-focus-ring)'; }
+      if (state==='error') { s.borderColor='var(--tr-danger)'; s.boxShadow='0 0 0 3px var(--tr-danger-ring)'; }
+      if (state==='disabled') { s.background='var(--tr-surface-sunken)'; s.color='var(--tr-text-disabled)'; s.borderColor='var(--tr-border)'; s.cursor='not-allowed'; }
+      return s;
+    };
+    const hidden = { display:'none' };
+    const errHint = { fontSize:'12px', color:'var(--tr-danger-text)', marginTop:'5px' };
+    const okHint  = { fontSize:'12px', color:'var(--tr-text-tertiary)', marginTop:'5px' };
+
+    const inputs = [
+      { label:'Инвентарный номер', value:'INV-0342', placeholder:'', style:inputStyle('default'), hint:'Обычное состояние', hintStyle:okHint, disabled:false },
+      { label:'Модель', value:'HP LaserJet M404', placeholder:'', style:inputStyle('focus'), hint:'Фокус — синее кольцо 3px', hintStyle:okHint, disabled:false },
+      { label:'Серийный номер', value:'', placeholder:'Например, SN-DL5540', style:inputStyle('error'), hint:'Обязательное поле', hintStyle:errHint, disabled:false },
+      { label:'Расположение', value:'Склад №1', placeholder:'', style:inputStyle('disabled'), hint:'Отключено', hintStyle:okHint, disabled:true },
+    ].map(f => ({ ...f, wrap:'', hint:f.hint, }));
+
+    const selectStyle = { ...this.ctrlBase(), paddingRight:'32px', appearance:'none', WebkitAppearance:'none', MozAppearance:'none', cursor:'pointer' };
+    const selectDisabledStyle = { ...selectStyle, background:'var(--tr-surface-sunken)', color:'var(--tr-text-disabled)', borderColor:'var(--tr-border)', cursor:'not-allowed' };
+    const textareaStyle = { ...this.ctrlBase(), height:'auto', minHeight:'92px', padding:'8px 12px', resize:'vertical', lineHeight:'1.5' };
+
+    const rowBase = { display:'inline-flex', alignItems:'center', gap:'10px', fontSize:'14px', color:'var(--tr-text-primary)', cursor:'pointer' };
+    const box = (opts) => {
+      const b = { width:'18px', height:'18px', flex:'none', display:'inline-flex', alignItems:'center', justifyContent:'center',
+        border:'1.5px solid var(--tr-border-strong)', background:'var(--tr-surface)', boxSizing:'border-box' };
+      b.borderRadius = opts.radio ? '50%' : '5px';
+      if (opts.checked) { b.background='var(--tr-accent)'; b.borderColor='var(--tr-accent)'; }
+      if (opts.focus) { b.boxShadow='0 0 0 3px var(--tr-focus-ring)'; b.borderColor='var(--tr-accent)'; }
+      if (opts.disabled) { b.background='var(--tr-surface-sunken)'; b.borderColor='var(--tr-border)'; }
+      return b;
+    };
+    const checkMark = { width:'10px', height:'6px', borderLeft:'2px solid var(--tr-on-accent)', borderBottom:'2px solid var(--tr-on-accent)', transform:'rotate(-45deg) translate(0,-1px)' };
+    const radioDot  = { width:'8px', height:'8px', borderRadius:'50%', background:'var(--tr-on-accent)' };
+
+    const checks = [
+      { label:'Группировать похожие устройства', checked:true,  style:'', rowStyle:rowBase, boxStyle:box({checked:true}), markStyle:checkMark },
+      { label:'Показывать списанные', checked:false, rowStyle:rowBase, boxStyle:box({}), markStyle:checkMark },
+      { label:'Уведомлять о низком тонере (фокус)', checked:true, rowStyle:rowBase, boxStyle:box({checked:true, focus:true}), markStyle:checkMark },
+      { label:'Автосписание (недоступно)', checked:false, rowStyle:{ ...rowBase, color:'var(--tr-text-disabled)', cursor:'not-allowed' }, boxStyle:box({disabled:true}), markStyle:checkMark },
+      { label:'Тип: принтер (radio, выбран)', checked:true, rowStyle:rowBase, boxStyle:box({checked:true, radio:true}), markStyle:radioDot },
+      { label:'Тип: ноутбук (radio)', checked:false, rowStyle:rowBase, boxStyle:box({radio:true}), markStyle:radioDot },
+    ];
+
+    return {
+      themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ],
+      inputs, selectStyle, selectDisabledStyle, textareaStyle, checks,
+    };
+  }
+}
+</script>
+</body>
+</html>

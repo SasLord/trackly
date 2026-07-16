@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+:root{
+  --tr-bg:#eef1f6; --tr-surface:#ffffff; --tr-surface-sunken:#e4e8f0; --tr-overlay:rgba(20,26,38,.45);
+  --tr-text-primary:#1b2230; --tr-text-secondary:#586074; --tr-text-tertiary:#8891a4; --tr-on-accent:#ffffff;
+  --tr-border:#e1e6ef; --tr-border-strong:#c9d0dd; --tr-focus-ring:rgba(43,95,217,.35);
+  --tr-accent:#2b5fd9; --tr-accent-hover:#2350bd;
+  --tr-elev-3:0 10px 28px rgba(16,22,34,.13),0 3px 8px rgba(16,22,34,.08);
+}
+[data-theme="dark"]{
+  --tr-bg:#0e1218; --tr-surface:#161b23; --tr-surface-sunken:#0a0d12; --tr-overlay:rgba(0,0,0,.6);
+  --tr-text-primary:#e7ebf2; --tr-text-secondary:#9aa3b4; --tr-text-tertiary:#6b7486; --tr-on-accent:#0e1218;
+  --tr-border:#272e3a; --tr-border-strong:#39414f; --tr-focus-ring:rgba(91,139,255,.45);
+  --tr-accent:#5b8bff; --tr-accent-hover:#7099ff;
+  --tr-elev-3:0 12px 30px rgba(0,0,0,.6),0 3px 8px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;}
+body{margin:0;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#e7eaf0;font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:24px;">
+  <div style="max-width:1160px;margin:0 auto;">
+    <h2 style="margin:0 0 2px;font-size:20px;font-weight:600;color:#1b2230;">Модальное окно</h2>
+    <p style="margin:0 0 20px;font-size:13px;color:#586074;">Оверлей · шапка с заголовком и закрытием · тело формы · футер действий · тень уровня 3, радиус 12px</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:20px;">
+      <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+        <section style="border:1px solid #d3d8e2;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(16,22,34,.10);">
+          <div style="padding:8px 14px;background:#f2f4f8;border-bottom:1px solid #e1e6ef;font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:#586074;">{{ th.label }}</div>
+          <div data-theme="{{ th.key }}" style="background:var(--tr-overlay);padding:28px;display:flex;justify-content:center;">
+            <div style="width:100%;max-width:420px;background:var(--tr-surface);border:1px solid var(--tr-border);border-radius:12px;box-shadow:var(--tr-elev-3);overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--tr-border);">
+                <h3 style="margin:0;font-size:16px;font-weight:600;color:var(--tr-text-primary);">Новый акт приёма-передачи</h3>
+                <button style="width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:transparent;color:var(--tr-text-secondary);font-size:18px;cursor:pointer;line-height:1;">×</button>
+              </div>
+              <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">Кому выдаётся</label>
+                  <input value="Иванов Иван Иванович" style="{{ inputStyle }}">
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">Локация</label>
+                  <div style="position:relative;">
+                    <select style="{{ selectStyle }}"><option>Кабинет 214 — Бухгалтерия</option></select>
+                    <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--tr-text-tertiary);font-size:10px;">▼</span>
+                  </div>
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:500;color:var(--tr-text-secondary);margin-bottom:6px;">Устройство</label>
+                  <input value="HP LaserJet M404 · INV-0342" style="{{ inputStyle }}">
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--tr-border);background:var(--tr-bg);">
+                <button style="{{ btnSecondary }}">Отмена</button>
+                <button style="{{ btnPrimary }}">Создать и напечатать</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const ctrl = { display:'block', width:'100%', boxSizing:'border-box', height:'36px', padding:'0 12px',
+      background:'var(--tr-surface)', color:'var(--tr-text-primary)', border:'1px solid var(--tr-border-strong)',
+      borderRadius:'6px', fontFamily:'inherit', fontSize:'14px', outline:'none' };
+    const btn = { height:'36px', padding:'0 16px', borderRadius:'6px', fontFamily:'inherit', fontSize:'14px',
+      fontWeight:600, cursor:'pointer', border:'1px solid transparent', whiteSpace:'nowrap' };
+    return {
+      themes: [ {key:'light', label:'Светлая тема'}, {key:'dark', label:'Тёмная тема'} ],
+      inputStyle: ctrl,
+      selectStyle: { ...ctrl, paddingRight:'32px', appearance:'none', WebkitAppearance:'none', cursor:'pointer' },
+      btnSecondary: { ...btn, background:'var(--tr-surface)', color:'var(--tr-text-primary)', borderColor:'var(--tr-border-strong)' },
+      btnPrimary: { ...btn, background:'var(--tr-accent)', color:'var(--tr-on-accent)', borderColor:'var(--tr-accent)' },
+    };
+  }
+}
+</script>
+</body>
+</html>
