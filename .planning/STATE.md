@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: planning
-last_updated: "2026-07-16T23:00:00.000Z"
-last_activity: 2026-07-16
+status: Roadmap created — ready for /gsd-plan-phase 23
+last_updated: "2026-07-16T16:45:12.482Z"
+last_activity: "2026-07-16 — ROADMAP.md created: 8 phases (23–30), 25/25 v1.2 requirements mapped, no orphans"
 progress:
-  total_phases: 8
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 26
+  completed_phases: 25
+  total_plans: 152
+  completed_plans: 152
+  percent: 96
 ---
 
 # Project State
@@ -553,9 +553,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-14T14:40:54.395Z
-Stopped at: Completed 21-01-PLAN.md
-Resume file: None
+Last session: 2026-07-16T16:45:12.474Z
+Stopped at: Phase 23 context gathered
+Resume file: .planning/phases/23-design-tokens-foundations/23-CONTEXT.md
 
 ## Operator Next Steps
 
