@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: planning
-last_updated: "2026-07-16T15:46:46.745Z"
+last_updated: "2026-07-16T23:00:00.000Z"
 last_activity: 2026-07-16
 progress:
-  total_phases: 0
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-16 — Milestone v1.2 started
+Phase: 23 of 30 (Токены и основы дизайн-системы)
+Plan: — (not planned yet)
+Status: Roadmap created — ready for /gsd-plan-phase 23
+Last activity: 2026-07-16 — ROADMAP.md created: 8 phases (23–30), 25/25 v1.2 requirements mapped, no orphans
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -217,6 +217,14 @@ Last activity: 2026-07-16 — Milestone v1.2 started
 - Phase 20 added (2026-07-09): Печать актов и организация — полный org-контекст в шапке device-акта; безопасный SVG-логотип (санитизация/data: URI, без исполняемых скриптов); вторая строка адреса в печатных формах. Milestone v1.1.2 (PRN-01, ORG-01, ORG-02).
 - Phase 21 added (2026-07-09): Точечные фиксы — формат автокода картриджа `C-XXXX`, фотобарабана `D-XXXX`. Milestone v1.1.2 (CRT-01).
 - Phase 22 added (2026-07-12): Правка возвратов — «Редактировать» на return-акте активна, открывает диалог «Возврат по акту №XXX» с прежними значениями; полная правка возврата с пересборкой эффектов на устройства по дельте. Отменяет D-07 (Phase 19). Milestone v1.1.2 (ACT-03). Вынесено из живого UAT Фазы 19. (Прим.: `gsd-sdk query phase.add` дал сбой на кириллице — номер 20 вместо 22 + пустой slug; фаза добавлена вручную как 22-return-act-edit.)
+- Phase 23 added (2026-07-16): Токены и основы дизайн-системы — новый слой `--tr-*` (поверхности/текст/акцент/семантика/нейтрали/тени), миграция space/radius/font-size ПО ЗНАЧЕНИЮ (не по имени — ловушка переименования шкал), фикс 2 undefined-token багов (`--font-size-sm`, `--radius-lg`). Milestone v1.2 (DS-01, DS-02, DS-03, DS-04, QA-01).
+- Phase 24 added (2026-07-16): Базовые компоненты — Button/Input-Select-Textarea-Checkbox/Badge/Tabs/Modal переработаны на новой системе. Milestone v1.2 (CMP-01..05).
+- Phase 25 added (2026-07-16): Таблицы и Dropdown — строки таблицы + строка-группа (свёртка/счётчик/вложенные устройства), новый компонент Dropdown/комбобокс (плоский + групповой список) — выделены в отдельную фазу как самые сложные компоненты. Milestone v1.2 (CMP-06, CMP-07).
+- Phase 26 added (2026-07-16): Окна с готовым макетом — Дашборд и Устройства, единственные 2 окна из ~12 с реальным макетом Claude Design. Milestone v1.2 (WIN-01, WIN-02).
+- Phase 27 added (2026-07-16): Окна основного рабочего процесса — Акты, Картриджи, Принтеры; макета нет, раскладка выводится из компонентной системы фаз 24–25. Milestone v1.2 (WIN-03, WIN-04, WIN-05).
+- Phase 28 added (2026-07-16): Окна поддержки и администрирования — Заявки, Отчёты, Настройки, Пользователи; макета нет. Milestone v1.2 (WIN-06, WIN-07, WIN-08, WIN-09).
+- Phase 29 added (2026-07-16): Вход и интерфейс сотрудника — Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout; отдельные layout-shell от основного приложения, макета нет. Milestone v1.2 (WIN-10, WIN-11).
+- Phase 30 added (2026-07-16): Качество — доступность (AA-контраст, focus ring) и визуальный паритет Tauri WebView vs LAN-браузер; финальная сквозная проверка по всем окнам фаз 26–29. Milestone v1.2 (QA-02, QA-03).
 
 ### Decisions
 

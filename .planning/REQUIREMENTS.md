@@ -102,7 +102,36 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 
 ## Traceability
 
-<!-- Заполняется roadmapper-ом: REQ-ID → Phase -->
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| DS-01 | Phase 23 | Pending |
+| DS-02 | Phase 23 | Pending |
+| DS-03 | Phase 23 | Pending |
+| DS-04 | Phase 23 | Pending |
+| QA-01 | Phase 23 | Pending |
+| CMP-01 | Phase 24 | Pending |
+| CMP-02 | Phase 24 | Pending |
+| CMP-03 | Phase 24 | Pending |
+| CMP-04 | Phase 24 | Pending |
+| CMP-05 | Phase 24 | Pending |
+| CMP-06 | Phase 25 | Pending |
+| CMP-07 | Phase 25 | Pending |
+| WIN-01 | Phase 26 | Pending |
+| WIN-02 | Phase 26 | Pending |
+| WIN-03 | Phase 27 | Pending |
+| WIN-04 | Phase 27 | Pending |
+| WIN-05 | Phase 27 | Pending |
+| WIN-06 | Phase 28 | Pending |
+| WIN-07 | Phase 28 | Pending |
+| WIN-08 | Phase 28 | Pending |
+| WIN-09 | Phase 28 | Pending |
+| WIN-10 | Phase 29 | Pending |
+| WIN-11 | Phase 29 | Pending |
+| QA-02 | Phase 30 | Pending |
+| QA-03 | Phase 30 | Pending |
+
+**Coverage:** 25/25 v1.2 requirements mapped ✓ — no orphans.
 
 ---
 *Created: 2026-07-16 — milestone v1.2 started. 25 требований (DS 4 / CMP 7 / WIN 11 / QA 3).*
+*Roadmap: 2026-07-16 — ROADMAP.md created (Phases 23–30, 8 phases, standard granularity). See ROADMAP.md for phase goals and success criteria.*
