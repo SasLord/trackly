@@ -1,10 +1,11 @@
 ---
 phase: 23
 slug: design-tokens-foundations
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-16
+reviewed_at: 2026-07-16
 ---
 
 # Phase 23 — UI Design Contract
