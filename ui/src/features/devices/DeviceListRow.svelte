@@ -69,22 +69,22 @@
     height: var(--row-height, 40px);
 
     &:hover {
-      background: var(--color-surface);
+      background: var(--tr-surface);
     }
 
     // Visual group-end divider: last child in an expanded group gets a stronger
     // bottom border so the eye clearly sees where the group ends.
     &.group-last-child .cell {
-      border-bottom: 2px solid var(--color-border-strong);
+      border-bottom: 2px solid var(--tr-border-strong);
     }
   }
 
   .cell {
     padding: 0 var(--space-sm);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     vertical-align: middle;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

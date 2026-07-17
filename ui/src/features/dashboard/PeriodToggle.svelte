@@ -39,25 +39,25 @@
     border-bottom: 2px solid transparent;
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     transition: color 0.1s ease;
 
     &:hover {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-primary);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-primary);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
 
     &.active {
-      color: var(--color-accent);
-      border-bottom-color: var(--color-accent);
+      color: var(--tr-accent);
+      border-bottom-color: var(--tr-accent);
       font-weight: var(--font-weight-medium);
     }
   }

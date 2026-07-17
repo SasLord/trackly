@@ -376,22 +376,22 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--color-border, #d0d5dd);
+    background: var(--tr-border, #d0d5dd);
     transition: background 0.15s;
 
     &.active {
-      background: var(--color-accent, #3b82f6);
+      background: var(--tr-accent, #3b82f6);
     }
 
     &.done {
-      background: var(--color-success, #22c55e);
+      background: var(--tr-success, #22c55e);
     }
   }
 
   .step-label {
     margin-left: var(--space-sm, 8px);
     font-size: var(--font-size-caption, 12px);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .step-body {
@@ -399,7 +399,7 @@
   }
 
   .step-help {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     margin-bottom: var(--space-md, 12px);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
@@ -412,13 +412,13 @@
   .encoding-info {
     margin-bottom: var(--space-md, 12px);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .warning-banner {
-    background: var(--color-warning-bg, #fef9c3);
-    color: var(--color-warning-text, #854d0e);
-    border: 1px solid var(--color-warning-border, #fde047);
+    background: var(--tr-warning-soft);
+    color: var(--tr-warning-text);
+    border: 1px solid var(--tr-warning);
     border-radius: var(--radius-sm, 4px);
     padding: var(--space-sm, 8px) var(--space-md, 12px);
     margin-bottom: var(--space-md, 12px);
@@ -429,7 +429,7 @@
     overflow-x: auto;
     overflow-y: auto;
     max-height: 280px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm, 4px);
   }
 
@@ -441,17 +441,17 @@
     th {
       position: sticky;
       top: 0;
-      background: var(--color-surface, #f9fafb);
+      background: var(--tr-surface, #f9fafb);
       padding: var(--space-sm, 8px) var(--space-md, 12px);
       text-align: left;
       font-weight: var(--font-weight-semibold, 600);
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--tr-border);
       white-space: nowrap;
     }
 
     td {
       padding: var(--space-xs, 4px) var(--space-md, 12px);
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--tr-border);
       max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -472,13 +472,13 @@
       padding: var(--space-sm, 8px) var(--space-md, 12px);
       text-align: left;
       font-weight: var(--font-weight-semibold, 600);
-      border-bottom: 2px solid var(--color-border);
-      background: var(--color-surface, #f9fafb);
+      border-bottom: 2px solid var(--tr-border);
+      background: var(--tr-surface, #f9fafb);
     }
 
     td {
       padding: var(--space-xs, 4px) var(--space-md, 12px);
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--tr-border);
       vertical-align: middle;
     }
 
@@ -494,14 +494,14 @@
 
   .result-summary {
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     margin-bottom: var(--space-md, 12px);
   }
 
   .errors-toggle {
     background: none;
     border: none;
-    color: var(--color-accent, #3b82f6);
+    color: var(--tr-accent, #3b82f6);
     cursor: pointer;
     font-size: var(--font-size-body);
     padding: 0;
@@ -509,7 +509,7 @@
     margin-bottom: var(--space-sm, 8px);
 
     &:hover {
-      color: var(--color-accent-hover, #2563eb);
+      color: var(--tr-accent-hover, #2563eb);
     }
   }
 
@@ -519,14 +519,14 @@
     margin: 0;
     max-height: 200px;
     overflow-y: auto;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm, 4px);
     font-size: var(--font-size-body);
 
     li {
       padding: var(--space-xs, 4px) var(--space-md, 12px);
-      border-bottom: 1px solid var(--color-border);
-      color: var(--color-destructive, #ef4444);
+      border-bottom: 1px solid var(--tr-border);
+      color: var(--tr-danger, #ef4444);
 
       &:last-child {
         border-bottom: none;

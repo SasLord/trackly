@@ -114,8 +114,8 @@
     gap: var(--space-xs);
     padding: var(--space-xs) var(--space-md);
     background: transparent;
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
@@ -124,16 +124,16 @@
     height: 32px;
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
     &.active {
-      background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-      border-color: var(--color-accent);
-      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
+      border-color: var(--tr-accent);
+      color: var(--tr-text-primary);
       font-weight: var(--font-weight-semibold);
     }
   }

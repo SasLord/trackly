@@ -38,7 +38,7 @@
     padding: var(--space-lg);
     overflow: auto;
     min-height: 100vh;
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .skip-link {
@@ -47,8 +47,8 @@
     top: -9999px;
     z-index: 9999;
     padding: var(--space-md);
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
+    background: var(--tr-accent);
+    color: var(--tr-text-inverse);
     font-size: var(--font-size-body);
     text-decoration: none;
     border-radius: var(--radius-sm);

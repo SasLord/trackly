@@ -121,7 +121,7 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .employee-header {
@@ -131,14 +131,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--space-lg);
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .employee-brand {
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .employee-header-actions {
@@ -150,7 +150,7 @@
   .user-name {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -159,7 +159,7 @@
 
   .user-role {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .employee-content {
@@ -175,8 +175,8 @@
     top: -9999px;
     z-index: 9999;
     padding: var(--space-md);
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
+    background: var(--tr-accent);
+    color: var(--tr-text-inverse);
     font-size: var(--font-size-body);
     text-decoration: none;
     border-radius: var(--radius-sm);

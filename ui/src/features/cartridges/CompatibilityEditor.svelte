@@ -252,22 +252,22 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--space-md);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
 
     &::placeholder {
-      color: var(--color-text-muted);
+      color: var(--tr-text-tertiary);
     }
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
@@ -277,10 +277,10 @@
     left: 0;
     right: 0;
     z-index: 50;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--tr-elev-2);
     max-height: 200px;
     overflow-y: auto;
   }
@@ -288,7 +288,7 @@
   .dropdown-loading,
   .dropdown-empty {
     padding: var(--space-sm) var(--space-md);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-label);
   }
 
@@ -299,14 +299,14 @@
     background: transparent;
     border: none;
     text-align: left;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-family: inherit;
     font-size: var(--font-size-body);
     cursor: pointer;
 
     &:hover,
     &.active {
-      background: var(--color-surface-hover);
+      background: var(--tr-row-hover);
     }
   }
 
@@ -317,23 +317,23 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     font-size: 12px;
     flex-shrink: 0;
     align-self: flex-end;
 
     &:hover {
-      background: var(--color-surface-sunken);
-      color: var(--color-destructive);
-      border-color: var(--color-destructive);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-danger);
+      border-color: var(--tr-danger);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

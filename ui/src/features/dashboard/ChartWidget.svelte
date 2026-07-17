@@ -21,7 +21,7 @@
   const { data, windowMonths, loading, error, onWindowChange }: Props = $props();
 
   // Цвета для серий (до 3 моделей)
-  const COLORS = ['var(--color-accent)', 'var(--color-success)', 'var(--color-warning)'];
+  const COLORS = ['var(--tr-accent)', 'var(--tr-success)', 'var(--tr-warning)'];
 
   // Русские названия месяцев для подписей осей
   const MONTHS = [
@@ -234,7 +234,7 @@
             x2={CHART_TOTAL_W - RIGHT_PAD}
             y1={tick.y}
             y2={tick.y}
-            stroke="var(--color-border)"
+            stroke="var(--tr-border)"
             stroke-width="0.5"
           />
           <text
@@ -242,7 +242,7 @@
             y={tick.y + 3}
             text-anchor="end"
             font-size="9"
-            fill="var(--color-text-muted)"
+            fill="var(--tr-text-tertiary)"
           >{tick.value}</text>
         {/each}
 
@@ -294,7 +294,7 @@
             y={lbl.y}
             text-anchor="middle"
             font-size="9"
-            fill="var(--color-text-muted)"
+            fill="var(--tr-text-tertiary)"
           >{lbl.label}</text>
         {/each}
       </svg>
@@ -348,8 +348,8 @@
 
 <style lang="scss">
   .chart-widget {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     min-height: 220px;
@@ -368,7 +368,7 @@
     margin: 0;
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .chart-area {
@@ -384,12 +384,12 @@
   .chart-tooltip {
     position: absolute;
     pointer-events: none;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     padding: 4px 8px;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     white-space: nowrap;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     z-index: 10;
@@ -400,16 +400,16 @@
     align-items: center;
     justify-content: center;
     height: 150px;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-label);
   }
 
   .chart-error {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .chart-empty {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     text-align: center;
   }
 
@@ -430,7 +430,7 @@
     padding: 0;
     margin: var(--space-sm) 0 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .legend-item {

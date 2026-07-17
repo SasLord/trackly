@@ -100,7 +100,7 @@
     gap: var(--space-xs);
     min-height: var(--row-height, 40px);
     padding: var(--space-sm) var(--space-md);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .top {
@@ -113,7 +113,7 @@
 
   .name {
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -143,18 +143,18 @@
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: 16px;
     line-height: 1;
 
     &:hover {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-primary);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-primary);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
@@ -163,10 +163,10 @@
     top: calc(100% + 4px);
     right: 0;
     z-index: 100;
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface-raised);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--tr-elev-2);
     min-width: 160px;
     overflow: hidden;
   }
@@ -178,24 +178,24 @@
     background: transparent;
     border: none;
     text-align: left;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-family: inherit;
     font-size: var(--font-size-body);
     cursor: pointer;
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
 
     &--destructive {
-      color: var(--color-destructive);
+      color: var(--tr-danger);
     }
   }
 
   .ctx-menu-sep {
     margin: var(--space-xs) 0;
     border: none;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
   }
 
   .bottom {
@@ -203,20 +203,20 @@
     align-items: center;
     gap: var(--space-xs);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .count {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-variant-numeric: tabular-nums;
   }
 
   .separator {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .notes {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

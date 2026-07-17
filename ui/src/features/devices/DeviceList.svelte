@@ -160,7 +160,7 @@
   }
 
   .header-row {
-    border-bottom: 2px solid var(--color-border-strong);
+    border-bottom: 2px solid var(--tr-border-strong);
   }
 
   .th {
@@ -168,9 +168,9 @@
     text-align: left;
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .th-name {
@@ -199,12 +199,12 @@
     margin: 0 0 var(--space-xs);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
 
@@ -215,13 +215,13 @@
 
   .skeleton-cell {
     padding: 0 var(--space-sm);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .skeleton-block {
     height: 16px;
     border-radius: var(--radius-sm);
-    background: var(--color-surface-sunken);
+    background: var(--tr-surface-sunken);
     animation: pulse 1.2s ease-in-out infinite;
   }
 
@@ -238,7 +238,7 @@
   // Footer
   .list-footer {
     padding: var(--space-sm) var(--space-md);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -246,6 +246,6 @@
 
   .pagination-info {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 </style>

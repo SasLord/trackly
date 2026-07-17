@@ -394,18 +394,18 @@
   .label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .required {
-    color: var(--color-destructive);
+    color: var(--tr-danger);
     margin-left: 2px;
   }
 
   .field-error {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 
   .input {
@@ -413,28 +413,28 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--space-md);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
 
     &::placeholder {
-      color: var(--color-text-muted);
+      color: var(--tr-text-tertiary);
     }
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
 
     &:disabled,
     &.input-disabled {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-muted);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-tertiary);
       cursor: not-allowed;
     }
   }
@@ -446,7 +446,7 @@
   .state-hints-label {
     display: block;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     margin-bottom: var(--space-xs);
   }
 
@@ -458,30 +458,30 @@
 
   .hint-chip {
     padding: 2px var(--space-sm);
-    background: var(--color-surface-sunken);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface-sunken);
+    border: 1px solid var(--tr-border);
     border-radius: 12px;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     font-family: var(--font-family-base);
     transition: none;
 
     &:hover {
-      background: var(--color-surface);
-      color: var(--color-text-primary);
-      border-color: var(--color-border-strong);
+      background: var(--tr-surface);
+      color: var(--tr-text-primary);
+      border-color: var(--tr-border-strong);
     }
 
     &.active {
-      background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-      border-color: var(--color-accent);
-      color: var(--color-accent);
+      background: color-mix(in srgb, var(--tr-accent) 15%, transparent);
+      border-color: var(--tr-accent);
+      color: var(--tr-accent);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

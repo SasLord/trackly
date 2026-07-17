@@ -210,20 +210,20 @@
     height: var(--row-height, 40px);
     // Toned-down group header: slightly darker than normal rows but not a strong accent.
     // color-mix blends the surface with a small 6% accent tint — readable but subtle.
-    background: color-mix(in srgb, var(--color-surface) 94%, var(--color-accent) 6%);
+    background: color-mix(in srgb, var(--tr-surface) 94%, var(--tr-accent) 6%);
     cursor: pointer;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-surface) 86%, var(--color-accent) 14%);
+      background: color-mix(in srgb, var(--tr-surface) 86%, var(--tr-accent) 14%);
     }
   }
 
   .cell {
     padding: 0 var(--space-sm);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     vertical-align: middle;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   // Location + Состояние cells: single line with ellipsis (mirror DeviceListRow .cell).
@@ -268,14 +268,14 @@
     background: transparent;
     border: none;
     border-radius: var(--radius-sm);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     flex-shrink: 0;
     transition: transform 0.15s ease;
 
     &:hover {
-      color: var(--color-text-primary);
-      background: var(--color-surface);
+      color: var(--tr-text-primary);
+      background: var(--tr-surface);
     }
 
     &.expanded {
@@ -287,22 +287,22 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 8px;
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--tr-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tr-accent) 30%, transparent);
     border-radius: 10px;
     font-size: 12px;
     font-weight: var(--font-weight-medium);
-    color: var(--color-accent);
+    color: var(--tr-accent);
   }
 
   .children-loading-row td {
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .children-loading {
     padding: var(--space-xs) var(--space-md);
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--tr-text-tertiary);
+    border-bottom: 1px solid var(--tr-border);
   }
 </style>

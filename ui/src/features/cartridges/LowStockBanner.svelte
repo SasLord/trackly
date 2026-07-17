@@ -13,7 +13,7 @@
 {#if items.length > 0}
   <div class="low-stock-banner" role="alert" aria-live="polite">
     <span class="low-stock-icon" aria-hidden="true">
-      <!-- Иконка предупреждения: треугольник с восклицательным знаком, --color-warning -->
+      <!-- Иконка предупреждения: треугольник с восклицательным знаком, --tr-warning -->
       <svg
         width="16"
         height="16"
@@ -53,14 +53,14 @@
     gap: var(--space-sm);
     padding: var(--space-md);
     margin-bottom: var(--space-md);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    border: 1px solid var(--color-warning);
+    background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
+    border: 1px solid var(--tr-warning);
     border-radius: var(--radius-md);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .low-stock-icon {
-    color: var(--color-warning);
+    color: var(--tr-warning);
     flex-shrink: 0;
     margin-top: 2px;
     display: flex;
@@ -77,7 +77,7 @@
     display: block;
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     margin: 0 0 var(--space-xs);
   }
 
@@ -86,7 +86,7 @@
     padding: 0;
     list-style: none;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
 
     li {
       line-height: 1.6;

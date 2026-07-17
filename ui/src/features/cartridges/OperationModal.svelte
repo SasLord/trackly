@@ -855,23 +855,23 @@
 
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-weight: var(--font-weight-regular);
   }
 
   .field-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .field-error {
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 
   .field-warning {
     font-size: var(--font-size-label);
-    color: var(--color-warning);
+    color: var(--tr-warning);
   }
 
   .field-full {
@@ -880,8 +880,8 @@
 
   .previous-cartridge-block {
     padding: var(--space-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    background: var(--color-surface);
+    background: var(--tr-surface);
   }
 </style>

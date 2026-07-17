@@ -64,8 +64,8 @@
 
 <style lang="scss">
   .stat-widget {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     min-height: 120px;
@@ -75,20 +75,20 @@
     margin: 0 0 var(--space-sm);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .stat-number {
     font-size: var(--font-size-display);
     font-weight: var(--font-weight-semibold);
     margin: 0;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     line-height: 1.2;
   }
 
   .stat-label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     margin: var(--space-xs) 0 0;
   }
 
@@ -97,7 +97,7 @@
     padding: 0;
     margin: var(--space-sm) 0 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
 
     li {
       line-height: 1.6;
@@ -113,18 +113,18 @@
   }
 
   .widget-error {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-label);
   }
 
   .widget-warning {
     margin-top: var(--space-sm);
     padding: var(--space-xs) var(--space-sm);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    border: 1px solid var(--color-warning);
+    background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
+    border: 1px solid var(--tr-warning);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
 
     span {
       font-weight: var(--font-weight-medium);

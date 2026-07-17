@@ -180,7 +180,7 @@
   .field-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .scanning-state {
@@ -189,7 +189,7 @@
     gap: var(--space-md);
     padding: var(--space-xl);
     justify-content: center;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
 
@@ -200,7 +200,7 @@
   .results-heading {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     margin: 0 0 var(--space-sm);
   }
 </style>
