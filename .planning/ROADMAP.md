@@ -416,7 +416,7 @@ Plans:
 
 **Wave 6 (gap-closure)** *(depends on Wave 5 — 23-VERIFICATION.md нашла gaps_found, 6/7 must-haves: DS-01 буквально требует отсутствия hardcoded цветов, включая rgba(), а check-tokens.mjs Rule 2 видел только hex)*
 
-- [ ] 23-07-PLAN.md — Гейт + токен: check-tokens.mjs Правило 4 (rgba/rgb/hsl/hsla-в-style) + --tr-danger-ring токен (light+dark) + fix CR-01 в verify-value-map.mjs (регресс на многотокенных строках)
+- [x] 23-07-PLAN.md — Гейт + токен: check-tokens.mjs Правило 4 (rgba/rgb/hsl/hsla-в-style) + --tr-danger-ring токен (light+dark) + fix CR-01 в verify-value-map.mjs (регресс на многотокенных строках)
 - [ ] 23-08-PLAN.md — Migration: Modal overlay → --tr-overlay, 9 danger-ring сайтов → --tr-danger-ring, ChartWidget + 4 auth-экрана → --tr-elev-*, финальный check-tokens.mjs (все 4 правила) + pnpm lint/svelte-check/build
 
 ---
@@ -603,7 +603,7 @@ Plans:
 | 20. Печать актов и организация | v1.1.2 | 6/6 | Complete    | 2026-07-14 |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
-| 23. Токены и основы дизайн-системы | v1.2 | 6/6 | Complete   | 2026-07-17 |
+| 23. Токены и основы дизайн-системы | v1.2 | 7/8 | In Progress|  |
 | 24. Базовые компоненты | v1.2 | 0/TBD | Not started | - |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: verifying
-last_updated: "2026-07-17T15:31:25.216Z"
+status: completed
+last_updated: "2026-07-17T19:03:19.503Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 26
-  completed_phases: 26
-  total_plans: 158
-  completed_plans: 158
-  percent: 100
+  completed_phases: 25
+  total_plans: 160
+  completed_plans: 159
+  percent: 96
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 23 (design-tokens-foundations) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
+Plan: 7 of 8
+Status: Gap-closure Wave 1 complete — ready for 23-08 (Wave 2)
 Last activity: 2026-07-17
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -203,6 +203,7 @@ Last activity: 2026-07-17
 | Phase 23 P04 | 50min | 2 tasks | 106 files |
 | Phase 23 P05 | 20min | 2 tasks | 101 files |
 | Phase 23 P06 | 10min | 2 tasks | 7 files |
+| Phase 23 P07 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -497,6 +498,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 23-05: class="tr-mono" всегда как отдельный вложенный span, не примесь к multi-class атрибуту — гарантирует греп-видимость точного литерала
 - [Phase 23]: 23-06: Whole-tree final verification found 0 residual gaps (all 3 check-tokens.mjs rules + verify-value-map.mjs clean on first run) — Confirms plans 23-01..23-05 left no seam gaps between sequential sweep-plans
 - [Phase 23]: 23-06: pnpm prettier --write . run per plan instruction, closing last pre-existing prettier-drift file; pnpm lint green for the first time in phase 23 — All 6 diffs manually verified as pure line-wrap/reflow, no logic or value changes
+- [Phase 23-07]: check-tokens.mjs Rule 4 intentionally matches rgba/hsl inside var(--tr-x, rgba(...)) fallbacks — closed-world token model makes such fallbacks dead code to remove, not preserve
+- [Phase 23-07]: verify-value-map.mjs tokensOnSide() applies an unanchored global regex per split line (no m-flag) instead of one anchored+lazy pattern over the whole hunk text — fixes CR-01
+- [Phase 23-07]: tr-danger-ring fixed at alpha 0.2 for both themes (rgb components copied verbatim from tr-danger), canonizing 8 of 9 duplicated invalid-focus-ring sites; Button.svelte 0.3 converges in plan 23-08
 
 ### Pending Todos
 
@@ -572,7 +576,7 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-17T15:31:25.209Z
+Last session: 2026-07-17T19:03:19.495Z
 Stopped at: Completed 23-06-PLAN.md — Phase 23 all 6 plans done, ready for /gsd-verify-work
 Resume file: None
 
