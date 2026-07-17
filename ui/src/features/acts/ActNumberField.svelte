@@ -107,12 +107,12 @@
   .num-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
   .control-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
   .input-wrap {
     flex: 1;

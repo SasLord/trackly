@@ -209,13 +209,13 @@
     border-radius: var(--radius-sm);
     box-shadow: var(--tr-elev-1);
     min-width: 160px;
-    padding: var(--space-xs) 0;
+    padding: var(--tr-space-2xs) 0;
   }
 
   :global(.ctx-menu-item) {
     display: block;
     width: 100%;
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     background: transparent;
     border: none;
     text-align: left;
@@ -237,6 +237,6 @@
   :global(.ctx-menu-sep) {
     border: none;
     border-top: 1px solid var(--tr-border);
-    margin: var(--space-xs) 0;
+    margin: var(--tr-space-2xs) 0;
   }
 </style>

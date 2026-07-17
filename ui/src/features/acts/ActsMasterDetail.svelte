@@ -23,7 +23,7 @@
   .master-detail {
     display: grid;
     grid-template-columns: 35% 65%;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     align-items: stretch;
     min-height: calc(100vh - 240px);
   }
@@ -31,7 +31,7 @@
   .master {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     overflow: hidden;
     min-width: 320px;
   }
@@ -39,7 +39,7 @@
   .detail {
     background: var(--tr-bg);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     overflow: auto;
     min-width: 480px;
   }

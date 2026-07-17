@@ -129,9 +129,9 @@
   .tr {
     display: grid;
     grid-template-columns: 40px 1.4fr 1fr 1.4fr;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     align-items: start;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
   }
   .thead {
     background: var(--tr-surface-sunken);

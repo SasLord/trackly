@@ -122,15 +122,15 @@
   .login-card {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-xl) var(--space-2xl, 2rem);
+    border-radius: var(--tr-radius-lg);
+    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
     width: 100%;
     max-width: 360px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .login-title {
@@ -149,7 +149,7 @@
   }
 
   .server-error {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--radius-sm);
@@ -158,7 +158,7 @@
   }
 
   .btn-submit {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
     border: none;

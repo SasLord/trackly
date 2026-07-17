@@ -111,8 +111,8 @@
   .cartridge-filters {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-sm) var(--space-sm);
+    gap: var(--tr-space-xs);
+    padding: var(--tr-space-xs) var(--tr-space-xs) var(--tr-space-xs);
     border-bottom: 1px solid var(--tr-border);
   }
 
@@ -125,8 +125,8 @@
   .status-tab {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
@@ -176,14 +176,14 @@
 
   .extra-filters {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
   .filter-label {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     flex-shrink: 0;
   }
 
@@ -195,7 +195,7 @@
 
   .filter-select {
     height: 28px;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);

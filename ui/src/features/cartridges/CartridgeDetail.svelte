@@ -207,7 +207,7 @@
   .cartridge-detail {
     height: 100%;
     overflow: auto;
-    padding: var(--space-lg);
+    padding: var(--tr-space-xl);
     background: var(--tr-bg);
   }
 
@@ -217,7 +217,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     min-height: 320px;
     text-align: center;
     color: var(--tr-text-secondary);
@@ -237,15 +237,15 @@
   }
 
   .detail-header {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--tr-space-2xl);
   }
 
   .title-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--tr-space-xs);
   }
 
   .detail-title {
@@ -264,16 +264,16 @@
 
   .actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
   .section {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--tr-space-2xl);
   }
 
   .section-heading {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -282,7 +282,7 @@
   .fields-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {

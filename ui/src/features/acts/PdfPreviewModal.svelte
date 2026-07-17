@@ -323,7 +323,7 @@
     overflow: auto;
     background: var(--tr-surface);
     border-radius: var(--radius-sm);
-    padding: var(--space-md) 0;
+    padding: var(--tr-space-md) 0;
   }
   .pdf-iframe {
     width: 794px;
@@ -341,7 +341,7 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     text-align: center;
     color: var(--tr-text-secondary);
     min-height: 320px;

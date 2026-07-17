@@ -122,9 +122,9 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     min-height: var(--row-height, 40px);
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border-bottom: 1px solid var(--tr-border);
     cursor: pointer;
     border-left: 3px solid transparent;
@@ -147,7 +147,7 @@
   .top {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     font-size: var(--font-size-body);
     line-height: 1.2;
   }

@@ -433,21 +433,21 @@
 
 <style lang="scss">
   .subheading {
-    margin: 0 0 var(--space-lg);
+    margin: 0 0 var(--tr-space-xl);
     color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
     font-weight: 500;
   }
 
   .empty-state {
-    margin: var(--space-lg) 0;
+    margin: var(--tr-space-xl) 0;
     color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
     text-align: center;
   }
 
   .section-heading {
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
     font-size: var(--font-size-subheading, var(--font-size-body));
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -456,16 +456,16 @@
   .persons-section,
   .bulk-section {
     background: var(--tr-surface);
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     border-radius: var(--radius-sm);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--tr-space-xl);
   }
 
   .apply-toggle {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-xs);
+    margin-bottom: var(--tr-space-md);
     color: var(--tr-text-primary);
     font-size: var(--font-size-body);
     cursor: pointer;
@@ -474,15 +474,15 @@
   .bulk-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
   .bulk-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
   .date-field {
-    margin-top: var(--space-md);
+    margin-top: var(--tr-space-md);
     max-width: 280px;
   }
   .label {
@@ -492,11 +492,11 @@
   }
 
   .items-section {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--tr-space-md);
   }
 
   .empty-hint {
-    margin: var(--space-sm) 0 0;
+    margin: var(--tr-space-xs) 0 0;
     color: var(--tr-danger);
     font-size: var(--font-size-label);
   }

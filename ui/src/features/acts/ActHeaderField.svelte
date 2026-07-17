@@ -19,7 +19,7 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
   .label {
     font-size: var(--font-size-label);

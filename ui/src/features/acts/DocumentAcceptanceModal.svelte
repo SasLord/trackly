@@ -140,11 +140,11 @@
   .acceptance-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .device-line {
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
     color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
@@ -152,7 +152,7 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .field-label {
@@ -163,7 +163,7 @@
 
   .date-input {
     height: 32px;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     background: var(--tr-surface);

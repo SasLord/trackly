@@ -349,7 +349,7 @@
   .act-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
   }
   .section-heading {
     margin: 0;
@@ -360,17 +360,17 @@
   .grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
   .grid-3 {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
   .label {
     font-size: var(--font-size-label);

@@ -58,7 +58,7 @@
     border-bottom: 1px solid var(--tr-border);
   }
   .th {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     font-size: var(--font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
@@ -76,7 +76,7 @@
     }
   }
   .td {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
   }
@@ -99,7 +99,7 @@
     color: var(--tr-text-tertiary);
   }
   .empty {
-    padding: var(--space-xl);
+    padding: var(--tr-space-2xl);
     text-align: center;
     color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);

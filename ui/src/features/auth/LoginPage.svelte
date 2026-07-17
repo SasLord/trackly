@@ -172,15 +172,15 @@
   .login-card {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-xl) var(--space-2xl, 2rem);
+    border-radius: var(--tr-radius-lg);
+    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
     width: 100%;
     max-width: 360px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   }
 
   .login-title {
-    margin: 0 0 var(--space-lg);
+    margin: 0 0 var(--tr-space-xl);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -190,13 +190,13 @@
   .login-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .form-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .form-label {
@@ -206,7 +206,7 @@
   }
 
   .form-input {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -243,7 +243,7 @@
   .checkbox-label {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     cursor: pointer;
 
     input[type='checkbox'] {
@@ -260,8 +260,8 @@
   }
 
   .btn-sso-reserved {
-    margin-top: var(--space-xs);
-    padding: var(--space-sm) var(--space-md);
+    margin-top: var(--tr-space-2xs);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: var(--tr-surface-sunken);
     color: var(--tr-text-tertiary);
     border: 1px solid var(--tr-border);
@@ -272,7 +272,7 @@
   }
 
   .server-error {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--radius-sm);
@@ -281,8 +281,8 @@
   }
 
   .btn-submit {
-    margin-top: var(--space-xs);
-    padding: var(--space-sm) var(--space-md);
+    margin-top: var(--tr-space-2xs);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
     border: none;

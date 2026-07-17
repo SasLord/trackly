@@ -34,8 +34,8 @@
   .login-card {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-xl) var(--space-2xl, 2rem);
+    border-radius: var(--tr-radius-lg);
+    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
     width: 100%;
     max-width: 360px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -43,7 +43,7 @@
   }
 
   .login-title {
-    margin: 0 0 var(--space-lg);
+    margin: 0 0 var(--tr-space-xl);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -51,7 +51,7 @@
   }
 
   .screen-body {
-    margin: 0 0 var(--space-lg);
+    margin: 0 0 var(--tr-space-xl);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
     color: var(--tr-text-secondary);
