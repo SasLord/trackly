@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-17T14:10:36.065Z"
+last_updated: "2026-07-17T14:52:58.202Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 26
   completed_phases: 25
   total_plans: 158
-  completed_plans: 154
+  completed_plans: 155
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 23 (design-tokens-foundations) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-07-17
 
@@ -199,6 +199,7 @@ Last activity: 2026-07-17
 | Phase 21 P01 | 22min | 1 tasks | 2 files |
 | Phase 23 P01 | 10min | 2 tasks | 2 files |
 | Phase 23 P02 | 20min | 2 tasks | 6 files |
+| Phase 23 P03 | 35min | 2 tasks | 115 files |
 
 ## Accumulated Context
 
@@ -485,6 +486,8 @@ Recent decisions affecting current work:
 - [Phase 23]: 23-02: Rule 3 (closed-world gate) strips comments before matching — {role}-placeholder docs in _tokens.scss otherwise trip a false undefined-token violation
 - [Phase 23]: 23-02: scripts/**/*.mjs added to eslint.config.js's existing node-config file-pattern block — new dev scripts weren't covered by any existing glob
 - [Phase 23]: 23-02: D-15 closed — all 5 pre-existing eslint errors fixed; 7 pre-existing prettier-formatting-drift files logged in deferred-items.md, out of scope
+- [Phase 23]: 23-03: var(--tr-text-inverse) на трёх auth-экранах не переименован в --tr-on-accent — консистентность с необновляемым skip-link паттерном (Layout.svelte/EmployeeLayout.svelte)
+- [Phase 23]: 23-03: NetworkSettings/UserListRow success-бейдж мигрирован на --tr-success (color-mix источник) / --tr-success-text (текст) — ближе к установленному -soft/-text triplet паттерну
 
 ### Pending Todos
 
@@ -560,7 +563,7 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-17T14:10:36.058Z
+Last session: 2026-07-17T14:52:58.194Z
 Stopped at: Completed 23-02-PLAN.md
 Resume file: None
 

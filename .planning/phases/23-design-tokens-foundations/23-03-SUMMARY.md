@@ -121,3 +121,12 @@ None — изменения ограничены переименованием 
 ---
 *Phase: 23-design-tokens-foundations*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: c5ba66c (feat(23-03): sweep --color-*/--shadow-* to --tr-* in acts/auth/cartridges (batch 1/4))
+- FOUND: fe4685b (feat(23-03): sweep --color-*/--shadow-* to --tr-* in cartridges/dashboard/devices/layout/printers (batch 2/4))
+- FOUND: c469ea4 (feat(23-03): sweep --color-*/--shadow-* to --tr-* in printers/reports/requests/settings (batch 3/4))
+- FOUND: 474fe07 (feat(23-03): sweep --color-*/--shadow-* to --tr-* in settings/users/lib/pages (batch 4/4))
+- FOUND: 7ee20cc (fix(23-03): remove remaining hardcoded hex from <style> blocks)
+- FOUND: .planning/phases/23-design-tokens-foundations/23-03-SUMMARY.md
