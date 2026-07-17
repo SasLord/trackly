@@ -290,8 +290,8 @@
 <style lang="scss">
   /* Full-width exception per UI-SPEC §Settings Layout (SET-09, D-20) */
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     display: flex;
@@ -308,7 +308,7 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .template-selector-row {
@@ -321,28 +321,28 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
   }
 
   .form-select {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
     min-width: 220px;
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
   }
 
   .variables-panel {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     padding: 0;
 
@@ -355,17 +355,17 @@
     padding: var(--space-sm) var(--space-md);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     user-select: none;
 
     &:hover {
-      color: var(--color-text-primary);
+      color: var(--tr-text-primary);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
       border-radius: var(--radius-sm);
     }
   }
@@ -386,15 +386,15 @@
   .var-item {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     line-height: 1.6;
 
     code {
       font-family: monospace;
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
       padding: 1px var(--space-xs);
       border-radius: var(--radius-sm);
-      color: var(--color-text-primary);
+      color: var(--tr-text-primary);
     }
   }
 
@@ -407,7 +407,7 @@
 
   .unsaved-indicator {
     font-size: var(--font-size-label);
-    color: var(--color-warning);
+    color: var(--tr-warning);
     font-weight: var(--font-weight-medium);
     align-self: flex-end;
   }
@@ -419,17 +419,17 @@
     width: 100%;
     resize: vertical;
     padding: var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
     line-height: 1.6;
     box-sizing: border-box;
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
   }
 
@@ -441,7 +441,7 @@
   }
 
   .preview-wrapper {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: hidden;
   }
@@ -456,7 +456,7 @@
   .modal-body-text {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     line-height: 1.5;
   }
 </style>

@@ -56,8 +56,8 @@
 
 <style lang="scss">
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     max-width: 640px;
@@ -67,7 +67,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .threshold-row {
@@ -79,7 +79,7 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .input-group {
@@ -91,30 +91,30 @@
   .form-input {
     width: 80px;
     padding: var(--space-xs) 2px var(--space-xs) var(--space-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
     text-align: right;
     appearance: auto;
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
   }
 
   .input-suffix {
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .helper-text {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     line-height: 1.5;
   }
 </style>

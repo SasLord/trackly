@@ -36,27 +36,27 @@
   }
 
   .badge-default {
-    background: var(--color-surface-sunken);
-    color: var(--color-text-primary);
+    background: var(--tr-surface-sunken);
+    color: var(--tr-text-primary);
   }
 
   .badge-accent {
-    background: var(--color-accent);
+    background: var(--tr-accent);
     color: #ffffff;
   }
 
   .badge-success {
-    background: color-mix(in srgb, var(--color-success) 15%, transparent);
-    color: var(--color-success);
+    background: color-mix(in srgb, var(--tr-success) 15%, transparent);
+    color: var(--tr-success);
   }
 
   .badge-warning {
-    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: var(--color-warning);
+    background: color-mix(in srgb, var(--tr-warning) 15%, transparent);
+    color: var(--tr-warning);
   }
 
   .badge-destructive {
-    background: color-mix(in srgb, var(--color-destructive) 15%, transparent);
-    color: var(--color-destructive);
+    background: color-mix(in srgb, var(--tr-danger) 15%, transparent);
+    color: var(--tr-danger);
   }
 </style>

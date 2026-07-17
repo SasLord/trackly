@@ -33,18 +33,18 @@
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     line-height: var(--line-height-heading);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .placeholder-body {
     margin: 0 0 var(--space-xs);
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .placeholder-sub {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 </style>

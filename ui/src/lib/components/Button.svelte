@@ -74,32 +74,32 @@
 
   // Variants
   .btn-primary {
-    background: var(--color-accent);
+    background: var(--tr-accent);
     color: #ffffff;
 
     &:hover:not(:disabled) {
-      background: var(--color-accent-hover);
+      background: var(--tr-accent-hover);
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
   .btn-secondary {
     background: transparent;
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-strong);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border-strong);
 
     &:hover:not(:disabled) {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
   .btn-destructive {
-    background: var(--color-destructive);
+    background: var(--tr-danger);
     color: #ffffff;
 
     &:hover:not(:disabled) {
@@ -112,19 +112,19 @@
 
   .btn-ghost {
     background: transparent;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
 
     &:hover:not(:disabled) {
-      background: var(--color-surface);
+      background: var(--tr-surface);
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
   .btn-link {
     background: transparent;
-    color: var(--color-accent);
+    color: var(--tr-accent);
     padding: 0;
     height: auto;
 
@@ -132,7 +132,7 @@
       text-decoration: underline;
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

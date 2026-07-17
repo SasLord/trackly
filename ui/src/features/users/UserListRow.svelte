@@ -60,15 +60,15 @@
 <style lang="scss">
   .user-row {
     &:hover {
-      background: color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+      background: color-mix(in srgb, var(--tr-text-primary) 3%, transparent);
     }
   }
 
   .cell {
     padding: var(--space-sm) var(--space-md);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--tr-text-primary);
+    border-bottom: 1px solid var(--tr-border);
     vertical-align: middle;
   }
 
@@ -92,38 +92,38 @@
     }
 
     &--blocked {
-      background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
-      color: var(--color-text-muted);
+      background: color-mix(in srgb, var(--tr-text-tertiary) 15%, transparent);
+      color: var(--tr-text-tertiary);
     }
   }
 
   .btn-action {
     padding: 2px var(--space-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-label);
     background: transparent;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--tr-text-primary) 8%, transparent);
+      color: var(--tr-text-primary);
     }
 
     &--danger {
-      color: var(--color-error, #c0392b);
-      border-color: color-mix(in srgb, var(--color-error, #c0392b) 40%, transparent);
+      color: var(--tr-danger);
+      border-color: color-mix(in srgb, var(--tr-danger) 40%, transparent);
 
       &:hover {
-        background: color-mix(in srgb, var(--color-error, #c0392b) 10%, transparent);
-        color: var(--color-error, #c0392b);
+        background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
+        color: var(--tr-danger);
       }
     }
   }
 
   .confirm-text {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 </style>

@@ -244,26 +244,26 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .form-input,
   .form-select {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
 
     &.is-error {
-      border-color: var(--color-error, #c0392b);
+      border-color: var(--tr-danger);
     }
 
     &:disabled {
@@ -274,16 +274,16 @@
 
   .field-error {
     font-size: var(--font-size-label);
-    color: var(--color-error, #c0392b);
+    color: var(--tr-danger);
   }
 
   .server-error {
     padding: var(--space-sm) var(--space-md);
-    background: color-mix(in srgb, var(--color-error, #c0392b) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error, #c0392b) 30%, transparent);
+    background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    color: var(--color-error, #c0392b);
+    color: var(--tr-danger);
   }
 
   .checkbox-label {
@@ -291,13 +291,13 @@
     align-items: center;
     gap: var(--space-sm);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     cursor: pointer;
 
     input[type='checkbox'] {
       width: 16px;
       height: 16px;
-      accent-color: var(--color-accent);
+      accent-color: var(--tr-accent);
     }
   }
 </style>

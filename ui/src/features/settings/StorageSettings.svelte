@@ -130,8 +130,8 @@
 
 <style lang="scss">
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     max-width: 640px;
@@ -142,7 +142,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .form-field {
@@ -155,7 +155,7 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .db-path-display {
@@ -165,9 +165,9 @@
   .db-path-code {
     font-family: monospace;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     word-break: break-all;
-    background: var(--color-surface-sunken);
+    background: var(--tr-surface-sunken);
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
     display: inline-block;
@@ -189,7 +189,7 @@
 
   .restart-message {
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-style: italic;
     margin: 0;
   }
@@ -197,7 +197,7 @@
   .modal-body-text {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     line-height: 1.5;
   }
 </style>

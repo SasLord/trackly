@@ -41,9 +41,9 @@
     width: 100%;
     min-height: 80px;
     padding: var(--space-sm) var(--space-md);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
@@ -51,22 +51,22 @@
     resize: vertical;
 
     &::placeholder {
-      color: var(--color-text-muted);
+      color: var(--tr-text-tertiary);
     }
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
 
     &.invalid {
-      border-color: var(--color-destructive);
+      border-color: var(--tr-danger);
     }
 
     &:disabled {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-muted);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-tertiary);
       cursor: not-allowed;
     }
   }

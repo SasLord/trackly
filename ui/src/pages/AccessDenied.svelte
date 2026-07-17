@@ -42,12 +42,12 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .access-denied-body {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 </style>

@@ -34,17 +34,17 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .not-found-body {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
 
     code {
       font-family: monospace;
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
       padding: 2px 6px;
       border-radius: var(--radius-sm);
     }

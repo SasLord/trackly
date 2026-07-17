@@ -28,8 +28,8 @@
     display: flex;
     width: 100%;
     height: 32px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: hidden;
   }
@@ -39,11 +39,11 @@
     height: 100%;
     background: transparent;
     border: none;
-    border-right: 1px solid var(--color-border);
+    border-right: 1px solid var(--tr-border);
     cursor: pointer;
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     padding: 0;
     transition: none;
 
@@ -52,19 +52,19 @@
     }
 
     &:hover:not(.active) {
-      background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
-      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--tr-text-primary) 5%, transparent);
+      color: var(--tr-text-primary);
     }
 
     &.active {
-      background: var(--color-surface-raised);
-      color: var(--color-text-primary);
+      background: var(--tr-surface-raised);
+      color: var(--tr-text-primary);
       font-weight: var(--font-weight-medium);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--color-accent-focus);
+      box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
     }
   }
 </style>

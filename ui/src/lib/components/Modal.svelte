@@ -93,9 +93,9 @@
   }
 
   .modal-container {
-    background: var(--color-surface-raised);
+    background: var(--tr-surface-raised);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-elev-2);
+    box-shadow: var(--tr-elev-2);
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 64px);
@@ -125,7 +125,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-md) var(--space-lg);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
   }
 
@@ -134,14 +134,14 @@
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     line-height: var(--line-height-heading);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .modal-close {
     background: transparent;
     border: none;
     cursor: pointer;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: 20px;
     width: 28px;
     height: 28px;
@@ -153,11 +153,11 @@
     line-height: 1;
 
     &:hover {
-      background: var(--color-surface);
-      color: var(--color-text-primary);
+      background: var(--tr-surface);
+      color: var(--tr-text-primary);
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
       outline: none;
     }
   }
@@ -174,7 +174,7 @@
 
   .modal-footer {
     padding: var(--space-md) var(--space-lg);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     display: flex;
     justify-content: flex-end;
     gap: var(--space-sm);

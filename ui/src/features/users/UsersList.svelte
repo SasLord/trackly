@@ -43,7 +43,7 @@
   .empty-state {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
   }
 
@@ -58,8 +58,8 @@
     text-align: left;
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-muted);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--tr-text-tertiary);
+    border-bottom: 1px solid var(--tr-border);
     white-space: nowrap;
   }
 </style>
