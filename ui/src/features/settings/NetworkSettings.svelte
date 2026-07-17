@@ -297,8 +297,8 @@
     font-weight: var(--font-weight-medium);
 
     &--running {
-      background: color-mix(in srgb, #27ae60 15%, transparent);
-      color: #1a7a40;
+      background: color-mix(in srgb, var(--tr-success) 15%, transparent);
+      color: var(--tr-success-text);
     }
 
     &--stopped {

@@ -42,7 +42,7 @@
 
   .badge-accent {
     background: var(--tr-accent);
-    color: #ffffff;
+    color: var(--tr-on-accent);
   }
 
   .badge-success {

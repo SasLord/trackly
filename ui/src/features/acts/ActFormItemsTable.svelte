@@ -1027,6 +1027,6 @@
   .hint-warn {
     margin: var(--space-xs) 0 0;
     font-size: 12px;
-    color: var(--tr-warning, #b45309);
+    color: var(--tr-warning);
   }
 </style>

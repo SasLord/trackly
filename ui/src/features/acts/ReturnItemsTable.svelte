@@ -179,6 +179,6 @@
     color: var(--tr-text-tertiary);
   }
   .hint-warning {
-    color: var(--tr-warning, #b45309);
+    color: var(--tr-warning);
   }
 </style>

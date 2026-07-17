@@ -332,7 +332,7 @@
     min-height: 1123px;
     border: 1px solid var(--tr-border);
     box-shadow: var(--tr-elev-2);
-    background: #fff;
+    background: var(--tr-n-0);
     flex-shrink: 0;
   }
   .state {

@@ -497,7 +497,7 @@
 
   .empty-hint {
     margin: var(--space-sm) 0 0;
-    color: var(--tr-danger, #b91c1c);
+    color: var(--tr-danger);
     font-size: var(--font-size-label);
   }
 </style>

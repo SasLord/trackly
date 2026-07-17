@@ -376,15 +376,15 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--tr-border, #d0d5dd);
+    background: var(--tr-border);
     transition: background 0.15s;
 
     &.active {
-      background: var(--tr-accent, #3b82f6);
+      background: var(--tr-accent);
     }
 
     &.done {
-      background: var(--tr-success, #22c55e);
+      background: var(--tr-success);
     }
   }
 
@@ -441,7 +441,7 @@
     th {
       position: sticky;
       top: 0;
-      background: var(--tr-surface, #f9fafb);
+      background: var(--tr-surface);
       padding: var(--space-sm, 8px) var(--space-md, 12px);
       text-align: left;
       font-weight: var(--font-weight-semibold, 600);
@@ -473,7 +473,7 @@
       text-align: left;
       font-weight: var(--font-weight-semibold, 600);
       border-bottom: 2px solid var(--tr-border);
-      background: var(--tr-surface, #f9fafb);
+      background: var(--tr-surface);
     }
 
     td {
@@ -501,7 +501,7 @@
   .errors-toggle {
     background: none;
     border: none;
-    color: var(--tr-accent, #3b82f6);
+    color: var(--tr-accent);
     cursor: pointer;
     font-size: var(--font-size-body);
     padding: 0;
@@ -509,7 +509,7 @@
     margin-bottom: var(--space-sm, 8px);
 
     &:hover {
-      color: var(--tr-accent-hover, #2563eb);
+      color: var(--tr-accent-hover);
     }
   }
 
@@ -526,7 +526,7 @@
     li {
       padding: var(--space-xs, 4px) var(--space-md, 12px);
       border-bottom: 1px solid var(--tr-border);
-      color: var(--tr-danger, #ef4444);
+      color: var(--tr-danger);
 
       &:last-child {
         border-bottom: none;

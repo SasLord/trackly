@@ -284,7 +284,7 @@
     margin-top: var(--space-xs);
     padding: var(--space-sm) var(--space-md);
     background: var(--tr-accent);
-    color: var(--tr-text-inverse, #fff);
+    color: var(--tr-text-inverse);
     border: none;
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);

@@ -75,7 +75,7 @@
   // Variants
   .btn-primary {
     background: var(--tr-accent);
-    color: #ffffff;
+    color: var(--tr-on-accent);
 
     &:hover:not(:disabled) {
       background: var(--tr-accent-hover);
@@ -100,7 +100,7 @@
 
   .btn-destructive {
     background: var(--tr-danger);
-    color: #ffffff;
+    color: var(--tr-on-accent);
 
     &:hover:not(:disabled) {
       filter: brightness(0.92);
