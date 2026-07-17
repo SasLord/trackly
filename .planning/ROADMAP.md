@@ -408,7 +408,7 @@ Plans:
 
 **Wave 4** *(depends on Wave 3 — тот же набор файлов)*
 
-- [ ] 23-05-PLAN.md — Типографика + .tr-mono охват: sweep --font-size-*/--font-weight-*/--line-height-* (DS-03), --font-size-sm QA-01 fix, .tr-mono на 9 in-scope сайтах (D-13/D-16)
+- [x] 23-05-PLAN.md — Типографика + .tr-mono охват: sweep --font-size-*/--font-weight-*/--line-height-* (DS-03), --font-size-sm QA-01 fix, .tr-mono на 9 in-scope сайтах (D-13/D-16)
 
 **Wave 5** *(depends on все предыдущие — финальный гейт)*
 
@@ -598,7 +598,7 @@ Plans:
 | 20. Печать актов и организация | v1.1.2 | 6/6 | Complete    | 2026-07-14 |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
-| 23. Токены и основы дизайн-системы | v1.2 | 4/6 | In Progress|  |
+| 23. Токены и основы дизайн-системы | v1.2 | 5/6 | In Progress|  |
 | 24. Базовые компоненты | v1.2 | 0/TBD | Not started | - |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |

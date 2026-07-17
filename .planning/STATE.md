@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-17T15:08:10.449Z"
+last_updated: "2026-07-17T15:24:19.225Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 26
   completed_phases: 25
   total_plans: 158
-  completed_plans: 156
+  completed_plans: 157
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 23 (design-tokens-foundations) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-07-17
 
@@ -201,6 +201,7 @@ Last activity: 2026-07-17
 | Phase 23 P02 | 20min | 2 tasks | 6 files |
 | Phase 23 P03 | 35min | 2 tasks | 115 files |
 | Phase 23 P04 | 50min | 2 tasks | 106 files |
+| Phase 23 P05 | 20min | 2 tasks | 101 files |
 
 ## Accumulated Context
 
@@ -491,6 +492,8 @@ Recent decisions affecting current work:
 - [Phase 23]: 23-03: NetworkSettings/UserListRow success-бейдж мигрирован на --tr-success (color-mix источник) / --tr-success-text (текст) — ближе к установленному -soft/-text triplet паттерну
 - [Phase 23]: 23-04: verify-value-map.mjs RADIUS_EXCEPTION_FILES fixed to include ui/ prefix (git diff paths are repo-root-relative) - built in 23-02, false-positived on the exact expected radius-sm allowlist exception
 - [Phase 23]: 23-04: --radius-lg QA-01 fix applied to 4 auth screens (LoginPage/BlockedScreen/FirstRunWizard/PendingScreen) as part of Task 1 space/radius sweep
+- [Phase ?]: 23-05: ReturnModal.svelte делегирует рендер списка возврата ReturnItemsTable.svelte — deviceLabel декомпозирован в deviceName+inventoryNo для tr-mono seam
+- [Phase ?]: 23-05: class="tr-mono" всегда как отдельный вложенный span, не примесь к multi-class атрибуту — гарантирует греп-видимость точного литерала
 
 ### Pending Todos
 
@@ -566,8 +569,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-17T15:08:10.442Z
-Stopped at: Completed 23-04-PLAN.md
+Last session: 2026-07-17T15:24:19.218Z
+Stopped at: Completed 23-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
