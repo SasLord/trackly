@@ -292,7 +292,7 @@
   .status-badge {
     display: inline-block;
     padding: 2px var(--tr-space-xs);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
 
@@ -310,7 +310,7 @@
   .server-info-block {
     background: color-mix(in srgb, var(--tr-accent) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-accent) 25%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     padding: var(--tr-space-md);
     margin-bottom: var(--tr-space-md);
     display: flex;
@@ -395,7 +395,7 @@
   .form-select {
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);

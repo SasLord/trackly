@@ -47,7 +47,7 @@
   .items-table {
     width: 100%;
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     overflow: hidden;
   }
 

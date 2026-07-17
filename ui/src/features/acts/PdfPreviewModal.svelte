@@ -322,7 +322,7 @@
     justify-content: center;
     overflow: auto;
     background: var(--tr-surface);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     padding: var(--tr-space-md) 0;
   }
   .pdf-iframe {

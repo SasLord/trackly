@@ -737,7 +737,7 @@
 <style lang="scss">
   .items {
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     overflow: visible;
   }
   .thead,
@@ -798,7 +798,7 @@
     overflow: auto;
     background: var(--tr-surface-raised, var(--tr-surface));
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -957,7 +957,7 @@
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
@@ -982,7 +982,7 @@
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);

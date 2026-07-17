@@ -328,7 +328,7 @@
   .form-input {
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);

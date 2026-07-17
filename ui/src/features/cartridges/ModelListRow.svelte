@@ -141,7 +141,7 @@
     height: 28px;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     cursor: pointer;
     color: var(--tr-text-secondary);
     font-size: 16px;
@@ -165,7 +165,7 @@
     z-index: 100;
     background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     box-shadow: var(--tr-elev-2);
     min-width: 160px;
     overflow: hidden;

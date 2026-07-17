@@ -42,7 +42,7 @@
     color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border-radius: var(--tr-radius-xs) var(--tr-radius-xs) 0 0;
     transition: color 0.1s ease;
 
     &:hover {

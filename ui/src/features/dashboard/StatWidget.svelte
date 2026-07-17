@@ -122,7 +122,7 @@
     padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     border: 1px solid var(--tr-warning);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-label);
     color: var(--tr-text-primary);
 

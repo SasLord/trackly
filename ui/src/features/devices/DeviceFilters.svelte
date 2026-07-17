@@ -144,7 +144,7 @@
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
 
@@ -186,7 +186,7 @@
     color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    border-radius: var(--tr-radius-xs) var(--tr-radius-xs) 0 0;
 
     &:hover {
       background: var(--tr-surface);

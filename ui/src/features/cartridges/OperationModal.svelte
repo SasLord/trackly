@@ -881,7 +881,7 @@
   .previous-cartridge-block {
     padding: var(--tr-space-xs);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     background: var(--tr-surface);
   }
 </style>

@@ -275,7 +275,7 @@
     padding: 0 var(--tr-space-xs);
     background: var(--tr-bg);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-label);
     color: var(--tr-text-primary);
     cursor: pointer;

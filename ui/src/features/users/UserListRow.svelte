@@ -82,7 +82,7 @@
   .badge {
     display: inline-block;
     padding: 2px var(--tr-space-xs);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
 
@@ -100,7 +100,7 @@
   .btn-action {
     padding: 2px var(--tr-space-xs);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-label);
     background: transparent;
     color: var(--tr-text-secondary);

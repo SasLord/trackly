@@ -194,7 +194,7 @@
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
     padding: var(--tr-space-2xs) var(--tr-space-xs);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     cursor: pointer;
     text-align: center;
 

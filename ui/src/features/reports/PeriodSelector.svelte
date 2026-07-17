@@ -168,7 +168,7 @@
     padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
     color: var(--tr-text-secondary);
@@ -176,11 +176,11 @@
     height: 28px;
 
     &:first-child {
-      border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+      border-radius: var(--tr-radius-xs) 0 0 var(--tr-radius-xs);
     }
 
     &:last-child {
-      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      border-radius: 0 var(--tr-radius-xs) var(--tr-radius-xs) 0;
     }
 
     &:not(:first-child) {
@@ -239,7 +239,7 @@
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
     cursor: pointer;

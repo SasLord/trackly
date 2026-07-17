@@ -457,7 +457,7 @@
   .bulk-section {
     background: var(--tr-surface);
     padding: var(--tr-space-md);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     margin-bottom: var(--tr-space-xl);
   }
 

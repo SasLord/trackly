@@ -46,7 +46,7 @@
       font-family: monospace;
       background: var(--tr-surface-sunken);
       padding: 2px 6px;
-      border-radius: var(--radius-sm);
+      border-radius: var(--tr-radius-xs);
     }
   }
 </style>

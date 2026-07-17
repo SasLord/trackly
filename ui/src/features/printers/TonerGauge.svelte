@@ -76,7 +76,7 @@
   .gauge-track {
     height: 8px;
     background: var(--tr-surface);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     overflow: hidden;
     position: relative;
     border: 1px solid var(--tr-border);
@@ -84,7 +84,7 @@
 
   .gauge-fill {
     height: 100%;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     transition: width 0.3s ease;
   }
 

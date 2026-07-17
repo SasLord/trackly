@@ -833,7 +833,7 @@
     gap: 2px;
     padding: var(--tr-space-md);
     background: var(--tr-surface);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     border: 1px solid var(--tr-border);
   }
 

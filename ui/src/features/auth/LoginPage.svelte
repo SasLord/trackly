@@ -208,7 +208,7 @@
   .form-input {
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
@@ -265,7 +265,7 @@
     background: var(--tr-surface-sunken);
     color: var(--tr-text-tertiary);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
     cursor: not-allowed;
@@ -275,7 +275,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     color: var(--tr-danger);
   }
@@ -286,7 +286,7 @@
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
     cursor: pointer;

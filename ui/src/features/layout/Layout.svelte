@@ -51,7 +51,7 @@
     color: var(--tr-text-inverse);
     font-size: var(--font-size-body);
     text-decoration: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
 
     &:focus {
       left: 0;

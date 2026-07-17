@@ -328,7 +328,7 @@
   .form-select {
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
@@ -343,7 +343,7 @@
 
   .variables-panel {
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     padding: 0;
 
     &[open] {
@@ -366,7 +366,7 @@
     &:focus-visible {
       outline: none;
       box-shadow: 0 0 0 3px var(--tr-focus-ring);
-      border-radius: var(--radius-sm);
+      border-radius: var(--tr-radius-xs);
     }
   }
 
@@ -393,7 +393,7 @@
       font-family: monospace;
       background: var(--tr-surface-sunken);
       padding: 1px var(--tr-space-2xs);
-      border-radius: var(--radius-sm);
+      border-radius: var(--tr-radius-xs);
       color: var(--tr-text-primary);
     }
   }
@@ -420,7 +420,7 @@
     resize: vertical;
     padding: var(--tr-space-md);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     line-height: 1.6;
@@ -442,7 +442,7 @@
 
   .preview-wrapper {
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     overflow: hidden;
   }
 

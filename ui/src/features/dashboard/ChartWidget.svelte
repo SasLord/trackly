@@ -386,7 +386,7 @@
     pointer-events: none;
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     padding: 4px 8px;
     font-size: var(--font-size-label);
     color: var(--tr-text-primary);

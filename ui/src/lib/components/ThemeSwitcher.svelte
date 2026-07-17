@@ -30,7 +30,7 @@
     height: 32px;
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     overflow: hidden;
   }
 

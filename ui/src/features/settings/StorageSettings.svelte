@@ -169,7 +169,7 @@
     word-break: break-all;
     background: var(--tr-surface-sunken);
     padding: var(--tr-space-2xs) var(--tr-space-xs);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     display: inline-block;
   }
 

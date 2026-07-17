@@ -267,7 +267,7 @@
     padding: 0;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     color: var(--tr-text-secondary);
     cursor: pointer;
     flex-shrink: 0;

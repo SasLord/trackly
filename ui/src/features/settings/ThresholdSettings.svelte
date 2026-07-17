@@ -92,7 +92,7 @@
     width: 80px;
     padding: var(--tr-space-2xs) 2px var(--tr-space-2xs) var(--tr-space-xs);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     font-size: var(--font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);

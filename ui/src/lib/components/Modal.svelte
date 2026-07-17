@@ -148,7 +148,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     padding: 0;
     line-height: 1;
 

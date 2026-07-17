@@ -167,7 +167,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     color: var(--tr-text-secondary);
     font-size: 18px;
     line-height: 1;
@@ -209,7 +209,7 @@
     z-index: 2000;
     background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     box-shadow: var(--tr-elev-1);
     min-width: 160px;
     padding: var(--tr-space-2xs) 0;

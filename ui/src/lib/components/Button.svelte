@@ -39,7 +39,7 @@
     justify-content: center;
     gap: var(--tr-space-2xs);
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-sm);
     font-family: var(--font-family-base);
     font-weight: var(--font-weight-semibold);
     cursor: pointer;

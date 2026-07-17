@@ -220,7 +220,7 @@
 
   .skeleton-block {
     height: 16px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--tr-radius-xs);
     background: var(--tr-surface-sunken);
     animation: pulse 1.2s ease-in-out infinite;
   }

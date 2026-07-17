@@ -419,7 +419,7 @@
     background: var(--tr-warning-soft);
     color: var(--tr-warning-text);
     border: 1px solid var(--tr-warning);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--tr-radius-xs, 4px);
     padding: var(--tr-space-xs, 8px) var(--tr-space-md, 12px);
     margin-bottom: var(--tr-space-md, 12px);
     font-size: var(--font-size-body);
@@ -430,7 +430,7 @@
     overflow-y: auto;
     max-height: 280px;
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--tr-radius-xs, 4px);
   }
 
   .preview-table {
@@ -520,7 +520,7 @@
     max-height: 200px;
     overflow-y: auto;
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--tr-radius-xs, 4px);
     font-size: var(--font-size-body);
 
     li {
