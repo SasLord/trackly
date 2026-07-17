@@ -111,15 +111,15 @@
 
   .empty-heading {
     margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0 0 var(--tr-space-md);
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .pagination {
@@ -128,7 +128,7 @@
     justify-content: space-between;
     padding: var(--tr-space-xs) var(--tr-space-md);
     border-top: 1px solid var(--tr-border);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     background: var(--tr-surface);
   }

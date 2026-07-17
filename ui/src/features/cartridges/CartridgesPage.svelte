@@ -504,10 +504,10 @@
 
   .page-title {
     margin: 0;
-    font-size: var(--font-size-page-title, var(--font-size-heading));
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
-    line-height: var(--line-height-heading);
+    line-height: var(--tr-line-height-h3);
   }
 
   .header-actions {
@@ -524,7 +524,7 @@
   .confirm-body {
     margin: 0;
     color: var(--tr-text-secondary);
-    line-height: var(--line-height-body);
+    line-height: var(--tr-line-height-body);
     text-align: center;
     overflow-wrap: anywhere;
     word-break: break-word;

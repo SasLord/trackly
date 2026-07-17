@@ -75,7 +75,7 @@
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
     background: var(--tr-bg);
   }

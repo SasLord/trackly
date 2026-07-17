@@ -105,7 +105,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     line-height: 1.2;
   }
   .number {
@@ -127,7 +127,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
   }
   .receiver {

@@ -140,8 +140,8 @@
   }
   .empty-heading {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
   .empty-body {
@@ -160,8 +160,8 @@
   }
   .detail-title {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     font-variant-numeric: tabular-nums;
   }
@@ -176,8 +176,8 @@
   }
   .section-heading {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-subheading, var(--font-size-body));
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -196,6 +196,6 @@
   .hint {
     margin-top: var(--tr-space-2xs);
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 </style>

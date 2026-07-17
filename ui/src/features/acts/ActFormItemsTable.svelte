@@ -754,7 +754,7 @@
     align-items: center;
   }
   .th {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
   }
@@ -815,8 +815,8 @@
     border: none;
     cursor: pointer;
     color: var(--tr-text-primary);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
   }
   :global(.dropdown--items .opt:hover),
   :global(.dropdown--items .opt.active) {
@@ -834,17 +834,17 @@
   :global(.dropdown--items .opt-inv),
   :global(.dropdown--items .opt-sn),
   :global(.dropdown--items .opt-model) {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
   :global(.dropdown--items .opt-count) {
     margin-left: auto;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-accent, var(--tr-text-secondary));
     font-weight: 500;
   }
   :global(.dropdown--items .opt-state) {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
   // checkpoint fix (round 2) #2: строка «SN … · инв. …» одиночного устройства —
@@ -853,17 +853,17 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
   :global(.dropdown--items .opt-sep) {
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
   :global(.dropdown--items .dropdown-empty) {
     padding: var(--tr-space-2xl);
     text-align: center;
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     list-style: none;
   }
 
@@ -876,7 +876,7 @@
     width: 12px;
     text-align: center;
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 
   // Plan 18-05 (AUTO-04/D-06 + checkpoint fix #1): заголовок drill-in —
@@ -901,15 +901,15 @@
     border: none;
     cursor: pointer;
     padding: 0;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     &:hover {
       color: var(--tr-text-primary);
     }
   }
   :global(.dropdown--items .drill-title) {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
   }
@@ -917,7 +917,7 @@
   // Plan 18-05 (AUTO-04/D-07): подпись «Без номера · {state}» под-группы —
   // Label-стиль (13px/400), а НЕ акцентное наименование группы уровня 1.
   :global(.dropdown--items .member-subgroup-label) {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 400;
     color: var(--tr-text-secondary);
   }
@@ -930,7 +930,7 @@
 
   .row-error {
     margin: 4px 0 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 
@@ -938,7 +938,7 @@
     padding: var(--tr-space-2xl);
     text-align: center;
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .add-row {
@@ -958,9 +958,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
     &:focus-visible {
       outline: none;
@@ -983,9 +983,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
     &:focus-visible {
       outline: none;
@@ -1006,8 +1006,8 @@
     height: 36px;
     padding: 0 var(--tr-space-md);
     color: var(--tr-text-secondary, var(--tr-text-primary));
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
   }
 
   // Plan 19-09 (ACT-02/D-10): read-only device name for retained edit-mode
@@ -1019,9 +1019,9 @@
     height: 36px;
     padding: 0 var(--tr-space-md);
     color: var(--tr-text-primary);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
   }
 
   .hint-warn {

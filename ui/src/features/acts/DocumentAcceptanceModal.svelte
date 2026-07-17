@@ -146,7 +146,7 @@
   .device-line {
     margin: 0 0 var(--tr-space-2xs);
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .field {
@@ -156,8 +156,8 @@
   }
 
   .field-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-primary);
   }
 
@@ -168,8 +168,8 @@
     border-radius: var(--tr-radius-xs);
     background: var(--tr-surface);
     color: var(--tr-text-primary);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
 
     &:focus-visible {
       outline: none;

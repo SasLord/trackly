@@ -148,7 +148,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     line-height: 1.2;
   }
 
@@ -161,14 +161,14 @@
   }
 
   .code {
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     flex-shrink: 0;
   }
 
   .model {
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -190,7 +190,7 @@
   .bottom {
     display: flex;
     align-items: center;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 

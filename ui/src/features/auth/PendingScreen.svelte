@@ -44,16 +44,16 @@
 
   .login-title {
     margin: 0 0 var(--tr-space-xl);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     text-align: center;
   }
 
   .screen-body {
     margin: 0 0 var(--tr-space-xl);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
     color: var(--tr-text-secondary);
   }
 
@@ -62,7 +62,7 @@
     border: none;
     padding: 0;
     color: var(--tr-accent);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     cursor: pointer;
 
     &:hover {

@@ -225,8 +225,8 @@
 
   .empty-heading {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -250,15 +250,15 @@
 
   .detail-title {
     margin: 0;
-    font-size: var(--font-size-display);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-display);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
-    line-height: var(--line-height-display);
+    line-height: var(--tr-line-height-display);
     font-variant-numeric: tabular-nums;
   }
 
   .model-label {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
   }
 
@@ -274,8 +274,8 @@
 
   .section-heading {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -296,18 +296,18 @@
   }
 
   .field-label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
   .field-value {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
   }
 
   .history-empty {
     margin: 0;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-tertiary);
     font-style: italic;
   }
@@ -323,7 +323,7 @@
     align-items: center;
     min-height: var(--row-height-dense, 32px);
     padding: 0 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     border-bottom: 1px solid var(--tr-border);
 

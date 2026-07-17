@@ -353,8 +353,8 @@
   }
   .section-heading {
     margin: 0;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
   .grid-2 {
@@ -373,18 +373,18 @@
     gap: var(--tr-space-2xs);
   }
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
   }
   .hint {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
   .error {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 

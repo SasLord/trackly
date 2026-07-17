@@ -139,7 +139,7 @@
     align-items: center;
   }
   .th {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
   }
@@ -167,7 +167,7 @@
     display: inline-block;
     padding-top: 8px;
     color: var(--tr-text-primary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
   .hint {
     display: block;

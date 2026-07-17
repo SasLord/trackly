@@ -435,21 +435,21 @@
   .subheading {
     margin: 0 0 var(--tr-space-xl);
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
   }
 
   .empty-state {
     margin: var(--tr-space-xl) 0;
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     text-align: center;
   }
 
   .section-heading {
     margin: 0 0 var(--tr-space-xs);
-    font-size: var(--font-size-subheading, var(--font-size-body));
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -467,7 +467,7 @@
     gap: var(--tr-space-xs);
     margin-bottom: var(--tr-space-md);
     color: var(--tr-text-primary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     cursor: pointer;
   }
 
@@ -486,7 +486,7 @@
     max-width: 280px;
   }
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     font-weight: 500;
   }
@@ -498,6 +498,6 @@
   .empty-hint {
     margin: var(--tr-space-xs) 0 0;
     color: var(--tr-danger);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 </style>

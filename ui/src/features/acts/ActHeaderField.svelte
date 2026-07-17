@@ -22,12 +22,12 @@
     gap: var(--tr-space-2xs);
   }
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     font-weight: 500;
     color: var(--tr-text-secondary);
   }
   .value {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
   }
   .value.muted {

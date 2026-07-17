@@ -349,7 +349,7 @@
   .error-heading {
     margin: 0;
     color: var(--tr-danger);
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--tr-font-weight-semibold);
   }
   .error-detail {
     margin: 0;

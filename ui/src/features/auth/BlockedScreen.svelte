@@ -135,16 +135,16 @@
 
   .login-title {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     text-align: center;
   }
 
   .screen-body {
     margin: 0;
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
     color: var(--tr-text-secondary);
   }
 
@@ -153,7 +153,7 @@
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
   }
 
@@ -163,8 +163,8 @@
     color: var(--tr-text-inverse);
     border: none;
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     cursor: pointer;
     transition: opacity 0.1s;
 
@@ -183,7 +183,7 @@
     border: none;
     padding: 0;
     color: var(--tr-accent);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     cursor: pointer;
 
     &:hover {

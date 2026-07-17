@@ -181,8 +181,8 @@
 
   .login-title {
     margin: 0 0 var(--tr-space-xl);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     text-align: center;
   }
@@ -200,8 +200,8 @@
   }
 
   .form-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -209,7 +209,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
 
@@ -230,14 +230,14 @@
   }
 
   .field-error {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 
   .format-hint {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
-    line-height: var(--line-height-label);
+    line-height: var(--tr-line-height-label);
   }
 
   .checkbox-label {
@@ -255,7 +255,7 @@
   }
 
   .checkbox-text {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 
@@ -266,8 +266,8 @@
     color: var(--tr-text-tertiary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     cursor: not-allowed;
   }
 
@@ -276,7 +276,7 @@
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
   }
 
@@ -287,8 +287,8 @@
     color: var(--tr-text-inverse);
     border: none;
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     cursor: pointer;
     transition: opacity 0.1s;
 
