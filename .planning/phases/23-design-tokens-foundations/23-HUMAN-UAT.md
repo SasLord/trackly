@@ -1,5 +1,5 @@
 ---
-status: partial
+status: passed
 phase: 23-design-tokens-foundations
 source: [23-VERIFICATION.md]
 started: 2026-07-18T00:00:00Z
@@ -8,36 +8,36 @@ updated: 2026-07-18T00:00:00Z
 
 ## Current Test
 
-[awaiting human testing]
+[complete — user approved all items]
 
 ## Tests
 
 ### 1. Переключение темы (light/dark) без визуальных артефактов
 expected: Нет флеша не той темы при загрузке, все поверхности стилизованы, текст читаем в обеих темах. Проверить на 3-4 плотных экранах (Устройства, форма акта, Настройки).
-result: [pending]
+result: passed (user approved 2026-07-18)
 
 ### 2. Отсутствие визуального сдвига вёрстки после space/radius миграции по значению
 expected: Вёрстка визуально идентична прежней (кроме намеренной инверсии поверхностей --tr-bg/--tr-surface, D-10, которая не является дефектом). Сравнение до/после на тех же плотных экранах.
-result: [pending]
+result: passed (user approved 2026-07-18)
 
 ### 3. Визуальная иерархия типографики
 expected: Заголовки/тело/подписи визуально согласованы с 9-уровневой шкалой относительно соседних блоков.
-result: [pending]
+result: passed (user approved 2026-07-18)
 
 ### 4. Точечная потеря контраста (белое-на-белом) от инверсии поверхностей
 expected: Не должно быть невидимого текста/границ там, где старый код полагался на прежний порядок поверхностей.
-result: [pending]
+result: passed (user approved 2026-07-18)
 
 ### 5. Button.svelte danger-ring alpha 0.3→0.2 (WR-01-sanctioned)
 expected: Нет заметной регрессии; кольцо фокуса на деструктивной кнопке чуть более тонкое, но по-прежнему хорошо видно в обеих темах, согласованно с остальными 8 сайтами danger-ring (теперь единый alpha 0.2).
-result: [pending]
+result: passed (user approved 2026-07-18)
 
 ## Summary
 
 total: 5
-passed: 0
+passed: 5
 issues: 0
-pending: 5
+pending: 0
 skipped: 0
 blocked: 0
 
