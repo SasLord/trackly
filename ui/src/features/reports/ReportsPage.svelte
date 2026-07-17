@@ -509,7 +509,7 @@
 
   .page-header {
     padding: var(--space-lg) var(--space-xl);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
   }
 
@@ -517,7 +517,7 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .reports-content {

@@ -382,8 +382,8 @@
 
 <style lang="scss">
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     max-width: 640px;
@@ -393,14 +393,14 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .subsection-title {
     margin: 0 0 var(--space-sm);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .form-grid {
@@ -423,21 +423,21 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .form-input {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
   }
 
@@ -449,7 +449,7 @@
   }
 
   .logo-section {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     padding-top: var(--space-md);
   }
 
@@ -470,10 +470,10 @@
     max-height: 64px;
     max-width: 128px;
     object-fit: contain;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     padding: var(--space-xs);
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .logo-actions {
@@ -488,7 +488,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-sm);
-    border: 2px dashed var(--color-border);
+    border: 2px dashed var(--tr-border);
     border-radius: var(--radius-sm);
     padding: var(--space-lg);
     text-align: center;
@@ -497,12 +497,12 @@
 
   .logo-placeholder-text {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .logo-error {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 </style>

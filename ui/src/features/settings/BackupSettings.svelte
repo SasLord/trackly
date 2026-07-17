@@ -186,8 +186,8 @@
 
 <style lang="scss">
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     max-width: 640px;
@@ -200,14 +200,14 @@
     margin: 0 0 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .subsection {
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     padding-top: var(--space-md);
 
     &:first-of-type {
@@ -220,7 +220,7 @@
     margin: 0;
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .manual-row {
@@ -232,7 +232,7 @@
 
   .last-backup-label {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .config-grid {
@@ -250,7 +250,7 @@
   .config-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .folder-display {
@@ -263,12 +263,12 @@
   .folder-code {
     font-family: monospace;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 300px;
-    background: var(--color-surface-sunken);
+    background: var(--tr-surface-sunken);
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-sm);
     display: inline-block;
@@ -276,18 +276,18 @@
 
   .form-select {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
     width: fit-content;
     min-width: 180px;
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
 
     &:disabled {
@@ -305,23 +305,23 @@
   .form-input {
     width: 80px;
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
     text-align: right;
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
   }
 
   .input-suffix {
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .save-row {
@@ -332,6 +332,6 @@
   .helper-text {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 </style>

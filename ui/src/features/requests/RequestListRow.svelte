@@ -117,22 +117,22 @@
     gap: var(--space-xs);
     min-height: var(--row-height, 40px);
     padding: var(--space-sm) var(--space-md);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     cursor: pointer;
     border-left: 3px solid transparent;
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--color-accent);
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
 
     &.selected {
-      border-left-color: var(--color-accent);
-      background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+      border-left-color: var(--tr-accent);
+      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
     }
   }
 
@@ -149,7 +149,7 @@
   }
 
   .desc {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -168,7 +168,7 @@
     align-items: center;
     justify-content: space-between;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .author {
@@ -179,7 +179,7 @@
 
   .date {
     flex-shrink: 0;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     margin-left: var(--space-sm);
   }
 </style>

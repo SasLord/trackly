@@ -216,8 +216,8 @@
   }
 
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
     display: flex;
@@ -229,7 +229,7 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .form-field {
@@ -249,7 +249,7 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .checkbox-label {
@@ -257,13 +257,13 @@
     align-items: center;
     gap: var(--space-sm);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     cursor: pointer;
 
     input[type='checkbox'] {
       width: 16px;
       height: 16px;
-      accent-color: var(--color-accent);
+      accent-color: var(--tr-accent);
     }
   }
 
@@ -282,7 +282,7 @@
       width: 16px;
       height: 16px;
       margin-top: 2px;
-      accent-color: var(--color-accent);
+      accent-color: var(--tr-accent);
       cursor: pointer;
     }
   }
@@ -296,25 +296,25 @@
   .radio-title {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .helper-text {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     line-height: 1.5;
   }
 
   .advanced-details {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     padding-top: var(--space-md);
   }
 
   .advanced-summary {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     cursor: pointer;
   }
 
@@ -327,11 +327,11 @@
 
   .form-input {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
 
     &:disabled {
       opacity: 0.6;
@@ -348,14 +348,14 @@
 
   .save-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
 
     &.is-success {
-      color: var(--color-success);
+      color: var(--tr-success);
     }
 
     &.is-error {
-      color: var(--color-destructive);
+      color: var(--tr-danger);
     }
   }
 </style>

@@ -168,7 +168,7 @@
   }
 
   .error-text {
-    color: var(--color-destructive);
+    color: var(--tr-danger);
     font-size: var(--font-size-body);
     margin: 0;
   }
@@ -176,13 +176,13 @@
   .empty-heading {
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     margin: 0 0 var(--space-xs);
   }
 
   .empty-body {
     font-size: var(--font-size-body);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     margin: 0;
   }
 
@@ -200,7 +200,7 @@
       position: sticky;
       top: 0;
       z-index: 1;
-      background: var(--color-bg);
+      background: var(--tr-bg);
     }
 
     th {
@@ -209,8 +209,8 @@
       text-align: left;
       font-size: var(--font-size-label);
       font-weight: var(--font-weight-medium);
-      color: var(--color-text-secondary);
-      border-bottom: 1px solid var(--color-border);
+      color: var(--tr-text-secondary);
+      border-bottom: 1px solid var(--tr-border);
       white-space: nowrap;
     }
 
@@ -218,8 +218,8 @@
       padding: 0 var(--space-md);
       height: var(--row-height);
       font-size: var(--font-size-body);
-      color: var(--color-text-primary);
-      border-bottom: 1px solid var(--color-border);
+      color: var(--tr-text-primary);
+      border-bottom: 1px solid var(--tr-border);
       max-width: 240px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -227,17 +227,17 @@
     }
 
     tbody tr:hover {
-      background: var(--color-surface);
+      background: var(--tr-surface);
     }
   }
 
   .month-separator td {
     padding: var(--space-xs) var(--space-md);
     height: var(--row-height-dense);
-    background: var(--color-surface-sunken);
+    background: var(--tr-surface-sunken);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    border-top: 1px solid var(--color-border-strong);
-    color: var(--color-text-primary);
+    border-top: 1px solid var(--tr-border-strong);
+    color: var(--tr-text-primary);
   }
 </style>

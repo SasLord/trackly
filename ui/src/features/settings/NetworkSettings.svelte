@@ -256,8 +256,8 @@
   }
 
   .settings-section {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     padding: var(--space-lg);
   }
@@ -266,7 +266,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .server-toggle-row {
@@ -280,7 +280,7 @@
   .toggle-label {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .toggle-actions {
@@ -302,14 +302,14 @@
     }
 
     &--stopped {
-      background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
-      color: var(--color-text-muted);
+      background: color-mix(in srgb, var(--tr-text-tertiary) 15%, transparent);
+      color: var(--tr-text-tertiary);
     }
   }
 
   .server-info-block {
-    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+    background: color-mix(in srgb, var(--tr-accent) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tr-accent) 25%, transparent);
     border-radius: var(--radius-sm);
     padding: var(--space-md);
     margin-bottom: var(--space-md);
@@ -328,13 +328,13 @@
   .info-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
   }
 
   .server-link {
     font-size: var(--font-size-body);
-    color: var(--color-accent);
+    color: var(--tr-accent);
     text-decoration: none;
 
     &:hover {
@@ -345,18 +345,18 @@
   .fingerprint {
     font-family: monospace;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     word-break: break-all;
   }
 
   .info-instruction {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-style: italic;
   }
 
   .params-section {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     padding-top: var(--space-md);
     margin-top: var(--space-md);
   }
@@ -365,7 +365,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .form-grid {
@@ -388,22 +388,22 @@
   .form-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .form-input,
   .form-select {
     padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
 
     &:focus {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
     }
 
     &:disabled {
@@ -421,7 +421,7 @@
 
   .save-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .checkbox-label {
@@ -429,13 +429,13 @@
     align-items: center;
     gap: var(--space-sm);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     cursor: pointer;
 
     input[type='checkbox'] {
       width: 16px;
       height: 16px;
-      accent-color: var(--color-accent);
+      accent-color: var(--tr-accent);
     }
   }
 
@@ -446,7 +446,7 @@
   .helper-text {
     margin: var(--space-xs) 0 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     line-height: 1.5;
   }
 </style>

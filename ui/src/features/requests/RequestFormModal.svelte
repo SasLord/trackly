@@ -294,14 +294,14 @@
 
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-weight: var(--font-weight-regular);
   }
 
   .type-toggle {
     display: flex;
     gap: 0;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: hidden;
   }
@@ -310,7 +310,7 @@
     flex: 1;
     padding: var(--space-xs) var(--space-md);
     background: transparent;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     border: none;
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
@@ -320,32 +320,32 @@
     transition: background 0.1s;
 
     &:not(:last-child) {
-      border-right: 1px solid var(--color-border);
+      border-right: 1px solid var(--tr-border);
     }
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--color-accent);
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
 
     &.active {
-      background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--tr-accent) 12%, transparent);
+      color: var(--tr-text-primary);
       font-weight: var(--font-weight-semibold);
     }
   }
 
   .field-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .field-error {
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 </style>

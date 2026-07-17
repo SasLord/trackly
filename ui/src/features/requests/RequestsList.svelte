@@ -56,7 +56,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--color-surface);
+    background: var(--tr-surface);
   }
 
   .rows {
@@ -80,12 +80,12 @@
     margin: 0 0 var(--space-xs);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0 0 var(--space-md);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
 
@@ -94,10 +94,10 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-sm) var(--space-md);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
-    background: var(--color-surface);
+    color: var(--tr-text-secondary);
+    background: var(--tr-surface);
   }
 
   .pager-info {

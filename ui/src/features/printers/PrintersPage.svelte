@@ -213,7 +213,7 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-lg) var(--space-xl);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
     gap: var(--space-md);
     flex-wrap: wrap;
@@ -223,7 +223,7 @@
     margin: 0;
     font-size: var(--font-size-page-title, var(--font-size-heading));
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     line-height: var(--line-height-heading);
   }
 

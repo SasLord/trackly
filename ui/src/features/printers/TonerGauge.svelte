@@ -28,12 +28,12 @@
   // Color by threshold (UI-SPEC §Toner-gauge семантика).
   const fillColor = $derived<string>(
     pct === null
-      ? 'var(--color-surface-sunken)'
+      ? 'var(--tr-surface-sunken)'
       : pct >= 25
-        ? 'var(--color-accent)'
+        ? 'var(--tr-accent)'
         : pct >= 10
-          ? 'var(--color-warning)'
-          : 'var(--color-destructive)',
+          ? 'var(--tr-warning)'
+          : 'var(--tr-danger)',
   );
 
   const ariaLabel = $derived(`Уровень ${label}: ${pct !== null ? pct + '%' : 'неизвестно'}`);
@@ -68,18 +68,18 @@
 
   .gauge-label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
     min-width: 60px;
   }
 
   .gauge-track {
     height: 8px;
-    background: var(--color-surface);
+    background: var(--tr-surface);
     border-radius: var(--radius-sm);
     overflow: hidden;
     position: relative;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
   }
 
   .gauge-fill {
@@ -90,7 +90,7 @@
 
   .gauge-pct {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     min-width: 36px;
     text-align: right;
   }

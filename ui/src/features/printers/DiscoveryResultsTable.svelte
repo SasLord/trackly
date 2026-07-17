@@ -96,13 +96,13 @@
   .empty {
     text-align: center;
     padding: var(--space-xl);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .empty-text {
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     margin: 0 0 var(--space-xs);
   }
 
@@ -125,24 +125,24 @@
     td {
       padding: var(--space-sm) var(--space-md);
       text-align: left;
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid var(--tr-border);
       height: var(--row-height, 40px);
       vertical-align: middle;
     }
 
     th {
       font-weight: var(--font-weight-semibold);
-      color: var(--color-text-secondary);
+      color: var(--tr-text-secondary);
       font-size: var(--font-size-label);
-      background: var(--color-surface);
+      background: var(--tr-surface);
     }
 
     tr:hover td {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
 
     tr.duplicate td {
-      color: var(--color-text-muted);
+      color: var(--tr-text-tertiary);
     }
 
     .col-check {

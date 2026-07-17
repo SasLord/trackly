@@ -28,16 +28,16 @@
   }
 
   .master {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     overflow: hidden;
     min-width: 320px;
   }
 
   .detail {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-md);
     overflow: auto;
     min-width: 480px;

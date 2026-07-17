@@ -167,11 +167,11 @@
   .period-btn {
     padding: var(--space-xs) var(--space-sm);
     background: transparent;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     height: 28px;
 
@@ -188,21 +188,21 @@
     }
 
     &:hover:not(:disabled) {
-      background: var(--color-surface-sunken);
-      color: var(--color-text-primary);
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-primary);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
       z-index: 1;
       position: relative;
     }
 
     &.active {
-      background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-      border-color: var(--color-accent);
-      color: var(--color-accent);
+      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
+      border-color: var(--tr-accent);
+      color: var(--tr-accent);
       z-index: 1;
       position: relative;
     }
@@ -215,7 +215,7 @@
 
   .snapshot-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     margin: 0;
     align-self: center;
   }
@@ -236,9 +236,9 @@
   .period-select {
     height: 28px;
     padding: 0 var(--space-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
@@ -246,8 +246,8 @@
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 
@@ -267,13 +267,13 @@
 
   .range-text {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
   }
 
   .range-error {
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
     margin: 0;
     width: 100%;
     margin-top: var(--space-xs);

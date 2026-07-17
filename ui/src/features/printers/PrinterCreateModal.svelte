@@ -185,26 +185,26 @@
 
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-weight: var(--font-weight-regular);
   }
 
   .field-error {
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 
   .snmp-section {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
     padding-top: var(--space-md);
   }
 
   .section-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     margin: 0;
   }
 </style>

@@ -27,7 +27,7 @@
   );
 
   const borderColor = $derived<string>(
-    alertType === 'error' ? 'var(--color-destructive)' : 'var(--color-warning)',
+    alertType === 'error' ? 'var(--tr-danger)' : 'var(--tr-warning)',
   );
 
   const lastSeenText = $derived<string>(relativeTime(lastSeenUtc));
@@ -68,14 +68,14 @@
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     margin-bottom: var(--space-md);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-    border: 1px solid var(--color-warning);
+    background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
+    border: 1px solid var(--tr-warning);
     border-radius: var(--radius-md);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .alert-icon {
-    color: var(--color-warning);
+    color: var(--tr-warning);
     flex-shrink: 0;
     margin-top: 2px;
     display: flex;
@@ -96,7 +96,7 @@
   }
 
   .alert-time {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
   }
 </style>

@@ -718,7 +718,7 @@
     height: 100%;
     overflow: auto;
     padding: var(--space-lg);
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .loading,
@@ -730,20 +730,20 @@
     gap: var(--space-md);
     min-height: 320px;
     text-align: center;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .empty-heading {
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0;
     max-width: 360px;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .detail-header {
@@ -771,11 +771,11 @@
   }
 
   .meta-label {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .meta-value {
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .section {
@@ -786,7 +786,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .fields-grid {
@@ -808,12 +808,12 @@
   .field-label,
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .field-value {
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .actions {
@@ -832,9 +832,9 @@
     flex-direction: column;
     gap: 2px;
     padding: var(--space-md);
-    background: var(--color-surface);
+    background: var(--tr-surface);
     border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
   }
 
   .history-loading {
@@ -846,7 +846,7 @@
   .history-empty {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-style: italic;
   }
 
@@ -862,8 +862,8 @@
     min-height: var(--row-height-dense, 32px);
     padding: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--tr-text-primary);
+    border-bottom: 1px solid var(--tr-border);
 
     &:last-child {
       border-bottom: none;
@@ -877,7 +877,7 @@
 
   .confirm-body {
     margin: 0;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     line-height: var(--line-height-body);
   }
 </style>
