@@ -101,9 +101,8 @@
         const editedRows: ReturnRowState[] = editTarget.items.map((it) => ({
           actItemId: it.id,
           deviceId: it.device_id,
-          deviceLabel: it.inventory_no
-            ? `${it.device_name} (инв. ${it.inventory_no})`
-            : `${it.device_name} #${it.device_id}`,
+          deviceName: it.device_name,
+          inventoryNo: it.inventory_no ?? null,
           checked: true,
           conditionOverride: it.condition_at_time,
           locationOverrideName: it.device_location ?? '',
@@ -112,9 +111,8 @@
           it.outstanding_device_ids.map((did) => ({
             actItemId: it.id,
             deviceId: did,
-            deviceLabel: it.inventory_no
-              ? `${it.device_name} (инв. ${it.inventory_no})`
-              : `${it.device_name} #${did}`,
+            deviceName: it.device_name,
+            inventoryNo: it.inventory_no ?? null,
             checked: false,
             conditionOverride: null,
             locationOverrideName: '',
@@ -147,9 +145,8 @@
         it.outstanding_device_ids.map((did) => ({
           actItemId: it.id,
           deviceId: did,
-          deviceLabel: it.inventory_no
-            ? `${it.device_name} (инв. ${it.inventory_no})`
-            : `${it.device_name} #${did}`,
+          deviceName: it.device_name,
+          inventoryNo: it.inventory_no ?? null,
           checked: true,
           conditionOverride: null,
           locationOverrideName: '',

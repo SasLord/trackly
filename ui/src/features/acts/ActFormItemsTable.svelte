@@ -566,129 +566,142 @@
                 bind:this={rowDropdownEls[idx]}
               >
                 {#if viewModeByRow[idx] === 'members'}
-                <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
-                <!-- checkpoint fix #1: sticky-заголовок группы ВСЕГДА виден в
+                  <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
+                  <!-- checkpoint fix #1: sticky-заголовок группы ВСЕГДА виден в
                      member-view (в т.ч. при auto-flatten); «← Назад» — только
                      при ручном drill-in (showBackByRow). -->
-                <li class="drill-header">
-                  {#if showBackByRow[idx]}
-                    <button
-                      type="button"
-                      class="drill-back"
-                      onmousedown={(e) => e.preventDefault()}
-                      onclick={() => backToGroups(idx)}
+                  <li class="drill-header">
+                    {#if showBackByRow[idx]}
+                      <button
+                        type="button"
+                        class="drill-back"
+                        onmousedown={(e) => e.preventDefault()}
+                        onclick={() => backToGroups(idx)}
+                      >
+                        ← Назад
+                      </button>
+                    {/if}
+                    <span class="drill-title"
+                      >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
+                        ? ` · ${drillGroupByRow[idx]?.repr.model}`
+                        : ''}</span
                     >
-                      ← Назад
-                    </button>
+                  </li>
+                  {#if memberRows(idx).length === 0}
+                    <li class="dropdown-empty">Ничего не найдено</li>
+                  {:else}
+                    {#each memberRows(idx) as mrow (mrow.key)}
+                      {#if mrow.kind === 'instance'}
+                        <li>
+                          <button
+                            type="button"
+                            class="opt member-instance"
+                            role="option"
+                            aria-selected="false"
+                            onmousedown={(e) => e.preventDefault()}
+                            onclick={() => pickDevice(idx, mrow.device, [mrow.device.id])}
+                          >
+                            <span class="opt-row">
+                              <!-- checkpoint fix (round 2) #2: ОБА номера, если оба
+                                 заполнены (SN · инв.), иначе только заполненный. -->
+                              {#if mrow.device.serial_no}
+                                <span class="opt-sn"
+                                  >SN <span class="tr-mono">{mrow.device.serial_no}</span></span
+                                >
+                              {/if}
+                              {#if mrow.device.serial_no && mrow.device.inventory_no}
+                                <span class="opt-sep"> · </span>
+                              {/if}
+                              {#if mrow.device.inventory_no}
+                                <span class="opt-inv"
+                                  >инв. <span class="tr-mono">{mrow.device.inventory_no}</span
+                                  ></span
+                                >
+                              {/if}
+                              <span class="opt-state">{mrow.device.state ?? '—'}</span>
+                              <!-- reserved chevron-slot (пустой) — column-align ×count -->
+                              <span class="opt-chevron" aria-hidden="true"></span>
+                            </span>
+                          </button>
+                        </li>
+                      {:else}
+                        <li>
+                          <button
+                            type="button"
+                            class="opt member-subgroup"
+                            role="option"
+                            aria-selected="false"
+                            onmousedown={(e) => e.preventDefault()}
+                            onclick={() =>
+                              pickDevice(
+                                idx,
+                                mrow.devices[0],
+                                mrow.devices.map((d) => d.id),
+                              )}
+                          >
+                            <span class="opt-row">
+                              <span class="member-subgroup-label"
+                                >Без номера · {mrow.state ?? '—'}</span
+                              >
+                              <span class="opt-count">×{mrow.devices.length}</span>
+                              <!-- reserved chevron-slot (пустой) — column-align ×count -->
+                              <span class="opt-chevron" aria-hidden="true"></span>
+                            </span>
+                          </button>
+                        </li>
+                      {/if}
+                    {/each}
                   {/if}
-                  <span class="drill-title"
-                    >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
-                      ? ` · ${drillGroupByRow[idx]?.repr.model}`
-                      : ''}</span
-                  >
-                </li>
-                {#if memberRows(idx).length === 0}
+                {:else if visibleGroups(idx).length === 0}
                   <li class="dropdown-empty">Ничего не найдено</li>
                 {:else}
-                  {#each memberRows(idx) as mrow (mrow.key)}
-                    {#if mrow.kind === 'instance'}
-                      <li>
-                        <button
-                          type="button"
-                          class="opt member-instance"
-                          role="option"
-                          aria-selected="false"
-                          onmousedown={(e) => e.preventDefault()}
-                          onclick={() => pickDevice(idx, mrow.device, [mrow.device.id])}
-                        >
-                          <span class="opt-row">
-                            <!-- checkpoint fix (round 2) #2: ОБА номера, если оба
-                                 заполнены (SN · инв.), иначе только заполненный. -->
-                            {#if mrow.device.serial_no}
-                              <span class="opt-sn">SN {mrow.device.serial_no}</span>
-                            {/if}
-                            {#if mrow.device.serial_no && mrow.device.inventory_no}
-                              <span class="opt-sep"> · </span>
-                            {/if}
-                            {#if mrow.device.inventory_no}
-                              <span class="opt-inv">инв. {mrow.device.inventory_no}</span>
-                            {/if}
-                            <span class="opt-state">{mrow.device.state ?? '—'}</span>
-                            <!-- reserved chevron-slot (пустой) — column-align ×count -->
-                            <span class="opt-chevron" aria-hidden="true"></span>
-                          </span>
-                        </button>
-                      </li>
-                    {:else}
-                      <li>
-                        <button
-                          type="button"
-                          class="opt member-subgroup"
-                          role="option"
-                          aria-selected="false"
-                          onmousedown={(e) => e.preventDefault()}
-                          onclick={() =>
-                            pickDevice(
-                              idx,
-                              mrow.devices[0],
-                              mrow.devices.map((d) => d.id),
-                            )}
-                        >
-                          <span class="opt-row">
-                            <span class="member-subgroup-label">Без номера · {mrow.state ?? '—'}</span>
-                            <span class="opt-count">×{mrow.devices.length}</span>
-                            <!-- reserved chevron-slot (пустой) — column-align ×count -->
-                            <span class="opt-chevron" aria-hidden="true"></span>
-                          </span>
-                        </button>
-                      </li>
-                    {/if}
-                  {/each}
-                {/if}
-              {:else if visibleGroups(idx).length === 0}
-                <li class="dropdown-empty">Ничего не найдено</li>
-              {:else}
-                {#each visibleGroups(idx) as g, i (g.repr.id)}
-                  <li>
-                    <button
-                      type="button"
-                      class="opt"
-                      class:active={i === (activeIndexByRow[idx] ?? -1)}
-                      role="option"
-                      aria-selected={i === (activeIndexByRow[idx] ?? -1)}
-                      onmousedown={(e) => e.preventDefault()}
-                      onclick={() => handleGroupClick(idx, g)}
-                    >
-                      <div class="opt-row">
-                        <span class="opt-name">{g.repr.name}</span>
-                        {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
-                        <span class="opt-count">×{g.count}</span>
-                        <!-- checkpoint fix #3: chevron-slot зарезервирован ВСЕГДА
+                  {#each visibleGroups(idx) as g, i (g.repr.id)}
+                    <li>
+                      <button
+                        type="button"
+                        class="opt"
+                        class:active={i === (activeIndexByRow[idx] ?? -1)}
+                        role="option"
+                        aria-selected={i === (activeIndexByRow[idx] ?? -1)}
+                        onmousedown={(e) => e.preventDefault()}
+                        onclick={() => handleGroupClick(idx, g)}
+                      >
+                        <div class="opt-row">
+                          <span class="opt-name">{g.repr.name}</span>
+                          {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
+                          <span class="opt-count">×{g.count}</span>
+                          <!-- checkpoint fix #3: chevron-slot зарезервирован ВСЕГДА
                              (пустой у нераскрываемых) — все ×count в один столбец -->
-                        <span class="opt-chevron" aria-hidden={!isExpandable(g)}
-                          >{isExpandable(g) ? '›' : ''}</span
-                        >
-                      </div>
-                      <!-- checkpoint fix (round 2) #1/#2: серийный/инвентарный №
+                          <span class="opt-chevron" aria-hidden={!isExpandable(g)}
+                            >{isExpandable(g) ? '›' : ''}</span
+                          >
+                        </div>
+                        <!-- checkpoint fix (round 2) #1/#2: серийный/инвентарный №
                            показываем ТОЛЬКО у одиночного устройства
                            (g.ids.length === 1) — у раскрываемой группы номера у
                            каждого экземпляра свои, показ repr-номера вводит в
                            заблуждение. И показываем ОБА номера, если оба есть. -->
-                      {#if g.ids.length === 1 && (g.repr.serial_no || g.repr.inventory_no)}
-                        <span class="opt-meta-row">
-                          {#if g.repr.serial_no}<span class="opt-sn">SN {g.repr.serial_no}</span>{/if}
-                          {#if g.repr.serial_no && g.repr.inventory_no}<span class="opt-sep"> · </span>{/if}
-                          {#if g.repr.inventory_no}<span class="opt-inv">инв. {g.repr.inventory_no}</span>{/if}
-                        </span>
-                      {/if}
-                      {#if g.repr.state}
-                        <span class="opt-state">{g.repr.state}</span>
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              {/if}
-            </ul>
+                        {#if g.ids.length === 1 && (g.repr.serial_no || g.repr.inventory_no)}
+                          <span class="opt-meta-row">
+                            {#if g.repr.serial_no}<span class="opt-sn"
+                                >SN <span class="tr-mono">{g.repr.serial_no}</span></span
+                              >{/if}
+                            {#if g.repr.serial_no && g.repr.inventory_no}<span class="opt-sep">
+                                ·
+                              </span>{/if}
+                            {#if g.repr.inventory_no}<span class="opt-inv"
+                                >инв. <span class="tr-mono">{g.repr.inventory_no}</span></span
+                              >{/if}
+                          </span>
+                        {/if}
+                        {#if g.repr.state}
+                          <span class="opt-state">{g.repr.state}</span>
+                        {/if}
+                      </button>
+                    </li>
+                  {/each}
+                {/if}
+              </ul>
             {/if}
           {/if}
           {#if errFor(idx, 'device_id')}

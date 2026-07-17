@@ -31,8 +31,12 @@
             <span class="device-model">{item.model}</span>
           {/if}
         </div>
-        <div class="td col-inv" class:muted={!item.inventory_no}>{item.inventory_no ?? '—'}</div>
-        <div class="td col-serial" class:muted={!item.serial_no}>{item.serial_no ?? '—'}</div>
+        <div class="td col-inv" class:muted={!item.inventory_no}>
+          <span class="tr-mono">{item.inventory_no ?? '—'}</span>
+        </div>
+        <div class="td col-serial" class:muted={!item.serial_no}>
+          <span class="tr-mono">{item.serial_no ?? '—'}</span>
+        </div>
         <div class="td col-qty tabular">{item.quantity}</div>
         <div class="td col-state" class:muted={!item.condition_at_time}>
           {item.condition_at_time ?? '—'}

@@ -59,7 +59,7 @@
   onkeydown={handleKeydown}
 >
   <div class="top">
-    <span class="number">№{act.number}</span>
+    <span class="number"><span class="tr-mono">№{act.number}</span></span>
     <span class="separator">·</span>
     <span class="date">{dateLabel}</span>
     {#if showArchivedBadge}

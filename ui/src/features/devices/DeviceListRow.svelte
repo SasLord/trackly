@@ -49,8 +49,12 @@
 
 <tr class="device-row" class:group-last-child={isLastInGroup}>
   <td class="cell cell-name" title={device.name}>{device.name}</td>
-  <td class="cell cell-numeric" title={device.inventory_no ?? ''}>{device.inventory_no ?? '—'}</td>
-  <td class="cell cell-numeric" title={device.serial_no ?? ''}>{device.serial_no ?? '—'}</td>
+  <td class="cell cell-numeric" title={device.inventory_no ?? ''}
+    ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td
+  >
+  <td class="cell cell-numeric" title={device.serial_no ?? ''}
+    ><span class="tr-mono">{device.serial_no ?? '—'}</span></td
+  >
   <td class="cell" title={device.model ?? ''}>{device.model ?? '—'}</td>
   <td class="cell" title={device.location ?? ''}>{device.location ?? '—'}</td>
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>

@@ -324,11 +324,15 @@
         {:else}
           <div class="meta-row">
             <span class="meta-label">Инвентарный №</span>
-            <span class="meta-value">{deviceData?.inventory_no ?? '—'}</span>
+            <span class="meta-value"
+              ><span class="tr-mono">{deviceData?.inventory_no ?? '—'}</span></span
+            >
           </div>
           <div class="meta-row">
             <span class="meta-label">Серийный №</span>
-            <span class="meta-value">{deviceData?.serial_no ?? '—'}</span>
+            <span class="meta-value"
+              ><span class="tr-mono">{deviceData?.serial_no ?? '—'}</span></span
+            >
           </div>
           <div class="meta-row">
             <span class="meta-label">Расположение</span>

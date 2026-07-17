@@ -15,7 +15,11 @@
   export interface ReturnRowState {
     actItemId: number;
     deviceId: number;
-    deviceLabel: string;
+    /** Device name — always shown as the row's primary label. */
+    deviceName: string;
+    /** Inventory number, if present — rendered in monospace (D-13). Null → row
+     *  falls back to showing the device id instead. */
+    inventoryNo: string | null;
     /** Per-row checked flag — default true. */
     checked: boolean;
     /** Per-row condition override; null → fallback на bulk (если applyToAll). */
@@ -76,7 +80,14 @@
         />
       </div>
       <div class="td col-device">
-        <span class="device-label">{row.deviceLabel}</span>
+        <span class="device-label">
+          {row.deviceName}
+          {#if row.inventoryNo}
+            (инв. <span class="tr-mono">{row.inventoryNo}</span>)
+          {:else}
+            #{row.deviceId}
+          {/if}
+        </span>
       </div>
       <div class="td col-condition">
         <Input

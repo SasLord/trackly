@@ -66,7 +66,7 @@
     </div>
   {:else}
     <header class="detail-header">
-      <h2 class="detail-title">№{act.number} от {headerDate}</h2>
+      <h2 class="detail-title"><span class="tr-mono">№{act.number}</span> от {headerDate}</h2>
       <div class="actions">
         {#if onPrint}
           <Button variant="secondary" size="sm" onclick={() => onPrint(act)}>Печать</Button>

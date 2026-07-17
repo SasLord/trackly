@@ -98,7 +98,7 @@
       <p class="device-line">
         Устройство: <strong>{device.name}</strong>
         {#if device.inventory_no}
-          (инв. № {device.inventory_no})
+          (инв. № <span class="tr-mono">{device.inventory_no}</span>)
         {/if}
       </p>
     {/if}
