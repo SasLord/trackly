@@ -404,7 +404,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2 — тот же набор файлов, что и цвет)*
 
-- [ ] 23-04-PLAN.md — Space + radius по значению: sweep --space-*/--radius-* (DS-04), split --radius-sm (D-07), --radius-lg QA-01 fix, verify-value-map.mjs
+- [x] 23-04-PLAN.md — Space + radius по значению: sweep --space-*/--radius-* (DS-04), split --radius-sm (D-07), --radius-lg QA-01 fix, verify-value-map.mjs
 
 **Wave 4** *(depends on Wave 3 — тот же набор файлов)*
 
@@ -598,7 +598,7 @@ Plans:
 | 20. Печать актов и организация | v1.1.2 | 6/6 | Complete    | 2026-07-14 |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
-| 23. Токены и основы дизайн-системы | v1.2 | 3/6 | In Progress|  |
+| 23. Токены и основы дизайн-системы | v1.2 | 4/6 | In Progress|  |
 | 24. Базовые компоненты | v1.2 | 0/TBD | Not started | - |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
