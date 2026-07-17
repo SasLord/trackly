@@ -183,7 +183,7 @@
    *  закрытия (UI-SPEC Copywriting Contract «Ничего не найдено»). */
   async function fetchGroups(idx: number, query: string) {
     loadingByRow[idx] = true;
-    let filtered: DeviceGroup[] = [];
+    let filtered: DeviceGroup[];
     try {
       // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
       // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).

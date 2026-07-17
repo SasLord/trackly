@@ -36,6 +36,7 @@ const browserGlobals = {
   HTMLTextAreaElement: 'readonly',
   HTMLSelectElement: 'readonly',
   HTMLStyleElement: 'readonly',
+  HTMLUListElement: 'readonly',
   DOMParser: 'readonly',
   Node: 'readonly',
   MutationObserver: 'readonly',
@@ -46,6 +47,9 @@ const browserGlobals = {
   FormData: 'readonly',
   Notification: 'readonly',
   WebSocket: 'readonly',
+  SVGRectElement: 'readonly',
+  SVGSVGElement: 'readonly',
+  btoa: 'readonly',
 };
 
 // Svelte 5 rune globals (available in .svelte.ts and .svelte files)
@@ -77,7 +81,7 @@ export default [
   js.configs.recommended,
   // Node/config files
   {
-    files: ['vite.config.ts', 'svelte.config.js', 'eslint.config.js'],
+    files: ['vite.config.ts', 'svelte.config.js', 'eslint.config.js', 'scripts/**/*.mjs'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2022,
