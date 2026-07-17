@@ -259,8 +259,8 @@
 
   .page-title {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     flex: 1;
   }
@@ -276,7 +276,7 @@
     background: var(--tr-bg);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     cursor: pointer;
 

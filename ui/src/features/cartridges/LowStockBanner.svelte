@@ -75,8 +75,8 @@
 
   .low-stock-title {
     display: block;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     margin: 0 0 var(--tr-space-2xs);
   }
@@ -85,7 +85,7 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
 
     li {

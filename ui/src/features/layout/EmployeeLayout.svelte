@@ -136,8 +136,8 @@
   }
 
   .employee-brand {
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -148,8 +148,8 @@
   }
 
   .user-name {
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -158,7 +158,7 @@
   }
 
   .user-role {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
@@ -177,7 +177,7 @@
     padding: var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     text-decoration: none;
     border-radius: var(--tr-radius-xs);
 

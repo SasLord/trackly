@@ -106,8 +106,8 @@
     padding: 0 var(--tr-space-md);
     height: var(--row-height);
     line-height: var(--row-height);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-regular);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-regular);
     color: var(--tr-text-secondary);
     text-decoration: none;
     border-left: 3px solid transparent;
@@ -128,7 +128,7 @@
     border-left-color: var(--tr-accent);
     background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
     color: var(--tr-text-primary);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
   }
 
   .divider {
@@ -152,9 +152,9 @@
   }
 
   .theme-label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
-    font-weight: var(--font-weight-regular);
+    font-weight: var(--tr-font-weight-regular);
   }
 
   .user-block {
@@ -173,8 +173,8 @@
   }
 
   .user-name {
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -182,7 +182,7 @@
   }
 
   .user-role {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
@@ -191,8 +191,8 @@
     border: 1px solid var(--tr-border);
     background: var(--tr-bg);
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     padding: var(--tr-space-2xs) var(--tr-space-xs);
     border-radius: var(--tr-radius-xs);
     cursor: pointer;

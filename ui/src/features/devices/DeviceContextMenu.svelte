@@ -191,7 +191,7 @@
   .confirm-body {
     margin: 0;
     color: var(--tr-text-secondary);
-    line-height: var(--line-height-body);
+    line-height: var(--tr-line-height-body);
     text-align: center;
     overflow-wrap: anywhere;
     word-break: break-word;
@@ -222,11 +222,11 @@
     background: transparent;
     border: none;
     text-align: left;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     cursor: pointer;
     white-space: nowrap;
-    font-family: var(--font-family-base);
+    font-family: var(--tr-font-family);
 
     &:hover {
       background: var(--tr-surface);

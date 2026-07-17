@@ -366,8 +366,8 @@
 
   .widget-title {
     margin: 0;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -388,7 +388,7 @@
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
     padding: 4px 8px;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     white-space: nowrap;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
@@ -401,7 +401,7 @@
     justify-content: center;
     height: 150px;
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 
   .chart-error {
@@ -429,7 +429,7 @@
     list-style: none;
     padding: 0;
     margin: var(--tr-space-xs) 0 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 

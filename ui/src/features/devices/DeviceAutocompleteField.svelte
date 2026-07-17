@@ -397,9 +397,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
     &::placeholder {
       color: var(--tr-text-tertiary);
@@ -450,7 +450,7 @@
   /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
   :global(.dropdown--device .dropdown-header) {
     padding: var(--tr-space-2xs) var(--tr-space-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     border-bottom: 1px solid var(--tr-border);
     background: var(--tr-surface-sunken);
@@ -460,7 +460,7 @@
   :global(.dropdown--device .dropdown-loading),
   :global(.dropdown--device .dropdown-empty) {
     padding: var(--tr-space-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     text-align: center;
   }
@@ -472,8 +472,8 @@
     background: transparent;
     border: none;
     border-radius: 0;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     text-align: left;
     cursor: pointer;

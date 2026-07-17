@@ -37,8 +37,8 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
@@ -58,7 +58,7 @@
     &.active {
       color: var(--tr-accent);
       border-bottom-color: var(--tr-accent);
-      font-weight: var(--font-weight-medium);
+      font-weight: var(--tr-font-weight-medium);
     }
   }
 </style>

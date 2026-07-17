@@ -81,7 +81,7 @@
 
   .cell {
     padding: 0 var(--tr-space-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     vertical-align: middle;
     border-bottom: 1px solid var(--tr-border);

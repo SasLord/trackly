@@ -49,7 +49,7 @@
     padding: var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     text-decoration: none;
     border-radius: var(--tr-radius-xs);
 

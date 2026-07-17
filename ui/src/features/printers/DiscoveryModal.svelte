@@ -178,8 +178,8 @@
   }
 
   .field-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-secondary);
   }
 
@@ -190,7 +190,7 @@
     padding: var(--tr-space-2xl);
     justify-content: center;
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .results-section {
@@ -198,8 +198,8 @@
   }
 
   .results-heading {
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     margin: 0 0 var(--tr-space-xs);
   }

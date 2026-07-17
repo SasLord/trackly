@@ -145,8 +145,8 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
 
     &::placeholder {
       color: var(--tr-text-tertiary);
@@ -181,8 +181,8 @@
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
@@ -196,7 +196,7 @@
     &.active {
       color: var(--tr-accent);
       border-bottom-color: var(--tr-accent);
-      font-weight: var(--font-weight-medium);
+      font-weight: var(--tr-font-weight-medium);
     }
   }
 
@@ -209,7 +209,7 @@
     padding: 0 4px;
     border-radius: 9px;
     font-size: 11px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
     background: var(--tr-surface-sunken);
     color: var(--tr-text-secondary);
     line-height: 1;
@@ -237,7 +237,7 @@
   }
 
   .group-label {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
     user-select: none;
   }

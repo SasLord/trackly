@@ -73,21 +73,21 @@
 
   .widget-title {
     margin: 0 0 var(--tr-space-xs);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .stat-number {
-    font-size: var(--font-size-display);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-display);
+    font-weight: var(--tr-font-weight-semibold);
     margin: 0;
     color: var(--tr-text-primary);
     line-height: 1.2;
   }
 
   .stat-label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     margin: var(--tr-space-2xs) 0 0;
   }
@@ -96,7 +96,7 @@
     list-style: none;
     padding: 0;
     margin: var(--tr-space-xs) 0 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
 
     li {
@@ -114,7 +114,7 @@
 
   .widget-error {
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 
   .widget-warning {
@@ -123,11 +123,11 @@
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     border: 1px solid var(--tr-warning);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
 
     span {
-      font-weight: var(--font-weight-medium);
+      font-weight: var(--tr-font-weight-medium);
     }
 
     ul {

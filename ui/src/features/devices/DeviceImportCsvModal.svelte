@@ -390,7 +390,7 @@
 
   .step-label {
     margin-left: var(--tr-space-xs, 8px);
-    font-size: var(--font-size-caption, 12px);
+    font-size: var(--tr-font-size-caption);
     color: var(--tr-text-secondary);
   }
 
@@ -401,8 +401,8 @@
   .step-help {
     color: var(--tr-text-secondary);
     margin-bottom: var(--tr-space-md, 12px);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
   }
 
   .step-actions {
@@ -411,7 +411,7 @@
 
   .encoding-info {
     margin-bottom: var(--tr-space-md, 12px);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
   }
 
@@ -422,7 +422,7 @@
     border-radius: var(--tr-radius-xs, 4px);
     padding: var(--tr-space-xs, 8px) var(--tr-space-md, 12px);
     margin-bottom: var(--tr-space-md, 12px);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .preview-table-wrap {
@@ -436,7 +436,7 @@
   .preview-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
 
     th {
       position: sticky;
@@ -444,7 +444,7 @@
       background: var(--tr-surface);
       padding: var(--tr-space-xs, 8px) var(--tr-space-md, 12px);
       text-align: left;
-      font-weight: var(--font-weight-semibold, 600);
+      font-weight: var(--tr-font-weight-semibold, 600);
       border-bottom: 1px solid var(--tr-border);
       white-space: nowrap;
     }
@@ -466,12 +466,12 @@
   .mapping-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
 
     th {
       padding: var(--tr-space-xs, 8px) var(--tr-space-md, 12px);
       text-align: left;
-      font-weight: var(--font-weight-semibold, 600);
+      font-weight: var(--tr-font-weight-semibold, 600);
       border-bottom: 2px solid var(--tr-border);
       background: var(--tr-surface);
     }
@@ -487,13 +487,13 @@
     }
 
     .csv-col {
-      font-weight: var(--font-weight-medium, 500);
+      font-weight: var(--tr-font-weight-medium, 500);
       white-space: nowrap;
     }
   }
 
   .result-summary {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     margin-bottom: var(--tr-space-md, 12px);
   }
@@ -503,7 +503,7 @@
     border: none;
     color: var(--tr-accent);
     cursor: pointer;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     padding: 0;
     text-decoration: underline;
     margin-bottom: var(--tr-space-xs, 8px);
@@ -521,7 +521,7 @@
     overflow-y: auto;
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs, 4px);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
 
     li {
       padding: var(--tr-space-2xs, 4px) var(--tr-space-md, 12px);
@@ -534,7 +534,7 @@
     }
 
     .error-row-num {
-      font-weight: var(--font-weight-medium, 500);
+      font-weight: var(--tr-font-weight-medium, 500);
       margin-right: var(--tr-space-2xs, 4px);
     }
   }

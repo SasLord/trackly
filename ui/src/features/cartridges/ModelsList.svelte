@@ -73,10 +73,10 @@
 
   .models-heading {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
-    line-height: var(--line-height-heading);
+    line-height: var(--tr-line-height-h3);
   }
 
   .loading,
@@ -93,15 +93,15 @@
 
   .empty-heading {
     margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0 0 var(--tr-space-md);
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     max-width: 400px;
   }
 

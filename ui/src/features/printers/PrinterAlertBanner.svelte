@@ -86,17 +86,17 @@
 
   .alert-content {
     flex: 1;
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
   }
 
   .alert-title {
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--tr-font-weight-semibold);
     margin-right: var(--tr-space-2xs);
   }
 
   .alert-time {
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 </style>

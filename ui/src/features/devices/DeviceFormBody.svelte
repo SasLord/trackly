@@ -392,8 +392,8 @@
   }
 
   .label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-primary);
   }
 
@@ -404,7 +404,7 @@
 
   .field-error {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 
@@ -417,9 +417,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
     &::placeholder {
       color: var(--tr-text-tertiary);
@@ -445,7 +445,7 @@
 
   .state-hints-label {
     display: block;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     margin-bottom: var(--tr-space-2xs);
   }
@@ -461,10 +461,10 @@
     background: var(--tr-surface-sunken);
     border: 1px solid var(--tr-border);
     border-radius: 12px;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     cursor: pointer;
-    font-family: var(--font-family-base);
+    font-family: var(--tr-font-family);
     transition: none;
 
     &:hover {

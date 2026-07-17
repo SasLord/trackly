@@ -220,7 +220,7 @@
 
   .cell {
     padding: 0 var(--tr-space-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     vertical-align: middle;
     border-bottom: 1px solid var(--tr-border);
@@ -241,7 +241,7 @@
   // Using flex inside the td via a wrapper pattern: chevron + name text inline.
   .cell-name-wide {
     white-space: nowrap;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
   }
 
   .cell-status {
@@ -291,7 +291,7 @@
     border: 1px solid color-mix(in srgb, var(--tr-accent) 30%, transparent);
     border-radius: 10px;
     font-size: 12px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-accent);
   }
 
@@ -301,7 +301,7 @@
 
   .children-loading {
     padding: var(--tr-space-2xs) var(--tr-space-md);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     border-bottom: 1px solid var(--tr-border);
   }

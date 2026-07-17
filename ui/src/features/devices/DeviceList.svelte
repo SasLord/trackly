@@ -155,7 +155,7 @@
   .device-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     table-layout: auto;
   }
 
@@ -166,8 +166,8 @@
   .th {
     padding: var(--tr-space-2xs) var(--tr-space-xs);
     text-align: left;
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-secondary);
     white-space: nowrap;
     background: var(--tr-bg);
@@ -197,15 +197,15 @@
 
   .empty-title {
     margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0;
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   // Skeleton
@@ -245,7 +245,7 @@
   }
 
   .pagination-info {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 </style>
