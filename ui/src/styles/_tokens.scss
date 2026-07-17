@@ -1,61 +1,192 @@
-// Design tokens — Phase 2. Full palette (light + dark), spacing, layout, typography.
-// Auto-prepended into every <style lang="scss"> block via vite.config.ts prependData.
+// Design tokens — единый слой `--tr-*` (Phase 23, дизайн-система v1.2).
+// Цвет light+dark, нейтральная шкала n-0…n-950, 5 уровней теней (elevation), spacing (11 уровней),
+// radius (5), типографика (9 ролей + mono), неизменные layout-константы.
+// Единственная точка подключения — `@use './tokens'` в global.scss (см. комментарий там:
+// намеренно не через vite `scss.prependData` — Svelte хэширует `:root` внутри scoped <style>
+// блоков компонентов, что сломало бы резолвинг переменных).
+// Источник значений — .planning/phases/23-design-tokens-foundations/23-UI-SPEC.md (status: approved).
+// Значения копируются дословно, не пересчитываются.
 
-// ── Color tokens ─────────────────────────────────────────────────────────────
+// ── Color tokens (theme-scoped) ───────────────────────────────────────────────
 
 :root,
 [data-theme='light'] {
-  --color-bg: #ffffff;
-  --color-surface: #f5f6f8;
-  --color-surface-raised: #ffffff;
-  --color-surface-sunken: #eaecef;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-focus: rgba(37, 99, 235, 0.3);
-  --color-destructive: #dc2626;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-text-primary: #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-muted: #9ca3af;
-  --color-text-inverse: #ffffff;
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
+  // Brand / Accent
+  --tr-accent: #2b5fd9;
+  --tr-accent-hover: #2350bd;
+  --tr-accent-active: #1c4299;
+  --tr-accent-soft: rgba(43, 95, 217, 0.1);
+  --tr-on-accent: #ffffff;
+  --tr-focus-ring: rgba(43, 95, 217, 0.35);
+
+  // Surfaces
+  --tr-bg: #eef1f6;
+  --tr-surface: #ffffff;
+  --tr-surface-raised: #ffffff;
+  --tr-surface-sunken: #e4e8f0;
+  --tr-overlay: rgba(20, 26, 38, 0.45);
+
+  // Text (5 levels)
+  --tr-text-primary: #1b2230;
+  --tr-text-secondary: #586074;
+  --tr-text-tertiary: #8891a4;
+  --tr-text-disabled: #aab2c1;
+  --tr-text-inverse: #ffffff;
+
+  // Border
+  --tr-border: #e1e6ef;
+  --tr-border-strong: #c9d0dd;
+
+  // Semantic (solid / soft / text triplets)
+  --tr-success: #12894e;
+  --tr-success-soft: rgba(18, 137, 78, 0.12);
+  --tr-success-text: #0f7343;
+
+  --tr-warning: #b9720c;
+  --tr-warning-soft: rgba(185, 114, 12, 0.14);
+  --tr-warning-text: #8f590a;
+
+  --tr-danger: #cf3b3b;
+  --tr-danger-soft: rgba(207, 59, 59, 0.12);
+  --tr-danger-text: #b02f2f;
+
+  --tr-info: #2b5fd9;
+  --tr-info-soft: rgba(43, 95, 217, 0.1);
+  --tr-info-text: #2350bd;
+
+  // Table row states
+  --tr-row-hover: #f1f4fa;
+  --tr-row-selected: rgba(43, 95, 217, 0.09);
+
+  // Neutral ramp (12 steps, identical in both themes — defined in both blocks for structural consistency)
+  --tr-n-0: #ffffff;
+  --tr-n-50: #f4f6f9;
+  --tr-n-100: #e9edf3;
+  --tr-n-200: #d8dee9;
+  --tr-n-300: #c1c9d7;
+  --tr-n-400: #9aa3b5;
+  --tr-n-500: #6f7889;
+  --tr-n-600: #515a6c;
+  --tr-n-700: #3a4251;
+  --tr-n-800: #272d3a;
+  --tr-n-900: #191e28;
+  --tr-n-950: #10141c;
+
+  // Elevation (5 levels, theme-scoped shadow values)
+  --tr-elev-0: none;
+  --tr-elev-1:
+    0 1px 2px rgba(16, 22, 34, 0.07),
+    0 1px 1px rgba(16, 22, 34, 0.04);
+  --tr-elev-2:
+    0 2px 6px rgba(16, 22, 34, 0.09),
+    0 1px 2px rgba(16, 22, 34, 0.06);
+  --tr-elev-3:
+    0 10px 28px rgba(16, 22, 34, 0.13),
+    0 3px 8px rgba(16, 22, 34, 0.08);
+  --tr-elev-4:
+    0 20px 52px rgba(16, 22, 34, 0.2),
+    0 6px 14px rgba(16, 22, 34, 0.1);
+
   color-scheme: light;
 }
 
 [data-theme='dark'] {
-  --color-bg: #0f1419;
-  --color-surface: #1a1f26;
-  --color-surface-raised: #1a1f26;
-  --color-surface-sunken: #252b33;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-focus: rgba(59, 130, 246, 0.4);
-  --color-destructive: #ef4444;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-text-primary: #e5e7eb;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-  --color-text-inverse: #0f1419;
-  --color-border: #252b33;
-  --color-border-strong: #374151;
+  // Brand / Accent
+  --tr-accent: #5b8bff;
+  --tr-accent-hover: #7099ff;
+  --tr-accent-active: #4b78e8;
+  --tr-accent-soft: rgba(91, 139, 255, 0.16);
+  --tr-on-accent: #0e1218;
+  --tr-focus-ring: rgba(91, 139, 255, 0.45);
+
+  // Surfaces
+  --tr-bg: #0e1218;
+  --tr-surface: #161b23;
+  --tr-surface-raised: #1c222c;
+  --tr-surface-sunken: #0a0d12;
+  --tr-overlay: rgba(0, 0, 0, 0.6);
+
+  // Text (5 levels)
+  --tr-text-primary: #e7ebf2;
+  --tr-text-secondary: #9aa3b4;
+  --tr-text-tertiary: #6b7486;
+  --tr-text-disabled: #4d5566;
+  --tr-text-inverse: #0e1218;
+
+  // Border
+  --tr-border: #272e3a;
+  --tr-border-strong: #39414f;
+
+  // Semantic (solid / soft / text triplets)
+  --tr-success: #2fbf74;
+  --tr-success-soft: rgba(47, 191, 116, 0.16);
+  --tr-success-text: #4fd08c;
+
+  --tr-warning: #e5a13a;
+  --tr-warning-soft: rgba(229, 161, 58, 0.16);
+  --tr-warning-text: #f0b45a;
+
+  --tr-danger: #f26565;
+  --tr-danger-soft: rgba(242, 101, 101, 0.16);
+  --tr-danger-text: #ff8080;
+
+  --tr-info: #5b8bff;
+  --tr-info-soft: rgba(91, 139, 255, 0.16);
+  --tr-info-text: #8fb0ff;
+
+  // Table row states
+  --tr-row-hover: #1c222c;
+  --tr-row-selected: rgba(91, 139, 255, 0.14);
+
+  // Neutral ramp (12 steps, identical in both themes — defined in both blocks for structural consistency)
+  --tr-n-0: #ffffff;
+  --tr-n-50: #f4f6f9;
+  --tr-n-100: #e9edf3;
+  --tr-n-200: #d8dee9;
+  --tr-n-300: #c1c9d7;
+  --tr-n-400: #9aa3b5;
+  --tr-n-500: #6f7889;
+  --tr-n-600: #515a6c;
+  --tr-n-700: #3a4251;
+  --tr-n-800: #272d3a;
+  --tr-n-900: #191e28;
+  --tr-n-950: #10141c;
+
+  // Elevation (5 levels, theme-scoped shadow values). Replaces the old 2-level shadow scale
+  // plus the manual dark-mode override that used to live alongside it — elevation is now
+  // theme-scoped by definition, so no separate dark override token is needed.
+  --tr-elev-0: none;
+  --tr-elev-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --tr-elev-2:
+    0 3px 10px rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+  --tr-elev-3:
+    0 12px 30px rgba(0, 0, 0, 0.6),
+    0 3px 8px rgba(0, 0, 0, 0.5);
+  --tr-elev-4:
+    0 22px 56px rgba(0, 0, 0, 0.7),
+    0 6px 16px rgba(0, 0, 0, 0.55);
+
   color-scheme: dark;
 }
 
-// ── Spacing scale (8pt base, multiples of 4) ─────────────────────────────────
+// ── Non-theme-scoped tokens ───────────────────────────────────────────────────
 
 :root {
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
+  // Spacing scale (11 levels — 4 new intermediate steps added vs the old 7-level scale)
+  --tr-space-3xs: 2px;
+  --tr-space-2xs: 4px;
+  --tr-space-xs: 8px;
+  --tr-space-sm: 12px;
+  --tr-space-md: 16px;
+  --tr-space-lg: 20px;
+  --tr-space-xl: 24px;
+  --tr-space-2xl: 32px;
+  --tr-space-3xl: 40px;
+  --tr-space-4xl: 48px;
+  --tr-space-5xl: 64px;
 
-  // ── Layout constants ────────────────────────────────────────────────────────
+  // ── Layout constants (unchanged — out of scope for the --tr-* migration, D-02) ───────────────
   --sidebar-width: 240px;
   --header-height: 56px;
   --modal-max-width: 640px;
@@ -64,26 +195,74 @@
   --row-height: 40px;
   --row-height-dense: 32px;
 
-  // ── Border radius ───────────────────────────────────────────────────────────
-  --radius-sm: 4px;
-  --radius-md: 8px;
+  // Border radius (5 levels)
+  --tr-radius-xs: 4px;
+  --tr-radius-sm: 6px;
+  --tr-radius-md: 8px;
+  --tr-radius-lg: 12px;
+  --tr-radius-full: 999px;
 
-  // ── Shadows ─────────────────────────────────────────────────────────────────
-  --shadow-elev-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 1px rgba(0, 0, 0, 0.04);
-  --shadow-elev-2: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --shadow-elev-2-dark: 0 4px 16px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  // ── Typography ────────────────────────────────────────────────────────────────
+  --tr-font-family: -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
+  --tr-font-mono: ui-monospace, 'SF Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
 
-  // ── Typography ──────────────────────────────────────────────────────────────
-  --font-family-base: -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
-  --font-size-body: 14px;
-  --font-size-label: 13px;
-  --font-size-heading: 20px;
-  --font-size-display: 28px;
-  --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --line-height-body: 1.5;
-  --line-height-label: 1.4;
-  --line-height-heading: 1.3;
-  --line-height-display: 1.2;
+  // Shared weight axis (used across multiple roles — not duplicated per-role)
+  --tr-font-weight-regular: 400;
+  --tr-font-weight-medium: 500;
+  --tr-font-weight-semibold: 600;
+
+  // Typography roles (9 + mono) — composite shorthand (font: var(--tr-text-{role})) AND
+  // decomposed axes, per UI-SPEC §Typography Scale. Values copied verbatim, not recalculated.
+  --tr-text-display: 600 30px/1.15 var(--tr-font-family);
+  --tr-font-size-display: 30px;
+  --tr-font-weight-display: 600;
+  --tr-line-height-display: 1.15;
+
+  --tr-text-h2: 600 24px/1.25 var(--tr-font-family);
+  --tr-font-size-h2: 24px;
+  --tr-font-weight-h2: 600;
+  --tr-line-height-h2: 1.25;
+
+  --tr-text-h3: 600 20px/1.3 var(--tr-font-family);
+  --tr-font-size-h3: 20px;
+  --tr-font-weight-h3: 600;
+  --tr-line-height-h3: 1.3;
+
+  --tr-text-subtitle: 600 16px/1.4 var(--tr-font-family);
+  --tr-font-size-subtitle: 16px;
+  --tr-font-weight-subtitle: 600;
+  --tr-line-height-subtitle: 1.4;
+
+  --tr-text-body: 400 14px/1.5 var(--tr-font-family);
+  --tr-font-size-body: 14px;
+  --tr-font-weight-body: 400;
+  --tr-line-height-body: 1.5;
+
+  --tr-text-body-strong: 600 14px/1.5 var(--tr-font-family);
+  --tr-font-size-body-strong: 14px;
+  --tr-font-weight-body-strong: 600;
+  --tr-line-height-body-strong: 1.5;
+
+  --tr-text-label: 500 13px/1.4 var(--tr-font-family);
+  --tr-font-size-label: 13px;
+  --tr-font-weight-label: 500;
+  --tr-line-height-label: 1.4;
+
+  --tr-text-caption: 500 12px/1.35 var(--tr-font-family);
+  --tr-font-size-caption: 12px;
+  --tr-font-weight-caption: 500;
+  --tr-line-height-caption: 1.35;
+
+  --tr-text-micro: 500 11px/1.3 var(--tr-font-family);
+  --tr-font-size-micro: 11px;
+  --tr-font-weight-micro: 500;
+  --tr-line-height-micro: 1.3;
+
+  // Mono: font-variant-numeric: tabular-nums is applied separately by the .tr-mono class
+  // (global.scss), not baked into this token (D-14). Line-height not specified by UI-SPEC for
+  // mono — 1.4 matches --tr-text-label's line-height at the same 13px size.
+  --tr-text-mono: 500 13px var(--tr-font-mono);
+  --tr-font-size-mono: 13px;
+  --tr-font-weight-mono: 500;
+  --tr-line-height-mono: 1.4;
 }
