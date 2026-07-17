@@ -32,8 +32,7 @@ export const acts = {
   update: (payload: ActUpdateDto) => apiCall<ActDto>('acts_update', { payload }),
 
   /** Phase 22 — редактирование существующего возврата (ACT-03). */
-  updateReturn: (payload: ActUpdateReturnDto) =>
-    apiCall<ActDto>('acts_update_return', { payload }),
+  updateReturn: (payload: ActUpdateReturnDto) => apiCall<ActDto>('acts_update_return', { payload }),
 
   /** Plan 03-03 — оформление возврата по handover-акту. */
   doReturn: (actId: number, payload: ActReturnDto) =>

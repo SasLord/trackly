@@ -215,7 +215,13 @@
   />
 
   {#if open}
-    <div class="dropdown--person" role="listbox" use:portal use:dropdownAnchor={{ anchorEl: inputEl }} bind:this={dropdownEl}>
+    <div
+      class="dropdown--person"
+      role="listbox"
+      use:portal
+      use:dropdownAnchor={{ anchorEl: inputEl }}
+      bind:this={dropdownEl}
+    >
       {#if loading}
         <div class="dropdown-loading">Загружаем подсказки…</div>
       {:else if suggestions.length === 0}

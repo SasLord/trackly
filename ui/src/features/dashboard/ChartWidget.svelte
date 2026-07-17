@@ -58,7 +58,14 @@
     model: string;
     installs: number;
   }
-  let tooltip = $state<TooltipState>({ visible: false, x: 0, y: 0, month: '', model: '', installs: 0 });
+  let tooltip = $state<TooltipState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    month: '',
+    model: '',
+    installs: 0,
+  });
 
   // Форматирует month_key "2026-06" в короткое название "Июн."
   function monthKeyToLabel(key: string): string {
@@ -242,8 +249,8 @@
             y={tick.y + 3}
             text-anchor="end"
             font-size="9"
-            fill="var(--tr-text-tertiary)"
-          >{tick.value}</text>
+            fill="var(--tr-text-tertiary)">{tick.value}</text
+          >
         {/each}
 
         <!-- Grouped bars -->
@@ -282,8 +289,8 @@
               y={bar.y - 3}
               text-anchor="middle"
               font-size="8"
-              fill={bar.color}
-            >{bar.installs}</text>
+              fill={bar.color}>{bar.installs}</text
+            >
           {/if}
         {/each}
 
@@ -294,17 +301,14 @@
             y={lbl.y}
             text-anchor="middle"
             font-size="9"
-            fill="var(--tr-text-tertiary)"
-          >{lbl.label}</text>
+            fill="var(--tr-text-tertiary)">{lbl.label}</text
+          >
         {/each}
       </svg>
 
       <!-- Hover tooltip -->
       {#if tooltip.visible}
-        <div
-          class="chart-tooltip"
-          style="left: {tooltip.x + 10}px; top: {tooltip.y - 28}px;"
-        >
+        <div class="chart-tooltip" style="left: {tooltip.x + 10}px; top: {tooltip.y - 28}px;">
           {tooltip.month} · {tooltip.model}: {tooltip.installs}
         </div>
       {/if}
