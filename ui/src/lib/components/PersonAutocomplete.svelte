@@ -256,9 +256,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
     &::placeholder {
       color: var(--tr-text-tertiary);
@@ -309,7 +309,7 @@
   :global(.dropdown--person .dropdown-empty) {
     padding: var(--tr-space-xs) var(--tr-space-md);
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-sm);
+    font-size: var(--tr-font-size-caption);
   }
 
   :global(.dropdown--person .dropdown-item) {
@@ -321,7 +321,7 @@
     text-align: left;
     color: var(--tr-text-primary);
     font-family: inherit;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     cursor: pointer;
   }
   :global(.dropdown--person .dropdown-item:hover),

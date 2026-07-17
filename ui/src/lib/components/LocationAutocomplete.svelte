@@ -187,9 +187,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
     &:focus-visible {
       outline: none;
       border-color: var(--tr-accent);
@@ -236,7 +236,7 @@
     text-align: left;
     color: var(--tr-text-primary);
     font-family: inherit;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     cursor: pointer;
   }
   :global(.dropdown--location .dropdown-item:hover),

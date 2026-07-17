@@ -131,9 +131,9 @@
 
   .modal-title {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
-    line-height: var(--line-height-heading);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
+    line-height: var(--tr-line-height-h3);
     color: var(--tr-text-primary);
   }
 

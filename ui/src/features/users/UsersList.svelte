@@ -44,20 +44,20 @@
     padding: var(--tr-space-2xl);
     text-align: center;
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .users-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .th {
     padding: var(--tr-space-xs) var(--tr-space-md);
     text-align: left;
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-tertiary);
     border-bottom: 1px solid var(--tr-border);
     white-space: nowrap;

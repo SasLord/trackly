@@ -40,8 +40,8 @@
     gap: var(--tr-space-2xs);
     border: none;
     border-radius: var(--tr-radius-sm);
-    font-family: var(--font-family-base);
-    font-weight: var(--font-weight-semibold);
+    font-family: var(--tr-font-family);
+    font-weight: var(--tr-font-weight-semibold);
     cursor: pointer;
     transition: none; // Theme switch: no transitions per UI-SPEC §Motion
     white-space: nowrap;
@@ -63,13 +63,13 @@
   .btn-md {
     height: 36px;
     padding: 0 var(--tr-space-md);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
   }
 
   .btn-sm {
     height: 28px;
     padding: 0 12px;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 
   // Variants

@@ -66,7 +66,7 @@
 
   .cell {
     padding: var(--tr-space-xs) var(--tr-space-md);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     border-bottom: 1px solid var(--tr-border);
     vertical-align: middle;
@@ -83,8 +83,8 @@
     display: inline-block;
     padding: 2px var(--tr-space-xs);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
 
     &--active {
       background: color-mix(in srgb, var(--tr-success) 15%, transparent);
@@ -101,7 +101,7 @@
     padding: 2px var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     background: transparent;
     color: var(--tr-text-secondary);
     cursor: pointer;
@@ -123,7 +123,7 @@
   }
 
   .confirm-text {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 </style>

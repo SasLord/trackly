@@ -52,9 +52,9 @@
 
   .toast-message {
     flex: 1;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
-    line-height: var(--line-height-body);
+    line-height: var(--tr-line-height-body);
   }
 
   .toast-close {

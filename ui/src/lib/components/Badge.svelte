@@ -22,7 +22,7 @@
     padding: 0 var(--tr-space-xs);
     border-radius: 10px;
     font-size: 12px;
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
     line-height: 1;
     white-space: nowrap;
   }

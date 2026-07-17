@@ -41,8 +41,8 @@
     border: none;
     border-right: 1px solid var(--tr-border);
     cursor: pointer;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     padding: 0;
     transition: none;
@@ -59,7 +59,7 @@
     &.active {
       background: var(--tr-surface-raised);
       color: var(--tr-text-primary);
-      font-weight: var(--font-weight-medium);
+      font-weight: var(--tr-font-weight-medium);
     }
 
     &:focus-visible {

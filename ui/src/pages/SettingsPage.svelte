@@ -61,8 +61,8 @@
 
   .page-title {
     margin: 0;
-    font-size: var(--font-size-page-title, var(--font-size-heading));
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 

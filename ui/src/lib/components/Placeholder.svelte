@@ -30,21 +30,21 @@
 
   .placeholder-heading {
     margin: 0 0 var(--tr-space-xs);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
-    line-height: var(--line-height-heading);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
+    line-height: var(--tr-line-height-h3);
     color: var(--tr-text-primary);
   }
 
   .placeholder-body {
     margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
   }
 
   .placeholder-sub {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 </style>
