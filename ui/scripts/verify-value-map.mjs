@@ -12,9 +12,12 @@
 // @@-хункам, сравнивает удалённые --space-*/--radius-* с добавленными --tr-space-*/
 // --tr-radius-* токенами по позиции внутри хунка против SPACE_MAP/RADIUS-функции ниже.
 //
-// Zero-dependency: только node:child_process (execSync для `git diff`).
+// Zero-dependency: только node:child_process (execSync для `git diff`) и node:url (fileURLToPath
+// для run-if-main guard, позволяющего безопасно импортировать именованные экспорты без запуска
+// main()/process.exit()).
 
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // Скопировано дословно из UI-SPEC/REQUIREMENTS.md — не пересчитывать.
 const SPACE_MAP = {
@@ -70,16 +73,29 @@ function splitIntoFileHunks(diffText) {
 }
 
 /**
+ * Извлекает ВСЕ совпадения `re` на строках хунка, начинающихся с `marker` ('-' или '+').
+ * CR-01 fix: старая реализация использовала один анкорённый `^` + ленивый `.*?` паттерн на
+ * весь текст хунка с `m`-флагом, что даёт максимум одно совпадение на строку — второй и
+ * последующие токены на многотокенной строке (например `padding: var(--x) var(--y);`)
+ * молча терялись. Здесь построчный обход: для каждой строки, начинающейся с marker, `re`
+ * (без `m`-флага, т.к. применяется к уже выделенной одной строке) находит все вхождения.
+ */
+function tokensOnSide(hunkText, marker, re) {
+  const tokens = [];
+  for (const line of hunkText.split('\n')) {
+    if (!line.startsWith(marker)) continue;
+    for (const m of line.matchAll(re)) tokens.push(m[1]);
+  }
+  return tokens;
+}
+
+/**
  * Плоское сравнение токенов внутри каждого @@ hunk, а не построчная пара — устойчиво к тому,
  * что prettier/reflow может сдвинуть многотокенные строки на другое число строк.
  */
 function checkHunk(filePath, hunkText) {
-  const removedTokens = [...hunkText.matchAll(/^-.*?(--(?:space|radius)-[a-z0-9]+)/gm)].map(
-    (m) => m[1],
-  );
-  const addedTokens = [...hunkText.matchAll(/^\+.*?(--tr-(?:space|radius)-[a-z0-9]+)/gm)].map(
-    (m) => m[1],
-  );
+  const removedTokens = tokensOnSide(hunkText, '-', /(--(?:space|radius)-[a-z0-9]+)/g);
+  const addedTokens = tokensOnSide(hunkText, '+', /(--tr-(?:space|radius)-[a-z0-9]+)/g);
 
   if (removedTokens.length === 0 && addedTokens.length === 0) {
     return { violations: [], checked: false };
@@ -172,4 +188,6 @@ function main() {
   process.exit(0);
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+
+export { tokensOnSide, checkHunk };
