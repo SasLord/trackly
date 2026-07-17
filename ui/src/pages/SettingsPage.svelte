@@ -54,7 +54,7 @@
   }
 
   .page-header {
-    padding: var(--space-lg) var(--space-xl);
+    padding: var(--tr-space-xl) var(--tr-space-2xl);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
   }
@@ -69,9 +69,9 @@
   .settings-content {
     flex: 1;
     overflow: auto;
-    padding: var(--space-lg) var(--space-xl);
+    padding: var(--tr-space-xl) var(--tr-space-2xl);
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
   }
 </style>

@@ -226,14 +226,14 @@
   .user-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
-    padding: var(--space-md) 0;
+    gap: var(--tr-space-md);
+    padding: var(--tr-space-md) 0;
   }
 
   .form-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .form-field--checkbox {
@@ -249,7 +249,7 @@
 
   .form-input,
   .form-select {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -278,7 +278,7 @@
   }
 
   .server-error {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--radius-sm);
@@ -289,7 +289,7 @@
   .checkbox-label {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     cursor: pointer;

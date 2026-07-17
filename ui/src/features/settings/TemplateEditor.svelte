@@ -292,11 +292,11 @@
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   /* Do NOT add max-width: 640px here — template editor is full-width */
@@ -314,7 +314,7 @@
   .template-selector-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
@@ -326,7 +326,7 @@
   }
 
   .form-select {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -347,12 +347,12 @@
     padding: 0;
 
     &[open] {
-      padding-bottom: var(--space-sm);
+      padding-bottom: var(--tr-space-xs);
     }
   }
 
   .variables-summary {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
     color: var(--tr-text-secondary);
@@ -373,8 +373,8 @@
   .variables-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0 var(--space-lg);
-    padding: var(--space-sm) var(--space-md);
+    gap: 0 var(--tr-space-xl);
+    padding: var(--tr-space-xs) var(--tr-space-md);
   }
 
   .var-col {
@@ -392,7 +392,7 @@
     code {
       font-family: monospace;
       background: var(--tr-surface-sunken);
-      padding: 1px var(--space-xs);
+      padding: 1px var(--tr-space-2xs);
       border-radius: var(--radius-sm);
       color: var(--tr-text-primary);
     }
@@ -402,7 +402,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .unsaved-indicator {
@@ -418,7 +418,7 @@
     min-height: 320px;
     width: 100%;
     resize: vertical;
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     background: var(--tr-bg);
@@ -435,7 +435,7 @@
 
   .footer-row {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
     align-items: center;
   }

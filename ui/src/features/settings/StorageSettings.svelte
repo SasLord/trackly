@@ -132,14 +132,14 @@
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     max-width: 640px;
     position: relative;
   }
 
   .section-title {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -148,8 +148,8 @@
   .form-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-2xs);
+    margin-bottom: var(--tr-space-md);
   }
 
   .form-label {
@@ -168,14 +168,14 @@
     color: var(--tr-text-primary);
     word-break: break-all;
     background: var(--tr-surface-sunken);
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     border-radius: var(--radius-sm);
     display: inline-block;
   }
 
   .action-row {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
     align-items: center;
   }

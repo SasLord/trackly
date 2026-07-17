@@ -102,7 +102,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-xl) 0 var(--space-md);
+    padding: 0 var(--tr-space-2xl) 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -146,7 +146,7 @@
 
   .caret {
     position: absolute;
-    right: var(--space-md);
+    right: var(--tr-space-md);
     top: 50%;
     transform: translateY(-50%);
     color: var(--tr-text-secondary);

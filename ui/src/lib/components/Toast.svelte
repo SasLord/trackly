@@ -26,10 +26,10 @@
   .toast {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
-    padding: var(--space-md);
+    gap: var(--tr-space-xs);
+    padding: var(--tr-space-md);
     background: var(--tr-surface-raised);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     box-shadow: var(--tr-elev-2);
     border-left: 4px solid var(--tr-border);
     animation: toast-in 150ms ease-out;

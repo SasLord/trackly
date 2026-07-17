@@ -65,7 +65,7 @@
   }
 
   .cell {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     border-bottom: 1px solid var(--tr-border);
@@ -75,13 +75,13 @@
   .cell--actions {
     white-space: nowrap;
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     align-items: center;
   }
 
   .badge {
     display: inline-block;
-    padding: 2px var(--space-sm);
+    padding: 2px var(--tr-space-xs);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
@@ -98,7 +98,7 @@
   }
 
   .btn-action {
-    padding: 2px var(--space-sm);
+    padding: 2px var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-label);

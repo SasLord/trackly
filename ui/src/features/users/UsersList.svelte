@@ -41,7 +41,7 @@
   }
 
   .empty-state {
-    padding: var(--space-xl);
+    padding: var(--tr-space-2xl);
     text-align: center;
     color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
@@ -54,7 +54,7 @@
   }
 
   .th {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     text-align: left;
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);

@@ -24,10 +24,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-2xl);
+    padding: var(--tr-space-4xl);
     text-align: center;
     min-height: 300px;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .not-found-heading {

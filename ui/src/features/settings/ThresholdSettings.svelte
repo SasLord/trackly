@@ -58,13 +58,13 @@
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     max-width: 640px;
   }
 
   .section-title {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -73,7 +73,7 @@
   .threshold-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .form-label {
@@ -85,12 +85,12 @@
   .input-group {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .form-input {
     width: 80px;
-    padding: var(--space-xs) 2px var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) 2px var(--tr-space-2xs) var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);

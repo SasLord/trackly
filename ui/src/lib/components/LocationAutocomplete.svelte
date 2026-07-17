@@ -182,7 +182,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -230,7 +230,7 @@
   :global(.dropdown--location .dropdown-item) {
     display: block;
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: transparent;
     border: none;
     text-align: left;

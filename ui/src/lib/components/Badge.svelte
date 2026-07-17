@@ -19,7 +19,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     border-radius: 10px;
     font-size: 12px;
     font-weight: var(--font-weight-medium);

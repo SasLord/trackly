@@ -37,7 +37,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     border: none;
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
@@ -62,7 +62,7 @@
   // Sizes
   .btn-md {
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     font-size: var(--font-size-body);
   }
 

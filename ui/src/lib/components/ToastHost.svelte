@@ -12,12 +12,12 @@
 <style lang="scss">
   .toast-host {
     position: fixed;
-    bottom: var(--space-lg);
-    right: var(--space-lg);
+    bottom: var(--tr-space-xl);
+    right: var(--tr-space-xl);
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     max-width: 400px;
     pointer-events: none;
 

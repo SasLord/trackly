@@ -94,7 +94,7 @@
 
   .modal-container {
     background: var(--tr-surface-raised);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     box-shadow: var(--tr-elev-2);
     display: flex;
     flex-direction: column;
@@ -124,7 +124,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--tr-space-md) var(--tr-space-xl);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
   }
@@ -163,7 +163,7 @@
   }
 
   .modal-body {
-    padding: var(--space-lg);
+    padding: var(--tr-space-xl);
     overflow-y: auto;
     overflow-x: hidden; // prevent horizontal scroll from long unbreakable strings
     flex: 1;
@@ -173,11 +173,11 @@
   }
 
   .modal-footer {
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--tr-space-md) var(--tr-space-xl);
     border-top: 1px solid var(--tr-border);
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-shrink: 0;
   }
 

@@ -23,13 +23,13 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-2xl);
+    padding: var(--tr-space-4xl);
     text-align: center;
     min-height: 300px;
   }
 
   .placeholder-heading {
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     line-height: var(--line-height-heading);
@@ -37,7 +37,7 @@
   }
 
   .placeholder-body {
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-secondary);
   }
