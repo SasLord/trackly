@@ -278,7 +278,7 @@
 
     &.invalid {
       border-color: var(--tr-danger);
-      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+      box-shadow: 0 0 0 3px var(--tr-danger-ring);
     }
 
     &:disabled {

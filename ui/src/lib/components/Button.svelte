@@ -106,7 +106,7 @@
       filter: brightness(0.92);
     }
     &:focus-visible {
-      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.3);
+      box-shadow: 0 0 0 3px var(--tr-danger-ring);
     }
   }
 
