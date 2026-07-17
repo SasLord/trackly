@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-17T00:45:31.332Z"
-last_activity: 2026-07-17 -- Phase 23 planning complete
+last_updated: "2026-07-17T13:59:26.952Z"
+last_activity: 2026-07-17
 progress:
   total_phases: 26
   completed_phases: 25
   total_plans: 158
-  completed_plans: 152
+  completed_plans: 153
   percent: 96
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Planning next milestone (v1.1.2 shipped 2026-07-15)
+**Current focus:** Phase 23 — design-tokens-foundations
 
 ## Current Position
 
-Phase: 23 of 30 (Токены и основы дизайн-системы)
-Plan: — (not planned yet)
+Phase: 23 (design-tokens-foundations) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-17 -- Phase 23 planning complete
+Last activity: 2026-07-17
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -197,6 +197,7 @@ Last activity: 2026-07-17 -- Phase 23 planning complete
 | Phase 20 P03 | 10min | 2 tasks | 3 files |
 | Phase 20 P04 | 8min | 2 tasks | 1 files |
 | Phase 21 P01 | 22min | 1 tasks | 2 files |
+| Phase 23 P01 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -478,6 +479,8 @@ Recent decisions affecting current work:
 - [Phase 20]: OrgSettings.svelte address_line2 wired; bindings.ts regenerated (gitignored, no commit needed)
 - [Phase 21]: 21-01: format!("{prefix}-{seq:04}") is minimum-width, not fixed — no migration needed; existing 6-digit codes stay valid distinct strings
 - [Phase 21]: 21-01: cartridges_numbering.rs assertion widened to len >= 6 (min 4 digits) per plan spec, forward-compatible with counters > 9999
+- [Phase 23]: 23-01: --tr-line-height-mono фиксирован как 1.4 (не задано UI-SPEC для mono-роли) — по аналогии с --tr-text-label при том же размере 13px
+- [Phase 23]: 23-01: заголовочный комментарий global.scss переформулирован без буквального @use './tokens' в тексте — иначе греп-критерий D-05 (ровно 1 совпадение) ложно триггерится
 
 ### Pending Todos
 
@@ -553,9 +556,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-16T16:45:12.474Z
-Stopped at: Phase 23 context gathered
-Resume file: .planning/phases/23-design-tokens-foundations/23-CONTEXT.md
+Last session: 2026-07-17T13:59:26.945Z
+Stopped at: Completed 23-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
