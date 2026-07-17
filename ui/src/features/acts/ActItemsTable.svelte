@@ -46,7 +46,7 @@
 <style lang="scss">
   .items-table {
     width: 100%;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: hidden;
   }
@@ -54,20 +54,20 @@
   .thead {
     display: grid;
     grid-template-columns: 25% 15% 15% 10% 15% 20%;
-    background: var(--color-surface-sunken);
-    border-bottom: 1px solid var(--color-border);
+    background: var(--tr-surface-sunken);
+    border-bottom: 1px solid var(--tr-border);
   }
   .th {
     padding: var(--space-sm) var(--space-md);
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .tr {
     display: grid;
     grid-template-columns: 25% 15% 15% 10% 15% 20%;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     min-height: 40px;
     align-items: center;
 
@@ -78,7 +78,7 @@
   .td {
     padding: var(--space-sm) var(--space-md);
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
   .col-qty.tabular {
     font-variant-numeric: tabular-nums;
@@ -93,15 +93,15 @@
   }
   .device-model {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   .muted {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
   .empty {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
   }
 </style>

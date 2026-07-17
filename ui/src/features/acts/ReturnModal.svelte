@@ -434,14 +434,14 @@
 <style lang="scss">
   .subheading {
     margin: 0 0 var(--space-lg);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
     font-weight: 500;
   }
 
   .empty-state {
     margin: var(--space-lg) 0;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
     text-align: center;
   }
@@ -450,12 +450,12 @@
     margin: 0 0 var(--space-sm);
     font-size: var(--font-size-subheading, var(--font-size-body));
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .persons-section,
   .bulk-section {
-    background: var(--color-surface);
+    background: var(--tr-surface);
     padding: var(--space-md);
     border-radius: var(--radius-sm);
     margin-bottom: var(--space-lg);
@@ -466,7 +466,7 @@
     align-items: center;
     gap: var(--space-sm);
     margin-bottom: var(--space-md);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-size: var(--font-size-body);
     cursor: pointer;
   }
@@ -487,7 +487,7 @@
   }
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-weight: 500;
   }
 
@@ -497,7 +497,7 @@
 
   .empty-hint {
     margin: var(--space-sm) 0 0;
-    color: var(--color-destructive, #b91c1c);
+    color: var(--tr-danger, #b91c1c);
     font-size: var(--font-size-label);
   }
 </style>

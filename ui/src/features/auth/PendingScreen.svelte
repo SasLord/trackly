@@ -28,12 +28,12 @@
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .login-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-lg);
     padding: var(--space-xl) var(--space-2xl, 2rem);
     width: 100%;
@@ -46,7 +46,7 @@
     margin: 0 0 var(--space-lg);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     text-align: center;
   }
 
@@ -54,14 +54,14 @@
     margin: 0 0 var(--space-lg);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .btn-link {
     background: transparent;
     border: none;
     padding: 0;
-    color: var(--color-accent);
+    color: var(--tr-accent);
     font-size: var(--font-size-body);
     cursor: pointer;
 
@@ -70,7 +70,7 @@
     }
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

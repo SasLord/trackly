@@ -269,17 +269,17 @@
 
   .label {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-weight: var(--font-weight-regular);
   }
 
   .field-hint {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .field-error {
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 </style>

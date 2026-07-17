@@ -124,11 +124,11 @@
   .hint {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
   .error {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 </style>

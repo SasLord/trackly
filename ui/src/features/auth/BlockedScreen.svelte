@@ -116,12 +116,12 @@
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .login-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-lg);
     padding: var(--space-xl) var(--space-2xl, 2rem);
     width: 100%;
@@ -137,7 +137,7 @@
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     text-align: center;
   }
 
@@ -145,22 +145,22 @@
     margin: 0;
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .server-error {
     padding: var(--space-sm) var(--space-md);
-    background: color-mix(in srgb, var(--color-error, #c0392b) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error, #c0392b) 30%, transparent);
+    background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tr-danger) 30%, transparent);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
-    color: var(--color-error, #c0392b);
+    color: var(--tr-danger);
   }
 
   .btn-submit {
     padding: var(--space-sm) var(--space-md);
-    background: var(--color-accent);
-    color: var(--color-text-inverse, #fff);
+    background: var(--tr-accent);
+    color: var(--tr-text-inverse, #fff);
     border: none;
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -182,7 +182,7 @@
     background: transparent;
     border: none;
     padding: 0;
-    color: var(--color-accent);
+    color: var(--tr-accent);
     font-size: var(--font-size-body);
     cursor: pointer;
 
@@ -191,7 +191,7 @@
     }
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

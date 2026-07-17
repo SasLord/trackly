@@ -355,7 +355,7 @@
     margin: 0;
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
   .grid-2 {
     display: grid;
@@ -375,17 +375,17 @@
   .label {
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   .hint {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
   .error {
     margin: 0;
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 
   @media (max-width: 720px) {

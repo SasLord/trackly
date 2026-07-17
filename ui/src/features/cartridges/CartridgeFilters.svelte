@@ -113,7 +113,7 @@
     flex-direction: column;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-sm) var(--space-sm);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .status-bar {
@@ -132,24 +132,24 @@
     border-bottom: 2px solid transparent;
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     cursor: pointer;
     white-space: nowrap;
     border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 
     &:hover {
-      background: var(--color-surface);
-      color: var(--color-text-primary);
+      background: var(--tr-surface);
+      color: var(--tr-text-primary);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
 
     &.active {
-      color: var(--color-accent);
-      border-bottom-color: var(--color-accent);
+      color: var(--tr-accent);
+      border-bottom-color: var(--tr-accent);
       font-weight: var(--font-weight-medium);
     }
   }
@@ -164,13 +164,13 @@
     border-radius: 9px;
     font-size: 11px;
     font-weight: var(--font-weight-medium);
-    background: var(--color-surface-sunken);
-    color: var(--color-text-secondary);
+    background: var(--tr-surface-sunken);
+    color: var(--tr-text-secondary);
     line-height: 1;
 
     &.count-active {
-      background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-      color: var(--color-accent);
+      background: color-mix(in srgb, var(--tr-accent) 15%, transparent);
+      color: var(--tr-accent);
     }
   }
 
@@ -189,16 +189,16 @@
 
   .filter-name {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     white-space: nowrap;
   }
 
   .filter-select {
     height: 28px;
     padding: 0 var(--space-sm);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
@@ -206,8 +206,8 @@
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

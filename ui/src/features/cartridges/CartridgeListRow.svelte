@@ -38,14 +38,14 @@
   // должны окрашиваться по состоянию, а не быть серыми (UAT R4 №2).
   const chargeColor = $derived(
     cartridge.status_id === 4
-      ? 'var(--color-text-muted)'
+      ? 'var(--tr-text-tertiary)'
       : cartridge.state_id === 1 || cartridge.state_id === 4
-        ? 'var(--color-success)'
+        ? 'var(--tr-success)'
         : cartridge.state_id === 2 || cartridge.state_id === 5
-          ? 'var(--color-warning)'
+          ? 'var(--tr-warning)'
           : cartridge.state_id === 3 || cartridge.state_id === 6
-            ? 'var(--color-destructive)'
-            : 'var(--color-border)',
+            ? 'var(--tr-danger)'
+            : 'var(--tr-border)',
   );
   const chargeTitle = $derived(
     cartridge.state_name ? `Заряд: ${cartridge.state_name}` : 'Заряд неизвестен',
@@ -125,22 +125,22 @@
     gap: var(--space-xs);
     min-height: var(--row-height, 40px);
     padding: var(--space-sm) var(--space-md);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     cursor: pointer;
     border-left: 3px solid transparent;
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
 
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--color-accent);
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
 
     &.selected {
-      border-left-color: var(--color-accent);
-      background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+      border-left-color: var(--tr-accent);
+      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
     }
   }
 
@@ -157,17 +157,17 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tr-text-primary) 12%, transparent);
   }
 
   .code {
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     flex-shrink: 0;
   }
 
   .model {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -191,10 +191,10 @@
     display: flex;
     align-items: center;
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .location {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 </style>

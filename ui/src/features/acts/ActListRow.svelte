@@ -83,21 +83,21 @@
     gap: var(--space-xs);
     min-height: 64px;
     padding: var(--space-md);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     cursor: pointer;
     border-left: 3px solid transparent;
 
     &:hover {
-      background: var(--color-surface-sunken);
+      background: var(--tr-surface-sunken);
     }
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--color-accent);
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
 
     &.selected {
-      border-left-color: var(--color-accent);
-      background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+      border-left-color: var(--tr-accent);
+      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
     }
   }
 
@@ -111,13 +111,13 @@
   .number {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
   .date {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   .separator {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
   .badge-wrap {
     margin-left: auto;
@@ -131,9 +131,9 @@
     font-weight: 500;
   }
   .receiver {
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
   .count {
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 </style>

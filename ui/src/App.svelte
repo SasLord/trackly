@@ -76,7 +76,7 @@
     justify-content: center;
     min-height: 100vh;
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
-    background: var(--color-bg);
+    color: var(--tr-text-secondary);
+    background: var(--tr-bg);
   }
 </style>

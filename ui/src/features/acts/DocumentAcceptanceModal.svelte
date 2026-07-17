@@ -145,7 +145,7 @@
 
   .device-line {
     margin: 0 0 var(--space-xs);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
 
@@ -158,22 +158,22 @@
   .field-label {
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .date-input {
     height: 32px;
     padding: 0 var(--space-sm);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
-    background: var(--color-surface);
-    color: var(--color-text-primary);
+    background: var(--tr-surface);
+    color: var(--tr-text-primary);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
   }
 </style>

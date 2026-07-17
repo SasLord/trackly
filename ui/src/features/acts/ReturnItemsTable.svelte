@@ -121,7 +121,7 @@
 
 <style lang="scss">
   .rows {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: visible;
   }
@@ -134,17 +134,17 @@
     padding: var(--space-sm) var(--space-md);
   }
   .thead {
-    background: var(--color-surface-sunken);
-    border-bottom: 1px solid var(--color-border);
+    background: var(--tr-surface-sunken);
+    border-bottom: 1px solid var(--tr-border);
     align-items: center;
   }
   .th {
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   .tr {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     min-height: 44px;
     &:last-of-type {
       border-bottom: none;
@@ -166,7 +166,7 @@
   .device-label {
     display: inline-block;
     padding-top: 8px;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-size: var(--font-size-body);
   }
   .hint {
@@ -176,9 +176,9 @@
     line-height: 1.2;
   }
   .hint-default {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
   .hint-warning {
-    color: var(--color-warning, #b45309);
+    color: var(--tr-warning, #b45309);
   }
 </style>

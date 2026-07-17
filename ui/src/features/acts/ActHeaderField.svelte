@@ -24,13 +24,13 @@
   .label {
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   .value {
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
   .value.muted {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 </style>

@@ -736,7 +736,7 @@
 
 <style lang="scss">
   .items {
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     overflow: visible;
   }
@@ -749,25 +749,25 @@
     padding: var(--space-sm) var(--space-md);
   }
   .thead {
-    background: var(--color-surface-sunken);
-    border-bottom: 1px solid var(--color-border);
+    background: var(--tr-surface-sunken);
+    border-bottom: 1px solid var(--tr-border);
     align-items: center;
   }
   .th {
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .tr {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--tr-border);
     &:last-of-type {
       border-bottom: none;
     }
   }
   .col-num {
     font-variant-numeric: tabular-nums;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     padding-top: 8px;
   }
   .col-device {
@@ -796,13 +796,13 @@
     z-index: 1000;
     max-height: 240px;
     overflow: auto;
-    background: var(--color-surface-raised, var(--color-surface));
-    border: 1px solid var(--color-border);
+    background: var(--tr-surface-raised, var(--tr-surface));
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     margin: 0;
     padding: 0;
     list-style: none;
-    box-shadow: var(--shadow-elev-2);
+    box-shadow: var(--tr-elev-2);
   }
   :global(.dropdown--items .opt) {
     display: flex;
@@ -814,13 +814,13 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
   }
   :global(.dropdown--items .opt:hover),
   :global(.dropdown--items .opt.active) {
-    background: var(--color-surface-sunken);
+    background: var(--tr-surface-sunken);
   }
   :global(.dropdown--items .opt-row) {
     display: flex;
@@ -835,17 +835,17 @@
   :global(.dropdown--items .opt-sn),
   :global(.dropdown--items .opt-model) {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   :global(.dropdown--items .opt-count) {
     margin-left: auto;
     font-size: var(--font-size-label);
-    color: var(--color-accent, var(--color-text-secondary));
+    color: var(--tr-accent, var(--tr-text-secondary));
     font-weight: 500;
   }
   :global(.dropdown--items .opt-state) {
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
   // checkpoint fix (round 2) #2: строка «SN … · инв. …» одиночного устройства —
   // inline-ряд обоих номеров через middot-разделитель (UI-SPEC мета-разделитель).
@@ -856,13 +856,13 @@
     font-size: var(--font-size-label);
   }
   :global(.dropdown--items .opt-sep) {
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-label);
   }
   :global(.dropdown--items .dropdown-empty) {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
     list-style: none;
   }
@@ -875,7 +875,7 @@
     flex: 0 0 auto;
     width: 12px;
     text-align: center;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
   }
 
@@ -891,9 +891,9 @@
     align-items: center;
     gap: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
-    background: var(--color-surface-raised, var(--color-surface));
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow-elev-1, 0 1px 2px rgba(0, 0, 0, 0.08));
+    background: var(--tr-surface-raised, var(--tr-surface));
+    border-bottom: 1px solid var(--tr-border);
+    box-shadow: var(--tr-elev-1, 0 1px 2px rgba(0, 0, 0, 0.08));
     list-style: none;
   }
   :global(.dropdown--items .drill-back) {
@@ -903,15 +903,15 @@
     padding: 0;
     font-family: var(--font-family-base);
     font-size: var(--font-size-label);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
     &:hover {
-      color: var(--color-text-primary);
+      color: var(--tr-text-primary);
     }
   }
   :global(.dropdown--items .drill-title) {
     font-size: var(--font-size-label);
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   // Plan 18-05 (AUTO-04/D-07): подпись «Без номера · {state}» под-группы —
@@ -919,7 +919,7 @@
   :global(.dropdown--items .member-subgroup-label) {
     font-size: var(--font-size-label);
     font-weight: 400;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .loading-row {
@@ -931,19 +931,19 @@
   .row-error {
     margin: 4px 0 0;
     font-size: var(--font-size-label);
-    color: var(--color-destructive);
+    color: var(--tr-danger);
   }
 
   .empty {
     padding: var(--space-xl);
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-size: var(--font-size-body);
   }
 
   .add-row {
     padding: var(--space-sm) var(--space-md);
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--tr-border);
   }
 
   // Plan 18-04 (AUTO-01/D-05): raw <input> заменяет Input.svelte (нет
@@ -954,9 +954,9 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--space-md);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
@@ -964,11 +964,11 @@
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
     &.invalid {
-      border-color: var(--color-destructive);
+      border-color: var(--tr-danger);
       box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
     }
   }
@@ -979,9 +979,9 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--space-md);
-    background: var(--color-bg);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
+    background: var(--tr-bg);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
@@ -989,11 +989,11 @@
 
     &:focus-visible {
       outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--color-accent-focus);
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
     &.invalid {
-      border-color: var(--color-destructive);
+      border-color: var(--tr-danger);
       box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
     }
   }
@@ -1005,7 +1005,7 @@
     align-items: center;
     height: 36px;
     padding: 0 var(--space-md);
-    color: var(--color-text-secondary, var(--color-text-primary));
+    color: var(--tr-text-secondary, var(--tr-text-primary));
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
   }
@@ -1018,7 +1018,7 @@
     align-items: center;
     height: 36px;
     padding: 0 var(--space-md);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
@@ -1027,6 +1027,6 @@
   .hint-warn {
     margin: var(--space-xs) 0 0;
     font-size: 12px;
-    color: var(--color-warning, #b45309);
+    color: var(--tr-warning, #b45309);
   }
 </style>

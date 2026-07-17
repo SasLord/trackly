@@ -208,7 +208,7 @@
     height: 100%;
     overflow: auto;
     padding: var(--space-lg);
-    background: var(--color-bg);
+    background: var(--tr-bg);
   }
 
   .loading,
@@ -220,20 +220,20 @@
     gap: var(--space-md);
     min-height: 320px;
     text-align: center;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .empty-heading {
     margin: 0;
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .empty-body {
     margin: 0;
     max-width: 360px;
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .detail-header {
@@ -252,14 +252,14 @@
     margin: 0;
     font-size: var(--font-size-display);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
     line-height: var(--line-height-display);
     font-variant-numeric: tabular-nums;
   }
 
   .model-label {
     font-size: var(--font-size-body);
-    color: var(--color-text-secondary);
+    color: var(--tr-text-secondary);
   }
 
   .actions {
@@ -276,7 +276,7 @@
     margin: 0 0 var(--space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .fields-grid {
@@ -297,18 +297,18 @@
 
   .field-label {
     font-size: var(--font-size-label);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
   }
 
   .field-value {
     font-size: var(--font-size-body);
-    color: var(--color-text-primary);
+    color: var(--tr-text-primary);
   }
 
   .history-empty {
     margin: 0;
     font-size: var(--font-size-body);
-    color: var(--color-text-muted);
+    color: var(--tr-text-tertiary);
     font-style: italic;
   }
 
@@ -324,8 +324,8 @@
     min-height: var(--row-height-dense, 32px);
     padding: 0 0;
     font-size: var(--font-size-label);
-    color: var(--color-text-primary);
-    border-bottom: 1px solid var(--color-border);
+    color: var(--tr-text-primary);
+    border-bottom: 1px solid var(--tr-border);
 
     &:last-child {
       border-bottom: none;
