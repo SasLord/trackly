@@ -390,7 +390,7 @@ Plans:
 4. Отступы и радиусы мигрированы по значению согласно карте соответствия — сравнение экрана до/после не показывает сдвига вёрстки.
 5. `--font-size-sm` (PersonAutocomplete.svelte) и `--radius-lg` (LoginPage/BlockedScreen/FirstRunWizard) резолвятся в определённое значение — без fallback на браузерный дефолт.
 
-**Plans**: 6 plans in 5 waves
+**Plans**: 8 plans in 6 waves (23-07..23-08 added as gap-closure after 23-VERIFICATION.md found a DS-01 rgba()-blind-spot gap — см. 23-VERIFICATION.md)
 **UI hint**: yes
 
 **Wave 1**
@@ -413,6 +413,11 @@ Plans:
 **Wave 5** *(depends on все предыдущие — финальный гейт)*
 
 - [x] 23-06-PLAN.md — Финальная верификация: check-tokens.mjs + verify-value-map.mjs полный прогон, pnpm lint/svelte-check зелёные, hand-off чек-лист для UAT (D-09)
+
+**Wave 6 (gap-closure)** *(depends on Wave 5 — 23-VERIFICATION.md нашла gaps_found, 6/7 must-haves: DS-01 буквально требует отсутствия hardcoded цветов, включая rgba(), а check-tokens.mjs Rule 2 видел только hex)*
+
+- [ ] 23-07-PLAN.md — Гейт + токен: check-tokens.mjs Правило 4 (rgba/rgb/hsl/hsla-в-style) + --tr-danger-ring токен (light+dark) + fix CR-01 в verify-value-map.mjs (регресс на многотокенных строках)
+- [ ] 23-08-PLAN.md — Migration: Modal overlay → --tr-overlay, 9 danger-ring сайтов → --tr-danger-ring, ChartWidget + 4 auth-экрана → --tr-elev-*, финальный check-tokens.mjs (все 4 правила) + pnpm lint/svelte-check/build
 
 ---
 
