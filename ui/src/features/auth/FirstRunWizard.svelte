@@ -191,7 +191,7 @@
     padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
     width: 100%;
     max-width: 400px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--tr-elev-2);
   }
 
   .wizard-title {

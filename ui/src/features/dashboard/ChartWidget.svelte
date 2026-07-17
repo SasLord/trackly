@@ -395,7 +395,7 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--tr-elev-2);
     z-index: 10;
   }
 

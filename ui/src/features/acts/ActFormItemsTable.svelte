@@ -906,7 +906,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     background: var(--tr-surface-raised, var(--tr-surface));
     border-bottom: 1px solid var(--tr-border);
-    box-shadow: var(--tr-elev-1, 0 1px 2px rgba(0, 0, 0, 0.08));
+    box-shadow: var(--tr-elev-1);
     list-style: none;
   }
   :global(.dropdown--items .drill-back) {
