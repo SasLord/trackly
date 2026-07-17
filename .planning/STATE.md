@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: executing
-last_updated: "2026-07-17T19:09:28.987Z"
+status: in_progress
+last_updated: "2026-07-17T19:26:29.645Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 26
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 23 — design-tokens-foundations
+**Current focus:** Phase 23 complete (design tokens) — milestone v1.2 in progress, next Phase 24 (базовые компоненты)
 
 ## Current Position
 
-Phase: 23 (design-tokens-foundations) — COMPLETE
-Plan: 8 of 8
-Status: Gap-closure round complete (23-07 + 23-08) — DS-01 закрыт буквально, check-tokens.mjs (все 4 правила) зелёный. Ready for /gsd-verify-phase or Phase 24.
-Last activity: 2026-07-17
+Phase: 24
+Plan: Not started
+Status: Phase 23 complete + verified (UAT approved); Phase 24 not yet scaffolded
+Last activity: 2026-07-18
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +40,7 @@ Last activity: 2026-07-17
 
 **Velocity:**
 
-- Total plans completed: 114
+- Total plans completed: 122
 - Average duration: —
 - Total execution time: —
 
@@ -65,6 +65,7 @@ Last activity: 2026-07-17
 | 22 | 6 | - | - |
 | 20 | 6 | - | - |
 | 21 | 1 | - | - |
+| 23 | 8 | - | - |
 
 **Recent Trend:**
 
