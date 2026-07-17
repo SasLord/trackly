@@ -188,12 +188,12 @@
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     max-width: 640px;
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
   }
 
   .section-title {
@@ -206,9 +206,9 @@
   .subsection {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     border-top: 1px solid var(--tr-border);
-    padding-top: var(--space-md);
+    padding-top: var(--tr-space-md);
 
     &:first-of-type {
       border-top: none;
@@ -226,7 +226,7 @@
   .manual-row {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -238,13 +238,13 @@
   .config-grid {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .config-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .config-label {
@@ -256,7 +256,7 @@
   .folder-display {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
@@ -269,13 +269,13 @@
     white-space: nowrap;
     max-width: 300px;
     background: var(--tr-surface-sunken);
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     border-radius: var(--radius-sm);
     display: inline-block;
   }
 
   .form-select {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -299,12 +299,12 @@
   .input-group {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .form-input {
     width: 80px;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -326,7 +326,7 @@
 
   .save-row {
     display: flex;
-    margin-top: var(--space-sm);
+    margin-top: var(--tr-space-xs);
   }
 
   .helper-text {

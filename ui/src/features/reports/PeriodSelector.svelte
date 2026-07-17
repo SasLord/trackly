@@ -154,9 +154,9 @@
   .period-selector {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    padding: var(--space-xs) 0;
+    padding: var(--tr-space-2xs) 0;
   }
 
   .period-buttons {
@@ -165,7 +165,7 @@
   }
 
   .period-btn {
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
@@ -223,7 +223,7 @@
   .period-controls {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     flex-wrap: wrap;
   }
 
@@ -235,7 +235,7 @@
 
   .period-select {
     height: 28px;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -254,7 +254,7 @@
   .range-label {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
 
     // GAP-R3: constrain DatePicker to match other filter-row controls (28px height)
     :global(.date-picker) {
@@ -276,6 +276,6 @@
     color: var(--tr-danger);
     margin: 0;
     width: 100%;
-    margin-top: var(--space-xs);
+    margin-top: var(--tr-space-2xs);
   }
 </style>

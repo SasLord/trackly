@@ -211,18 +211,18 @@
   .ad-settings {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xl);
+    gap: var(--tr-space-2xl);
     max-width: 640px;
   }
 
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
   }
 
   .section-title {
@@ -235,7 +235,7 @@
   .form-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
 
     &--full {
       grid-column: 1 / -1;
@@ -255,7 +255,7 @@
   .checkbox-label {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     cursor: pointer;
@@ -274,9 +274,9 @@
   .radio-label {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     cursor: pointer;
-    margin-top: var(--space-sm);
+    margin-top: var(--tr-space-xs);
 
     input[type='radio'] {
       width: 16px;
@@ -308,7 +308,7 @@
 
   .advanced-details {
     border-top: 1px solid var(--tr-border);
-    padding-top: var(--space-md);
+    padding-top: var(--tr-space-md);
   }
 
   .advanced-summary {
@@ -321,12 +321,12 @@
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
-    margin-top: var(--space-md);
+    gap: var(--tr-space-md);
+    margin-top: var(--tr-space-md);
   }
 
   .form-input {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -342,7 +342,7 @@
   .save-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 

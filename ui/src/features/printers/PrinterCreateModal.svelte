@@ -174,13 +174,13 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .label {
@@ -197,9 +197,9 @@
   .snmp-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     border-top: 1px solid var(--tr-border);
-    padding-top: var(--space-md);
+    padding-top: var(--tr-space-md);
   }
 
   .section-hint {

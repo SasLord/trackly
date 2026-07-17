@@ -158,13 +158,13 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--tr-space-2xl);
     flex: 1;
     text-align: center;
   }
 
   .state-loading {
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .error-text {
@@ -177,7 +177,7 @@
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
   }
 
   .empty-body {
@@ -204,7 +204,7 @@
     }
 
     th {
-      padding: 0 var(--space-md);
+      padding: 0 var(--tr-space-md);
       height: var(--row-height);
       text-align: left;
       font-size: var(--font-size-label);
@@ -215,7 +215,7 @@
     }
 
     td {
-      padding: 0 var(--space-md);
+      padding: 0 var(--tr-space-md);
       height: var(--row-height);
       font-size: var(--font-size-body);
       color: var(--tr-text-primary);
@@ -232,7 +232,7 @@
   }
 
   .month-separator td {
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     height: var(--row-height-dense);
     background: var(--tr-surface-sunken);
     font-size: var(--font-size-body);

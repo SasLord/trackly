@@ -89,8 +89,8 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -102,7 +102,7 @@
 
   .tabs {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     flex-wrap: wrap;
     flex: 1;
   }
@@ -110,8 +110,8 @@
   .tab {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     background: transparent;
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);

@@ -120,7 +120,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
     flex-wrap: wrap;
@@ -128,16 +128,16 @@
 
   .domain-nav {
     display: flex;
-    gap: var(--space-xs);
-    padding: var(--space-sm) 0;
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-xs) 0;
     flex-shrink: 0;
     // No border-bottom here — parent .report-sub-nav owns the single bottom border
   }
 
   .report-nav {
     display: flex;
-    gap: var(--space-xs);
-    padding: var(--space-sm) 0;
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-xs) 0;
     flex: 1;
     justify-content: flex-end;
     flex-wrap: wrap;
@@ -147,8 +147,8 @@
   .tab {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-md);
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     background: transparent;
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);

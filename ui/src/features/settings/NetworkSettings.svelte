@@ -251,19 +251,19 @@
   .network-settings {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xl);
+    gap: var(--tr-space-2xl);
     max-width: 640px;
   }
 
   .settings-section {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
   }
 
   .section-title {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -272,8 +272,8 @@
   .server-toggle-row {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -286,12 +286,12 @@
   .toggle-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .status-badge {
     display: inline-block;
-    padding: 2px var(--space-sm);
+    padding: 2px var(--tr-space-xs);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
@@ -311,17 +311,17 @@
     background: color-mix(in srgb, var(--tr-accent) 6%, transparent);
     border: 1px solid color-mix(in srgb, var(--tr-accent) 25%, transparent);
     border-radius: var(--radius-sm);
-    padding: var(--space-md);
-    margin-bottom: var(--space-md);
+    padding: var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .info-row {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
@@ -357,12 +357,12 @@
 
   .params-section {
     border-top: 1px solid var(--tr-border);
-    padding-top: var(--space-md);
-    margin-top: var(--space-md);
+    padding-top: var(--tr-space-md);
+    margin-top: var(--tr-space-md);
   }
 
   .params-title {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-medium);
     color: var(--tr-text-secondary);
@@ -371,14 +371,14 @@
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
   }
 
   .form-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
 
     &--full {
       grid-column: 1 / -1;
@@ -393,7 +393,7 @@
 
   .form-input,
   .form-select {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     font-size: var(--font-size-body);
@@ -415,7 +415,7 @@
   .save-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
@@ -427,7 +427,7 @@
   .checkbox-label {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     cursor: pointer;
@@ -444,7 +444,7 @@
   }
 
   .helper-text {
-    margin: var(--space-xs) 0 0;
+    margin: var(--tr-space-2xs) 0 0;
     font-size: var(--font-size-label);
     color: var(--tr-text-tertiary);
     line-height: 1.5;

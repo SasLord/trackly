@@ -625,7 +625,7 @@
 <!-- Confirm-modal «Отклонить» -->
 <Modal open={rejectModalOpen} title={rejectModalTitle} onClose={() => (rejectModalOpen = false)}>
   <p class="confirm-body">{rejectModalBody}</p>
-  <div class="field" style="margin-top: var(--space-md);">
+  <div class="field" style="margin-top: var(--tr-space-md);">
     <label class="label" for="reject-notes">Комментарий специалиста</label>
     <Textarea
       value={rejectNotes}
@@ -680,7 +680,7 @@
       Пользователь {request.description ?? request.requesterName ?? ''} получит доступ к системе с выбранной
       ролью.
     </p>
-    <div class="field" style="margin-top: var(--space-md);">
+    <div class="field" style="margin-top: var(--tr-space-md);">
       <label class="label" for="approve-role">Роль</label>
       <Select value={approveRole} id="approve-role" onchange={(v) => (approveRole = v)}>
         <option value="employee">Сотрудник</option>
@@ -717,7 +717,7 @@
   .request-detail {
     height: 100%;
     overflow: auto;
-    padding: var(--space-lg);
+    padding: var(--tr-space-xl);
     background: var(--tr-bg);
   }
 
@@ -727,7 +727,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     min-height: 320px;
     text-align: center;
     color: var(--tr-text-secondary);
@@ -747,26 +747,26 @@
   }
 
   .detail-header {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--tr-space-2xl);
   }
 
   .title-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--tr-space-xs);
   }
 
   .meta-row {
     display: flex;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
     flex-wrap: wrap;
   }
 
   .meta-item {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     font-size: var(--font-size-label);
   }
 
@@ -779,11 +779,11 @@
   }
 
   .section {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--tr-space-2xl);
   }
 
   .section-heading {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--tr-space-md);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -792,7 +792,7 @@
   .fields-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
@@ -818,20 +818,20 @@
 
   .actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    margin-top: var(--space-sm);
+    margin-top: var(--tr-space-xs);
   }
 
   .complete-form {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--tr-space-md);
   }
 
   .resolution {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     background: var(--tr-surface);
     border-radius: var(--radius-sm);
     border: 1px solid var(--tr-border);
@@ -840,7 +840,7 @@
   .history-loading {
     display: flex;
     justify-content: flex-start;
-    padding: var(--space-sm) 0;
+    padding: var(--tr-space-xs) 0;
   }
 
   .history-empty {
@@ -872,7 +872,7 @@
 
   .history-text {
     flex: 1;
-    padding: var(--space-xs) 0;
+    padding: var(--tr-space-2xs) 0;
   }
 
   .confirm-body {

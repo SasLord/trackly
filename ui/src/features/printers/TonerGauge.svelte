@@ -63,7 +63,7 @@
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .gauge-label {

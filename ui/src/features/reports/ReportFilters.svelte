@@ -95,6 +95,6 @@
   .export-buttons {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 </style>

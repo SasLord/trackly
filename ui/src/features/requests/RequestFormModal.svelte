@@ -283,13 +283,13 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .label {
@@ -308,7 +308,7 @@
 
   .type-btn {
     flex: 1;
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     background: transparent;
     color: var(--tr-text-primary);
     border: none;

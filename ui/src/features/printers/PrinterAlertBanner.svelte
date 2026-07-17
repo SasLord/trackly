@@ -65,12 +65,12 @@
   .alert-banner {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-xs);
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     border: 1px solid var(--tr-warning);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     color: var(--tr-text-primary);
   }
 
@@ -92,7 +92,7 @@
 
   .alert-title {
     font-weight: var(--font-weight-semibold);
-    margin-right: var(--space-xs);
+    margin-right: var(--tr-space-2xs);
   }
 
   .alert-time {

@@ -38,7 +38,7 @@
 <style lang="scss">
   .settings-sub-nav {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     flex-wrap: wrap;
     flex-shrink: 0;
   }
@@ -46,7 +46,7 @@
   .tab {
     display: inline-flex;
     align-items: center;
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     background: transparent;
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
