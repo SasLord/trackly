@@ -140,3 +140,16 @@ None — изменения ограничены переименованием 
 ---
 *Phase: 23-design-tokens-foundations*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/styles/_tokens.scss
+- FOUND: ui/src/features/acts/ActItemsTable.svelte
+- FOUND: ui/src/features/acts/ReturnItemsTable.svelte
+- FOUND: .planning/phases/23-design-tokens-foundations/23-05-SUMMARY.md
+- FOUND: 6c3ce19 (feat(23-05): sweep batch 1/4)
+- FOUND: 473358a (feat(23-05): sweep batch 2/4)
+- FOUND: 2564463 (feat(23-05): sweep batch 3/4)
+- FOUND: 6cc5d14 (feat(23-05): sweep batch 4/4 + QA-01 fix)
+- FOUND: 68c3c89 (feat(23-05): class="tr-mono" on 9 sites)
+- FOUND: 7c90c67 (docs(23-05): add plan summary)
