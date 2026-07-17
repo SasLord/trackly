@@ -392,7 +392,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -421,7 +421,7 @@
   .autocomplete-textarea {
     height: auto;
     min-height: 76px; // ~ 3 rows
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     resize: vertical;
   }
 
@@ -449,7 +449,7 @@
 
   /* Дочерние элементы дропдауна тоже перенесены в <body> вместе с ним — :global(). */
   :global(.dropdown--device .dropdown-header) {
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     font-size: var(--font-size-label);
     color: var(--tr-text-secondary);
     border-bottom: 1px solid var(--tr-border);
@@ -459,7 +459,7 @@
 
   :global(.dropdown--device .dropdown-loading),
   :global(.dropdown--device .dropdown-empty) {
-    padding: var(--space-sm);
+    padding: var(--tr-space-xs);
     font-size: var(--font-size-label);
     color: var(--tr-text-tertiary);
     text-align: center;
@@ -468,7 +468,7 @@
   :global(.dropdown--device .dropdown-item) {
     display: block;
     width: 100%;
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: none;
     border-radius: 0;

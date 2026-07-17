@@ -219,7 +219,7 @@
   }
 
   .cell {
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     vertical-align: middle;
@@ -300,7 +300,7 @@
   }
 
   .children-loading {
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--tr-space-2xs) var(--tr-space-md);
     font-size: var(--font-size-label);
     color: var(--tr-text-tertiary);
     border-bottom: 1px solid var(--tr-border);

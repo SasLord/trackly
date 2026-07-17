@@ -323,10 +323,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-lg) var(--space-xl);
+    padding: var(--tr-space-xl) var(--tr-space-2xl);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -340,7 +340,7 @@
 
   .header-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     align-items: center;
     flex-wrap: wrap;
   }
@@ -348,6 +348,6 @@
   .page-content {
     flex: 1;
     overflow: auto;
-    padding: var(--space-lg) var(--space-xl);
+    padding: var(--tr-space-xl) var(--tr-space-2xl);
   }
 </style>

@@ -92,7 +92,7 @@
     flex: 1;
     list-style: none;
     margin: 0;
-    padding: var(--space-sm) 0;
+    padding: var(--tr-space-xs) 0;
     overflow-y: auto;
   }
 
@@ -103,7 +103,7 @@
 
   .nav-link {
     display: block;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     height: var(--row-height);
     line-height: var(--row-height);
     font-size: var(--font-size-body);
@@ -134,21 +134,21 @@
   .divider {
     height: 1px;
     background: var(--tr-border);
-    margin: var(--space-xs) var(--space-md);
+    margin: var(--tr-space-2xs) var(--tr-space-md);
   }
 
   .sidebar-footer {
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     border-top: 1px solid var(--tr-border);
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .theme-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .theme-label {
@@ -160,9 +160,9 @@
   .user-block {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
-    padding-bottom: var(--space-sm);
-    margin-bottom: var(--space-xs);
+    gap: var(--tr-space-2xs);
+    padding-bottom: var(--tr-space-xs);
+    margin-bottom: var(--tr-space-2xs);
     border-bottom: 1px solid var(--tr-border);
   }
 
@@ -193,7 +193,7 @@
     color: var(--tr-text-secondary);
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-medium);
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     border-radius: var(--radius-sm);
     cursor: pointer;
     text-align: center;

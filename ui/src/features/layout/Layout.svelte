@@ -35,7 +35,7 @@
   }
 
   .content {
-    padding: var(--space-lg);
+    padding: var(--tr-space-xl);
     overflow: auto;
     min-height: 100vh;
     background: var(--tr-bg);
@@ -46,7 +46,7 @@
     left: -9999px;
     top: -9999px;
     z-index: 9999;
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
     font-size: var(--font-size-body);

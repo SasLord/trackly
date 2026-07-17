@@ -66,13 +66,13 @@
   .stat-widget {
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
+    border-radius: var(--tr-radius-md);
+    padding: var(--tr-space-xl);
     min-height: 120px;
   }
 
   .widget-title {
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -89,13 +89,13 @@
   .stat-label {
     font-size: var(--font-size-label);
     color: var(--tr-text-secondary);
-    margin: var(--space-xs) 0 0;
+    margin: var(--tr-space-2xs) 0 0;
   }
 
   .breakdown-list {
     list-style: none;
     padding: 0;
-    margin: var(--space-sm) 0 0;
+    margin: var(--tr-space-xs) 0 0;
     font-size: var(--font-size-label);
     color: var(--tr-text-secondary);
 
@@ -118,8 +118,8 @@
   }
 
   .widget-warning {
-    margin-top: var(--space-sm);
-    padding: var(--space-xs) var(--space-sm);
+    margin-top: var(--tr-space-xs);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     border: 1px solid var(--tr-warning);
     border-radius: var(--radius-sm);
@@ -132,7 +132,7 @@
 
     ul {
       list-style: disc;
-      margin: var(--space-xs) 0 0 var(--space-md);
+      margin: var(--tr-space-2xs) 0 0 var(--tr-space-md);
       padding: 0;
 
       li {

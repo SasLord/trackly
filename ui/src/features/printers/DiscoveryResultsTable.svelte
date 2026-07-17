@@ -95,7 +95,7 @@
 <style lang="scss">
   .empty {
     text-align: center;
-    padding: var(--space-xl);
+    padding: var(--tr-space-2xl);
     color: var(--tr-text-secondary);
   }
 
@@ -103,7 +103,7 @@
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
   }
 
   .empty-hint {
@@ -113,7 +113,7 @@
 
   .table-wrap {
     overflow-x: auto;
-    margin-top: var(--space-md);
+    margin-top: var(--tr-space-md);
   }
 
   .results-table {
@@ -123,7 +123,7 @@
 
     th,
     td {
-      padding: var(--space-sm) var(--space-md);
+      padding: var(--tr-space-xs) var(--tr-space-md);
       text-align: left;
       border-bottom: 1px solid var(--tr-border);
       height: var(--row-height, 40px);

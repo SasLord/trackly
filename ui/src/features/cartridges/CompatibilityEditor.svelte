@@ -214,7 +214,7 @@
   .compat-editor {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .visually-hidden {
@@ -232,9 +232,9 @@
   .compat-row {
     display: grid;
     grid-template-columns: 1fr 28px;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
     align-items: end;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--tr-space-xs);
   }
 
   .compat-field {
@@ -251,7 +251,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -287,7 +287,7 @@
 
   .dropdown-loading,
   .dropdown-empty {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     color: var(--tr-text-tertiary);
     font-size: var(--font-size-label);
   }
@@ -295,7 +295,7 @@
   .dropdown-item {
     display: block;
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: transparent;
     border: none;
     text-align: left;

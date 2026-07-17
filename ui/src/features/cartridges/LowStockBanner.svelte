@@ -50,12 +50,12 @@
   .low-stock-banner {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-sm);
-    padding: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--tr-space-xs);
+    padding: var(--tr-space-md);
+    margin-bottom: var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     border: 1px solid var(--tr-warning);
-    border-radius: var(--radius-md);
+    border-radius: var(--tr-radius-md);
     color: var(--tr-text-primary);
   }
 
@@ -78,7 +78,7 @@
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
   }
 
   .low-stock-list {

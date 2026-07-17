@@ -116,10 +116,10 @@
   .device-filters {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
-    padding-bottom: var(--space-sm);
+    gap: var(--tr-space-xs);
+    padding-bottom: var(--tr-space-xs);
     border-bottom: 1px solid var(--tr-border);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--tr-space-md);
   }
 
   .search-wrapper {
@@ -130,7 +130,7 @@
 
   .search-icon {
     position: absolute;
-    left: var(--space-sm);
+    left: var(--tr-space-xs);
     color: var(--tr-text-tertiary);
     pointer-events: none;
     display: flex;
@@ -140,7 +140,7 @@
   .search-input {
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md) 0 calc(var(--space-sm) * 2 + 16px);
+    padding: 0 var(--tr-space-md) 0 calc(var(--tr-space-xs) * 2 + 16px);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -163,7 +163,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -176,8 +176,8 @@
   .status-tab {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
+    gap: var(--tr-space-2xs);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
@@ -223,7 +223,7 @@
   .group-toggle {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;

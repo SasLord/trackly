@@ -844,13 +844,13 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .label {
@@ -879,7 +879,7 @@
   }
 
   .previous-cartridge-block {
-    padding: var(--space-sm);
+    padding: var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
     background: var(--tr-surface);

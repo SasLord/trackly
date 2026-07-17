@@ -130,7 +130,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--space-lg);
+    padding: 0 var(--tr-space-xl);
     background: var(--tr-surface);
     border-bottom: 1px solid var(--tr-border);
   }
@@ -144,7 +144,7 @@
   .employee-header-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .user-name {
@@ -164,7 +164,7 @@
 
   .employee-content {
     flex: 1;
-    padding: var(--space-lg);
+    padding: var(--tr-space-xl);
     min-height: calc(100vh - 56px);
     overflow: auto;
   }
@@ -174,7 +174,7 @@
     left: -9999px;
     top: -9999px;
     z-index: 9999;
-    padding: var(--space-md);
+    padding: var(--tr-space-md);
     background: var(--tr-accent);
     color: var(--tr-text-inverse);
     font-size: var(--font-size-body);

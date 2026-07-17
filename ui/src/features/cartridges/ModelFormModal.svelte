@@ -458,7 +458,7 @@
   .form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
@@ -488,7 +488,7 @@
   }
 
   .conflict-error {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 8%, transparent);
     border: 1px solid var(--tr-danger);
     border-radius: var(--radius-sm);
@@ -502,7 +502,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -544,7 +544,7 @@
   .dropdown-item {
     display: block;
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     background: transparent;
     border: none;
     text-align: left;
@@ -561,19 +561,19 @@
 
   .compat-section {
     border-top: 1px solid var(--tr-border);
-    padding-top: var(--space-md);
-    margin-top: var(--space-xs);
+    padding-top: var(--tr-space-md);
+    margin-top: var(--tr-space-2xs);
   }
 
   .compat-heading {
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .compat-empty {
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-tertiary);
   }

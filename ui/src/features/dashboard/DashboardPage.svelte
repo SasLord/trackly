@@ -248,12 +248,12 @@
   }
 
   .page-header {
-    padding: var(--space-lg) var(--space-xl);
+    padding: var(--tr-space-xl) var(--tr-space-2xl);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     flex-wrap: wrap;
   }
 
@@ -267,12 +267,12 @@
 
   .period-selector {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--tr-space-xs);
   }
 
   .period-select {
     height: 32px;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     background: var(--tr-bg);
     border: 1px solid var(--tr-border);
     border-radius: var(--radius-sm);
@@ -292,15 +292,15 @@
     overflow: auto;
     display: grid;
     grid-template-columns: 3fr 2fr;
-    gap: var(--space-xl);
-    padding: var(--space-xl);
+    gap: var(--tr-space-2xl);
+    padding: var(--tr-space-2xl);
     align-content: start;
   }
 
   .dashboard-col {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--tr-space-xl);
   }
 
   @media (max-width: 1280px) {

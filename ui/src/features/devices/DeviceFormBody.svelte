@@ -369,20 +369,20 @@
   .device-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   // Horizontal row for Инв.№ / Серийный № / Количество.
   // Все три поля всегда присутствуют — макет не «прыгает».
   .field-row {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     align-items: flex-start;
   }
 
@@ -412,7 +412,7 @@
     display: block;
     width: 100%;
     height: 36px;
-    padding: 0 var(--space-md);
+    padding: 0 var(--tr-space-md);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
@@ -440,24 +440,24 @@
   }
 
   .state-hints {
-    margin-top: var(--space-xs);
+    margin-top: var(--tr-space-2xs);
   }
 
   .state-hints-label {
     display: block;
     font-size: var(--font-size-label);
     color: var(--tr-text-secondary);
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--tr-space-2xs);
   }
 
   .state-hints-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .hint-chip {
-    padding: 2px var(--space-sm);
+    padding: 2px var(--tr-space-xs);
     background: var(--tr-surface-sunken);
     border: 1px solid var(--tr-border);
     border-radius: 12px;

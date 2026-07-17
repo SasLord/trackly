@@ -80,7 +80,7 @@
   }
 
   .cell {
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     font-size: var(--font-size-body);
     color: var(--tr-text-primary);
     vertical-align: middle;

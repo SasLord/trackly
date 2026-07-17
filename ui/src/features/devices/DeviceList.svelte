@@ -164,7 +164,7 @@
   }
 
   .th {
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     text-align: left;
     font-size: var(--font-size-label);
     font-weight: var(--font-weight-semibold);
@@ -191,12 +191,12 @@
 
   // Empty state
   .empty-state {
-    padding: var(--space-xl) var(--space-lg);
+    padding: var(--tr-space-2xl) var(--tr-space-xl);
     text-align: center;
   }
 
   .empty-title {
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--tr-space-2xs);
     font-size: var(--font-size-heading);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
@@ -214,7 +214,7 @@
   }
 
   .skeleton-cell {
-    padding: 0 var(--space-sm);
+    padding: 0 var(--tr-space-xs);
     border-bottom: 1px solid var(--tr-border);
   }
 
@@ -237,7 +237,7 @@
 
   // Footer
   .list-footer {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--tr-space-xs) var(--tr-space-md);
     border-top: 1px solid var(--tr-border);
     display: flex;
     align-items: center;

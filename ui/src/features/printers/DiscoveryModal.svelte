@@ -161,20 +161,20 @@
 
 <style lang="scss">
   .scan-form {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--tr-space-md);
   }
 
   .fields {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr auto;
-    gap: var(--space-md);
+    gap: var(--tr-space-md);
     align-items: end;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--tr-space-2xs);
   }
 
   .field-label {
@@ -186,21 +186,21 @@
   .scanning-state {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-xl);
+    gap: var(--tr-space-md);
+    padding: var(--tr-space-2xl);
     justify-content: center;
     color: var(--tr-text-secondary);
     font-size: var(--font-size-body);
   }
 
   .results-section {
-    margin-top: var(--space-md);
+    margin-top: var(--tr-space-md);
   }
 
   .results-heading {
     font-size: var(--font-size-body);
     font-weight: var(--font-weight-semibold);
     color: var(--tr-text-primary);
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--tr-space-xs);
   }
 </style>

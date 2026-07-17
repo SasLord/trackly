@@ -33,7 +33,7 @@
   .toggle-btn {
     display: inline-flex;
     align-items: center;
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--tr-space-2xs) var(--tr-space-xs);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
