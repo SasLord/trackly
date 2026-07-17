@@ -127,3 +127,12 @@ None — оба скрипта строго dev-tooling (читают исход
 ---
 *Phase: 23-design-tokens-foundations*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: ui/scripts/check-tokens.mjs
+- FOUND: ui/scripts/verify-value-map.mjs
+- FOUND: .planning/phases/23-design-tokens-foundations/deferred-items.md
+- FOUND: 5456897 (feat(23-02): add check-tokens.mjs permanent CI gate, wire into pnpm lint)
+- FOUND: 4ccba10 (feat(23-02): add verify-value-map.mjs, fix D-15 pre-existing eslint errors)
+- FOUND: 865aafb (docs(23-02): add plan summary)
