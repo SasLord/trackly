@@ -1,67 +1,44 @@
 ---
 phase: 23-design-tokens-foundations
-verified: 2026-07-17T23:10:00Z
-status: gaps_found
-score: 6/7 must-haves verified
+verified: 2026-07-18T02:15:00Z
+status: human_needed
+score: 7/7 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Захардкоженных цветов в компонентах не остаётся (DS-01, REQUIREMENTS.md verbatim text)"
-    status: partial
-    reason: >
-      check-tokens.mjs Rule 2 only matches hex literals (HEX_RE), not rgba()/hsl()/hsla(). 17
-      hardcoded rgba() color/shadow literals remain inside <style> blocks across 14 files after
-      the full sweep — invisible to the phase's own permanent CI gate. Two categories are
-      materially significant: (1) a duplicated "invalid-state" focus ring
-      `rgba(220, 38, 38, 0.2)`/`0.3` in 9 files that does NOT match the --tr-danger token value
-      (#cf3b3b light / #f26565 dark) — a different, un-tokenized red; (2) Modal.svelte's overlay
-      background (`rgba(0, 0, 0, 0.4)` / `rgba(0, 0, 0, 0.6)`) does not use the --tr-overlay token
-      that _tokens.scss defines for exactly this purpose (rgba(20, 26, 38, 0.45) light /
-      rgba(0, 0, 0, 0.6) dark) — the single most widely-reused overlay component in the app
-      bypasses the token layer it's supposed to consume. Also found: 4 auth-screen box-shadows
-      (rgba(0,0,0,0.08)) and a ChartWidget tooltip shadow (rgba(0,0,0,0.15)) not using --tr-elev-*.
-      This directly contradicts the REQUIREMENTS.md DS-01 clause "захардкоженных цветов в
-      компонентах не остаётся" — the plan's own must_haves (23-03) scoped Rule 2 to hex-only,
-      which is narrower than the roadmap-level DS-01 promise.
-    artifacts:
-      - path: "ui/scripts/check-tokens.mjs"
-        issue: "Rule 2 (hex-in-style gate) has no detection for rgba()/hsl()/hsla() color-function literals — confirmed blind spot (WR-03 in 23-REVIEW.md)"
-      - path: "ui/src/lib/components/Modal.svelte"
-        issue: "Overlay background hardcoded as rgba(0,0,0,0.4)/rgba(0,0,0,0.6) instead of var(--tr-overlay), despite --tr-overlay existing in _tokens.scss for this exact purpose"
-      - path: "ui/src/lib/components/PersonAutocomplete.svelte, ActFormItemsTable.svelte (x2), Button.svelte, Input.svelte, DatePicker.svelte, LocationAutocomplete.svelte, DeviceAutocompleteField.svelte, ModelFormModal.svelte"
-        issue: "9 sites of hardcoded rgba(220, 38, 38, ...) 'invalid' focus ring that doesn't match --tr-danger's actual token value"
-      - path: "ui/src/features/auth/BlockedScreen.svelte, FirstRunWizard.svelte, LoginPage.svelte, PendingScreen.svelte, ui/src/features/dashboard/ChartWidget.svelte"
-        issue: "Hardcoded rgba() box-shadows not using --tr-elev-* tokens"
-    missing:
-      - "Extend check-tokens.mjs with a Rule 4 (or extend Rule 2) to flag rgba(/rgb(/hsl(/hsla( function calls inside <style> blocks not wrapped in var(--tr-...) — closes the permanent gate's blind spot for future regressions"
-      - "Add a --tr-danger-ring token derived from --tr-danger and replace the 9 rgba(220,38,38,...) sites"
-      - "Replace Modal.svelte's hardcoded overlay rgba() with var(--tr-overlay)"
-      - "Replace the 4 auth-screen + ChartWidget hardcoded rgba() shadows with the appropriate --tr-elev-* level"
-deferred: []
+re_verification:
+  previous_status: gaps_found
+  previous_score: 6/7
+  gaps_closed:
+    - "Захардкоженных цветов в компонентах не остаётся (DS-01) — 17 rgba() literals across 14 files migrated to --tr-overlay/--tr-danger-ring/--tr-elev-*; check-tokens.mjs Rule 4 (new, permanent) now detects rgba()/rgb()/hsl()/hsla() in <style> blocks and is enabled by default; 0 violations across all 4 rules on ui/src"
+  gaps_remaining: []
+  regressions: []
 human_verification:
-  - test: "Переключение темы (light/dark) без визуальных артефактов на 3-4 плотных экранах (Устройства, форма акта, Настройки) — DS-02"
+  - test: "Переключение темы (light/dark) без визуальных артефактов на 3-4 плотных экранах (Устройства, форма акта, Настройки)"
     expected: "Нет флеша не той темы при загрузке, все поверхности стилизованы, текст читаем в обеих темах"
-    why_human: "Требует живого рендера в браузере/Tauri webview; недоступно для grep-based верификации (D-09)"
-  - test: "Отсутствие визуального сдвига вёрстки после space/radius миграции по значению — DS-04, сравнение до/после на тех же плотных экранах"
+    why_human: "Требует живого рендера в браузере/Tauri webview; недоступно для grep-based верификации (D-09) — carried over unchanged from initial verification, this gap-closure round did not touch DS-02"
+  - test: "Отсутствие визуального сдвига вёрстки после space/radius миграции по значению — сравнение до/после на тех же плотных экранах"
     expected: "Вёрстка визуально идентична прежней (кроме намеренной инверсии поверхностей --tr-bg/--tr-surface, D-10, которая не является дефектом)"
-    why_human: "verify-value-map.mjs (даже с исправленной логикой, см. ниже) доказывает математическую сохранность px-значений на git-диффе, но не то, как каскад/layout это отрендерит визуально"
-  - test: "Визуальная иерархия типографики — текст на правильном уровне 9-уровневой шкалы относительно соседних блоков — DS-03"
+    why_human: "verify-value-map.mjs (CR-01 now fixed, re-confirmed in this round) proves pixel-value preservation on the git diff, but not how cascade/layout renders it visually"
+  - test: "Визуальная иерархия типографики — текст на правильном уровне 9-уровневой шкалы относительно соседних блоков"
     expected: "Заголовки/тело/подписи визуально согласованы со шкалой"
-    why_human: "Выбор роли статически проверен (check-tokens.mjs), но 'выглядит правильно' — вопрос визуального суждения"
-  - test: "Точечная потеря контраста (белое-на-белом) от инверсии поверхностей — DS-02/D-11"
+    why_human: "Роль статически проверена; 'выглядит правильно' — вопрос визуального суждения"
+  - test: "Точечная потеря контраста (белое-на-белом) от инверсии поверхностей"
     expected: "Не должно быть невидимого текста/границ там, где старый код полагался на прежний порядок поверхностей"
-    why_human: "Требует визуального обхода экранов; не обязательство этой фазы, но ожидаемый паттерн для UAT"
+    why_human: "Требует визуального обхода экранов; ожидаемый паттерн для UAT"
+  - test: "Button.svelte danger-ring alpha 0.3→0.2 (WR-01-sanctioned micro visual touch from this gap-closure round) — confirm the slightly lighter focus ring on the destructive button reads acceptably next to the other 8 now-identical 0.2 danger-ring sites"
+    expected: "No perceptible regression; ring is marginally more subtle but still clearly visible against both themes' backgrounds"
+    why_human: "New in this round — a real, if intentionally sanctioned (WR-01), visual pixel change; disclosed in 23-08-SUMMARY.md as a Phase-24 handoff note, not previously covered by any prior human-verification item"
 ---
 
 # Phase 23: Design Tokens Foundations Verification Report
 
 **Phase Goal:** Интерфейс переходит на единый слой токенов `--tr-*` (поверхности, 5 уровней текста,
-акцент с hover/active/soft, семантика с парами -soft/-text, нейтральная шкала n-0…n-950, 5 уровней
-теней), типографика следует новой шкале из 9 уровней, отступы/радиусы мигрированы ПО ЗНАЧЕНИЮ
-(вёрстка не сдвигается), устранены 2 бага неопределённых токенов.
+акцент hover/active/soft, семантика -soft/-text, нейтрали n-0…n-950, 5 уровней теней), типографика
+по новой шкале из 9 уровней, отступы/радиусы мигрированы ПО ЗНАЧЕНИЮ (вёрстка не сдвигается),
+устранены 2 бага неопределённых токенов.
 
-**Verified:** 2026-07-17T23:10:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-18T02:15:00Z
+**Status:** human_needed
+**Re-verification:** Yes — after gap closure (plans 23-07, 23-08)
 
 ## Goal Achievement
 
@@ -69,99 +46,96 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | `_tokens.scss` defines single `--tr-*` layer: surfaces, 5 text levels, accent w/ hover/active/soft, semantic -soft/-text pairs, neutral n-0…n-950, 5 elevation levels, both light+dark themes | VERIFIED | Read full file — all listed tokens present in both `:root,[data-theme='light']` and `[data-theme='dark']` blocks; layout constants preserved verbatim (`--sidebar-width: 240px` etc.); `--shadow-elev-2-dark` absent (0 matches) |
-| 2 | Typography follows new 9-level scale (composite + decomposed axes) | VERIFIED | 9 roles (display/h2/h3/subtitle/body/body-strong/label/caption/micro) + mono, each with `--tr-text-{role}` shorthand and `--tr-font-size-/-weight-/-line-height-{role}` decomposed axes, all present in `_tokens.scss` |
-| 3 | All `--color-*`/`--shadow-*` call-sites in `ui/src` migrated to `--tr-*` (by role) | VERIFIED | `var(--color-` and `var(--shadow-` : 0 matches across all `.svelte`/`.scss` in `ui/src` (excl. `_tokens.scss`/`global.scss`, which legitimately define the new names) |
-| 4 | All `--space-*`/`--radius-*` call-sites migrated to `--tr-*` by value (no layout shift) | VERIFIED (statically) | `var(--space-`/`var(--radius-` : 0 matches. Independently re-ran a corrected version of `verify-value-map.mjs` (fixing CR-01's single-token-per-line bug) against the full diff from `BASE_SHA 6425d30c` — 578 hunks checked, 0 real value-mismatches found. Spot-checked multiple multi-token lines (`CartridgeListRow.svelte`, `CartridgeFilters.svelte`) via `git log -p` against pre-migration values — confirmed pixel-exact preservation (e.g. `--space-sm` 8px → `--tr-space-xs` 8px). Visual "no shift" is UAT (see Human Verification) |
-| 5 | All `--font-size-*`/`--font-weight-*`/`--line-height-*`/`--font-family-base` call-sites migrated to decomposed `--tr-*` axes by role | VERIFIED | 0 matches for all 4 old-name patterns across `ui/src` |
-| 6 | 2 (+1 bonus) undefined-token bugs eliminated (QA-01): `--font-size-sm`, `--radius-lg`×4, bonus `--shadow-md`×3 | VERIFIED | `--tr-font-size-caption` confirmed in `PersonAutocomplete.svelte`; `--tr-radius-lg` confirmed in all 4 auth screens; `--tr-elev-2` confirmed in all 3 cartridge files; `git grep` for old names (`--font-size-sm`, `--radius-lg\b`, `--shadow-md`) returns 0 matches anywhere in `ui/src` |
-| 7 | No hardcoded colors remain in components (DS-01, REQUIREMENTS.md: "захардкоженных цветов в компонентах не остаётся") | **FAILED (partial)** | 0 hex literals confirmed (`check-tokens.mjs --rules=2` PASS), but 17 hardcoded `rgba()` literals remain across 14 files, invisible to the gate (hex-only regex). Includes Modal.svelte's overlay not using the purpose-built `--tr-overlay` token, and a mismatched-red focus ring duplicated in 9 files. See Gaps below |
+| 1 | `_tokens.scss` defines single `--tr-*` layer: surfaces, 5 text levels, accent w/ hover/active/soft, semantic -soft/-text pairs, neutral n-0…n-950, 5 elevation levels, both light+dark themes | VERIFIED (regression check) | `check-tokens.mjs` Rule 1 (old-name gate) + Rule 3 (closed-world gate) both re-ran clean in the combined 0-violation result; `_tokens.scss` still contains all listed families plus the new `--tr-danger-ring` (light+dark) added by plan 23-07 |
+| 2 | Typography follows new 9-level scale (composite + decomposed axes) | VERIFIED (regression check) | No files touched by gap closure affect typography tokens; `check-tokens.mjs` Rule 1/3 clean, unchanged from prior round |
+| 3 | All `--color-*`/`--shadow-*` call-sites in `ui/src` migrated to `--tr-*` (by role) | VERIFIED (regression check) | `var(--color-`/`var(--shadow-` : 0 matches, unchanged |
+| 4 | All `--space-*`/`--radius-*` call-sites migrated to `--tr-*` by value (no layout shift) | VERIFIED (statically, tooling now fixed) | 0 old-name matches; `verify-value-map.mjs` CR-01 fixed this round (tokensOnSide() now captures every token on a multi-token line) — independently re-ran `node scripts/verify-value-map.mjs HEAD` (trivial diff, PASS 0/0) and confirmed `tokensOnSide()` against the historical multi-token reproducer (commit 16244e2): both `--space-sm`/`--space-md` and `--tr-space-xs`/`--tr-space-md` captured, matching the plan's documented expectation. Visual "no shift" remains UAT |
+| 5 | All `--font-size-*`/`--font-weight-*`/`--line-height-*`/`--font-family-base` call-sites migrated to decomposed `--tr-*` axes by role | VERIFIED (regression check) | Unaffected by gap closure, 0 old-name matches persists |
+| 6 | 2 (+1 bonus) undefined-token bugs eliminated (QA-01) | VERIFIED (regression check) | Unaffected by gap closure; `check-tokens.mjs` Rule 3 (closed-world) still clean |
+| 7 | No hardcoded colors remain in components (DS-01, REQUIREMENTS.md: "захардкоженных цветов в компонентах не остаётся") | **VERIFIED (gap closed)** | Independently re-ran `node ui/scripts/check-tokens.mjs` (no `--rules` flag, all 4 rules including the new Rule 4) → `PASS — 0 нарушений`, exit 0. Independently grepped `rgba(\|rgb(\|hsla(\|hsl(` inside every `.svelte` file's `<style>` block in `ui/src` → 0 matches. `git grep -c 'rgba(220, 38, 38' ui/src` → 0. Modal.svelte's overlay confirmed on `var(--tr-overlay)` (read lines 60-110, the redundant `[data-theme='dark']` override is gone as claimed). `--tr-danger-ring` confirmed defined in both theme blocks of `_tokens.scss` (`rgba(207, 59, 59, 0.2)` light / `rgba(242, 101, 101, 0.2)` dark). Button.svelte confirmed on `var(--tr-danger-ring)` (was `rgba(220, 38, 38, 0.3)`) |
 
-**Score:** 6/7 truths verified
+**Score:** 7/7 truths verified
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `ui/src/styles/_tokens.scss` | Single `--tr-*` source of truth (color, spacing, radius, elevation, typography, layout constants) | VERIFIED | Read in full — matches UI-SPEC structure exactly, values copied verbatim per plan design |
-| `ui/src/styles/global.scss` | body/focus-ring/scrollbar/.skip-link on `--tr-*`, plus `.tr-mono` | VERIFIED | All old names removed; `.tr-mono` defined; `@use './tokens'` single connection point intact; `*:focus-visible` scope unchanged |
-| `ui/scripts/check-tokens.mjs` | Permanent CI gate: 3 rules (old-name / hex-in-style / closed-world) | VERIFIED (with known blind spot) | `node ui/scripts/check-tokens.mjs` → PASS — 0 нарушений (exit 0), all 3 rules confirmed independently. **Known gap:** Rule 2 only detects hex, not rgba()/hsl() (WR-03, confirmed) |
-| `ui/scripts/verify-value-map.mjs` | One-shot value-preserving verifier for space/radius sweep | VERIFIED (tool bug found, but re-verification shows no missed real violations) | CR-01 confirmed: regex captures only first `--space-*`/`--radius-*` token per line, silently dropping subsequent tokens on multi-token lines (e.g. `padding: var(--x) var(--y);`). Reproduced the bug. However, independently re-ran a corrected extraction (all tokens per line) against the full 578-hunk diff and found 0 real violations — the underlying migration itself is not shown to be broken, only the diagnostic tool undercounted what it checked |
-| `ui/package.json` lint wiring | `check-tokens.mjs` embedded in `pnpm lint` via `&&` | VERIFIED | `"lint": "eslint . --ext .ts,.svelte && prettier --check . && node scripts/check-tokens.mjs"` confirmed; `pnpm lint` exits 0 |
+| `ui/src/styles/_tokens.scss` | Single `--tr-*` source of truth, now incl. `--tr-danger-ring` | VERIFIED | Read relevant sections — `--tr-danger-ring`/`--tr-overlay` both present in `:root,[data-theme='light']` and `[data-theme='dark']` blocks |
+| `ui/scripts/check-tokens.mjs` | Permanent CI gate: 4 rules (old-name / hex-in-style / closed-world / color-func-in-style), all enabled by default | VERIFIED | Read full file: `Rule 4` (`checkColorFunctionsInStyle`) implemented, mirrors Rule 2's structure exactly as the plan specified; `parseArgs()` default `args.rules = [1, 2, 3, 4]` confirmed; `pnpm lint` (which calls the script with no `--rules` flag) independently re-run → exit 0, "PASS — 0 нарушений" |
+| `ui/scripts/verify-value-map.mjs` | CR-01 fixed (all tokens per line, not just first); named exports importable without side effects | VERIFIED | `tokensOnSide` + `fileURLToPath(import.meta.url)) main()` guard + `export { tokensOnSide, checkHunk }` all present (grep confirmed, 1 match each). Independently imported `tokensOnSide` and re-ran the exact historical multi-token reproducer from the plan — both sides correctly return 2 tokens each, not 1. CLI path (`node scripts/verify-value-map.mjs HEAD`) still works, exit 0 |
+| 14 component files (Modal, Button, Input, DatePicker, LocationAutocomplete, PersonAutocomplete, DeviceAutocompleteField, ActFormItemsTable, ModelFormModal, ChartWidget, LoginPage, FirstRunWizard, PendingScreen, BlockedScreen) | rgba() literals replaced with `--tr-*` tokens | VERIFIED | `git diff --stat` on the gap-closure commit range confirms exactly these 17 files changed (14 components + 3 tooling/token files), matching both plans' declared `files_modified` scope exactly — no scope creep |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `global.scss` | `_tokens.scss` | `@use './tokens'` | WIRED | Single connection point confirmed, unchanged from pre-phase |
-| `ui/src/**/*.svelte <style>` | `_tokens.scss` | `var(--tr-*)` refs | WIRED | 0 remaining old-name refs of any of the 6 migrated families; closed-world rule 3 confirms every used `--tr-*` name is defined |
-| `ActItemsTable.svelte`, `ActDetail.svelte`, `ActListRow.svelte`, `DeviceListRow.svelte`, `PrinterDetail.svelte`, `DocumentAcceptanceModal.svelte`, `ActFormItemsTable.svelte`, `ReturnItemsTable.svelte` | `global.scss` `.tr-mono` | `class="tr-mono"` | WIRED | 14 `class="tr-mono"` sites confirmed across 8 files (plan targeted 7 files/9 sites; `ReturnModal.svelte`'s target moved to child `ReturnItemsTable.svelte` per documented architectural deviation — functional goal (mono display of inv./serial numbers) achieved) |
-| `ui/package.json` | `ui/scripts/check-tokens.mjs` | `"lint"` script `&&` chain | WIRED | Confirmed in package.json content |
+| `ui/package.json` `"lint"` script | `check-tokens.mjs` Rule 4 | call with no `--rules` flag → default `[1,2,3,4]` | WIRED | `pnpm lint` independently re-run, exit 0, `[check-tokens] PASS — 0 нарушений` printed as part of the lint chain |
+| 8 danger-ring files | `_tokens.scss` `--tr-danger-ring` | `var(--tr-danger-ring)` | WIRED | Confirmed via `check-tokens.mjs` Rule 4 (0 violations = no unresolved rgba literals) + Rule 3 closed-world (0 violations = no reference to an undefined token name) |
+| `Modal.svelte` | `_tokens.scss` `--tr-overlay` | `var(--tr-overlay)` | WIRED | Read Modal.svelte lines 60-110 directly — `background: var(--tr-overlay);` confirmed, no residual `[data-theme='dark']` override block remains (grep for `data-theme='dark'` inside Modal.svelte returns 0 matches, matching the claimed cleanup) |
+
+### Data-Flow Trace (Level 4)
+
+Not applicable — this phase's deliverable is static CSS custom-property definitions and lint tooling, not dynamic data rendering. No data-flow trace required.
+
+### Behavioral Spot-Checks
+
+| Behavior | Command | Result | Status |
+|----------|---------|--------|--------|
+| Permanent gate (all 4 rules) is 0-violation on current tree | `node ui/scripts/check-tokens.mjs` | exit 0, "PASS — 0 нарушений" | PASS |
+| Rule 4 alone (in isolation) is real, not a no-op | Source read of `checkColorFunctionsInStyle()` — same structure as Rule 2, wired into `main()` under `args.rules.includes(4)` | Rule 4 fired 17 times on the pre-migration tree per 23-07-SUMMARY; now 0 on the post-migration tree — confirms the rule is a real gate, not silently disabled | PASS |
+| No `rgba(220, 38, 38` (mismatched invalid-red) anywhere in `ui/src` | `git grep -c 'rgba(220, 38, 38' ui/src \| wc -l` | `0` | PASS |
+| `verify-value-map.mjs` CR-01 fix captures both tokens on a multi-token line | inline import + historical reproducer (commit 16244e2 pattern) | `removed ["--space-sm","--space-md"]`, `added ["--tr-space-xs","--tr-space-md"]` | PASS |
+| `pnpm lint` | `cd ui && pnpm lint` | exit 0 (eslint clean, prettier clean, check-tokens.mjs clean) | PASS |
+| `pnpm svelte-check` | `cd ui && pnpm svelte-check` | 242 files, 0 ERRORS, 48 WARNINGS (matches SUMMARY's claimed unchanged baseline) | PASS |
+| `pnpm build` | `cd ui && pnpm build` | exit 0, dist emitted, only pre-existing unrelated warnings (unused CSS selector in ActFormItemsTable, dynamic-import chunking notice) | PASS |
+
+### Probe Execution
+
+No `scripts/*/tests/probe-*.sh` probes declared or found for this phase. `check-tokens.mjs` and `verify-value-map.mjs` function as this phase's equivalent automated gates and were executed directly above (Behavioral Spot-Checks), not skipped.
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |--------------|------------|--------------|--------|----------|
-| DS-01 | 23-01, 23-03 | Единый слой токенов `--tr-*`; захардкоженных цветов не остаётся | **PARTIAL** | Token layer + call-site rename fully done (VERIFIED). "No hardcoded colors" sub-clause not fully met — 17 rgba() literals remain, invisible to the gate (see Gaps) |
-| DS-02 | 23-01 (token layer), all sweep plans | Темы визуально согласованы, переключаются без артефактов | STATICALLY VERIFIED / NEEDS HUMAN | Both themes fully defined symmetrically in `_tokens.scss`; visual consistency requires human UAT (surfaced in hand-off checklist by 23-06-SUMMARY) |
-| DS-03 | 23-01, 23-05 | Типографика на 9-уровневой шкале; идентификаторы моноширинным | VERIFIED (statically) + NEEDS HUMAN (visual hierarchy) | All call-sites migrated; `.tr-mono` applied to inv./serial/act-number sites; visual "correct level" needs human check |
-| DS-04 | 23-01, 23-04 | Отступы/радиусы по значению, вёрстка не сдвигается | VERIFIED (statically, independently re-checked) + NEEDS HUMAN (visual) | 0 call-sites left, value-map re-verified with corrected logic (578 hunks, 0 real violations); visual layout-shift confirmation is UAT |
-| QA-01 | 23-01 (fix in later plans), 23-03, 23-04, 23-05, 23-06 | Устранены неопределённые токены `--font-size-sm`, `--radius-lg`, (bonus `--shadow-md`) | VERIFIED | All 3 confirmed resolved and re-confirmed with 0 remaining old-name references |
+| DS-01 | 23-01, 23-03, 23-07, 23-08 | Единый слой токенов `--tr-*`; захардкоженных цветов не остаётся | **SATISFIED** (was PARTIAL) | Both the hex sub-clause (Rule 2, prior round) and the rgba/hsl sub-clause (Rule 4, this round) are now enforced by a 0-violation permanent gate. Gap fully closed |
+| DS-02 | 23-01, all sweep plans | Темы визуально согласованы, переключаются без артефактов | STATICALLY VERIFIED / NEEDS HUMAN (unchanged) | Not in scope of this gap-closure round; still requires live UAT |
+| DS-03 | 23-01, 23-05 | Типографика на 9-уровневой шкале; идентификаторы моноширинным | STATICALLY VERIFIED / NEEDS HUMAN (unchanged) | Not in scope of this gap-closure round |
+| DS-04 | 23-01, 23-04, 23-07 | Отступы/радиусы по значению, вёрстка не сдвигается | VERIFIED (statically, tooling bug now fixed) / NEEDS HUMAN (visual) | CR-01 fix independently re-confirmed correct on both the historical reproducer and the live CLI path; underlying migration was already shown correct in the prior round (0 real violations even with the buggy tool) — this round removes the tooling doubt entirely. Visual layout-shift confirmation remains UAT |
+| QA-01 | 23-01, 23-03, 23-04, 23-05, 23-06 | Устранены неопределённые токены | VERIFIED (unchanged) | Regression-checked, still 0 old-name references |
 
-No orphaned requirements — DS-01..04 and QA-01 all present in at least one plan's `requirements:` frontmatter, matching the phase requirement IDs given in the verification brief.
+No orphaned requirements — DS-01..04 and QA-01 all present in at least one plan's `requirements:` frontmatter across the full phase (23-01 through 23-08), matching the phase requirement IDs given in the verification brief.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `ui/scripts/verify-value-map.mjs` | 76-97 | Regex only matches first `--space-*`/`--radius-*` token per line (CR-01, confirmed) | Warning | One-shot tool, not the permanent gate; independently re-verified 0 real violations exist despite the tool bug, so no false "PASS" concealed a real regression in this instance |
-| `ui/scripts/check-tokens.mjs` | Rule 2 (HEX_RE) | No detection for `rgba()`/`hsl()`/`hsla()` literals (WR-03, confirmed) | Warning | Permanent gate blind spot — confirmed already-realized instances (see gap above); will not catch future regressions of this class |
-| `ui/src/lib/components/Modal.svelte` | 83, 91 | Hardcoded `rgba(0,0,0,0.4)`/`rgba(0,0,0,0.6)` overlay instead of `var(--tr-overlay)` | Warning | Most widely-reused overlay component bypasses the token specifically defined for it |
-| 9 files (PersonAutocomplete, ActFormItemsTable×2, Button, Input, DatePicker, LocationAutocomplete, DeviceAutocompleteField, ModelFormModal) | various | Duplicated `rgba(220, 38, 38, ...)` "invalid" focus ring, mismatched with `--tr-danger` token value | Warning | Visual inconsistency; un-tokenized magic number |
-| `ui/src/features/acts/ActFormItemsTable.svelte` | 141-157 | `removeRow()` doesn't reindex `debounceTimers` (CR-02, pre-existing since Phase 18) | Info (out of phase scope) | Real data-integrity bug but not introduced by / not part of Phase 23's DS-01..04/QA-01 scope — noted for awareness, not counted against this phase's goal |
-| `ui/src/features/acts/PdfPreviewModal.svelte` | 194-198 | Predictable temp filename, no cleanup (WR-04, pre-existing pattern) | Info (out of phase scope) | Unrelated to design tokens; noted for awareness |
-| No TBD/FIXME/XXX debt markers found in any Phase 23 key-file | — | — | — | Debt-marker gate clean |
+| None in the gap-closure diff scope | — | `grep -n -E "TBD\|FIXME\|XXX"` across all 17 files touched by 23-07/23-08 → 0 matches | — | Debt-marker gate clean |
+| `ui/src/lib/components/Button.svelte` | ~109 | Intentional alpha value change (0.3 → 0.2) on danger-ring, disclosed as WR-01-sanctioned in 23-08-SUMMARY.md with an explicit Phase-24 handoff note | Info | Real, if small, visual pixel change — not silent scope creep since it is explicitly documented as a deliberate trade-off with rationale (converging 9 duplicated sites to one canonical alpha value) and flagged for the next phase's planner. Surfaced as a new human-verification item below rather than treated as a silent regression |
+| Prior round's `verify-value-map.mjs` CR-01 regex bug | — | Fixed this round (`tokensOnSide()`) | — | No longer an anti-pattern; independently re-verified via import + historical reproducer |
+| Prior round's `check-tokens.mjs` Rule 2 blind spot for rgba/hsl | — | Fixed this round (Rule 4) | — | No longer an anti-pattern; independently re-verified via full-tree 0-violation run |
 
 ### Human Verification Required
 
-See `human_verification` in frontmatter above — 4 items (DS-02 theme switching, DS-04 visual layout stability, DS-03 visual hierarchy, DS-02/D-11 contrast check), all already explicitly identified and handed off by the phase's own 23-06-SUMMARY.md hand-off checklist. Confirmed these are genuinely non-automatable (require live browser/Tauri render).
+5 items require live browser/Tauri render — 4 carried over unchanged from the initial verification round (none of DS-02/DS-03's visual truths were touched by this gap-closure round, which was scoped exclusively to DS-01's rgba() literals) plus 1 new item introduced by this round's WR-01-sanctioned Button.svelte alpha change. See `human_verification` in frontmatter above for full detail.
 
 ### Gaps Summary
 
-The mechanical token-rename migration (the bulk of the phase's deliverable) is complete and correctly
-verified: all 6 old token-name families (`--color-*`, `--space-*`, `--radius-*`, `--font-size-*`,
-`--font-weight-*`, `--line-height-*`, `--font-family-base`, `--shadow-*`) are 100% migrated to
-`--tr-*` across `ui/src`, the permanent `check-tokens.mjs` gate passes clean, `pnpm lint`/`svelte-check`/
-`pnpm build` are all green, and all 3 QA-01 undefined-token bugs (plus the bonus `--shadow-md` find)
-are confirmed fixed with zero remaining old-name references anywhere in the tree.
+**The single gap from the initial verification round is closed.** DS-01's literal "захардкоженных цветов в компонентах не остаётся" clause is now fully met: 17 hardcoded `rgba()` literals across 14 files have been migrated to `--tr-overlay`, `--tr-danger-ring` (new token, added this round), and `--tr-elev-*`. The phase's permanent CI gate (`check-tokens.mjs`) gained a new Rule 4 that detects `rgba()`/`rgb()`/`hsl()`/`hsla()` inside `<style>` blocks, is enabled by default, and independently re-confirmed to pass 0-violation on the current tree — closing the blind spot permanently, not just for the 17 known sites. A pre-existing tooling bug (CR-01 in `verify-value-map.mjs`, which silently dropped the second-plus token on multi-token CSS lines) was also fixed and independently re-verified against the historical reproducer that exposed it.
 
-One real gap remains, identified by code review and independently confirmed here: **DS-01's explicit
-"no hardcoded colors remain in components" clause is not fully met.** 17 hardcoded `rgba()` color/shadow
-literals persist in 14 files, invisible to the phase's own permanent CI gate (`check-tokens.mjs` Rule 2
-only detects hex, not rgba()/hsl()). Two instances are materially significant, not just cosmetic:
-Modal.svelte's overlay background bypasses the `--tr-overlay` token defined specifically for that
-purpose, and a duplicated "invalid" focus-ring color across 9 files doesn't match the `--tr-danger`
-token value. This was a scoping choice baked into plan 23-03's must-haves (hex-only, matching
-research's `HEX_RE` design) — narrower than the roadmap-level DS-01 promise — not a mistake introduced
-by any executor deviation.
+Independent verification (not just trusting the SUMMARYs) confirms:
+- `node ui/scripts/check-tokens.mjs` (default args, all 4 rules) → exit 0, 0 violations, re-run directly
+- `git grep -c 'rgba(220, 38, 38' ui/src` → 0
+- Direct grep for `rgba(`/`rgb(`/`hsla(`/`hsl(` in every `.svelte` file's `<style>` block across `ui/src` → 0 matches
+- `pnpm lint` / `pnpm svelte-check` / `pnpm build` → all exit 0, warning baselines unchanged from pre-gap-closure state
+- Git diff scope for the gap-closure commit range (`659f10d..HEAD`) touches exactly the 17 files declared across both plans' `files_modified` frontmatter — no undisclosed scope creep
+- Modal.svelte's overlay and the 9 danger-ring sites read directly from source, confirmed on `var(--tr-overlay)`/`var(--tr-danger-ring)` respectively
+- No TBD/FIXME/XXX debt markers introduced in any of the 17 touched files
 
-This looks like a scoping gap rather than a deliberate accepted trade-off, so I am not treating it as
-an override candidate. It is small in surface area (17 sites, 2 recurring patterns) and does not block
-the phase's primary mechanical deliverable, but it does mean DS-01 cannot be marked fully achieved as
-literally worded in REQUIREMENTS.md.
+**One disclosed, intentional visual change** (Button.svelte's danger-ring alpha 0.3 → 0.2) is present, confirmed as WR-01-sanctioned in 23-08-SUMMARY.md with an explicit rationale (canonicalizing 9 duplicated focus-ring sites to a single alpha value) and an explicit Phase-24 handoff note (Button.svelte's full visual redesign is reserved for Phase 24 per CONTEXT.md; this note ensures that phase's planner isn't surprised by an already-touched file). This is not silent scope creep — it is disclosed, small (a single alpha channel on one pseudo-class), and consistent with the phase's own goal of eliminating divergent hardcoded color values. It is surfaced as a new human-verification item (not a gap) because it is a genuine, if sanctioned, pixel-level visual change that hasn't been eyeballed live yet.
 
-**This looks like it could reasonably be deferred to Phase 24** (which rebuilds Button and Modal on the
-new design system per its own goal), but Phase 24's stated goal/success-criteria do not explicitly
-commit to "remove hardcoded color literals" — per the conservative Step 9b matching rule, I am not
-auto-deferring it without clearer evidence, and am surfacing it as a gap for a human decision instead.
-
-The `verify-value-map.mjs` regex bug (CR-01) is a tooling defect, not a goal-blocking gap — my
-independent re-verification (corrected regex, same 578-hunk diff) found 0 real value-mismatches, so
-the underlying space/radius migration's "by value" guarantee holds despite the tool's blind spot.
-Recommend fixing the tool anyway since it may be reused/referenced in future phases with similar
-migration risk.
+**Overall status is `human_needed`, not `passed`**, because 5 items require live browser/Tauri rendering that cannot be verified via static analysis: 4 carried over unchanged from the initial round (theme-switch artifact check, layout-shift visual comparison, typography visual hierarchy, surface-inversion contrast spot-check) plus 1 new item for the Button.svelte alpha change. None of these are gaps — they are expected, pre-identified UAT items per the phase's own 23-06-SUMMARY.md hand-off checklist and this round's disclosed WR-01 change. The mechanical/gate-level deliverable of the phase (100% of DS-01..04 + QA-01's statically-verifiable clauses) is now fully and correctly closed.
 
 ---
 
-*Verified: 2026-07-17T23:10:00Z*
+*Verified: 2026-07-18T02:15:00Z*
 *Verifier: Claude (gsd-verifier)*
