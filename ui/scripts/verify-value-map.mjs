@@ -29,11 +29,14 @@ const SPACE_MAP = {
 
 // D-07: split --radius-sm. Безопасный дефолт --tr-radius-xs; только эти 4 файла (field-chrome
 // shared-компоненты) получают --tr-radius-sm.
+// Note: `git diff` path headers are always repo-root-relative (this repo's root is the parent of
+// `ui/`, not `ui/` itself), so entries here must carry the `ui/` prefix to match `filePath` as
+// extracted by splitIntoFileHunks() below (b/... side of `diff --git a/... b/...`).
 const RADIUS_EXCEPTION_FILES = new Set([
-  'src/lib/components/Button.svelte',
-  'src/lib/components/Input.svelte',
-  'src/lib/components/Select.svelte',
-  'src/lib/components/Textarea.svelte',
+  'ui/src/lib/components/Button.svelte',
+  'ui/src/lib/components/Input.svelte',
+  'ui/src/lib/components/Select.svelte',
+  'ui/src/lib/components/Textarea.svelte',
 ]);
 
 function expectedRadiusTarget(oldToken, filePath) {
