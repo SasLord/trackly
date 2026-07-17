@@ -396,7 +396,7 @@ Plans:
 **Wave 1**
 
 - [x] 23-01-PLAN.md — Токен-слой: _tokens.scss полностью переписан в --tr-* (D-01/D-02/D-03/D-05/D-10/D-12/D-14), global.scss мигрирован + .tr-mono
-- [ ] 23-02-PLAN.md — Гейт-скрипты: check-tokens.mjs (D-04) + verify-value-map.mjs (D-08) + D-15 eslint-фикс (5 pre-existing ошибок)
+- [x] 23-02-PLAN.md — Гейт-скрипты: check-tokens.mjs (D-04) + verify-value-map.mjs (D-08) + D-15 eslint-фикс (5 pre-existing ошибок)
 
 **Wave 2** *(depends on Wave 1)*
 
@@ -598,7 +598,7 @@ Plans:
 | 20. Печать актов и организация | v1.1.2 | 6/6 | Complete    | 2026-07-14 |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
-| 23. Токены и основы дизайн-системы | v1.2 | 1/6 | In Progress|  |
+| 23. Токены и основы дизайн-системы | v1.2 | 2/6 | In Progress|  |
 | 24. Базовые компоненты | v1.2 | 0/TBD | Not started | - |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
