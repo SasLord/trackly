@@ -390,8 +390,29 @@ Plans:
 4. Отступы и радиусы мигрированы по значению согласно карте соответствия — сравнение экрана до/после не показывает сдвига вёрстки.
 5. `--font-size-sm` (PersonAutocomplete.svelte) и `--radius-lg` (LoginPage/BlockedScreen/FirstRunWizard) резолвятся в определённое значение — без fallback на браузерный дефолт.
 
-**Plans**: TBD
+**Plans**: 6 plans in 5 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 23-01-PLAN.md — Токен-слой: _tokens.scss полностью переписан в --tr-* (D-01/D-02/D-03/D-05/D-10/D-12/D-14), global.scss мигрирован + .tr-mono
+- [ ] 23-02-PLAN.md — Гейт-скрипты: check-tokens.mjs (D-04) + verify-value-map.mjs (D-08) + D-15 eslint-фикс (5 pre-existing ошибок)
+
+**Wave 2** *(depends on Wave 1)*
+
+- [ ] 23-03-PLAN.md — Цвет + элевация по роли: sweep --color-*/--shadow-* (DS-01), инверсия поверхностей (D-11), hardcoded hex, --shadow-md bug fix (D-17)
+
+**Wave 3** *(depends on Wave 2 — тот же набор файлов, что и цвет)*
+
+- [ ] 23-04-PLAN.md — Space + radius по значению: sweep --space-*/--radius-* (DS-04), split --radius-sm (D-07), --radius-lg QA-01 fix, verify-value-map.mjs
+
+**Wave 4** *(depends on Wave 3 — тот же набор файлов)*
+
+- [ ] 23-05-PLAN.md — Типографика + .tr-mono охват: sweep --font-size-*/--font-weight-*/--line-height-* (DS-03), --font-size-sm QA-01 fix, .tr-mono на 9 in-scope сайтах (D-13/D-16)
+
+**Wave 5** *(depends on все предыдущие — финальный гейт)*
+
+- [ ] 23-06-PLAN.md — Финальная верификация: check-tokens.mjs + verify-value-map.mjs полный прогон, pnpm lint/svelte-check зелёные, hand-off чек-лист для UAT (D-09)
 
 ---
 
@@ -577,7 +598,7 @@ Plans:
 | 20. Печать актов и организация | v1.1.2 | 6/6 | Complete    | 2026-07-14 |
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
-| 23. Токены и основы дизайн-системы | v1.2 | 0/TBD | Not started | - |
+| 23. Токены и основы дизайн-системы | v1.2 | 0/6 | Not started | - |
 | 24. Базовые компоненты | v1.2 | 0/TBD | Not started | - |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
