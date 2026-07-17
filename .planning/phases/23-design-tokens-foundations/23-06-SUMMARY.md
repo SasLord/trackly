@@ -126,3 +126,9 @@ None — изменения ограничены форматированием 
 ---
 *Phase: 23-design-tokens-foundations*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/23-design-tokens-foundations/23-06-SUMMARY.md
+- FOUND: a7c9bbe (style(23-06): prettier --write on 6 pre-existing drift files, close pnpm lint gate)
+- FOUND: 15f2e5c (docs(23-06): add plan summary)
