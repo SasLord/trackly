@@ -67,7 +67,7 @@
   }
 
   .gauge-label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     white-space: nowrap;
     min-width: 60px;
@@ -89,7 +89,7 @@
   }
 
   .gauge-pct {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     min-width: 36px;
     text-align: right;

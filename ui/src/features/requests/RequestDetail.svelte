@@ -735,8 +735,8 @@
 
   .empty-heading {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -767,7 +767,7 @@
   .meta-item {
     display: flex;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
   }
 
   .meta-label {
@@ -784,8 +784,8 @@
 
   .section-heading {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -807,12 +807,12 @@
 
   .field-label,
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
   .field-value {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
   }
 
@@ -845,7 +845,7 @@
 
   .history-empty {
     margin: 0;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-tertiary);
     font-style: italic;
   }
@@ -861,7 +861,7 @@
     align-items: center;
     min-height: var(--row-height-dense, 32px);
     padding: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     border-bottom: 1px solid var(--tr-border);
 
@@ -878,6 +878,6 @@
   .confirm-body {
     margin: 0;
     color: var(--tr-text-secondary);
-    line-height: var(--line-height-body);
+    line-height: var(--tr-line-height-body);
   }
 </style>

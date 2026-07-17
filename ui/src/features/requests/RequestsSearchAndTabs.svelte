@@ -87,9 +87,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-regular);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-regular);
     cursor: pointer;
     height: 32px;
 
@@ -106,7 +106,7 @@
       background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
       border-color: var(--tr-accent);
       color: var(--tr-text-primary);
-      font-weight: var(--font-weight-semibold);
+      font-weight: var(--tr-font-weight-semibold);
     }
   }
 </style>

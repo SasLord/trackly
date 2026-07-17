@@ -391,15 +391,15 @@
 
   .section-title {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
   .subsection-title {
     margin: 0 0 var(--tr-space-xs);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -421,8 +421,8 @@
   }
 
   .form-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -430,7 +430,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
 
@@ -496,13 +496,13 @@
   }
 
   .logo-placeholder-text {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
   .logo-error {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 </style>

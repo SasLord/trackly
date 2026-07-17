@@ -306,8 +306,8 @@
 
   .section-title {
     margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -319,8 +319,8 @@
   }
 
   .form-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
     white-space: nowrap;
   }
@@ -329,7 +329,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     min-width: 220px;
@@ -353,8 +353,8 @@
 
   .variables-summary {
     padding: var(--tr-space-xs) var(--tr-space-md);
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
     cursor: pointer;
     user-select: none;
@@ -385,7 +385,7 @@
 
   .var-item {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     line-height: 1.6;
 
@@ -406,15 +406,15 @@
   }
 
   .unsaved-indicator {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-warning);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--tr-font-weight-medium);
     align-self: flex-end;
   }
 
   .template-textarea {
     font-family: monospace;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     min-height: 320px;
     width: 100%;
     resize: vertical;
@@ -455,7 +455,7 @@
 
   .modal-body-text {
     margin: 0;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     line-height: 1.5;
   }

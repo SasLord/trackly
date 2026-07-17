@@ -169,8 +169,8 @@
     background: transparent;
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     cursor: pointer;
     height: 28px;
@@ -214,7 +214,7 @@
   }
 
   .snapshot-hint {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     margin: 0;
     align-self: center;
@@ -240,8 +240,8 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-label);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
     cursor: pointer;
 
     &:focus-visible {
@@ -259,20 +259,20 @@
     // GAP-R3: constrain DatePicker to match other filter-row controls (28px height)
     :global(.date-picker) {
       height: 28px;
-      font-size: var(--font-size-label);
+      font-size: var(--tr-font-size-label);
       width: auto;
       min-width: 130px;
     }
   }
 
   .range-text {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     white-space: nowrap;
   }
 
   .range-error {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
     margin: 0;
     width: 100%;

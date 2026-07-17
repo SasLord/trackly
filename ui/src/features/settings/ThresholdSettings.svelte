@@ -65,8 +65,8 @@
 
   .section-title {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -77,8 +77,8 @@
   }
 
   .form-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -93,7 +93,7 @@
     padding: var(--tr-space-2xs) 2px var(--tr-space-2xs) var(--tr-space-xs);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     text-align: right;
@@ -107,13 +107,13 @@
   }
 
   .input-suffix {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
   }
 
   .helper-text {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     line-height: 1.5;
   }

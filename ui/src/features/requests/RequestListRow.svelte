@@ -140,7 +140,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     line-height: 1.2;
   }
 
@@ -150,7 +150,7 @@
 
   .desc {
     color: var(--tr-text-secondary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -167,7 +167,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 

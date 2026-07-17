@@ -169,19 +169,19 @@
 
   .error-text {
     color: var(--tr-danger);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     margin: 0;
   }
 
   .empty-heading {
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     margin: 0 0 var(--tr-space-2xs);
   }
 
   .empty-body {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-tertiary);
     margin: 0;
   }
@@ -207,8 +207,8 @@
       padding: 0 var(--tr-space-md);
       height: var(--row-height);
       text-align: left;
-      font-size: var(--font-size-label);
-      font-weight: var(--font-weight-medium);
+      font-size: var(--tr-font-size-label);
+      font-weight: var(--tr-font-weight-medium);
       color: var(--tr-text-secondary);
       border-bottom: 1px solid var(--tr-border);
       white-space: nowrap;
@@ -217,7 +217,7 @@
     td {
       padding: 0 var(--tr-space-md);
       height: var(--row-height);
-      font-size: var(--font-size-body);
+      font-size: var(--tr-font-size-body);
       color: var(--tr-text-primary);
       border-bottom: 1px solid var(--tr-border);
       max-width: 240px;
@@ -235,8 +235,8 @@
     padding: var(--tr-space-2xs) var(--tr-space-md);
     height: var(--row-height-dense);
     background: var(--tr-surface-sunken);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-semibold);
     border-top: 1px solid var(--tr-border-strong);
     color: var(--tr-text-primary);
   }

@@ -128,7 +128,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     line-height: 1.2;
   }
 
@@ -141,7 +141,7 @@
   }
 
   .name {
-    font-weight: var(--font-weight-semibold);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     flex: 1;
     overflow: hidden;
@@ -159,7 +159,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-xs);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
 
@@ -172,7 +172,7 @@
 
   .toner-hint {
     color: var(--tr-text-tertiary);
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     flex-shrink: 0;
   }
 

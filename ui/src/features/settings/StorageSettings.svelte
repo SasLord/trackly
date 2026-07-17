@@ -140,8 +140,8 @@
 
   .section-title {
     margin: 0 0 var(--tr-space-md);
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -153,8 +153,8 @@
   }
 
   .form-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -164,7 +164,7 @@
 
   .db-path-code {
     font-family: monospace;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     word-break: break-all;
     background: var(--tr-surface-sunken);
@@ -188,7 +188,7 @@
   }
 
   .restart-message {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
     font-style: italic;
     margin: 0;
@@ -196,7 +196,7 @@
 
   .modal-body-text {
     margin: 0;
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
     line-height: 1.5;
   }

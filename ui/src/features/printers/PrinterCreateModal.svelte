@@ -184,13 +184,13 @@
   }
 
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
-    font-weight: var(--font-weight-regular);
+    font-weight: var(--tr-font-weight-regular);
   }
 
   .field-error {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 
@@ -203,7 +203,7 @@
   }
 
   .section-hint {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     margin: 0;
   }

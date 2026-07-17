@@ -198,8 +198,8 @@
 
   .section-title {
     margin: 0 0 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--tr-font-size-h3);
+    font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
 
@@ -218,8 +218,8 @@
 
   .subsection-title {
     margin: 0;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -231,7 +231,7 @@
   }
 
   .last-backup-label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
@@ -248,8 +248,8 @@
   }
 
   .config-label {
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
   }
 
@@ -262,7 +262,7 @@
 
   .folder-code {
     font-family: monospace;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -278,7 +278,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     width: fit-content;
@@ -307,7 +307,7 @@
     padding: var(--tr-space-xs) var(--tr-space-md);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     background: var(--tr-bg);
     color: var(--tr-text-primary);
     text-align: right;
@@ -320,7 +320,7 @@
   }
 
   .input-suffix {
-    font-size: var(--font-size-body);
+    font-size: var(--tr-font-size-body);
     color: var(--tr-text-secondary);
   }
 
@@ -331,7 +331,7 @@
 
   .helper-text {
     margin: 0;
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 </style>

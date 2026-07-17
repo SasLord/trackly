@@ -293,9 +293,9 @@
   }
 
   .label {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
-    font-weight: var(--font-weight-regular);
+    font-weight: var(--tr-font-weight-regular);
   }
 
   .type-toggle {
@@ -312,9 +312,9 @@
     background: transparent;
     color: var(--tr-text-primary);
     border: none;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-regular);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-regular);
     cursor: pointer;
     height: 36px;
     transition: background 0.1s;
@@ -335,17 +335,17 @@
     &.active {
       background: color-mix(in srgb, var(--tr-accent) 12%, transparent);
       color: var(--tr-text-primary);
-      font-weight: var(--font-weight-semibold);
+      font-weight: var(--tr-font-weight-semibold);
     }
   }
 
   .field-hint {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
 
   .field-error {
-    font-size: var(--font-size-label);
+    font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
   }
 </style>

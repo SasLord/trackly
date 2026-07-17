@@ -51,9 +51,9 @@
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     cursor: pointer;
     height: 32px;
     white-space: nowrap;
