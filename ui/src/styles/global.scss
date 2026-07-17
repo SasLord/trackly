@@ -1,9 +1,9 @@
 // Global reset + base styles for Trackly UI.
-// Imported from main.ts before mount(). `@use './tokens';` emits the
-// `:root` / `[data-theme=…]` CSS-variable blocks exactly once into the
-// global stylesheet — svelte component `<style>` blocks are scoped, so
-// putting the tokens there (via `prependData`) would hash `:root` and
-// break variable resolution app-wide.
+// Imported from main.ts before mount(). The tokens import below emits the
+// `:root` / `[data-theme=…]` CSS-variable blocks (the `--tr-*` layer) exactly
+// once into the global stylesheet — svelte component `<style>` blocks are
+// scoped, so putting the tokens there (via `prependData`) would hash `:root`
+// and break variable resolution app-wide.
 @use './tokens';
 
 // ── Box-sizing reset ──────────────────────────────────────────────────────────
@@ -26,11 +26,11 @@ html {
 body {
   margin: 0;
   min-height: 100%;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
+  background: var(--tr-bg);
+  color: var(--tr-text-primary);
+  font-family: var(--tr-font-family);
+  font-size: var(--tr-font-size-body);
+  line-height: var(--tr-line-height-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -39,7 +39,7 @@ body {
 
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-accent-focus);
+  box-shadow: 0 0 0 3px var(--tr-focus-ring);
 }
 
 // ── Reduced motion ────────────────────────────────────────────────────────────
@@ -72,13 +72,20 @@ body {
     width: auto;
     height: auto;
     overflow: visible;
-    padding: var(--space-md);
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-medium);
+    padding: var(--tr-space-md);
+    background: var(--tr-accent);
+    color: var(--tr-text-inverse);
+    font-size: var(--tr-font-size-body);
+    font-weight: var(--tr-font-weight-medium);
     text-decoration: none;
   }
+}
+
+// ── Monospace utility (tabular identifiers: inventory №, serial №, act №) ─────
+
+.tr-mono {
+  font: var(--tr-text-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 // ── Scrollbar (Webkit) ────────────────────────────────────────────────────────
@@ -93,10 +100,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
+  background: var(--tr-border-strong);
   border-radius: 3px;
 
   &:hover {
-    background: var(--color-text-muted);
+    background: var(--tr-text-tertiary);
   }
 }
