@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: Roadmap created — ready for /gsd-plan-phase 23
-last_updated: "2026-07-16T16:45:12.482Z"
-last_activity: "2026-07-16 — ROADMAP.md created: 8 phases (23–30), 25/25 v1.2 requirements mapped, no orphans"
+status: executing
+last_updated: "2026-07-17T00:45:31.332Z"
+last_activity: 2026-07-17 -- Phase 23 planning complete
 progress:
   total_phases: 26
   completed_phases: 25
-  total_plans: 152
+  total_plans: 158
   completed_plans: 152
   percent: 96
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 23 of 30 (Токены и основы дизайн-системы)
 Plan: — (not planned yet)
-Status: Roadmap created — ready for /gsd-plan-phase 23
-Last activity: 2026-07-16 — ROADMAP.md created: 8 phases (23–30), 25/25 v1.2 requirements mapped, no orphans
+Status: Ready to execute
+Last activity: 2026-07-17 -- Phase 23 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 

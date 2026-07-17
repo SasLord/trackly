@@ -1,11 +1,18 @@
 ---
 phase: 23
 slug: design-tokens-foundations
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-17
+approved: 2026-07-17
 ---
+
+> **`wave_0_complete: false` — не оплошность.** Оба гейт-скрипта (`check-tokens.mjs`,
+> `verify-value-map.mjs`) физически ещё не существуют: их создаёт план 23-02 в волне 1, до того
+> как они понадобятся волнам 2–5. Флаг переходит в `true`, когда 23-02 исполнен. `nyquist_compliant`
+> относится к самой стратегии — она проверена план-чекером (Dimension 8a–8d) и покрывает все
+> задачи всех 6 планов.
 
 # Phase 23 — Validation Strategy
 
@@ -87,12 +94,13 @@ behind login and needs a backend with real data. This is architectural, not a to
 
 ## Validation Sign-Off
 
-- [ ] All tasks carry an automated verify command or an explicit Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without an automated verify
-- [ ] Wave 0 covers both missing scripts (`check-tokens.mjs`, `verify-value-map.mjs`)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 25s
-- [ ] Manual-only items handed to `/gsd-verify-work` as an explicit checklist
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks carry an automated verify command or an explicit Wave 0 dependency — verified by gsd-plan-checker across all 12 tasks of all 6 plans
+- [x] Sampling continuity: no 3 consecutive tasks without an automated verify
+- [x] Wave 0 covers both missing scripts (`check-tokens.mjs`, `verify-value-map.mjs`) — plan 23-02, wave 1, ahead of every plan that needs them
+- [x] No watch-mode flags
+- [x] Feedback latency < 25s
+- [x] Manual-only items handed to `/gsd-verify-work` as an explicit checklist — plan 23-06, task 2
+- [x] `nyquist_compliant: true` set in frontmatter
+- [ ] Wave 0 scripts exist on disk — flips when plan 23-02 executes
 
-**Approval:** pending
+**Approval:** approved 2026-07-17 (planning-time strategy; 0 blockers from gsd-plan-checker)
