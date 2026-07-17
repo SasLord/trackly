@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 // [check-tokens] Постоянный CI-гейт дизайн-токенов (Phase 23, план 02, D-04).
 //
-// Три независимо запускаемые проверки над `ui/src`:
+// Четыре независимо запускаемые проверки над `ui/src`:
 //   Rule 1 (old-name gate)      — старые семейства --color-*/--space-*/--radius-*/
 //                                  --font-size-*/--font-weight-*/--line-height-*/--shadow-*
 //                                  где-либо в файле (не только <style>).
 //   Rule 2 (hex-in-style gate)  — hex-литерал внутри <style>-блока .svelte-файла.
 //   Rule 3 (closed-world gate)  — var(--tr-*) ссылается на имя, реально определённое
 //                                  в ui/src/styles/_tokens.scss.
+//   Rule 4 (color-func-in-style gate) — rgba()/rgb()/hsl()/hsla() литерал внутри
+//                                  <style>-блока .svelte-файла (закрывает слепой участок
+//                                  Правила 2, которое видит только hex-литералы, Phase 23
+//                                  gap-closure, план 07).
 //
 // Zero-dependency: только node:fs/node:path. `fs.readdirSync(dir, { recursive: true })`
 // требует Node >= 20.1 (CI пинит node-version: '20' через actions/setup-node@v4, что тянет
@@ -24,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = path.resolve(__dirname, '..');
 
 function parseArgs(argv) {
-  const args = { rules: [1, 2, 3], src: path.join(UI_ROOT, 'src') };
+  const args = { rules: [1, 2, 3, 4], src: path.join(UI_ROOT, 'src') };
   for (const arg of argv) {
     if (arg.startsWith('--rules=')) {
       args.rules = arg
@@ -43,11 +47,13 @@ function parseArgs(argv) {
 
 function printHelp() {
   console.error(
-    '[check-tokens] Usage: node scripts/check-tokens.mjs [--rules=1,2,3] [--src=<dir>]\n' +
+    '[check-tokens] Usage: node scripts/check-tokens.mjs [--rules=1,2,3,4] [--src=<dir>]\n' +
       '  Rule 1: old token-family names (--color-*/--space-*/--radius-*/--font-size-*/\n' +
       '          --font-weight-*/--line-height-*/--shadow-*) anywhere in the file.\n' +
       '  Rule 2: hex literals inside <style> blocks of .svelte files.\n' +
-      '  Rule 3: var(--tr-*) references not defined in ui/src/styles/_tokens.scss.',
+      '  Rule 3: var(--tr-*) references not defined in ui/src/styles/_tokens.scss.\n' +
+      '  Rule 4: rgba()/rgb()/hsl()/hsla() color-function literals inside <style> blocks\n' +
+      '          of .svelte files.',
   );
 }
 
@@ -128,6 +134,34 @@ function checkHexInStyle(files) {
           file: filePath,
           line: lineNumberAt(content, blockStart + hexMatch.index),
           hex: hexMatch[0],
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+// ── Rule 4: color-function-in-<style> gate ─────────────────────────────────────
+// Намеренно ловит совпадения где угодно внутри style-блока, включая внутри
+// var(--tr-x, rgba(...))-fallback'ов — закрытая модель токенов (D-01, без bridge-алиасов)
+// делает такие fallback'и мёртвым кодом, который надо удалить, а не сохранять
+// (см. interfaces в 23-07-PLAN.md).
+const COLOR_FUNC_RE = /\b(?:rgba?|hsla?)\(/g;
+
+function checkColorFunctionsInStyle(files) {
+  const violations = [];
+  for (const filePath of files) {
+    if (!filePath.endsWith('.svelte')) continue;
+    const content = readFileSafe(filePath);
+    if (content == null) continue;
+    for (const styleMatch of content.matchAll(STYLE_BLOCK_RE)) {
+      const block = styleMatch[1];
+      const blockStart = styleMatch.index + styleMatch[0].indexOf(block);
+      for (const funcMatch of block.matchAll(COLOR_FUNC_RE)) {
+        violations.push({
+          file: filePath,
+          line: lineNumberAt(content, blockStart + funcMatch.index),
+          func: funcMatch[0],
         });
       }
     }
@@ -217,6 +251,16 @@ function main() {
     for (const v of violations) {
       console.error(
         `[check-tokens] ${relPath(v.file)}:${v.line} — undefined token reference ${v.token}`,
+      );
+    }
+    totalViolations += violations.length;
+  }
+
+  if (args.rules.includes(4)) {
+    const violations = checkColorFunctionsInStyle(files);
+    for (const v of violations) {
+      console.error(
+        `[check-tokens] ${relPath(v.file)}:${v.line} — color-function literal ${v.func}`,
       );
     }
     totalViolations += violations.length;
