@@ -129,3 +129,16 @@ Space/radius слой в `ui/src` полностью на `--tr-*` (кроме `
 ---
 *Phase: 23-design-tokens-foundations*
 *Completed: 2026-07-17*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/styles/_tokens.scss
+- FOUND: ui/scripts/verify-value-map.mjs
+- FOUND: .planning/phases/23-design-tokens-foundations/23-04-SUMMARY.md
+- FOUND: 16244e2 (feat(23-04): sweep batch 1/4)
+- FOUND: 66705ee (feat(23-04): sweep batch 2/4)
+- FOUND: 15d36a8 (feat(23-04): sweep batch 3/4)
+- FOUND: 9a0fbb6 (feat(23-04): sweep batch 4/4)
+- FOUND: ea6af95 (fix(23-04): radius-sm allowlist split)
+- FOUND: ddce311 (fix(23-04): verify-value-map.mjs path prefix)
+- FOUND: 26c60d0 (docs(23-04): add plan summary)
