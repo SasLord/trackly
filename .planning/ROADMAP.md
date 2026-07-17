@@ -439,8 +439,24 @@ Plans:
 4. Вкладки switch-bar показывают счётчики и подчёркивание активной вкладки.
 5. Модальное окно показывает оверлей + шапку + тело + футер действий с тенью уровня 3 и радиусом 12px.
 
-**Plans**: TBD
+**Plans**: 7 plans in 3 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 24-01-PLAN.md — Фундамент: токен --tr-accent-text + правка CMP-03/Success Criteria #3 (D-06), подавление переходов при смене темы (D-09)
+- [ ] 24-02-PLAN.md — Button: транскрипция Buttons.dc (5 вариантов x 2 размера x 6 состояний) + секция витрины «Кнопки»
+- [ ] 24-03-PLAN.md — Fields: Input/Select/Textarea (токен-фикс) + новые Checkbox/Radio (D-04) + секция витрины «Поля ввода»
+- [ ] 24-04-PLAN.md — Modal: радиус 12px + elev-3 + секция витрины «Модальное окно»
+
+**Wave 2** *(depends on Wave 1 — требует --tr-accent-text из 24-01)*
+
+- [ ] 24-05-PLAN.md — Badge: обратносовместимый appearance-проп (D-08, 0 из 21 call-site) + секция витрины «Бейджи»
+- [ ] 24-06-PLAN.md — Tabs: новый компонент, underline + segmented (D-05) + секция витрины «Вкладки»
+
+**Wave 3** *(depends on все предыдущие — сборка витрины)*
+
+- [ ] 24-07-PLAN.md — Витрина: сборка 5 секций, роут /showcase (admin-only, D-01/D-02/D-03), финальный checkpoint
 
 ---
 
