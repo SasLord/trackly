@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: completed
-last_updated: "2026-07-17T19:03:19.503Z"
+status: executing
+last_updated: "2026-07-17T19:09:28.987Z"
 last_activity: 2026-07-17
 progress:
   total_phases: 26
-  completed_phases: 25
+  completed_phases: 26
   total_plans: 160
-  completed_plans: 159
-  percent: 96
+  completed_plans: 160
+  percent: 100
 ---
 
 # Project State
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: 23 (design-tokens-foundations) — EXECUTING
-Plan: 7 of 8
-Status: Gap-closure Wave 1 complete — ready for 23-08 (Wave 2)
+Phase: 23 (design-tokens-foundations) — COMPLETE
+Plan: 8 of 8
+Status: Gap-closure round complete (23-07 + 23-08) — DS-01 закрыт буквально, check-tokens.mjs (все 4 правила) зелёный. Ready for /gsd-verify-phase or Phase 24.
 Last activity: 2026-07-17
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -204,6 +204,7 @@ Last activity: 2026-07-17
 | Phase 23 P05 | 20min | 2 tasks | 101 files |
 | Phase 23 P06 | 10min | 2 tasks | 7 files |
 | Phase 23 P07 | 15min | 2 tasks | 3 files |
+| Phase 23 P08 | 15min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -501,6 +502,8 @@ Recent decisions affecting current work:
 - [Phase 23-07]: check-tokens.mjs Rule 4 intentionally matches rgba/hsl inside var(--tr-x, rgba(...)) fallbacks — closed-world token model makes such fallbacks dead code to remove, not preserve
 - [Phase 23-07]: verify-value-map.mjs tokensOnSide() applies an unanchored global regex per split line (no m-flag) instead of one anchored+lazy pattern over the whole hunk text — fixes CR-01
 - [Phase 23-07]: tr-danger-ring fixed at alpha 0.2 for both themes (rgb components copied verbatim from tr-danger), canonizing 8 of 9 duplicated invalid-focus-ring sites; Button.svelte 0.3 converges in plan 23-08
+- [Phase 23]: 23-08: Modal.svelte overlay dark-mode override удалён после миграции на theme-scoped var(--tr-overlay)
+- [Phase 23]: 23-08: Button.svelte danger-ring alpha 0.3->0.2 (var(--tr-danger-ring)) — WR-01-санкционированный visual touch, handoff в фазу 24 (CMP-01)
 
 ### Pending Todos
 
@@ -576,8 +579,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-17T19:03:19.495Z
-Stopped at: Completed 23-06-PLAN.md — Phase 23 all 6 plans done, ready for /gsd-verify-work
+Last session: 2026-07-17T19:09:16.240Z
+Stopped at: Completed 23-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
