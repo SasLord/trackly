@@ -44,9 +44,9 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);
-    background: var(--tr-bg);
+    background: var(--tr-surface);
     color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
+    border: 1px solid var(--tr-border-strong);
     border-radius: var(--tr-radius-sm);
     font-family: var(--tr-font-family);
     font-size: var(--tr-font-size-body);

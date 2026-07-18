@@ -41,9 +41,9 @@
     width: 100%;
     min-height: 80px;
     padding: var(--tr-space-xs) var(--tr-space-md);
-    background: var(--tr-bg);
+    background: var(--tr-surface);
     color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
+    border: 1px solid var(--tr-border-strong);
     border-radius: var(--tr-radius-sm);
     font-family: var(--tr-font-family);
     font-size: var(--tr-font-size-body);
@@ -62,6 +62,7 @@
 
     &.invalid {
       border-color: var(--tr-danger);
+      box-shadow: 0 0 0 3px var(--tr-danger-ring);
     }
 
     &:disabled {
