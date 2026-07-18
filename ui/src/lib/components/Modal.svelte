@@ -20,6 +20,52 @@
   // outside → mouseup на backdrop), который ранее закрывал модал.
   let mouseDownOnBackdrop = $state(false);
 
+  // CR-03 fix (24-10): WAI-ARIA Dialog Pattern — initial focus, Tab-trap, focus restoration.
+  let dialogEl = $state<HTMLElement | null>(null);
+  let prevFocus: HTMLElement | null = null;
+
+  const FOCUSABLE_SELECTOR =
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  const TRAP_FOCUSABLE_SELECTOR =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  $effect(() => {
+    if (!open) return;
+
+    prevFocus = document.activeElement as HTMLElement | null;
+    const first = dialogEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (first) {
+      first.focus();
+    } else {
+      dialogEl?.focus();
+    }
+
+    return () => {
+      prevFocus?.focus();
+    };
+  });
+
+  function trapTab(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || !dialogEl) return;
+
+    const nodes = Array.from(
+      dialogEl.querySelectorAll<HTMLElement>(TRAP_FOCUSABLE_SELECTOR),
+    ).filter((n) => n.offsetParent !== null);
+
+    if (nodes.length === 0) return;
+
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose();
   }
@@ -49,7 +95,12 @@
     aria-labelledby={titleId}
     tabindex="-1"
   >
-    <div class="modal-container modal-{size}">
+    <div
+      class="modal-container modal-{size}"
+      bind:this={dialogEl}
+      tabindex="-1"
+      onkeydown={trapTab}
+    >
       <header class="modal-header">
         <h2 id={titleId} class="modal-title">{title}</h2>
         <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
