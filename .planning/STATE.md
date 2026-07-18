@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T06:12:55.184Z"
+last_updated: "2026-07-18T06:18:00.135Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 26
   total_plans: 167
-  completed_plans: 161
+  completed_plans: 162
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 24 (base-components) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -207,6 +207,7 @@ Last activity: 2026-07-18
 | Phase 23 P07 | 15min | 2 tasks | 3 files |
 | Phase 23 P08 | 15min | 3 tasks | 14 files |
 | Phase 24 P01 | 8min | 2 tasks | 5 files |
+| Phase 24 P02 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -508,6 +509,8 @@ Recent decisions affecting current work:
 - [Phase 23]: 23-08: Button.svelte danger-ring alpha 0.3->0.2 (var(--tr-danger-ring)) — WR-01-санкционированный visual touch, handoff в фазу 24 (CMP-01)
 - [Phase ?]: 24-01: --tr-accent-text values transcribed verbatim from RESEARCH.md (Badges.dc.html/Tabs.dc.html agree), not recomputed
 - [Phase ?]: 24-01: theme.svelte.ts applyResolved() uses requestAnimationFrame (not setTimeout) to remove .theme-switching, guaranteeing removal only after new theme paints
+- [Phase ?]: Phase 24 Plan 02: added missing --tr-danger-hover/--tr-danger-active tokens to _tokens.scss (Rule 3 blocking fix) — RESEARCH.md claimed VERIFIED-present but they didn't exist
+- [Phase ?]: Phase 24 Plan 02: ButtonsSection.svelte written as fully explicit static markup (no #each loops) to match literal-string acceptance greps and keep showcase self-documenting
 
 ### Pending Todos
 
@@ -583,8 +586,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T06:12:55.176Z
-Stopped at: Completed 24-01-PLAN.md
+Last session: 2026-07-18T06:18:00.127Z
+Stopped at: Completed 24-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
