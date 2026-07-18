@@ -1,10 +1,11 @@
 ---
 phase: 25
 slug: dropdown
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-19
+reviewed_at: 2026-07-19
 ---
 
 # Phase 25 — UI Design Contract
@@ -395,11 +396,17 @@ SC #5 проверяется в самом рискованном месте —
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: FLAG — `Ничего не найдено` без подсказки следующего шага (принято)
+- [x] Dimension 2 Visuals: FLAG — фокальная точка витрины и текстовая альтернатива для глифов-действий не объявлены
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: FLAG — 4 веса (400/500/600/700); 700 вводится этой фазой (галочка `✓`)
+- [x] Dimension 5 Spacing: FLAG — отклонения от сетки 4px (2/6/9/10/29px) объявлены и обоснованы D-10
+- [x] Dimension 6 Registry Safety: PASS — сторонних реестров нет
 
-**Approval:** pending
+**Approval:** APPROVED (2026-07-19, gsd-ui-checker) — 5 FLAG, 0 BLOCK; все FLAG приняты как непреодолевающие рекомендации.
+
+**Принятые рекомендации к учёту при планировании (не блокируют):**
+1. Рассмотреть `Ничего не найдено — измените запрос` (формулировка унаследуется фазами 26–28).
+2. Объявить `aria-label` / `aria-hidden="true"` для декоративных глифов `▸ › ⌕ ⋯`.
+3. Рассмотреть понижение веса `✓` с 700 до 600, чтобы не вводить четвёртый вес.
+4. Список исключений из сетки 4px считать закрытым — расширение в фазах 26–28 только через правку UI-SPEC.
