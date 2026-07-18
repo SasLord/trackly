@@ -487,10 +487,20 @@ Plans:
 1. Строки таблицы визуально различимы в состояниях обычная/наведение/выбрана.
 2. Строка-группа сворачивается/разворачивается, показывая счётчик-пилюлю и вложенные устройства при раскрытии.
 3. Dropdown корректно отображает плоский список.
-4. Dropdown корректно отображает список с группами (заголовки секций).
+4. Dropdown корректно отображает список с группами: клик по группе раскрывает её содержимое через drill-in (замена панели на экземпляры группы с шапкой «← Назад · {название группы}»), а не заголовками секций — модель зафиксирована D-01 Фазы 25 (совпадает с уже работающей механикой ActFormItemsTable.svelte).
 5. Существующее portal/anchor-позиционирование (Фаза 18) продолжает работать без регрессий с новым визуалом.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
@@ -511,7 +521,17 @@ Plans:
 2. Список устройств визуально соответствует макету Claude Design, включая групповые строки.
 3. Оба окна сохраняют всю существующую функциональность (фильтры, автокомплиты, CRUD, CSV import/export) без изменений поведения.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
@@ -533,7 +553,17 @@ Plans:
 3. Окна Принтеров (список, деталь, агрегаты совместимости) используют новые токены/компоненты повсеместно.
 4. Каждое существующее поле/действие/workflow в этих окнах остаётся на месте и работает (изменение чисто визуальное).
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
@@ -555,7 +585,17 @@ Plans:
 3. Окно Настроек (организация, шаблоны, бэкапы, вкладка AD) использует новые токены/компоненты.
 4. Окно Пользователей использует новые токены/компоненты.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
@@ -576,7 +616,17 @@ Plans:
 2. EmployeeLayout (сайдбар, форма заявки, список собственных заявок) использует новые токены/компоненты.
 3. Визуальный язык соответствует переработанному основному приложению, несмотря на отдельную оболочку.
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
@@ -597,7 +647,17 @@ Plans:
 2. Каждый интерактивный элемент (кнопка, поле, ссылка, строка таблицы, вкладка) показывает видимое кольцо фокуса при навигации клавиатурой.
 3. Десктоп (Tauri WebView) и LAN-браузер визуально идентичны на репрезентативной выборке окон (дашборд, устройства, акты, логин).
 
-**Plans**: TBD
+**Plans**: 7 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+- [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
+- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
 **UI hint**: yes
 
 ---
