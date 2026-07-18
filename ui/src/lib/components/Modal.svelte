@@ -89,9 +89,9 @@
   }
 
   .modal-container {
-    background: var(--tr-surface-raised);
-    border-radius: var(--tr-radius-md);
-    box-shadow: var(--tr-elev-2);
+    background: var(--tr-surface);
+    border-radius: var(--tr-radius-lg);
+    box-shadow: var(--tr-elev-3);
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 64px);
