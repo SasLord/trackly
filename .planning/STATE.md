@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: executing
-last_updated: "2026-07-18T08:52:20.037Z"
+status: verifying
+last_updated: "2026-07-18T13:52:43.437Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
-  completed_phases: 26
+  completed_phases: 27
   total_plans: 171
-  completed_plans: 170
-  percent: 96
+  completed_plans: 171
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 24 (base-components) — EXECUTING
 Plan: 11 of 11
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-18
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -216,6 +216,7 @@ Last activity: 2026-07-18
 | Phase 24 P08 | 6min | 2 tasks | 4 files |
 | Phase 24 P09 | 8min | 2 tasks | 1 files |
 | Phase 24 P10 | 6min | 2 tasks | 1 files |
+| Phase 24 P11 | 6min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -529,6 +530,7 @@ Recent decisions affecting current work:
 - [Phase 24]: 24-08: kept oninput/onchange callbacks alongside bind:value/bind:checked unchanged — both mechanisms coexist without conflict; no consumer-facing API change
 - [Phase 24]: 24-09: Nested &.badge-m-count inside .badge-m-success/.badge-m-warning/.badge-m-danger (matching existing &.badge-m-soft/&.badge-m-solid/&.badge-m-dot nesting), not new flat .badge-m-X.badge-m-count selectors
 - [Phase 24]: 24-10: single $effect on 'open' handles both initial focus and focus-restoration cleanup; trapTab only intercepts Tab/Shift+Tab at wrap-around edges, native tab order elsewhere
+- [Phase 24]: 24-11: gate="blocking-human" primary + config auto_advance flip secondary defense-in-depth for genuine human checkpoint sign-off (closes 24-07's silent auto-approval gap)
 
 ### Pending Todos
 
@@ -604,8 +606,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T08:52:20.029Z
-Stopped at: Completed 24-10-PLAN.md (Modal focus-trap CR-03); next 24-11
+Last session: 2026-07-18T13:52:43.430Z
+Stopped at: Completed 24-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

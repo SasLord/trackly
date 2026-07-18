@@ -463,7 +463,7 @@ Plans:
 - [x] 24-08-PLAN.md — Fix two-way bind:value in Input/Select/Textarea (CMP-02) + fix D-09 theme-transition suppression selector
 - [x] 24-09-PLAN.md — Fix Badge appearance="count" CSS for success/warning/danger tones (CMP-03)
 - [x] 24-10-PLAN.md — Modal focus management: initial focus, Tab-trap, focus restoration (code review CR-03 follow-up)
-- [ ] 24-11-PLAN.md — Genuine human sign-off checkpoint (blocking, not auto-advanceable) on all 5 showcase sections + all 4 gap-closure fixes
+- [x] 24-11-PLAN.md — Genuine human sign-off checkpoint (blocking, not auto-advanceable) on all 5 showcase sections + all 4 gap-closure fixes
 
 ---
 
@@ -627,7 +627,7 @@ Plans:
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
-| 24. Базовые компоненты | v1.2 | 10/11 | In Progress|  |
+| 24. Базовые компоненты | v1.2 | 11/11 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
