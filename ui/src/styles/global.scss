@@ -61,8 +61,8 @@ body {
 // smear colors when the user flips light/dark. Coexists with the reduced-motion
 // block above — that one is permanent for users with the OS preference; this one
 // is momentary for everyone else.
-:global(.theme-switching),
-:global(.theme-switching) * {
+.theme-switching,
+.theme-switching * {
   transition: none !important;
 }
 
