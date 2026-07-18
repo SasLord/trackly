@@ -468,7 +468,7 @@ Plans:
 **Gap closure round 2** *(24-REVIEW.md: 2 BLOCKER regressions introduced by 24-10 (CR-01 double onClose, CR-02 iframe/portal excluded from Tab-trap) + 2 WARNING regressions introduced by 24-08/24-09 (WR-05 Badge size ignored for count, WR-06 Input number/string type leak); bundled WR-02 since it lives in the same Modal.svelte focus code as CR-01/CR-02)*
 
 - [x] 24-12-PLAN.md — Modal.svelte: single window-level keydown handler (CR-01), portal-aware + iframe-inclusive Tab-trap (CR-02), verified initial-focus fallback (WR-02)
-- [ ] 24-13-PLAN.md — Badge.svelte: unify appearance="count" sizing across all 5 tones so size="sm" works (WR-05); Input.svelte: stop type="number" bind:value from leaking number|null into the string value contract (WR-06)
+- [x] 24-13-PLAN.md — Badge.svelte: unify appearance="count" sizing across all 5 tones so size="sm" works (WR-05); Input.svelte: stop type="number" bind:value from leaking number|null into the string value contract (WR-06)
 
 ---
 
@@ -632,7 +632,7 @@ Plans:
 | 21. Точечные фиксы — коды картриджей | v1.1.2 | 1/1 | Complete    | 2026-07-14 |
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
-| 24. Базовые компоненты | v1.2 | 12/13 | In Progress|  |
+| 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |

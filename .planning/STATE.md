@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T14:52:09.989Z"
+last_updated: "2026-07-18T14:57:17.590Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
-  completed_phases: 26
+  completed_phases: 27
   total_plans: 173
-  completed_plans: 172
-  percent: 96
+  completed_plans: 173
+  percent: 100
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 24 (base-components) — EXECUTING
-Plan: 2 of 13
+Plan: 3 of 13
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -218,6 +218,7 @@ Last activity: 2026-07-18
 | Phase 24 P10 | 6min | 2 tasks | 1 files |
 | Phase 24 P11 | 6min | 3 tasks | 1 files |
 | Phase 24 P12 | 12min | 2 tasks | 2 files |
+| Phase 24 P13 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -534,6 +535,8 @@ Recent decisions affecting current work:
 - [Phase 24]: 24-11: gate="blocking-human" primary + config auto_advance flip secondary defense-in-depth for genuine human checkpoint sign-off (closes 24-07's silent auto-approval gap)
 - [Phase ?]: 24-12: single TRAP_FOCUSABLE_PARTS array derives both dialog-scoped and portal-scoped selectors via .map() (not string-prepend to joined selector) to avoid silently scoping only the first alternative
 - [Phase ?]: 24-12: portaledFocusable() uses getClientRects().length>0 not offsetParent, since dropdownAnchor.ts sets position:fixed on portaled dropdowns
+- [Phase 24]: 24-13: Gave all 5 Badge tones a border for appearance=count (majority pattern) instead of removing borders from the 4 that had them
+- [Phase 24]: 24-13: Fixed WR-06 via one-way value={value} + explicit value = v assignment in oninput, not by narrowing Input's type prop union (would break ActNumberField.svelte)
 
 ### Pending Todos
 
@@ -609,8 +612,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T14:52:01.704Z
-Stopped at: Completed 24-12-PLAN.md
+Last session: 2026-07-18T14:57:17.582Z
+Stopped at: Completed 24-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
