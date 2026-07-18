@@ -54,7 +54,6 @@ Trackly — портативное приложение для учёта тех
      и MILESTONES.md). Ярлык приведён в соответствие с фактом 2026-07-16 при старте
      настоящего v1.2 «Редизайн UI и дизайн-система» (фазы 23–30). -->
 
-
 - [x] **Phase 16: Документы через HTML-печать** - Оба акта (приёма-передачи и приёмки устройства) генерируются из HTML-шаблонов (папка `templates/` рядом с exe + вшитый дефолт-fallback) и печатаются/сохраняются в PDF через диалог браузера в обоих режимах (desktop + LAN), визуально по образцу Word; krilla/DocSpec заморожен и не используется. (SPEC: 16-SPEC.md) (completed 2026-07-05)
 - [x] **Phase 17: Отчёты и Шаблоны через HTML-печать** - Отчёты и редактор Шаблонов переходят на HTML-печать по паттерну Phase 16; krilla/DocSpec выведены из активного пути (заморожены, не удалены). (SPEC: 17-SPEC.md) (plans 7/7; gap-closure 17-05..17-07 planned 2026-07-07 — см. 17-VERIFICATION.md) (completed 2026-07-07)
 
@@ -319,6 +318,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
+
 - [x] 21-01-PLAN.md — Сократить формат автокода картриджей/фотобарабанов до 4 цифр (C-XXXX/D-XXXX)
 
 ---
@@ -491,13 +491,20 @@ Plans:
 5. Существующее portal/anchor-позиционирование (Фаза 18) продолжает работать без регрессий с новым визуалом.
 
 **Plans**: 7 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
 - [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
 - [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
 - [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
 
@@ -524,6 +531,7 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
@@ -556,6 +564,7 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
@@ -588,6 +597,7 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
@@ -619,6 +629,7 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
@@ -650,6 +661,7 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [ ] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
@@ -874,4 +886,5 @@ Employee уходит в `employeeRoutes` с catch-all `'*': AccessDenied`, по
 **Почему не в v1.2:** тема — безопасность и роли, а не редизайн UI.
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
