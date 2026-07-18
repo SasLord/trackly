@@ -48,6 +48,26 @@ created: 2026-07-18
 | 24-06-* | 06 | 2 | CMP-04 | — | N/A | static | `pnpm --dir ui check && node ui/scripts/check-tokens.mjs` | ✅ | ⬜ pending |
 | 24-07-* | 07 | 3 | CMP-01..05 (showcase) | T-24-07-01 | Showcase route admin-gated via existing sidebar-role filter | static + manual UAT | `pnpm --dir ui build` + admin login → `/showcase` | ✅ | ⬜ pending |
 
+### Gap-closure plans (added after 24-VERIFICATION.md found 3 BLOCKER gaps)
+
+| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
+|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
+| 24-08-T1 | 08 | 1 | CMP-02 (bind:value) | T-24-08-01 | Two-way bind fixes data fidelity; backend validation unaffected | static | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ | ⬜ pending |
+| 24-08-T2 | 08 | 1 | D-09 (theme transition) | T-24-08-02 | N/A (CSS selector syntax fix) | build + grep | `pnpm --dir ui build && grep -c ":global(" ui/dist/assets/*.css` | ✅ | ⬜ pending |
+| 24-09-T1 | 09 | 1 | CMP-03 (Badge count 5 tones) | T-24-09-01 | Legacy 21 call-sites render byte-identically | static | `node ui/scripts/check-tokens.mjs && pnpm --dir ui svelte-check` | ✅ | ⬜ pending |
+| 24-09-T2 | 09 | 1 | CMP-03 | T-24-09-01 | N/A | build + grep | `pnpm --dir ui build && grep -c "badge-m-success\|badge-m-warning\|badge-m-danger" ui/dist/assets/*.css` | ✅ | ⬜ pending |
+| 24-10-T1 | 10 | 2 | CMP-05 (CR-03 Modal focus) | T-24-10-01 | Empty-focusable-list guard prevents UX lockout | static | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ | ⬜ pending |
+| 24-10-T2 | 10 | 2 | CMP-05 | T-24-10-02 | prevFocus sourced from same-DOM activeElement only | build + manual keyboard walkthrough | `pnpm --dir ui build` | ✅ | ⬜ pending |
+| 24-11-T1 | 11 | 3 | CMP-01..05 (checkpoint gate) | T-24-11-02 | Prior auto_advance recorded before mutation; restored in T3 | CLI assertion | `test "$(gsd-sdk query check auto-mode --pick active)" = "false"` | ✅ | ⬜ pending |
+| 24-11-T2 | 11 | 3 | CMP-01..05 | T-24-11-01 | /showcase route-gating gap re-affirmed as accepted (deferred) | manual UAT (blocking) | human sign-off vs 5 `.dc.html` refs | ✅ | ⬜ pending |
+| 24-11-T3 | 11 | 3 | — (restoration) | T-24-11-02 | Config mutation does not outlive the plan | CLI + git diff | `gsd-sdk query config-get workflow.auto_advance && git diff --stat .planning/config.json` | ✅ | ⬜ pending |
+
+> **24-11-T1 is the gate that makes 24-11-T2 real.** `autonomous: false` and `gate="blocking"` do not prevent
+> auto-approval — auto-approval keys on checkpoint TYPE (`checkpoints.md:11`), and `execute-phase.md:963-975`
+> has no carve-out for either attribute. The `gate="blocking-human"` value referenced in `12-03-SUMMARY.md`
+> does not exist anywhere in the GSD sources. Only flipping `workflow.auto_advance` to `false` (T1) actually
+> stops the auto-approval path; T3 restores it.
+
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
