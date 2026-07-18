@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T20:17:38.038Z"
+last_updated: "2026-07-18T20:32:19.530Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 25 (dropdown) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -221,6 +221,7 @@ Last activity: 2026-07-18
 | Phase 24 P13 | 5min | 2 tasks | 2 files |
 | Phase 25 P01 | 5min | 2 tasks | 3 files |
 | Phase 25 P02 | 25min | 2 tasks | 1 files |
+| Phase 25 P03 | 25min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -543,6 +544,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 25-02: void-marker pattern to split Dropdown.svelte across 2 task commits under strict noUnusedLocals TS gate (removed in Task 2 as bindings wire into the panel)
 - [Phase ?]: 25-02: AUTO-05 $effect only runs when flat=false — flat mode has no drill-in concept
 - [Phase ?]: 25-02: Dropdown panel CSS uses overflow:auto not UI-SPEC's literal overflow:hidden — required for scrolling within max-height
+- [Phase ?]: 25-03: checkmark font-weight 600 (var(--tr-font-weight-semibold)) not a new 700 weight, per UI-SPEC Checker Sign-Off recommendation
+- [Phase ?]: 25-03: two-stage Escape in member-view gated on showBack (not just viewMode), so AUTO-05's auto-flattened single-group view closes immediately instead of looping back into a 1-item groups list
+- [Phase ?]: 25-03: drill-in focus management via new returnIndex field — entering member-view activates first option, backToGroups() restores the group's own index
 
 ### Pending Todos
 
@@ -619,8 +623,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T20:17:38.031Z
-Stopped at: Completed 25-02-PLAN.md
+Last session: 2026-07-18T20:32:19.523Z
+Stopped at: Completed 25-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
