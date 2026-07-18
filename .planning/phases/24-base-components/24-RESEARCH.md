@@ -573,9 +573,10 @@ documentation contradicting the new behavior.
 **If this table is empty:** N/A — see entries above. All three are low-risk, evidence-based inferences from
 directly-read source files, not speculative claims about unverified external facts.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Segmented-Tabs active box-shadow: `var(--tr-elev-1)` vs new token vs drop the shadow?**
+   - **RESOLVED:** Use `var(--tr-elev-1)`. Locked into Plan 24-06 (grep-verified zero raw `rgba(` in Tabs `<style>`); accepted minor shadow-alpha variance rather than reopening the Phase 23 palette.
    - What we know: `Tabs.dc.html`'s `segStyle(act)` active state uses a raw, non-tokenized
      `rgba(16,22,34,.12)` 1-layer shadow; no existing `--tr-elev-*` token matches it exactly;
      `check-tokens.mjs` Rule 4 will hard-fail any raw `rgba()` in a `.svelte` `<style>` block.
@@ -587,6 +588,7 @@ directly-read source files, not speculative claims about unverified external fac
      a named exception in a follow-up plan rather than blocking this phase.
 
 2. **Radio `bind:group` API shape on the new `Radio.svelte` component**
+   - **RESOLVED:** Expose `group = $bindable()` (native `bind:group` semantics). Locked into Plan 24-03.
    - What we know: Native `<input type="radio" bind:group={value}>` is the standard Svelte mechanism; the
      `.dc` reference shows no group-binding behavior (Design Canvas isn't interactive there — it just shows
      2 static radio states, "selected" and "not selected", independently).
