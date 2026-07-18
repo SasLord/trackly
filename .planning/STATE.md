@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T08:19:48.250Z"
-last_activity: 2026-07-18 -- Phase 24 planning complete
+last_updated: "2026-07-18T08:28:11.452Z"
+last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 26
   total_plans: 171
-  completed_plans: 167
+  completed_plans: 168
   percent: 96
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 24 (base-components) — EXECUTING
-Plan: 7 of 7
+Plan: 2 of 11
 Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 24 planning complete
+Last activity: 2026-07-18
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -213,6 +213,7 @@ Last activity: 2026-07-18 -- Phase 24 planning complete
 | Phase 24 P05 | 5min | 2 tasks | 2 files |
 | Phase 24 P06 | 5min | 2 tasks | 2 files |
 | Phase 24 P07 | 15min | 3 tasks | 5 files |
+| Phase 24 P08 | 6min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -523,6 +524,7 @@ Recent decisions affecting current work:
 - [Phase 24]: Badge default render preserved verbatim (accent stays solid); appearance matrix opt-in via badge-m* namespace
 - [Phase 24]: 24-06: Tabs container role rendered via literal {#if}/{:else} branches sharing one #snippet (not a dynamic ternary) — required for the role="tablist"/role="group" acceptance-criteria grep to pass
 - [Phase 24]: Task 3 (24-07 human-verify checkpoint) closed as gate-closure under auto_advance; live browser/visual verification against .dc.html references NOT performed by a human and remains outstanding — documented in 24-07-SUMMARY.md
+- [Phase 24]: 24-08: kept oninput/onchange callbacks alongside bind:value/bind:checked unchanged — both mechanisms coexist without conflict; no consumer-facing API change
 
 ### Pending Todos
 
@@ -598,7 +600,7 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T06:47:20.751Z
+Last session: 2026-07-18T08:28:01.615Z
 Stopped at: Completed 24-05-PLAN.md
 Resume file: None
 
