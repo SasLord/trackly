@@ -10,7 +10,7 @@
     oninput?: (_value: string) => void;
   }
 
-  const {
+  let {
     type = 'text',
     value = $bindable(''),
     placeholder,
@@ -29,7 +29,7 @@
   {disabled}
   class="input"
   class:invalid
-  {value}
+  bind:value
   aria-describedby={ariaDescribedby}
   aria-invalid={invalid || undefined}
   oninput={(e) => {

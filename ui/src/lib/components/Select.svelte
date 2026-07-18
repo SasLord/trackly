@@ -15,7 +15,7 @@
     children?: Snippet;
   }
 
-  const {
+  let {
     value = $bindable(''),
     disabled = false,
     invalid = false,
@@ -31,7 +31,7 @@
     {disabled}
     class="select"
     class:invalid
-    {value}
+    bind:value
     onchange={(e) => {
       const v = (e.currentTarget as HTMLSelectElement).value;
       onchange?.(v);

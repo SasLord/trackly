@@ -9,7 +9,7 @@
     oninput?: (_value: string) => void;
   }
 
-  const {
+  let {
     value = $bindable(''),
     placeholder,
     disabled = false,
@@ -27,7 +27,7 @@
   {rows}
   class="textarea"
   class:invalid
-  {value}
+  bind:value
   aria-invalid={invalid || undefined}
   oninput={(e) => {
     const v = (e.currentTarget as HTMLTextAreaElement).value;
