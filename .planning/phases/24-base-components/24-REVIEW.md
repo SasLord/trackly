@@ -1,6 +1,6 @@
 ---
 phase: 24-base-components
-reviewed: 2026-07-18T00:00:00Z
+reviewed: 2026-07-18T12:00:00Z
 depth: standard
 files_reviewed: 21
 files_reviewed_list:
@@ -26,14 +26,14 @@ files_reviewed_list:
   - ui/src/styles/_tokens.scss
   - ui/src/styles/global.scss
 findings:
-  critical: 3
-  warning: 8
-  info: 6
+  critical: 2
+  warning: 15
+  info: 0
   total: 17
 status: issues_found
 ---
 
-# Phase 24: Code Review Report
+# Phase 24: Code Review Report (re-review after 24-08 / 24-09 / 24-10)
 
 **Reviewed:** 2026-07-18
 **Depth:** standard
@@ -42,305 +42,258 @@ status: issues_found
 
 ## Summary
 
-Просмотрены примитивы дизайн-системы (Button, Badge, Input, Select, Textarea, Checkbox, Radio, Modal, Tabs), витрина компонентов и её подключение к роутингу/сайдбару. `svelte-check` проходит без ошибок, токены (`--tr-*`, `--modal-max-width*`) все определены в `_tokens.scss` — визуальный слой в целом согласован.
+Повторный просмотр после трёх gap-closure планов. `svelte-check --threshold error` — 0 ошибок (252 файла, 49 warning'ов вне scope этой фазы).
 
-Тем не менее найдены три дефекта уровня BLOCKER, два из которых воспроизводимы прямо сейчас:
+### Статус находок прошлого раунда
 
-1. **`bind:value` у Input/Select/Textarea не работает в обратную сторону** — `$bindable` объявлен, но props деструктурированы через `const` и компонент никогда не присваивает `value`. Витрина уже использует эти биндинги (FieldsSection, ModalSection), состояние родителя молча не обновляется. Это контракт API, на который будут опираться фазы 25–30.
-2. **`:global()` в обычном `.scss`-файле** — `global.scss` обрабатывается sass, а не компилятором Svelte, поэтому `:global(...)` попадает в собранный CSS дословно (подтверждено в `ui/dist/assets/index-*.css`). Селектор невалиден → подавление transition при переключении темы (D-09) не работает вообще, класс `theme-switching` навешивается вхолостую.
-3. **Modal не управляет фокусом** — нет начальной установки фокуса, нет focus trap, нет возврата фокуса на триггер. Для `role="dialog" aria-modal="true"` это нарушение контракта ARIA.
+| ID | Тема | Статус |
+|----|------|--------|
+| CR-01 | `bind:value` односторонний у Input/Select/Textarea | **Исправлено (24-08).** Все три компонента используют `let` + `bind:value` на нативном элементе (`Input.svelte:13,32`, `Select.svelte:18,34`, `Textarea.svelte:12,30`). Побочный эффект — см. WR-06 ниже. |
+| CR-02 | `:global()` в plain-`.scss` ломал D-09 | **Исправлено (24-08).** `global.scss:64-67` — обычные селекторы `.theme-switching, .theme-switching *`. Grep-гейт в CI не добавлен (см. WR-15). |
+| CR-03 | Modal не управляет фокусом | **Исправлено частично (24-10).** Initial focus, Tab-trap и восстановление фокуса появились (`Modal.svelte:23-67`), но реализация имеет дефекты — CR-02 (новый), WR-01…WR-04. |
+| WR-03 | `appearance="count"` только для 2 тонов из 5 | **Исправлено частично (24-09).** Тон-специфичные count-правила добавлены и по специфичности выигрывают (0,2,0 > 0,1,0). Осталась поломка `size="sm"` и рассинхрон высот — WR-05. |
+| WR-01, WR-02, WR-04…WR-08, IN-01…IN-06 | — | **Не тронуты.** Перенесены ниже (переформулированы там, где прошлая формулировка была неточна — см. WR-09). |
 
-Отдельно: admin-гейт `/showcase` заявлен, но фактически косметический — карта `routes` общая для admin и manager, а роль проверяется только при отрисовке пункта сайдбара.
+Два дефекта уровня BLOCKER — оба в новом коде focus-management'а или обострены им.
+
+## Structural Findings (fallow)
+
+Структурный пре-пасс для этого раунда не передавался — раздел пуст намеренно.
 
 ## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: `bind:value` у Input/Select/Textarea односторонний — состояние родителя не обновляется
+### CR-01: Escape вызывает `onClose` дважды — после 24-10 это гарантировано на каждом закрытии
 
-**File:** `ui/src/lib/components/Input.svelte:13-22`, `ui/src/lib/components/Select.svelte:18-25`, `ui/src/lib/components/Textarea.svelte:12-20`
-**Issue:** Во всех трёх компонентах props объявлены как `const { value = $bindable(''), ... } = $props()`. `$bindable` синхронизирует значение в родителя **только когда дочерний компонент присваивает проп**. Здесь присваивания нет (и не может быть — `const`), а обработчик `oninput`/`onchange` лишь вызывает колбэк. Итог: `<Input bind:value={x} />` никогда не обновит `x`.
+**Severity:** BLOCKER
+**File:** `ui/src/lib/components/Modal.svelte:85, 92`
+**Issue:** `handleKeydown` навешан одновременно на `<svelte:window onkeydown={open ? handleKeydown : undefined}>` (строка 85) и на сам бэкдроп (`onkeydown={handleKeydown}`, строка 92). Событие `keydown` от элемента внутри модалки обрабатывается на бэкдропе, затем всплывает до `window` → `onClose()` выполняется дважды.
 
-Дефект уже проявляется в коде фазы: `FieldsSection.svelte:37,41,45,55,62,69,81,85,89` и `ModalSection.svelte:20` используют `bind:value`. В `ModalSection` `demoValue` навсегда останется `'Пример значения'`, что бы ни ввёл пользователь. Визуально это незаметно (DOM-значение меняет сам браузер), поэтому баг переживёт ручную проверку и уедет в фазы 25–30, где на этих примитивах будут строиться формы (акты, заявки) — там расхождение обернётся отправкой на бэкенд устаревших данных.
+В прошлом раунде это было отмечено как WARNING именно потому, что зависело от того, где находится фокус: при фокусе вне модалки срабатывал только window-обработчик. **24-10 устранил эту неопределённость в худшую сторону** — теперь `$effect` (строки 32-46) при каждом открытии переводит фокус *внутрь* `dialogEl`, то есть путь всплытия всегда проходит через бэкдроп. Двойной вызов стал детерминированным для всех ~25 потребителей `Modal` в приложении.
 
-Сравните с `Checkbox.svelte:13` и `Radio.svelte:13`, где корректно использованы `let` + `bind:checked`/`bind:group`.
+Сейчас большинство `onClose` идемпотентны (`onClose={() => (x = false)}`), поэтому визуально ничего не ломается — и именно поэтому дефект переживёт ручную проверку витрины. Но контракт компонента «onClose вызывается один раз на закрытие» нарушен: любой потребитель с побочным эффектом (откат черновика, `pushToast`, POST отмены брони, pop из стека модалок) отработает дважды. `DeviceImportCsvModal.svelte:201` уже передаёт не-тривиальный `handleClose`.
 
-**Fix:**
+**Fix:** оставить один источник события. Минимальная правка — убрать обработчик с бэкдропа, window-обработчик покрывает оба случая:
 ```svelte
-<!-- Input.svelte -->
-let {
-  type = 'text',
-  value = $bindable(''),
-  /* ... */
-  oninput,
-}: Props = $props();
-</script>
-
-<input
-  {type}
-  bind:value
-  oninput={(e) => oninput?.((e.currentTarget as HTMLInputElement).value)}
-  ...
-/>
+<div
+  class="modal-backdrop"
+  onmousedown={handleBackdropMousedown}
+  onmouseup={handleBackdropMouseup}
+  aria-modal="true"
+  role="dialog"
+  aria-labelledby={titleId}
+  tabindex="-1"
+>
 ```
-Аналогично: `Textarea` — `bind:value` на `<textarea>`; `Select` — `bind:value` на `<select>` плюс `let` вместо `const`. После правки прогнать витрину и убедиться, что состояние в `FieldsSection` действительно меняется (добавить временный вывод значения рядом с полем — это к тому же полезно как демонстрация).
+Альтернатива (если нужен приоритет вложенных модалок) — оставить только локальный обработчик и добавить `e.stopPropagation()` перед `onClose()`.
 
 ---
 
-### CR-02: `:global()` в обычном SCSS-файле → подавление transition при смене темы (D-09) не работает
+### CR-02: Список узлов focus-trap неполон — iframe внутри модалки недостижим с клавиатуры
 
-**File:** `ui/src/styles/global.scss:64-67`
-**Issue:** `global.scss` импортируется напрямую из `main.ts` и обрабатывается только sass + Vite. `:global()` — синтаксис компилятора Svelte для scoped-стилей компонентов; в обычном `.scss` он ничем не удаляется и попадает в бандл как есть. Проверено на собранном CSS:
+**Severity:** BLOCKER
+**File:** `ui/src/lib/components/Modal.svelte:27-30, 48-67`
+**Issue:** `TRAP_FOCUSABLE_SELECTOR` перечисляет `button/[href]/input/select/textarea/[tabindex]`. В списке нет `iframe`, `[contenteditable]`, `audio[controls]`, `video[controls]`, `summary`, `area[href]`. `iframe` — фокусируемый элемент по умолчанию и участвует в нативном tab-order.
 
-```
-$ grep -o ":global([^)]*)" ui/dist/assets/index-CLsIRsCf.css
-:global(.theme-switching)
-:global(.theme-switching)
-```
+Последствие воспроизводится на боевых экранах:
+- `ui/src/features/acts/PdfPreviewModal.svelte:288` — `<iframe sandbox="" srcdoc={htmlContent} class="pdf-iframe">` внутри `Modal`;
+- `ui/src/features/settings/TemplateEditor.svelte:267` — то же для превью шаблона.
 
-Браузер не знает псевдокласс `:global`, поэтому весь список селекторов признаётся невалидным и правило `transition: none !important` отбрасывается целиком. Следовательно `applyResolved()` в `theme.svelte.ts:34-38` добавляет и снимает класс `theme-switching` без какого-либо эффекта, а декларированное решение D-09 (отсутствие «размазывания» цветов при переключении light/dark) не выполнено.
+До 24-10 пользователь клавиатуры доходил табом до iframe и мог прокручивать документ. Теперь `nodes` его не содержит, поэтому `last` — это кнопка футера, и `Tab` на ней принудительно возвращает фокус на `first` (`Modal.svelte:63-66`). Превью акта и превью шаблона стали недоступны с клавиатуры полностью. Это не деградация «в теории»: печать акта — основной сценарий приложения.
 
-**Fix:**
-```scss
-// global.scss — файл уже глобальный, обёртка :global() не нужна и вредна
-.theme-switching,
-.theme-switching * {
-  transition: none !important;
-}
-```
-Чтобы такой класс ошибок не повторялся, стоит добавить в CI grep-гейт: `grep -R ":global(" ui/src/styles/ && exit 1`.
-
----
-
-### CR-03: Modal не управляет фокусом (нет initial focus, focus trap и возврата фокуса)
-
-**File:** `ui/src/lib/components/Modal.svelte:41-66`
-**Issue:** Контейнер помечен `role="dialog" aria-modal="true"`, но:
-- при открытии фокус остаётся на кнопке-триггере **за** бэкдропом;
-- `Tab`/`Shift+Tab` свободно уводят фокус в фоновый контент (сайдбар, таблицы) — пользователь клавиатуры и скринридера «проваливается» из модалки, при этом фон помечен как inert для AT только декларативно (`aria-modal`), но реально не заблокирован;
-- при закрытии фокус не возвращается на элемент, открывший модалку, — он теряется на `<body>`, и следующий `Tab` начинает обход с начала страницы.
-
-`tabindex="-1"` на бэкдропе (строка 50) сам по себе фокус не устанавливает — он лишь делает элемент программно фокусируемым. Для `aria-modal="true"` это нарушение WAI-ARIA Dialog Pattern, а не стилистическое замечание: модалка используется во всех формах приложения (акты, картриджи, настройки).
+Смежный случай той же причины: дропдауны автокомплитов переносятся `use:portal` в `<body>` (`ui/src/lib/utils/portal.ts:24`, `LocationAutocomplete.svelte:154`, `PersonAutocomplete.svelte:221`), то есть физически лежат вне `dialogEl` и в trap не попадают вообще — ни в `nodes`, ни под обработчик `onkeydown` (он навешан на `dialogEl`). Автокомплиты используются в 5 модалках (`ReturnModal`, `DocumentAcceptanceModal`, `OperationModal`, `PrinterCreateModal`, `RequestFormModal`).
 
 **Fix:**
-```svelte
-<script lang="ts">
-  let dialogEl = $state<HTMLElement | null>(null);
-  let prevFocus: HTMLElement | null = null;
-
-  $effect(() => {
-    if (!open) return;
-    prevFocus = document.activeElement as HTMLElement | null;
-    // фокус на первый интерактивный элемент, иначе на сам контейнер
-    const first = dialogEl?.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    (first ?? dialogEl)?.focus();
-    return () => prevFocus?.focus();
-  });
-
-  function trapTab(e: KeyboardEvent) {
-    if (e.key !== 'Tab' || !dialogEl) return;
-    const nodes = [...dialogEl.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )].filter((n) => n.offsetParent !== null);
-    if (nodes.length === 0) return;
-    const first = nodes[0];
-    const last = nodes[nodes.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-  }
-</script>
-
-<div class="modal-container modal-{size}" bind:this={dialogEl} onkeydown={trapTab} tabindex="-1">
+```ts
+const TRAP_FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'iframe',
+  '[contenteditable]:not([contenteditable="false"])',
+  'audio[controls]',
+  'video[controls]',
+  'summary',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 ```
+Для portal-контента — либо помечать перенесённые узлы (`data-modal-portal`) и включать их в `nodes` через `document.querySelectorAll`, либо (надёжнее) перенести обработчик trap на `document` с проверкой «фокус внутри dialogEl ИЛИ внутри зарегистрированного portal-узла». Как минимум задокументировать ограничение в шапке `Modal.svelte`, чтобы фазы 25-30 не считали trap полным.
 
 ---
 
 ## Warnings
 
-### WR-01: Escape закрывает модалку двойным вызовом `onClose`
+### WR-01: Начальный фокус всегда попадает на кнопку «Закрыть»
 
-**File:** `ui/src/lib/components/Modal.svelte:39, 46`
-**Issue:** `handleKeydown` навешан одновременно на `<svelte:window onkeydown=...>` и на сам бэкдроп (`onkeydown={handleKeydown}`). Когда фокус внутри модалки, событие сначала обрабатывается на div, затем всплывает до `window` — `onClose()` вызывается дважды. Для витрины это безобидно (`open = false` дважды), но потребители передают в `onClose` не только сброс флага: закрытие с откатом черновика, снятие блокировки, pop из стека модалок, отправка аналитики — всё это отработает дважды.
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Modal.svelte:36-41`, разметка `104-107`
+**Issue:** `dialogEl.querySelector(FOCUSABLE_SELECTOR)` возвращает первый фокусируемый узел в DOM-порядке, а первым в разметке идёт `<button class="modal-close">` из `<header>`. То есть во **всех** модалках приложения (формы актов, картриджей, заявок, пользователей) фокус после открытия оказывается на «×», а не на первом поле формы. Пользователь клавиатуры при открытии формы обязан сделать лишний Tab, а `Enter`/`Space` сразу после открытия закрывает окно.
 
-**Fix:** Оставить один источник. Проще всего убрать `onkeydown={handleKeydown}` со строки 46 (обработчик на `window` уже покрывает случай, когда фокус вне модалки), либо оставить только локальный обработчик после реализации focus trap из CR-03 и добавить `e.stopPropagation()`.
+Это не придирка к стилю: 25-30 фазы строят все формы поверх этого примитива, поведение зафиксируется.
 
----
+**Fix:** добавить опциональный проп `initialFocus?: string | HTMLElement` и использовать его как приоритетную цель; либо искать первый фокусируемый узел в `.modal-body`, а `.modal-close` использовать как фолбэк:
+```ts
+const target =
+  (typeof initialFocus === 'string' ? dialogEl?.querySelector<HTMLElement>(initialFocus) : initialFocus) ??
+  dialogEl?.querySelector<HTMLElement>('.modal-body ' + FOCUSABLE_SELECTOR.split(', ').join(', .modal-body ')) ??
+  dialogEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ??
+  dialogEl;
+target?.focus();
+```
 
-### WR-02: Tabs объявляет `role="tablist"`/`role="tab"`, но не реализует клавиатурный паттерн
+### WR-02: Селектор начального фокуса не исключает disabled/скрытые узлы — фолбэк не срабатывает
 
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Modal.svelte:27-28, 36-41`
+**Issue:** `FOCUSABLE_SELECTOR` (для initial focus) в отличие от `TRAP_FOCUSABLE_SELECTOR` не содержит `:not([disabled])` и не фильтрует `offsetParent === null`. Если первый совпавший узел — `disabled` или скрытый, `first.focus()` — no-op, но ветка `else { dialogEl?.focus() }` не выполняется, потому что `first` истинно. Итог: фокус остаётся на элементе-триггере **за** бэкдропом, то есть ровно тот дефект, который 24-10 закрывал. Сейчас скрыто тем, что первым узлом почти всегда оказывается всегда-активная кнопка «Закрыть» (WR-01) — то есть баг замаскирован другим багом и вскроется, как только WR-01 починят.
+
+**Fix:** использовать один селектор + один фильтр видимости/доступности для обоих путей и проверять результат по факту:
+```ts
+const target = focusableNodes()[0] ?? dialogEl;
+target?.focus();
+if (!dialogEl?.contains(document.activeElement)) dialogEl?.focus();
+```
+
+### WR-03: Фильтр `offsetParent !== null` отбрасывает элементы с `position: fixed`
+
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Modal.svelte:53`
+**Issue:** `offsetParent` равен `null` не только у скрытых элементов, но и у любого `position: fixed` (а также у `<body>`). Внутри модалки fixed-позиционирование — не экзотика: тот же `dropdownAnchor.ts`-слой строится именно на fixed. Такие узлы молча выпадут из `nodes`, что сдвинет `first`/`last` и снова разорвёт круг табуляции.
+
+**Fix:** проверять видимость через `getClientRects().length > 0` (устойчиво и к fixed, и к `display: none`):
+```ts
+.filter((n) => n.getClientRects().length > 0)
+```
+
+### WR-04: Восстановление фокуса зависит от DOM-порядка модалок — при цепочке «закрыть A → открыть B» фокус может уехать из B
+
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Modal.svelte:32-46`
+**Issue:** cleanup `prevFocus?.focus()` выполняется при перезапуске эффекта. Если в одном flush'е модалка A закрывается, а B открывается, порядок эффектов определяется порядком компонентов в дереве. Когда B объявлена **раньше** A, сначала отработает initial-focus B, затем cleanup A вернёт фокус на свой триггер — то есть за пределы только что открытой модалки B. Цепочки модалок в коде уже есть (`DevicesPage.svelte:300,312` — acceptanceDevice → acceptancePayload; `RequestDetail.svelte` — 5 модалок в одном файле); сейчас порядок объявления случайно «правильный», и любая перестановка разметки тихо ломает фокус.
+
+Смежно: `prevFocus` может указывать на узел, который к моменту закрытия уже удалён (модалка открыта из контекстного меню — `DeviceContextMenu.svelte:144`), тогда `focus()` — no-op и фокус падает на `<body>`.
+
+**Fix:** восстанавливать фокус только если он всё ещё внутри закрываемого диалога, и проверять «жив» ли узел:
+```ts
+return () => {
+  const el = prevFocus;
+  prevFocus = null;
+  if (el && el.isConnected) queueMicrotask(() => {
+    if (document.activeElement === document.body) el.focus();
+  });
+};
+```
+
+### WR-05: `size="sm"` молча игнорируется у `appearance="count"`, высоты count-бейджей рассинхронизированы
+
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Badge.svelte:98-105, 147-155, 170-178, 193-201, 204-223`
+**Issue:** Два следствия одного и того же приёма из 24-09:
+1. `.badge-m-{tone}.badge-m-count` имеет специфичность 0,2,0 и переопределяет `height`/`font-size`/`padding`, тогда как `.badge-m-sm` — 0,1,0. Значит `<Badge size="sm" appearance="count">` рендерится в размере `md` для accent/success/warning/danger. Проп принят и молча проигнорирован — худший вид отказа для примитива дизайн-системы.
+2. Базовый нейтральный `.badge-m-count` (строки 204-213) задаёт `height: 18px`, `min-width: 18px`, без рамки; тон-специфичные — `height: 20px` + `border: 1px solid`. В `BadgeSection` count-бейджи разных тонов стоят в одинаковых рядах и имеют разную высоту и разное наличие рамки. Витрина существует ровно для выявления таких расхождений — здесь она их закрепляет как норму.
+
+**Fix:** вынести размерность count'а из тон-блоков (в тонах оставить только `background`/`color`/`border-color`), а `height`/`font-size`/`padding` задавать в `.badge-m-count` и `.badge-m-count.badge-m-sm` — тогда `size` снова работает, а тона отличаются только цветом. Одновременно решить, есть ли у нейтрального count'а рамка, и привести все пять тонов к одному ответу.
+
+### WR-06: `type="number"` + внутренний `bind:value` возвращает `number | null` в проп, объявленный как `string`
+
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Input.svelte:2-11, 32`
+**Issue:** Побочный эффект фикса 24-08. Svelte для `bind:value` на числоподобном `<input>` применяет числовое приведение в рантайме (`'' → null`, иначе `+value`). Тип `type` здесь динамический, поэтому проверка идёт на элементе, а не на этапе компиляции. Значит `<Input type="number" bind:value={s} />` запишет в `s` число либо `null`, хотя контракт `Props` объявляет `value: string`. `svelte-check` этого не увидит — приведение происходит внутри рантайма Svelte.
+
+Практический риск: любой потребитель, следующий образцу из витрины (`bind:value`), на числовом поле получит `null` при очистке поля, и первый же `value.trim()`/`value.length` бросит `TypeError`. Существующий потребитель `ActNumberField.svelte:74-80` пока спасён тем, что использует одностороннюю передачу `value={displayValue}` + `oninput`, то есть держится в стороне от собственного же биндинга компонента.
+
+**Fix:** либо сузить `Props` до `type?: 'text' | 'search'` и завести отдельный `NumberInput` с `value: number | null`, либо объявить `value: string | number | null` и явно нормализовать перед вызовом `oninput`. Молчаливое расхождение типа и рантайма — худший из трёх вариантов.
+
+### WR-07: Tabs объявляет `role="tablist"`/`role="tab"`, но не реализует клавиатурный паттерн (перенесено, не исправлено)
+
+**Severity:** WARNING
 **File:** `ui/src/lib/components/Tabs.svelte:26-54`
-**Issue:** Для варианта `underline` выставлены `role="tablist"` и `role="tab"`, `aria-selected`, но отсутствуют обязательные части паттерна WAI-ARIA Tabs:
-- нет навигации стрелками ←/→ (+ Home/End);
-- нет roving `tabindex` — все вкладки попадают в tab-order, тогда как спецификация требует `tabindex="0"` только у активной и `-1` у остальных;
-- нет `aria-controls` и связанного `role="tabpanel"` — скринридер объявляет «вкладка», но не может перейти к панели.
+**Issue:** Нет навигации стрелками ←/→ и Home/End, нет roving `tabindex` (все вкладки в tab-order вместо одной активной), нет `aria-controls`/`role="tabpanel"`. AT'у обещана семантика вкладок, поведение — обычных кнопок. Дополнительно `disabled` на `role="tab"` полностью убирает вкладку из восприятия AT — по паттерну корректнее `aria-disabled="true"` с сохранением фокусируемости. Вариант `segmented` (`role="group"` + `aria-pressed`) сделан честно и служит контрпримером в этом же файле.
 
-То есть заявленная семантика вкладок скринридеру обещана, а поведение — как у обычных кнопок; это хуже, чем `role="group"` (вариант `segmented` как раз сделан честно).
+**Fix:** добавить `onkeydown` с переносом `active` на соседнюю недизейбленную вкладку + `tabindex={tab.key === active ? 0 : -1}`; либо понизить семантику underline-варианта до `role="group"`, как в `segmented`.
 
-Дополнительно: `disabled` на `role="tab"` полностью убирает элемент из восприятия AT — по паттерну корректнее `aria-disabled="true"` с сохранением фокусируемости.
+### WR-08: Проп `invalid` у Select/Checkbox/Radio не транслируется в `aria-invalid` (перенесено, не исправлено)
 
-**Fix:**
-```svelte
-<button
-  role={variant === 'segmented' ? undefined : 'tab'}
-  tabindex={variant === 'segmented' ? undefined : (tab.key === active ? 0 : -1)}
-  aria-disabled={tab.disabled ? 'true' : undefined}
-  onkeydown={variant === 'segmented' ? undefined : onTabKeydown}
-  ...
->
-```
-плюс функция `onTabKeydown`, переносящая `active` на следующую/предыдущую недизейбленную вкладку по ArrowLeft/ArrowRight/Home/End с вызовом `.focus()`. Либо — если панелей нет — понизить семантику до `role="group"` + `aria-pressed`, как в `segmented`.
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Select.svelte:29-39`, `ui/src/lib/components/Checkbox.svelte:25-32`, `ui/src/lib/components/Radio.svelte:25`
+**Issue:** `Input.svelte:34` и `Textarea.svelte:31` выставляют `aria-invalid={invalid || undefined}`, остальные три — нет: `invalid` меняет только рамку и тень. Для скринридера три из пяти полей в состоянии ошибки неотличимы от валидных, а цвет остаётся единственным носителем информации (WCAG 1.4.1). Несогласованность внутри одного набора примитивов гарантирует, что формы фаз 25+ будут доступны наполовину.
 
----
+**Fix:** добавить `aria-invalid={invalid || undefined}` на `<select>` и оба `<input>`; заодно добавить проп `aria-describedby` (сейчас есть только у `Input`) для связи с текстом ошибки.
 
-### WR-03: `appearance="count"` реализован только для двух тонов из пяти
+### WR-09: theme store — невалидированное значение из localStorage, незащищённый доступ, повторные подписки
 
-**File:** `ui/src/lib/components/Badge.svelte:177-196`
-**Issue:** Стили для count-бейджа заданы у `.badge-m-count` (нейтральный) и `.badge-m-accent.badge-m-count`. Тонов же пять. `<Badge variant="success" appearance="count">`, `warning` и `destructive` получают классы `badge-m-success badge-m-count`, но правило `.badge-m-count` перекрывает фон/цвет нейтральным — три из пяти вариантов молча рендерятся серыми.
+**Severity:** WARNING
+**File:** `ui/src/lib/stores/theme.svelte.ts:15-22, 24-28, 30-39`
+**Issue:** Три проблемы:
+1. `localStorage.getItem(KEY) ?? 'system') as Preference` — приведение типа без проверки; постороннее значение попадёт в `themeStore.preference` и в `dataset.theme`. *Уточнение к прошлому раунду: «приложение отрендерится без цветов» — неверно, `:root` в `_tokens.scss:12` перечислен рядом с `[data-theme='light']`, поэтому светлые токены останутся. Реальное следствие мягче — тема молча деградирует в light, а `applyResolved()` возвращает это значение как `Resolved`, хотя тип обещает `'light' | 'dark'`.*
+2. `localStorage` вызывается без `try/catch`, тогда как `window` в том же файле проверяется (строки 12-13). В браузере с заблокированным хранилищем `getItem` бросает `SecurityError`; `main.ts:7` вызывает `initTheme()` на верхнем уровне до `mount()` и без обработки — приложение не смонтируется вообще (белый экран). Для LAN-браузерного режима это достижимый сценарий, и он приводит к полной недоступности, а не к сбою темы. `setTheme` (строка 26) вызывает `setItem` **до** `applyResolved()`, поэтому там же исключение оставит тему непереключённой.
+3. `initTheme()` каждый вызов добавляет новый listener к `mql` и ничего не снимает; функция экспортирована и от повторного вызова не защищена.
 
-Это видно прямо в витрине: `BadgeSection.svelte:34, 44, 54` показывают success/warning/destructive count как неотличимые от default. Витрина существует ровно для того, чтобы такие дыры ловить — здесь она их демонстрирует, но как «норму».
+**Fix:** валидирующий `readPreference()` с `try/catch`, `try/catch` вокруг `setItem` (и вызов `applyResolved()` **до** записи), флаг `initialized` в `initTheme()`.
 
-**Fix:** Добавить count-правила в каждый тон-блок (по образцу `soft`/`solid`), например:
-```scss
-.badge-m-success {
-  &.badge-m-count { background: var(--tr-success-soft); color: var(--tr-success-text); }
-}
-```
-Либо, если по UI-SPEC count намеренно только neutral/accent, — ограничить типы (`appearance?: 'soft' | 'solid' | 'dot'` + отдельный `count`-контракт) и убрать несуществующие комбинации из витрины.
+### WR-10: Radio без пропа `name` и без семантики группы (перенесено, не исправлено)
 
----
-
-### WR-04: admin-гейт `/showcase` косметический — страница доступна manager'у по прямому хэшу
-
-**File:** `ui/src/routes.ts:28`, `ui/src/features/layout/sidebar-config.ts:31`
-**Issue:** `roles: ['admin']` в `sidebar-config.ts` влияет только на отрисовку пункта меню (`Sidebar.svelte:10` → `getVisibleItems`). Маршрутная карта `routes` (`App.svelte:67`) одна и та же для ролей `admin` и `manager`, поэтому пользователь с ролью manager, набрав `#/showcase`, получит страницу. Гейта уровня маршрута нет (в отличие от `employeeRoutes`, где неизвестные пути честно ведут на `AccessDenied`).
-
-Данных на витрине нет, поэтому это не утечка, но заявленное в фазе ограничение не выполняется, и тот же паттерн уже действует для `/users` и `/settings` — там цена ошибки выше (страницы рендерят реальные данные и полагаются исключительно на серверную авторизацию).
-
-Второй аспект: витрина безусловно входит в production-бандл (5 секций + примитивы), и в desktop-режиме с `desktop_lock_enabled=false` любой пользователь получает роль `admin` (`App.svelte:38-43`) — то есть на портативной сборке витрина видна всем.
-
-**Fix:** Ввести явную проверку роли на уровне маршрута, например обёртку:
-```ts
-import { wrap } from 'svelte-spa-router/wrap';
-
-'/showcase': wrap({
-  asyncComponent: () => import('./pages/ComponentShowcasePage.svelte'),
-  conditions: [() => authStore.user?.role === 'admin'],
-}),
-```
-(`asyncComponent` заодно уберёт витрину из основного чанка). Условие `conditions` при провале уводит на `*` → `NotFound`. Если витрина мыслится как dev-инструмент — дополнительно гейтить через `import.meta.env.DEV`.
-
----
-
-### WR-05: проп `invalid` у Select/Checkbox/Radio не транслируется в `aria-invalid`
-
-**File:** `ui/src/lib/components/Select.svelte:29-39`, `ui/src/lib/components/Checkbox.svelte:25-33`, `ui/src/lib/components/Radio.svelte:25`
-**Issue:** `Input.svelte:34` и `Textarea.svelte:31` выставляют `aria-invalid={invalid || undefined}`, а `Select`, `Checkbox` и `Radio` — нет: у них `invalid` меняет только рамку/тень. Для скринридера три из пяти полей в состоянии ошибки неотличимы от валидных, а красная рамка — единственный носитель информации (нарушение WCAG 1.4.1 «Use of Color»). Несогласованность внутри одного набора примитивов гарантирует, что в формах фаз 25+ часть полей будет доступной, часть — нет.
-
-**Fix:** Добавить `aria-invalid={invalid || undefined}` на `<select>`, `<input type="checkbox">` и `<input type="radio">`. Заодно предусмотреть проп `aria-describedby` (как в `Input`) для связи с текстом ошибки — сейчас его нет ни у одного компонента, кроме `Input`.
-
----
-
-### WR-06: theme store — невалидированное значение из localStorage, незащищённый доступ и повторные подписки
-
-**File:** `ui/src/lib/stores/theme.svelte.ts:15-22, 30-39`
-**Issue:** Три проблемы в одном месте:
-1. `const saved = (localStorage.getItem(KEY) ?? 'system') as Preference` — приведение типа без проверки. Любое постороннее значение в ключе `trackly:theme` (ручная правка, коллизия с другим приложением на том же origin, старый формат) попадёт в `themeStore.preference`, а затем в `document.documentElement.dataset.theme` (строка 35). Селекторов `[data-theme='light'|'dark']` в `_tokens.scss` не будет ни одного → все `--tr-*` переменные не разрезолвятся, приложение отрендерится без цветов. `applyResolved()` дополнительно возвращает это значение как `Resolved`, хотя тип обещает только `'light' | 'dark'`.
-2. `localStorage` вызывается без защиты, тогда как `window` в этом же файле проверяется (строка 12-13). В браузере с заблокированным хранилищем (сторонние cookies/приватный режим/политика домена) `getItem` бросает `SecurityError`; `main.ts:7` вызывает `initTheme()` на верхнем уровне без `try/catch` — приложение не смонтируется вообще (белый экран). Для режима LAN-браузера это реальный сценарий.
-3. `initTheme()` каждый вызов добавляет новый `mql` listener, ничего не снимая. Сейчас вызов один, но функция экспортирована и никак от повторного вызова не защищена.
-
-**Fix:**
-```ts
-const PREFS = ['light', 'dark', 'system'] as const;
-function readPreference(): Preference {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return (PREFS as readonly string[]).includes(raw ?? '') ? (raw as Preference) : 'system';
-  } catch {
-    return 'system';
-  }
-}
-
-let initialized = false;
-export function initTheme(): void {
-  if (initialized) return;
-  initialized = true;
-  themeStore.preference = readPreference();
-  applyResolved();
-  mql?.addEventListener('change', () => { if (themeStore.preference === 'system') applyResolved(); });
-}
-```
-и обернуть `localStorage.setItem` в `setTheme` в `try/catch` — падение записи не должно ломать переключение темы.
-
----
-
-### WR-07: Radio без `name` и без семантики группы
-
+**Severity:** WARNING
 **File:** `ui/src/lib/components/Radio.svelte:4-25`, `ui/src/features/showcase/sections/FieldsSection.svelte:117-120`
-**Issue:** У `Radio` нет пропа `name`. `bind:group` в Svelte связывает радиокнопки на уровне JS, поэтому визуально всё работает, но:
-- нативная группировка браузера отсутствует → навигация стрелками между радиокнопками одной группы (стандартное поведение) не работает, каждая кнопка отдельная точка табуляции;
-- при использовании внутри `<form>` значения не сериализуются;
-- скринридер не объявляет «1 из 2».
+**Issue:** `bind:group` связывает радиокнопки на уровне JS, нативной группы нет: стрелочная навигация между кнопками одной группы не работает, каждая — отдельная точка табуляции, в `<form>` значения не сериализуются, скринридер не объявляет «1 из 2». Витрина оборачивает пару в `<div class="radio-group">` без `role="radiogroup"`/`<fieldset>`, закрепляя неправильный образец.
 
-В витрине группа собрана в `<div class="radio-group">` без `role="radiogroup"`/`<fieldset><legend>`, что закрепляет неправильный паттерн использования как эталонный.
+**Fix:** обязательный проп `name: string` с пробросом в `<input type="radio" {name}>`; в витрине — `role="radiogroup" aria-label="…"` на обёртке.
 
-**Fix:** Добавить обязательный проп `name: string` и пробросить его в `<input type="radio" {name} ...>`. В `FieldsSection` обернуть группу:
-```svelte
-<div class="radio-group" role="radiogroup" aria-label="Вариант">
-  <Radio name="showcase-normal" bind:group={radioGroupNormal} value="a">Вариант A</Radio>
-  <Radio name="showcase-normal" bind:group={radioGroupNormal} value="b">Вариант B</Radio>
-</div>
-```
+### WR-11: admin-гейт `/showcase` косметический (перенесено, не исправлено)
 
----
+**Severity:** WARNING
+**File:** `ui/src/routes.ts:28`, `ui/src/features/layout/sidebar-config.ts:31`
+**Issue:** `roles: ['admin']` влияет только на отрисовку пункта меню (`Sidebar.svelte:10` → `getVisibleItems`). Карта `routes` одна для admin и manager, поэтому `#/showcase` открывается вручную любым не-employee пользователем (в отличие от `employeeRoutes`, где неизвестный путь честно ведёт на `AccessDenied`). Данных на витрине нет, но заявленное ограничение не выполняется, и тот же паттерн уже действует для `/users` и `/settings`. Дополнительно витрина безусловно входит в production-бандл, а в desktop-режиме с `desktop_lock_enabled=false` роль admin выдаётся всем.
 
-### WR-08: закреплённый комментарий-«источник истины» в sidebar-config противоречит коду
+**Fix:** `wrap({ asyncComponent: …, conditions: [() => authStore.user?.role === 'admin'] })` из `svelte-spa-router/wrap` — заодно вынесет витрину из основного чанка; опционально гейт по `import.meta.env.DEV`.
 
-**File:** `ui/src/features/layout/sidebar-config.ts:14-15`
-**Issue:** Комментарий гласит `PINNED: 11 items + 4 dividers = 15 entries — source of truth per UI-SPEC §Copywriting Sidebar`, но после добавления `/showcase` (строка 31) в массиве 12 items + 4 dividers = 16 записей. Комментарий помечен как PINNED и как источник истины — теперь он лжёт, и следующий разработчик либо удалит пункт витрины «чтобы сошлось», либо перестанет доверять пометке PINNED вообще. Кроме того, `/showcase` — единственный пункт без поля `phase`, что ломает единообразие структуры.
+### WR-12: PINNED-комментарий в sidebar-config противоречит коду (перенесено, не исправлено)
 
-**Fix:** Обновить комментарий (`12 items + 4 dividers = 16 entries`) с явной пометкой, что витрина — служебный пункт вне UI-SPEC §Copywriting, и добавить `phase: 24` в запись строки 31.
+**Severity:** WARNING
+**File:** `ui/src/features/layout/sidebar-config.ts:14-15, 31`
+**Issue:** Комментарий помечен «source of truth» и утверждает `11 items + 4 dividers = 15 entries`, тогда как в массиве 12 items + 4 dividers = 16. После четырёх gap-closure планов расхождение по-прежнему на месте. Пометка PINNED, которая врёт, обесценивает саму пометку. Плюс `/showcase` — единственный item без поля `phase`.
 
----
+**Fix:** обновить счётчик на `12 items + 4 dividers = 16 entries` с явной оговоркой, что витрина — служебный пункт вне UI-SPEC §Copywriting; добавить `phase: 24`.
 
-## Info
+### WR-13: id заголовка модалки через `Math.random()` (перенесено, не исправлено)
 
-### IN-01: id заголовка модалки генерируется через `Math.random()`
-
+**Severity:** WARNING
 **File:** `ui/src/lib/components/Modal.svelte:15`
-**Issue:** `Math.random().toString(36).slice(2)` даёт нестабильный id (шум в снапшот-тестах, теоретические коллизии, разное значение при повторном создании). В Svelte 5 для этого есть штатный `$props.id()`.
+**Issue:** Нестабильный id — шум в снапшот-тестах, теоретические коллизии, разное значение при каждом создании. В Svelte 5 для этого есть штатный `$props.id()`, детерминированный и SSR-безопасный.
 **Fix:** `const titleId = $props.id();`
 
-### IN-02: блокировка скролла body через `<style>` внутри `<svelte:head>`
+### WR-14: блокировка скролла body через `<style>` внутри `<svelte:head>` (перенесено, не исправлено)
 
-**File:** `ui/src/lib/components/Modal.svelte:69-77`
-**Issue:** Инъекция глобального правила `body { overflow: hidden }` стилевым тегом — хрупкий приём: правило нельзя приоритизировать относительно других глобальных стилей, не компенсируется ширина скроллбара (контент дёргается при открытии), а при вложенных модалках в `<head>` попадают дубликаты.
-**Fix:** Перевести на `$effect` с прямым управлением `document.body.style.overflow` и восстановлением прежнего значения в cleanup; либо на счётчик открытых модалок в отдельном сторе.
+**Severity:** WARNING
+**File:** `ui/src/lib/components/Modal.svelte:120-128`
+**Issue:** Инъекция глобального `body { overflow: hidden }` стилевым тегом: приоритет относительно других глобальных правил неуправляем, ширина скроллбара не компенсируется (контент дёргается при открытии/закрытии), при цепочке/вложенности модалок в `<head>` оказываются дубликаты, а исходное значение `overflow` не восстанавливается — восстанавливается лишь удаление тега.
+**Fix:** `$effect` с сохранением и возвратом `document.body.style.overflow`, либо счётчик открытых модалок в отдельном сторе.
 
-### IN-03: поля витрины не имеют программных меток
+### WR-15: ни один из четырёх фиксов не защищён регрессионным гейтом
 
+**Severity:** WARNING
+**File:** `ui/package.json:10-17`, `ui/scripts/check-tokens.mjs`
+**Issue:** 24-08…24-10 закрыли четыре дефекта, каждый из которых был невидим глазом (`bind:value` не пробрасывался, `:global()` уезжал в бандл, count-бейджи молча серели, фокус не переводился). В `ui/` нет тест-раннера вообще (`scripts` содержит только dev/build/check/lint, файлов `*.test.ts` нет), а предложенный в прошлом раунде grep-гейт на `:global(` в `ui/src/styles/` в `check-tokens.mjs` не добавлен. Приёмка фазы (24-11) свелась к устной формулировке «Витрину проверил — всё хорошо работает», что по природе этих багов ничего не подтверждает: три из четырёх выглядят исправно и будучи сломанными.
+
+**Fix:** минимум — расширить `check-tokens.mjs` двумя grep-правилами (`:global(` в `ui/src/styles/**`, `const {` рядом с `$bindable(` в `ui/src/lib/components/**`); полноценно — добавить vitest + `@testing-library/svelte` и по одному тесту на `bind:value`, focus-trap и Escape-однократность.
+
+### WR-16: поля витрины не имеют программных меток (перенесено, не исправлено)
+
+**Severity:** WARNING
 **File:** `ui/src/features/showcase/sections/FieldsSection.svelte:35-46, 53-72, 79-90`
-**Issue:** `<span class="state-tag">Обычное</span>` — визуальная подпись, не связанная с полем. Ни одно поле в витрине не имеет `<label for>` или `aria-label`, хотя `Input`/`Select`/`Textarea` принимают `id`. Витрина задаёт образец использования для последующих фаз, и образец — без меток.
-**Fix:** Заменить `<span class="state-tag">` на `<label class="state-tag" for="fld-input-normal">` и передавать соответствующий `id` в компонент.
+**Issue:** `<span class="state-tag">` — визуальная подпись, не связанная с полем. Ни одно поле витрины не имеет `<label for>` или `aria-label`, хотя `Input`/`Select`/`Textarea` принимают `id`. Витрина задаёт образец для фаз 25-30, и образец — без меток.
+**Fix:** заменить `<span class="state-tag">` на `<label class="state-tag" for="fld-input-normal">` и передавать соответствующий `id` в компонент.
 
-### IN-04: `.skip-link` в global.scss дублирует стили обоих Layout-компонентов
+### WR-17: остаточные мелочи, перенесённые без изменений
 
-**File:** `ui/src/styles/global.scss:71-93`
-**Issue:** Правила `.skip-link` определены глобально и, независимо, в scoped-стилях `Layout.svelte:44` и `EmployeeLayout.svelte:172`. Scoped-версии выигрывают по специфичности класса-хэша, поэтому глобальный блок — фактически мёртвый код, который придётся править «на всякий случай» при каждом изменении skip-link.
-**Fix:** Оставить одно определение — глобальное (и убрать из обоих layout'ов) либо scoped (и убрать из global.scss).
-
-### IN-05: `Input` объявляет `type="number"`, но типизирует значение как `string`, и не пробрасывает атрибуты формы
-
-**File:** `ui/src/lib/components/Input.svelte:2-11`
-**Issue:** `type?: 'text' | 'number' | 'search'` при `value: string` — числовой ввод придётся парсить у каждого потребителя, из-за чего часть форм неизбежно будет обходить примитив и использовать сырой `<input>` (как это уже сделано в `OrgSettings.svelte`, `LoginPage.svelte`). Также нет проброса `name`, `required`, `maxlength`, `autocomplete`, `readonly`, `onblur` — набор пропов слишком узкий для форм фаз 25+.
-**Fix:** Добавить `...rest` через `interface Props extends HTMLInputAttributes` и `{...rest}` на элементе, либо явно перечислить нужные атрибуты; для числового ввода предусмотреть отдельный проп/компонент.
-
-### IN-06: неохраняемый доступ к `TONE_MAP` в Badge
-
-**File:** `ui/src/lib/components/Badge.svelte:13-21`
-**Issue:** `TONE_MAP[variant]` при значении вне union (вызов из нетипизированного места, данные с бэкенда) вернёт `undefined` → класс `badge-m-undefined`, бейдж без фона и без ошибки. Тихая деградация вместо явного сбоя.
-**Fix:** `const tone = $derived(TONE_MAP[variant] ?? 'neutral');`
+**Severity:** WARNING
+**Issue:**
+- `ui/src/lib/components/Badge.svelte:21` — `TONE_MAP[variant]` без фолбэка: значение вне union (вызов из нетипизированного места, данные с бэкенда) даёт класс `badge-m-undefined` и бейдж без фона, молча. Фикс: `$derived(TONE_MAP[variant] ?? 'neutral')`.
+- `ui/src/styles/global.scss:71-93` — `.skip-link` определён глобально и независимо продублирован в scoped-стилях `Layout.svelte:44` и `EmployeeLayout.svelte:172`; scoped-версии выигрывают по хэшу класса, глобальный блок — мёртвый код, который придётся править «на всякий случай».
+- `ui/src/lib/components/Input.svelte:2-11` — нет проброса `name`, `required`, `maxlength`, `autocomplete`, `readonly`, `onblur`; набор пропов уже вынуждает часть экранов (`OrgSettings.svelte`, `LoginPage.svelte`) обходить примитив и использовать сырой `<input>`. Фикс: `interface Props extends HTMLInputAttributes` + `{...rest}`.
 
 ---
 
