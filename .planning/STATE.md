@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T02:17:34.409Z"
-last_activity: 2026-07-18 -- Phase 24 planning complete
+last_updated: "2026-07-18T06:12:55.184Z"
+last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 26
   total_plans: 167
-  completed_plans: 160
+  completed_plans: 161
   percent: 96
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 23 complete (design tokens) — milestone v1.2 in progress, next Phase 24 (базовые компоненты)
+**Current focus:** Phase 24 — base-components
 
 ## Current Position
 
-Phase: 24
-Plan: Not started
+Phase: 24 (base-components) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 24 planning complete
+Last activity: 2026-07-18
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -206,6 +206,7 @@ Last activity: 2026-07-18 -- Phase 24 planning complete
 | Phase 23 P06 | 10min | 2 tasks | 7 files |
 | Phase 23 P07 | 15min | 2 tasks | 3 files |
 | Phase 23 P08 | 15min | 3 tasks | 14 files |
+| Phase 24 P01 | 8min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -505,6 +506,8 @@ Recent decisions affecting current work:
 - [Phase 23-07]: tr-danger-ring fixed at alpha 0.2 for both themes (rgb components copied verbatim from tr-danger), canonizing 8 of 9 duplicated invalid-focus-ring sites; Button.svelte 0.3 converges in plan 23-08
 - [Phase 23]: 23-08: Modal.svelte overlay dark-mode override удалён после миграции на theme-scoped var(--tr-overlay)
 - [Phase 23]: 23-08: Button.svelte danger-ring alpha 0.3->0.2 (var(--tr-danger-ring)) — WR-01-санкционированный visual touch, handoff в фазу 24 (CMP-01)
+- [Phase ?]: 24-01: --tr-accent-text values transcribed verbatim from RESEARCH.md (Badges.dc.html/Tabs.dc.html agree), not recomputed
+- [Phase ?]: 24-01: theme.svelte.ts applyResolved() uses requestAnimationFrame (not setTimeout) to remove .theme-switching, guaranteeing removal only after new theme paints
 
 ### Pending Todos
 
@@ -580,9 +583,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-17T19:56:02.250Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-base-components/24-CONTEXT.md
+Last session: 2026-07-18T06:12:55.176Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
