@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T19:58:54.473Z"
+last_updated: "2026-07-18T20:17:38.038Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 25 (dropdown) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -220,6 +220,7 @@ Last activity: 2026-07-18
 | Phase 24 P12 | 12min | 2 tasks | 2 files |
 | Phase 24 P13 | 5min | 2 tasks | 2 files |
 | Phase 25 P01 | 5min | 2 tasks | 3 files |
+| Phase 25 P02 | 25min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -539,6 +540,9 @@ Recent decisions affecting current work:
 - [Phase 24]: 24-13: Gave all 5 Badge tones a border for appearance=count (majority pattern) instead of removing borders from the 4 that had them
 - [Phase 24]: 24-13: Fixed WR-06 via one-way value={value} + explicit value = v assignment in oninput, not by narrowing Input's type prop union (would break ActNumberField.svelte)
 - [Phase 25]: 25-01: TableRow owns ALL base <td> metrics (D-10); Table.svelte is shell-only, no consumers wired
+- [Phase ?]: 25-02: void-marker pattern to split Dropdown.svelte across 2 task commits under strict noUnusedLocals TS gate (removed in Task 2 as bindings wire into the panel)
+- [Phase ?]: 25-02: AUTO-05 $effect only runs when flat=false — flat mode has no drill-in concept
+- [Phase ?]: 25-02: Dropdown panel CSS uses overflow:auto not UI-SPEC's literal overflow:hidden — required for scrolling within max-height
 
 ### Pending Todos
 
@@ -615,8 +619,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T19:58:54.465Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-07-18T20:17:38.031Z
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
