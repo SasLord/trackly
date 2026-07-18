@@ -494,7 +494,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
+- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [ ] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -705,7 +705,7 @@ Plans:
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
-| 25. Таблицы и Dropdown | v1.2 | 0/TBD | Not started | - |
+| 25. Таблицы и Dropdown | v1.2 | 1/7 | In Progress|  |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T19:16:55.220Z"
-last_activity: 2026-07-18 -- Phase 25 planning complete
+last_updated: "2026-07-18T19:58:54.473Z"
+last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 27
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 24 — base-components
+**Current focus:** Phase 25 — dropdown
 
 ## Current Position
 
-Phase: 24 (base-components) — EXECUTING
-Plan: 13 of 13
+Phase: 25 (dropdown) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-07-18 -- Phase 25 planning complete
+Last activity: 2026-07-18
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -219,6 +219,7 @@ Last activity: 2026-07-18 -- Phase 25 planning complete
 | Phase 24 P11 | 6min | 3 tasks | 1 files |
 | Phase 24 P12 | 12min | 2 tasks | 2 files |
 | Phase 24 P13 | 5min | 2 tasks | 2 files |
+| Phase 25 P01 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -537,6 +538,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 24-12: portaledFocusable() uses getClientRects().length>0 not offsetParent, since dropdownAnchor.ts sets position:fixed on portaled dropdowns
 - [Phase 24]: 24-13: Gave all 5 Badge tones a border for appearance=count (majority pattern) instead of removing borders from the 4 that had them
 - [Phase 24]: 24-13: Fixed WR-06 via one-way value={value} + explicit value = v assignment in oninput, not by narrowing Input's type prop union (would break ActNumberField.svelte)
+- [Phase 25]: 25-01: TableRow owns ALL base <td> metrics (D-10); Table.svelte is shell-only, no consumers wired
 
 ### Pending Todos
 
@@ -613,9 +615,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T18:16:59.640Z
-Stopped at: Phase 25 UI-SPEC approved
-Resume file: .planning/phases/25-dropdown/25-UI-SPEC.md
+Last session: 2026-07-18T19:58:54.465Z
+Stopped at: Completed 25-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
