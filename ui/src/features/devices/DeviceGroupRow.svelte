@@ -4,6 +4,7 @@
   // On expand: fetches full DeviceDto list via devices.listByIds().
 
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import DeviceListRow from './DeviceListRow.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
@@ -141,38 +142,16 @@
   }
 </script>
 
-<tr class="group-row" onclick={toggleExpand}>
-  <!-- colspan="4" merges Наименование + Инв.№ + Серийный № + Модель columns.
-       Chevron is inline, followed by the group name — no truncation needed. -->
-  <td class="cell cell-name-wide" colspan="4" title={group.repr.name}>
-    <button
-      type="button"
-      class="chevron-btn"
-      class:expanded
-      aria-label={expanded ? 'Свернуть группу' : 'Развернуть группу'}
-      onclick={(e) => {
-        e.stopPropagation();
-        toggleExpand();
-      }}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 14 14"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M4 5L7 8L10 5"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-    </button>
-    {group.repr.name}
-  </td>
+<TableRow
+  group
+  groupExpanded={expanded}
+  groupName={group.repr.name}
+  groupColspan={4}
+  onToggleGroup={toggleExpand}
+>
+  <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
+       TableRow's own group-mode chevron + merged name cell replace the hand-rolled
+       ones this migration removes. -->
   <td class="cell cell-truncate" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
   <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
@@ -182,9 +161,9 @@
   {/if}
   <!-- Actions column: count badge for multi-device groups -->
   <td class="cell cell-actions cell-count">
-    <span class="count-pill">{group.count} шт.</span>
+    <Badge variant="accent" appearance="count">{group.count} шт.</Badge>
   </td>
-</tr>
+</TableRow>
 
 {#if expanded}
   {#if loadingChildren}
@@ -206,24 +185,9 @@
 {/if}
 
 <style lang="scss">
-  .group-row {
-    height: var(--row-height, 40px);
-    // Toned-down group header: slightly darker than normal rows but not a strong accent.
-    // color-mix blends the surface with a small 6% accent tint — readable but subtle.
-    background: color-mix(in srgb, var(--tr-surface) 94%, var(--tr-accent) 6%);
-    cursor: pointer;
-
-    &:hover {
-      background: color-mix(in srgb, var(--tr-surface) 86%, var(--tr-accent) 14%);
-    }
-  }
-
   .cell {
-    padding: 0 var(--tr-space-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
-    vertical-align: middle;
-    border-bottom: 1px solid var(--tr-border);
   }
 
   // Location + Состояние cells: single line with ellipsis (mirror DeviceListRow .cell).
@@ -235,13 +199,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 0;
-  }
-
-  // Name cell spans Наименование + Инв.№ + Серийный + Модель — no truncation.
-  // Using flex inside the td via a wrapper pattern: chevron + name text inline.
-  .cell-name-wide {
-    white-space: nowrap;
-    font-weight: var(--tr-font-weight-medium);
   }
 
   .cell-status {
@@ -256,43 +213,6 @@
 
   .cell-count {
     white-space: nowrap;
-  }
-
-  .chevron-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    border-radius: var(--tr-radius-xs);
-    color: var(--tr-text-secondary);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: transform 0.15s ease;
-
-    &:hover {
-      color: var(--tr-text-primary);
-      background: var(--tr-surface);
-    }
-
-    &.expanded {
-      transform: rotate(180deg);
-    }
-  }
-
-  .count-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    background: color-mix(in srgb, var(--tr-accent) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--tr-accent) 30%, transparent);
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: var(--tr-font-weight-medium);
-    color: var(--tr-accent);
   }
 
   .children-loading-row td {

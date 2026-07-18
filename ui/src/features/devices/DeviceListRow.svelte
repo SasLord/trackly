@@ -1,5 +1,6 @@
 <script lang="ts">
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import DeviceContextMenu from './DeviceContextMenu.svelte';
   import type { DeviceDto } from '../../bindings';
 
@@ -47,7 +48,7 @@
   const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
 </script>
 
-<tr class="device-row" class:group-last-child={isLastInGroup}>
+<TableRow class={isLastInGroup ? 'group-last-child' : undefined}>
   <td class="cell cell-name" title={device.name}>{device.name}</td>
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
     ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td
@@ -66,29 +67,23 @@
   <td class="cell cell-actions">
     <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} />
   </td>
-</tr>
+</TableRow>
 
 <style lang="scss">
-  .device-row {
-    height: var(--row-height, 40px);
-
-    &:hover {
-      background: var(--tr-surface);
-    }
-
-    // Visual group-end divider: last child in an expanded group gets a stronger
-    // bottom border so the eye clearly sees where the group ends.
-    &.group-last-child .cell {
-      border-bottom: 2px solid var(--tr-border-strong);
-    }
+  // Visual group-end divider: last child in an expanded group gets a stronger
+  // bottom border so the eye clearly sees where the group ends. `group-last-child`
+  // is passed through to TableRow's rendered <tr> (a DIFFERENT Svelte scope-hash
+  // than this file), so the ancestor part of the selector needs :global(); `.cell`
+  // stays local (unwrapped) so it keeps this file's scope hash — combined class
+  // count (group-last-child + cell + local-hash = 3) beats TableRow's own base
+  // <td> border-bottom rule (.tr-row.hash > td, 2 classes) on specificity.
+  :global(tr.group-last-child) > .cell {
+    border-bottom: 2px solid var(--tr-border-strong);
   }
 
   .cell {
-    padding: 0 var(--tr-space-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
-    vertical-align: middle;
-    border-bottom: 1px solid var(--tr-border);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
