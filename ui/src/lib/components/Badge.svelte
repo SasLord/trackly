@@ -144,6 +144,15 @@
     &.badge-m-dot .badge-m-dot-marker {
       background: var(--tr-success);
     }
+    &.badge-m-count {
+      background: var(--tr-success-soft);
+      color: var(--tr-success-text);
+      border: 1px solid var(--tr-success);
+      border-radius: 11px;
+      padding: 0 9px;
+      height: 20px;
+      font-size: 11px;
+    }
   }
 
   .badge-m-warning {
@@ -158,6 +167,15 @@
     &.badge-m-dot .badge-m-dot-marker {
       background: var(--tr-warning);
     }
+    &.badge-m-count {
+      background: var(--tr-warning-soft);
+      color: var(--tr-warning-text);
+      border: 1px solid var(--tr-warning);
+      border-radius: 11px;
+      padding: 0 9px;
+      height: 20px;
+      font-size: 11px;
+    }
   }
 
   .badge-m-danger {
@@ -171,6 +189,15 @@
     }
     &.badge-m-dot .badge-m-dot-marker {
       background: var(--tr-danger);
+    }
+    &.badge-m-count {
+      background: var(--tr-danger-soft);
+      color: var(--tr-danger-text);
+      border: 1px solid var(--tr-danger);
+      border-radius: 11px;
+      padding: 0 9px;
+      height: 20px;
+      font-size: 11px;
     }
   }
 
