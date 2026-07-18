@@ -29,11 +29,12 @@
   {disabled}
   class="input"
   class:invalid
-  bind:value
+  {value}
   aria-describedby={ariaDescribedby}
   aria-invalid={invalid || undefined}
   oninput={(e) => {
     const v = (e.currentTarget as HTMLInputElement).value;
+    value = v;
     oninput?.(v);
   }}
 />
