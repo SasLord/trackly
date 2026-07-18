@@ -125,3 +125,5 @@ None. `TableSection.svelte` and the `ShowcasePage.svelte` diff are presentation-
 ## Next Steps
 - Plan 25-05: `DeviceList`/`DeviceListRow`/`DeviceGroupRow` migrated onto the `Table`/`TableRow` primitives (table pilot, D-05) — the live-data consumer that closes CMP-06 end-to-end
 - A future plan should run `prettier --write` on `ui/src/lib/components/Dropdown.svelte` to clear the deferred lint item logged in `deferred-items.md`
+
+## Self-Check: PASSED
