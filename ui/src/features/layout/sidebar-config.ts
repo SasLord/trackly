@@ -11,7 +11,7 @@ export type SidebarItem = {
 export type SidebarDivider = { kind: 'divider' };
 export type SidebarEntry = SidebarItem | SidebarDivider;
 
-// PINNED: 10 items + 4 dividers = 14 entries — source of truth per UI-SPEC §Copywriting Sidebar.
+// PINNED: 11 items + 4 dividers = 15 entries — source of truth per UI-SPEC §Copywriting Sidebar.
 // Dividers after: Карта (pos 3), Акты (pos 6), Заявки (pos 10), Пользователи (pos 13).
 export const SIDEBAR_ITEMS: SidebarEntry[] = [
   { kind: 'item', route: '/', label: 'Дашборд', phase: 7 },
@@ -28,6 +28,7 @@ export const SIDEBAR_ITEMS: SidebarEntry[] = [
   { kind: 'item', route: '/users', label: 'Пользователи', phase: 5, roles: ['admin'] },
   { kind: 'divider' },
   { kind: 'item', route: '/settings', label: 'Настройки', phase: 7, roles: ['admin'] },
+  { kind: 'item', route: '/showcase', label: 'Витрина компонентов', roles: ['admin'] },
 ];
 
 /**

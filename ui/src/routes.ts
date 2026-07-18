@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage.svelte';
 import NotFound from './pages/NotFound.svelte';
 import LoginPage from './features/auth/LoginPage.svelte';
 import AccessDenied from './pages/AccessDenied.svelte';
+import ComponentShowcasePage from './pages/ComponentShowcasePage.svelte';
 
 export const routes = {
   '/': Dashboard,
@@ -24,6 +25,7 @@ export const routes = {
   '/reports': ReportsPage,
   '/users': UsersPage,
   '/settings': SettingsPage,
+  '/showcase': ComponentShowcasePage,
   '*': NotFound,
 } as const;
 
