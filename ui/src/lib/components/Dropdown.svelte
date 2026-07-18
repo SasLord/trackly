@@ -1,12 +1,14 @@
 <script lang="ts" generics="TGroup, TMember">
   // Plan 25-02 (CMP-07): generic drill-in combobox/select primitive, extracted
   // (not redesigned) from ActFormItemsTable.svelte's per-row device picker
-  // (D-01/D-02 of Phase 25 context). This plan implements the full prop
-  // contract, the internal drill-in state machine (AUTO-05 auto-flatten,
-  // manual drill-in/backToGroups), and the `variant === 'combobox'` field.
-  // Plan 25-03 completes the `variant === 'select'` field and the full
-  // keyboard/ARIA layer beyond the pre-existing regression floor (Home/End,
-  // member-mode arrow navigation, aria-activedescendant, focus management).
+  // (D-01/D-02 of Phase 25 context). Plan 25-02 built the full prop contract,
+  // the internal drill-in state machine (AUTO-05 auto-flatten, manual
+  // drill-in/backToGroups), and the `variant === 'combobox'` field.
+  // Plan 25-03 Task 1 (this task) completes the `variant === 'select'` field
+  // (value display + in-panel search box) and the flat-list checkmark mode.
+  // Task 2 adds the full keyboard/ARIA layer beyond the pre-existing
+  // regression floor (Home/End, member-mode arrow navigation,
+  // aria-activedescendant, two-stage Escape, scrollIntoView).
   import { onDestroy } from 'svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import { portal } from '$lib/utils/portal';
@@ -104,14 +106,16 @@
    *  independent conditions, not one boolean (UI-SPEC correction of
    *  ActFormItemsTable.svelte:568-588). */
   let showBack = $state(false);
-  /** Keyboard nav index — wired fully in Plan 25-03; declared here because
-   *  the view-mode transitions below already need to reset it. */
+  /** Keyboard nav index — wired fully in Plan 25-03 Task 2; declared here
+   *  because the view-mode transitions below already need to reset it. */
   let activeIndex = $state(-1);
 
   // Plan 18-04 precedent (ActFormItemsTable.svelte): Input.svelte has no
   // ref-forwarding, so the combobox field is a raw <input> with bind:this,
-  // used as `anchorEl` for use:dropdownAnchor.
+  // used as `anchorEl` for use:dropdownAnchor. The select-variant field is a
+  // raw <button> for the same reason.
   let inputEl = $state<HTMLInputElement | null>(null);
+  let triggerEl = $state<HTMLButtonElement | null>(null);
   let panelEl = $state<HTMLUListElement | null>(null);
 
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
@@ -211,6 +215,19 @@
     onSearch(value);
   }
 
+  /** select-variant field click: toggle. Opening fires onSearch('') — the
+   *  select field has no typed query of its own, the in-panel search box
+   *  drives filtering instead. */
+  function toggleSelectOpen() {
+    if (open) {
+      open = false;
+      return;
+    }
+    open = true;
+    if (searchDebounce) clearTimeout(searchDebounce);
+    onSearch('');
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && open) {
       e.preventDefault();
@@ -226,21 +243,15 @@
   function handleClickOutside(e: MouseEvent) {
     if (!open) return;
     const target = e.target as Node;
-    const insideInput = inputEl?.contains(target) ?? false;
+    const insideField = (inputEl?.contains(target) ?? false) || (triggerEl?.contains(target) ?? false);
     const insideDropdown = panelEl?.contains(target) ?? false;
-    if (!insideInput && !insideDropdown) open = false;
+    if (!insideField && !insideDropdown) open = false;
   }
 
   $effect(() => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   });
-
-  // `searchPlaceholder` is select-variant only (in-panel search box) — that
-  // field is not implemented until Plan 25-03 (see the commented `{:else}`
-  // branch below). Referenced here only to satisfy `noUnusedLocals` until
-  // then.
-  void searchPlaceholder;
 </script>
 
 <div class="tr-dropdown">
@@ -260,9 +271,21 @@
       onkeydown={handleKeydown}
     />
   {:else}
-    <!-- TODO Plan 25-03: variant === 'select' field (value display + in-panel
-         search box). Left unimplemented in Plan 25-02 per its explicit scope
-         boundary — renders nothing rather than throwing. -->
+    <!-- D-03/No Analog Found (PATTERNS.md): select-variant field — value
+         display + trailing arrow, WAI-ARIA "select-only combobox" pattern
+         (button-based trigger, not directly editable). -->
+    <button
+      type="button"
+      bind:this={triggerEl}
+      class="tr-dropdown-field-button"
+      class:invalid
+      {disabled}
+      onclick={toggleSelectOpen}
+      onkeydown={handleKeydown}
+    >
+      <span class="tr-dropdown-field-value" class:placeholder={!value}>{value || placeholder}</span>
+      <span class="tr-dropdown-field-arrow" aria-hidden="true">▼</span>
+    </button>
   {/if}
 
   {#if open}
@@ -271,15 +294,31 @@
       class:tr-dropdown-panel--flat={flat}
       role="listbox"
       use:portal
-      use:dropdownAnchor={{ anchorEl: inputEl, maxHeight: flat ? 240 : 280 }}
+      use:dropdownAnchor={{ anchorEl: inputEl ?? triggerEl, maxHeight: flat ? 240 : 280 }}
       bind:this={panelEl}
     >
+      {#if variant === 'select'}
+        <!-- D-03/UI-SPEC "Dropdown — две формы": in-panel search box, the
+             first child of the panel (before drill-in header or options). -->
+        <li class="tr-dropdown-search">
+          <span class="tr-dropdown-search-box">
+            <span class="tr-dropdown-search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="text"
+              class="tr-dropdown-search-input"
+              aria-label="Поиск"
+              placeholder={searchPlaceholder}
+              oninput={handleInput}
+            />
+          </span>
+        </li>
+      {/if}
       {#if !flat && viewMode === 'members'}
         <!-- D-01/D-06 drill-in header — checkpoint fix #1 (UI-SPEC): title is
              ALWAYS shown in member-view; "← Назад" only on manual drill-in
              (showBack), not on AUTO-05 auto-flatten. Two independent
              conditions, not one boolean. -->
-        <li class="tr-dropdown-drill-header">
+        <li class="tr-dropdown-drill-header" class:tr-dropdown-drill-header--offset={variant === 'select'}>
           {#if showBack}
             <button
               type="button"
@@ -399,6 +438,58 @@
     }
   }
 
+  // D-03/No Analog Found: select-variant trigger — value display + arrow,
+  // WAI-ARIA "select-only combobox" pattern. Shares field geometry with
+  // .tr-dropdown-field (h=36px, same surface/border/radius tokens).
+  .tr-dropdown-field-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    background: var(--tr-surface);
+    color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: var(--tr-radius-sm);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
+    text-align: left;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
+    }
+    &.invalid {
+      border-color: var(--tr-danger);
+      box-shadow: 0 0 0 3px var(--tr-danger-ring);
+    }
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+  .tr-dropdown-field-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &.placeholder {
+      color: var(--tr-text-tertiary);
+    }
+  }
+  .tr-dropdown-field-arrow {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--tr-text-secondary);
+  }
+
   // Plan 18-04 (AUTO-01): the panel is moved to <body> by use:portal, so this
   // component's scoped <style> never reaches it — styling goes through a
   // namespaced global class instead (WR-03: un-namespaced .dropdown/-empty
@@ -502,7 +593,52 @@
     text-align: center;
     color: var(--tr-accent);
     font-size: 14px;
-    font-weight: 700;
+    // UI-SPEC Checker Sign-Off recommendation: 600 (not a new 700 weight),
+    // keeps the typography scale closed to the existing 4 weights.
+    font-weight: var(--tr-font-weight-semibold);
+  }
+
+  // D-03/UI-SPEC "Dropdown — две формы": select-variant in-panel search box,
+  // sticky so it stays visible while the option list scrolls underneath.
+  :global(.tr-dropdown-panel .tr-dropdown-search) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--tr-surface-raised);
+    border-bottom: 1px solid var(--tr-border);
+    list-style: none;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-search-box) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    background: var(--tr-surface-sunken);
+    border-radius: 5px;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-search-icon) {
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: var(--tr-text-tertiary);
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-search-input) {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--tr-text-primary);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-label);
+
+    &::placeholder {
+      color: var(--tr-text-tertiary);
+    }
   }
 
   // D-01/checkpoint fix #1: sticky drill-in header, opaque background so
@@ -520,6 +656,14 @@
     border-bottom: 1px solid var(--tr-border);
     font-size: 13px;
     list-style: none;
+  }
+  // select variant + grouped (non-flat) drill-in: the in-panel search box
+  // (42px, .tr-dropdown-search) is also sticky at top:0 — without this
+  // offset the two sticky headers would overlap once scrolled. This combo
+  // isn't in the Showcase Contract's two canonical examples but is a valid
+  // point in the variant×flat prop matrix, so it must not visually break.
+  :global(.tr-dropdown-panel .tr-dropdown-drill-header--offset) {
+    top: 42px;
   }
   :global(.tr-dropdown-panel .tr-dropdown-drill-back) {
     flex: 0 0 auto;
