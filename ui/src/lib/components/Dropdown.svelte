@@ -4,9 +4,9 @@
   // (D-01/D-02 of Phase 25 context). Plan 25-02 built the full prop contract,
   // the internal drill-in state machine (AUTO-05 auto-flatten, manual
   // drill-in/backToGroups), and the `variant === 'combobox'` field.
-  // Plan 25-03 Task 1 (this task) completes the `variant === 'select'` field
-  // (value display + in-panel search box) and the flat-list checkmark mode.
-  // Task 2 adds the full keyboard/ARIA layer beyond the pre-existing
+  // Plan 25-03 Task 1 built the `variant === 'select'` field (value display +
+  // in-panel search box) and the flat-list checkmark mode. Task 2 (this
+  // task) adds the full keyboard/ARIA layer beyond the pre-existing
   // regression floor (Home/End, member-mode arrow navigation,
   // aria-activedescendant, two-stage Escape, scrollIntoView).
   import { onDestroy } from 'svelte';
@@ -94,6 +94,13 @@
     onPickMember,
   }: Props = $props();
 
+  // Stable per-instance id prefix (Svelte 5.20+ rune) — Dropdown is a
+  // reusable primitive with potentially many simultaneous instances (unlike
+  // PersonAutocomplete's hardcoded `person-autocomplete-item-*` ids, which
+  // assume a single instance per screen).
+  const uid = $props.id();
+  const panelId = `${uid}-panel`;
+
   // Internal state (D-02): part of the component, NOT caller-supplied props —
   // every future consumer inherits AUTO-02/AUTO-05 and the drill-in mechanics
   // for free instead of re-implementing them per-screen.
@@ -106,9 +113,13 @@
    *  independent conditions, not one boolean (UI-SPEC correction of
    *  ActFormItemsTable.svelte:568-588). */
   let showBack = $state(false);
-  /** Keyboard nav index — wired fully in Plan 25-03 Task 2; declared here
-   *  because the view-mode transitions below already need to reset it. */
+  /** Keyboard nav index into whichever list is currently visible (`groups`
+   *  when `flat` or `viewMode === 'groups'`, `members` otherwise). */
   let activeIndex = $state(-1);
+  /** D-12 focus management: the `groups` index to restore `activeIndex` to
+   *  when `backToGroups()` returns from a manual drill-in — "при возврате —
+   *  та группа, из которой вышли". */
+  let returnIndex = $state(-1);
 
   // Plan 18-04 precedent (ActFormItemsTable.svelte): Input.svelte has no
   // ref-forwarding, so the combobox field is a raw <input> with bind:this,
@@ -144,7 +155,9 @@
         members = result;
         viewMode = 'members';
         showBack = false;
-        activeIndex = -1;
+        // D-12 focus management: entering member-view activates the first
+        // option (same rule as manual drillInto below).
+        activeIndex = result.length > 0 ? 0 : -1;
       })();
     } else {
       viewMode = 'groups';
@@ -160,11 +173,14 @@
    *  unlike AUTO-05's auto-flatten, this is a user-initiated navigation. */
   async function drillInto(g: TGroup) {
     const result = await onExpandGroup(g);
+    // D-12 focus management: remember which group we drilled into so
+    // backToGroups() can restore activeIndex to it, not reset to -1.
+    returnIndex = groups.findIndex((x) => getGroupId(x) === getGroupId(g));
     activeGroup = g;
     members = result;
     viewMode = 'members';
     showBack = true;
-    activeIndex = -1;
+    activeIndex = result.length > 0 ? 0 : -1;
   }
 
   /** D-06: "← Назад" — returns from the member list to the group list. */
@@ -173,7 +189,7 @@
     activeGroup = null;
     members = [];
     showBack = false;
-    activeIndex = -1;
+    activeIndex = returnIndex;
   }
 
   /** D-01/D-08: click on an option row in the groups/flat panel. Grouped
@@ -207,12 +223,20 @@
     scheduleSearch(query);
   }
 
+  /** Opens the panel and fires an immediate (non-debounced) onSearch — shared
+   *  by AUTO-02 (combobox focus), the select-variant trigger click, and the
+   *  ArrowDown-on-closed-panel regression-floor behavior (D-12). */
+  function openPanel(query: string) {
+    if (searchDebounce) clearTimeout(searchDebounce);
+    open = true;
+    activeIndex = -1;
+    onSearch(query);
+  }
+
   /** AUTO-02: panel opens on focus, no typing required — fires onSearch
    *  immediately (delay 0), not through the 250ms debounce. */
   function handleFocus() {
-    open = true;
-    if (searchDebounce) clearTimeout(searchDebounce);
-    onSearch(value);
+    openPanel(value);
   }
 
   /** select-variant field click: toggle. Opening fires onSearch('') — the
@@ -221,17 +245,131 @@
   function toggleSelectOpen() {
     if (open) {
       open = false;
-      return;
+    } else {
+      openPanel('');
     }
-    open = true;
-    if (searchDebounce) clearTimeout(searchDebounce);
-    onSearch('');
+  }
+
+  /** D-12 `aria-activedescendant` target: id of the option row at
+   *  `activeIndex` in whichever list (`groups`/`members`) is currently
+   *  visible. Options are portaled out of this component's own DOM subtree,
+   *  so ids (not array position) are the only way to reference them. */
+  function activeOptionId(): string | undefined {
+    if (activeIndex < 0) return undefined;
+    if (flat || viewMode === 'groups') {
+      if (activeIndex >= groups.length) return undefined;
+      return `${uid}-opt-${getGroupId(groups[activeIndex])}`;
+    }
+    if (activeIndex >= members.length) return undefined;
+    return `${uid}-opt-${getMemberId(members[activeIndex])}`;
+  }
+
+  /** D-12: scrolls the newly-active option into view after keyboard nav. */
+  function scrollActiveIntoView() {
+    const id = activeOptionId();
+    if (!id) return;
+    document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && open) {
+    // Regression floor: ArrowDown on a closed panel opens it.
+    if (e.key === 'ArrowDown' && !open) {
+      e.preventDefault();
+      openPanel(variant === 'combobox' ? value : '');
+      return;
+    }
+    if (!open) return;
+
+    const inGroupsView = flat || viewMode === 'groups';
+
+    if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
+      // D-12: two-stage Escape in member-view — first press returns to the
+      // group list, but only when there IS a group list to return to
+      // (manual drill-in, showBack=true). AUTO-05's auto-flattened
+      // single-group view has nowhere to go back to (showBack=false) and
+      // closes immediately, same as groups-view (regression floor).
+      if (!inGroupsView && showBack) {
+        backToGroups();
+      } else {
+        open = false;
+      }
+      return;
+    }
+
+    if (inGroupsView) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (groups.length === 0) return;
+        activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % groups.length;
+        scrollActiveIntoView();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (groups.length === 0) return;
+        activeIndex = activeIndex <= 0 ? groups.length - 1 : activeIndex - 1;
+        scrollActiveIntoView();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        if (groups.length === 0) return;
+        activeIndex = 0;
+        scrollActiveIntoView();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        if (groups.length === 0) return;
+        activeIndex = groups.length - 1;
+        scrollActiveIntoView();
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0 && activeIndex < groups.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleOptionClick(groups[activeIndex]);
+        }
+      } else if (e.key === 'Tab') {
+        if (activeIndex >= 0 && activeIndex < groups.length) {
+          handleOptionClick(groups[activeIndex]);
+        }
+        open = false;
+      }
+      return;
+    }
+
+    // Member-view (drill-in) keyboard nav — net-new per D-12 (previously
+    // mouse-only navigation, per UI-SPEC's correction of CONTEXT.md).
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (members.length === 0) return;
+      activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % members.length;
+      scrollActiveIntoView();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (members.length === 0) return;
+      activeIndex = activeIndex <= 0 ? members.length - 1 : activeIndex - 1;
+      scrollActiveIntoView();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (members.length === 0) return;
+      activeIndex = 0;
+      scrollActiveIntoView();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (members.length === 0) return;
+      activeIndex = members.length - 1;
+      scrollActiveIntoView();
+    } else if (e.key === 'Enter') {
+      // WR-02: Enter must never bubble to a host <form> submit — suppressed
+      // unconditionally (the pre-existing regression floor). D-12 adds the
+      // pick action on top of that suppression; the suppression itself is
+      // not new.
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeIndex >= 0 && activeIndex < members.length) {
+        onPickMember(members[activeIndex]);
+      }
+    } else if (e.key === 'Tab') {
+      if (activeIndex >= 0 && activeIndex < members.length) {
+        onPickMember(members[activeIndex]);
+      }
       open = false;
     }
   }
@@ -265,7 +403,12 @@
       {placeholder}
       {disabled}
       autocomplete="off"
+      role="combobox"
       aria-autocomplete="list"
+      aria-expanded={open}
+      aria-controls={panelId}
+      aria-haspopup="listbox"
+      aria-activedescendant={activeOptionId()}
       oninput={handleInput}
       onfocus={handleFocus}
       onkeydown={handleKeydown}
@@ -280,6 +423,11 @@
       class="tr-dropdown-field-button"
       class:invalid
       {disabled}
+      role="combobox"
+      aria-expanded={open}
+      aria-controls={panelId}
+      aria-haspopup="listbox"
+      aria-activedescendant={activeOptionId()}
       onclick={toggleSelectOpen}
       onkeydown={handleKeydown}
     >
@@ -293,6 +441,7 @@
       class="tr-dropdown-panel"
       class:tr-dropdown-panel--flat={flat}
       role="listbox"
+      id={panelId}
       use:portal
       use:dropdownAnchor={{ anchorEl: inputEl ?? triggerEl, maxHeight: flat ? 240 : 280 }}
       bind:this={panelEl}
@@ -336,13 +485,15 @@
         {:else if members.length === 0}
           <li class="tr-dropdown-empty">Ничего не найдено</li>
         {:else}
-          {#each members as m (getMemberId(m))}
+          {#each members as m, i (getMemberId(m))}
             <li>
               <button
                 type="button"
+                id={`${uid}-opt-${getMemberId(m)}`}
                 class="tr-dropdown-option"
+                class:active={i === activeIndex}
                 role="option"
-                aria-selected="false"
+                aria-selected={i === activeIndex}
                 onmousedown={(e) => e.preventDefault()}
                 onclick={() => onPickMember(m)}
               >
@@ -368,6 +519,7 @@
           <li>
             <button
               type="button"
+              id={`${uid}-opt-${getGroupId(g)}`}
               class="tr-dropdown-option"
               class:active={i === activeIndex}
               class:selected={flat && !!isGroupSelected?.(g)}
