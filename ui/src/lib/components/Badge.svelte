@@ -147,11 +147,7 @@
     &.badge-m-count {
       background: var(--tr-success-soft);
       color: var(--tr-success-text);
-      border: 1px solid var(--tr-success);
-      border-radius: 11px;
-      padding: 0 9px;
-      height: 20px;
-      font-size: 11px;
+      border-color: var(--tr-success);
     }
   }
 
@@ -170,11 +166,7 @@
     &.badge-m-count {
       background: var(--tr-warning-soft);
       color: var(--tr-warning-text);
-      border: 1px solid var(--tr-warning);
-      border-radius: 11px;
-      padding: 0 9px;
-      height: 20px;
-      font-size: 11px;
+      border-color: var(--tr-warning);
     }
   }
 
@@ -193,33 +185,30 @@
     &.badge-m-count {
       background: var(--tr-danger-soft);
       color: var(--tr-danger-text);
-      border: 1px solid var(--tr-danger);
-      border-radius: 11px;
-      padding: 0 9px;
-      height: 20px;
-      font-size: 11px;
+      border-color: var(--tr-danger);
     }
   }
 
   .badge-m-count {
     background: var(--tr-surface-sunken);
     color: var(--tr-text-secondary);
+    border: 1px solid var(--tr-border-strong);
     border-radius: 11px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 6px;
+    height: 20px;
+    padding: 0 9px;
     font-size: 11px;
     justify-content: center;
+  }
+
+  .badge-m-count.badge-m-sm {
+    height: 18px;
+    padding: 0 7px;
   }
 
   .badge-m-accent.badge-m-count {
     background: var(--tr-accent-soft);
     color: var(--tr-accent-text);
-    border: 1px solid var(--tr-accent);
-    border-radius: 11px;
-    padding: 0 9px;
-    height: 20px;
-    font-size: 11px;
+    border-color: var(--tr-accent);
   }
 
   .badge-m-dot-marker {
