@@ -55,6 +55,17 @@ body {
   }
 }
 
+// ── Theme-switch transition suppression (D-09) ─────────────────────────────────
+// Applied for a single rAF-frame window around a theme toggle (see applyResolved()
+// in theme.svelte.ts) so that primitives with .12s micro-transitions don't visibly
+// smear colors when the user flips light/dark. Coexists with the reduced-motion
+// block above — that one is permanent for users with the OS preference; this one
+// is momentary for everyone else.
+:global(.theme-switching),
+:global(.theme-switching) * {
+  transition: none !important;
+}
+
 // ── Skip link (accessibility) ─────────────────────────────────────────────────
 
 .skip-link {

@@ -31,5 +31,9 @@ function applyResolved(): void {
   const r: Resolved =
     themeStore.preference === 'system' ? (mql?.matches ? 'dark' : 'light') : themeStore.preference;
   themeStore.resolved = r;
+  document.documentElement.classList.add('theme-switching');
   document.documentElement.dataset.theme = r;
+  requestAnimationFrame(() => {
+    document.documentElement.classList.remove('theme-switching');
+  });
 }
