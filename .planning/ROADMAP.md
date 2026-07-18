@@ -439,7 +439,7 @@ Plans:
 4. Вкладки switch-bar показывают счётчики и подчёркивание активной вкладки.
 5. Модальное окно показывает оверлей + шапку + тело + футер действий с тенью уровня 3 и радиусом 12px.
 
-**Plans**: 11 plans in 6 waves (4 gap-closure plans added after 24-VERIFICATION.md found 3 BLOCKER gaps)
+**Plans**: 13 plans in 6 waves (4 gap-closure plans added after 24-VERIFICATION.md found 3 BLOCKER gaps; 2 further gap-closure plans added after 24-REVIEW.md found 2 BLOCKER regressions + 2 WARNING regressions introduced by those same gap-closure plans)
 **UI hint**: yes
 
 **Wave 1**
@@ -464,6 +464,11 @@ Plans:
 - [x] 24-09-PLAN.md — Fix Badge appearance="count" CSS for success/warning/danger tones (CMP-03)
 - [x] 24-10-PLAN.md — Modal focus management: initial focus, Tab-trap, focus restoration (code review CR-03 follow-up)
 - [x] 24-11-PLAN.md — Genuine human sign-off checkpoint (blocking, not auto-advanceable) on all 5 showcase sections + all 4 gap-closure fixes
+
+**Gap closure round 2** *(24-REVIEW.md: 2 BLOCKER regressions introduced by 24-10 (CR-01 double onClose, CR-02 iframe/portal excluded from Tab-trap) + 2 WARNING regressions introduced by 24-08/24-09 (WR-05 Badge size ignored for count, WR-06 Input number/string type leak); bundled WR-02 since it lives in the same Modal.svelte focus code as CR-01/CR-02)*
+
+- [ ] 24-12-PLAN.md — Modal.svelte: single window-level keydown handler (CR-01), portal-aware + iframe-inclusive Tab-trap (CR-02), verified initial-focus fallback (WR-02)
+- [ ] 24-13-PLAN.md — Badge.svelte: unify appearance="count" sizing across all 5 tones so size="sm" works (WR-05); Input.svelte: stop type="number" bind:value from leaking number|null into the string value contract (WR-06)
 
 ---
 
