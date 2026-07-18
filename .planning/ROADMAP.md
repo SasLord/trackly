@@ -439,7 +439,7 @@ Plans:
 4. Вкладки switch-bar показывают счётчики и подчёркивание активной вкладки.
 5. Модальное окно показывает оверлей + шапку + тело + футер действий с тенью уровня 3 и радиусом 12px.
 
-**Plans**: 7 plans in 3 waves
+**Plans**: 11 plans in 6 waves (4 gap-closure plans added after 24-VERIFICATION.md found 3 BLOCKER gaps)
 **UI hint**: yes
 
 **Wave 1**
@@ -457,6 +457,13 @@ Plans:
 **Wave 3** *(depends on все предыдущие — сборка витрины)*
 
 - [x] 24-07-PLAN.md — Витрина: сборка 5 секций, роут /showcase (admin-only, D-01/D-02/D-03), финальный checkpoint
+
+**Gap closure** *(24-VERIFICATION.md: 3 BLOCKER gaps found post-24-07 — bind:value one-way, Badge count 2/5 tones, D-09 :global() invalid in plain SCSS)*
+
+- [ ] 24-08-PLAN.md — Fix two-way bind:value in Input/Select/Textarea (CMP-02) + fix D-09 theme-transition suppression selector
+- [ ] 24-09-PLAN.md — Fix Badge appearance="count" CSS for success/warning/danger tones (CMP-03)
+- [ ] 24-10-PLAN.md — Modal focus management: initial focus, Tab-trap, focus restoration (code review CR-03 follow-up)
+- [ ] 24-11-PLAN.md — Genuine human sign-off checkpoint (blocking, not auto-advanceable) on all 5 showcase sections + all 4 gap-closure fixes
 
 ---
 
