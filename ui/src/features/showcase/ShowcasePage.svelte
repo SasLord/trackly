@@ -4,6 +4,7 @@
   import BadgeSection from './sections/BadgeSection.svelte';
   import TabsSection from './sections/TabsSection.svelte';
   import ModalSection from './sections/ModalSection.svelte';
+  import TableSection from './sections/TableSection.svelte';
 </script>
 
 <div class="showcase-page">
@@ -32,6 +33,10 @@
 
   <section class="showcase-block">
     <ModalSection />
+  </section>
+
+  <section class="showcase-block">
+    <TableSection />
   </section>
 </div>
 
