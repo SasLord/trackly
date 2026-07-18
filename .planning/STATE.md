@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T08:34:54.190Z"
+last_updated: "2026-07-18T08:52:20.037Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 26
   total_plans: 171
-  completed_plans: 169
+  completed_plans: 170
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 24 (base-components) — EXECUTING
-Plan: 3 of 11
+Plan: 11 of 11
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -215,6 +215,7 @@ Last activity: 2026-07-18
 | Phase 24 P07 | 15min | 3 tasks | 5 files |
 | Phase 24 P08 | 6min | 2 tasks | 4 files |
 | Phase 24 P09 | 8min | 2 tasks | 1 files |
+| Phase 24 P10 | 6min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -527,6 +528,7 @@ Recent decisions affecting current work:
 - [Phase 24]: Task 3 (24-07 human-verify checkpoint) closed as gate-closure under auto_advance; live browser/visual verification against .dc.html references NOT performed by a human and remains outstanding — documented in 24-07-SUMMARY.md
 - [Phase 24]: 24-08: kept oninput/onchange callbacks alongside bind:value/bind:checked unchanged — both mechanisms coexist without conflict; no consumer-facing API change
 - [Phase 24]: 24-09: Nested &.badge-m-count inside .badge-m-success/.badge-m-warning/.badge-m-danger (matching existing &.badge-m-soft/&.badge-m-solid/&.badge-m-dot nesting), not new flat .badge-m-X.badge-m-count selectors
+- [Phase 24]: 24-10: single $effect on 'open' handles both initial focus and focus-restoration cleanup; trapTab only intercepts Tab/Shift+Tab at wrap-around edges, native tab order elsewhere
 
 ### Pending Todos
 
@@ -602,8 +604,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T08:34:54.182Z
-Stopped at: Completed 24-09-PLAN.md
+Last session: 2026-07-18T08:52:20.029Z
+Stopped at: Completed 24-10-PLAN.md (Modal focus-trap CR-03); next 24-11
 Resume file: None
 
 ## Operator Next Steps
