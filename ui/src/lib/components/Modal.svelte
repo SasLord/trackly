@@ -24,19 +24,59 @@
   let dialogEl = $state<HTMLElement | null>(null);
   let prevFocus: HTMLElement | null = null;
 
-  const FOCUSABLE_SELECTOR =
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-  const TRAP_FOCUSABLE_SELECTOR =
-    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  // CR-02/WR-02 fix (24-12): single selector source of truth for both initial focus
+  // and the Tab-trap. iframe/contenteditable/audio/video/summary added so PdfPreviewModal's
+  // <iframe> and similar rich content participate in the Tab-cycle instead of being skipped.
+  const TRAP_FOCUSABLE_PARTS = [
+    'button:not([disabled])',
+    '[href]',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    'iframe',
+    '[contenteditable]:not([contenteditable="false"])',
+    'audio[controls]',
+    'video[controls]',
+    'summary',
+    '[tabindex]:not([tabindex="-1"])',
+  ];
+  const TRAP_FOCUSABLE_SELECTOR = TRAP_FOCUSABLE_PARTS.join(', ');
+  // CR-02 fix: use:portal-teleported content (autocomplete dropdowns, context menus) lives in
+  // document.body, not inside dialogEl — map over the PARTS array (not the joined string) so
+  // every comma-separated alternative is scoped, not just the first.
+  const PORTAL_FOCUSABLE_SELECTOR = TRAP_FOCUSABLE_PARTS.map((p) => `[data-tr-portal] ${p}`).join(
+    ', ',
+  );
+
+  function scopedFocusable(): HTMLElement[] {
+    return dialogEl
+      ? Array.from(dialogEl.querySelectorAll<HTMLElement>(TRAP_FOCUSABLE_SELECTOR)).filter(
+          (n) => n.offsetParent !== null,
+        )
+      : [];
+  }
+
+  function portaledFocusable(): HTMLElement[] {
+    // dropdownAnchor.ts sets position:fixed on portaled dropdowns, which always yields a
+    // null layout-parent — getClientRects() is the correct visibility check here instead.
+    return Array.from(document.querySelectorAll<HTMLElement>(PORTAL_FOCUSABLE_SELECTOR)).filter(
+      (n) => n.getClientRects().length > 0,
+    );
+  }
 
   $effect(() => {
     if (!open) return;
 
     prevFocus = document.activeElement as HTMLElement | null;
-    const first = dialogEl?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    const first = scopedFocusable()[0];
     if (first) {
       first.focus();
     } else {
+      dialogEl?.focus();
+    }
+    // WR-02 fix: verify the real outcome instead of trusting that `first` was non-null —
+    // a disabled/hidden first match would previously leave focus stuck behind the backdrop.
+    if (!dialogEl?.contains(document.activeElement)) {
       dialogEl?.focus();
     }
 
@@ -48,9 +88,10 @@
   function trapTab(e: KeyboardEvent) {
     if (e.key !== 'Tab' || !dialogEl) return;
 
-    const nodes = Array.from(
-      dialogEl.querySelectorAll<HTMLElement>(TRAP_FOCUSABLE_SELECTOR),
-    ).filter((n) => n.offsetParent !== null);
+    // Accepted limitation (WR-04, out of scope): portaledFocusable() queries the whole
+    // document, not scoped per-Modal-instance — if two Modals were open simultaneously each
+    // with its own open portal, either trap could pick up the other's portal node.
+    const nodes = [...scopedFocusable(), ...portaledFocusable()];
 
     if (nodes.length === 0) return;
 
@@ -67,7 +108,11 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') {
+      onClose();
+      return;
+    }
+    trapTab(e);
   }
 
   function handleBackdropMousedown(e: MouseEvent) {
@@ -89,18 +134,12 @@
     class="modal-backdrop"
     onmousedown={handleBackdropMousedown}
     onmouseup={handleBackdropMouseup}
-    onkeydown={handleKeydown}
     aria-modal="true"
     role="dialog"
     aria-labelledby={titleId}
     tabindex="-1"
   >
-    <div
-      class="modal-container modal-{size}"
-      bind:this={dialogEl}
-      tabindex="-1"
-      onkeydown={trapTab}
-    >
+    <div class="modal-container modal-{size}" bind:this={dialogEl} tabindex="-1">
       <header class="modal-header">
         <h2 id={titleId} class="modal-title">{title}</h2>
         <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>

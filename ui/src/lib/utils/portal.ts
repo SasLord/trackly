@@ -21,6 +21,7 @@ export function portal(
   }
 
   if (targetEl) {
+    node.setAttribute('data-tr-portal', '');
     targetEl.appendChild(node);
   }
 
