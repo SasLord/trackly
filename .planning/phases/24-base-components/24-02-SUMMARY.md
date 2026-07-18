@@ -111,3 +111,7 @@ None - no external service configuration required.
 ---
 *Phase: 24-base-components*
 *Completed: 2026-07-18*
+
+## Self-Check: PASSED
+
+All 3 files verified present on disk (Button.svelte, ButtonsSection.svelte, _tokens.scss); all 3 commits (3eb8a93, c841bf2, 9419719) verified in git log.
