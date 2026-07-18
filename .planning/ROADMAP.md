@@ -784,3 +784,34 @@ Plans:
 ---
 *Last updated: 2026-07-15 — v1.1.2 shipped (Phases 18–22, 28 plans). All 12 requirements Complete. Full detail archived to `milestones/v1.1.2-ROADMAP.md`.*
 *Last updated: 2026-07-16 — v1.2 roadmap created (Phases 23–30, 8 phases, standard granularity, 25/25 requirements mapped, 0 plans yet). Ready for `/gsd-plan-phase 23`.*
+
+## Backlog
+
+### Phase 999.1: Ролевой гейт на уровне маршрутов (BACKLOG)
+
+**Goal:** [Captured for future planning] Защитить маршруты ролями, а не только пункты сайдбара.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+**Контекст находки (UAT фазы 24, тест 10, severity major):**
+
+По прямому хэшу `#/showcase` Специалист (manager) открывает витрину компонентов,
+хотя пункта в сайдбаре у него нет. D-02 («доступ admin-only») не выполнен.
+
+Механика (`ui/src/App.svelte:59-69`): роутинг ветвится только employee vs остальные.
+Employee уходит в `employeeRoutes` с catch-all `'*': AccessDenied`, поэтому сотрудник
+получает отказ. Admin и manager делят общую карту `routes`, где
+`'/showcase': ComponentShowcasePage` (`ui/src/routes.ts:28`) не защищён ролью вовсе.
+Ролевая проверка стоит только на пункте меню (`sidebar-config.ts:31`, `roles: ['admin']`) —
+меню скрыто, страница доступна.
+
+**Не регрессия фазы 24:** тот же незагейченный паттерн у `/users` и `/settings` —
+маршруты в общей карте не защищены ролями нигде. Это общий архитектурный пробел.
+
+**Открытый вопрос механики (решить при планировании):** обёртка-компонент над маршрутом,
+ролевые карты маршрутов (по аналогии с `employeeRoutes`), или проверка внутри `Layout`.
+
+**Почему не в v1.2:** тема — безопасность и роли, а не редизайн UI.
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)
