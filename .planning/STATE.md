@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T06:28:46.403Z"
+last_updated: "2026-07-18T06:36:23.600Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
   completed_phases: 26
   total_plans: 167
-  completed_plans: 164
+  completed_plans: 165
   percent: 96
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 24 (base-components) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -210,6 +210,7 @@ Last activity: 2026-07-18
 | Phase 24 P02 | 12min | 2 tasks | 3 files |
 | Phase 24 P03 | 3min | 3 tasks | 6 files |
 | Phase 24 P04 | 3min | 2 tasks | 2 files |
+| Phase 24 P05 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -517,6 +518,7 @@ Recent decisions affecting current work:
 - [Phase 24]: Checkbox/Radio .invalid state reuses Input/Select/Textarea's --tr-danger/--tr-danger-ring pair since Fields.dc.html has no dedicated error-box spec for these two
 - [Phase 24]: 24-04: Modal .modal-container background --tr-surface-raised -> --tr-surface (matches Modal.dc.html; diverges from surface-raised in dark theme, identical in light)
 - [Phase 24]: 24-04: Modal border NOT added despite Modal.dc.html spec — task explicitly scoped this out; known gap for future pass
+- [Phase 24]: Badge default render preserved verbatim (accent stays solid); appearance matrix opt-in via badge-m* namespace
 
 ### Pending Todos
 
@@ -592,8 +594,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T06:28:35.264Z
-Stopped at: Completed 24-03-PLAN.md
+Last session: 2026-07-18T06:36:23.593Z
+Stopped at: Completed 24-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
