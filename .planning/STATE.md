@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: verifying
-last_updated: "2026-07-17T19:56:02.258Z"
-last_activity: 2026-07-18
+status: executing
+last_updated: "2026-07-18T02:17:34.409Z"
+last_activity: 2026-07-18 -- Phase 24 planning complete
 progress:
   total_phases: 27
   completed_phases: 26
-  total_plans: 160
+  total_plans: 167
   completed_plans: 160
   percent: 96
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 24
 Plan: Not started
-Status: Phase 23 complete + verified (UAT approved); Phase 24 not yet scaffolded
-Last activity: 2026-07-18
+Status: Ready to execute
+Last activity: 2026-07-18 -- Phase 24 planning complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
