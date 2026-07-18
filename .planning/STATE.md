@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: verifying
-last_updated: "2026-07-18T17:25:16.962Z"
+last_updated: "2026-07-18T18:09:15.270Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 27
@@ -613,9 +613,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T17:01:38Z
-Stopped at: Completed quick task 260718-x8t-tabs-segmented-width
-Resume file: None
+Last session: 2026-07-18T18:09:15.262Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-dropdown/25-CONTEXT.md
 
 ## Operator Next Steps
 
