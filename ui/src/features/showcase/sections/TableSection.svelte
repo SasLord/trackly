@@ -167,7 +167,11 @@
         <td>{stateRows[0].model}</td>
         <td>{stateRows[0].location}</td>
         <td>{stateRows[0].state}</td>
-        <td><Badge variant={STATUS_VARIANTS[stateRows[0].statusId]}>{STATUS_LABELS[stateRows[0].statusId]}</Badge></td>
+        <td
+          ><Badge variant={STATUS_VARIANTS[stateRows[0].statusId]}
+            >{STATUS_LABELS[stateRows[0].statusId]}</Badge
+          ></td
+        >
         <td>—</td>
       </TableRow>
       <TableRow selected={true}>
@@ -177,7 +181,11 @@
         <td>{stateRows[1].model}</td>
         <td>{stateRows[1].location}</td>
         <td>{stateRows[1].state}</td>
-        <td><Badge variant={STATUS_VARIANTS[stateRows[1].statusId]}>{STATUS_LABELS[stateRows[1].statusId]}</Badge></td>
+        <td
+          ><Badge variant={STATUS_VARIANTS[stateRows[1].statusId]}
+            >{STATUS_LABELS[stateRows[1].statusId]}</Badge
+          ></td
+        >
         <td>—</td>
       </TableRow>
       <TableRow last={true}>
@@ -187,7 +195,11 @@
         <td>{stateRows[2].model}</td>
         <td>{stateRows[2].location}</td>
         <td>{stateRows[2].state}</td>
-        <td><Badge variant={STATUS_VARIANTS[stateRows[2].statusId]}>{STATUS_LABELS[stateRows[2].statusId]}</Badge></td>
+        <td
+          ><Badge variant={STATUS_VARIANTS[stateRows[2].statusId]}
+            >{STATUS_LABELS[stateRows[2].statusId]}</Badge
+          ></td
+        >
         <td>—</td>
       </TableRow>
     </Table>
@@ -219,7 +231,11 @@
             <td>{device.model}</td>
             <td>{device.location}</td>
             <td>{device.state}</td>
-            <td><Badge variant={STATUS_VARIANTS[device.statusId]}>{STATUS_LABELS[device.statusId]}</Badge></td>
+            <td
+              ><Badge variant={STATUS_VARIANTS[device.statusId]}
+                >{STATUS_LABELS[device.statusId]}</Badge
+              ></td
+            >
             <td>—</td>
           </TableRow>
         {/each}
