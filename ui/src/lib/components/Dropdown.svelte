@@ -8,6 +8,9 @@
   // keyboard/ARIA layer beyond the pre-existing regression floor (Home/End,
   // member-mode arrow navigation, aria-activedescendant, focus management).
   import { onDestroy } from 'svelte';
+  import Spinner from '$lib/components/Spinner.svelte';
+  import { portal } from '$lib/utils/portal';
+  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 
   interface Props {
     /** D-03: 'combobox' — type directly in the field (implemented here).
@@ -109,6 +112,7 @@
   // ref-forwarding, so the combobox field is a raw <input> with bind:this,
   // used as `anchorEl` for use:dropdownAnchor.
   let inputEl = $state<HTMLInputElement | null>(null);
+  let panelEl = $state<HTMLUListElement | null>(null);
 
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -168,6 +172,26 @@
     activeIndex = -1;
   }
 
+  /** D-01/D-08: click on an option row in the groups/flat panel. Grouped
+   *  mode drills into expandable groups; flat mode (and non-expandable
+   *  groups) picks directly. */
+  function handleOptionClick(g: TGroup) {
+    if (!flat && isGroupExpandable(g)) {
+      void drillInto(g);
+    } else {
+      onPickGroup(g);
+    }
+  }
+
+  /** Member-view header title (UI-SPEC "two independent conditions" rule):
+   *  always shows the active group's name (+ optional meta), independent of
+   *  whether the "← Назад" button is also shown. */
+  const drillTitle = $derived.by(() => {
+    if (!activeGroup) return '';
+    const meta = getGroupMeta?.(activeGroup);
+    return meta ? `${getGroupName(activeGroup)} · ${meta}` : getGroupName(activeGroup);
+  });
+
   function scheduleSearch(query: string) {
     if (searchDebounce) clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => onSearch(query), 250);
@@ -203,7 +227,8 @@
     if (!open) return;
     const target = e.target as Node;
     const insideInput = inputEl?.contains(target) ?? false;
-    if (!insideInput) open = false;
+    const insideDropdown = panelEl?.contains(target) ?? false;
+    if (!insideInput && !insideDropdown) open = false;
   }
 
   $effect(() => {
@@ -211,32 +236,11 @@
     return () => document.removeEventListener('mousedown', handleClickOutside);
   });
 
-  // Plan 25-02 Task 2 wires these into the portal-rendered panel markup
-  // (drill-in header, group/member rows, empty/loading states). Referenced
-  // here only to satisfy the project's `noUnusedLocals` gate until that
-  // markup lands later in this same plan.
-  void loading;
+  // `searchPlaceholder` is select-variant only (in-panel search box) — that
+  // field is not implemented until Plan 25-03 (see the commented `{:else}`
+  // branch below). Referenced here only to satisfy `noUnusedLocals` until
+  // then.
   void searchPlaceholder;
-  void getGroupId;
-  void getGroupName;
-  void getGroupMeta;
-  void getGroupSub;
-  void getGroupCount;
-  void isGroupExpandable;
-  void isGroupSelected;
-  void getMemberId;
-  void getMemberName;
-  void getMemberMeta;
-  void getMemberSub;
-  void onPickGroup;
-  void onPickMember;
-  void viewMode;
-  void activeGroup;
-  void members;
-  void showBack;
-  void activeIndex;
-  void drillInto;
-  void backToGroups;
 </script>
 
 <div class="tr-dropdown">
@@ -259,6 +263,106 @@
     <!-- TODO Plan 25-03: variant === 'select' field (value display + in-panel
          search box). Left unimplemented in Plan 25-02 per its explicit scope
          boundary — renders nothing rather than throwing. -->
+  {/if}
+
+  {#if open}
+    <ul
+      class="tr-dropdown-panel"
+      class:tr-dropdown-panel--flat={flat}
+      role="listbox"
+      use:portal
+      use:dropdownAnchor={{ anchorEl: inputEl, maxHeight: flat ? 240 : 280 }}
+      bind:this={panelEl}
+    >
+      {#if !flat && viewMode === 'members'}
+        <!-- D-01/D-06 drill-in header — checkpoint fix #1 (UI-SPEC): title is
+             ALWAYS shown in member-view; "← Назад" only on manual drill-in
+             (showBack), not on AUTO-05 auto-flatten. Two independent
+             conditions, not one boolean. -->
+        <li class="tr-dropdown-drill-header">
+          {#if showBack}
+            <button
+              type="button"
+              class="tr-dropdown-drill-back"
+              onmousedown={(e) => e.preventDefault()}
+              onclick={backToGroups}
+            >
+              ← Назад
+            </button>
+          {/if}
+          <span class="tr-dropdown-drill-title">{drillTitle}</span>
+        </li>
+        {#if loading}
+          <li class="tr-dropdown-loading"><Spinner size="sm" />Загрузка…</li>
+        {:else if members.length === 0}
+          <li class="tr-dropdown-empty">Ничего не найдено</li>
+        {:else}
+          {#each members as m (getMemberId(m))}
+            <li>
+              <button
+                type="button"
+                class="tr-dropdown-option"
+                role="option"
+                aria-selected="false"
+                onmousedown={(e) => e.preventDefault()}
+                onclick={() => onPickMember(m)}
+              >
+                <span class="tr-dropdown-option-row">
+                  <span class="tr-dropdown-option-name">{getMemberName(m)}</span>
+                  {#if getMemberMeta?.(m)}
+                    <span class="tr-dropdown-option-meta">{getMemberMeta(m)}</span>
+                  {/if}
+                </span>
+                {#if getMemberSub?.(m)}
+                  <span class="tr-dropdown-option-sub">{getMemberSub(m)}</span>
+                {/if}
+              </button>
+            </li>
+          {/each}
+        {/if}
+      {:else if loading}
+        <li class="tr-dropdown-loading"><Spinner size="sm" />Загрузка…</li>
+      {:else if groups.length === 0}
+        <li class="tr-dropdown-empty">Ничего не найдено</li>
+      {:else}
+        {#each groups as g, i (getGroupId(g))}
+          <li>
+            <button
+              type="button"
+              class="tr-dropdown-option"
+              class:active={i === activeIndex}
+              class:selected={flat && !!isGroupSelected?.(g)}
+              role="option"
+              aria-selected={flat ? !!isGroupSelected?.(g) : i === activeIndex}
+              onmousedown={(e) => e.preventDefault()}
+              onclick={() => handleOptionClick(g)}
+            >
+              <span class="tr-dropdown-option-row">
+                <span class="tr-dropdown-option-name" class:tr-dropdown-option-name--flat={flat}
+                  >{getGroupName(g)}</span
+                >
+                {#if getGroupMeta?.(g)}
+                  <span class="tr-dropdown-option-meta">{getGroupMeta(g)}</span>
+                {/if}
+                {#if flat}
+                  {#if isGroupSelected?.(g)}
+                    <span class="tr-dropdown-option-check" aria-hidden="true">✓</span>
+                  {/if}
+                {:else}
+                  <span class="tr-dropdown-option-count">×{getGroupCount(g)}</span>
+                  <span class="tr-dropdown-option-chevron" aria-hidden={!isGroupExpandable(g)}
+                    >{isGroupExpandable(g) ? '›' : ''}</span
+                  >
+                {/if}
+              </span>
+              {#if getGroupSub?.(g)}
+                <span class="tr-dropdown-option-sub" class:tr-mono={flat}>{getGroupSub(g)}</span>
+              {/if}
+            </button>
+          </li>
+        {/each}
+      {/if}
+    </ul>
   {/if}
 </div>
 
@@ -293,5 +397,162 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+  }
+
+  // Plan 18-04 (AUTO-01): the panel is moved to <body> by use:portal, so this
+  // component's scoped <style> never reaches it — styling goes through a
+  // namespaced global class instead (WR-03: un-namespaced .dropdown/-empty
+  // classes collide across the 4+ components that already portal to <body>).
+  // This DOES work inside a component's own <style lang="scss"> (compiled by
+  // the Svelte compiler) — unlike :global() in a plain .scss file, which is
+  // Phase 24 Learning #2's trap.
+  :global(.tr-dropdown-panel) {
+    position: fixed;
+    z-index: 1000;
+    overflow: auto;
+    max-height: 280px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: var(--tr-surface-raised);
+    border: 1px solid var(--tr-border);
+    border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-2);
+  }
+  :global(.tr-dropdown-panel.tr-dropdown-panel--flat) {
+    max-height: 240px;
+  }
+
+  :global(.tr-dropdown-panel .tr-dropdown-option) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    min-height: 46px;
+    padding: 8px 12px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--tr-border);
+    cursor: pointer;
+    color: var(--tr-text-primary);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option:hover),
+  :global(.tr-dropdown-panel .tr-dropdown-option.active) {
+    background: var(--tr-row-hover);
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option.selected) {
+    background: var(--tr-row-selected);
+  }
+
+  :global(.tr-dropdown-panel .tr-dropdown-option-row) {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-name) {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tr-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-name--flat) {
+    font-weight: 500;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-meta) {
+    font-size: 13px;
+    color: var(--tr-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-sub) {
+    font-size: 12px;
+    color: var(--tr-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-count) {
+    margin-left: auto;
+    min-width: 34px;
+    flex: 0 0 auto;
+    text-align: right;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tr-accent-text);
+    font-variant-numeric: tabular-nums;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-chevron) {
+    flex: 0 0 auto;
+    width: 12px;
+    text-align: center;
+    color: var(--tr-text-secondary);
+    font-size: 12px;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-option-check) {
+    flex: 0 0 auto;
+    width: 14px;
+    text-align: center;
+    color: var(--tr-accent);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  // D-01/checkpoint fix #1: sticky drill-in header, opaque background so
+  // member rows don't show through while scrolling underneath it.
+  :global(.tr-dropdown-panel .tr-dropdown-drill-header) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
+    background: var(--tr-surface-sunken);
+    border-bottom: 1px solid var(--tr-border);
+    font-size: 13px;
+    list-style: none;
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-drill-back) {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: var(--tr-font-family);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tr-text-primary);
+  }
+  :global(.tr-dropdown-panel .tr-dropdown-drill-title) {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--tr-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // D-13 (canonical copy): both rows share the same 46px height as a normal
+  // option row so the panel doesn't jump size when state changes.
+  :global(.tr-dropdown-panel .tr-dropdown-empty),
+  :global(.tr-dropdown-panel .tr-dropdown-loading) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 8px 12px;
+    list-style: none;
+    color: var(--tr-text-tertiary);
+    font-size: 14px;
   }
 </style>
