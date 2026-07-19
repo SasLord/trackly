@@ -87,6 +87,7 @@
   {#if sidebarNav.open && !isDesktop}
     <div
       class="nav-backdrop"
+      role="presentation"
       onmousedown={handleBackdropMousedown}
       onmouseup={handleBackdropMouseup}
     ></div>
