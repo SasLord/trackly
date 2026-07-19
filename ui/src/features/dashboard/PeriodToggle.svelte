@@ -33,13 +33,14 @@
   .toggle-btn {
     display: inline-flex;
     align-items: center;
-    padding: var(--tr-space-2xs) var(--tr-space-xs);
+    padding: 2px 1px 5px;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
     font-family: var(--tr-font-family);
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
+    font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
     border-radius: var(--tr-radius-xs) var(--tr-radius-xs) 0 0;
@@ -56,9 +57,9 @@
     }
 
     &.active {
-      color: var(--tr-accent);
+      color: var(--tr-accent-text);
       border-bottom-color: var(--tr-accent);
-      font-weight: var(--tr-font-weight-medium);
+      font-weight: 600;
     }
   }
 </style>
