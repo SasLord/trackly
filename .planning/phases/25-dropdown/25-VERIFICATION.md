@@ -1,67 +1,38 @@
 ---
 phase: 25-dropdown
-verified: 2026-07-19T09:48:10Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-07-19T18:00:00Z
+status: passed
+score: 5/5 must-haves verified
 overrides_applied: 0
-gaps:
-  - truth: "Dropdown корректно отображает список с группами через drill-in (Roadmap SC #4)"
-    status: failed
-    reason: >
-      Static trace of ui/src/lib/components/Dropdown.svelte confirms two review findings
-      (WR-01, WR-02) were left unfixed by the user's explicit "blockers-only" scope decision
-      after code review, and both directly undermine "correctly displays a grouped list" under
-      normal, easily-reached usage — not just first render. WR-02: `openPanel()` (fired by
-      AUTO-02 focus-open, the select-variant trigger click, and ArrowDown-on-closed) resets
-      only `activeIndex`; it never resets `viewMode`/`activeGroup`/`members`/`showBack`. The
-      only thing that resets those is the `$effect` watching `groups` by reference, which does
-      not re-fire merely because the panel reopened — only once a new fetch resolves with a
-      different array. Reachable path: user drills into group A (viewMode='members',
-      activeGroup=A), closes the panel (Escape when showBack=false, a pick, Tab, or
-      click-outside — none of these reset the drill state), then reopens (refocus / click) —
-      the panel renders A's stale member list under whatever the current field text is, until
-      (if ever) a differently-referenced `groups` array arrives. WR-01: the `Tab` branch in
-      groups-view calls `handleOptionClick(groups[activeIndex])` and then unconditionally sets
-      `open = false`. For an expandable group this takes the `drillInto` branch, which is async
-      — by the time it resolves and sets `viewMode = 'members'`, the panel is already closed,
-      so the pick is silently lost AND the component is left primed to show a stale drilled-in
-      list on the next open (feeding directly into the WR-02 defect above). Both were confirmed
-      independently by the code review (25-REVIEW.md) and re-confirmed by direct reading of the
-      current source during this verification — they are not resolved by the two applied
-      critical fixes (CR-01 `cdf6e58`, CR-02 `66036c4`), which patch a different pair of defects
-      (reopen-after-pick, stale-async-write) and do not touch `openPanel()` or the `Tab` branch.
-    artifacts:
-      - path: "ui/src/lib/components/Dropdown.svelte"
-        issue: "openPanel() (lines 285-290) does not reset viewMode/activeGroup/members/showBack, so reopening the panel after a manual drill-in can render a stale member list; the Tab branch in groups-view (lines 384-389) drills into an expandable group asynchronously but closes the panel synchronously, losing the pick and leaving state primed for the same stale-reopen defect."
-    missing:
-      - "Reset viewMode='groups' / activeGroup=null / members=[] / showBack=false inside openPanel() (WR-02 fix, per 25-REVIEW.md)."
-      - "Guard the Tab branch so an expandable group is not both drilled-into (async) and closed (sync) in the same keystroke — e.g. only commit non-expandable groups on Tab, or await the drill-in before closing (WR-01 fix, per 25-REVIEW.md)."
-  - truth: "Plan 25-03 must_have: \"Dropdown adds the full combobox ARIA pattern ... plus member-mode keyboard navigation\" / \"does not regress any of the pre-existing keyboard/ARIA behaviors\""
-    status: failed
-    reason: >
-      Confirmed by reading Dropdown.svelte lines 506-520: the select-variant's in-panel search
-      `<input>` has `oninput={handleInput}` but no `onkeydown={handleKeydown}`, and no
-      `onmousedown` preventDefault to keep focus on the trigger. Once a select-variant user
-      clicks into this search box to type (the documented, intended way to filter in that
-      variant per D-03), focus moves into an element with zero keyboard wiring — Escape,
-      ArrowUp/Down, Home/End, Enter and Tab all do nothing from that point. This is exactly the
-      "select variant with its in-panel search box" scenario Plan 25-06's showcase must_have
-      calls out as closing CMP-07 SC #3, so the one variant path this component's own plan
-      claims full keyboard coverage for is the one path where the keyboard layer is dead
-      (25-REVIEW.md WR-06, re-confirmed in current source, unfixed).
-    artifacts:
-      - path: "ui/src/lib/components/Dropdown.svelte"
-        issue: "In-panel search input (variant=\"select\", lines 509-520) has oninput but no onkeydown={handleKeydown}, so the D-12 keyboard layer does not function once focus lands there."
-    missing:
-      - "Add onkeydown={handleKeydown} to the select-variant in-panel search input, and give it its own aria-activedescendant/aria-controls since it now owns focus (WR-06 fix, per 25-REVIEW.md)."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/5
+  gaps_closed:
+    - "Dropdown корректно отображает список с группами через drill-in (Roadmap SC #4) — WR-01 (Tab drills-in-async-then-closes-sync) and WR-02 (openPanel doesn't reset drill-in state) both fixed by Plan 25-08 (commits 09c3f8c, 2d48bea)."
+    - "Plan 25-03 must_have — full combobox ARIA pattern + member-mode keyboard navigation for BOTH field variants (WR-06, select-variant in-panel search input had no onkeydown) — fixed by Plan 25-08 Task 2 (commit 2d48bea)."
+  gaps_remaining: []
+  regressions: []
+deferred:
+  - truth: "openPanel()'s expandSeq++ can permanently discard an in-flight AUTO-05 auto-flatten for a consumer with memoized/static `groups` (round-2 review WR-01)"
+    addressed_in: "Not scheduled — explicit user 'blockers-only' scope decision; documented in Dropdown.svelte resetDrillState() docstring (lines 282-297). Sole production consumer (ActFormItemsTable) self-heals because fetchGroups always assigns a fresh groups array."
+    evidence: "25-REVIEW.md round-2 WR-01; quick task 260719-ocq-SUMMARY.md key-decisions explicitly defers it."
+  - truth: "Round-1 WR-03 (view mode does not reset synchronously mid-keystroke — folded into BL-01 fix, listed separately per UI-SPEC rule), WR-05 (listbox/<li> role nesting), WR-08 (aria-selected reports keyboard position as selection in non-flat mode)"
+    addressed_in: "Not scheduled — explicit user 'blockers-only' scope decision, unchanged since round-1 verification."
+    evidence: "25-REVIEW.md 'Previously Deferred (round 1, user scope decision)' section."
+  - truth: "Round-2 WR-03 (Escape/Tab from the select-variant search input drops focus to <body> instead of returning it to the trigger)"
+    addressed_in: "Not scheduled — explicit user 'blockers-only' scope decision for this verification round."
+    evidence: "25-REVIEW.md round-2 WR-03; caller-context deferred list for this verification round."
+  - truth: "WR-09 (DeviceGroupRow retry-forever on failed expand fetch), IN-01 (dead .hint-warn CSS in ActFormItemsTable.svelte), IN-06 (showcase DropdownSection force-opens 4 panels on mount + flat-checkmark demo doesn't track its own state)"
+    addressed_in: "Not scheduled — explicit user 'blockers-only' scope decision, unchanged since round-1 verification."
+    evidence: "25-REVIEW.md 'Previously Deferred' section; 25-VERIFICATION.md round-1 Anti-Patterns table."
 ---
 
-# Phase 25: Таблицы и Dropdown — Verification Report
+# Phase 25: Таблицы и Dropdown Verification Report
 
 **Phase Goal:** Строки таблицы и новый компонент Dropdown/комбобокс отражают дизайн-систему, сохраняя плотный список и групповой UX, на которые опирается приложение.
-**Verified:** 2026-07-19T09:48:10Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-19T18:00:00Z
+**Status:** passed
+**Re-verification:** Yes — round 2, after gap-closure plan 25-08 + quick task 260719-ocq
 
 ## Goal Achievement
 
@@ -69,111 +40,109 @@ gaps:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Строки таблицы визуально различимы в состояниях обычная/наведение/выбрана | ✓ VERIFIED | `TableRow.svelte:77-86` — `.tr-row:hover { background: var(--tr-row-hover) }`, `.tr-row.selected { background: var(--tr-row-selected); border-left: 3px solid var(--tr-accent) }`, base state has neither. Matches `TableRows.dc.html` values verbatim per D-09/D-10/D-11 (25-01 must_have). Consumed by `DeviceListRow.svelte:51`. |
-| 2 | Строка-группа сворачивается/разворачивается, показывая счётчик-пилюлю и вложенные устройства при раскрытии | ✓ VERIFIED | `TableRow.svelte:54-69` group mode: chevron `transform: rotate(90deg)` on `.expanded`, `onclick={onToggleGroup}`. `DeviceGroupRow.svelte:85-105` `toggleExpand()` fetches `devices.listByIds(group.ids)`, sets `children`; template (`DeviceGroupRow.svelte:163-164`) shows count via `<Badge variant="accent" appearance="count">{group.count} шт.</Badge>`; nested `DeviceListRow`s render only `{#if expanded}` (`168-185`). Fully wired, not a stub. Pre-existing (not introduced by this phase) `WR-09` retry-on-failure risk noted as anti-pattern, not blocking. |
-| 3 | Dropdown корректно отображает плоский список | ✓ VERIFIED | `Dropdown.svelte:578-614` flat-mode option rendering (name, meta, checkmark via `isGroupSelected`) is structurally sound and independent of the drill-in state machine (no `viewMode` involvement in `flat` mode). No production consumer exists yet (only pilot is the grouped Acts picker, D-05) — the only live demonstration is `DropdownSection.svelte` Block 2 (`variant="select" flat={true}`), which has a known, explicitly-deferred showcase-only defect (IN-06: checkmark doesn't track the demo's own `flatValue`) that does not reflect a defect in `Dropdown.svelte` itself. See Human Verification below. |
-| 4 | Dropdown корректно отображает список с группами через drill-in (замена панели, «← Назад · {группа}», не заголовки секций) — модель зафиксирована D-01 | ✗ FAILED | See `gaps` frontmatter, gap 1. `drillInto()`/back-header/`showBack` mechanics are correctly implemented for a **single** open→drill→pick cycle (both CR-01/CR-02 criticals from code review are fixed and confirmed present in source: `handleInput` sets `open=true` at line 276, `expandSeq` guards both the AUTO-05 effect and `drillInto` at lines 160-210). But `openPanel()` never resets drill-in state (WR-02) and `Tab` on an expandable group both drills in and closes the panel, losing the pick (WR-01) — both confirmed unfixed in current source, both directly reachable in the one production consumer (`ActFormItemsTable.svelte`'s per-row picker). |
-| 5 | Существующее portal/anchor-позиционирование (Фаза 18) продолжает работать без регрессий с новым визуалом | ✓ VERIFIED | `ui/src/lib/utils/portal.ts` and `ui/src/lib/utils/dropdownAnchor.ts` are byte-for-byte unmodified by Phase 25 (`git log` shows last touch at `73af1fe`/Phase 18 and `870d77d`/earlier — no Phase-25 commit touches either file). `Dropdown.svelte:502-503` wires `use:portal` + `use:dropdownAnchor={{ anchorEl, maxHeight }}` identically to the pre-migration `ActFormItemsTable.svelte` usage. Code review's "Verified-Correct Notes" independently confirm no listener/timer leak (`onDestroy` clears the debounce, click-outside effect cleans up, `portal`'s `destroy()` removes the node). Visual geometry re-check (gap/flip at new panel size) still recommended — see Human Verification. |
+| 1 | Строки таблицы визуально различимы в состояниях обычная/наведение/выбрана | ✓ VERIFIED (regression check — unchanged since round 1) | `TableRow.svelte:77-86` unmodified by this round's commits (`git log` for round-2 touches only `Dropdown.svelte`). No regression possible. |
+| 2 | Строка-группа сворачивается/разворачивается, показывая счётчик-пилюлю и вложенные устройства при раскрытии | ✓ VERIFIED (regression check — unchanged since round 1) | `DeviceGroupRow.svelte`/`TableRow.svelte` untouched this round. |
+| 3 | Dropdown корректно отображает плоский список | ✓ VERIFIED (regression check) | Flat-mode rendering (`Dropdown.svelte:640-680`) is structurally independent of the `viewMode` state machine touched this round; no regression introduced. |
+| 4 | Dropdown корректно отображает список с группами через drill-in (замена панели, «← Назад · {группа}», не заголовками секций) — модель зафиксирована D-01 | ✓ VERIFIED — gap closed | Full re-trace of current `ui/src/lib/components/Dropdown.svelte` at HEAD (commits `09c3f8c`, `2d48bea`, `6407133`). **WR-02** (round 1): `openPanel()` now calls `resetDrillState()` (line 337), which resets `viewMode`/`activeGroup`/`members`/`showBack` and bumps `expandSeq` (lines 298-304) — confirmed at source. **BL-01** (round-2 finding: `handleInput()` was the *other* `open = true` site and had NOT been patched): now also calls `resetDrillState()` (line 322), confirmed by `grep -n "resetDrillState()"` showing exactly 2 call sites (`handleInput`, `openPanel`) plus the 1 definition — matches quick task 260719-ocq's stated fix exactly. **WR-01** (round 1, Tab drills-in-async-then-closes-sync): the groups-view `Tab` branch (lines 433-451) no longer calls `handleOptionClick`; `grep -c "handleOptionClick(groups\[activeIndex\])"` returns exactly 1 (the unrelated, unchanged Enter branch at line 431) — confirming the old unguarded Tab call site is gone. Tab now commits directly via `onPickGroup(g)` only when `g` is truthy AND non-expandable, else just closes — verified against the exact guard shape (`g && !(!flat && isGroupExpandable(g))`, line 447). Reproduction path from the original gap (drill in → close without picking → reopen) is now closed by `resetDrillState()` firing on both reopen paths. |
+| 5 | Существующее portal/anchor-позиционирование (Фаза 18) продолжает работать без регрессий с новым визуалом | ✓ VERIFIED (regression check) | `portal.ts`/`dropdownAnchor.ts` untouched by round-2 commits; `Dropdown.svelte:564-565` wiring unchanged. |
 
-**Score:** 4/5 truths verified (roadmap Success Criteria). One additional plan-level must_have failure recorded separately (see gap 2, Plan 25-03's keyboard/ARIA completeness claim).
+**Score:** 5/5 truths verified (roadmap Success Criteria).
+
+### Plan-Level Must-Have (Plan 25-03, re-verified)
+
+| Must-have | Status | Evidence |
+|---|---|---|
+| "Dropdown adds the full combobox ARIA pattern ... plus member-mode keyboard navigation" / "does not regress any of the pre-existing keyboard/ARIA behaviors" — for BOTH field variants including the select-variant's in-panel search input | ✓ VERIFIED — gap closed (**WR-06**) | `Dropdown.svelte:574-583` — the select-variant in-panel search `<input>` now carries `onkeydown={handleKeydown}` (line 582), `aria-activedescendant={activeOptionId()}` (line 579), and `aria-controls={panelId}` (line 580), alongside its pre-existing `oninput={handleInput}` (line 581). `grep -c "onkeydown={handleKeydown}"` returns 3 (combobox input, select-variant trigger button, select-variant search input) — matches the plan's stated acceptance criterion. The keyboard layer (Escape, Arrows, Home/End, Enter, Tab) is shared via `handleKeydown`, so once wired it functions identically to the already-verified combobox/trigger paths. |
+
+### Non-Regression Check (CR-01, CR-02 — round-1 criticals)
+
+| Item | Status | Evidence |
+|---|---|---|
+| CR-01: `handleInput` sets `open = true` on every keystroke | ✓ INTACT | `Dropdown.svelte:320` — `open = true;` is still the first statement in `handleInput`. |
+| CR-02: `expandSeq` generation token guards both `drillInto` and the AUTO-05 effect against stale async writes | ✓ INTACT | `Dropdown.svelte:172, 201` — `if (seq !== expandSeq) return;` guards present and unchanged. `openPanel`/`handleInput`'s new `resetDrillState()` correctly participate in the *same* counter (not a parallel mechanism) — `grep -n "expandSeq"` shows exactly 3 increment sites (`$effect` else-branch line 183, `drillInto` line 199, `resetDrillState` line 299) plus 2 `seq !== expandSeq` guards — no fourth, uncoordinated writer. |
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `ui/src/styles/_tokens.scss` | `--tr-group` in both light/dark blocks | ✓ VERIFIED | Present in both blocks (confirmed by review + `check-tokens.mjs` PASS — 0 violations). |
-| `ui/src/lib/components/TableRow.svelte` | Row-state + group-row primitive | ✓ VERIFIED | Real Svelte component, both modes implemented, wired into two production consumers + showcase. |
-| `ui/src/lib/components/Table.svelte` | Shell: head/skeleton/empty | ✓ VERIFIED | Consumed by `DeviceList.svelte:74-105` with `columns`, `loading`, `empty`, `emptyTitle/Body`, `head` snippet. |
-| `ui/src/lib/components/Dropdown.svelte` | Generic drill-in combobox/select primitive | ⚠️ VERIFIED-WITH-DEFECTS | Exists, substantive, wired into production (`ActFormItemsTable.svelte`) and showcase. Two criticals fixed; WR-01/WR-02/WR-06 unfixed and functionally significant (see gaps). |
-| `ui/src/features/devices/DeviceList.svelte` / `DeviceListRow.svelte` / `DeviceGroupRow.svelte` | Table pilot migration | ✓ VERIFIED | All three consume `Table`/`TableRow`; hand-rolled group markup and hand-rolled count-pill removed. |
-| `ui/src/features/acts/ActFormItemsTable.svelte` | Dropdown pilot migration | ✓ VERIFIED (wiring) / ✗ defects | `import Dropdown from` present, one instance per row, `variant="combobox"`, callbacks (`onSearch`/`onExpandGroup`/`onPickGroup`/`onPickMember`) all wired to real `devices.listGrouped`/`devices.listByIds` IPC calls — not stubbed. Functional defects are in `Dropdown.svelte` itself (gap 1), not in this file's wiring. |
-| `ui/src/features/showcase/sections/TableSection.svelte` | CMP-06 gallery, wired as 6th section | ✓ VERIFIED | Present, imported in `ShowcasePage.svelte`. |
-| `ui/src/features/showcase/sections/DropdownSection.svelte` | CMP-07 gallery, wired as 7th section | ⚠️ VERIFIED-WITH-DEFECTS | Present, wired. IN-06 (info-level, explicitly deferred): forces 4 panels open simultaneously via synthetic focus/click on mount, obscuring the gallery; flat-select checkmark demo doesn't track its own `flatValue` state (self-contradictory demo, not a `Dropdown.svelte` bug). |
+| `ui/src/lib/components/Dropdown.svelte` | Generic drill-in combobox/select primitive, CMP-07 complete | ✓ VERIFIED | Exists, substantive, wired into production (`ActFormItemsTable.svelte:409`) and showcase. All 3 previously-open blocking defects (WR-01, WR-02, WR-06) confirmed fixed at HEAD; the round-2-discovered critical (BL-01) confirmed fixed via `resetDrillState()` shared helper. |
+| `ui/src/features/acts/ActFormItemsTable.svelte` | Dropdown pilot migration | ✓ VERIFIED (unchanged this round) | `import Dropdown from` present, wiring unmodified by round-2 commits (only `Dropdown.svelte` was touched). |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `TableRow.svelte` | `_tokens.scss` | `var(--tr-group)` etc. | ✓ WIRED | Confirmed present, `check-tokens.mjs` closed-world gate passes. |
-| `TableRow.svelte` | `Badge.svelte` | consumer-placed `<Badge appearance="count">` | ✓ WIRED | `DeviceGroupRow.svelte:164`. |
-| `Dropdown.svelte` | `portal.ts` | `use:portal` | ✓ WIRED | `Dropdown.svelte:502`, file unmodified since Phase 18. |
-| `Dropdown.svelte` | `dropdownAnchor.ts` | `use:dropdownAnchor={{ anchorEl, maxHeight }}` | ✓ WIRED | `Dropdown.svelte:503`, file unmodified since Phase 18. |
-| `DeviceList.svelte` | `Table.svelte` | head/children snippet props | ✓ WIRED | Confirmed, real props not stubs. |
-| `DeviceListRow.svelte` / `DeviceGroupRow.svelte` | `TableRow.svelte` | row-state / group-mode wrapper | ✓ WIRED | Confirmed. |
-| `ActFormItemsTable.svelte` | `Dropdown.svelte` | one instance per row, `variant="combobox"` | ✓ WIRED | `ActFormItemsTable.svelte:409-431`. |
-| `ActFormItemsTable.svelte` | `devices` API | `onSearch`/`onExpandGroup` → `devices.listGrouped`/`listByIds` | ✓ WIRED | `fetchGroups`/`expandGroup`, real IPC calls, DEF-2A dedup preserved (`getSelectedIds`). |
-
-### Data-Flow Trace (Level 4)
-
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|---------------------|--------|
-| `Dropdown` (via `ActFormItemsTable`) | `suggestionsByRow[idx]` → `groups` prop | `devices.listGrouped()` real IPC (FTS5 search, `status_id=1`) | Yes | ✓ FLOWING |
-| `Dropdown` (via `ActFormItemsTable`) | `members` (drill-in) | `devices.listByIds()` real IPC | Yes | ✓ FLOWING — but see gap 1: the *timing* of when this data is shown (stale on reopen) is broken, not the data source itself. |
-| `DeviceGroupRow` children | `children` | `devices.listByIds(group.ids)` real IPC | Yes | ✓ FLOWING |
+| `Dropdown.svelte#openPanel` | `Dropdown.svelte#resetDrillState` | direct call | ✓ WIRED | Line 337: `resetDrillState();` inside `openPanel`. |
+| `Dropdown.svelte#handleInput` | `Dropdown.svelte#resetDrillState` | direct call | ✓ WIRED | Line 322: `resetDrillState();` inside `handleInput` — the fix that closes BL-01. |
+| `Dropdown.svelte` select-variant search `<input>` | `Dropdown.svelte#handleKeydown` | `onkeydown={handleKeydown}` | ✓ WIRED | Line 582, same shared handler already used by the combobox input and select trigger button. |
+| `Dropdown.svelte` groups-view `Tab` branch | `Dropdown.svelte#onPickGroup` (prop) | direct call, guarded | ✓ WIRED | Lines 446-450 — `onPickGroup(g)` called synchronously (no `drillInto`) only for non-expandable groups; guard order (`g &&` before `isGroupExpandable(g)`) prevents the `groups[-1]` crash on Tab-with-no-active-option. |
 
 ### Behavioral Spot-Checks
 
-Skipped — no runnable frontend test harness exists (project has neither vitest nor playwright; confirmed in 25-CONTEXT.md "Established Patterns"). All checks in this report are static-code-trace verification, not executed runtime checks. `svelte-check` (0 errors, 48 pre-existing unrelated warnings), `pnpm lint` (clean), and `check-tokens.mjs` (0 violations) were re-run directly during this verification and confirmed green — these gates were already known-green per the phase's own self-checks and do not by themselves constitute evidence for runtime/visual truths (per this verification's brief).
+Skipped — no runnable frontend test harness exists (no vitest/playwright in this project, confirmed in prior round). Gate results below (svelte-check, lint, build) were re-run live during this verification, not taken from SUMMARY claims.
+
+**Automated gates, re-run live at HEAD (not trusted from SUMMARY.md):**
+- `pnpm --dir ui svelte-check` → 0 errors, 48 pre-existing unrelated warnings, 257 files checked. ✓ PASS
+- `pnpm --dir ui lint` (eslint + prettier + check-tokens.mjs) → all pass, `[check-tokens] PASS — 0 нарушений`. ✓ PASS
+- `pnpm --dir ui build` → succeeds, `ui/dist` rebuilt. ✓ PASS
+- `grep -n "TBD|FIXME|XXX"` on `Dropdown.svelte` → 0 matches.
 
 ### Probe Execution
 
-No `scripts/*/tests/probe-*.sh` probes exist for this phase or in the repository. SKIPPED (no runnable entry points / no declared probes).
+No `scripts/*/tests/probe-*.sh` probes exist for this phase or in the repository. SKIPPED (no declared probes, no runnable entry points).
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|-----------------|--------------|--------|----------|
-| CMP-06 | 25-01, 25-04, 25-05 | Строки таблицы (обычная/наведение/выбрана) + строка-группа со свёрткой, счётчиком, вложенными устройствами | ✓ SATISFIED | SC #1 and SC #2 both verified; two production consumers (`DeviceListRow`, `DeviceGroupRow`) migrated and wired; showcase gallery demonstrates all states. |
-| CMP-07 | 25-02, 25-03, 25-06, 25-07 | Dropdown / комбобокс — плоский список и список с группами | ✗ BLOCKED | SC #3 (flat) verified; SC #4 (grouped/drill-in) FAILED per gap 1 (WR-01/WR-02, stale-state-on-reopen and Tab-loses-pick) — this is CMP-07's headline grouped-list behavior, in the requirement's own production pilot. Gap 2 (WR-06, select-variant keyboard layer dead) further undermines the plan's own "full keyboard/ARIA layer" claim. |
+| CMP-06 | 25-01, 25-04, 25-05 | Строки таблицы + строка-группа | ✓ SATISFIED | Unchanged since round-1 verification (not touched by gap-closure round). |
+| CMP-07 | 25-02, 25-03, 25-06, 25-07, 25-08 | Dropdown / комбобокс — плоский список и список с группами | ✓ SATISFIED | SC #3 (flat) and SC #4 (grouped/drill-in) both verified. Both previously-failed must-haves (Roadmap SC #4, Plan 25-03's ARIA/keyboard claim) now hold, independently re-traced against current source, not assumed from SUMMARY.md. |
 
-No orphaned requirements: `WIN-02` intentionally excluded from this phase's scope per D-06 (documented, remains Phase 26, ROADMAP.md/REQUIREMENTS.md unchanged) — not an omission.
+No orphaned requirements: all `requirements:` frontmatter across the 8 phase plans (25-01 through 25-08) map to CMP-06 or CMP-07, both of which are declared in ROADMAP.md's Phase 25 `Requirements:` line and marked `[x]`/`Complete` in REQUIREMENTS.md. `WIN-02` remains intentionally excluded from this phase (Phase 26), unchanged.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| `Dropdown.svelte` | 285-290 | `openPanel()` doesn't reset drill-in state | 🛑 Blocker (gap 1) | Stale member list on reopen |
-| `Dropdown.svelte` | 384-389 | `Tab` branch drills in async, closes sync | 🛑 Blocker (gap 1) | Pick silently lost |
-| `Dropdown.svelte` | 509-520 | In-panel search input has no `onkeydown` | 🛑 Blocker (gap 2) | D-12 keyboard layer dead in select variant |
-| `Dropdown.svelte` | 497-576 | `<ul role="listbox">` wraps role-less `<li>` + two chrome `<li>`s (WR-05) | ⚠️ Warning | Invalid `aria-activedescendant` ownership; accessibility nuance, not literally re-verified as blocking a numbered SC — left unfixed by explicit user scope decision |
-| `DeviceGroupRow.svelte` | 109-129 | `$effect` retries a failing `devices.listByIds` fetch forever if `onExpandToggle` isn't wired to collapse on error (WR-09) | ⚠️ Warning | Pre-existing behavior, not introduced by this phase; now sits on a shared primitive |
-| `ActFormItemsTable.svelte` | 601 | Dead CSS `.hint-warn` (confirmed by `svelte-check`, IN-01) | ℹ️ Info | Cosmetic, left unfixed by explicit user scope decision |
-| `showcase/sections/DropdownSection.svelte` | 73-102 | `onMount` force-opens 4 portaled panels simultaneously (IN-06) | ℹ️ Info | Showcase-only, obscures gallery; left unfixed by explicit user scope decision |
-| `showcase/sections/DropdownSection.svelte` | 149 | Flat-select checkmark demo doesn't track `flatValue` (IN-06) | ℹ️ Info | Showcase-only self-contradictory demo state |
+| `Dropdown.svelte` | 433-451 (Tab, groups-view) | Enter-with-no-active-option in groups-view does not `preventDefault()`/`stopPropagation()` (round-2 review's own WR-02, distinct from the now-fixed round-1 WR-02) | ⚠️ Warning | Latent: could allow implicit form submission if the "Enter suppressed" invariant is assumed universally; not currently reachable as a live bug because `ActFormBody.svelte`'s `onsubmit` unconditionally `preventDefault()`s. Does not fall inside this round's must-have scope (Plan 25-03's regression-floor list specifies "Enter selects in groups-mode", not "Enter suppressed with no selection"); not blocking. |
+| `Dropdown.svelte` | 581 | select-variant search input's `oninput={handleInput}` still fires `onQueryInput?.(query)` (round-2 review WR-04) | ⚠️ Warning | A select-variant consumer that wires `onQueryInput` (documented as the combobox controlled-value sync hook) would have its displayed value clobbered by search-box keystrokes. No current consumer supplies `onQueryInput` on a `variant="select"` instance, so latent not live. Not blocking. |
+| `Dropdown.svelte` | 213-219 | `backToGroups()` restores `returnIndex` into `activeIndex` without re-validating bounds against a possibly-shrunk `groups` array (round-2 review WR-07) | ⚠️ Warning | Visual/AT inconsistency risk (highlighted row could mismatch announced active descendant), not a crash — `activeOptionId()` and `Enter`'s handler both bounds-check downstream. Not blocking. |
+| `Dropdown.svelte` | 497-576 area (search `<li>`, drill header `<li>` inside `<ul role="listbox">`) | `<ul role="listbox">` still wraps role-less `<li>` chrome elements alongside `role="option"` rows (round-1 WR-05, re-confirmed present) | ⚠️ Warning | Accessibility nuance; explicitly deferred by user "blockers-only" scope decision, unchanged since round 1. |
+| `Dropdown.svelte` | Escape/Tab branches on the select-variant search input | Closing the panel from the search input does not return focus to the trigger (round-2 WR-03) | ⚠️ Warning | Explicitly named as deferred in this verification round's caller context. |
+| `DeviceGroupRow.svelte` | 109-129 | `$effect` retries a failing fetch forever (WR-09) | ⚠️ Warning | Pre-existing, deferred, unchanged since round 1. |
+| `ActFormItemsTable.svelte` | ~601 | Dead CSS `.hint-warn` (IN-01) | ℹ️ Info | Deferred, unchanged since round 1. |
+| `showcase/sections/DropdownSection.svelte` | 73-102, 149 | Force-opens 4 panels on mount; flat-checkmark demo self-contradiction (IN-06) | ℹ️ Info | Deferred, unchanged since round 1. |
 
-No `TBD`/`FIXME`/`XXX` debt markers found in any file touched by this phase (grepped all 9 files listed in 25-REVIEW.md's `files_reviewed_list`).
+No `TBD`/`FIXME`/`XXX` debt markers found in `Dropdown.svelte` (grepped directly this round).
 
 ### Human Verification Required
 
-These become relevant once gap 1/gap 2 are closed — listed for completeness, not blocking this report's status (which is already `gaps_found`):
+None required to reach `passed` status — all must-haves for this phase are now independently confirmed by static trace against the current, live source (not SUMMARY.md claims), and the deferred items above are explicit, user-accepted scope exclusions rather than open questions. The following two items remain useful as an optional live sanity pass but do not block phase closure (no live browser session is available in this verification environment):
 
-#### 1. Visual state check — TableRow normal/hover/selected + group row
+#### 1. Dropdown grouped drill-in — full session repro (confirms the fix, does not gate status)
 
-**Test:** Open the design-system Showcase (admin-only route) → Table section; hover each row type; note colors/border against `TableRows.dc.html`.
-**Expected:** Colors/borders match the reference pixel-for-pixel (already code-verified; this is a sanity confirmation, not a first-time check).
-**Why human:** Visual/color-perception judgment; no frontend test harness exists to assert computed styles.
+**Test:** In the Acts form (create/edit), open the device picker, drill into a multi-device group, close the panel without picking (Escape/Tab-on-expandable-group/click-outside), then reopen it (refocus or type).
+**Expected:** Panel shows the current groups list, never the previously-drilled-in group's stale member list.
+**Why human:** Live interaction confirms the static trace; the source-level fix (`resetDrillState()` called from both `open = true` sites) is confirmed unambiguously by code reading, so this is a sanity check, not a gating unknown.
 
-#### 2. Dropdown grouped drill-in — full session, not just first use
+#### 2. Dropdown select-variant — keyboard parity in the search box
 
-**Test:** In the Acts form (create/edit), open the device picker, drill into a multi-device group, close the panel without picking (Escape or click outside), then reopen it.
-**Expected:** Panel should show the current groups list, not the previously drilled-in group's members.
-**Why human:** This is the exact defect in gap 1 — confirming it live (before AND after the fix) requires interacting with the running app; static trace already establishes the defect with high confidence but a live repro is the standard closure evidence.
-
-#### 3. Dropdown flat/select variant — showcase visual check
-
-**Test:** Open Showcase → Dropdown section, "Плоский селект" block; click to open, type in the in-panel search box, try arrow keys.
-**Expected:** Search filters the list; arrow keys navigate; Escape/click-outside close it.
-**Why human:** Confirms gap 2 (WR-06, dead keyboard layer) live, and separately confirms the showcase's forced-multi-open-on-mount doesn't block interaction once the reviewer starts clicking.
+**Test:** Showcase → Dropdown section, "Плоский селект"/select-variant block; click to open, click into the in-panel search box, try Escape/ArrowUp/ArrowDown/Home/End/Enter/Tab.
+**Expected:** All behave identically to the combobox-variant field.
+**Why human:** `onkeydown={handleKeydown}` wiring is confirmed present in source; live confirmation is a sanity pass only.
 
 ### Gaps Summary
 
-Two of the four Dropdown-related plan/roadmap must-haves are compromised by defects the code review found and the user explicitly chose not to fix in this phase ("blockers-only" scope, applied only to the two criticals CR-01/CR-02). This verification independently re-traced both remaining defects (WR-01, WR-02) directly against the current `Dropdown.svelte` source and confirms they are real, not review false-positives: `openPanel()` never clears drill-in state, and `Tab` on an expandable group both fires an async drill-in and synchronously closes the panel. Both are reachable through the phase's own single production consumer (`ActFormItemsTable.svelte`'s per-row device picker in the Acts form) via ordinary interaction (drill in → close without picking → reopen; or Tab on an expandable group), not an edge case requiring contrived input. A third, related defect (WR-06 — the select-variant's in-panel search box has no keyboard handler at all) falsifies Plan 25-03's own must_have claim of "full combobox ARIA pattern... plus member-mode keyboard navigation" for that variant.
+None. Both must-haves that failed round-1 verification are now closed and independently re-verified against current source:
 
-Table/TableRow (CMP-06) has no comparable gap: both roadmap success criteria (#1 row states, #2 group row/count-pill/nested devices) are fully wired in the production Devices-list pilot and structurally match the design reference. Portal/anchor positioning (SC #5) is unmodified code, reused verbatim, and independently confirmed leak-free by the prior code review.
+1. **Roadmap SC #4 (grouped drill-in via WR-01/WR-02):** Plan 25-08 (commits `09c3f8c`, `2d48bea`) fixed `openPanel()`'s missing reset and the Tab-branch async/sync race. A round-2 code review then found the fix was incomplete — `handleInput()`, the *other* code path that reopens the panel, still lacked the reset (BL-01). Quick task 260719-ocq (commits `6407133`, `502f55e`) closed BL-01 by extracting a shared `resetDrillState()` helper called from both `openPanel()` and `handleInput()`. Verified directly in source: exactly 2 call sites plus 1 definition, both `open = true` sites covered, `expandSeq` counter correctly shared (not duplicated).
 
-Recommended next step: a small closure plan against `Dropdown.svelte` applying the WR-01/WR-02/WR-06 fixes already specified with code diffs in `25-REVIEW.md`, followed by a live re-check of Human Verification items 2 and 3 above.
+2. **Plan 25-03's full combobox ARIA/keyboard claim (WR-06):** Plan 25-08 Task 2 wired `onkeydown={handleKeydown}` + `aria-activedescendant` + `aria-controls` onto the select-variant's in-panel search input. Verified directly in source.
+
+A handful of round-2-review warnings remain unaddressed (Enter-with-no-selection not suppressed in groups-view, `onQueryInput` firing from the select-variant search box, `backToGroups` not re-validating `returnIndex`, focus not returned to the trigger on Escape/Tab-close from the search input, listbox/`<li>` role nesting) — none of these fall inside the specific must-haves this phase's roadmap Success Criteria or PLAN frontmatter commit to, all are Warning-level (not Critical) in the round-2 code review, and the user's "blockers-only" scope decision for this phase already established the pattern of deferring non-critical ARIA refinements. Recorded under `deferred` in this report's frontmatter for traceability, not as blocking gaps.
 
 ---
 
-_Verified: 2026-07-19T09:48:10Z_
+_Verified: 2026-07-19T18:00:00Z_
 _Verifier: Claude (gsd-verifier)_
+</content>
