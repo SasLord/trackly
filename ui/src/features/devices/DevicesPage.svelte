@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { apiCall } from '$lib/api/client';
@@ -226,14 +227,13 @@
 </script>
 
 <div class="devices-page">
-  <header class="page-header">
-    <h1 class="page-title">Устройства</h1>
-    <div class="header-actions">
+  <PageHeader title="Устройства" variant="wrap">
+    {#snippet actions()}
       <Button variant="primary" onclick={openCreate}>+ Создать устройство</Button>
       <Button variant="secondary" onclick={() => (csvModalOpen = true)}>Импорт CSV</Button>
       <Button variant="secondary" onclick={exportCsv}>Экспорт CSV</Button>
-    </div>
-  </header>
+    {/snippet}
+  </PageHeader>
 
   <div class="page-content">
     <DeviceFilters
@@ -319,35 +319,9 @@
     height: 100%;
   }
 
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-h3);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--tr-space-xs);
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
   .page-content {
     flex: 1;
     overflow: auto;
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
+    padding: 16px 24px;
   }
 </style>
