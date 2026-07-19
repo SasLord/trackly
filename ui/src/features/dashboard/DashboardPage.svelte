@@ -4,6 +4,7 @@
   // Параллельная загрузка виджетов с независимыми состояниями ошибок (D-10).
   // API: dashboard_get_all_widgets (DASH-01..05) + dashboard_get_consumption_chart (DASH-03).
   import { apiCall } from '$lib/api/client';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import StatWidget from './StatWidget.svelte';
   import ChartWidget from './ChartWidget.svelte';
 
@@ -135,32 +136,33 @@
 </script>
 
 <div class="dashboard-page">
-  <header class="page-header">
-    <h1 class="page-title">Дашборд</h1>
-    <!-- Селектор периода для period-sensitive виджетов (D-12) -->
-    <div class="period-selector" role="group" aria-label="Период">
-      <select
-        bind:value={periodMonth}
-        onchange={reloadWidgets}
-        aria-label="Месяц"
-        class="period-select"
-      >
-        {#each MONTHS as name, i}
-          <option value={i + 1}>{name}</option>
-        {/each}
-      </select>
-      <select
-        bind:value={periodYear}
-        onchange={reloadWidgets}
-        aria-label="Год"
-        class="period-select"
-      >
-        {#each YEARS as y}
-          <option value={y}>{y}</option>
-        {/each}
-      </select>
-    </div>
-  </header>
+  <PageHeader title="Дашборд" variant="fixed">
+    {#snippet actions()}
+      <!-- Селектор периода для period-sensitive виджетов (D-12) -->
+      <div class="period-selector" role="group" aria-label="Период">
+        <select
+          bind:value={periodMonth}
+          onchange={reloadWidgets}
+          aria-label="Месяц"
+          class="period-select"
+        >
+          {#each MONTHS as name, i}
+            <option value={i + 1}>{name}</option>
+          {/each}
+        </select>
+        <select
+          bind:value={periodYear}
+          onchange={reloadWidgets}
+          aria-label="Год"
+          class="period-select"
+        >
+          {#each YEARS as y}
+            <option value={y}>{y}</option>
+          {/each}
+        </select>
+      </div>
+    {/snippet}
+  </PageHeader>
 
   <div class="dashboard-grid">
     <!-- Колонка 1 (основная): Устройства, Картриджи, График -->
@@ -247,35 +249,17 @@
     height: 100%;
   }
 
-  .page-header {
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    flex: 1;
-  }
-
   .period-selector {
     display: flex;
-    gap: var(--tr-space-xs);
+    gap: 10px;
   }
 
   .period-select {
     height: 32px;
     padding: 0 var(--tr-space-xs);
-    background: var(--tr-bg);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
+    background: var(--tr-surface);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: 6px;
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     cursor: pointer;
