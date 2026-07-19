@@ -41,6 +41,7 @@
 - [ ] **WIN-09**: Пользователи
 - [ ] **WIN-10**: Экраны входа — Логин / Pending / Blocked / FirstRunWizard
 - [ ] **WIN-11**: Интерфейс сотрудника (EmployeeLayout)
+- [ ] **WIN-12**: Адаптивность окон Дашборд и Устройства (брейкпоинты, сворачиваемый/выезжающий сайдбар, мобильные раскладки — сознательное расширение D-15 Фазы 26 поверх «соответствия макету»)
 
 ### Качество (QA)
 
@@ -118,6 +119,7 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | CMP-07 | Phase 25 | Complete |
 | WIN-01 | Phase 26 | Pending |
 | WIN-02 | Phase 26 | Pending |
+| WIN-12 | Phase 26 | Pending |
 | WIN-03 | Phase 27 | Pending |
 | WIN-04 | Phase 27 | Pending |
 | WIN-05 | Phase 27 | Pending |
@@ -130,8 +132,9 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | QA-02 | Phase 30 | Pending |
 | QA-03 | Phase 30 | Pending |
 
-**Coverage:** 25/25 v1.2 requirements mapped ✓ — no orphans.
+**Coverage:** 26/26 v1.2 requirements mapped ✓ — no orphans.
 
 ---
 *Created: 2026-07-16 — milestone v1.2 started. 25 требований (DS 4 / CMP 7 / WIN 11 / QA 3).*
+*Updated: 2026-07-19 — Phase 26 planning added WIN-12 (адаптивность, D-15). 26 требований (DS 4 / CMP 7 / WIN 12 / QA 3).*
 *Roadmap: 2026-07-16 — ROADMAP.md created (Phases 23–30, 8 phases, standard granularity). See ROADMAP.md for phase goals and success criteria.*

@@ -69,7 +69,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 23: Токены и основы дизайн-системы** - Единый слой `--tr-*` (поверхности, текст, акцент, семантика, нейтрали, тени), типографика и миграция space/radius по значению без сдвига вёрстки; фикс undefined-token багов. (completed 2026-07-17)
 - [x] **Phase 24: Базовые компоненты** - Button, Input/Select/Textarea/Checkbox, Badge, Tabs, Modal на новой системе. (completed 2026-07-18)
 - [x] **Phase 25: Таблицы и Dropdown** - Строки таблицы + строка-группа, новый компонент Dropdown/комбобокс. (верификация 2026-07-19 → gaps_found, 4/5; gap closure 25-08-PLAN.md добавлен — WR-01/WR-02/WR-06 в Dropdown.svelte) (completed 2026-07-19)
-- [ ] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design.
+- [ ] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design, включая адаптивность.
 - [ ] **Phase 27: Окна основного рабочего процесса** - Акты, Картриджи, Принтеры — без макета, вёрстка из компонентной системы.
 - [ ] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета.
 - [ ] **Phase 29: Вход и интерфейс сотрудника** - Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout — отдельные layout-shell.
@@ -518,31 +518,33 @@ Plans:
 
 ### Phase 26: Окна с готовым макетом
 
-**Goal**: Два окна, для которых в Claude Design есть готовый макет (Дашборд, Список устройств), реализованы с точным визуальным соответствием этому макету.
+**Goal**: Два окна, для которых в Claude Design есть готовый макет (Дашборд, Список устройств), реализованы с точным визуальным соответствием этому макету, включая адаптивность до мобильных ширин.
 
 **Depends on**: Phase 25
 
 **Milestone**: v1.2 — Редизайн UI и дизайн-система
 
-**Requirements**: WIN-01, WIN-02
+**Requirements**: WIN-01, WIN-02, WIN-12
 
 **Success Criteria** (what must be TRUE):
 
-1. Дашборд визуально соответствует макету Claude Design (виджеты, отступы, тональность).
+1. Дашборд визуально соответствует макету Claude Design в части реализованных виджетов (виджеты, отступы, тональность); три панели макета без данных в `DashboardWidgetDto` (низкий остаток с %, последние заявки, мониторинг картриджей) не строятся (D-01).
 2. Список устройств визуально соответствует макету Claude Design, включая групповые строки.
 3. Оба окна сохраняют всю существующую функциональность (фильтры, автокомплиты, CRUD, CSV import/export) без изменений поведения.
+4. Оба окна и общая админская оболочка (сайдбар, PageHeader) адаптивны от desktop до мобильных ширин — брейкпоинты, сворачиваемый/выезжающий сайдбар (D-15, WIN-12).
 
-**Plans**: 7 plans
+**Plans**: 8 plans in 3 waves
 
 Plans:
 
-- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
-- [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
-- [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [x] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+- [ ] 26-01-PLAN.md — Shell contracts (breakpoints, layout-state store) + PageHeader + adaptive Layout drawer (WIN-01, WIN-02, WIN-12)
+- [ ] 26-02-PLAN.md — Sidebar + ThemeSwitcher restyle (D-06/D-08) (WIN-01, WIN-02)
+- [ ] 26-03-PLAN.md — Table framed/footer + Input iconLeft primitive extensions (D-11) (WIN-02)
+- [ ] 26-04-PLAN.md — DevicesPage header migration + DeviceList footer/framed table (D-12) (WIN-02)
+- [ ] 26-05-PLAN.md — DeviceFilters primitive migration, behavior-preserving (D-10) (WIN-02)
+- [ ] 26-06-PLAN.md — DashboardPage header + grid restructure (D-01/D-02/D-03) (WIN-01, WIN-12)
+- [ ] 26-07-PLAN.md — StatWidget/ChartWidget/PeriodToggle restyle (D-04/D-14) (WIN-01)
+- [ ] 26-08-PLAN.md — Automated gates + human visual UAT checkpoint (D-17/D-18) (WIN-01, WIN-02, WIN-12)
 
 **UI hint**: yes
 
@@ -565,17 +567,7 @@ Plans:
 3. Окна Принтеров (список, деталь, агрегаты совместимости) используют новые токены/компоненты повсеместно.
 4. Каждое существующее поле/действие/workflow в этих окнах остаётся на месте и работает (изменение чисто визуальное).
 
-**Plans**: 7 plans
-
-Plans:
-
-- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
-- [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
-- [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [x] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+**Plans**: TBD (not yet planned)
 
 **UI hint**: yes
 
@@ -598,17 +590,7 @@ Plans:
 3. Окно Настроек (организация, шаблоны, бэкапы, вкладка AD) использует новые токены/компоненты.
 4. Окно Пользователей использует новые токены/компоненты.
 
-**Plans**: 7 plans
-
-Plans:
-
-- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
-- [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
-- [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+**Plans**: TBD (not yet planned)
 
 **UI hint**: yes
 
@@ -630,17 +612,7 @@ Plans:
 2. EmployeeLayout (сайдбар, форма заявки, список собственных заявок) использует новые токены/компоненты.
 3. Визуальный язык соответствует переработанному основному приложению, несмотря на отдельную оболочку.
 
-**Plans**: 7 plans
-
-Plans:
-
-- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
-- [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
-- [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+**Plans**: TBD (not yet planned)
 
 **UI hint**: yes
 
@@ -662,17 +634,7 @@ Plans:
 2. Каждый интерактивный элемент (кнопка, поле, ссылка, строка таблицы, вкладка) показывает видимое кольцо фокуса при навигации клавиатурой.
 3. Десктоп (Tauri WebView) и LAN-браузер визуально идентичны на репрезентативной выборке окон (дашборд, устройства, акты, логин).
 
-**Plans**: 7 plans
-
-Plans:
-
-- [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
-- [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
-- [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+**Plans**: TBD (not yet planned)
 
 **UI hint**: yes
 
@@ -720,7 +682,7 @@ Plans:
 
 - **v1 requirements mapped:** 120 / 120 ✓ (см. `milestones/v1.1-REQUIREMENTS.md`)
 - **v1.1.1 requirements mapped:** 8 / 8 ✓ (см. REQUIREMENTS.md — Traceability)
-- **v1.2 requirements mapped:** 25 / 25 ✓ (см. REQUIREMENTS.md — Traceability; roadmap: Phases 23–30 below)
+- **v1.2 requirements mapped:** 26 / 26 ✓ (см. REQUIREMENTS.md — Traceability; roadmap: Phases 23–30 below; WIN-12 добавлено при планировании Фазы 26 — адаптивность, D-15)
 - **Orphans:** none
 
 ## v1.1.1 Requirement Coverage
@@ -843,6 +805,7 @@ Plans:
 | CMP-07 | Phase 25 | Pending |
 | WIN-01 | Phase 26 | Pending |
 | WIN-02 | Phase 26 | Pending |
+| WIN-12 | Phase 26 | Pending |
 | WIN-03 | Phase 27 | Pending |
 | WIN-04 | Phase 27 | Pending |
 | WIN-05 | Phase 27 | Pending |
@@ -855,11 +818,12 @@ Plans:
 | QA-02 | Phase 30 | Pending |
 | QA-03 | Phase 30 | Pending |
 
-**Coverage:** 25/25 v1.2 requirements mapped ✓ — no orphans.
+**Coverage:** 26/26 v1.2 requirements mapped ✓ — no orphans (WIN-12 added 2026-07-19 during Phase 26 planning, per UI-SPEC §11/D-15).
 
 ---
 *Last updated: 2026-07-15 — v1.1.2 shipped (Phases 18–22, 28 plans). All 12 requirements Complete. Full detail archived to `milestones/v1.1.2-ROADMAP.md`.*
 *Last updated: 2026-07-16 — v1.2 roadmap created (Phases 23–30, 8 phases, standard granularity, 25/25 requirements mapped, 0 plans yet). Ready for `/gsd-plan-phase 23`.*
+*Updated: 2026-07-19 — Phase 26 planning added WIN-12 (адаптивность, D-15); 26/26 requirements. Cleaned up copy-pasted Phase 25 plan lists that had leaked into Phases 26-30 sections.*
 
 ## Backlog
 
