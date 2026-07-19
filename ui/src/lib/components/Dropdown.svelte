@@ -233,8 +233,22 @@
     searchDebounce = setTimeout(() => onSearch(query), 250);
   }
 
+  /** CR-01: typing MUST (re)open the panel. Pre-migration
+   *  ActFormItemsTable.fetchGroups set `openByRow[idx] = true` on every fetch;
+   *  Plan 25-07 added `open = false` on pick without restoring that path, so
+   *  after the first pick the panel could never reopen (every option row
+   *  preventDefaults mousedown, so the field keeps focus and `handleFocus`
+   *  never fires again — only ArrowDown recovered it).
+   *
+   *  This is the one placement that covers BOTH field variants: the combobox
+   *  field and the select-variant in-panel search box share this handler.
+   *  It cannot regress 25-07's close-on-pick, because a pick never produces
+   *  an `input` event — `value` is re-rendered by the caller as a prop, and a
+   *  programmatic value change does not fire `oninput`. */
   function handleInput(e: Event) {
     const query = (e.currentTarget as HTMLInputElement).value;
+    open = true;
+    activeIndex = -1;
     onQueryInput?.(query);
     scheduleSearch(query);
   }
