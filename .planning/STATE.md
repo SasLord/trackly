@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: executing
-last_updated: "2026-07-19T07:52:40.923Z"
+status: verifying
+last_updated: "2026-07-19T08:06:46.418Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 27
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 25 (dropdown) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-19
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -225,6 +225,7 @@ Last activity: 2026-07-19
 | Phase 25 P04 | 20min | 2 tasks | 2 files |
 | Phase 25 P05 | 25min | 2 tasks | 3 files |
 | Phase 25-dropdown P06 | 15min | 2 tasks | 2 files |
+| Phase 25 P07 | 30min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -554,6 +555,8 @@ Recent decisions affecting current work:
 - [Phase 25]: DeviceListRow group-last-child divider uses :global(tr.group-last-child) > .cell (not the plan's bare > td) to out-specificity TableRow's own base <td> border-bottom rule
 - [Phase 25]: DeviceList footer visibility gated by a dedicated skeletonLoading derived, shared with Table's loading prop, avoiding a regression where the footer would show during initial-load skeleton
 - [Phase ?]: Programmatic focus()/click() sequence in onMount forces Dropdown's fully-internal open/viewMode/drill-in state into a permanently-visible demo (Plan 25-06) since Dropdown exposes no bindable props for that state (Plan 25-02 D-02)
+- [Phase 25]: 25-07: combined Task1(wire Dropdown)+Task2(cleanup) into one commit — literal split fails project's strict noUnusedLocals gate (old handlers become dead the instant old markup is removed), same class as Plan 25-02
+- [Phase 25]: 25-07: fixed Dropdown.svelte itself (outside declared files_modified) — mouse-click/Enter pick never closed the panel in Plans 25-02/25-03, first exposed by this pilot; added open=false in handleOptionClick + new handleMemberClick
 
 ### Pending Todos
 
@@ -630,8 +633,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-19T07:51:29.163Z
-Stopped at: Completed 25-03-PLAN.md
+Last session: 2026-07-19T08:06:46.385Z
+Stopped at: Completed 25-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
