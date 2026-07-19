@@ -3,8 +3,8 @@
 
   const options = [
     { key: 'light' as const, label: 'Светлая', ariaLabel: 'Светлая тема' },
-    { key: 'dark' as const, label: 'Тёмная', ariaLabel: 'Тёмная тема' },
     { key: 'system' as const, label: 'Системная', ariaLabel: 'Использовать системную тему' },
+    { key: 'dark' as const, label: 'Тёмная', ariaLabel: 'Тёмная тема' },
   ];
 </script>
 
@@ -27,29 +27,27 @@
   .theme-switcher {
     display: flex;
     width: 100%;
-    height: 32px;
-    background: var(--tr-surface);
+    padding: 2px;
+    gap: 2px;
+    background: var(--tr-surface-sunken);
     border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    overflow: hidden;
+    border-radius: 8px;
   }
 
   .segment {
     flex: 1;
-    height: 100%;
+    height: 26px;
     background: transparent;
     border: none;
-    border-right: 1px solid var(--tr-border);
+    border-radius: 6px;
     cursor: pointer;
     font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-    padding: 0;
-    transition: none;
-
-    &:last-child {
-      border-right: none;
-    }
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tr-text-tertiary);
+    box-shadow: none;
+    padding: 0 4px;
+    transition: background 0.12s, color 0.12s;
 
     &:hover:not(.active) {
       background: color-mix(in srgb, var(--tr-text-primary) 5%, transparent);
@@ -57,9 +55,9 @@
     }
 
     &.active {
-      background: var(--tr-surface-raised);
       color: var(--tr-text-primary);
-      font-weight: var(--tr-font-weight-medium);
+      background: var(--tr-surface-raised);
+      box-shadow: var(--tr-elev-1);
     }
 
     &:focus-visible {
