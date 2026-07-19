@@ -97,3 +97,11 @@ None - no external service configuration required.
 ---
 *Phase: 25-dropdown*
 *Completed: 2026-07-19*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/lib/components/Dropdown.svelte
+- FOUND: .planning/phases/25-dropdown/25-08-SUMMARY.md
+- FOUND: 09c3f8c (Task 1 commit)
+- FOUND: 2d48bea (Task 2 commit)
+- FOUND: 39a3cd6 (SUMMARY commit)
