@@ -537,7 +537,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 26-01-PLAN.md — Shell contracts (breakpoints, layout-state store) + PageHeader + adaptive Layout drawer (WIN-01, WIN-02, WIN-12)
+- [x] 26-01-PLAN.md — Shell contracts (breakpoints, layout-state store) + PageHeader + adaptive Layout drawer (WIN-01, WIN-02, WIN-12)
 - [ ] 26-02-PLAN.md — Sidebar + ThemeSwitcher restyle (D-06/D-08) (WIN-01, WIN-02)
 - [ ] 26-03-PLAN.md — Table framed/footer + Input iconLeft primitive extensions (D-11) (WIN-02)
 
@@ -678,7 +678,7 @@ Plans:
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
-| 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
+| 26. Окна с готовым макетом | v1.2 | 1/8 | In Progress|  |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |

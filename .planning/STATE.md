@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-19T15:01:33.217Z"
-last_activity: 2026-07-19 -- Phase 26 planning complete
+last_updated: "2026-07-19T23:19:49.770Z"
+last_activity: 2026-07-19
 progress:
   total_phases: 27
   completed_phases: 27
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 26 — окна с готовым макетом
+**Current focus:** Phase 26 — windows-with-mockup
 
 ## Current Position
 
-Phase: 26
-Plan: Not started
+Phase: 26 (windows-with-mockup) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-07-19 -- Phase 26 planning complete
+Last activity: 2026-07-19
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -228,6 +228,7 @@ Last activity: 2026-07-19 -- Phase 26 planning complete
 | Phase 25-dropdown P06 | 15min | 2 tasks | 2 files |
 | Phase 25 P07 | 30min | 2 tasks | 2 files |
 | Phase 25-dropdown P08 | 12min | 2 tasks | 1 files |
+| Phase 26 P1 | 8min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -562,6 +563,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 25-08: openPanel() shares the expandSeq counter (increment before resets) instead of a parallel invalidation mechanism, so drillInto/AUTO-05 effect stay coordinated on reopen
 - [Phase ?]: 25-08: Tab-branch guard checks group truthiness before isGroupExpandable to prevent crash on Tab-with-no-active-option
 - [Phase ?]: 25-08: select-variant search input gets keyboard/ARIA wiring but not onmousedown-preventDefault — needs real focus for typing
+- [Phase 26]: 26-01: sidebar-width migrated by value (240px->236px), not by name — not a --tr-* token, check-tokens.mjs closed-world gate does not scan it
+- [Phase 26]: 26-01: PageHeader owns the burger button internally, not Layout — future pages adopting PageHeader get the mobile toggle for free
 
 ### Pending Todos
 
@@ -639,9 +642,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-19T14:08:43.445Z
-Stopped at: Phase 26 UI-SPEC approved
-Resume file: .planning/phases/26-windows-with-mockup/26-UI-SPEC.md
+Last session: 2026-07-19T23:19:49.763Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

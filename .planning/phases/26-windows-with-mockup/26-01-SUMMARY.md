@@ -116,6 +116,10 @@ None - no external service configuration required.
 - `EmployeeLayout.svelte` untouched (D-09) — confirmed via `git status`/`git diff --name-only`, no changes to that file.
 - Manual verification item still open per plan `<verification>` #4 (resize through 1024px with drawer open, confirm desktop sidebar remains keyboard-focusable after crossing back above 1024px) — deferred to end-of-phase human-verify per `human_verify_mode: end-of-phase` config; not blocking for Wave 2 plans since the automated `inert` guard (grep-verified) already encodes the correct behavior.
 
+## Self-Check: PASSED
+
+All created/modified files exist on disk; all 5 commit hashes (`18ee3c7`, `017ba39`, `6ab3c4e`, `929631d`, `3c67537`) verified present in `git log`.
+
 ---
 *Phase: 26-windows-with-mockup*
 *Completed: 2026-07-19*
