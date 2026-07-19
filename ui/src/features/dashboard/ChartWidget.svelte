@@ -20,8 +20,9 @@
 
   const { data, windowMonths, loading, error, onWindowChange }: Props = $props();
 
-  // Цвета для серий (до 3 моделей)
-  const COLORS = ['var(--tr-accent)', 'var(--tr-success)', 'var(--tr-warning)'];
+  // Цвета для серий (до 3 моделей) — документированное исключение из --tr-* токенов:
+  // литеральная палитра для data-viz рядов, одинаковая в обеих темах (§7).
+  const COLORS = ['#3b6fe0', '#1a9d5f', '#d8820e'];
 
   // Русские названия месяцев для подписей осей
   const MONTHS = [
@@ -222,7 +223,7 @@
       <Spinner size="md" />
     </div>
   {:else if error}
-    <div class="chart-state chart-error">Ошибка загрузки</div>
+    <div class="chart-state chart-error">Не удалось загрузить. Смените период или обновите страницу.</div>
   {:else if data.length === 0}
     <div class="chart-state chart-empty">Нет данных о расходе за выбранный период</div>
   {:else}
@@ -288,7 +289,7 @@
               x={bar.x + bar.width / 2}
               y={bar.y - 3}
               text-anchor="middle"
-              font-size="8"
+              font-size="9"
               fill={bar.color}>{bar.installs}</text
             >
           {/if}
@@ -355,7 +356,9 @@
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
-    padding: var(--tr-space-xl);
+    padding: 18px;
+    box-shadow: var(--tr-elev-1);
+    min-width: 0;
     min-height: 220px;
   }
 
@@ -363,14 +366,14 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: var(--tr-space-md);
+    margin-bottom: 20px;
     gap: var(--tr-space-xs);
     flex-wrap: wrap;
   }
 
   .widget-title {
     margin: 0;
-    font-size: var(--tr-font-size-body);
+    font-size: 16px;
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
   }
@@ -433,6 +436,8 @@
     list-style: none;
     padding: 0;
     margin: var(--tr-space-xs) 0 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--tr-border);
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
   }
@@ -440,7 +445,7 @@
   .legend-item {
     display: flex;
     align-items: center;
-    gap: var(--tr-space-2xs);
+    gap: 7px;
   }
 
   .legend-dot {
