@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T20:40:59.246Z"
+last_updated: "2026-07-18T20:49:41.348Z"
 last_activity: 2026-07-18
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 25 (dropdown) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-07-18
 
@@ -223,6 +223,7 @@ Last activity: 2026-07-18
 | Phase 25 P02 | 25min | 2 tasks | 1 files |
 | Phase 25 P03 | 25min | 2 tasks | 1 files |
 | Phase 25 P04 | 20min | 2 tasks | 2 files |
+| Phase 25 P05 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -549,6 +550,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 25-03: two-stage Escape in member-view gated on showBack (not just viewMode), so AUTO-05's auto-flattened single-group view closes immediately instead of looping back into a 1-item groups list
 - [Phase ?]: 25-03: drill-in focus management via new returnIndex field — entering member-view activates first option, backToGroups() restores the group's own index
 - [Phase ?]: 25-04: group count-pill uses a named const bound via variant={countPillVariant}, not a literal variant="accent" string, to keep the badge-tone grep gate exact at 4
+- [Phase 25]: DeviceListRow group-last-child divider uses :global(tr.group-last-child) > .cell (not the plan's bare > td) to out-specificity TableRow's own base <td> border-bottom rule
+- [Phase 25]: DeviceList footer visibility gated by a dedicated skeletonLoading derived, shared with Table's loading prop, avoiding a regression where the footer would show during initial-load skeleton
 
 ### Pending Todos
 
