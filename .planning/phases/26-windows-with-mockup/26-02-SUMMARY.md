@@ -95,3 +95,7 @@ None - no external service configuration required.
 ---
 *Phase: 26-windows-with-mockup*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All created/modified files confirmed present on disk; both task commits (`dd24abd`, `ef0b77f`) confirmed in git log.
