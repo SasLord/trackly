@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-18T20:49:41.348Z"
-last_activity: 2026-07-18
+last_updated: "2026-07-19T07:52:40.923Z"
+last_activity: 2026-07-19
 progress:
   total_phases: 27
   completed_phases: 27
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 25 (dropdown) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Ready to execute
-Last activity: 2026-07-18
+Last activity: 2026-07-19
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -224,6 +224,7 @@ Last activity: 2026-07-18
 | Phase 25 P03 | 25min | 2 tasks | 1 files |
 | Phase 25 P04 | 20min | 2 tasks | 2 files |
 | Phase 25 P05 | 25min | 2 tasks | 3 files |
+| Phase 25-dropdown P06 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -552,6 +553,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 25-04: group count-pill uses a named const bound via variant={countPillVariant}, not a literal variant="accent" string, to keep the badge-tone grep gate exact at 4
 - [Phase 25]: DeviceListRow group-last-child divider uses :global(tr.group-last-child) > .cell (not the plan's bare > td) to out-specificity TableRow's own base <td> border-bottom rule
 - [Phase 25]: DeviceList footer visibility gated by a dedicated skeletonLoading derived, shared with Table's loading prop, avoiding a regression where the footer would show during initial-load skeleton
+- [Phase ?]: Programmatic focus()/click() sequence in onMount forces Dropdown's fully-internal open/viewMode/drill-in state into a permanently-visible demo (Plan 25-06) since Dropdown exposes no bindable props for that state (Plan 25-02 D-02)
 
 ### Pending Todos
 
@@ -628,7 +630,7 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-18T20:40:56.357Z
+Last session: 2026-07-19T07:51:29.163Z
 Stopped at: Completed 25-03-PLAN.md
 Resume file: None
 
