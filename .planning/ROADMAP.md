@@ -545,7 +545,7 @@ Plans:
 
 - [x] 26-04-PLAN.md — DevicesPage header migration + DeviceList footer/framed table (D-12) (WIN-02)
 - [x] 26-05-PLAN.md — DeviceFilters primitive migration, behavior-preserving (D-10) (WIN-02)
-- [ ] 26-06-PLAN.md — DashboardPage header + grid restructure (D-01/D-02/D-03) (WIN-01, WIN-12)
+- [x] 26-06-PLAN.md — DashboardPage header + grid restructure (D-01/D-02/D-03) (WIN-01, WIN-12)
 - [ ] 26-07-PLAN.md — StatWidget/ChartWidget/PeriodToggle restyle (D-04/D-14) (WIN-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -678,7 +678,7 @@ Plans:
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
-| 26. Окна с готовым макетом | v1.2 | 5/8 | In Progress|  |
+| 26. Окна с готовым макетом | v1.2 | 6/8 | In Progress|  |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
