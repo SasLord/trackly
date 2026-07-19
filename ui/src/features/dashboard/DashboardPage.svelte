@@ -165,8 +165,8 @@
   </PageHeader>
 
   <div class="dashboard-grid">
-    <!-- Колонка 1 (основная): Устройства, Картриджи, График -->
-    <div class="dashboard-col dashboard-col--main">
+    <!-- Ряд статистик: Устройства, Картриджи, Заявки, Принтеры -->
+    <div class="stat-row">
       <StatWidget
         id="devices"
         title="Устройства"
@@ -196,17 +196,6 @@
         error={widgetData === null && !widgetsLoading ? widgetError : null}
       />
 
-      <ChartWidget
-        data={chartData}
-        {windowMonths}
-        loading={chartLoading}
-        error={chartError}
-        onWindowChange={handleWindowChange}
-      />
-    </div>
-
-    <!-- Колонка 2 (боковая): Заявки, Принтеры -->
-    <div class="dashboard-col dashboard-col--side">
       <StatWidget
         id="requests"
         title="Заявки"
@@ -239,10 +228,20 @@
         error={null}
       />
     </div>
+
+    <ChartWidget
+      data={chartData}
+      {windowMonths}
+      loading={chartLoading}
+      error={chartError}
+      onWindowChange={handleWindowChange}
+    />
   </div>
 </div>
 
 <style lang="scss">
+  @use '../../styles/_breakpoints' as bp;
+
   .dashboard-page {
     display: flex;
     flex-direction: column;
@@ -274,22 +273,30 @@
   .dashboard-grid {
     flex: 1;
     overflow: auto;
-    display: grid;
-    grid-template-columns: 3fr 2fr;
-    gap: var(--tr-space-2xl);
-    padding: var(--tr-space-2xl);
-    align-content: start;
-  }
-
-  .dashboard-col {
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-xl);
+    gap: 16px;
+    padding: 24px;
   }
 
-  @media (max-width: 1280px) {
-    .dashboard-grid {
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: bp.$bp-xl) {
+    .stat-row {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: bp.$bp-sm) {
+    .stat-row {
       grid-template-columns: 1fr;
+    }
+    .dashboard-grid {
+      padding: 16px;
     }
   }
 </style>
