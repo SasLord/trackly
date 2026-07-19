@@ -286,6 +286,20 @@
     if (searchDebounce) clearTimeout(searchDebounce);
     open = true;
     activeIndex = -1;
+    // WR-02: fully reset the drill-in state machine on every (re)open — a
+    // manual drill-in that was left mid-flight (panel closed without a pick)
+    // must not resurface as a stale member list once the panel reopens. The
+    // increment below comes FIRST (mirrors the AUTO-05 effect's own
+    // cancel-in-flight branch above): openPanel() becomes a third
+    // participant in that same shared counter, so a still-in-flight
+    // drillInto promise from before the panel closed is dropped by the
+    // existing guard in drillInto/the AUTO-05 effect instead of
+    // force-writing over this reset once it resolves.
+    expandSeq++;
+    viewMode = 'groups';
+    activeGroup = null;
+    members = [];
+    showBack = false;
     onSearch(query);
   }
 
@@ -382,8 +396,21 @@
           handleOptionClick(groups[activeIndex]);
         }
       } else if (e.key === 'Tab') {
-        if (activeIndex >= 0 && activeIndex < groups.length) {
-          handleOptionClick(groups[activeIndex]);
+        // WR-01: Tab must never both start an async drillInto AND
+        // synchronously close the panel — that silently loses the pick and
+        // primes the component to show a stale drilled-in list on next open
+        // (WR-02). Commit directly via onPickGroup only for a non-expandable
+        // group; an expandable group (or no active option) just closes, same
+        // as the groups-view Escape behavior — "closing wins, no partial
+        // navigation state left behind." The `g &&` guard (evaluated before
+        // isGroupExpandable(g)) preserves the old bounds check: focusing the
+        // field runs AUTO-02 -> openPanel() -> activeIndex = -1, so an
+        // immediate Tab with no arrow key first would otherwise read
+        // groups[-1] === undefined and crash both production consumers'
+        // isExpandable/isGroupExpandable calls.
+        const g = groups[activeIndex];
+        if (g && !(!flat && isGroupExpandable(g))) {
+          onPickGroup(g);
         }
         open = false;
       }
