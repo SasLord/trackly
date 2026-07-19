@@ -259,6 +259,50 @@
     searchDebounce = setTimeout(() => onSearch(query), 250);
   }
 
+  /** BL-01 (round-2 review, quick task 260719-ocq): fully resets the drill-in
+   *  state machine. Must be called from EVERY place that sets `open = true`
+   *  — closing the panel mid-drill-in (click-outside/Escape/Tab on an
+   *  expandable group) intentionally leaves `viewMode`/`activeGroup`/
+   *  `members`/`showBack` untouched (by design — see backToGroups/handleKeydown),
+   *  so whichever entry point reopens the panel next is responsible for the
+   *  reset. Before this helper existed, only `openPanel()` (WR-02, plan
+   *  25-08) reset this state; `handleInput()` (CR-01, round-1) set
+   *  `open = true` without resetting, so typing into a closed-mid-drill-in
+   *  panel redisplayed the PREVIOUS group's stale member list under the new
+   *  query — clickable for the full 250ms debounce + IPC round-trip, writing
+   *  a member id that doesn't match what was searched for (BL-01).
+   *
+   *  `expandSeq++` comes FIRST (mirrors the AUTO-05 effect's own
+   *  cancel-in-flight branch): this makes `resetDrillState()` itself a
+   *  participant in the shared generation-token counter, so a still-in-flight
+   *  `drillInto` promise from before the panel closed is dropped by the
+   *  existing `seq !== expandSeq` guard in `drillInto`/the AUTO-05 effect
+   *  instead of force-writing over this reset once it resolves.
+   *
+   *  WR-01 (round-2, warning, NOT fixed here — out of scope for BL-01):
+   *  the unconditional `viewMode = 'groups'` here can make AUTO-05's
+   *  auto-flatten effect (lines 162-190, keyed on the `groups` array
+   *  reference) miss re-running on reopen if a future caller supplies a
+   *  memoized/static `groups` array — the effect's dependency doesn't
+   *  change, so a single-group result stays in groups-view for one extra
+   *  frame instead of auto-flattening immediately. Not fixed here because:
+   *  (1) it's a distinct round-2 finding about `openPanel()`'s pre-existing
+   *  behavior, not what BL-01 describes (BL-01 is about `handleInput()` NOT
+   *  resetting at all); (2) a correct fix needs a new reactive dependency
+   *  (e.g. an `autoFlattenTick` counter) inside the AUTO-05 `$effect` itself
+   *  — a separate, riskier change to the same effect that carries the CR-02
+   *  guard, not a consolidation of the two call sites; (3) the only
+   *  production consumer (`ActFormItemsTable`) self-heals because its
+   *  `fetchGroups` always assigns a fresh `groups` array, retriggering the
+   *  effect on every fetch anyway. */
+  function resetDrillState() {
+    expandSeq++;
+    viewMode = 'groups';
+    activeGroup = null;
+    members = [];
+    showBack = false;
+  }
+
   /** CR-01: typing MUST (re)open the panel. Pre-migration
    *  ActFormItemsTable.fetchGroups set `openByRow[idx] = true` on every fetch;
    *  Plan 25-07 added `open = false` on pick without restoring that path, so
@@ -275,6 +319,7 @@
     const query = (e.currentTarget as HTMLInputElement).value;
     open = true;
     activeIndex = -1;
+    resetDrillState();
     onQueryInput?.(query);
     scheduleSearch(query);
   }
@@ -286,20 +331,10 @@
     if (searchDebounce) clearTimeout(searchDebounce);
     open = true;
     activeIndex = -1;
-    // WR-02: fully reset the drill-in state machine on every (re)open — a
-    // manual drill-in that was left mid-flight (panel closed without a pick)
-    // must not resurface as a stale member list once the panel reopens. The
-    // increment below comes FIRST (mirrors the AUTO-05 effect's own
-    // cancel-in-flight branch above): openPanel() becomes a third
-    // participant in that same shared counter, so a still-in-flight
-    // drillInto promise from before the panel closed is dropped by the
-    // existing guard in drillInto/the AUTO-05 effect instead of
-    // force-writing over this reset once it resolves.
-    expandSeq++;
-    viewMode = 'groups';
-    activeGroup = null;
-    members = [];
-    showBack = false;
+    // WR-02/BL-01: see resetDrillState() docstring above for the full
+    // rationale — this is one of the two call sites that must reset the
+    // drill-in state machine on every (re)open.
+    resetDrillState();
     onSearch(query);
   }
 
