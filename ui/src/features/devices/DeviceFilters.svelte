@@ -2,6 +2,8 @@
   // DeviceFilters — FTS search input + status switch-bar + group toggle.
   // Per UI-SPEC §DeviceFilters, D-Search-01, DEV-07.
 
+  import Input from '$lib/components/Input.svelte';
+
   interface Props {
     searchQuery: string;
     statusFilter: number | null;
@@ -57,8 +59,15 @@
 
 <div class="device-filters">
   <!-- FTS search input -->
-  <div class="search-wrapper">
-    <span class="search-icon" aria-hidden="true">
+  <label for="device-search-input" class="visually-hidden">Поиск устройств</label>
+  <Input
+    id="device-search-input"
+    type="search"
+    value={localSearch}
+    oninput={handleSearchInput}
+    placeholder="Поиск по наименованию, инвентарному, серийному, модели"
+  >
+    {#snippet iconLeft()}
       <svg
         width="16"
         height="16"
@@ -69,16 +78,8 @@
         <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.5" />
         <path d="M10 10L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
       </svg>
-    </span>
-    <input
-      type="search"
-      class="search-input"
-      placeholder="Поиск по наименованию, инвентарному, серийному, модели"
-      value={localSearch}
-      oninput={(e) => handleSearchInput((e.currentTarget as HTMLInputElement).value)}
-      aria-label="Поиск устройств"
-    />
-  </div>
+    {/snippet}
+  </Input>
 
   <!-- Status switch-bar + group toggle -->
   <div class="filters-row">
@@ -122,41 +123,16 @@
     margin-bottom: var(--tr-space-md);
   }
 
-  .search-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .search-icon {
+  .visually-hidden {
     position: absolute;
-    left: var(--tr-space-xs);
-    color: var(--tr-text-tertiary);
-    pointer-events: none;
-    display: flex;
-    align-items: center;
-  }
-
-  .search-input {
-    width: 100%;
-    height: 36px;
-    padding: 0 var(--tr-space-md) 0 calc(var(--tr-space-xs) * 2 + 16px);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-
-    &::placeholder {
-      color: var(--tr-text-tertiary);
-    }
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .filters-row {
