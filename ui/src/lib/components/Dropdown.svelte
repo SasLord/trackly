@@ -144,13 +144,32 @@
   // false — nowhere to go back to); otherwise the panel resets to the
   // groups view. Flat mode has no drill-in concept at all (`groups` IS the
   // flat option list), so this machine only runs when `flat` is false.
+  /** CR-02 generation token for every async `onExpandGroup` round-trip
+   *  (AUTO-05 auto-flatten below AND manual `drillInto`). `onExpandGroup` is a
+   *  real IPC call in the Acts form, so a resolve can land after the user has
+   *  typed on and `groups` has moved to a different result set. Without this
+   *  guard the stale promise force-writes `viewMode = 'members'` + the OLD
+   *  group's member list under the NEW query — clicking one then writes a
+   *  `device_id` that does not match what was searched for (and, via DEF-2A
+   *  dedup against a stale selection snapshot, can claim an id another row
+   *  already holds). A plain `let` (not `$state`) on purpose: the effect
+   *  writes it, and making it reactive would retrigger the effect.
+   *
+   *  Both paths share one counter — auto-flatten and manual drill-in are
+   *  mutually exclusive navigation intents, so whichever fires last wins. */
+  let expandSeq = 0;
+
   $effect(() => {
     if (flat) return;
     const list = groups;
     if (list.length === 1) {
       const only = list[0];
+      const seq = ++expandSeq;
       void (async () => {
         const result = await onExpandGroup(only);
+        // Superseded by a newer `groups` change or a manual drill-in — drop
+        // the stale result rather than force it onto the panel.
+        if (seq !== expandSeq) return;
         activeGroup = only;
         members = result;
         viewMode = 'members';
@@ -160,6 +179,8 @@
         activeIndex = result.length > 0 ? 0 : -1;
       })();
     } else {
+      // Cancel any in-flight expand — its result no longer describes `groups`.
+      expandSeq++;
       viewMode = 'groups';
       activeGroup = null;
       members = [];
@@ -172,7 +193,12 @@
    *  panel content with its members and shows "← Назад" (showBack = true) —
    *  unlike AUTO-05's auto-flatten, this is a user-initiated navigation. */
   async function drillInto(g: TGroup) {
+    // CR-02: same generation guard as the AUTO-05 effect above — without it a
+    // slow drill-in fetch still forces `viewMode = 'members'` even if `groups`
+    // changed (or the panel closed) between the click and the resolve.
+    const seq = ++expandSeq;
     const result = await onExpandGroup(g);
+    if (seq !== expandSeq) return;
     // D-12 focus management: remember which group we drilled into so
     // backToGroups() can restore activeIndex to it, not reset to -1.
     returnIndex = groups.findIndex((x) => getGroupId(x) === getGroupId(g));
