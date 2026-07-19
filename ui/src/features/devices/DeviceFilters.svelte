@@ -3,6 +3,8 @@
   // Per UI-SPEC §DeviceFilters, D-Search-01, DEV-07.
 
   import Input from '$lib/components/Input.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
 
   interface Props {
     searchQuery: string;
@@ -55,6 +57,12 @@
     if (id === null) return totalCount;
     return counts.get(id) ?? 0;
   }
+
+  // Adapter for Tabs' string-keyed contract — STATUSES uses number | null ids.
+  // String(null) === 'null', which is the exact inverse mapping used in onchange below.
+  const tabItems = $derived(
+    STATUSES.map((s) => ({ key: String(s.id), label: s.label, count: getCount(s.id) })),
+  );
 </script>
 
 <div class="device-filters">
@@ -83,33 +91,15 @@
 
   <!-- Status switch-bar + group toggle -->
   <div class="filters-row">
-    <div class="status-bar" role="tablist" aria-label="Фильтр по статусу">
-      {#each STATUSES as s}
-        {@const active = statusFilter === s.id}
-        {@const count = getCount(s.id)}
-        <button
-          type="button"
-          role="tab"
-          class="status-tab"
-          class:active
-          aria-selected={active}
-          onclick={() => onStatusChange(s.id)}
-        >
-          {s.label}
-          <span class="count-badge" class:count-active={active}>{count}</span>
-        </button>
-      {/each}
-    </div>
+    <Tabs
+      variant="underline"
+      tabs={tabItems}
+      active={String(statusFilter)}
+      ariaLabel="Фильтр по статусу"
+      onchange={(key) => onStatusChange(key === 'null' ? null : Number(key))}
+    />
 
-    <label class="group-toggle">
-      <input
-        type="checkbox"
-        class="group-checkbox"
-        checked={grouped}
-        onchange={(e) => onGroupedChange((e.currentTarget as HTMLInputElement).checked)}
-      />
-      <span class="group-label">Группировать похожие</span>
-    </label>
+    <Checkbox checked={grouped} onchange={onGroupedChange}>Группировать похожие</Checkbox>
   </div>
 </div>
 
@@ -117,10 +107,10 @@
   .device-filters {
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-xs);
-    padding-bottom: var(--tr-space-xs);
+    gap: 12px;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--tr-border);
-    margin-bottom: var(--tr-space-md);
+    margin-bottom: 14px;
   }
 
   .visually-hidden {
@@ -141,80 +131,5 @@
     justify-content: space-between;
     gap: var(--tr-space-md);
     flex-wrap: wrap;
-  }
-
-  .status-bar {
-    display: flex;
-    gap: 2px;
-    overflow-x: auto;
-  }
-
-  .status-tab {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-xs);
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-secondary);
-    cursor: pointer;
-    white-space: nowrap;
-    border-radius: var(--tr-radius-xs) var(--tr-radius-xs) 0 0;
-
-    &:hover {
-      background: var(--tr-surface);
-      color: var(--tr-text-primary);
-    }
-
-    &.active {
-      color: var(--tr-accent);
-      border-bottom-color: var(--tr-accent);
-      font-weight: var(--tr-font-weight-medium);
-    }
-  }
-
-  .count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 4px;
-    border-radius: 9px;
-    font-size: 11px;
-    font-weight: var(--tr-font-weight-medium);
-    background: var(--tr-surface-sunken);
-    color: var(--tr-text-secondary);
-    line-height: 1;
-
-    &.count-active {
-      background: color-mix(in srgb, var(--tr-accent) 15%, transparent);
-      color: var(--tr-accent);
-    }
-  }
-
-  .group-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    cursor: pointer;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .group-checkbox {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: var(--tr-accent);
-  }
-
-  .group-label {
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-secondary);
-    user-select: none;
   }
 </style>
