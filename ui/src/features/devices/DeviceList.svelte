@@ -70,40 +70,7 @@
   <th class="th-actions">Действия</th>
 {/snippet}
 
-<div class="device-list-wrapper">
-  <Table
-    columns={showStatus ? 8 : 7}
-    loading={skeletonLoading}
-    empty={isEmpty}
-    emptyTitle={emptyMessage}
-    emptyBody={emptySubtext}
-    head={tableHead}
-  >
-    {#if showGroups}
-      {#each groups as group (group.repr.id)}
-        {#if group.count > 1}
-          <!-- Multi-device group: expandable row with chevron and count badge -->
-          <DeviceGroupRow
-            {group}
-            {onEdit}
-            {onDelete}
-            expandedGroups={expandedGroups ?? new Set()}
-            {onExpandToggle}
-            {onPrintAcceptance}
-            {showStatus}
-          />
-        {:else}
-          <!-- Singleton group (count == 1): render as plain row, no chevron -->
-          <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
-        {/if}
-      {/each}
-    {:else}
-      {#each items as device (device.id)}
-        <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
-      {/each}
-    {/if}
-  </Table>
-
+{#snippet footer()}
   {#if !skeletonLoading && !isEmpty}
     <footer class="list-footer">
       <span class="pagination-info">
@@ -115,14 +82,43 @@
       </span>
     </footer>
   {/if}
-</div>
+{/snippet}
+
+<Table
+  columns={showStatus ? 8 : 7}
+  loading={skeletonLoading}
+  empty={isEmpty}
+  emptyTitle={emptyMessage}
+  emptyBody={emptySubtext}
+  head={tableHead}
+  footer={footer}
+>
+  {#if showGroups}
+    {#each groups as group (group.repr.id)}
+      {#if group.count > 1}
+        <!-- Multi-device group: expandable row with chevron and count badge -->
+        <DeviceGroupRow
+          {group}
+          {onEdit}
+          {onDelete}
+          expandedGroups={expandedGroups ?? new Set()}
+          {onExpandToggle}
+          {onPrintAcceptance}
+          {showStatus}
+        />
+      {:else}
+        <!-- Singleton group (count == 1): render as plain row, no chevron -->
+        <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
+      {/if}
+    {/each}
+  {:else}
+    {#each items as device (device.id)}
+      <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
+    {/each}
+  {/if}
+</Table>
 
 <style lang="scss">
-  .device-list-wrapper {
-    width: 100%;
-    overflow-x: auto;
-  }
-
   .th-name {
     width: 25%;
   }
