@@ -575,7 +575,7 @@ Plans:
 - [x] 25-04-PLAN.md — Table showcase section (CMP-06)
 - [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
 - [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
-- [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+- [x] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
 
 **UI hint**: yes
 
@@ -607,7 +607,7 @@ Plans:
 - [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
 - [x] 25-04-PLAN.md — Table showcase section (CMP-06)
 - [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
-- [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
+- [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
 - [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
 
 **UI hint**: yes
@@ -638,7 +638,7 @@ Plans:
 - [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
 - [x] 25-04-PLAN.md — Table showcase section (CMP-06)
-- [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
+- [x] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
 - [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
 - [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
 
@@ -669,7 +669,7 @@ Plans:
 - [x] 25-01-PLAN.md — Table/TableRow primitives + --tr-group token (CMP-06)
 - [x] 25-02-PLAN.md — Dropdown core: contracts, drill-in state machine, combobox variant (CMP-07)
 - [x] 25-03-PLAN.md — Dropdown completion: select variant + full keyboard/ARIA layer (CMP-07)
-- [ ] 25-04-PLAN.md — Table showcase section (CMP-06)
+- [x] 25-04-PLAN.md — Table showcase section (CMP-06)
 - [ ] 25-05-PLAN.md — DeviceList/DeviceListRow/DeviceGroupRow pilot migration (CMP-06)
 - [ ] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
 - [ ] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
@@ -709,7 +709,7 @@ Plans:
 | 22. Правка возвратов | v1.1.2 | 6/6 | Complete    | 2026-07-13 |
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
-| 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete   | 2026-07-19 |
+| 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 0/TBD | Not started | - |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
