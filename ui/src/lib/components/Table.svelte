@@ -16,6 +16,10 @@
     head: Snippet;
     /** Renders <TableRow>-based <tbody> rows; only rendered when !loading && !empty. */
     children?: Snippet;
+    /** Draws border+radius(8px)+shadow frame around the scrollable wrapper. Default true. */
+    framed?: boolean;
+    /** Optional footer rendered inside the frame, below the scroller. Absent by default. */
+    footer?: Snippet;
   }
 
   const {
@@ -27,46 +31,68 @@
     skeletonRows = 5,
     head,
     children,
+    framed = true,
+    footer,
   }: Props = $props();
 </script>
 
-<div class="tr-table-wrapper">
-  <table class="tr-table">
-    <thead>
-      <tr class="tr-thead-row">
-        {@render head()}
-      </tr>
-    </thead>
-    {#if loading}
-      <tbody>
-        {#each { length: skeletonRows } as _}
-          <tr class="tr-skeleton-row">
-            {#each { length: columns } as _}
-              <td class="tr-skeleton-cell">
-                <div class="tr-skeleton-block"></div>
-              </td>
-            {/each}
-          </tr>
-        {/each}
-      </tbody>
-    {:else if empty}
-      <tbody>
-        <tr class="tr-empty-row">
-          <td class="tr-empty-cell" colspan={columns}>
-            {#if emptyTitle}<p class="tr-empty-title">{emptyTitle}</p>{/if}
-            {#if emptyBody}<p class="tr-empty-body">{emptyBody}</p>{/if}
-          </td>
+<div class="tr-table-framed" class:framed>
+  <div class="tr-table-wrapper">
+    <table class="tr-table">
+      <thead>
+        <tr class="tr-thead-row">
+          {@render head()}
         </tr>
-      </tbody>
-    {:else}
-      <tbody>
-        {@render children?.()}
-      </tbody>
-    {/if}
-  </table>
+      </thead>
+      {#if loading}
+        <tbody>
+          {#each { length: skeletonRows } as _}
+            <tr class="tr-skeleton-row">
+              {#each { length: columns } as _}
+                <td class="tr-skeleton-cell">
+                  <div class="tr-skeleton-block"></div>
+                </td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      {:else if empty}
+        <tbody>
+          <tr class="tr-empty-row">
+            <td class="tr-empty-cell" colspan={columns}>
+              {#if emptyTitle}<p class="tr-empty-title">{emptyTitle}</p>{/if}
+              {#if emptyBody}<p class="tr-empty-body">{emptyBody}</p>{/if}
+            </td>
+          </tr>
+        </tbody>
+      {:else}
+        <tbody>
+          {@render children?.()}
+        </tbody>
+      {/if}
+    </table>
+  </div>
+  {#if footer}
+    <footer class="tr-table-footer">{@render footer()}</footer>
+  {/if}
 </div>
 
 <style lang="scss">
+  .tr-table-framed.framed {
+    border: 1px solid var(--tr-border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--tr-elev-1);
+  }
+
+  .tr-table-footer {
+    padding: 9px 14px;
+    border-top: 1px solid var(--tr-border);
+    font-size: 13px;
+    color: var(--tr-text-secondary);
+    background: var(--tr-bg);
+  }
+
   .tr-table-wrapper {
     width: 100%;
     overflow-x: auto;
