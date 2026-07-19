@@ -381,7 +381,8 @@
   function handleClickOutside(e: MouseEvent) {
     if (!open) return;
     const target = e.target as Node;
-    const insideField = (inputEl?.contains(target) ?? false) || (triggerEl?.contains(target) ?? false);
+    const insideField =
+      (inputEl?.contains(target) ?? false) || (triggerEl?.contains(target) ?? false);
     const insideDropdown = panelEl?.contains(target) ?? false;
     if (!insideField && !insideDropdown) open = false;
   }
@@ -467,7 +468,10 @@
              ALWAYS shown in member-view; "← Назад" only on manual drill-in
              (showBack), not on AUTO-05 auto-flatten. Two independent
              conditions, not one boolean. -->
-        <li class="tr-dropdown-drill-header" class:tr-dropdown-drill-header--offset={variant === 'select'}>
+        <li
+          class="tr-dropdown-drill-header"
+          class:tr-dropdown-drill-header--offset={variant === 'select'}
+        >
           {#if showBack}
             <button
               type="button"
