@@ -541,7 +541,10 @@
               class="tr-dropdown-search-input"
               aria-label="Поиск"
               placeholder={searchPlaceholder}
+              aria-activedescendant={activeOptionId()}
+              aria-controls={panelId}
               oninput={handleInput}
+              onkeydown={handleKeydown}
             />
           </span>
         </li>
