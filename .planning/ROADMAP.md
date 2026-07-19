@@ -534,16 +534,22 @@ Plans:
 4. Оба окна и общая админская оболочка (сайдбар, PageHeader) адаптивны от desktop до мобильных ширин — брейкпоинты, сворачиваемый/выезжающий сайдбар (D-15, WIN-12).
 
 **Plans**: 8 plans in 3 waves
-
 Plans:
+**Wave 1**
 
 - [ ] 26-01-PLAN.md — Shell contracts (breakpoints, layout-state store) + PageHeader + adaptive Layout drawer (WIN-01, WIN-02, WIN-12)
 - [ ] 26-02-PLAN.md — Sidebar + ThemeSwitcher restyle (D-06/D-08) (WIN-01, WIN-02)
 - [ ] 26-03-PLAN.md — Table framed/footer + Input iconLeft primitive extensions (D-11) (WIN-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 26-04-PLAN.md — DevicesPage header migration + DeviceList footer/framed table (D-12) (WIN-02)
 - [ ] 26-05-PLAN.md — DeviceFilters primitive migration, behavior-preserving (D-10) (WIN-02)
 - [ ] 26-06-PLAN.md — DashboardPage header + grid restructure (D-01/D-02/D-03) (WIN-01, WIN-12)
 - [ ] 26-07-PLAN.md — StatWidget/ChartWidget/PeriodToggle restyle (D-04/D-14) (WIN-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 26-08-PLAN.md — Automated gates + auto_advance flip + human visual UAT checkpoint + restore (D-17/D-18) (WIN-01, WIN-02, WIN-12)
 
 **UI hint**: yes
