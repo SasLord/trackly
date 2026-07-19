@@ -39,6 +39,10 @@
 </script>
 
 <nav class="sidebar" aria-label="Основная навигация">
+  <div class="sidebar-logo" aria-hidden="false">
+    <span class="logo-mark" aria-hidden="true"></span>
+    <span class="logo-text">Trackly</span>
+  </div>
   <ul class="nav-list" role="list">
     {#each visibleItems as entry}
       {#if entry.kind === 'divider'}
@@ -71,7 +75,7 @@
       </div>
     {/if}
     <div class="theme-row">
-      <span class="theme-label">Тема</span>
+      <span class="theme-label">Оформление</span>
       <ThemeSwitcher />
     </div>
   </div>
@@ -81,18 +85,45 @@
   .sidebar {
     width: var(--sidebar-width);
     height: 100%;
-    background: var(--tr-surface);
+    background: var(--tr-bg);
     border-right: 1px solid var(--tr-border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
+  .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 56px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--tr-border);
+    flex-shrink: 0;
+  }
+
+  .logo-mark {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    background: var(--tr-accent);
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--tr-text-primary);
+  }
+
   .nav-list {
     flex: 1;
     list-style: none;
     margin: 0;
-    padding: var(--tr-space-xs) 0;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     overflow-y: auto;
   }
 
@@ -103,14 +134,14 @@
 
   .nav-link {
     display: block;
-    padding: 0 var(--tr-space-md);
-    height: var(--row-height);
-    line-height: var(--row-height);
+    padding: 0 12px;
+    height: 38px;
+    line-height: 38px;
+    border-radius: var(--tr-radius-sm);
     font-size: var(--tr-font-size-body);
     font-weight: var(--tr-font-weight-regular);
     color: var(--tr-text-secondary);
     text-decoration: none;
-    border-left: 3px solid transparent;
     transition: none;
 
     &:hover {
@@ -125,20 +156,20 @@
   }
 
   :global(.nav-link.is-active) {
-    border-left-color: var(--tr-accent);
-    background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-    color: var(--tr-text-primary);
+    box-shadow: inset 3px 0 0 var(--tr-accent);
+    background: var(--tr-accent-soft);
+    color: var(--tr-accent-text);
     font-weight: var(--tr-font-weight-medium);
   }
 
   .divider {
     height: 1px;
     background: var(--tr-border);
-    margin: var(--tr-space-2xs) var(--tr-space-md);
+    margin: 6px 8px;
   }
 
   .sidebar-footer {
-    padding: var(--tr-space-md);
+    padding: 14px 16px;
     border-top: 1px solid var(--tr-border);
     display: flex;
     flex-direction: column;
@@ -148,12 +179,12 @@
   .theme-row {
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-2xs);
+    gap: 7px;
   }
 
   .theme-label {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
+    font-size: 12px;
+    color: var(--tr-text-secondary);
     font-weight: var(--tr-font-weight-regular);
   }
 
@@ -161,8 +192,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--tr-space-2xs);
-    padding-bottom: var(--tr-space-xs);
-    margin-bottom: var(--tr-space-2xs);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
     border-bottom: 1px solid var(--tr-border);
   }
 
@@ -174,7 +205,7 @@
 
   .user-name {
     font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
+    font-weight: 600;
     color: var(--tr-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -182,7 +213,7 @@
   }
 
   .user-role {
-    font-size: var(--tr-font-size-label);
+    font-size: 12px;
     color: var(--tr-text-tertiary);
   }
 
