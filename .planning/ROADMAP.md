@@ -68,7 +68,7 @@ Trackly — портативное приложение для учёта тех
 
 - [x] **Phase 23: Токены и основы дизайн-системы** - Единый слой `--tr-*` (поверхности, текст, акцент, семантика, нейтрали, тени), типографика и миграция space/radius по значению без сдвига вёрстки; фикс undefined-token багов. (completed 2026-07-17)
 - [x] **Phase 24: Базовые компоненты** - Button, Input/Select/Textarea/Checkbox, Badge, Tabs, Modal на новой системе. (completed 2026-07-18)
-- [ ] **Phase 25: Таблицы и Dropdown** - Строки таблицы + строка-группа, новый компонент Dropdown/комбобокс. (все 7 планов выполнены; верификация 2026-07-19 → gaps_found, 4/5 — фаза не закрыта)
+- [ ] **Phase 25: Таблицы и Dropdown** - Строки таблицы + строка-группа, новый компонент Dropdown/комбобокс. (верификация 2026-07-19 → gaps_found, 4/5; gap closure 25-08-PLAN.md добавлен — WR-01/WR-02/WR-06 в Dropdown.svelte)
 - [ ] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design.
 - [ ] **Phase 27: Окна основного рабочего процесса** - Акты, Картриджи, Принтеры — без макета, вёрстка из компонентной системы.
 - [ ] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета.
@@ -490,7 +490,7 @@ Plans:
 4. Dropdown корректно отображает список с группами: клик по группе раскрывает её содержимое через drill-in (замена панели на экземпляры группы с шапкой «← Назад · {название группы}»), а не заголовками секций — модель зафиксирована D-01 Фазы 25 (совпадает с уже работающей механикой ActFormItemsTable.svelte).
 5. Существующее portal/anchor-позиционирование (Фаза 18) продолжает работать без регрессий с новым визуалом.
 
-**Plans**: 7 plans
+**Plans**: 8 plans (gap closure round 1 added after verification found WR-01/WR-02/WR-06 unfixed in Dropdown.svelte)
 Plans:
 **Wave 1**
 
@@ -507,6 +507,10 @@ Plans:
 
 - [x] 25-06-PLAN.md — Dropdown showcase section (CMP-07)
 - [x] 25-07-PLAN.md — ActFormItemsTable device-picker pilot migration (CMP-07)
+
+**Wave 4** *(gap closure — depends on Wave 3; closes WR-01/WR-02/WR-06 from 25-VERIFICATION.md, falsifying SC #4 and Plan 25-03's keyboard/ARIA must_have)*
+
+- [ ] 25-08-PLAN.md — openPanel()/Tab-branch drill-in state reset (WR-01/WR-02) + select-variant search input keyboard/ARIA wiring (WR-06) (CMP-07)
 
 **UI hint**: yes
 
