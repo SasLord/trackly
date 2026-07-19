@@ -194,13 +194,29 @@
 
   /** D-01/D-08: click on an option row in the groups/flat panel. Grouped
    *  mode drills into expandable groups; flat mode (and non-expandable
-   *  groups) picks directly. */
+   *  groups) picks directly. A direct pick closes the panel (Plan 25-07
+   *  fix — see handleMemberClick below for the full rationale); drilling in
+   *  does not, since it replaces the panel content with the member list. */
   function handleOptionClick(g: TGroup) {
     if (!flat && isGroupExpandable(g)) {
       void drillInto(g);
     } else {
       onPickGroup(g);
+      open = false;
     }
+  }
+
+  /** Plan 25-07 fix: member-row pick counterpart to handleOptionClick's
+   *  direct-pick branch. Neither mouse click nor keyboard Enter previously
+   *  closed the panel after a final pick (only Tab/Escape/click-outside
+   *  did) — a latent gap in this primitive's first two plans, invisible
+   *  until ActFormItemsTable.svelte (Plan 25-07) became its first real
+   *  consumer. ActFormItemsTable's pre-migration pickDevice()/pickGroup()
+   *  always closed the dropdown unconditionally on pick (`openByRow[idx] =
+   *  false`); this restores that parity for both field variants/list modes. */
+  function handleMemberClick(m: TMember) {
+    onPickMember(m);
+    open = false;
   }
 
   /** Member-view header title (UI-SPEC "two independent conditions" rule):
@@ -364,7 +380,7 @@
       e.preventDefault();
       e.stopPropagation();
       if (activeIndex >= 0 && activeIndex < members.length) {
-        onPickMember(members[activeIndex]);
+        handleMemberClick(members[activeIndex]);
       }
     } else if (e.key === 'Tab') {
       if (activeIndex >= 0 && activeIndex < members.length) {
@@ -499,7 +515,7 @@
                 role="option"
                 aria-selected={i === activeIndex}
                 onmousedown={(e) => e.preventDefault()}
-                onclick={() => onPickMember(m)}
+                onclick={() => handleMemberClick(m)}
               >
                 <span class="tr-dropdown-option-row">
                   <span class="tr-dropdown-option-name">{getMemberName(m)}</span>
