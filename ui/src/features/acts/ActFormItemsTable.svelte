@@ -8,12 +8,16 @@
   //
   // Каждая позиция: { device_id, quantity, device_label } где device_label —
   // human-readable (name + inv_no), нужный только для UI.
-  import { onDestroy } from 'svelte';
+  //
+  // Plan 25-07 (CMP-07): дропдаун-пикер устройства переведён на общий компонент
+  // Dropdown (Plans 25-02/25-03) — drill-in/фокус-открытие/клавиатура/ARIA/portal
+  // теперь внутри Dropdown; бизнес-логика (fetchGroups/expandGroup/pickGroup/
+  // pickDevice/DEF-2A) осталась здесь без изменений по сути, только вызывается
+  // через callback-пропы вместо inline onclick/onkeydown.
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import { devices } from '$lib/api/devices';
-  import { portal } from '$lib/utils/portal';
-  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
   import type { DeviceDto, DeviceGroup } from '../../bindings';
 
   export interface FormItemRow {
@@ -78,39 +82,12 @@
   // одинаковых клонов.
   let suggestionsByRow = $state<Record<number, DeviceGroup[]>>({});
   let loadingByRow = $state<Record<number, boolean>>({});
-  let openByRow = $state<Record<number, boolean>>({});
-  // Plan 18-04 (AUTO-01): raw <input> refs per-row — Input.svelte не поддерживает
-  // bind:this (нет ref-forwarding), а use:dropdownAnchor нужен реальный anchorEl.
-  let rowInputEls = $state<Record<number, HTMLInputElement | null>>({});
-  let rowDropdownEls = $state<Record<number, HTMLUListElement | null>>({});
-  // Plan 18-04 (AUTO-02/AUTO-03): индекс активного (клавиатурного) элемента
-  // дропдауна по строке; -1 = нет активного.
-  let activeIndexByRow = $state<Record<number, number>>({});
-  const debounceTimers: Record<number, ReturnType<typeof setTimeout>> = {};
 
-  // WR-05: removeRow() очищает debounceTimers[idx] удаляемой строки, но при
-  // размонтировании ВСЕЙ таблицы (модал закрыт) прочие ещё pending таймеры
-  // не отменялись — компонент мог размонтироваться и таймеры всё равно
-  // issue-или бы API-запрос, записывая результат в $state уже мёртвого
-  // компонента.
-  onDestroy(() => {
-    for (const key of Object.keys(debounceTimers)) {
-      clearTimeout(debounceTimers[Number(key)]);
-    }
-  });
-
-  // Plan 18-05 (AUTO-04/D-06/D-07 + AUTO-05/D-09): drill-in view-mode per row.
-  // 'groups' — список групп (Plan 18-04 поведение); 'members' — раскрытая
-  // группа (клик по раскрываемой группе ИЛИ auto-flatten единственной группы).
-  let viewModeByRow = $state<Record<number, 'groups' | 'members'>>({});
-  let drillGroupByRow = $state<Record<number, DeviceGroup | null>>({});
-  let membersByRow = $state<Record<number, DeviceDto[]>>({});
-  // Plan 18-05 (checkpoint fix #1): в member-view sticky-заголовок с названием
-  // группы показывается ВСЕГДА (в т.ч. при auto-flatten единственной группы),
-  // но кнопка «← Назад» — только когда пользователь пришёл кликом по группе
-  // (showBackByRow=true), а не auto-flatten (false).
-  let showBackByRow = $state<Record<number, boolean>>({});
-
+  // Plan 18-05 (AUTO-04/D-06/D-07 + AUTO-05/D-09) drill-in partition shape —
+  // Plan 25-07: no longer row-indexed $state (Dropdown owns open/viewMode/
+  // drillGroup/members/showBack/activeIndex internally per-instance now);
+  // this type is still the contract expandGroup()/pickMember() below produce
+  // and consume, matching what memberRows() used to return.
   type MemberRow =
     | { kind: 'instance'; key: string; device: DeviceDto }
     | { kind: 'subgroup'; key: string; state: string | null; devices: DeviceDto[] };
@@ -123,9 +100,9 @@
     onChange([...items, makeEmpty()]);
   }
 
-  /** WR-01: индекс-ключевые transient-мапы дропдауна (10 штук) должны следовать
-   *  за сдвигом строк при удалении — иначе после removeRow(idx) все строки
-   *  после idx показывают состояние (открытый дропдаун/drill-in) ПРЕДЫДУЩЕГО
+  /** WR-01: индекс-ключевые transient-мапы дропдауна должны следовать за
+   *  сдвигом строк при удалении — иначе после removeRow(idx) все строки
+   *  после idx показывают состояние (suggestions/loading) ПРЕДЫДУЩЕГО
    *  жильца этого индекса. shift() удаляет запись под idx и сдвигает все
    *  записи с ключом > idx на -1, сохраняя записи с ключом < idx нетронутыми. */
   function shiftRowState<T>(m: Record<number, T>, idx: number): Record<number, T> {
@@ -140,50 +117,29 @@
 
   function removeRow(idx: number) {
     const next = items.filter((_, i) => i !== idx);
-    // WR-05: удаляемая строка могла иметь pending debounce-таймер — если его
-    // не отменить, поздний fetch запишет результат в реиндексированные мапы
-    // сдвинутой строки (stale write).
-    if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
-    delete debounceTimers[idx];
     suggestionsByRow = shiftRowState(suggestionsByRow, idx);
     loadingByRow = shiftRowState(loadingByRow, idx);
-    openByRow = shiftRowState(openByRow, idx);
-    viewModeByRow = shiftRowState(viewModeByRow, idx);
-    drillGroupByRow = shiftRowState(drillGroupByRow, idx);
-    membersByRow = shiftRowState(membersByRow, idx);
-    activeIndexByRow = shiftRowState(activeIndexByRow, idx);
-    showBackByRow = shiftRowState(showBackByRow, idx);
     onChange(next);
   }
 
+  /** Plan 25-07: syncs row.query as the user types — the drill-in view-mode
+   *  reset this used to do and the 250ms-debounced re-fetch it used to
+   *  schedule are both now Dropdown's own internal responsibility
+   *  (onQueryInput fires synchronously before Dropdown's debounced onSearch). */
   function handleQueryInput(idx: number, v: string) {
-    // Plan 18-05 (UI-SPEC "изменение текста фильтра сбрасывает view-mode строки
-    // обратно к списку групп"): любое изменение ввода прерывает drill-in/flatten.
-    viewModeByRow[idx] = 'groups';
-    drillGroupByRow[idx] = null;
-    membersByRow[idx] = [];
-    showBackByRow[idx] = false;
-
     const next = items.map((it, i) =>
       i === idx ? { ...it, query: v, picked: false, device_id: null, device_label: '' } : it,
     );
     onChange(next);
-
-    // AUTO-03: пустой ввод теперь валиден — backend (Plan 18-01) возвращает
-    // top-20-по-остатку при пустом name_prefix, ранний return убран.
-    if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
-    debounceTimers[idx] = setTimeout(() => {
-      void fetchGroups(idx, v.trim());
-    }, 250);
   }
 
-  /** AUTO-02/AUTO-03: общая fetch-логика, переиспользуемая и debounced-веткой
-   *  ввода (handleQueryInput), и focus-веткой (handleFocus, delay 0). Дропдаун
-   *  остаётся ОТКРЫТЫМ даже при нуле совпадений — рендерит empty-state вместо
-   *  закрытия (UI-SPEC Copywriting Contract «Ничего не найдено»). */
+  /** AUTO-02/AUTO-03: data-fetch, now invoked by Dropdown's onSearch — Dropdown
+   *  itself decides WHEN to call it (immediately on focus per AUTO-02, after its
+   *  own 250ms debounce on typed input) and owns opening the panel / auto-
+   *  flattening a single remaining group (AUTO-05). This function's only job is
+   *  the fetch + DEF-2A dedup, writing the result into suggestionsByRow[idx]. */
   async function fetchGroups(idx: number, query: string) {
     loadingByRow[idx] = true;
-    let filtered: DeviceGroup[];
     try {
       // UAT Fix #3/#4: listGrouped возвращает группы (одинаковые
       // name+model+inv_no=NULL) с count + ids. Filter status_id=1 (на_складе).
@@ -202,30 +158,11 @@
       );
       // DEF-2A: exclude groups whose IDs overlap with already-picked rows.
       const selectedIds = getSelectedIds(idx);
-      filtered = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
-      suggestionsByRow[idx] = filtered;
-      activeIndexByRow[idx] = -1;
-      openByRow[idx] = true;
+      suggestionsByRow[idx] = groups.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
     } catch {
       suggestionsByRow[idx] = [];
-      activeIndexByRow[idx] = -1;
-      openByRow[idx] = true;
-      filtered = [];
     } finally {
       loadingByRow[idx] = false;
-    }
-
-    // Plan 18-05 Task 2 (AUTO-05/D-09): если после фильтрации осталась ровно
-    // одна группа — она НЕ отображается как строка группы, а сразу
-    // разворачивается в плоский member-список с sticky-заголовком группы, но
-    // БЕЗ кнопки «← Назад» (showBack=false — пользователь не «нырял» вручную).
-    if (filtered.length === 1) {
-      await drillInto(idx, filtered[0], false);
-    } else {
-      viewModeByRow[idx] = 'groups';
-      drillGroupByRow[idx] = null;
-      membersByRow[idx] = [];
-      showBackByRow[idx] = false;
     }
   }
 
@@ -240,51 +177,14 @@
     return g.condition_distinct_count > 1 || !!g.repr.serial_no || !!g.repr.inventory_no;
   }
 
-  /** AUTO-04/D-06: клик по раскрываемой группе — заменяет список группами на
-   *  её экземпляры (devices.listByIds), не закрывая дропдаун. showBack
-   *  различает ручной drill-in (true → кнопка «← Назад») и AUTO-05
-   *  auto-flatten (false → sticky-заголовок группы без «← Назад»). */
-  async function drillInto(idx: number, g: DeviceGroup, showBack: boolean = true) {
-    const selectedIds = getSelectedIds(idx);
-    const ids = g.ids.filter((id) => !selectedIds.has(id));
-    loadingByRow[idx] = true;
-    try {
-      membersByRow[idx] = await devices.listByIds(ids);
-    } catch {
-      membersByRow[idx] = [];
-    } finally {
-      loadingByRow[idx] = false;
-    }
-    drillGroupByRow[idx] = g;
-    viewModeByRow[idx] = 'members';
-    showBackByRow[idx] = showBack;
-  }
-
-  /** Клик по строке группы: раскрываемая группа → drill-in; иначе (D-08) —
-   *  прямой clone-выбор через существующий pickGroup (без изменений). */
-  function handleGroupClick(idx: number, g: DeviceGroup) {
-    if (isExpandable(g)) {
-      void drillInto(idx, g);
-    } else {
-      pickGroup(idx, g);
-    }
-  }
-
-  /** D-06: кнопка «← Назад» — возврат от member-списка к списку групп. */
-  function backToGroups(idx: number) {
-    viewModeByRow[idx] = 'groups';
-    drillGroupByRow[idx] = null;
-    membersByRow[idx] = [];
-    showBackByRow[idx] = false;
-  }
-
   /** D-07: партиционирует member-список раскрытой/схлопнутой группы на
    *  отдельные строки серийных/инвентарных экземпляров и client-side
    *  под-группы по state для несерийных/безынвентарных. Инстансы идут первыми
    *  (порядок из devices.listByIds), затем под-группы (порядок вставки в Map)
-   *  — соответствует ASCII-макету UI-SPEC. */
-  function memberRows(idx: number): MemberRow[] {
-    const members = membersByRow[idx] ?? [];
+   *  — соответствует ASCII-макету UI-SPEC. Plan 25-07: extracted from the old
+   *  row-indexed memberRows(idx) into a pure function taking the fetched list
+   *  directly, since expandGroup() below no longer stores it in $state first. */
+  function partitionMembers(members: DeviceDto[]): MemberRow[] {
     const rows: MemberRow[] = [];
     const subgroups = new Map<string | null, DeviceDto[]>();
     for (const d of members) {
@@ -301,6 +201,60 @@
       rows.push({ kind: 'subgroup', key: `sg-${state ?? '_'}`, state, devices: devs });
     }
     return rows;
+  }
+
+  /** D-06/D-07: раскрытие группы — вызывается Dropdown'ом и при ручном клике
+   *  по раскрываемой группе, И внутренне при AUTO-05 auto-flatten единственной
+   *  оставшейся группы (обе ветки теперь живут в Dropdown.svelte, не здесь).
+   *  DEF-2A dedup зеркалит fetchGroups. */
+  async function expandGroup(idx: number, g: DeviceGroup): Promise<MemberRow[]> {
+    const selectedIds = getSelectedIds(idx);
+    const ids = g.ids.filter((id) => !selectedIds.has(id));
+    try {
+      return partitionMembers(await devices.listByIds(ids));
+    } catch {
+      return [];
+    }
+  }
+
+  /** checkpoint fix (round 2) #2 mirror: ОБА номера, если оба заполнены
+   *  (SN · инв.), иначе только заполненный; undefined если нет ни одного. */
+  function joinSnInv(
+    sn: string | null | undefined,
+    inv: string | null | undefined,
+  ): string | undefined {
+    const parts = [sn ? `SN ${sn}` : null, inv ? `инв. ${inv}` : null].filter(
+      (p): p is string => p !== null,
+    );
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  }
+
+  /** checkpoint fix (round 2) #1/#2 mirror: серийный/инвентарный № показываем
+   *  ТОЛЬКО у одиночного устройства (g.ids.length === 1) — у раскрываемой
+   *  группы номера у каждого экземпляра свои, показ repr-номера вводит в
+   *  заблуждение. */
+  function groupSub(g: DeviceGroup): string | undefined {
+    if (g.ids.length !== 1) return undefined;
+    return joinSnInv(g.repr.serial_no, g.repr.inventory_no);
+  }
+
+  /** Plan 18-05 (AUTO-04/D-07) mirror: instance rows show the device name
+   *  (Dropdown's own primary/name slot); subgroup rows show the same
+   *  "Без номера · {state}" label .member-subgroup-label used today. */
+  function memberName(m: MemberRow): string {
+    return m.kind === 'instance' ? m.device.name : `Без номера · ${m.state ?? '—'}`;
+  }
+
+  /** Instance rows: SN/inv (same shape as groupSub). Subgroup rows: the
+   *  ×{count} badge .opt-count showed today. */
+  function memberMeta(m: MemberRow): string | undefined {
+    if (m.kind === 'subgroup') return `×${m.devices.length}`;
+    return joinSnInv(m.device.serial_no, m.device.inventory_no);
+  }
+
+  /** Instance rows only: the .opt-state text shown today next to SN/inv. */
+  function memberSub(m: MemberRow): string | undefined {
+    return m.kind === 'instance' ? (m.device.state ?? '—') : undefined;
   }
 
   /** D-07: выбор устройства из drill-in/flatten member-списка — зеркалит
@@ -346,88 +300,22 @@
     );
     onChange(next);
     suggestionsByRow[idx] = [];
-    openByRow[idx] = false;
-    activeIndexByRow[idx] = -1;
-    viewModeByRow[idx] = 'groups';
-    drillGroupByRow[idx] = null;
-    membersByRow[idx] = [];
-    showBackByRow[idx] = false;
   }
 
-  /** AUTO-02/D-03: фокус на поле открывает список немедленно (delay 0), без
-   *  ввода текста — реплицирует LocationAutocomplete.handleFocus. */
-  function handleFocus(idx: number) {
-    if (debounceTimers[idx]) clearTimeout(debounceTimers[idx]);
-    void fetchGroups(idx, (items[idx]?.query ?? '').trim());
-  }
-
-  /** AUTO-02: клавиатурная навигация по дропдауну строки — реплицирует
-   *  LocationAutocomplete.handleKeydown, адаптировано под per-row state. */
-  function handleRowKeydown(idx: number, e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      openByRow[idx] = false;
-      return;
+  /** D-07: dispatch на pickDevice() из Dropdown's onPickMember — instance-строка
+   *  выбирает единственный экземпляр, subgroup-строка выбирает представителя
+   *  под-группы + все id'ы под-группы (как в pickDevice-вызовах today's markup,
+   *  lines 602/635-640). */
+  function pickMember(idx: number, m: MemberRow) {
+    if (m.kind === 'instance') {
+      pickDevice(idx, m.device, [m.device.id]);
+    } else {
+      pickDevice(
+        idx,
+        m.devices[0],
+        m.devices.map((d) => d.id),
+      );
     }
-    if (e.key === 'ArrowDown' && !openByRow[idx]) {
-      e.preventDefault();
-      handleFocus(idx);
-      return;
-    }
-    if (!openByRow[idx]) return;
-    // Plan 18-05: клавиатурная навигация ArrowUp/Down/Enter/Tab этой функции
-    // адресована списку групп (visibleGroups); в member-режиме (drill-in /
-    // AUTO-05 auto-flatten) рендерится другой список строк (инстансы +
-    // под-группы по state, часть с инлайн-инпутом количества) — применение
-    // group-навигации здесь выбрало бы неверный элемент (Rule 1 bug guard).
-    // «← Назад» (Escape/клик) остаётся доступным через backToGroups().
-    if (viewModeByRow[idx] === 'members') {
-      // WR-02: в groups-режиме открытый дропдаун глотает Enter через
-      // preventDefault()/stopPropagation() (ветка ниже). В member/drill-in
-      // режиме навигация обрабатывается кликом (нет ArrowUp/Down-выбора),
-      // но Enter должен ТАК ЖЕ подавляться, иначе он всплывает к native
-      // <form> submit прямо во время выбора устройства в раскрытой группе.
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      return;
-    }
-    const list = visibleGroups(idx);
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (list.length === 0) return;
-      const cur = activeIndexByRow[idx] ?? -1;
-      activeIndexByRow[idx] = (cur + 1) % list.length;
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (list.length === 0) return;
-      const cur = activeIndexByRow[idx] ?? -1;
-      activeIndexByRow[idx] = cur <= 0 ? list.length - 1 : cur - 1;
-    } else if (e.key === 'Enter') {
-      const cur = activeIndexByRow[idx] ?? -1;
-      if (cur >= 0 && cur < list.length) {
-        e.preventDefault();
-        e.stopPropagation();
-        pickGroup(idx, list[cur]);
-      }
-    } else if (e.key === 'Tab') {
-      const cur = activeIndexByRow[idx] ?? -1;
-      if (cur >= 0 && cur < list.length) {
-        pickGroup(idx, list[cur]);
-      }
-      openByRow[idx] = false;
-    }
-  }
-
-  /** DEF-2A dedup применённый к текущим suggestions строки — используется и
-   *  в разметке (список опций + empty-state gate), и в keyboard-навигации,
-   *  чтобы оба пути видели один и тот же видимый список. */
-  function visibleGroups(idx: number): DeviceGroup[] {
-    const list = suggestionsByRow[idx] ?? [];
-    const selectedIds = getSelectedIds(idx);
-    return list.filter((g) => !g.ids.some((id) => selectedIds.has(id)));
   }
 
   function pickGroup(idx: number, g: DeviceGroup) {
@@ -460,8 +348,6 @@
     );
     onChange(next);
     suggestionsByRow[idx] = [];
-    openByRow[idx] = false;
-    activeIndexByRow[idx] = -1;
   }
 
   function handleQtyInput(idx: number, v: string) {
@@ -494,27 +380,6 @@
   function errFor(idx: number, field: string): string | null {
     return fieldErrors[`items[${idx}].${field}`] ?? null;
   }
-
-  /** AUTO-01: закрыть дропдаун строки при клике вне И её input, И её портированного
-   *  (перенесённого в <body>) dropdown — по аналогии с LocationAutocomplete,
-   *  но по массиву строк, т.к. в этой таблице несколько независимых пикеров. */
-  function handleClickOutside(e: MouseEvent) {
-    const target = e.target as Node;
-    for (const key of Object.keys(openByRow)) {
-      const i = Number(key);
-      if (!openByRow[i]) continue;
-      const insideInput = rowInputEls[i]?.contains(target) ?? false;
-      const insideDropdown = rowDropdownEls[i]?.contains(target) ?? false;
-      if (!insideInput && !insideDropdown) {
-        openByRow[i] = false;
-      }
-    }
-  }
-
-  $effect(() => {
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  });
 </script>
 
 <div class="items">
@@ -541,167 +406,31 @@
                  have it set, and create mode never sets it either. -->
             <span class="device-readonly">{row.device_label}</span>
           {:else}
-            <input
-              type="text"
-              bind:this={rowInputEls[idx]}
-              class="device-input"
-              class:invalid={!!errFor(idx, 'device_id')}
+            <Dropdown
+              variant="combobox"
               value={row.query}
               placeholder="Устройство со склада"
-              autocomplete="off"
-              aria-autocomplete="list"
-              oninput={(e) => handleQueryInput(idx, (e.currentTarget as HTMLInputElement).value)}
-              onfocus={() => handleFocus(idx)}
-              onkeydown={(e) => handleRowKeydown(idx, e)}
+              invalid={!!errFor(idx, 'device_id')}
+              groups={suggestionsByRow[idx] ?? []}
+              loading={!!loadingByRow[idx]}
+              getGroupId={(g: DeviceGroup) => g.repr.id}
+              getGroupName={(g: DeviceGroup) => g.repr.name}
+              getGroupMeta={(g: DeviceGroup) => g.repr.model ?? undefined}
+              getGroupSub={groupSub}
+              getGroupCount={(g: DeviceGroup) => g.count}
+              isGroupExpandable={isExpandable}
+              onExpandGroup={(g: DeviceGroup) => expandGroup(idx, g)}
+              getMemberId={(m: MemberRow) => m.key}
+              getMemberName={memberName}
+              getMemberMeta={memberMeta}
+              getMemberSub={memberSub}
+              onSearch={(query) => void fetchGroups(idx, query)}
+              onQueryInput={(v) => handleQueryInput(idx, v)}
+              onPickGroup={(g: DeviceGroup) => pickGroup(idx, g)}
+              onPickMember={(m: MemberRow) => pickMember(idx, m)}
             />
             {#if loadingByRow[idx]}
               <div class="loading-row"><Spinner size="sm" /></div>
-            {/if}
-            {#if openByRow[idx]}
-              <ul
-                class="dropdown--items"
-                role="listbox"
-                use:portal
-                use:dropdownAnchor={{ anchorEl: rowInputEls[idx] }}
-                bind:this={rowDropdownEls[idx]}
-              >
-                {#if viewModeByRow[idx] === 'members'}
-                  <!-- Plan 18-05 (AUTO-04/D-06/D-07 drill-in, AUTO-05/D-09 auto-flatten) -->
-                  <!-- checkpoint fix #1: sticky-заголовок группы ВСЕГДА виден в
-                     member-view (в т.ч. при auto-flatten); «← Назад» — только
-                     при ручном drill-in (showBackByRow). -->
-                  <li class="drill-header">
-                    {#if showBackByRow[idx]}
-                      <button
-                        type="button"
-                        class="drill-back"
-                        onmousedown={(e) => e.preventDefault()}
-                        onclick={() => backToGroups(idx)}
-                      >
-                        ← Назад
-                      </button>
-                    {/if}
-                    <span class="drill-title"
-                      >{drillGroupByRow[idx]?.repr.name}{drillGroupByRow[idx]?.repr.model
-                        ? ` · ${drillGroupByRow[idx]?.repr.model}`
-                        : ''}</span
-                    >
-                  </li>
-                  {#if memberRows(idx).length === 0}
-                    <li class="dropdown-empty">Ничего не найдено</li>
-                  {:else}
-                    {#each memberRows(idx) as mrow (mrow.key)}
-                      {#if mrow.kind === 'instance'}
-                        <li>
-                          <button
-                            type="button"
-                            class="opt member-instance"
-                            role="option"
-                            aria-selected="false"
-                            onmousedown={(e) => e.preventDefault()}
-                            onclick={() => pickDevice(idx, mrow.device, [mrow.device.id])}
-                          >
-                            <span class="opt-row">
-                              <!-- checkpoint fix (round 2) #2: ОБА номера, если оба
-                                 заполнены (SN · инв.), иначе только заполненный. -->
-                              {#if mrow.device.serial_no}
-                                <span class="opt-sn"
-                                  >SN <span class="tr-mono">{mrow.device.serial_no}</span></span
-                                >
-                              {/if}
-                              {#if mrow.device.serial_no && mrow.device.inventory_no}
-                                <span class="opt-sep"> · </span>
-                              {/if}
-                              {#if mrow.device.inventory_no}
-                                <span class="opt-inv"
-                                  >инв. <span class="tr-mono">{mrow.device.inventory_no}</span
-                                  ></span
-                                >
-                              {/if}
-                              <span class="opt-state">{mrow.device.state ?? '—'}</span>
-                              <!-- reserved chevron-slot (пустой) — column-align ×count -->
-                              <span class="opt-chevron" aria-hidden="true"></span>
-                            </span>
-                          </button>
-                        </li>
-                      {:else}
-                        <li>
-                          <button
-                            type="button"
-                            class="opt member-subgroup"
-                            role="option"
-                            aria-selected="false"
-                            onmousedown={(e) => e.preventDefault()}
-                            onclick={() =>
-                              pickDevice(
-                                idx,
-                                mrow.devices[0],
-                                mrow.devices.map((d) => d.id),
-                              )}
-                          >
-                            <span class="opt-row">
-                              <span class="member-subgroup-label"
-                                >Без номера · {mrow.state ?? '—'}</span
-                              >
-                              <span class="opt-count">×{mrow.devices.length}</span>
-                              <!-- reserved chevron-slot (пустой) — column-align ×count -->
-                              <span class="opt-chevron" aria-hidden="true"></span>
-                            </span>
-                          </button>
-                        </li>
-                      {/if}
-                    {/each}
-                  {/if}
-                {:else if visibleGroups(idx).length === 0}
-                  <li class="dropdown-empty">Ничего не найдено</li>
-                {:else}
-                  {#each visibleGroups(idx) as g, i (g.repr.id)}
-                    <li>
-                      <button
-                        type="button"
-                        class="opt"
-                        class:active={i === (activeIndexByRow[idx] ?? -1)}
-                        role="option"
-                        aria-selected={i === (activeIndexByRow[idx] ?? -1)}
-                        onmousedown={(e) => e.preventDefault()}
-                        onclick={() => handleGroupClick(idx, g)}
-                      >
-                        <div class="opt-row">
-                          <span class="opt-name">{g.repr.name}</span>
-                          {#if g.repr.model}<span class="opt-model">{g.repr.model}</span>{/if}
-                          <span class="opt-count">×{g.count}</span>
-                          <!-- checkpoint fix #3: chevron-slot зарезервирован ВСЕГДА
-                             (пустой у нераскрываемых) — все ×count в один столбец -->
-                          <span class="opt-chevron" aria-hidden={!isExpandable(g)}
-                            >{isExpandable(g) ? '›' : ''}</span
-                          >
-                        </div>
-                        <!-- checkpoint fix (round 2) #1/#2: серийный/инвентарный №
-                           показываем ТОЛЬКО у одиночного устройства
-                           (g.ids.length === 1) — у раскрываемой группы номера у
-                           каждого экземпляра свои, показ repr-номера вводит в
-                           заблуждение. И показываем ОБА номера, если оба есть. -->
-                        {#if g.ids.length === 1 && (g.repr.serial_no || g.repr.inventory_no)}
-                          <span class="opt-meta-row">
-                            {#if g.repr.serial_no}<span class="opt-sn"
-                                >SN <span class="tr-mono">{g.repr.serial_no}</span></span
-                              >{/if}
-                            {#if g.repr.serial_no && g.repr.inventory_no}<span class="opt-sep">
-                                ·
-                              </span>{/if}
-                            {#if g.repr.inventory_no}<span class="opt-inv"
-                                >инв. <span class="tr-mono">{g.repr.inventory_no}</span></span
-                              >{/if}
-                          </span>
-                        {/if}
-                        {#if g.repr.state}
-                          <span class="opt-state">{g.repr.state}</span>
-                        {/if}
-                      </button>
-                    </li>
-                  {/each}
-                {/if}
-              </ul>
             {/if}
           {/if}
           {#if errFor(idx, 'device_id')}
@@ -793,147 +522,6 @@
     display: flex;
     justify-content: flex-end;
   }
-  // Plan 18-04 (AUTO-01): дропдаун перенесён use:portal в <body>, поэтому scoped
-  // CSS компонента до него (и его потомков) не доходит — нужен :global().
-  // Позиция (position/top/left/width/bottom) управляется JS через
-  // use:dropdownAnchor, здесь только визуал (UI-SPEC AUTO-01).
-  //
-  // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
-  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
-  // ActFormItemsTable) — без namespace-класса на корне глобальные правила
-  // .dropdown/.dropdown-empty коллизируют с остальными (последний
-  // подключённый stylesheet выигрывает). Все правила ниже скопированы под
-  // :global(.dropdown--items ...).
-  :global(.dropdown--items) {
-    position: fixed;
-    z-index: 1000;
-    max-height: 240px;
-    overflow: auto;
-    background: var(--tr-surface-raised, var(--tr-surface));
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    box-shadow: var(--tr-elev-2);
-  }
-  :global(.dropdown--items .opt) {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    width: 100%;
-    text-align: left;
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--tr-text-primary);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-  }
-  :global(.dropdown--items .opt:hover),
-  :global(.dropdown--items .opt.active) {
-    background: var(--tr-surface-sunken);
-  }
-  :global(.dropdown--items .opt-row) {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    width: 100%;
-  }
-  :global(.dropdown--items .opt-name) {
-    font-weight: 500;
-  }
-  :global(.dropdown--items .opt-inv),
-  :global(.dropdown--items .opt-sn),
-  :global(.dropdown--items .opt-model) {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-  :global(.dropdown--items .opt-count) {
-    margin-left: auto;
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-accent, var(--tr-text-secondary));
-    font-weight: 500;
-  }
-  :global(.dropdown--items .opt-state) {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-  // checkpoint fix (round 2) #2: строка «SN … · инв. …» одиночного устройства —
-  // inline-ряд обоих номеров через middot-разделитель (UI-SPEC мета-разделитель).
-  :global(.dropdown--items .opt-meta-row) {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-label);
-  }
-  :global(.dropdown--items .opt-sep) {
-    color: var(--tr-text-tertiary);
-    font-size: var(--tr-font-size-label);
-  }
-  :global(.dropdown--items .dropdown-empty) {
-    padding: var(--tr-space-2xl);
-    text-align: center;
-    color: var(--tr-text-tertiary);
-    font-size: var(--tr-font-size-body);
-    list-style: none;
-  }
-
-  // Plan 18-05 (AUTO-04/D-06 + checkpoint fix #3): chevron-сигнал drill-in
-  // справа от ×count. Слот зарезервирован ФИКСИРОВАННОЙ ширины ВСЕГДА (даже
-  // пустой у нераскрываемых/member-строк), чтобы бейджи ×count всех типов
-  // строк выстроились в один вертикальный столбец.
-  :global(.dropdown--items .opt-chevron) {
-    flex: 0 0 auto;
-    width: 12px;
-    text-align: center;
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-label);
-  }
-
-  // Plan 18-05 (AUTO-04/D-06 + checkpoint fix #1): заголовок drill-in —
-  // опциональная «← Назад» + название раскрытой группы. Sticky-закреплён
-  // сверху скроллируемого дропдауна с непрозрачным фоном + тенью, чтобы
-  // member-строки не просвечивали под ним при прокрутке.
-  :global(.dropdown--items .drill-header) {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    background: var(--tr-surface-raised, var(--tr-surface));
-    border-bottom: 1px solid var(--tr-border);
-    box-shadow: var(--tr-elev-1);
-    list-style: none;
-  }
-  :global(.dropdown--items .drill-back) {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-    &:hover {
-      color: var(--tr-text-primary);
-    }
-  }
-  :global(.dropdown--items .drill-title) {
-    font-size: var(--tr-font-size-label);
-    font-weight: 500;
-    color: var(--tr-text-secondary);
-  }
-
-  // Plan 18-05 (AUTO-04/D-07): подпись «Без номера · {state}» под-группы —
-  // Label-стиль (13px/400), а НЕ акцентное наименование группы уровня 1.
-  :global(.dropdown--items .member-subgroup-label) {
-    font-size: var(--tr-font-size-label);
-    font-weight: 400;
-    color: var(--tr-text-secondary);
-  }
 
   .loading-row {
     position: absolute;
@@ -957,33 +545,6 @@
   .add-row {
     padding: var(--tr-space-xs) var(--tr-space-md);
     border-top: 1px solid var(--tr-border);
-  }
-
-  // Plan 18-04 (AUTO-01/D-05): raw <input> заменяет Input.svelte (нет
-  // ref-forwarding) — визуальная эквивалентность сохраняется теми же CSS-
-  // свойствами, что .qty-input ниже.
-  .device-input {
-    display: block;
-    width: 100%;
-    height: 36px;
-    padding: 0 var(--tr-space-md);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    line-height: var(--tr-line-height-body);
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-    &.invalid {
-      border-color: var(--tr-danger);
-      box-shadow: 0 0 0 3px var(--tr-danger-ring);
-    }
   }
 
   // G-3 / W-5 — qty input native styling согласован с Input.svelte tokens.
