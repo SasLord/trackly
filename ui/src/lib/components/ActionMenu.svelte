@@ -18,11 +18,17 @@
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') open = false;
     }
+    function onClick(e: MouseEvent) {
+      const t = e.target as HTMLElement;
+      if (open && t.closest('.action-menu-panel')) open = false;
+    }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('click', onClick);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('click', onClick);
     };
   });
 </script>
@@ -43,7 +49,7 @@
     </svg>
   </button>
   {#if open}
-    <div class="action-menu-panel" role="menu" onclick={() => (open = false)}>
+    <div class="action-menu-panel" role="menu" tabindex="-1">
       {@render children()}
     </div>
   {/if}
