@@ -20,6 +20,10 @@
     framed?: boolean;
     /** Optional footer rendered inside the frame, below the scroller. Absent by default. */
     footer?: Snippet;
+    /** Scoped min-width for the <table> (e.g. "860px") — forces horizontal scroll
+     * on narrow viewports instead of squishing columns. Absent by default so other
+     * (narrower) Table consumers are unaffected. */
+    minWidth?: string;
   }
 
   const {
@@ -33,12 +37,13 @@
     children,
     framed = true,
     footer,
+    minWidth,
   }: Props = $props();
 </script>
 
 <div class="tr-table-framed" class:framed>
   <div class="tr-table-wrapper">
-    <table class="tr-table">
+    <table class="tr-table" style:min-width={minWidth}>
       <thead>
         <tr class="tr-thead-row">
           {@render head()}
@@ -96,6 +101,7 @@
   .tr-table-wrapper {
     width: 100%;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .tr-table {

@@ -92,6 +92,7 @@
   emptyBody={emptySubtext}
   head={tableHead}
   {footer}
+  minWidth="860px"
 >
   {#if showGroups}
     {#each groups as group (group.repr.id)}
