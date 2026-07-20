@@ -123,6 +123,7 @@
     display: grid;
     grid-template-columns: var(--sidebar-width) 1fr;
     min-height: 100vh;
+    background: var(--tr-surface);
   }
 
   .sidebar-container {
@@ -167,6 +168,7 @@
   .content {
     overflow: auto;
     min-height: 100vh;
+    background: var(--tr-surface);
   }
 
   .skip-link {
