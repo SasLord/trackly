@@ -69,7 +69,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 23: Токены и основы дизайн-системы** - Единый слой `--tr-*` (поверхности, текст, акцент, семантика, нейтрали, тени), типографика и миграция space/radius по значению без сдвига вёрстки; фикс undefined-token багов. (completed 2026-07-17)
 - [x] **Phase 24: Базовые компоненты** - Button, Input/Select/Textarea/Checkbox, Badge, Tabs, Modal на новой системе. (completed 2026-07-18)
 - [x] **Phase 25: Таблицы и Dropdown** - Строки таблицы + строка-группа, новый компонент Dropdown/комбобокс. (верификация 2026-07-19 → gaps_found, 4/5; gap closure 25-08-PLAN.md добавлен — WR-01/WR-02/WR-06 в Dropdown.svelte) (completed 2026-07-19)
-- [ ] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design, включая адаптивность.
+- [x] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design, включая адаптивность. (completed 2026-07-20)
 - [ ] **Phase 27: Окна основного рабочего процесса** - Акты, Картриджи, Принтеры — без макета, вёрстка из компонентной системы.
 - [ ] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета.
 - [ ] **Phase 29: Вход и интерфейс сотрудника** - Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout — отдельные layout-shell.
@@ -550,7 +550,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 26-08-PLAN.md — Automated gates + auto_advance flip + human visual UAT checkpoint + restore (D-17/D-18) (WIN-01, WIN-02, WIN-12)
+- [x] 26-08-PLAN.md — Automated gates + auto_advance flip + human visual UAT checkpoint + restore (D-17/D-18) (WIN-01, WIN-02, WIN-12)
 
 **UI hint**: yes
 
@@ -678,7 +678,7 @@ Plans:
 | 23. Токены и основы дизайн-системы | v1.2 | 8/8 | Complete    | 2026-07-17 |
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
-| 26. Окна с готовым макетом | v1.2 | 7/8 | In Progress|  |
+| 26. Окна с готовым макетом | v1.2 | 8/8 | Complete   | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |

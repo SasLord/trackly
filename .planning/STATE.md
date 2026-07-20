@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: executing
-last_updated: "2026-07-20T00:01:37.239Z"
-last_activity: 2026-07-19
+status: verifying
+last_updated: "2026-07-20T13:11:04.351Z"
+last_activity: 2026-07-20
 progress:
   total_phases: 27
   completed_phases: 27
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 26 (windows-with-mockup) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
-Last activity: 2026-07-19
+Status: Phase complete — ready for verification
+Last activity: 2026-07-20
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -235,6 +235,7 @@ Last activity: 2026-07-19
 | Phase 26 P05 | 10min | 2 tasks | 1 files |
 | Phase 26 P06 | 8min | 2 tasks | 1 files |
 | Phase 26 P07 | 10min | 3 tasks | 3 files |
+| Phase 26 P08 | 3min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -577,6 +578,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 26-07: Pill breakdown uses local .pill-row/.pill markup, not Badge.svelte (Badge lacks label+strong pair support, UI-SPEC §3.10)
 - [Phase ?]: 26-07: ChartWidget COLORS kept as literal hex, documented exception to --tr-* token gate for data-viz series consistency across themes
 - [Phase ?]: 26-07: Value-label-over-bar font-size set to 9px (not 11px) per conditional-acceptance value; 11px fallback deferred to Plan 26-08 dark-theme UAT
+- [Phase 26-08]: gate="blocking-human" primary layer held through a real 10-round gap-closure cycle without silent auto-approval; workflow.auto_advance flip/restore (Tasks 2/4) verified net-zero relative to pre-plan config.json
 
 ### Pending Todos
 
@@ -654,8 +656,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-20T00:01:37.232Z
-Stopped at: Completed 26-07-PLAN.md
+Last session: 2026-07-20T13:11:04.343Z
+Stopped at: Completed 26-08-PLAN.md (D-18 UAT human-approved, Phase 26 verified)
 Resume file: None
 
 ## Operator Next Steps

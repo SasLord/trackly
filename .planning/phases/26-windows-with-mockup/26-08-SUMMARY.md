@@ -129,3 +129,9 @@ None - no external service configuration required.
 ---
 *Phase: 26-windows-with-mockup*
 *Completed: 2026-07-20*
+
+## Self-Check: PASSED
+
+All 14 referenced commits (d35d243, 7575c9d, 5c11ca7, 87a5f76, 540155a, 68489bb, c20df71,
+6dd9e62, 24f202b, 66b0799, 64ef061, 1c41874, dcc0803, 73da5de) confirmed present in
+`git log --oneline --all`. `26-08-SUMMARY.md` confirmed present on disk.
