@@ -84,6 +84,7 @@
   .stat-value-row {
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 6px;
   }
@@ -159,6 +160,7 @@
 
       li {
         line-height: 1.6;
+        overflow-wrap: anywhere;
       }
     }
   }

@@ -136,7 +136,7 @@
 </script>
 
 <div class="dashboard-page">
-  <PageHeader title="Дашборд" variant="fixed">
+  <PageHeader title="Дашборд">
     {#snippet actions()}
       <!-- Селектор периода для period-sensitive виджетов (D-12) -->
       <div class="period-selector" role="group" aria-label="Период">
@@ -281,19 +281,19 @@
 
   .stat-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
   }
 
   @media (max-width: bp.$bp-xl) {
     .stat-row {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
   @media (max-width: bp.$bp-sm) {
     .stat-row {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .dashboard-grid {
       padding: 16px;
