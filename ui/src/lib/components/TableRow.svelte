@@ -61,7 +61,15 @@
         aria-label={groupExpanded ? 'Свернуть группу' : 'Развернуть группу'}
         onclick={handleChevronClick}
       >
-        ▸
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M6 4l4 4-4 4"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </button>
       {groupName}
     </td>
