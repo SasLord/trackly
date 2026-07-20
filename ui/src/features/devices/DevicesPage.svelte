@@ -227,15 +227,15 @@
 </script>
 
 <div class="devices-page">
-  <PageHeader title="Устройства" variant="wrap">
-    {#snippet actions()}
+  <PageHeader title="Устройства" variant="fixed" />
+
+  <div class="page-content">
+    <div class="page-actions">
       <Button variant="primary" onclick={openCreate}>+ Создать устройство</Button>
       <Button variant="secondary" onclick={() => (csvModalOpen = true)}>Импорт CSV</Button>
       <Button variant="secondary" onclick={exportCsv}>Экспорт CSV</Button>
-    {/snippet}
-  </PageHeader>
+    </div>
 
-  <div class="page-content">
     <DeviceFilters
       {searchQuery}
       {statusFilter}
@@ -323,5 +323,12 @@
     flex: 1;
     overflow: auto;
     padding: 16px 24px;
+  }
+
+  .page-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
   }
 </style>
