@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: ready_to_plan
-last_updated: 2026-07-20T13:37:52.361Z
+status: planning
+last_updated: "2026-07-20T14:43:11.827Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 27
@@ -11,7 +11,6 @@ progress:
   total_plans: 173
   completed_plans: 189
   percent: 100
-stopped_at: Phase 26 complete (8/8) — ready to discuss Phase 27
 ---
 
 # Project State
@@ -658,9 +657,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-20T13:11:04.343Z
-Stopped at: Completed 26-08-PLAN.md (D-18 UAT human-approved, Phase 26 verified)
-Resume file: None
+Last session: 2026-07-20T14:43:11.820Z
+Stopped at: Phase 27 context gathered
+Resume file: .planning/phases/27-core-workflow-windows/27-CONTEXT.md
 
 ## Operator Next Steps
 
