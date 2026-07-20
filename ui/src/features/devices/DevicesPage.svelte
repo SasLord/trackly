@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { apiCall } from '$lib/api/client';
@@ -227,15 +228,23 @@
 </script>
 
 <div class="devices-page">
-  <PageHeader title="Устройства" variant="fixed" />
+  <PageHeader title="Устройства">
+    {#snippet actions()}
+      <div class="actions-inline">
+        <Button variant="secondary" onclick={() => (csvModalOpen = true)}>Импорт CSV</Button>
+        <Button variant="secondary" onclick={exportCsv}>Экспорт CSV</Button>
+      </div>
+      <div class="actions-kebab">
+        <ActionMenu label="Импорт и экспорт">
+          <button type="button" onclick={() => (csvModalOpen = true)}>Импорт CSV</button>
+          <button type="button" onclick={exportCsv}>Экспорт CSV</button>
+        </ActionMenu>
+      </div>
+      <Button variant="primary" onclick={openCreate}>+ Добавить устройство</Button>
+    {/snippet}
+  </PageHeader>
 
   <div class="page-content">
-    <div class="page-actions">
-      <Button variant="primary" onclick={openCreate}>+ Создать устройство</Button>
-      <Button variant="secondary" onclick={() => (csvModalOpen = true)}>Импорт CSV</Button>
-      <Button variant="secondary" onclick={exportCsv}>Экспорт CSV</Button>
-    </div>
-
     <DeviceFilters
       {searchQuery}
       {statusFilter}
@@ -313,6 +322,8 @@
 />
 
 <style lang="scss">
+  @use '../../styles/_breakpoints' as bp;
+
   .devices-page {
     display: flex;
     flex-direction: column;
@@ -325,10 +336,21 @@
     padding: 16px 24px;
   }
 
-  .page-actions {
+  .actions-inline {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
+  }
+
+  .actions-kebab {
+    display: none;
+  }
+
+  @media (max-width: (bp.$bp-md - 1px)) {
+    .actions-inline {
+      display: none;
+    }
+    .actions-kebab {
+      display: inline-flex;
+    }
   }
 </style>
