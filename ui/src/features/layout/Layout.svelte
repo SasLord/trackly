@@ -133,6 +133,10 @@
   }
 
   @media (max-width: (bp.$bp-lg - 1px)) {
+    .app-layout {
+      grid-template-columns: 1fr;
+    }
+
     .sidebar-container {
       position: fixed;
       inset-block: 0;
