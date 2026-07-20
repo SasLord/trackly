@@ -122,7 +122,8 @@
   .app-layout {
     display: grid;
     grid-template-columns: var(--sidebar-width) 1fr;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     background: var(--tr-surface);
   }
 
@@ -167,7 +168,7 @@
 
   .content {
     overflow: auto;
-    min-height: 100vh;
+    min-height: 0;
     background: var(--tr-surface);
   }
 
