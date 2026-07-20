@@ -101,7 +101,7 @@
   >
     <Sidebar />
   </aside>
-  <main id="main" class="content">
+  <main id="main" class="content" inert={!isDesktop && sidebarNav.open}>
     {@render children?.()}
   </main>
 </div>
