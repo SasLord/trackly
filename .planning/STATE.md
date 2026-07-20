@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-19T23:53:22.714Z"
+last_updated: "2026-07-20T00:01:37.239Z"
 last_activity: 2026-07-19
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 26 (windows-with-mockup) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-07-19
 
@@ -234,6 +234,7 @@ Last activity: 2026-07-19
 | Phase 26 P04 | 6min | 2 tasks | 2 files |
 | Phase 26 P05 | 10min | 2 tasks | 1 files |
 | Phase 26 P06 | 8min | 2 tasks | 1 files |
+| Phase 26 P07 | 10min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -573,6 +574,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 26-04: footer prop passed explicitly as footer={footer} (not shorthand {footer}) to satisfy plan's grep-based acceptance criteria
 - [Phase ?]: 26-05: Search input labelled via visually-hidden label for=id instead of adding aria-label prop to Input.svelte (out of scope, owned by Plan 26-03)
 - [Phase ?]: 26-05: Tabs key === 'null' sentinel recovers STATUSES[0].id (literal null) from String(null) round-trip — verified for all 5 status entries
+- [Phase ?]: 26-07: Pill breakdown uses local .pill-row/.pill markup, not Badge.svelte (Badge lacks label+strong pair support, UI-SPEC §3.10)
+- [Phase ?]: 26-07: ChartWidget COLORS kept as literal hex, documented exception to --tr-* token gate for data-viz series consistency across themes
+- [Phase ?]: 26-07: Value-label-over-bar font-size set to 9px (not 11px) per conditional-acceptance value; 11px fallback deferred to Plan 26-08 dark-theme UAT
 
 ### Pending Todos
 
@@ -650,8 +654,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-19T23:53:19.495Z
-Stopped at: Completed 26-04-PLAN.md
+Last session: 2026-07-20T00:01:37.232Z
+Stopped at: Completed 26-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
