@@ -223,7 +223,9 @@
       <Spinner size="md" />
     </div>
   {:else if error}
-    <div class="chart-state chart-error">Не удалось загрузить. Смените период или обновите страницу.</div>
+    <div class="chart-state chart-error">
+      Не удалось загрузить. Смените период или обновите страницу.
+    </div>
   {:else if data.length === 0}
     <div class="chart-state chart-empty">Нет данных о расходе за выбранный период</div>
   {:else}

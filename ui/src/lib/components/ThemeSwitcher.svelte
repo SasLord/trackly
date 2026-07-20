@@ -47,7 +47,9 @@
     color: var(--tr-text-tertiary);
     box-shadow: none;
     padding: 0 4px;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
 
     &:hover:not(.active) {
       background: color-mix(in srgb, var(--tr-text-primary) 5%, transparent);

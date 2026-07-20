@@ -50,6 +50,7 @@ const browserGlobals = {
   SVGRectElement: 'readonly',
   SVGSVGElement: 'readonly',
   btoa: 'readonly',
+  MediaQueryListEvent: 'readonly',
 };
 
 // Svelte 5 rune globals (available in .svelte.ts and .svelte files)

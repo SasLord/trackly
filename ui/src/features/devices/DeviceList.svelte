@@ -91,7 +91,7 @@
   emptyTitle={emptyMessage}
   emptyBody={emptySubtext}
   head={tableHead}
-  footer={footer}
+  {footer}
 >
   {#if showGroups}
     {#each groups as group (group.repr.id)}
