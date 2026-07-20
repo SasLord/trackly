@@ -236,8 +236,10 @@
       </div>
       <div class="actions-kebab">
         <ActionMenu label="Импорт и экспорт">
-          <button type="button" onclick={() => (csvModalOpen = true)}>Импорт CSV</button>
-          <button type="button" onclick={exportCsv}>Экспорт CSV</button>
+          <button type="button" role="menuitem" onclick={() => (csvModalOpen = true)}
+            >Импорт CSV</button
+          >
+          <button type="button" role="menuitem" onclick={exportCsv}>Экспорт CSV</button>
         </ActionMenu>
       </div>
       <Button variant="primary" onclick={openCreate}>+ Добавить устройство</Button>

@@ -10,27 +10,68 @@
 
   let open = $state(false);
   let rootEl = $state<HTMLElement | null>(null);
+  let triggerEl = $state<HTMLButtonElement | null>(null);
+  let panelEl = $state<HTMLElement | null>(null);
+
+  function menuItems(): HTMLElement[] {
+    return panelEl ? Array.from(panelEl.querySelectorAll<HTMLElement>('[role="menuitem"]')) : [];
+  }
+
+  function close(returnFocus = false) {
+    open = false;
+    if (returnFocus) triggerEl?.focus();
+  }
+
+  // Move focus to the first menu item whenever the panel opens.
+  $effect(() => {
+    if (open && panelEl) menuItems()[0]?.focus();
+  });
 
   $effect(() => {
     function onDown(e: MouseEvent) {
+      // Outside pointer click — close without forcing focus back to the
+      // trigger; focus should follow wherever the user clicked.
       if (open && rootEl && !rootEl.contains(e.target as Node)) open = false;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') open = false;
-    }
-    function onClick(e: MouseEvent) {
-      const t = e.target as HTMLElement;
-      if (open && t.closest('.action-menu-panel')) open = false;
+      if (e.key === 'Escape') close(true);
     }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
-    document.addEventListener('click', onClick);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
-      document.removeEventListener('click', onClick);
     };
   });
+
+  function onTriggerKeydown(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      open = true;
+    }
+  }
+
+  function onPanelKeydown(e: KeyboardEvent) {
+    const its = menuItems();
+    if (its.length === 0) return;
+    const idx = its.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      its[(idx + 1) % its.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      its[(idx - 1 + its.length) % its.length]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      its[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      its[its.length - 1]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close(true);
+    }
+  }
 </script>
 
 <div class="action-menu" bind:this={rootEl}>
@@ -40,7 +81,9 @@
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label}
+    bind:this={triggerEl}
     onclick={() => (open = !open)}
+    onkeydown={onTriggerKeydown}
   >
     <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
       <circle cx="9" cy="3.5" r="1.5" fill="currentColor" />
@@ -49,7 +92,14 @@
     </svg>
   </button>
   {#if open}
-    <div class="action-menu-panel" role="menu" tabindex="-1">
+    <div
+      class="action-menu-panel"
+      role="menu"
+      tabindex="-1"
+      bind:this={panelEl}
+      onkeydown={onPanelKeydown}
+      onclick={() => close(true)}
+    >
       {@render children()}
     </div>
   {/if}
