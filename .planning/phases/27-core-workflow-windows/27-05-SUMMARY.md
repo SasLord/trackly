@@ -92,3 +92,10 @@ None — no external service configuration required.
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/cartridges/OperationModal.svelte
+- FOUND: ui/src/features/cartridges/ModelFormModal.svelte
+- FOUND: commit 6d60eaf
+- FOUND: commit 628cd80
