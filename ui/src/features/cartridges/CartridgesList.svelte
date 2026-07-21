@@ -61,7 +61,7 @@
   <th>Модель</th>
   <th>Расположение</th>
   {#if !statusFiltered}<th class="th-status">Статус</th>{/if}
-  <th class="th-actions">Действия</th>
+  <th class="th-actions" aria-label="Действия"></th>
 {/snippet}
 
 {#snippet footer()}
