@@ -574,16 +574,23 @@ Plans:
 4. Каждое существующее поле/действие/workflow в этих окнах остаётся на месте и работает (изменение чисто визуальное).
 
 **Plans**: 9 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 27-01-PLAN.md — Общий паттерн детали (DetailPanel/DetailSection/DetailField, D-01) [wave 1]
-- [ ] 27-02-PLAN.md — Акты: структура (PageHeader, master-detail D-02, Tabs D-05, Table D-03, DetailPanel D-01) [wave 2]
 - [ ] 27-03-PLAN.md — Акты: модалки и detail-таблицы, ре-токенизация (D-04) [wave 1]
-- [ ] 27-04-PLAN.md — Картриджи: структура (PageHeader, D-02/D-05 SearchAndTabs/D-03/D-01) [wave 2]
 - [ ] 27-05-PLAN.md — Картриджи: крупные модалки OperationModal+ModelFormModal (D-04) [wave 1]
 - [ ] 27-06-PLAN.md — Картриджи: форма, виджеты (CompatibilityEditor/ContextMenu/LowStockBanner, D-04) + CartridgeFilters→Tabs (D-05) [wave 1]
-- [ ] 27-07-PLAN.md — Принтеры: структура (PageHeader, D-02/D-05/D-03/D-01) [wave 2]
 - [ ] 27-08-PLAN.md — Принтеры: модалки+виджеты, DiscoveryResultsTable→Table (D-04) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 27-02-PLAN.md — Акты: структура (PageHeader, master-detail D-02, Tabs D-05, Table D-03, DetailPanel D-01) [wave 2]
+- [ ] 27-04-PLAN.md — Картриджи: структура (PageHeader, D-02/D-05 SearchAndTabs/D-03/D-01) [wave 2]
+- [ ] 27-07-PLAN.md — Принтеры: структура (PageHeader, D-02/D-05/D-03/D-01) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 27-09-PLAN.md — Финальный build-гейт + both-theme визуальный UAT (checkpoint) [wave 3]
 
 **UI hint**: yes
