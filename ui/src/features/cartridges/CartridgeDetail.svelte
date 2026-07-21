@@ -1,10 +1,19 @@
 <script lang="ts">
   // Plan 04-04: детальная панель картриджа — поля + история перемещений.
   // Plan 04-05: action buttons wired (04-04 stubs → real handlers via onMenuAction callback).
-  // По образцу ActDetail.svelte, паттерн из PATTERNS.md §CartridgeDetail.svelte.
+  // Plan 27-04 (D-01): rebuilt on the shared DetailPanel/DetailSection/DetailField
+  // primitives (extracted in 27-01) per ActDetail.svelte precedent — bespoke
+  // container/header/field-grid/field-item/history-list classes removed;
+  // detail surface (former container `{ background: var(--tr-bg) }`)
+  // dropped — the CartridgesMasterDetail wrapper now owns the panel surface (D-02).
+  // Loading state has no DetailPanel equivalent (empty/filled only) — kept as a
+  // sibling branch with a matching container so layout doesn't jump between states.
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailField from '$lib/components/DetailField.svelte';
   import type { AuditEntryDto, CartridgeDto } from '../../bindings';
 
   interface Props {
@@ -89,34 +98,27 @@
     const details = parsePayloadDetails(entry);
     return details ? `${date} — ${label}; ${details}` : `${date} — ${label}`;
   }
+
+  const panelTitle = $derived(cartridge ? cartridge.code : undefined);
 </script>
 
-<div class="cartridge-detail" aria-live="polite">
-  {#if loading}
-    <div class="loading">
-      <Spinner size="md" />
-      <span>Загружаем картридж…</span>
-    </div>
-  {:else if cartridge === null}
-    <div class="empty">
-      <h2 class="empty-heading">Выберите картридж</h2>
-      <p class="empty-body">
-        Выберите картридж слева, чтобы увидеть историю и выполнить действие, или добавьте новый.
-      </p>
+{#if loading}
+  <div class="detail-loading" aria-live="polite">
+    <Spinner size="md" />
+    <span>Загружаем картридж…</span>
+  </div>
+{:else}
+  <DetailPanel
+    title={panelTitle}
+    empty={cartridge === null}
+    emptyTitle="Выберите картридж"
+    emptyBody="Выберите картридж слева, чтобы увидеть историю и выполнить действие, или добавьте новый."
+  >
+    {#snippet emptyActions()}
       <Button variant="primary" onclick={onCreate}>+ Добавить картридж/фотобарабан</Button>
-    </div>
-  {:else}
-    <header class="detail-header">
-      <div class="title-row">
-        <h2 class="detail-title" style="font-variant-numeric: tabular-nums">
-          {cartridge.code}
-        </h2>
-        {#if modelLabel}
-          <span class="model-label">{modelLabel}</span>
-        {/if}
-        <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
-      </div>
-      <div class="actions">
+    {/snippet}
+    {#snippet actions()}
+      {#if cartridge}
         {#if cartridge.status_id === 1}
           <!-- На складе: установить (если не отработанный барабан),
                отправить на заправку (только картриджи) -->
@@ -155,64 +157,56 @@
         <Button variant="destructive" size="sm" onclick={() => onMenuAction?.('delete', cartridge!)}
           >Удалить</Button
         >
-      </div>
-    </header>
-
-    <section class="section">
-      <h3 class="section-heading">Информация</h3>
-      <div class="fields-grid">
-        <div class="field">
-          <span class="field-label">Расположение</span>
-          <span class="field-value">{cartridge.location ?? '—'}</span>
-        </div>
-        {#if cartridge.status_id === 2 && cartridge.holder_name}
-          <div class="field">
-            <span class="field-label">У кого</span>
-            <span class="field-value">{cartridge.holder_name}</span>
-          </div>
-        {/if}
-        {#if cartridge.state_name}
-          <div class="field">
-            <span class="field-label">Состояние заряда</span>
-            <span class="field-value">{cartridge.state_name}</span>
-          </div>
-        {/if}
-        {#if cartridge.notes}
-          <div class="field field-wide">
-            <span class="field-label">Примечания</span>
-            <span class="field-value">{cartridge.notes}</span>
-          </div>
-        {/if}
-      </div>
-    </section>
-
-    <section class="section">
-      <h3 class="section-heading">История перемещений</h3>
-      {#if history.length === 0}
-        <p class="history-empty">История пуста</p>
-      {:else}
-        <ul class="history-list">
-          {#each history as entry (entry.id)}
-            <li class="history-row">
-              {formatHistoryEntry(entry)}
-            </li>
-          {/each}
-        </ul>
       {/if}
-    </section>
-  {/if}
-</div>
+    {/snippet}
+
+    {#if cartridge}
+      <div class="title-badges">
+        {#if modelLabel}
+          <span class="model-label">{modelLabel}</span>
+        {/if}
+        <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
+      </div>
+
+      <DetailSection heading="Информация">
+        <div class="info-grid">
+          <DetailField label="Расположение" value={cartridge.location ?? null} />
+          {#if cartridge.status_id === 2 && cartridge.holder_name}
+            <DetailField label="У кого" value={cartridge.holder_name} />
+          {/if}
+          {#if cartridge.state_name}
+            <DetailField label="Состояние заряда" value={cartridge.state_name} />
+          {/if}
+          {#if cartridge.notes}
+            <div class="field-wide">
+              <DetailField label="Примечания" value={cartridge.notes} />
+            </div>
+          {/if}
+        </div>
+      </DetailSection>
+
+      <DetailSection heading="История перемещений">
+        {#if history.length === 0}
+          <p class="history-empty">История пуста</p>
+        {:else}
+          <ul class="history-list">
+            {#each history as entry (entry.id)}
+              <li class="history-row">
+                {formatHistoryEntry(entry)}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </DetailSection>
+    {/if}
+  </DetailPanel>
+{/if}
 
 <style lang="scss">
-  .cartridge-detail {
+  .detail-loading {
     height: 100%;
     overflow: auto;
     padding: var(--tr-space-xl);
-    background: var(--tr-bg);
-  }
-
-  .loading,
-  .empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -223,38 +217,12 @@
     color: var(--tr-text-secondary);
   }
 
-  .empty-heading {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0;
-    max-width: 360px;
-    color: var(--tr-text-secondary);
-  }
-
-  .detail-header {
-    margin-bottom: var(--tr-space-2xl);
-  }
-
-  .title-row {
+  .title-badges {
     display: flex;
     align-items: center;
     gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    margin-bottom: var(--tr-space-xs);
-  }
-
-  .detail-title {
-    margin: 0;
-    font-size: var(--tr-font-size-display);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-display);
-    font-variant-numeric: tabular-nums;
+    margin-bottom: var(--tr-space-lg);
   }
 
   .model-label {
@@ -262,47 +230,14 @@
     color: var(--tr-text-secondary);
   }
 
-  .actions {
-    display: flex;
-    gap: var(--tr-space-xs);
-    flex-wrap: wrap;
-  }
-
-  .section {
-    margin-bottom: var(--tr-space-2xl);
-  }
-
-  .section-heading {
-    margin: 0 0 var(--tr-space-md);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .fields-grid {
+  .info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--tr-space-md);
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
   .field-wide {
     grid-column: 1 / -1;
-  }
-
-  .field-label {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
-  }
-
-  .field-value {
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-primary);
   }
 
   .history-empty {
