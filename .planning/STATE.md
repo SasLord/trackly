@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T10:59:19.141Z"
+last_updated: "2026-07-21T11:06:00.755Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 27 (core-workflow-windows) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-07-21
 
@@ -241,6 +241,7 @@ Last activity: 2026-07-21
 | Phase 27 P03 | 25min | 3 tasks | 5 files |
 | Phase 27 P05 | 12min | 2 tasks | 1 files |
 | Phase 27 P06 | 35min | 3 tasks | 1 files |
+| Phase 27 P08 | 15min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -592,6 +593,8 @@ Recent decisions affecting current work:
 - [Phase 27]: 27-05: ModelFormModal brand/model автокомплит остаётся на inline bespoke-input паттерне (не переведён на portal+dropdownAnchor) — миграция позиционирования вне границы SC #4
 - [Phase 27]: 27-06: Tasks 1-2 (CartridgeFormModal/CartridgeFormBody, CompatibilityEditor/CartridgeContextMenu/LowStockBanner) required no code changes — re-audit confirmed prior compliance with tokens/primitives
 - [Phase 27]: 27-06: CompatibilityEditor raw input autocomplete rows kept (not Input primitive) — matches established LocationAutocomplete.svelte pattern for custom listbox/aria dropdown logic
+- [Phase ?]: 27-08: Task 1/3 (PrinterCreateModal/DiscoveryModal/TonerGauge/PrinterAlertBanner) — аудит без изменений, уже на var(--tr-*) и примитивах
+- [Phase ?]: 27-08: Checkbox-примитив не поддерживает aria-label — доступный текст DiscoveryResultsTable передан через children-snippet + локальный .sr-only
 
 ### Pending Todos
 
@@ -669,8 +672,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T10:59:19.134Z
-Stopped at: Completed 27-06-PLAN.md
+Last session: 2026-07-21T11:06:00.748Z
+Stopped at: Completed 27-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

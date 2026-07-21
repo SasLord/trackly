@@ -34,7 +34,7 @@
 - [x] **WIN-02**: Устройства
 - [ ] **WIN-03**: Акты
 - [ ] **WIN-04**: Картриджи
-- [ ] **WIN-05**: Принтеры
+- [x] **WIN-05**: Принтеры
 - [ ] **WIN-06**: Заявки
 - [ ] **WIN-07**: Отчёты
 - [ ] **WIN-08**: Настройки
@@ -122,7 +122,7 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | WIN-12 | Phase 26 | Complete |
 | WIN-03 | Phase 27 | Pending |
 | WIN-04 | Phase 27 | Pending |
-| WIN-05 | Phase 27 | Pending |
+| WIN-05 | Phase 27 | Complete |
 | WIN-06 | Phase 28 | Pending |
 | WIN-07 | Phase 28 | Pending |
 | WIN-08 | Phase 28 | Pending |
