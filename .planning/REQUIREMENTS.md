@@ -32,7 +32,7 @@
 
 - [x] **WIN-01**: Дашборд
 - [x] **WIN-02**: Устройства
-- [ ] **WIN-03**: Акты
+- [x] **WIN-03**: Акты
 - [x] **WIN-04**: Картриджи
 - [x] **WIN-05**: Принтеры
 - [ ] **WIN-06**: Заявки
@@ -120,7 +120,7 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | WIN-01 | Phase 26 | Complete |
 | WIN-02 | Phase 26 | Complete |
 | WIN-12 | Phase 26 | Complete |
-| WIN-03 | Phase 27 | Pending |
+| WIN-03 | Phase 27 | Complete |
 | WIN-04 | Phase 27 | Complete |
 | WIN-05 | Phase 27 | Complete |
 | WIN-06 | Phase 28 | Pending |

@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
-status: executing
-last_updated: "2026-07-21T11:40:28.471Z"
+status: verifying
+last_updated: "2026-07-21T16:42:38.122Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 27 (core-workflow-windows) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-21
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -245,6 +245,7 @@ Last activity: 2026-07-21
 | Phase 27 P02 | 13min | 3 tasks | 7 files |
 | Phase 27 P04 | 15min | 3 tasks | 8 files |
 | Phase 27 P07 | 20min | 3 tasks | 6 files |
+| Phase 27 P09 | ~4h57min | 2 tasks | 31 files |
 
 ## Accumulated Context
 
@@ -606,6 +607,7 @@ Recent decisions affecting current work:
 - [Phase 27]: 27-04: CartridgeDetail field-grid CSS class renamed fields-grid to info-grid to avoid literal collision with removed-bespoke-class grep gate
 - [Phase ?]: 27-07: колонка тонера в списке принтеров показывает первую запись tonerLevels (TonerGauge инлайн), не все цвета
 - [Phase ?]: 27-07: секция Данные устройства в PrinterDetail — DetailSection без heading-пропа, чтобы сохранить локальную section-heading-row (заголовок+кнопка Редактировать)
+- [Phase 27]: Both-theme UAT (D-02) не auto-approved несмотря на auto_advance=true — требуется живой человеческий просмотр обеих тем; approved после cargo tauri dev UAT + 24 fix-коммитов (батчи B-G: fill-height master-detail, единый фон полей, кастомный Dropdown в Картриджах, sticky-шапка деталей, inset selected-row) — Визуальная проверка raised-vs-surface distinction в обеих темах требует реальных глаз; gate=blocking в плане 27-09 соблюдён буквально
 
 ### Pending Todos
 
@@ -660,6 +662,16 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 | test_coverage | cross-phase — no HTTP role-matrix case for settings_save_org_fields Employee→403 (guard structurally present) | deferred | 2026-07-15 |
 | docs | historical "11 vs 12" requirement miscount (12 REQ-IDs actually defined & satisfied) | deferred | 2026-07-15 |
 
+Items acknowledged and deferred at **Phase 27 (core-workflow-windows)** close on 2026-07-21,
+explicitly requested to be revisited at **milestone v1.2 finish-up** (not blocking Phase 27/28
+progress). Both-theme live UAT (27-09) approved with these items noted for later:
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| ui_polish | Дополнительные мелкие визуальные правки по Актам/Картриджам/Принтерам (WIN-03/04/05) — пользователь донесёт конкретный список позже, после того как все окна Фазы 28 будут переведены на дизайн-систему | deferred to milestone v1.2 end | 2026-07-21 |
+| tech_debt | Нативные `<select>` в окнах Фазы 28 (Настройки/Дашборд/Отчёты/Пользователи) → перевести на кастомный `Dropdown`-примитив (Фаза 25), по аналогии с миграцией Картриджей в 27-09 (commit `80d0b41`) | deferred, likely Phase 28 or quick-task | 2026-07-21 |
+| tech_debt | `PersonAutocomplete` + `LocationAutocomplete` — визуально идентичны (27-09 батч E), но остаются двумя раздельными реализациями; кандидат на слияние в единый переиспользуемый компонент | deferred to milestone v1.2 end | 2026-07-21 |
+
 ## Quick Tasks Completed
 
 | Date | Slug | Summary | Status |
@@ -683,8 +695,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T11:40:28.463Z
-Stopped at: Completed 27-04-PLAN.md
+Last session: 2026-07-21T16:42:38.113Z
+Stopped at: Completed 27-09-PLAN.md — Фаза 27 (core-workflow-windows) исполнена 9/9, both-theme UAT approved
 Resume file: None
 
 ## Operator Next Steps
