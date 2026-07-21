@@ -1,6 +1,17 @@
 <script lang="ts">
-  // Plan 03-02: two-line list row for ActsList master panel.
+  // Plan 03-02: list row for ActsList master panel.
+  // Plan 27-02 (D-03): rebuilt on shared TableRow primitive per
+  // DeviceListRow.svelte precedent — bespoke two-line `.row` div replaced
+  // with a 4-column <TableRow> (№/Дата/Получатель/Позиций); select state
+  // now via TableRow's `selected` prop, not bespoke `.row.selected`.
+  // NOTE: TableRow.svelte does not forward arbitrary attrs (onclick/role/
+  // tabindex) to its own <tr> — it only accepts the documented props. Row
+  // click/keyboard-select is therefore wired on the <td> cells we own here
+  // (onclick on every cell for full-row mouse click; role="button"+tabindex+
+  // onkeydown on the first cell as the single keyboard entry point, mirroring
+  // the previous single-div tab-stop).
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import type { ActDto } from '../../bindings';
 
   interface Props {
@@ -49,91 +60,67 @@
   }
 </script>
 
-<div
-  class="row"
-  class:selected
-  role="button"
-  tabindex="0"
-  aria-pressed={selected}
-  onclick={handleClick}
-  onkeydown={handleKeydown}
->
-  <div class="top">
-    <span class="number"><span class="tr-mono">№{act.number}</span></span>
-    <span class="separator">·</span>
-    <span class="date">{dateLabel}</span>
+<TableRow {selected} class="act-row">
+  <td
+    class="cell cell-number"
+    role="button"
+    tabindex="0"
+    aria-pressed={selected}
+    onclick={handleClick}
+    onkeydown={handleKeydown}
+  >
+    <span class="tr-mono">№{act.number}</span>
+  </td>
+  <td class="cell cell-date" onclick={handleClick}>
+    {dateLabel}
     {#if showArchivedBadge}
-      <span class="badge-wrap">
-        <Badge variant="default">В архиве</Badge>
-      </span>
+      <span class="badge-wrap"><Badge variant="default">В архиве</Badge></span>
     {/if}
-  </div>
-  <div class="bottom">
-    <span class="receiver">{act.receiver_name}</span>
-    <span class="separator">·</span>
-    <span class="count">{itemsCount} устр.</span>
-  </div>
-</div>
+  </td>
+  <td class="cell" title={act.receiver_name} onclick={handleClick}>{act.receiver_name}</td>
+  <td class="cell cell-count" onclick={handleClick}>{itemsCount}</td>
+</TableRow>
 
 <style lang="scss">
-  .row {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--tr-space-2xs);
-    min-height: 64px;
-    padding: var(--tr-space-md);
-    border-bottom: 1px solid var(--tr-border);
+  // TableRow renders its own <tr> (a DIFFERENT Svelte scope-hash than this
+  // file) — caller-supplied class needs `:global()`, and the ancestor part of
+  // the selector must stay in THIS file's scope per the TableRow contract:
+  // `.act-row :global(> td)`, never `:global(.act-row > td)` (specificity trap).
+  :global(tr.act-row) {
     cursor: pointer;
-    border-left: 3px solid transparent;
+  }
 
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
+  .cell {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0; // makes text-overflow work in table cells
+  }
+
+  .cell-number {
+    width: 72px;
+    cursor: pointer;
+
     &:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
-
-    &.selected {
-      border-left-color: var(--tr-accent);
-      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
-    }
   }
 
-  .top {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-body);
-    line-height: 1.2;
+  .cell-date {
+    color: var(--tr-text-secondary);
   }
-  .number {
-    font-weight: 600;
+
+  .cell-count {
+    width: 90px;
+    text-align: right;
     font-variant-numeric: tabular-nums;
-    color: var(--tr-text-primary);
-  }
-  .date {
     color: var(--tr-text-secondary);
-  }
-  .separator {
-    color: var(--tr-text-tertiary);
-  }
-  .badge-wrap {
-    margin-left: auto;
   }
 
-  .bottom {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-label);
-    font-weight: 500;
-  }
-  .receiver {
-    color: var(--tr-text-primary);
-  }
-  .count {
-    color: var(--tr-text-secondary);
+  .badge-wrap {
+    margin-left: var(--tr-space-2xs);
   }
 </style>

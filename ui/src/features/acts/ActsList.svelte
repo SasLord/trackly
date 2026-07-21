@@ -1,8 +1,12 @@
 <script lang="ts">
   // Plan 03-02: master-panel list — рендерит ActListRow × N + footer пагинация
   // + empty/loading states.
+  // Plan 27-02 (D-03): rebuilt on shared Table/TableRow primitives per
+  // DeviceList.svelte precedent — bespoke .rows/.loading/.empty/.pagination
+  // removed, Table now owns the frame/skeleton/empty-state.
   import Spinner from '$lib/components/Spinner.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Table from '$lib/components/Table.svelte';
   import ActListRow from './ActListRow.svelte';
   import type { ActDto } from '../../bindings';
 
@@ -33,6 +37,12 @@
   }: Props = $props();
 
   const searchActive = $derived(searchQuery.trim().length > 0);
+
+  // Mirrors DeviceList's skeleton-branch condition — Table shows skeleton rows
+  // only for the initial (items-still-empty) load; a background refresh with
+  // items already on screen keeps rendering real rows + a footer spinner.
+  const skeletonLoading = $derived(loading && items.length === 0);
+  const isEmpty = $derived(!loading && items.length === 0);
 
   // Empty state per UI-SPEC §ActsList.
   const emptyConfig = $derived.by(() => {
@@ -77,88 +87,78 @@
   }
 </script>
 
-<div class="acts-list">
-  {#if loading && items.length === 0}
-    <div class="loading">
-      <Spinner size="md" />
-    </div>
-  {:else if items.length === 0}
-    <div class="empty">
-      <h3 class="empty-heading">{emptyConfig.heading}</h3>
-      <p class="empty-body">{emptyConfig.body}</p>
-      {#if emptyConfig.actionLabel && emptyConfig.actionKind === 'primary'}
-        <Button variant="primary" onclick={handleAction}>{emptyConfig.actionLabel}</Button>
-      {:else if emptyConfig.actionLabel && emptyConfig.actionKind === 'link'}
-        <Button variant="link" onclick={handleAction}>{emptyConfig.actionLabel}</Button>
-      {/if}
-    </div>
-  {:else}
-    <div class="rows">
-      {#each items as act (act.id)}
-        <ActListRow
-          {act}
-          selected={act.id === selectedActId}
-          showArchivedBadge={activeTab === 'archive'}
-          {onSelect}
-        />
-      {/each}
-    </div>
-    <footer class="pagination">
-      <span class="pager-info">
-        {items.length === 0 ? '0' : `1–${items.length}`} из {total}
-      </span>
-      {#if loading}
-        <Spinner size="sm" />
-      {/if}
-    </footer>
+{#snippet tableHead()}
+  <th class="th-number">№</th>
+  <th>Дата</th>
+  <th>Получатель</th>
+  <th class="th-count">Позиций</th>
+{/snippet}
+
+{#snippet footer()}
+  {#if !skeletonLoading}
+    {#if isEmpty && emptyConfig.actionLabel}
+      <div class="empty-action">
+        {#if emptyConfig.actionKind === 'primary'}
+          <Button variant="primary" onclick={handleAction}>{emptyConfig.actionLabel}</Button>
+        {:else}
+          <Button variant="link" onclick={handleAction}>{emptyConfig.actionLabel}</Button>
+        {/if}
+      </div>
+    {:else if !isEmpty}
+      <footer class="list-footer">
+        <span class="pager-info">
+          {items.length === 0 ? '0' : `1–${items.length}`} из {total}
+        </span>
+        {#if loading}
+          <Spinner size="sm" />
+        {/if}
+      </footer>
+    {/if}
   {/if}
-</div>
+{/snippet}
+
+<Table
+  columns={4}
+  loading={skeletonLoading}
+  empty={isEmpty}
+  emptyTitle={emptyConfig.heading}
+  emptyBody={emptyConfig.body}
+  head={tableHead}
+  {footer}
+>
+  {#each items as act (act.id)}
+    <ActListRow
+      {act}
+      selected={act.id === selectedActId}
+      showArchivedBadge={activeTab === 'archive'}
+      {onSelect}
+    />
+  {/each}
+</Table>
 
 <style lang="scss">
-  .acts-list {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: var(--tr-surface);
+  .th-number {
+    width: 72px;
   }
-  .rows {
-    flex: 1;
-    overflow: auto;
-  }
-  .loading,
-  .empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-4xl);
-    text-align: center;
-  }
-  .empty-heading {
-    margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-  .empty-body {
-    margin: 0 0 var(--tr-space-md);
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-body);
+  .th-count {
+    width: 90px;
+    text-align: right;
   }
 
-  .pagination {
+  .empty-action {
+    display: flex;
+    justify-content: center;
+  }
+
+  .list-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-top: 1px solid var(--tr-border);
+  }
+
+  .pager-info {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
-    background: var(--tr-surface);
-  }
-  .pager-info {
     font-variant-numeric: tabular-nums;
   }
 </style>
