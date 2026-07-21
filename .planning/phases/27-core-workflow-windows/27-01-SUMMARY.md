@@ -95,3 +95,7 @@ None - no external service configuration required.
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All created files verified present; all task/summary commits verified in git log.
