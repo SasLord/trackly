@@ -24,6 +24,11 @@
      * on narrow viewports instead of squishing columns. Absent by default so other
      * (narrower) Table consumers are unaffected. */
     minWidth?: string;
+    /** Opt-in: makes the table fill its parent's height with a sticky header,
+     * an internally-scrolling body, and a footer pinned to the bottom — for use
+     * inside fixed-height panels (e.g. master-detail). Default false so other
+     * consumers (ActFormItemsTable, витрина) that size to content are unaffected. */
+    fillHeight?: boolean;
   }
 
   const {
@@ -38,10 +43,11 @@
     framed = true,
     footer,
     minWidth,
+    fillHeight = false,
   }: Props = $props();
 </script>
 
-<div class="tr-table-framed" class:framed>
+<div class="tr-table-framed" class:framed class:fill={fillHeight}>
   <div class="tr-table-wrapper">
     <table class="tr-table" style:min-width={minWidth}>
       <thead>
@@ -88,6 +94,33 @@
     border-radius: 8px;
     overflow: hidden;
     box-shadow: var(--tr-elev-1);
+  }
+
+  // Opt-in fillHeight mode (FIX A3): the table stretches to its parent's height
+  // instead of sizing to content, so it works inside fixed-height panels
+  // (master-detail). Gated behind the `.fill` modifier class so the default path
+  // (no fillHeight prop) is byte-identical to before this change.
+  .tr-table-framed.fill {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .tr-table-framed.fill .tr-table-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  // Sticky header only applies in fillHeight mode — the wrapper is the scroll
+  // container, so `position: sticky; top: 0` pins the header row while the body
+  // scrolls underneath it. Keeps its existing solid background so body rows
+  // don't bleed through while scrolled under the header.
+  .tr-table-framed.fill .tr-thead-row {
+    position: sticky;
+    top: 0;
+    z-index: 1;
   }
 
   .tr-table-footer {
