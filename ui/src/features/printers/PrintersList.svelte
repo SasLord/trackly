@@ -36,7 +36,6 @@
 
 {#snippet tableHead()}
   <th class="th-name">Имя</th>
-  <th class="th-ip">IP</th>
   <th class="th-status">Статус</th>
   <th class="th-toner">Тонер</th>
 {/snippet}
@@ -61,7 +60,7 @@
 {/snippet}
 
 <Table
-  columns={4}
+  columns={3}
   loading={skeletonLoading}
   empty={isEmpty}
   emptyTitle={emptyConfig.heading}
@@ -79,9 +78,6 @@
 <style lang="scss">
   .th-name {
     width: auto;
-  }
-  .th-ip {
-    width: 140px;
   }
   .th-status {
     width: 140px;

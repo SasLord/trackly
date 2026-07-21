@@ -44,8 +44,10 @@
             : 'Нет данных',
   );
 
-  const ipText = $derived<string>(
-    printer.ipAddress ? printer.ipAddress : printer.usbHostDeviceId ? 'USB' : '—',
+  // FIX F2 (Phase 27 batch F): IP/USB shown only when present — no fallback
+  // dash, so the merged name+IP cell can collapse to a single centered line.
+  const ipText = $derived<string | null>(
+    printer.ipAddress ? printer.ipAddress : printer.usbHostDeviceId ? 'USB' : null,
   );
 
   const displayName = $derived<string>(printer.deviceName ?? `Принтер #${printer.id}`);
@@ -82,11 +84,13 @@
       {#if printer.hasAlert}
         <span class="alert-dot" aria-label="Есть проблема с принтером" title="Есть проблема"></span>
       {/if}
-      <span class="name-text">{displayName}</span>
+      <span class="name-lines">
+        <span class="name-text">{displayName}</span>
+        {#if ipText}
+          <span class="ip-text tr-mono">{ipText}</span>
+        {/if}
+      </span>
     </span>
-  </td>
-  <td class="cell cell-ip" onclick={handleClick}>
-    <span class="tr-mono">{ipText}</span>
   </td>
   <td class="cell cell-status" onclick={handleClick}>
     <Badge variant={statusVariant}>{statusLabel}</Badge>
@@ -117,11 +121,13 @@
   // pulling the cell out of the table's column model — every column collapses/
   // overlaps. The <td> stays a normal table cell (ellipsis/shrink + cursor +
   // focus ring only); the flex layout lives on the inner span below.
+  // FIX F2 (Phase 27 batch F): cell now holds two lines (name + IP) when an
+  // IP/USB value exists — `white-space: nowrap` dropped from the <td> itself
+  // so the inner `.name-lines` column can wrap onto two rows; each line still
+  // truncates individually via its own overflow/ellipsis rule below.
   .cell-name {
     cursor: pointer;
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
     max-width: 0; // makes text-overflow work in table cells
 
     &:focus-visible {
@@ -144,6 +150,16 @@
     background: var(--tr-danger);
   }
 
+  // Column of name (top) + optional IP (bottom, smaller/secondary). Centers
+  // vertically within the row when only the name line is present (no IP).
+  .name-lines {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+  }
+
   .name-text {
     font-weight: var(--tr-font-weight-semibold);
     overflow: hidden;
@@ -152,10 +168,13 @@
     min-width: 0;
   }
 
-  .cell-ip {
-    width: 140px;
+  .ip-text {
+    font-size: var(--tr-font-size-caption);
     color: var(--tr-text-secondary);
-    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   .cell-status {
