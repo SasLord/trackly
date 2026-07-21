@@ -383,6 +383,10 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
   }
+  .req {
+    color: var(--tr-danger);
+    margin-left: 2px;
+  }
   .error {
     margin: 0;
     font-size: var(--tr-font-size-label);
