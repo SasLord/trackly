@@ -125,6 +125,8 @@
   emptyBody={emptyConfig.body}
   head={tableHead}
   {footer}
+  framed={false}
+  fillHeight
 >
   {#each items as act (act.id)}
     <ActListRow

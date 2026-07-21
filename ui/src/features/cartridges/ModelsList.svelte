@@ -46,6 +46,7 @@
     emptyBody="Добавьте модель картриджа — укажите бренд, тип и совместимые принтеры."
     head={tableHead}
     framed={false}
+    fillHeight
   >
     {#each models as m (m.id)}
       <ModelListRow
@@ -68,6 +69,14 @@
     background: var(--tr-surface);
     box-shadow: var(--tr-elev-1);
     overflow: hidden;
+  }
+
+  // FIX B1/B2: stretch the Table (fillHeight mode) to consume the remaining
+  // height of .models-list instead of sizing to content — same flex-fill
+  // pattern as *MasterDetail's `.master > :global(*)` rule.
+  .models-list :global(.tr-table-framed) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .models-toolbar {
