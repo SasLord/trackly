@@ -5,9 +5,9 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    /** Background var(--tr-row-selected) + 3px accent left border. */
+    /** Background var(--tr-row-selected) + 3px accent inset box-shadow on the first cell. */
     selected?: boolean;
-    /** padding-left: 32px on the row's first <td> (29px when combined with selected). */
+    /** padding-left: 32px on the row's first <td>. */
     indent?: boolean;
     /** Removes border-bottom from every <td> — literal last row of a table. */
     last?: boolean;
@@ -89,7 +89,6 @@
 
     &.selected {
       background: var(--tr-row-selected);
-      border-left: 3px solid var(--tr-accent);
     }
   }
 
@@ -116,21 +115,14 @@
     padding-left: 32px;
   }
 
-  // Base first-cell padding-left is 10px (see the shared `.tr-row :global(> td)`
-  // rule above). Selected rows add a 3px accent left border, so flat (non-indent)
-  // selected rows — Acts/Cartridges/Printers lists — need 10px − 3px = 7px to keep
-  // cell text from shifting horizontally when a row becomes selected (UAT gap-fix
-  // batch A, FIX A2).
+  // Selected-row accent: an inset box-shadow on the first cell, NOT a border —
+  // box-shadow is layout-neutral (doesn't consume box width like border-left
+  // does), so cell text never shifts when a row becomes selected, in either
+  // flat (Acts/Cartridges/Printers) or indent (Devices) rows (UAT gap-fix batch
+  // D, FIX D1 — supersedes the padding-compensation approach from batch A/FIX A2,
+  // which still let the border shift text by a subpixel).
   .tr-row.selected :global(> td:first-child) {
-    padding-left: 7px;
-  }
-
-  // 32px − 3px selected left border = 29px — keeps cell text from shifting
-  // horizontally when an indent row becomes selected. More specific than the
-  // flat `.tr-row.selected` rule above (3 classes vs 2), so indent+selected rows
-  // correctly resolve to 29px, not 7px.
-  .tr-row.indent.selected :global(> td:first-child) {
-    padding-left: 29px;
+    box-shadow: inset 3px 0 0 var(--tr-accent);
   }
 
   .tr-row.last :global(> td) {
