@@ -1,8 +1,12 @@
 <script lang="ts">
   // Plan 06-04: master-panel list — рендерит PrinterListRow × N + empty/loading states.
   // По паттерну CartridgesList.svelte + emptyConfig паттерн (06-PATTERNS.md §PrintersList).
+  // Plan 27-07 (D-03): rebuilt on shared Table/TableRow primitives per ActsList.svelte
+  // precedent — bespoke .rows/.loading/.empty/.footer removed, Table now owns the
+  // frame/skeleton/empty-state.
   import Spinner from '$lib/components/Spinner.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Table from '$lib/components/Table.svelte';
   import PrinterListRow from './PrinterListRow.svelte';
   import type { PrinterDto } from '../../bindings-phase6';
 
@@ -22,88 +26,81 @@
   }
 
   const { items, loading, selectedId, onSelect, emptyConfig }: Props = $props();
+
+  // Mirrors ActsList's skeleton-branch condition — Table shows skeleton rows only
+  // for the initial (items-still-empty) load; a background refresh with items
+  // already on screen keeps rendering real rows + a footer spinner.
+  const skeletonLoading = $derived(loading && items.length === 0);
+  const isEmpty = $derived(!loading && items.length === 0);
 </script>
 
-<div class="printers-list">
-  {#if loading && items.length === 0}
-    <div class="loading">
-      <Spinner size="md" />
-    </div>
-  {:else if items.length === 0}
-    <div class="empty">
-      <h3 class="empty-heading">{emptyConfig.heading}</h3>
-      <p class="empty-body">{emptyConfig.body}</p>
-      {#if emptyConfig.actionLabel && emptyConfig.onAction}
+{#snippet tableHead()}
+  <th class="th-name">Имя</th>
+  <th class="th-ip">IP</th>
+  <th class="th-status">Статус</th>
+  <th class="th-toner">Тонер</th>
+{/snippet}
+
+{#snippet footer()}
+  {#if !skeletonLoading}
+    {#if isEmpty && emptyConfig.actionLabel && emptyConfig.onAction}
+      <div class="empty-action">
         <Button variant="primary" onclick={emptyConfig.onAction}>{emptyConfig.actionLabel}</Button>
-      {/if}
-    </div>
-  {:else}
-    <div class="rows">
-      {#each items as p (p.id)}
-        <PrinterListRow printer={p} selected={p.id === selectedId} onclick={() => onSelect(p.id)} />
-      {/each}
-    </div>
-    <footer class="footer">
-      <span class="pager-info" style="font-variant-numeric: tabular-nums">
-        {items.length} принт.
-      </span>
-      {#if loading}
-        <Spinner size="sm" />
-      {/if}
-    </footer>
+      </div>
+    {:else if !isEmpty}
+      <footer class="list-footer">
+        <span class="pager-info" style="font-variant-numeric: tabular-nums">
+          {items.length} принт.
+        </span>
+        {#if loading}
+          <Spinner size="sm" />
+        {/if}
+      </footer>
+    {/if}
   {/if}
-</div>
+{/snippet}
+
+<Table
+  columns={4}
+  loading={skeletonLoading}
+  empty={isEmpty}
+  emptyTitle={emptyConfig.heading}
+  emptyBody={emptyConfig.body}
+  head={tableHead}
+  {footer}
+>
+  {#each items as p (p.id)}
+    <PrinterListRow printer={p} selected={p.id === selectedId} onclick={() => onSelect(p.id)} />
+  {/each}
+</Table>
 
 <style lang="scss">
-  .printers-list {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: var(--tr-surface);
+  .th-name {
+    width: auto;
+  }
+  .th-ip {
+    width: 140px;
+  }
+  .th-status {
+    width: 140px;
+  }
+  .th-toner {
+    width: 160px;
   }
 
-  .rows {
-    flex: 1;
-    overflow: auto;
-  }
-
-  .loading,
-  .empty {
-    flex: 1;
+  .empty-action {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-4xl);
-    text-align: center;
   }
 
-  .empty-heading {
-    margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0 0 var(--tr-space-md);
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-body);
-  }
-
-  .footer {
+  .list-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-top: 1px solid var(--tr-border);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-    background: var(--tr-surface);
   }
 
   .pager-info {
-    font-variant-numeric: tabular-nums;
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 </style>
