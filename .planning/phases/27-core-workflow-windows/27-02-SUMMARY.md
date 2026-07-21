@@ -159,3 +159,7 @@ None - изменения чисто фронтенд, дополнительн�
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All modified/created files verified present; ActHeaderField.svelte deletion confirmed; all task/summary commits verified in git log.

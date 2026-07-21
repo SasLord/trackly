@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T11:06:00.755Z"
+last_updated: "2026-07-21T11:19:47.549Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 27 (core-workflow-windows) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-07-21
 
@@ -242,6 +242,7 @@ Last activity: 2026-07-21
 | Phase 27 P05 | 12min | 2 tasks | 1 files |
 | Phase 27 P06 | 35min | 3 tasks | 1 files |
 | Phase 27 P08 | 15min | 3 tasks | 1 files |
+| Phase 27 P02 | 13min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -595,6 +596,9 @@ Recent decisions affecting current work:
 - [Phase 27]: 27-06: CompatibilityEditor raw input autocomplete rows kept (not Input primitive) — matches established LocationAutocomplete.svelte pattern for custom listbox/aria dropdown logic
 - [Phase ?]: 27-08: Task 1/3 (PrinterCreateModal/DiscoveryModal/TonerGauge/PrinterAlertBanner) — аудит без изменений, уже на var(--tr-*) и примитивах
 - [Phase ?]: 27-08: Checkbox-примитив не поддерживает aria-label — доступный текст DiscoveryResultsTable передан через children-snippet + локальный .sr-only
+- [Phase 27-02]: Table.svelte/TableRow.svelte остаются нетронутыми (D-03); функциональные пробелы (empty-state action, row-click) закрыты на стороне ActsList/ActListRow (footer-snippet, onclick на <td>), не правкой shared-примитива
+- [Phase 27-02]: DetailPanel.title остаётся string (не Snippet) — заголовок детали акта потерял tr-mono стилизацию номера; чисто типографская деталь, поля/действия не затронуты (D-01)
+- [Phase 27-02]: ActHeaderField.svelte удалён — единственный потребитель (ActDetail) мигрировал на общий DetailField (D-01)
 
 ### Pending Todos
 
@@ -672,8 +676,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T11:06:00.748Z
-Stopped at: Completed 27-08-PLAN.md
+Last session: 2026-07-21T11:19:47.542Z
+Stopped at: Completed 27-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
