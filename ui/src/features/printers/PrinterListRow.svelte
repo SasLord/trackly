@@ -78,10 +78,16 @@
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
-    {#if printer.hasAlert}
-      <span class="alert-dot" aria-label="Есть проблема с принтером" title="Есть проблема"></span>
-    {/if}
-    <span class="name-text">{displayName}</span>
+    <span class="cell-name-inner">
+      {#if printer.hasAlert}
+        <span
+          class="alert-dot"
+          aria-label="Есть проблема с принтером"
+          title="Есть проблема"
+        ></span>
+      {/if}
+      <span class="name-text">{displayName}</span>
+    </span>
   </td>
   <td class="cell cell-ip" onclick={handleClick}>
     <span class="tr-mono">{ipText}</span>
@@ -111,10 +117,11 @@
     color: var(--tr-text-primary);
   }
 
+  // FIX B3: `display: flex` on the <td> ITSELF overrides `display: table-cell`,
+  // pulling the cell out of the table's column model — every column collapses/
+  // overlaps. The <td> stays a normal table cell (ellipsis/shrink + cursor +
+  // focus ring only); the flex layout lives on the inner span below.
   .cell-name {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -125,6 +132,12 @@
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
+  }
+
+  .cell-name-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
   }
 
   .alert-dot {

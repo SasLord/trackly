@@ -86,13 +86,15 @@
     onclick={handleClick}
     onkeydown={handleKeydown}
   >
-    <span
-      class="charge-dot"
-      style="background: {chargeColor}"
-      title={chargeTitle}
-      aria-label={chargeTitle}
-    ></span>
-    <span class="tr-mono">{cartridge.code}</span>
+    <span class="cell-code-inner">
+      <span
+        class="charge-dot"
+        style="background: {chargeColor}"
+        title={chargeTitle}
+        aria-label={chargeTitle}
+      ></span>
+      <span class="tr-mono">{cartridge.code}</span>
+    </span>
   </td>
   <td class="cell" title={modelLabel ?? ''} onclick={handleClick}>{modelLabel ?? '—'}</td>
   <td class="cell" title={cartridge.location ?? ''} onclick={handleClick}
@@ -135,17 +137,24 @@
     max-width: 0; // makes text-overflow work in table cells
   }
 
+  // FIX B3: `display: flex` on the <td> ITSELF overrides `display: table-cell`,
+  // pulling the cell out of the table's column model — every column collapses/
+  // overlaps. The <td> stays a normal table cell (width + cursor + focus ring
+  // only); the flex layout lives on the inner span below.
   .cell-code {
     width: 140px;
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
     cursor: pointer;
 
     &:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
+  }
+
+  .cell-code-inner {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
   }
 
   .charge-dot {
