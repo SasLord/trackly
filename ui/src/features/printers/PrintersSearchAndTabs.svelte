@@ -4,6 +4,7 @@
   // Кнопка «Найти принтеры» — видна только admin (D-RBAC-03, UI-SPEC §Interaction Contracts 2).
   import Input from '$lib/components/Input.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import type { PrinterFilter } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
 
@@ -52,6 +53,13 @@
     onFilterChange({ ...filter, status: key });
   }
 
+  // D-05: Tabs требует string key — адаптер туда-обратно (String(null) === 'null').
+  const tabItems = $derived(TABS.map((t) => ({ key: String(t.key), label: t.label })));
+
+  function handleTabsChange(key: string) {
+    handleTabClick(key === 'null' ? null : (key as StatusTab));
+  }
+
   const isAdmin = $derived(identity?.role === 'admin');
 </script>
 
@@ -65,19 +73,14 @@
       oninput={handleInput}
     />
   </div>
-  <div class="tabs" role="tablist" aria-label="Статус принтеров">
-    {#each TABS as tab (String(tab.key))}
-      <button
-        class="tab"
-        class:active={filter.status === tab.key}
-        onclick={() => handleTabClick(tab.key)}
-        role="tab"
-        aria-selected={filter.status === tab.key}
-        type="button"
-      >
-        <span class="tab-label">{tab.label}</span>
-      </button>
-    {/each}
+  <div class="tabs-wrap">
+    <Tabs
+      variant="underline"
+      tabs={tabItems}
+      active={String(filter.status)}
+      ariaLabel="Статус принтеров"
+      onchange={handleTabsChange}
+    />
   </div>
   {#if isAdmin}
     <Button variant="primary" onclick={onDiscoveryClick}>Найти принтеры</Button>
@@ -100,42 +103,8 @@
     min-width: 160px;
   }
 
-  .tabs {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    flex-wrap: wrap;
+  .tabs-wrap {
     flex: 1;
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-regular);
-    cursor: pointer;
-    height: 32px;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-      font-weight: var(--tr-font-weight-semibold);
-    }
+    min-width: 0;
   }
 </style>

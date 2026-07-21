@@ -8,6 +8,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import Button from '$lib/components/Button.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import PrintersMasterDetail from './PrintersMasterDetail.svelte';
   import PrintersSearchAndTabs from './PrintersSearchAndTabs.svelte';
   import PrintersList from './PrintersList.svelte';
@@ -126,14 +127,13 @@
 </script>
 
 <div class="printers-page">
-  <header class="page-header">
-    <h1 class="page-title">Принтеры</h1>
-    {#if authStore.user?.role === 'admin' || authStore.user?.role === 'manager'}
-      <div class="header-actions">
+  <PageHeader title="Принтеры">
+    {#snippet actions()}
+      {#if authStore.user?.role === 'admin' || authStore.user?.role === 'manager'}
         <Button variant="secondary" onclick={() => (createOpen = true)}>Завести принтер</Button>
-      </div>
-    {/if}
-  </header>
+      {/if}
+    {/snippet}
+  </PageHeader>
 
   <div class="page-content">
     <PrintersSearchAndTabs
@@ -206,25 +206,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-h3);
   }
 
   .page-content {

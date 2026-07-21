@@ -1,6 +1,8 @@
 <script lang="ts">
   // Plan 06-04: master-detail CSS-grid layout (35% / 65%).
   // Идентичен CartridgesMasterDetail.svelte — 35/65 grid, {#snippet master} + {#snippet detail}.
+  // Plan 27-07 (D-02): обе панели на --tr-surface-raised + border + box-shadow var(--tr-elev-1) —
+  // закрывает регресс D-13 (панели сливались с фоном после D-06 Фазы 26).
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -29,17 +31,19 @@
   }
 
   .master {
-    background: var(--tr-surface);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-1);
     overflow: hidden;
     min-width: 320px;
   }
 
   .detail {
-    background: var(--tr-bg);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-1);
     overflow: auto;
     min-width: 480px;
   }
