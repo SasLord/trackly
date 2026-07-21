@@ -1,7 +1,9 @@
 <script lang="ts">
   // Plan 03-02: search input + switch-bar (Акты / Возвраты / Архив) с counter-badges.
+  // Plan 27-02 (D-05): switch-bar migrated to shared Tabs primitive (variant="underline"),
+  // per DeviceFilters.svelte precedent — count now built into Tabs, no bespoke <button class="tab">.
   import Input from '$lib/components/Input.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import type { ActsCountsDto } from '../../bindings';
 
   type TabKey = 'handover' | 'returns' | 'archive';
@@ -34,10 +36,13 @@
     }, 250);
   }
 
-  const TABS: { key: TabKey; label: string; count: number }[] = $derived([
-    { key: 'handover', label: 'Акты', count: counts.handover_active },
-    { key: 'returns', label: 'Возвраты', count: counts.returns },
-    { key: 'archive', label: 'Архив', count: counts.archived },
+  // Tabs primitive requires a string-keyed contract — TabKey is already a string
+  // literal union, so the adapter is a direct map (no String()/Number() coercion
+  // needed, unlike DeviceFilters' number|null status ids).
+  const tabItems = $derived([
+    { key: 'handover' as TabKey, label: 'Акты', count: counts.handover_active },
+    { key: 'returns' as TabKey, label: 'Возвраты', count: counts.returns },
+    { key: 'archive' as TabKey, label: 'Архив', count: counts.archived },
   ]);
 </script>
 
@@ -51,24 +56,13 @@
       oninput={handleInput}
     />
   </div>
-  <nav class="tabs" aria-label="Категории актов">
-    {#each TABS as tab (tab.key)}
-      <button
-        class="tab"
-        class:active={tab.key === activeTab}
-        onclick={() => onTabChange(tab.key)}
-        aria-pressed={tab.key === activeTab}
-        type="button"
-      >
-        <span class="tab-label">{tab.label}</span>
-        <span class="tab-badge">
-          <Badge variant={tab.key === activeTab ? 'accent' : 'default'} size="sm">
-            {tab.count}
-          </Badge>
-        </span>
-      </button>
-    {/each}
-  </nav>
+  <Tabs
+    variant="underline"
+    tabs={tabItems}
+    active={activeTab}
+    ariaLabel="Категории актов"
+    onchange={(key) => onTabChange(key as TabKey)}
+  />
 </div>
 
 <style lang="scss">
@@ -81,41 +75,6 @@
 
   .search-wrap {
     max-width: 480px;
-  }
-
-  .tabs {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    flex-wrap: wrap;
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: pointer;
-    height: 32px;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-    }
   }
 
   @media (min-width: 1280px) {

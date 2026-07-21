@@ -29,17 +29,19 @@
   }
 
   .master {
-    background: var(--tr-surface);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-1);
     overflow: hidden;
     min-width: 320px;
   }
 
   .detail {
-    background: var(--tr-bg);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-1);
     overflow: auto;
     min-width: 480px;
   }
