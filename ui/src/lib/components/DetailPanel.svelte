@@ -54,7 +54,11 @@
   .detail-panel {
     height: 100%;
     overflow: auto;
-    padding: var(--tr-space-xl);
+    // Top padding lives on .detail-header instead (FIX D2) — the header sticks
+    // flush to this container's scroll-top, so if .detail-panel itself carried
+    // top padding, that gap would sit ABOVE the sticky header and let scrolled
+    // content peek through it.
+    padding: 0 var(--tr-space-xl) var(--tr-space-xl);
   }
 
   .empty {
@@ -64,6 +68,10 @@
     justify-content: center;
     gap: var(--tr-space-md);
     min-height: 320px;
+    // .detail-panel no longer carries top padding (FIX D2 — that padding moved
+    // onto the non-empty branch's sticky .detail-header instead). The empty
+    // branch has no header, so it restores the same top breathing room here.
+    padding-top: var(--tr-space-xl);
     text-align: center;
     color: var(--tr-text-secondary);
   }
@@ -79,25 +87,27 @@
     color: var(--tr-text-secondary);
   }
 
-  // Sticky at the top of .detail-panel's own scroll container (FIX A4) so the
-  // title + actions stay visible while detail content scrolls. .detail-panel
-  // intentionally paints no background (the master-detail wrapper owns the
-  // panel surface, see NOTE above), so the sticky bar needs its own opaque
-  // background or scrolled content would show through underneath it. Pulled
-  // out to the panel's edges via negative margins matching --tr-space-xl (the
-  // panel's own padding) and re-padded so it spans full width without clipping,
-  // plus a border-bottom for separation from the scrolling content below it.
+  // Sticky at the top of .detail-panel's own scroll container (FIX A4, reworked
+  // FIX D2) so the title + actions stay visible while detail content scrolls.
+  // .detail-panel carries NO top padding (moved here, see .detail-panel above)
+  // so `top: 0` sticks the header flush to the true scroll-top — nothing can
+  // peek above it. Horizontal negative margins (matching --tr-space-xl, the
+  // panel's own side padding) pull the header to the panel's full width, then
+  // re-pad it so it spans edge-to-edge without clipping; the opaque background
+  // covers section content — including nested table headers (Table.svelte's own
+  // sticky header is z-index: 1) — scrolling underneath. Own top padding
+  // (var(--tr-space-xl)) restores the visual spacing the panel used to provide.
   .detail-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--tr-space-md);
     flex-wrap: wrap;
-    margin: calc(var(--tr-space-xl) * -1) calc(var(--tr-space-xl) * -1) var(--tr-space-2xl);
+    margin: 0 calc(var(--tr-space-xl) * -1) var(--tr-space-2xl);
     padding: var(--tr-space-xl) var(--tr-space-xl) var(--tr-space-md);
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 3;
     background: var(--tr-surface-raised);
     border-bottom: 1px solid var(--tr-border);
   }
