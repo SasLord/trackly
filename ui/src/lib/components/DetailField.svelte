@@ -2,7 +2,7 @@
   // Phase 27, plan 01 (D-01): shared detail-panel primitive.
   // Field label/value widget — covers the field-grid item duplicated across
   // ActDetail/CartridgeDetail/PrinterDetail, and is contract-compatible with
-  // the existing ActHeaderField.svelte ({ label, value }, null -> '—').
+  // the acts window's former field-widget component (label/value, null -> '—').
   interface Props {
     label: string;
     value?: string | null;

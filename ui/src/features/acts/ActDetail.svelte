@@ -1,9 +1,17 @@
 <script lang="ts">
   // Plan 03-02: detail panel (slave). Renders header + items + history-возвратов +
-  // action buttons. Возврат/Печать disabled until plans 03/04.
+  // action buttons.
+  // Plan 27-02 (D-01): rebuilt on the shared DetailPanel/DetailSection/DetailField
+  // primitives (extracted in 27-01) — bespoke container/header/section classes
+  // removed; the old field-widget component was
+  // retired in favour of DetailField (contract-compatible: {label, value|null}).
+  // Loading state has no DetailPanel equivalent (empty/filled only) — kept as
+  // a sibling branch with a matching container so layout doesn't jump between states.
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
-  import ActHeaderField from './ActHeaderField.svelte';
+  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailField from '$lib/components/DetailField.svelte';
   import ActItemsTable from './ActItemsTable.svelte';
   import type { ActDto } from '../../bindings';
 
@@ -50,24 +58,27 @@
   const archivedAtLabel = $derived(
     act && act.archived && act.archived_at_utc != null ? formatDate(act.archived_at_utc) : null,
   );
+
+  const panelTitle = $derived(act ? `№${act.number} от ${headerDate}` : undefined);
 </script>
 
-<div class="act-detail" aria-live="polite">
-  {#if loading}
-    <div class="loading">
-      <Spinner size="md" />
-      <span>Загружаем акт…</span>
-    </div>
-  {:else if act === null}
-    <div class="empty">
-      <h2 class="empty-heading">Выберите акт</h2>
-      <p class="empty-body">Выберите акт слева, чтобы увидеть подробности, или создайте новый.</p>
+{#if loading}
+  <div class="detail-loading" aria-live="polite">
+    <Spinner size="md" />
+    <span>Загружаем акт…</span>
+  </div>
+{:else}
+  <DetailPanel
+    title={panelTitle}
+    empty={act === null}
+    emptyTitle="Выберите акт"
+    emptyBody="Выберите акт слева, чтобы увидеть подробности, или создайте новый."
+  >
+    {#snippet emptyActions()}
       <Button variant="primary" onclick={onCreate}>+ Создать акт</Button>
-    </div>
-  {:else}
-    <header class="detail-header">
-      <h2 class="detail-title"><span class="tr-mono">№{act.number}</span> от {headerDate}</h2>
-      <div class="actions">
+    {/snippet}
+    {#snippet actions()}
+      {#if act}
         {#if onPrint}
           <Button variant="secondary" size="sm" onclick={() => onPrint(act)}>Печать</Button>
         {:else}
@@ -82,53 +93,47 @@
           <Button variant="secondary" size="sm" onclick={() => onReturn(act)}>Возврат</Button>
         {/if}
         <Button variant="destructive" size="sm" onclick={() => onDelete(act)}>Удалить</Button>
-      </div>
-    </header>
+      {/if}
+    {/snippet}
 
-    <section class="section">
-      <h3 class="section-heading">Шапка</h3>
-      <div class="header-grid">
-        <ActHeaderField label="Сдал" value={act.giver_name} />
-        <ActHeaderField label="Принял" value={act.receiver_name} />
-        <ActHeaderField label="Дата" value={headerDate} />
-        {#if archivedAtLabel}
-          <ActHeaderField label="Дата архивации" value={archivedAtLabel} />
-        {/if}
-        <ActHeaderField label="Сроком до" value={deadlineLabel} />
-        <ActHeaderField label="Расположение" value={act.location ?? null} />
-        <ActHeaderField label="Заметки" value={act.notes ?? null} />
-      </div>
-    </section>
+    {#if act}
+      <DetailSection heading="Шапка">
+        <div class="header-grid">
+          <DetailField label="Сдал" value={act.giver_name} />
+          <DetailField label="Принял" value={act.receiver_name} />
+          <DetailField label="Дата" value={headerDate} />
+          {#if archivedAtLabel}
+            <DetailField label="Дата архивации" value={archivedAtLabel} />
+          {/if}
+          <DetailField label="Сроком до" value={deadlineLabel} />
+          <DetailField label="Расположение" value={act.location ?? null} />
+          <DetailField label="Заметки" value={act.notes ?? null} />
+        </div>
+      </DetailSection>
 
-    <section class="section">
-      <h3 class="section-heading">Позиции ({act.items.length})</h3>
-      <ActItemsTable items={act.items} />
-    </section>
+      <DetailSection heading={`Позиции (${act.items.length})`}>
+        <ActItemsTable items={act.items} />
+      </DetailSection>
 
-    {#if act.return_ids && act.return_ids.length > 0}
-      <section class="section">
-        <h3 class="section-heading">История возвратов</h3>
-        <ul class="returns-list">
-          {#each act.return_ids as rid (rid)}
-            <li>Акт возврата #{rid}</li>
-          {/each}
-        </ul>
-        <p class="hint">Подробная история появится в plan 03.</p>
-      </section>
+      {#if act.return_ids && act.return_ids.length > 0}
+        <DetailSection heading="История возвратов">
+          <ul class="returns-list">
+            {#each act.return_ids as rid (rid)}
+              <li>Акт возврата #{rid}</li>
+            {/each}
+          </ul>
+          <p class="hint">Подробная история появится в plan 03.</p>
+        </DetailSection>
+      {/if}
     {/if}
-  {/if}
-</div>
+  </DetailPanel>
+{/if}
 
 <style lang="scss">
-  .act-detail {
+  .detail-loading {
     height: 100%;
     overflow: auto;
     padding: var(--tr-space-xl);
-    background: var(--tr-bg);
-  }
-
-  .loading,
-  .empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -137,48 +142,6 @@
     min-height: 320px;
     text-align: center;
     color: var(--tr-text-secondary);
-  }
-  .empty-heading {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-  .empty-body {
-    margin: 0;
-    max-width: 360px;
-    color: var(--tr-text-secondary);
-  }
-
-  .detail-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-    margin-bottom: var(--tr-space-2xl);
-  }
-  .detail-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    font-variant-numeric: tabular-nums;
-  }
-  .actions {
-    display: flex;
-    gap: var(--tr-space-xs);
-    flex-wrap: wrap;
-  }
-
-  .section {
-    margin-bottom: var(--tr-space-2xl);
-  }
-  .section-heading {
-    margin: 0 0 var(--tr-space-md);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
   }
 
   .header-grid {
