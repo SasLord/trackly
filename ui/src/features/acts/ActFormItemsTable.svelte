@@ -555,8 +555,8 @@
     padding: 0 var(--tr-space-md);
     background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: var(--tr-radius-sm);
     font-family: var(--tr-font-family);
     font-size: var(--tr-font-size-body);
     line-height: var(--tr-line-height-body);
