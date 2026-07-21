@@ -1,9 +1,13 @@
 <script lang="ts">
   // Plan 04-06: полноширинный CRUD-список моделей картриджей.
   // По образцу ActsList.svelte + CartridgesList.svelte.
+  // Plan 27-04 (D-03): rebuilt on shared Table/TableRow primitives per
+  // CartridgesList.svelte precedent — bespoke .rows/.loading/.empty removed,
+  // Table now owns the frame/skeleton/empty-state. Toolbar (heading + «Добавить
+  // модель») stays outside Table — Table has no header-toolbar slot.
   // Callbacks-first: ModelFormModal и confirm-delete управляются из CartridgesPage.
   import Button from '$lib/components/Button.svelte';
-  import Spinner from '$lib/components/Spinner.svelte';
+  import Table from '$lib/components/Table.svelte';
   import ModelListRow from './ModelListRow.svelte';
   import type { CartridgeModelDto } from '../../bindings';
 
@@ -16,7 +20,17 @@
   }
 
   const { models, loading, onCreateModel, onEditModel, onDeleteModel }: Props = $props();
+
+  const skeletonLoading = $derived(loading && models.length === 0);
+  const isEmpty = $derived(!loading && models.length === 0);
 </script>
+
+{#snippet tableHead()}
+  <th>Модель</th>
+  <th class="th-count">Экземпляров</th>
+  <th>Примечания</th>
+  <th class="th-actions">Действия</th>
+{/snippet}
 
 <div class="models-list">
   <header class="models-toolbar">
@@ -24,30 +38,24 @@
     <Button variant="primary" onclick={onCreateModel}>+ Добавить модель</Button>
   </header>
 
-  {#if loading && models.length === 0}
-    <div class="loading">
-      <Spinner size="md" />
-    </div>
-  {:else if models.length === 0}
-    <div class="empty">
-      <h3 class="empty-heading">Моделей пока нет</h3>
-      <p class="empty-body">
-        Добавьте модель картриджа — укажите бренд, тип и совместимые принтеры.
-      </p>
-      <Button variant="primary" onclick={onCreateModel}>+ Добавить модель</Button>
-    </div>
-  {:else}
-    <div class="rows">
-      {#each models as m (m.id)}
-        <ModelListRow
-          model={m}
-          instanceCount={m.instance_count ?? 0}
-          onEdit={() => onEditModel(m)}
-          onDelete={() => onDeleteModel(m)}
-        />
-      {/each}
-    </div>
-  {/if}
+  <Table
+    columns={4}
+    loading={skeletonLoading}
+    empty={isEmpty}
+    emptyTitle="Моделей пока нет"
+    emptyBody="Добавьте модель картриджа — укажите бренд, тип и совместимые принтеры."
+    head={tableHead}
+    framed={false}
+  >
+    {#each models as m (m.id)}
+      <ModelListRow
+        model={m}
+        instanceCount={m.instance_count ?? 0}
+        onEdit={() => onEditModel(m)}
+        onDelete={() => onDeleteModel(m)}
+      />
+    {/each}
+  </Table>
 </div>
 
 <style lang="scss">
@@ -58,6 +66,7 @@
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
     background: var(--tr-surface);
+    box-shadow: var(--tr-elev-1);
     overflow: hidden;
   }
 
@@ -79,34 +88,11 @@
     line-height: var(--tr-line-height-h3);
   }
 
-  .loading,
-  .empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-4xl);
-    text-align: center;
+  .th-count {
+    width: 130px;
+    text-align: right;
   }
-
-  .empty-heading {
-    margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0 0 var(--tr-space-md);
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-body);
-    max-width: 400px;
-  }
-
-  .rows {
-    flex: 1;
-    overflow: auto;
+  .th-actions {
+    width: 40px;
   }
 </style>

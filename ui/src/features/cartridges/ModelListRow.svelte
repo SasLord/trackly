@@ -1,7 +1,13 @@
 <script lang="ts">
   // Plan 04-06: строка списка моделей. По образцу ActListRow.svelte.
-  // Kebab: только Редактировать / Удалить (inline меню, без portal — нет перекрытия overflow).
+  // Plan 27-04 (D-03): rebuilt on shared TableRow primitive — bespoke `.row` div
+  // (name/badges/kebab, count/notes on a second line) replaced with a 4-column
+  // table row (модель / экземпляры / примечания / действия); kebab menu markup
+  // unchanged (inline, no portal — same as before, no overflow clipping issue
+  // inside a <td>: menu positioned `position: absolute` relative to its own
+  // wrapper, td has `overflow: visible`).
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import type { CartridgeModelDto } from '../../bindings';
 
   interface Props {
@@ -44,8 +50,8 @@
   }
 </script>
 
-<div class="row">
-  <div class="top">
+<TableRow class="model-row">
+  <td class="cell cell-name" title="{model.brand} {model.model}">
     <span class="name">{model.brand} {model.model}</span>
     <span class="badges">
       <Badge variant={model.kind_id === 1 ? 'accent' : 'default'}>
@@ -55,6 +61,10 @@
         <Badge variant="default">{model.color}</Badge>
       {/if}
     </span>
+  </td>
+  <td class="cell cell-count">{instanceCount} шт.</td>
+  <td class="cell cell-notes" title={model.notes ?? ''}>{model.notes ?? '—'}</td>
+  <td class="cell cell-actions">
     <div class="kebab-wrap" bind:this={wrapperEl} role="none">
       <button
         type="button"
@@ -82,43 +92,29 @@
         </div>
       {/if}
     </div>
-  </div>
-  <div class="bottom">
-    <span class="count">{instanceCount} шт.</span>
-    {#if model.notes}
-      <span class="separator">·</span>
-      <span class="notes">{model.notes}</span>
-    {/if}
-  </div>
-</div>
+  </td>
+</TableRow>
 
 <style lang="scss">
-  .row {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--tr-space-2xs);
-    min-height: var(--row-height, 40px);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-bottom: 1px solid var(--tr-border);
+  .cell {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-primary);
   }
 
-  .top {
+  .cell-name {
     display: flex;
     align-items: center;
     gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-body);
-    line-height: 1.2;
+    max-width: 0; // makes text-overflow work in table cells
   }
 
   .name {
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
-    flex: 1;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 
   .badges {
@@ -128,9 +124,30 @@
     flex-shrink: 0;
   }
 
+  .cell-count {
+    width: 130px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--tr-text-secondary);
+  }
+
+  .cell-notes {
+    color: var(--tr-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
+  }
+
+  .cell-actions {
+    width: 40px;
+    text-align: center;
+    overflow: visible;
+  }
+
   .kebab-wrap {
     position: relative;
-    flex-shrink: 0;
+    display: inline-flex;
   }
 
   .kebab-btn {
@@ -196,29 +213,5 @@
     margin: var(--tr-space-2xs) 0;
     border: none;
     border-top: 1px solid var(--tr-border);
-  }
-
-  .bottom {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-
-  .count {
-    color: var(--tr-text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .separator {
-    color: var(--tr-text-tertiary);
-  }
-
-  .notes {
-    color: var(--tr-text-tertiary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

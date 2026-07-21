@@ -1,15 +1,23 @@
 <script lang="ts">
   // Plan 04-04: строка списка картриджей.
   // Plan 04-05: kebab заглушка заменена на CartridgeContextMenu с portal (wire-up).
-  // По образцу ActListRow.svelte, паттерн из PATTERNS.md §CartridgeListRow.svelte.
+  // Plan 27-04 (D-03): rebuilt on shared TableRow primitive per DeviceListRow.svelte/
+  // ActListRow.svelte precedent — bespoke two-line `.row` div replaced with a
+  // table row (код+заряд / модель / расположение / статус / действия); select state
+  // now via TableRow's `selected` prop, not bespoke `.row.selected`.
+  // NOTE: TableRow.svelte does not forward onclick/role/tabindex to its own <tr> —
+  // row click/keyboard-select is wired on the <td> cells we own here (onclick on
+  // every non-kebab cell for full-row mouse click; role="button"+tabindex+onkeydown
+  // on the first cell as the single keyboard entry point).
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import CartridgeContextMenu from './CartridgeContextMenu.svelte';
   import type { CartridgeDto } from '../../bindings';
 
   interface Props {
     cartridge: CartridgeDto;
     selected: boolean;
-    /** Скрывать бейдж статуса (список уже отфильтрован по статусу). */
+    /** Скрывать колонку статуса (список уже отфильтрован по статусу). */
     statusFiltered?: boolean;
     onSelect: () => void;
     onMenuAction: (_op: string, _cartridge: CartridgeDto) => void;
@@ -69,87 +77,75 @@
   );
 </script>
 
-<div
-  class="row"
-  class:selected
-  role="button"
-  tabindex="0"
-  aria-pressed={selected}
-  onclick={handleClick}
-  onkeydown={handleKeydown}
->
-  <div class="top">
+<TableRow {selected} class="cartridge-row">
+  <td
+    class="cell cell-code"
+    role="button"
+    tabindex="0"
+    aria-pressed={selected}
+    onclick={handleClick}
+    onkeydown={handleKeydown}
+  >
     <span
       class="charge-dot"
       style="background: {chargeColor}"
       title={chargeTitle}
       aria-label={chargeTitle}
     ></span>
-    <span class="code" style="font-variant-numeric: tabular-nums">{cartridge.code}</span>
-    {#if modelLabel}
-      <span class="model">{modelLabel}</span>
-    {/if}
-    {#if !statusFiltered}
-      <span class="badge-wrap">
-        <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
-      </span>
-    {/if}
-    <span
-      class="kebab-wrap"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-      role="none"
-    >
-      <CartridgeContextMenu
-        {cartridge}
-        onInstall={() => onMenuAction('install', cartridge)}
-        onReturnToStock={() => onMenuAction('return_to_stock', cartridge)}
-        onToRefill={() => onMenuAction('to_refill', cartridge)}
-        onFromRefill={() => onMenuAction('from_refill', cartridge)}
-        onWriteOff={() => onMenuAction('write_off', cartridge)}
-        onEdit={() => onMenuAction('edit', cartridge)}
-        onDelete={() => onMenuAction('delete', cartridge)}
-      />
-    </span>
-  </div>
-  <div class="bottom">
-    <span class="location">{cartridge.location ?? '—'}</span>
-  </div>
-</div>
+    <span class="tr-mono">{cartridge.code}</span>
+  </td>
+  <td class="cell" title={modelLabel ?? ''} onclick={handleClick}>{modelLabel ?? '—'}</td>
+  <td class="cell" title={cartridge.location ?? ''} onclick={handleClick}
+    >{cartridge.location ?? '—'}</td
+  >
+  {#if !statusFiltered}
+    <td class="cell cell-status" onclick={handleClick}>
+      <Badge variant={statusVariant}>{cartridge.status_name ?? ''}</Badge>
+    </td>
+  {/if}
+  <td class="cell cell-actions">
+    <CartridgeContextMenu
+      {cartridge}
+      onInstall={() => onMenuAction('install', cartridge)}
+      onReturnToStock={() => onMenuAction('return_to_stock', cartridge)}
+      onToRefill={() => onMenuAction('to_refill', cartridge)}
+      onFromRefill={() => onMenuAction('from_refill', cartridge)}
+      onWriteOff={() => onMenuAction('write_off', cartridge)}
+      onEdit={() => onMenuAction('edit', cartridge)}
+      onDelete={() => onMenuAction('delete', cartridge)}
+    />
+  </td>
+</TableRow>
 
 <style lang="scss">
-  .row {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--tr-space-2xs);
-    min-height: var(--row-height, 40px);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-bottom: 1px solid var(--tr-border);
+  // TableRow renders its own <tr> (a DIFFERENT Svelte scope-hash than this
+  // file) — caller-supplied class needs `:global()`, and the ancestor part of
+  // the selector must stay in THIS file's scope per the TableRow contract:
+  // `.cartridge-row :global(> td)`, never `:global(.cartridge-row > td)`.
+  :global(tr.cartridge-row) {
     cursor: pointer;
-    border-left: 3px solid transparent;
+  }
 
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
+  .cell {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0; // makes text-overflow work in table cells
+  }
+
+  .cell-code {
+    width: 140px;
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
+    cursor: pointer;
 
     &:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
-
-    &.selected {
-      border-left-color: var(--tr-accent);
-      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
-    }
-  }
-
-  .top {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-body);
-    line-height: 1.2;
   }
 
   .charge-dot {
@@ -160,41 +156,13 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tr-text-primary) 12%, transparent);
   }
 
-  .code {
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    flex-shrink: 0;
+  .cell-status {
+    width: 120px;
   }
 
-  .model {
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-label);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .badge-wrap {
-    flex-shrink: 0;
-    margin-left: auto;
-  }
-
-  .kebab-wrap {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-  }
-
-  .bottom {
-    display: flex;
-    align-items: center;
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-
-  .location {
-    color: var(--tr-text-secondary);
+  .cell-actions {
+    width: 40px;
+    text-align: center;
+    overflow: visible;
   }
 </style>
