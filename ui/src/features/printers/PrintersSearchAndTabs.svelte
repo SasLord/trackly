@@ -1,21 +1,18 @@
 <script lang="ts">
-  // Plan 06-04: поиск + switch-bar статусов + кнопка «Найти принтеры».
+  // Plan 06-04: поиск + switch-bar статусов.
   // По паттерну CartridgesSearchAndTabs.svelte.
-  // Кнопка «Найти принтеры» — видна только admin (D-RBAC-03, UI-SPEC §Interaction Contracts 2).
+  // FIX F1 (Phase 27 batch F): кнопка «Найти принтеры» перенесена в PageHeader
+  // раздела (PrintersPage.svelte) — здесь больше не отображается.
   import Input from '$lib/components/Input.svelte';
-  import Button from '$lib/components/Button.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
   import type { PrinterFilter } from '../../bindings-phase6';
-  import type { CurrentUser } from '$lib/stores/auth.svelte';
 
   interface Props {
     filter: PrinterFilter;
     onFilterChange: (_f: PrinterFilter) => void;
-    onDiscoveryClick: () => void;
-    identity: CurrentUser | null;
   }
 
-  const { filter, onFilterChange, onDiscoveryClick, identity }: Props = $props();
+  const { filter, onFilterChange }: Props = $props();
 
   type StatusTab = null | 'ok' | 'warning' | 'error' | 'offline';
 
@@ -59,8 +56,6 @@
   function handleTabsChange(key: string) {
     handleTabClick(key === 'null' ? null : (key as StatusTab));
   }
-
-  const isAdmin = $derived(identity?.role === 'admin');
 </script>
 
 <div class="search-and-tabs">
@@ -82,9 +77,6 @@
       onchange={handleTabsChange}
     />
   </div>
-  {#if isAdmin}
-    <Button variant="primary" onclick={onDiscoveryClick}>Найти принтеры</Button>
-  {/if}
 </div>
 
 <style lang="scss">

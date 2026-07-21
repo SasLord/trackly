@@ -132,6 +132,9 @@
       {#if authStore.user?.role === 'admin' || authStore.user?.role === 'manager'}
         <Button variant="secondary" onclick={() => (createOpen = true)}>Завести принтер</Button>
       {/if}
+      {#if authStore.user?.role === 'admin'}
+        <Button variant="primary" onclick={() => (discoveryOpen = true)}>Найти принтеры</Button>
+      {/if}
     {/snippet}
   </PageHeader>
 
@@ -142,8 +145,6 @@
         filter = f;
         selectedId = null;
       }}
-      onDiscoveryClick={() => (discoveryOpen = true)}
-      identity={authStore.user}
     />
 
     <PrintersMasterDetail>
