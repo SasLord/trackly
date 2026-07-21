@@ -464,7 +464,7 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--tr-space-2xs);
   }
 
   .field-full {
@@ -484,7 +484,7 @@
   .field-error {
     font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
-    margin-top: 2px;
+    margin-top: var(--tr-space-3xs);
   }
 
   .conflict-error {
@@ -529,7 +529,7 @@
 
   .dropdown {
     position: absolute;
-    top: calc(100% + 2px);
+    top: calc(100% + var(--tr-space-3xs));
     left: 0;
     right: 0;
     z-index: 50;
