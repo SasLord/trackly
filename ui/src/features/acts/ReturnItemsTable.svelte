@@ -10,6 +10,7 @@
   // Когда apply_to_all=false: per-row inputs enabled per checked row.
   // Когда row.checked=false: row opacity 0.5 + оба disabled regardless of applyToAll.
   import Input from '$lib/components/Input.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
 
   export interface ReturnRowState {
@@ -72,12 +73,9 @@
     {@const perRowDisabled = !row.checked || applyToAll}
     <div class="tr" class:tr-unchecked={!row.checked} role="row">
       <div class="td col-check">
-        <input
-          type="checkbox"
-          checked={row.checked}
-          onchange={() => toggleChecked(idx)}
-          aria-label="Включить позицию {idx + 1} в возврат"
-        />
+        <Checkbox checked={row.checked} onchange={() => toggleChecked(idx)}>
+          <span class="visually-hidden">Включить позицию {idx + 1} в возврат</span>
+        </Checkbox>
       </div>
       <div class="td col-device">
         <span class="device-label">
@@ -176,14 +174,14 @@
   }
   .device-label {
     display: inline-block;
-    padding-top: 8px;
+    padding-top: var(--tr-space-xs);
     color: var(--tr-text-primary);
     font-size: var(--tr-font-size-body);
   }
   .hint {
     display: block;
-    margin-top: 2px;
-    font-size: 13px;
+    margin-top: var(--tr-space-3xs);
+    font-size: var(--tr-font-size-label);
     line-height: 1.2;
   }
   .hint-default {
@@ -191,5 +189,16 @@
   }
   .hint-warning {
     color: var(--tr-warning);
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 </style>

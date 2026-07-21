@@ -363,11 +363,7 @@
       <section class="bulk-section">
         <h3 class="section-heading">Применить ко всем выбранным позициям</h3>
         <div class="apply-toggle">
-          <Checkbox
-            id="ret-apply-to-all"
-            checked={applyToAll}
-            onchange={(v) => (applyToAll = v)}
-          >
+          <Checkbox id="ret-apply-to-all" checked={applyToAll} onchange={(v) => (applyToAll = v)}>
             Применить ко всем (по умолчанию)
           </Checkbox>
         </div>

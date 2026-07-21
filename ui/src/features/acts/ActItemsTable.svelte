@@ -90,7 +90,7 @@
   .col-device {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--tr-space-3xs);
   }
   .device-name {
     font-weight: 500;
