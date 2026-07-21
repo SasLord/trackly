@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T01:01:08.599Z"
+last_updated: "2026-07-21T10:59:19.141Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 27 (core-workflow-windows) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-07-21
 
@@ -240,6 +240,7 @@ Last activity: 2026-07-21
 | Phase 27 P01 | 4min | 2 tasks | 3 files |
 | Phase 27 P03 | 25min | 3 tasks | 5 files |
 | Phase 27 P05 | 12min | 2 tasks | 1 files |
+| Phase 27 P06 | 35min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -589,6 +590,8 @@ Recent decisions affecting current work:
 - [Phase 27]: 27-03: сырые чекбоксы без bespoke-CSS всё равно заменены на Checkbox-примитив ради консистентности must_haves truth о примитивах в модалках Актов
 - [Phase 27]: 27-05: OperationModal.svelte уже полностью ре-токенизирован в фазе 23 — Task 1 выполнен как аудит без изменений кода
 - [Phase 27]: 27-05: ModelFormModal brand/model автокомплит остаётся на inline bespoke-input паттерне (не переведён на portal+dropdownAnchor) — миграция позиционирования вне границы SC #4
+- [Phase 27]: 27-06: Tasks 1-2 (CartridgeFormModal/CartridgeFormBody, CompatibilityEditor/CartridgeContextMenu/LowStockBanner) required no code changes — re-audit confirmed prior compliance with tokens/primitives
+- [Phase 27]: 27-06: CompatibilityEditor raw input autocomplete rows kept (not Input primitive) — matches established LocationAutocomplete.svelte pattern for custom listbox/aria dropdown logic
 
 ### Pending Todos
 
@@ -666,8 +669,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T01:01:08.592Z
-Stopped at: Completed 27-05-PLAN.md
+Last session: 2026-07-21T10:59:19.134Z
+Stopped at: Completed 27-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

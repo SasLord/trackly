@@ -92,3 +92,10 @@ None - no external service configuration required.
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/cartridges/CartridgeFilters.svelte
+- FOUND: .planning/phases/27-core-workflow-windows/27-06-SUMMARY.md
+- FOUND commit: 7b0510f
+- FOUND commit: 0a51c99
