@@ -112,3 +112,7 @@ None — no external service configuration required.
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All 8 modified `.svelte` files and this SUMMARY.md confirmed present on disk; all 4 commits (`3f644e4`, `6cd0cb3`, `22438ec`, plan-metadata commit) confirmed present in `git log`.
