@@ -27,6 +27,7 @@
   import Button from '$lib/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Input from '$lib/components/Input.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
@@ -361,14 +362,15 @@
 
       <section class="bulk-section">
         <h3 class="section-heading">Применить ко всем выбранным позициям</h3>
-        <label class="apply-toggle">
-          <input
-            type="checkbox"
+        <div class="apply-toggle">
+          <Checkbox
+            id="ret-apply-to-all"
             checked={applyToAll}
-            onchange={(e) => (applyToAll = (e.currentTarget as HTMLInputElement).checked)}
-          />
-          <span>Применить ко всем (по умолчанию)</span>
-        </label>
+            onchange={(v) => (applyToAll = v)}
+          >
+            Применить ко всем (по умолчанию)
+          </Checkbox>
+        </div>
         <div class="bulk-grid">
           <div class="bulk-field">
             <span class="label">Состояние</span>
@@ -459,13 +461,7 @@
   }
 
   .apply-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
     margin-bottom: var(--tr-space-md);
-    color: var(--tr-text-primary);
-    font-size: var(--tr-font-size-body);
-    cursor: pointer;
   }
 
   .bulk-grid {

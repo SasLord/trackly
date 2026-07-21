@@ -20,6 +20,7 @@
   import Button from '$lib/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import DatePicker from '$lib/components/DatePicker.svelte';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {
@@ -119,12 +120,7 @@
 
     <label class="field">
       <span class="field-label">Дата</span>
-      <input
-        class="date-input"
-        type="date"
-        value={dateLocal}
-        oninput={(e) => (dateLocal = (e.currentTarget as HTMLInputElement).value)}
-      />
+      <DatePicker id="acceptance-date" bind:value={dateLocal} />
     </label>
   </div>
 
@@ -159,21 +155,5 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-primary);
-  }
-
-  .date-input {
-    height: 32px;
-    padding: 0 var(--tr-space-xs);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    background: var(--tr-surface);
-    color: var(--tr-text-primary);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
   }
 </style>
