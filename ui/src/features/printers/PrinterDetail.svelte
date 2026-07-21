@@ -4,9 +4,19 @@
   //   «Уровни тонера/чернил» (TonerGauge), «Страничные счётчики», «Установленный картридж» (PRN-07),
   //   «История статусов» (PRN-05), Метаданные.
   // По паттерну CartridgeDetail.svelte.
+  // Plan 27-07 (D-01): rebuilt on the shared DetailPanel/DetailSection primitives
+  // (extracted in 27-01) per CartridgeDetail.svelte precedent — bespoke
+  // container/header/body/section wrapper classes removed; detail surface
+  // (former container background) dropped — the PrintersMasterDetail wrapper
+  // now owns the panel surface (D-02). Section-internal markup
+  // (.counter-row/.compat-agg-row/.meta-row/.reading-row) kept verbatim —
+  // only re-clothed inside DetailSection, content/fields not removed (SC #4).
+  // Async readings/aggregates data-loading below (unchanged — data, not visual).
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailSection from '$lib/components/DetailSection.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
   import { printers } from './api';
@@ -191,54 +201,53 @@
       refreshing = false;
     }
   }
+
+  const panelTitle = $derived<string | undefined>(printer ? displayName : undefined);
 </script>
 
-<div class="printer-detail" aria-live="polite">
-  {#if loading}
-    <div class="loading">
-      <Spinner size="md" />
-      <span>Загружаем данные…</span>
-    </div>
-  {:else if printer === null}
-    <div class="empty">
-      <h2 class="empty-heading">Выберите принтер</h2>
-      <p class="empty-body">
-        Выберите принтер слева, чтобы увидеть уровни тонера, счётчики и историю.
-      </p>
-    </div>
-  {:else}
-    <!-- Header -->
-    <header class="detail-header">
-      <div class="title-row">
-        <h2 class="detail-title">{displayName}</h2>
-        <Badge variant={statusVariant}>{statusLabel}</Badge>
+{#if loading}
+  <div class="detail-loading" aria-live="polite">
+    <Spinner size="md" />
+    <span>Загружаем данные…</span>
+  </div>
+{:else}
+  <DetailPanel
+    title={panelTitle}
+    empty={printer === null}
+    emptyTitle="Выберите принтер"
+    emptyBody="Выберите принтер слева, чтобы увидеть уровни тонера, счётчики и историю."
+  >
+    {#snippet actions()}
+      {#if printer}
         <Button variant="primary" size="sm" loading={refreshing} onclick={handleRefresh}>
           Обновить сейчас
         </Button>
+      {/if}
+    {/snippet}
+
+    {#if printer}
+      <div class="title-badges">
+        <Badge variant={statusVariant}>{statusLabel}</Badge>
       </div>
       <PrinterAlertBanner
         hasAlert={printer.hasAlert}
         alertType={printer.alertType as 'offline' | 'error' | null}
         lastSeenUtc={printer.lastSeenUtc}
       />
-    </header>
 
-    <div class="detail-body">
       <!-- Секция: уровни тонера/чернил -->
       {#if tonerEntries.length > 0}
-        <section class="detail-section">
-          <h3 class="section-heading">Уровни тонера/чернил</h3>
+        <DetailSection heading="Уровни тонера/чернил">
           <div class="toner-list">
             {#each tonerEntries as [label, level] (label)}
               <TonerGauge {label} {level} encoding="percent" />
             {/each}
           </div>
-        </section>
+        </DetailSection>
       {/if}
 
       <!-- Секция: страничные счётчики -->
-      <section class="detail-section">
-        <h3 class="section-heading">Страничные счётчики</h3>
+      <DetailSection heading="Страничные счётчики">
         {#if printer.pageCount !== null}
           <p class="counter-row">
             <span class="counter-label">Всего напечатано</span>
@@ -249,11 +258,10 @@
         {:else}
           <p class="muted">Данные недоступны</p>
         {/if}
-      </section>
+      </DetailSection>
 
       <!-- Секция: установленный картридж (PRN-07, R6 — код+наименование) -->
-      <section class="detail-section">
-        <h3 class="section-heading">Установленный картридж</h3>
+      <DetailSection heading="Установленный картридж">
         {#if printer.currentCartridgeId !== null}
           {#if installedCartridge !== null}
             <p class="cartridge-row">
@@ -266,11 +274,10 @@
         {:else}
           <p class="muted">Картридж не закреплён</p>
         {/if}
-      </section>
+      </DetailSection>
 
       <!-- Секция: совместимые модели картриджей (R4/D-07 — read-only агрегаты) -->
-      <section class="detail-section">
-        <h3 class="section-heading">Совместимые модели картриджей</h3>
+      <DetailSection heading="Совместимые модели картриджей">
         {#if compatLoading}
           <div class="readings-loading"><Spinner size="sm" /></div>
         {:else if compatAggregates.length === 0}
@@ -283,11 +290,10 @@
             </p>
           {/each}
         {/if}
-      </section>
+      </DetailSection>
 
       <!-- Секция: история статусов (PRN-05) -->
-      <section class="detail-section">
-        <h3 class="section-heading">История статусов</h3>
+      <DetailSection heading="История статусов">
         {#if readingsLoading}
           <div class="readings-loading"><Spinner size="sm" /></div>
         {:else if readings.length === 0}
@@ -309,10 +315,10 @@
             {/each}
           </ul>
         {/if}
-      </section>
+      </DetailSection>
 
       <!-- Секция: данные устройства (R5, D-08/D-09) -->
-      <section class="detail-section">
+      <DetailSection>
         <div class="section-heading-row">
           <h3 class="section-heading">Данные устройства</h3>
           <Button variant="secondary" size="sm" onclick={() => (deviceEditOpen = true)}>
@@ -343,10 +349,10 @@
             <span class="meta-value">{deviceData?.state ?? '—'}</span>
           </div>
         {/if}
-      </section>
+      </DetailSection>
 
       <!-- Метаданные -->
-      <section class="detail-section meta-section">
+      <DetailSection>
         {#if printer.ipAddress}
           <div class="meta-row">
             <span class="meta-label">IP-адрес</span>
@@ -373,95 +379,44 @@
             <span class="meta-value muted">{relativeTime(printer.lastSeenUtc)}</span>
           </div>
         {/if}
-      </section>
-    </div>
+      </DetailSection>
 
-    <DeviceFormModal
-      open={deviceEditOpen}
-      target={deviceData}
-      onClose={() => (deviceEditOpen = false)}
-      onSaved={() => {
-        deviceEditOpen = false;
-        if (printer) {
-          devices.get(printer.deviceId).then((d) => (deviceData = d));
-        }
-      }}
-    />
-  {/if}
-</div>
+      <DeviceFormModal
+        open={deviceEditOpen}
+        target={deviceData}
+        onClose={() => (deviceEditOpen = false)}
+        onSaved={() => {
+          deviceEditOpen = false;
+          if (printer) {
+            devices.get(printer.deviceId).then((d) => (deviceData = d));
+          }
+        }}
+      />
+    {/if}
+  </DetailPanel>
+{/if}
 
 <style lang="scss">
-  .printer-detail {
-    display: flex;
-    flex-direction: column;
+  .detail-loading {
     height: 100%;
-  }
-
-  .loading,
-  .empty {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-4xl);
-    text-align: center;
-  }
-
-  .empty-heading {
-    margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0;
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-body);
-  }
-
-  .detail-header {
-    padding: var(--tr-space-xl) var(--tr-space-xl) var(--tr-space-md);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-  }
-
-  .title-row {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    flex-wrap: wrap;
-    margin-bottom: var(--tr-space-xs);
-  }
-
-  .detail-title {
-    margin: 0;
-    font-size: var(--tr-font-size-display);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-display);
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .detail-body {
-    flex: 1;
     overflow: auto;
     padding: var(--tr-space-xl);
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-2xl);
+    align-items: center;
+    justify-content: center;
+    gap: var(--tr-space-md);
+    min-height: 320px;
+    text-align: center;
+    color: var(--tr-text-secondary);
   }
 
-  .detail-section {
+  .title-badges {
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: var(--tr-space-xs);
+    flex-wrap: wrap;
+    margin-bottom: var(--tr-space-md);
   }
 
   .section-heading {
@@ -476,6 +431,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--tr-space-xs);
+    margin-bottom: var(--tr-space-md);
   }
 
   .toner-list {
@@ -574,10 +530,6 @@
 
   .reading-status {
     color: var(--tr-text-primary);
-  }
-
-  .meta-section {
-    gap: var(--tr-space-2xs);
   }
 
   .meta-row {
