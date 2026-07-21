@@ -520,7 +520,16 @@
   }
   .col-actions {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    // FIX E3: .tr has align-items: start (top-aligns each column against the
+    // row's tallest control so per-row error text below the device/qty
+    // fields doesn't shove them down) — that left the remove button
+    // top-anchored, offset above the vertical center of the 36px-tall
+    // device-picker/qty-input row instead of centered next to them. Give
+    // this column the same 36px band as those controls and center the
+    // button inside it.
+    height: 36px;
   }
 
   .loading-row {
