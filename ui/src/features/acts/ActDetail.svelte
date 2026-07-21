@@ -97,7 +97,7 @@
     {/snippet}
 
     {#if act}
-      <DetailSection heading="Шапка">
+      <DetailSection>
         <div class="header-grid">
           <DetailField label="Сдал" value={act.giver_name} />
           <DetailField label="Принял" value={act.receiver_name} />
