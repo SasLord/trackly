@@ -2,7 +2,7 @@
   // Plan 04-04: search input + tab switcher («Картриджи» / «Модели») для CartridgesPage.
   // Паттерн по образцу ActsSearchAndTabs.svelte.
   import Input from '$lib/components/Input.svelte';
-  import Badge from '$lib/components/Badge.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import type { CartridgeCountsDto } from '../../bindings';
 
   type TabKey = 'cartridges' | 'models';
@@ -39,6 +39,17 @@
     { key: 'cartridges', label: 'Картриджи' },
     { key: 'models', label: 'Модели' },
   ];
+
+  // Tabs требует string-ключи со встроенным count — TabKey уже строковый,
+  // адаптер тривиален. Счётчик (было: <Badge> справа от подписи) показываем
+  // только на вкладке «Картриджи» — на «Модели» count оставляем undefined.
+  const tabItems = $derived(
+    TABS.map((t) => ({
+      key: t.key,
+      label: t.label,
+      count: t.key === 'cartridges' ? counts.all : undefined,
+    })),
+  );
 </script>
 
 <div class="search-and-tabs">
@@ -55,27 +66,13 @@
   {:else}
     <div class="search-spacer"></div>
   {/if}
-  <nav class="tabs" aria-label="Разделы картриджей">
-    {#each TABS as tab (tab.key)}
-      <button
-        class="tab"
-        class:active={tab.key === activeTab}
-        onclick={() => onTabChange(tab.key)}
-        role="tab"
-        aria-selected={tab.key === activeTab}
-        type="button"
-      >
-        <span class="tab-label">{tab.label}</span>
-        {#if tab.key === 'cartridges'}
-          <span class="tab-badge">
-            <Badge variant={tab.key === activeTab ? 'accent' : 'default'} size="sm">
-              {counts.all}
-            </Badge>
-          </span>
-        {/if}
-      </button>
-    {/each}
-  </nav>
+  <Tabs
+    variant="underline"
+    tabs={tabItems}
+    active={activeTab}
+    ariaLabel="Разделы картриджей"
+    onchange={(key) => onTabChange(key as TabKey)}
+  />
 </div>
 
 <style lang="scss">
@@ -100,41 +97,5 @@
     flex: 1;
     max-width: 480px;
     height: 36px; // Reserve height to avoid layout shift when switching tabs
-  }
-
-  .tabs {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    flex-wrap: wrap;
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-regular);
-    cursor: pointer;
-    height: 32px;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-      font-weight: var(--tr-font-weight-semibold);
-    }
   }
 </style>

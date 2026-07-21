@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import CartridgesSearchAndTabs from './CartridgesSearchAndTabs.svelte';
   import CartridgesMasterDetail from './CartridgesMasterDetail.svelte';
@@ -343,16 +344,15 @@
 </script>
 
 <div class="cartridges-page">
-  <header class="page-header">
-    <h1 class="page-title">Картриджи</h1>
-    <div class="header-actions">
+  <PageHeader title="Картриджи">
+    {#snippet actions()}
       {#if activeTab === 'cartridges'}
         <Button variant="primary" onclick={openCreate}>+ Добавить картридж/фотобарабан</Button>
       {:else}
         <Button variant="primary" onclick={openCreate}>+ Добавить модель</Button>
       {/if}
-    </div>
-  </header>
+    {/snippet}
+  </PageHeader>
 
   <div class="page-content">
     <CartridgesSearchAndTabs
@@ -489,30 +489,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-h3);
-  }
-
-  .header-actions {
-    display: flex;
-    gap: var(--tr-space-xs);
   }
 
   .page-content {
