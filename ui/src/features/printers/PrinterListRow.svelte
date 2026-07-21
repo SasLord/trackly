@@ -80,11 +80,7 @@
   >
     <span class="cell-name-inner">
       {#if printer.hasAlert}
-        <span
-          class="alert-dot"
-          aria-label="Есть проблема с принтером"
-          title="Есть проблема"
-        ></span>
+        <span class="alert-dot" aria-label="Есть проблема с принтером" title="Есть проблема"></span>
       {/if}
       <span class="name-text">{displayName}</span>
     </span>
