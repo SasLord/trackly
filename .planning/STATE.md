@@ -3,8 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: completed
-stopped_at: Completed 27-09-PLAN.md — Фаза 27 (core-workflow-windows) исполнена 9/9, both-theme UAT approved
-last_updated: "2026-07-21T16:48:32.552Z"
+last_updated: "2026-07-21T23:59:21.350Z"
 last_activity: 2026-07-21 -- Phase 27 marked complete
 progress:
   total_phases: 18
@@ -696,9 +695,9 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-21T16:42:38.113Z
-Stopped at: Completed 27-09-PLAN.md — Фаза 27 (core-workflow-windows) исполнена 9/9, both-theme UAT approved
-Resume file: None
+Last session: 2026-07-21T23:59:21.342Z
+Stopped at: Phase 28 context gathered
+Resume file: .planning/phases/28-support-admin-windows/28-CONTEXT.md
 
 ## Operator Next Steps
 
