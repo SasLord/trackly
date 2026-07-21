@@ -1,16 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Редизайн UI и дизайн-система
-status: verifying
-last_updated: "2026-07-21T16:42:38.122Z"
-last_activity: 2026-07-21
+milestone_name: Requirement Coverage
+status: completed
+stopped_at: Completed 27-09-PLAN.md — Фаза 27 (core-workflow-windows) исполнена 9/9, both-theme UAT approved
+last_updated: "2026-07-21T16:48:32.552Z"
+last_activity: 2026-07-21 -- Phase 27 marked complete
 progress:
-  total_phases: 27
-  completed_phases: 27
-  total_plans: 173
-  completed_plans: 189
-  percent: 100
+  total_phases: 18
+  completed_phases: 14
+  total_plans: 93
+  completed_plans: 93
+  percent: 78
 ---
 
 # Project State
@@ -24,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: 27 (core-workflow-windows) — EXECUTING
+Phase: 27 — COMPLETE
 Plan: 9 of 9
-Status: Phase complete — ready for verification
-Last activity: 2026-07-21
+Status: Phase 27 complete
+Last activity: 2026-07-21 -- Phase 27 marked complete
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
