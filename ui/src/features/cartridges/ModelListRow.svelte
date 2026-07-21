@@ -54,11 +54,11 @@
   <td class="cell cell-name" title="{model.brand} {model.model}">
     <span class="name">{model.brand} {model.model}</span>
     <span class="badges">
-      <Badge variant={model.kind_id === 1 ? 'accent' : 'default'}>
+      <Badge variant={model.kind_id === 1 ? 'accent' : 'default'} size="sm">
         {model.kind_id === 1 ? 'Картридж' : 'Фотобарабан'}
       </Badge>
       {#if model.kind_id === 1 && model.color}
-        <Badge variant="default">{model.color}</Badge>
+        <Badge variant="default" size="sm">{model.color}</Badge>
       {/if}
     </span>
   </td>
@@ -101,14 +101,21 @@
     color: var(--tr-text-primary);
   }
 
+  // FIX F4 (Phase 27 batch F): name is the PRIMARY, prominent element — a
+  // flex-row layout let the (flex-shrink:0) badges squeeze the name span down
+  // to near-nothing on narrow columns, making rows indistinguishable. Stacking
+  // name (top, larger) above badges (bottom, small/secondary) guarantees full
+  // width for the name regardless of badge count/width.
   .cell-name {
     display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
     max-width: 0; // makes text-overflow work in table cells
   }
 
   .name {
+    font-size: var(--tr-font-size-body);
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
     overflow: hidden;
