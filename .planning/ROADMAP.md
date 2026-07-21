@@ -587,7 +587,7 @@ Plans:
 
 - [x] 27-02-PLAN.md — Акты: структура (PageHeader, master-detail D-02, Tabs D-05, Table D-03, DetailPanel D-01) [wave 2]
 - [x] 27-04-PLAN.md — Картриджи: структура (PageHeader, D-02/D-05 SearchAndTabs/D-03/D-01) [wave 2]
-- [ ] 27-07-PLAN.md — Принтеры: структура (PageHeader, D-02/D-05/D-03/D-01) [wave 2]
+- [x] 27-07-PLAN.md — Принтеры: структура (PageHeader, D-02/D-05/D-03/D-01) [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -697,7 +697,7 @@ Plans:
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
-| 27. Окна основного рабочего процесса | v1.2 | 7/9 | In Progress|  |
+| 27. Окна основного рабочего процесса | v1.2 | 8/9 | In Progress|  |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |

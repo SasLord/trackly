@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T11:30:19.983Z"
+last_updated: "2026-07-21T11:40:28.471Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 27 (core-workflow-windows) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-07-21
 
@@ -244,6 +244,7 @@ Last activity: 2026-07-21
 | Phase 27 P08 | 15min | 3 tasks | 1 files |
 | Phase 27 P02 | 13min | 3 tasks | 7 files |
 | Phase 27 P04 | 15min | 3 tasks | 8 files |
+| Phase 27 P07 | 20min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -603,6 +604,8 @@ Recent decisions affecting current work:
 - [Phase 27]: 27-04: CartridgesSearchAndTabs tab keys already string-typed — Tabs adapter trivial, no numeric String() round-trip
 - [Phase 27]: 27-04: ModelsList renders Table framed=false inside existing bordered toolbar card — avoids double-framing (Table has no header-toolbar slot)
 - [Phase 27]: 27-04: CartridgeDetail field-grid CSS class renamed fields-grid to info-grid to avoid literal collision with removed-bespoke-class grep gate
+- [Phase ?]: 27-07: колонка тонера в списке принтеров показывает первую запись tonerLevels (TonerGauge инлайн), не все цвета
+- [Phase ?]: 27-07: секция Данные устройства в PrinterDetail — DetailSection без heading-пропа, чтобы сохранить локальную section-heading-row (заголовок+кнопка Редактировать)
 
 ### Pending Todos
 
@@ -680,7 +683,7 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T11:30:19.975Z
+Last session: 2026-07-21T11:40:28.463Z
 Stopped at: Completed 27-04-PLAN.md
 Resume file: None
 
