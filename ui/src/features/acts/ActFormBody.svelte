@@ -269,7 +269,7 @@
   <!-- Row 1: №, Когда отдали, Сроком до (3 колонки) -->
   <div class="grid-3">
     <div class="field" class:has-error={!!fieldErrors['number']}>
-      <label class="label" for="act-number">№ ⃰</label>
+      <label class="label" for="act-number">№ <span class="req">*</span></label>
       <ActNumberField
         bind:value={numberOverride}
         onChange={(v) => {
@@ -294,7 +294,7 @@
   <!-- Row 2: Сдал, Принял (2 колонки) -->
   <div class="grid-2">
     <div class="field" class:has-error={!!fieldErrors['giver_name']}>
-      <label class="label" for="act-giver">Сдал ⃰</label>
+      <label class="label" for="act-giver">Сдал <span class="req">*</span></label>
       <PersonAutocomplete
         id="act-giver"
         field="giver"
@@ -306,7 +306,7 @@
     </div>
 
     <div class="field" class:has-error={!!fieldErrors['receiver_name']}>
-      <label class="label" for="act-receiver">Принял ⃰</label>
+      <label class="label" for="act-receiver">Принял <span class="req">*</span></label>
       <PersonAutocomplete
         id="act-receiver"
         field="receiver"
