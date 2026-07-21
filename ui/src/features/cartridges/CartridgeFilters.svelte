@@ -2,9 +2,23 @@
   // Plan 04-04: switch-bar статусов + фильтр типа + фильтр модели.
   // Plan 27-06 (D-05): switch-bar статусов переведён на примитив Tabs (variant="underline"),
   // по образцу DeviceFilters.svelte — счётчики встроены в Tabs, bespoke .status-tab удалён.
-  import Select from '$lib/components/Select.svelte';
+  // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
   import type { CartridgeCountsDto, CartridgeModelDto } from '../../bindings';
+
+  interface FilterOption {
+    id: string;
+    label: string;
+  }
+
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpand(): FilterOption[] {
+    return [];
+  }
 
   interface Props {
     statusId: number | null;
@@ -50,6 +64,21 @@
     kindId === null ? models : models.filter((m) => m.kind_id === kindId),
   );
 
+  const TYPE_OPTIONS: FilterOption[] = [
+    { id: '', label: 'Все' },
+    { id: '1', label: 'Картридж' },
+    { id: '2', label: 'Фотобарабан' },
+  ];
+  const kindValue = $derived(kindId !== null ? String(kindId) : '');
+  const kindLabel = $derived(TYPE_OPTIONS.find((o) => o.id === kindValue)?.label ?? 'Все');
+
+  const modelOptions = $derived<FilterOption[]>([
+    { id: '', label: 'Все' },
+    ...visibleModels.map((m) => ({ id: String(m.id), label: `${m.brand} ${m.model}` })),
+  ]);
+  const modelValue = $derived(modelId !== null ? String(modelId) : '');
+  const modelLabel = $derived(modelOptions.find((o) => o.id === modelValue)?.label ?? 'Все');
+
   // Адаптер строкового контракта Tabs (D-05) — STATUSES использует number|null id.
   // String(null) === 'null', обратная маппинг-функция в onchange ниже.
   const tabItems = $derived(
@@ -71,27 +100,54 @@
   <div class="extra-filters">
     <label class="filter-label">
       <span class="filter-name">Тип</span>
-      <Select
-        value={kindId !== null ? String(kindId) : ''}
-        onchange={(v) => onKindChange(v === '' ? null : Number(v))}
-      >
-        <option value="">Все</option>
-        <option value="1">Картридж</option>
-        <option value="2">Фотобарабан</option>
-      </Select>
+      <div class="filter-dropdown">
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={kindLabel}
+          placeholder="Все"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={TYPE_OPTIONS}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === kindValue}
+          onExpandGroup={noExpand}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => onKindChange(o.id === '' ? null : Number(o.id))}
+          onPickMember={() => {}}
+        />
+      </div>
     </label>
 
     <label class="filter-label">
       <span class="filter-name">Модель</span>
-      <Select
-        value={modelId !== null ? String(modelId) : ''}
-        onchange={(v) => onModelChange(v === '' ? null : Number(v))}
-      >
-        <option value="">Все</option>
-        {#each visibleModels as m (m.id)}
-          <option value={String(m.id)}>{m.brand} {m.model}</option>
-        {/each}
-      </Select>
+      <div class="filter-dropdown">
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={modelLabel}
+          placeholder="Все"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={modelOptions}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === modelValue}
+          onExpandGroup={noExpand}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => onModelChange(o.id === '' ? null : Number(o.id))}
+          onPickMember={() => {}}
+        />
+      </div>
     </label>
   </div>
 </div>
@@ -122,5 +178,12 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     white-space: nowrap;
+  }
+
+  // Preserves the fixed-width behaviour of the former Select's
+  // `.select-wrapper { width: 100%; }` inside this flex row.
+  .filter-dropdown {
+    width: 180px;
+    max-width: 100%;
   }
 </style>

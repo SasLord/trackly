@@ -4,7 +4,11 @@
   // Поля (UI-SPEC §CartridgeFormModal): Код (авто/ручной) + Модель + Состояние заряда + Расположение + Примечания.
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
+  // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле
+  // (implicit label), а не связывается через `for` (как раньше у Select).
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
@@ -67,6 +71,33 @@
 
   // Модели, соответствующие выбранному виду.
   const visibleModels = $derived(models.filter((m) => m.kind_id === kindId));
+
+  // Plan 27-G1: опции для Dropdown (flat + variant="select") — «Что добавляем».
+  const KIND_OPTIONS = [
+    { id: 1, label: 'Картридж' },
+    { id: 2, label: 'Фотобарабан' },
+  ];
+  const kindLabel = $derived(KIND_OPTIONS.find((o) => o.id === kindId)?.label ?? '');
+
+  const modelOptions = $derived(
+    visibleModels.map((m) => ({ id: m.id, label: `${m.brand} ${m.model}` })),
+  );
+  const selectedModelLabel = $derived(modelOptions.find((o) => o.id === modelId)?.label ?? '');
+
+  const selectedStateLabel = $derived(stateOptions.find((o) => o.value === stateId)?.label ?? '');
+
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandKind(): { id: number; label: string }[] {
+    return [];
+  }
+  function noExpandModel(): { id: number; label: string }[] {
+    return [];
+  }
+  function noExpandState(): { value: number; label: string }[] {
+    return [];
+  }
 
   function handleKindChange(v: string) {
     const k = parseInt(v, 10);
@@ -166,11 +197,29 @@
   <!-- Вид расходника (только при создании) — определяет модели, состояние и код -->
   {#if !isEdit}
     <div class="field">
-      <label class="label" for="cart-kind">Что добавляем</label>
-      <Select value={String(kindId)} id="cart-kind" onchange={handleKindChange}>
-        <option value="1">Картридж</option>
-        <option value="2">Фотобарабан</option>
-      </Select>
+      <label class="label dropdown-label">
+        <span class="label-text">Что добавляем</span>
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={kindLabel}
+          placeholder="Выберите вид"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={KIND_OPTIONS}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === kindId}
+          onExpandGroup={noExpandKind}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => handleKindChange(String(o.id))}
+          onPickMember={() => {}}
+        />
+      </label>
     </div>
   {/if}
 
@@ -199,21 +248,33 @@
 
   <!-- Модель (required) -->
   <div class="field">
-    <label class="label" for="cart-model">Модель</label>
-    <Select
-      value={modelId !== null ? String(modelId) : ''}
-      id="cart-model"
-      invalid={!!modelError}
-      onchange={(v) => {
-        modelId = v ? parseInt(v, 10) : null;
-        modelError = '';
-      }}
-    >
-      <option value="">— Выберите модель —</option>
-      {#each visibleModels as m (m.id)}
-        <option value={String(m.id)}>{m.brand} {m.model}</option>
-      {/each}
-    </Select>
+    <label class="label dropdown-label">
+      <span class="label-text">Модель</span>
+      <Dropdown
+        variant="select"
+        flat={true}
+        value={selectedModelLabel}
+        placeholder="— Выберите модель —"
+        searchPlaceholder="Поиск модели"
+        invalid={!!modelError}
+        loading={false}
+        groups={modelOptions}
+        getGroupId={(o) => o.id}
+        getGroupName={(o) => o.label}
+        getGroupCount={() => 0}
+        isGroupExpandable={() => false}
+        isGroupSelected={(o) => o.id === modelId}
+        onExpandGroup={noExpandModel}
+        getMemberId={(o) => o.id}
+        getMemberName={(o) => o.label}
+        onSearch={() => {}}
+        onPickGroup={(o) => {
+          modelId = Number(o.id);
+          modelError = '';
+        }}
+        onPickMember={() => {}}
+      />
+    </label>
     {#if modelError}
       <span class="field-error">{modelError}</span>
     {/if}
@@ -222,12 +283,29 @@
   <!-- Состояние (заряда — для картриджей; для фотобарабанов: Новый/Изношенный/Отработанный) -->
   {#if !isEdit}
     <div class="field">
-      <label class="label" for="cart-state">{stateLabel}</label>
-      <Select value={String(stateId)} id="cart-state" onchange={(v) => (stateId = parseInt(v, 10))}>
-        {#each stateOptions as opt (opt.value)}
-          <option value={String(opt.value)}>{opt.label}</option>
-        {/each}
-      </Select>
+      <label class="label dropdown-label">
+        <span class="label-text">{stateLabel}</span>
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={selectedStateLabel}
+          placeholder="Выберите состояние"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={stateOptions}
+          getGroupId={(o) => o.value}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.value === stateId}
+          onExpandGroup={noExpandState}
+          getMemberId={(o) => o.value}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => (stateId = Number(o.value))}
+          onPickMember={() => {}}
+        />
+      </label>
     </div>
   {/if}
 
@@ -271,6 +349,15 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     font-weight: var(--tr-font-weight-regular);
+  }
+
+  // Plan 27-G1: Dropdown не принимает `id`, поэтому подпись оборачивает поле
+  // (implicit label) вместо `for`/`id` association — сохраняет вертикальный
+  // макет «подпись сверху, поле снизу», как у остальных .field.
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .field-hint {

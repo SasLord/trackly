@@ -7,7 +7,11 @@
   // (V029 per-device чеклист) удалён.
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — открывающееся меню больше не нативное OS-меню.
+  // Dropdown не принимает `id`/`for`, поэтому подпись оборачивает поле
+  // (implicit label), а не связывается через `for` (как раньше у Select).
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import CompatibilityEditor from './CompatibilityEditor.svelte';
@@ -23,6 +27,13 @@
     'Светло-голубой',
     'Светло-пурпурный',
   ];
+
+  // Plan 27-G1: опции для Dropdown (flat + variant="select") — «Тип расходника» + «Цвет».
+  const KIND_OPTIONS = [
+    { id: 1, label: 'Картридж' },
+    { id: 2, label: 'Фотобарабан' },
+  ];
+  const COLOR_DROPDOWN_OPTIONS = COLOR_OPTIONS.map((c) => ({ id: c, label: c }));
 
   interface Props {
     open: boolean;
@@ -50,6 +61,19 @@
 
   // Совместимость: список имён принтеров (V032/Phase 13, прямое присваивание).
   let compatibility = $state<string[]>(target?.compatibility ?? []);
+
+  const kindLabel = $derived(KIND_OPTIONS.find((o) => o.id === kindId)?.label ?? '');
+  const colorLabel = $derived(COLOR_DROPDOWN_OPTIONS.find((o) => o.id === color)?.label ?? color);
+
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandKind(): { id: number; label: string }[] {
+    return [];
+  }
+  function noExpandColor(): { id: string; label: string }[] {
+    return [];
+  }
 
   $effect(() => {
     const isOpen = open;
@@ -304,17 +328,31 @@
     <div class="form-grid">
       <!-- Тип расходника -->
       <div class="field field-full">
-        <label class="field-label" for="model-kind">Тип расходника</label>
-        <Select
-          id="model-kind"
-          value={String(kindId)}
-          onchange={(v) => {
-            kindId = Number(v);
-          }}
-        >
-          <option value="1">Картридж</option>
-          <option value="2">Фотобарабан</option>
-        </Select>
+        <label class="field-label dropdown-label">
+          <span class="label-text">Тип расходника</span>
+          <Dropdown
+            variant="select"
+            flat={true}
+            value={kindLabel}
+            placeholder="Выберите тип"
+            searchPlaceholder="Поиск"
+            loading={false}
+            groups={KIND_OPTIONS}
+            getGroupId={(o) => o.id}
+            getGroupName={(o) => o.label}
+            getGroupCount={() => 0}
+            isGroupExpandable={() => false}
+            isGroupSelected={(o) => o.id === kindId}
+            onExpandGroup={noExpandKind}
+            getMemberId={(o) => o.id}
+            getMemberName={(o) => o.label}
+            onSearch={() => {}}
+            onPickGroup={(o) => {
+              kindId = Number(o.id);
+            }}
+            onPickMember={() => {}}
+          />
+        </label>
       </div>
 
       <!-- Бренд -->
@@ -404,12 +442,29 @@
       <!-- Цвет (только для Картриджа, kind_id !== 2) -->
       {#if kindId !== 2}
         <div class="field">
-          <label class="field-label" for="model-color">Цвет</label>
-          <Select id="model-color" value={color} onchange={(v) => (color = v)}>
-            {#each COLOR_OPTIONS as c (c)}
-              <option value={c}>{c}</option>
-            {/each}
-          </Select>
+          <label class="field-label dropdown-label">
+            <span class="label-text">Цвет</span>
+            <Dropdown
+              variant="select"
+              flat={true}
+              value={colorLabel}
+              placeholder="Выберите цвет"
+              searchPlaceholder="Поиск"
+              loading={false}
+              groups={COLOR_DROPDOWN_OPTIONS}
+              getGroupId={(o) => o.id}
+              getGroupName={(o) => o.label}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(o) => o.id === color}
+              onExpandGroup={noExpandColor}
+              getMemberId={(o) => o.id}
+              getMemberName={(o) => o.label}
+              onSearch={() => {}}
+              onPickGroup={(o) => (color = o.id)}
+              onPickMember={() => {}}
+            />
+          </label>
         </div>
       {/if}
 
@@ -475,6 +530,15 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     line-height: var(--tr-line-height-label);
+  }
+
+  // Plan 27-G1: Dropdown не принимает `id`, поэтому подпись оборачивает поле
+  // (implicit label) вместо `for`/`id` association — сохраняет вертикальный
+  // макет «подпись сверху, поле снизу», как у остальных .field.
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .required {
