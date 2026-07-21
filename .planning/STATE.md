@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T00:37:18.083Z"
+last_updated: "2026-07-21T00:50:33.606Z"
 last_activity: 2026-07-21
 progress:
   total_phases: 27
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 27 (core-workflow-windows) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-07-21
 
@@ -238,6 +238,7 @@ Last activity: 2026-07-21
 | Phase 26 P07 | 10min | 3 tasks | 3 files |
 | Phase 26 P08 | 3min | 4 tasks | 8 files |
 | Phase 27 P01 | 4min | 2 tasks | 3 files |
+| Phase 27 P03 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -583,6 +584,8 @@ Recent decisions affecting current work:
 - [Phase 26-08]: gate="blocking-human" primary layer held through a real 10-round gap-closure cycle without silent auto-approval; workflow.auto_advance flip/restore (Tasks 2/4) verified net-zero relative to pre-plan config.json
 - [Phase ?]: 27-01: DetailField использует var(--tr-space-3xs) вместо gap:2px (миграция по значению)
 - [Phase ?]: 27-01: DetailPanel не красит фон .detail-panel — поверхность даёт обёртка master-detail (D-02, планы 27-02/04/07)
+- [Phase 27]: 27-03: PdfPreviewModal/ActFormModal/ActNumberField audit-only — уже полностью на токенах/примитивах
+- [Phase 27]: 27-03: сырые чекбоксы без bespoke-CSS всё равно заменены на Checkbox-примитив ради консистентности must_haves truth о примитивах в модалках Актов
 
 ### Pending Todos
 
@@ -660,8 +663,8 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-21T00:37:18.075Z
-Stopped at: Completed 27-01-PLAN.md
+Last session: 2026-07-21T00:50:33.599Z
+Stopped at: Completed 27-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

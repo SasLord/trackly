@@ -120,3 +120,7 @@ None - no external service configuration required.
 ---
 *Phase: 27-core-workflow-windows*
 *Completed: 2026-07-21*
+
+## Self-Check: PASSED
+
+All 8 in-scope files exist on disk; all 4 commits (`9e22ebf`, `80140fa`, `aebd231`, `68ae70b`) verified present in git log.
