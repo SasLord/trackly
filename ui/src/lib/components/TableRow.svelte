@@ -116,8 +116,19 @@
     padding-left: 32px;
   }
 
+  // Base first-cell padding-left is 10px (see the shared `.tr-row :global(> td)`
+  // rule above). Selected rows add a 3px accent left border, so flat (non-indent)
+  // selected rows — Acts/Cartridges/Printers lists — need 10px − 3px = 7px to keep
+  // cell text from shifting horizontally when a row becomes selected (UAT gap-fix
+  // batch A, FIX A2).
+  .tr-row.selected :global(> td:first-child) {
+    padding-left: 7px;
+  }
+
   // 32px − 3px selected left border = 29px — keeps cell text from shifting
-  // horizontally when a row becomes selected.
+  // horizontally when an indent row becomes selected. More specific than the
+  // flat `.tr-row.selected` rule above (3 classes vs 2), so indent+selected rows
+  // correctly resolve to 29px, not 7px.
   .tr-row.indent.selected :global(> td:first-child) {
     padding-left: 29px;
   }
