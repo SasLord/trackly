@@ -190,6 +190,9 @@
     font-family: var(--tr-font-family);
     font-size: var(--tr-font-size-body);
     line-height: var(--tr-line-height-body);
+    &::placeholder {
+      color: var(--tr-text-tertiary);
+    }
     &:focus-visible {
       outline: none;
       border-color: var(--tr-accent);
