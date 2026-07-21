@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Редизайн UI и дизайн-система
 status: executing
-last_updated: "2026-07-21T00:27:04.019Z"
-last_activity: 2026-07-21 -- Phase 27 planning complete
+last_updated: "2026-07-21T00:37:18.083Z"
+last_activity: 2026-07-21
 progress:
   total_phases: 27
   completed_phases: 27
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 27 — окна основного рабочего процесса
+**Current focus:** Phase 27 — core-workflow-windows
 
 ## Current Position
 
-Phase: 27
-Plan: Not started
+Phase: 27 (core-workflow-windows) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
-Last activity: 2026-07-21 -- Phase 27 planning complete
+Last activity: 2026-07-21
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -237,6 +237,7 @@ Last activity: 2026-07-21 -- Phase 27 planning complete
 | Phase 26 P06 | 8min | 2 tasks | 1 files |
 | Phase 26 P07 | 10min | 3 tasks | 3 files |
 | Phase 26 P08 | 3min | 4 tasks | 8 files |
+| Phase 27 P01 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -580,6 +581,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 26-07: ChartWidget COLORS kept as literal hex, documented exception to --tr-* token gate for data-viz series consistency across themes
 - [Phase ?]: 26-07: Value-label-over-bar font-size set to 9px (not 11px) per conditional-acceptance value; 11px fallback deferred to Plan 26-08 dark-theme UAT
 - [Phase 26-08]: gate="blocking-human" primary layer held through a real 10-round gap-closure cycle without silent auto-approval; workflow.auto_advance flip/restore (Tasks 2/4) verified net-zero relative to pre-plan config.json
+- [Phase ?]: 27-01: DetailField использует var(--tr-space-3xs) вместо gap:2px (миграция по значению)
+- [Phase ?]: 27-01: DetailPanel не красит фон .detail-panel — поверхность даёт обёртка master-detail (D-02, планы 27-02/04/07)
 
 ### Pending Todos
 
@@ -657,9 +660,9 @@ Nyquist gaps for phases 18–22 were CLOSED before archiving (see
 
 ## Session Continuity
 
-Last session: 2026-07-20T14:43:11.820Z
-Stopped at: Phase 27 context gathered
-Resume file: .planning/phases/27-core-workflow-windows/27-CONTEXT.md
+Last session: 2026-07-21T00:37:18.075Z
+Stopped at: Completed 27-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

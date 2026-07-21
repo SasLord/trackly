@@ -577,7 +577,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 27-01-PLAN.md — Общий паттерн детали (DetailPanel/DetailSection/DetailField, D-01) [wave 1]
+- [x] 27-01-PLAN.md — Общий паттерн детали (DetailPanel/DetailSection/DetailField, D-01) [wave 1]
 - [ ] 27-03-PLAN.md — Акты: модалки и detail-таблицы, ре-токенизация (D-04) [wave 1]
 - [ ] 27-05-PLAN.md — Картриджи: крупные модалки OperationModal+ModelFormModal (D-04) [wave 1]
 - [ ] 27-06-PLAN.md — Картриджи: форма, виджеты (CompatibilityEditor/ContextMenu/LowStockBanner, D-04) + CartridgeFilters→Tabs (D-05) [wave 1]
@@ -697,7 +697,7 @@ Plans:
 | 24. Базовые компоненты | v1.2 | 13/13 | Complete   | 2026-07-18 |
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
-| 27. Окна основного рабочего процесса | v1.2 | 0/TBD | Not started | - |
+| 27. Окна основного рабочего процесса | v1.2 | 1/9 | In Progress|  |
 | 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
