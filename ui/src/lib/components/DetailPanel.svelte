@@ -79,13 +79,27 @@
     color: var(--tr-text-secondary);
   }
 
+  // Sticky at the top of .detail-panel's own scroll container (FIX A4) so the
+  // title + actions stay visible while detail content scrolls. .detail-panel
+  // intentionally paints no background (the master-detail wrapper owns the
+  // panel surface, see NOTE above), so the sticky bar needs its own opaque
+  // background or scrolled content would show through underneath it. Pulled
+  // out to the panel's edges via negative margins matching --tr-space-xl (the
+  // panel's own padding) and re-padded so it spans full width without clipping,
+  // plus a border-bottom for separation from the scrolling content below it.
   .detail-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--tr-space-md);
     flex-wrap: wrap;
-    margin-bottom: var(--tr-space-2xl);
+    margin: calc(var(--tr-space-xl) * -1) calc(var(--tr-space-xl) * -1) var(--tr-space-2xl);
+    padding: var(--tr-space-xl) var(--tr-space-xl) var(--tr-space-md);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--tr-surface-raised);
+    border-bottom: 1px solid var(--tr-border);
   }
   .detail-title {
     margin: 0;
