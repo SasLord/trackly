@@ -346,7 +346,14 @@
   }
   .page-content {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    // FIX B1: page-content no longer scrolls itself — MasterDetail fills the
+    // remaining height and scrolls its own panels internally. Horizontal
+    // overflow is preserved for the existing <1100px fallback.
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: var(--tr-space-xl) var(--tr-space-2xl);
   }
 </style>

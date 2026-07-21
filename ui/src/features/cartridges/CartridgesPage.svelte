@@ -493,8 +493,24 @@
 
   .page-content {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    // FIX B1: page-content no longer scrolls itself — MasterDetail (or
+    // ModelsList, on the «Модели» tab) fills the remaining height and scrolls
+    // its own panels internally. Horizontal overflow is preserved for the
+    // existing <1100px fallback.
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: var(--tr-space-xl) var(--tr-space-2xl);
+  }
+
+  // ModelsList (the «Модели» tab) is not wrapped in CartridgesMasterDetail —
+  // it sits directly in page-content, so it needs its own flex-fill to reach
+  // the bottom now that page-content no longer scrolls (FIX B1).
+  .page-content > :global(.models-list) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .confirm-body {
