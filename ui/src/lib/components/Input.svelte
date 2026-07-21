@@ -73,7 +73,7 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);
-    background: var(--tr-surface);
+    background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border-strong);
     border-radius: var(--tr-radius-sm);

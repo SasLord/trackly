@@ -183,7 +183,7 @@
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);
-    background: var(--tr-bg);
+    background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
