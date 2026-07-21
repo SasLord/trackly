@@ -44,7 +44,8 @@
 
 <style lang="scss">
   .date-picker {
-    display: block;
+    display: flex;
+    align-items: center;
     width: 100%;
     height: 36px;
     padding: 0 var(--tr-space-md);
