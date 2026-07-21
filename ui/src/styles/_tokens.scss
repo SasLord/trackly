@@ -136,7 +136,10 @@
   --tr-info-text: #8fb0ff;
 
   // Table row states
-  --tr-row-hover: #1c222c;
+  // #242c38 — one step lighter than --tr-surface-raised (#1c222c), the master-detail
+  // panel surface these rows sit on; the old value was IDENTICAL to that surface,
+  // making :hover invisible on raised panels (UAT gap-fix batch A, FIX A1).
+  --tr-row-hover: #242c38;
   --tr-row-selected: rgba(91, 139, 255, 0.14);
   --tr-group: #1a212b;
 
