@@ -1,6 +1,9 @@
 <script lang="ts">
   // Plan 04-04: switch-bar статусов + фильтр типа + фильтр модели.
-  // По образцу DeviceFilters.svelte, паттерн из PATTERNS.md §CartridgeFilters.svelte.
+  // Plan 27-06 (D-05): switch-bar статусов переведён на примитив Tabs (variant="underline"),
+  // по образцу DeviceFilters.svelte — счётчики встроены в Tabs, bespoke .status-tab удалён.
+  import Select from '$lib/components/Select.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import type { CartridgeCountsDto, CartridgeModelDto } from '../../bindings';
 
   interface Props {
@@ -46,63 +49,49 @@
   const visibleModels = $derived(
     kindId === null ? models : models.filter((m) => m.kind_id === kindId),
   );
+
+  // Адаптер строкового контракта Tabs (D-05) — STATUSES использует number|null id.
+  // String(null) === 'null', обратная маппинг-функция в onchange ниже.
+  const tabItems = $derived(
+    STATUSES.map((s) => ({ key: String(s.id), label: s.label, count: getCount(s.id) })),
+  );
 </script>
 
 <div class="cartridge-filters">
-  <!-- Status switch-bar -->
-  <div class="status-bar" role="tablist" aria-label="Фильтр по статусу">
-    {#each STATUSES as s}
-      {@const active = statusId === s.id}
-      {@const count = getCount(s.id)}
-      <button
-        type="button"
-        role="tab"
-        class="status-tab"
-        class:active
-        aria-selected={active}
-        onclick={() => onStatusChange(s.id)}
-      >
-        {s.label}
-        <span class="count-badge" class:count-active={active}>{count}</span>
-      </button>
-    {/each}
-  </div>
+  <!-- Status switch-bar (D-05: примитив Tabs, счётчик встроен) -->
+  <Tabs
+    variant="underline"
+    tabs={tabItems}
+    active={String(statusId)}
+    ariaLabel="Фильтр по статусу"
+    onchange={(key) => onStatusChange(key === 'null' ? null : Number(key))}
+  />
 
   <!-- Additional filters row -->
   <div class="extra-filters">
     <label class="filter-label">
       <span class="filter-name">Тип</span>
-      <select
-        class="filter-select"
-        value={kindId ?? ''}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
-          onKindChange(v === '' ? null : Number(v));
-        }}
+      <Select
+        value={kindId !== null ? String(kindId) : ''}
+        onchange={(v) => onKindChange(v === '' ? null : Number(v))}
       >
-        <!-- Числовые value (не строковые): Svelte select_option сравнивает строго,
-             а kindId — число; строковые "1"/"2" не матчились → метка пропадала. -->
         <option value="">Все</option>
-        <option value={1}>Картридж</option>
-        <option value={2}>Фотобарабан</option>
-      </select>
+        <option value="1">Картридж</option>
+        <option value="2">Фотобарабан</option>
+      </Select>
     </label>
 
     <label class="filter-label">
       <span class="filter-name">Модель</span>
-      <select
-        class="filter-select"
-        value={modelId ?? ''}
-        onchange={(e) => {
-          const v = (e.currentTarget as HTMLSelectElement).value;
-          onModelChange(v === '' ? null : Number(v));
-        }}
+      <Select
+        value={modelId !== null ? String(modelId) : ''}
+        onchange={(v) => onModelChange(v === '' ? null : Number(v))}
       >
         <option value="">Все</option>
         {#each visibleModels as m (m.id)}
-          <option value={m.id}>{m.brand} {m.model}</option>
+          <option value={String(m.id)}>{m.brand} {m.model}</option>
         {/each}
-      </select>
+      </Select>
     </label>
   </div>
 </div>
@@ -114,64 +103,6 @@
     gap: var(--tr-space-xs);
     padding: var(--tr-space-xs) var(--tr-space-xs) var(--tr-space-xs);
     border-bottom: 1px solid var(--tr-border);
-  }
-
-  .status-bar {
-    display: flex;
-    gap: 2px;
-    overflow-x: auto;
-  }
-
-  .status-tab {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-xs);
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-secondary);
-    cursor: pointer;
-    white-space: nowrap;
-    border-radius: var(--tr-radius-xs) var(--tr-radius-xs) 0 0;
-
-    &:hover {
-      background: var(--tr-surface);
-      color: var(--tr-text-primary);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.active {
-      color: var(--tr-accent);
-      border-bottom-color: var(--tr-accent);
-      font-weight: var(--tr-font-weight-medium);
-    }
-  }
-
-  .count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 4px;
-    border-radius: 9px;
-    font-size: 11px;
-    font-weight: var(--tr-font-weight-medium);
-    background: var(--tr-surface-sunken);
-    color: var(--tr-text-secondary);
-    line-height: 1;
-
-    &.count-active {
-      background: color-mix(in srgb, var(--tr-accent) 15%, transparent);
-      color: var(--tr-accent);
-    }
   }
 
   .extra-filters {
@@ -191,23 +122,5 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     white-space: nowrap;
-  }
-
-  .filter-select {
-    height: 28px;
-    padding: 0 var(--tr-space-xs);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-label);
-    cursor: pointer;
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
   }
 </style>
