@@ -6,6 +6,7 @@
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { CartridgeModelDto } from '../../bindings';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import ReportSubNav from './ReportSubNav.svelte';
   import PeriodSelector from './PeriodSelector.svelte';
   import ReportFilters from './ReportFilters.svelte';
@@ -420,9 +421,7 @@
 </script>
 
 <div class="reports-page">
-  <header class="page-header">
-    <h1 class="page-title">Отчёты</h1>
-  </header>
+  <PageHeader title="Отчёты" />
 
   <div class="reports-content">
     <ReportSubNav
@@ -505,19 +504,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .page-header {
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
   }
 
   .reports-content {
