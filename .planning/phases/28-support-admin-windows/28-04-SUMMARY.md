@@ -96,3 +96,12 @@ D-07 for Reports (WIN-07) is closed: `ReportTable` and `ReportsPage` are on the 
 ---
 *Phase: 28-support-admin-windows*
 *Completed: 2026-07-22*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/reports/ReportTable.svelte
+- FOUND: ui/src/features/reports/ReportsPage.svelte
+- FOUND: .planning/phases/28-support-admin-windows/28-04-SUMMARY.md
+- FOUND: 9f7b481 (Task 1 commit)
+- FOUND: dab32db (Task 2 commit)
+- FOUND: e8a2a73 (plan metadata commit)
