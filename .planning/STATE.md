@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-22T06:26:01.723Z"
+last_updated: "2026-07-22T06:35:06.103Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 18
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 28 (support-admin-windows) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-07-22
 
@@ -251,6 +251,7 @@ Last activity: 2026-07-22
 | Phase 28 P03 | 4min | 2 tasks | 2 files |
 | Phase 28 P04 | 4min | 2 tasks | 2 files |
 | Phase 28 P05 | 6min | 3 tasks | 3 files |
+| Phase 28 P06 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -619,6 +620,8 @@ Recent decisions affecting current work:
 - [Phase 28]: PeriodSelector onMonthChange/onYearChange changed signature from Event to string (native select removed); period-recalculation logic unchanged
 - [Phase 28]: ReportTable error-state kept as sibling branch outside Table (no Table API equivalent for error, only loading/empty), same pattern as RequestDetail/ActDetail loading branches
 - [Phase 28]: ReportFilters.svelte required zero code changes for D-04 audit — GAP-R4 had already removed all filter fields, fully on Button primitive
+- [Phase 28]: 28-06: Select/Input (block-level, width:100%) обёрнуты в узкие wrapper-div (.select-shrink/.input-shrink) в BackupSettings для сохранения прежней компактной ширины полей
+- [Phase 28]: 28-06: .fingerprint в NetworkSettings намеренно не тронут (bare font-family: monospace) — вне явного объёма плана, симметрично StorageSettings.db-path-code
 
 ### Pending Todos
 
@@ -706,8 +709,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-22T06:26:01.715Z
-Stopped at: Completed 28-05-PLAN.md
+Last session: 2026-07-22T06:35:06.095Z
+Stopped at: Completed 28-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

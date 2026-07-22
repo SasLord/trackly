@@ -96,3 +96,12 @@ BackupSettings и NetworkSettings полностью на примитивах, 
 ---
 *Phase: 28-support-admin-windows*
 *Completed: 2026-07-22*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/settings/BackupSettings.svelte
+- FOUND: ui/src/features/settings/NetworkSettings.svelte
+- FOUND: .planning/phases/28-support-admin-windows/28-06-SUMMARY.md
+- FOUND: 8f7e7fc (Task 1 commit)
+- FOUND: 98ae562 (Task 2 commit)
+- FOUND: 5133cbd (Summary commit)
