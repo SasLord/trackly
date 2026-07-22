@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-22T00:53:07.351Z"
-last_activity: 2026-07-22 -- Phase 28 planning complete
+last_updated: "2026-07-22T05:46:01.715Z"
+last_activity: 2026-07-22
 progress:
   total_phases: 18
   completed_phases: 14
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 27 — core-workflow-windows
+**Current focus:** Phase 28 — support-admin-windows
 
 ## Current Position
 
-Phase: 27 — COMPLETE
-Plan: 9 of 9
+Phase: 28 (support-admin-windows) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
-Last activity: 2026-07-22 -- Phase 28 planning complete
+Last activity: 2026-07-22
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -246,6 +246,7 @@ Last activity: 2026-07-22 -- Phase 28 planning complete
 | Phase 27 P04 | 15min | 3 tasks | 8 files |
 | Phase 27 P07 | 20min | 3 tasks | 6 files |
 | Phase 27 P09 | ~4h57min | 2 tasks | 31 files |
+| Phase 28 P01 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -608,6 +609,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 27-07: колонка тонера в списке принтеров показывает первую запись tonerLevels (TonerGauge инлайн), не все цвета
 - [Phase ?]: 27-07: секция Данные устройства в PrinterDetail — DetailSection без heading-пропа, чтобы сохранить локальную section-heading-row (заголовок+кнопка Редактировать)
 - [Phase 27]: Both-theme UAT (D-02) не auto-approved несмотря на auto_advance=true — требуется живой человеческий просмотр обеих тем; approved после cargo tauri dev UAT + 24 fix-коммитов (батчи B-G: fill-height master-detail, единый фон полей, кастомный Dropdown в Картриджах, sticky-шапка деталей, inset selected-row) — Визуальная проверка raised-vs-surface distinction в обеих темах требует реальных глаз; gate=blocking в плане 27-09 соблюдён буквально
+- [Phase ?]: RequestsSearchAndTabs: justify-content:space-between replaces .tabs{flex:1} wrapper to keep create-button right-aligned without a bespoke flex wrapper (28-01)
 
 ### Pending Todos
 
@@ -695,9 +697,9 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-22T00:09:39.540Z
+Last session: 2026-07-22T05:41:25.150Z
 Stopped at: Phase 28 UI-SPEC approved
-Resume file: .planning/phases/28-support-admin-windows/28-UI-SPEC.md
+Resume file: None
 
 ## Operator Next Steps
 

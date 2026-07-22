@@ -618,7 +618,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 28-01-PLAN.md — Заявки: структура (MasterDetail D-02, SearchAndTabs→Tabs D-05, List/ListRow→Table D-03)
+- [x] 28-01-PLAN.md — Заявки: структура (MasterDetail D-02, SearchAndTabs→Tabs D-05, List/ListRow→Table D-03)
 - [ ] 28-02-PLAN.md — Заявки: деталь→DetailPanel (D-01), FormModal (D-04), RequestsPage→PageHeader
 - [ ] 28-03-PLAN.md — Отчёты: суб-навигация→Tabs (ReportSubNav + PeriodSelector, D-06)
 - [ ] 28-04-PLAN.md — Отчёты: ReportTable→Table динамические колонки (D-07), ReportFilters аудит, ReportsPage→PageHeader
@@ -714,7 +714,7 @@ Plans:
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
-| 28. Окна поддержки и администрирования | v1.2 | 0/10 | Planned | - |
+| 28. Окна поддержки и администрирования | v1.2 | 1/10 | In Progress|  |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
