@@ -6,6 +6,9 @@
   // for visibility only (UI-SPEC Screen 4 / AdSettingsDto doc).
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
+  import Radio from '$lib/components/Radio.svelte';
+  import Input from '$lib/components/Input.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import type { AdSettingsDto, SetAdPayload } from '../../bindings-phase9';
@@ -24,6 +27,18 @@
   let saving = $state(false);
   let testing = $state(false);
   let testResult = $state<{ ok: boolean; message: string } | null>(null);
+
+  // Radio-group адаптер: Radio требует bind:group на одной переменной,
+  // settings.auto_accept — независимый boolean. regMode синхронизирован
+  // двунаправленно через $effect (settings.auto_accept -> regMode при
+  // внешней загрузке; regMode -> settings.auto_accept при клике radio).
+  let regMode = $state<'auto' | 'confirm'>('auto');
+  $effect(() => {
+    regMode = settings.auto_accept ? 'auto' : 'confirm';
+  });
+  $effect(() => {
+    settings.auto_accept = regMode === 'auto';
+  });
 
   async function loadSettings() {
     try {
@@ -87,15 +102,14 @@
     <h2 class="section-title">Active Directory</h2>
 
     <div class="form-field">
-      <label class="checkbox-label">
-        <input
-          type="checkbox"
-          checked={settings.enabled}
-          disabled={saving}
-          onchange={(e) => (settings.enabled = (e.target as HTMLInputElement).checked)}
-        />
-        <span class="checkbox-text">Использовать Active Directory</span>
-      </label>
+      <Checkbox
+        id="ad-enabled"
+        checked={settings.enabled}
+        disabled={saving}
+        onchange={(checked) => (settings.enabled = checked)}
+      >
+        Использовать Active Directory
+      </Checkbox>
       <p class="helper-text">
         Сотрудники смогут входить через браузер по доменному логину и паролю.
       </p>
@@ -104,37 +118,27 @@
     <div class="form-field" class:is-dimmed={!settings.enabled}>
       <span class="form-label">Регистрация новых пользователей</span>
 
-      <label class="radio-label">
-        <input
-          type="radio"
-          name="ad-reg-mode"
-          checked={settings.auto_accept}
-          disabled={saving || !settings.enabled}
-          onchange={() => (settings.auto_accept = true)}
-        />
-        <span class="radio-text">
-          <span class="radio-title">Автоматически принимать</span>
-          <span class="helper-text">
-            Новый доменный пользователь сразу получает доступ с ролью «Сотрудник».
+      <div class="radio-label">
+        <Radio bind:group={regMode} value="auto" disabled={saving || !settings.enabled}>
+          <span class="radio-text">
+            <span class="radio-title">Автоматически принимать</span>
+            <span class="helper-text">
+              Новый доменный пользователь сразу получает доступ с ролью «Сотрудник».
+            </span>
           </span>
-        </span>
-      </label>
+        </Radio>
+      </div>
 
-      <label class="radio-label">
-        <input
-          type="radio"
-          name="ad-reg-mode"
-          checked={!settings.auto_accept}
-          disabled={saving || !settings.enabled}
-          onchange={() => (settings.auto_accept = false)}
-        />
-        <span class="radio-text">
-          <span class="radio-title">Требовать подтверждения</span>
-          <span class="helper-text">
-            Новый пользователь ждёт, пока администратор подтвердит заявку.
+      <div class="radio-label">
+        <Radio bind:group={regMode} value="confirm" disabled={saving || !settings.enabled}>
+          <span class="radio-text">
+            <span class="radio-title">Требовать подтверждения</span>
+            <span class="helper-text">
+              Новый пользователь ждёт, пока администратор подтвердит заявку.
+            </span>
           </span>
-        </span>
-      </label>
+        </Radio>
+      </div>
     </div>
 
     <details class="advanced-details">
@@ -147,9 +151,8 @@
       <div class="form-grid">
         <div class="form-field">
           <label class="form-label" for="ad-host">Адрес сервера (host:port)</label>
-          <input
+          <Input
             id="ad-host"
-            class="form-input"
             type="text"
             value={settings.port ? `${settings.host}:${settings.port}` : settings.host}
             disabled
@@ -158,30 +161,23 @@
 
         <div class="form-field">
           <label class="form-label" for="ad-domain">Домен (например, corp.local)</label>
-          <input id="ad-domain" class="form-input" type="text" value={settings.domain} disabled />
+          <Input id="ad-domain" type="text" value={settings.domain} disabled />
         </div>
 
         <div class="form-field form-field--full">
           <label class="form-label" for="ad-base-dn">Base DN</label>
-          <input id="ad-base-dn" class="form-input" type="text" value={settings.base_dn} disabled />
+          <Input id="ad-base-dn" type="text" value={settings.base_dn} disabled />
         </div>
 
         <div class="form-field">
           <label class="form-label" for="ad-name-attr">Атрибут ФИО</label>
-          <input
-            id="ad-name-attr"
-            class="form-input"
-            type="text"
-            value={settings.name_attr}
-            disabled
-          />
+          <Input id="ad-name-attr" type="text" value={settings.name_attr} disabled />
         </div>
 
         <div class="form-field form-field--full">
-          <label class="checkbox-label">
-            <input type="checkbox" checked={settings.no_tls_verify} disabled />
-            <span class="checkbox-text">Не проверять TLS-сертификат (небезопасно)</span>
-          </label>
+          <Checkbox id="ad-no-tls-verify" checked={settings.no_tls_verify} disabled>
+            Не проверять TLS-сертификат (небезопасно)
+          </Checkbox>
         </div>
       </div>
     </details>
@@ -252,39 +248,8 @@
     color: var(--tr-text-secondary);
   }
 
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-primary);
-    cursor: pointer;
-
-    input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--tr-accent);
-    }
-  }
-
-  .checkbox-text {
-    font-weight: var(--tr-font-weight-medium);
-  }
-
   .radio-label {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--tr-space-xs);
-    cursor: pointer;
     margin-top: var(--tr-space-xs);
-
-    input[type='radio'] {
-      width: 16px;
-      height: 16px;
-      margin-top: 2px;
-      accent-color: var(--tr-accent);
-      cursor: pointer;
-    }
   }
 
   .radio-text {
@@ -323,20 +288,6 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--tr-space-md);
     margin-top: var(--tr-space-md);
-  }
-
-  .form-input {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
   }
 
   .save-row {
