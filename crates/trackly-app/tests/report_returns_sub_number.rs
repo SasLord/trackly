@@ -15,12 +15,12 @@
 //! conversion fails at the driver level for those rows, exactly matching the
 //! reported symptom (Возвраты report only).
 //!
-//! EXPECTED TO FAIL on the current `report_service.rs`: this test seeds a
-//! partial-return act (guaranteed non-NULL integer `sub_number`) and calls
-//! `list_device_returns`, expecting it to return `Ok(..)`. On the unfixed code,
-//! the call returns `Err(AppError::Internal { .. })` wrapping a rusqlite
-//! "Invalid column type ... at index ..." error — that failure IS the
-//! reproduction of GAP-4.
+//! FIXED (28-15 Task 3, human decision `fix-now`): `query_acts_inner`'s SQL now
+//! casts `a.sub_number` to TEXT (`CAST(a.sub_number AS TEXT) as sub_number`),
+//! identical in kind to the pre-existing `CAST(a.number AS TEXT) as number`.
+//! This test seeds a partial-return act (guaranteed non-NULL integer
+//! `sub_number`) and calls `list_device_returns`, asserting it returns
+//! `Ok(..)` with the row's `sub_number` round-tripped as `"1"`.
 
 use std::sync::Arc;
 
@@ -149,10 +149,10 @@ async fn returns_report_loads_when_sub_number_is_set() {
         .list_device_returns(ReportFilter::default(), period)
         .await;
 
-    // EXPECTED TO FAIL here on the unfixed report_service.rs: rusqlite's
-    // `Option<String>::FromSql` rejects the raw INTEGER sub_number column,
-    // surfacing as `Err(AppError::Internal { .. })` — reproducing GAP-4
-    // ("Не удалось загрузить отчёт" on Отчёты -> Устройства -> Возвраты).
+    // Fixed (28-15 Task 3): `query_acts_inner` now casts sub_number to TEXT,
+    // so this succeeds for return acts with a non-NULL integer sub_number —
+    // resolving GAP-4 ("Не удалось загрузить отчёт" on Отчёты -> Устройства ->
+    // Возвраты).
     let response = result.expect(
         "list_device_returns must succeed for a return act with a non-NULL sub_number \
          (GAP-4 reproduction: rusqlite column-type mismatch on a.sub_number)",

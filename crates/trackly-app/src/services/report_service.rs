@@ -746,7 +746,7 @@ fn query_acts_inner(
         "SELECT a.id, \
                strftime('%Y-%m', datetime(a.handover_date_utc, 'unixepoch', '+3 hours')) AS month_key, \
                CAST(a.number AS TEXT) as number, \
-               a.sub_number, \
+               CAST(a.sub_number AS TEXT) as sub_number, \
                a.giver_name, a.receiver_name, \
                a.handover_date_utc, \
                l.name AS location_name, \
