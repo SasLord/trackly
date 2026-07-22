@@ -1,8 +1,14 @@
 <script lang="ts">
   // Plan 07-06 Task 1: Universal report table with month-separator rows.
   // Temporal reports: separators by month_key. Snapshot: separators by location_name.
-  // Loading / empty / error states follow ActsList.svelte pattern.
-  import Spinner from '$lib/components/Spinner.svelte';
+  // Plan 28-04 (D-07): rebuilt on shared Table/TableRow primitives — dynamic
+  // Column[] rendered via head/children snippets; the month/location separator
+  // stays a bare <tr> (NOT TableRow's group-collapse mode — that mode is a
+  // collapse contract with groupExpanded/onToggleGroup, the separator here is static).
+  // Loading/empty now come from Table's built-in states; error keeps its own
+  // sibling branch outside Table (no error-state equivalent in Table's API).
+  import Table from '$lib/components/Table.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
 
   interface ReportRow {
     id: number;
@@ -98,49 +104,44 @@
   });
 </script>
 
+{#snippet tableHead()}
+  {#each columns as col}
+    <th>{col.label}</th>
+  {/each}
+{/snippet}
+
 <div class="report-table-wrap">
-  {#if loading}
-    <div class="state state-loading">
-      <Spinner size="md" />
-    </div>
-  {:else if error}
+  {#if error}
     <div class="state state-error">
       <p class="error-text">Не удалось загрузить отчёт. Попробуйте ещё раз.</p>
     </div>
-  {:else if rows.length === 0}
-    <div class="state state-empty">
-      <p class="empty-heading">Нет данных за выбранный период</p>
-      <p class="empty-body">Измените диапазон дат или выберите другой тип отчёта.</p>
-    </div>
   {:else}
-    <div class="table-scroll">
-      <table class="report-table">
-        <thead>
-          <tr>
-            {#each columns as col}
-              <th scope="col">{col.label}</th>
-            {/each}
+    <Table
+      columns={columns.length}
+      {loading}
+      empty={rows.length === 0 && !loading}
+      emptyTitle="Нет данных за выбранный период"
+      emptyBody="Измените диапазон дат или выберите другой тип отчёта."
+      head={tableHead}
+      framed={false}
+      fillHeight
+    >
+      {#each grouped as item}
+        {#if 'type' in item && item.type === 'separator'}
+          <tr class="report-separator" aria-hidden="true">
+            <td colspan={columns.length}>{item.label}</td>
           </tr>
-        </thead>
-        <tbody>
-          {#each grouped as item}
-            {#if 'type' in item && item.type === 'separator'}
-              <tr class="month-separator" aria-hidden="true">
-                <td colspan={columns.length}>{item.label}</td>
-              </tr>
-            {:else}
-              {@const row = item as ReportRow}
-              <tr>
-                {#each columns as col}
-                  {@const cellVal = formatCellValue(row, col.key)}
-                  <td title={cellVal}>{cellVal}</td>
-                {/each}
-              </tr>
-            {/if}
-          {/each}
-        </tbody>
-      </table>
-    </div>
+        {:else}
+          {@const row = item as ReportRow}
+          <TableRow>
+            {#each columns as col}
+              {@const cellVal = formatCellValue(row, col.key)}
+              <td title={cellVal}>{cellVal}</td>
+            {/each}
+          </TableRow>
+        {/if}
+      {/each}
+    </Table>
   {/if}
 </div>
 
@@ -163,75 +164,13 @@
     text-align: center;
   }
 
-  .state-loading {
-    gap: var(--tr-space-xs);
-  }
-
   .error-text {
     color: var(--tr-danger);
     font-size: var(--tr-font-size-body);
     margin: 0;
   }
 
-  .empty-heading {
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    margin: 0 0 var(--tr-space-2xs);
-  }
-
-  .empty-body {
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-tertiary);
-    margin: 0;
-  }
-
-  .table-scroll {
-    flex: 1;
-    overflow: auto;
-  }
-
-  .report-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
-
-    thead {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      background: var(--tr-bg);
-    }
-
-    th {
-      padding: 0 var(--tr-space-md);
-      height: var(--row-height);
-      text-align: left;
-      font-size: var(--tr-font-size-label);
-      font-weight: var(--tr-font-weight-medium);
-      color: var(--tr-text-secondary);
-      border-bottom: 1px solid var(--tr-border);
-      white-space: nowrap;
-    }
-
-    td {
-      padding: 0 var(--tr-space-md);
-      height: var(--row-height);
-      font-size: var(--tr-font-size-body);
-      color: var(--tr-text-primary);
-      border-bottom: 1px solid var(--tr-border);
-      max-width: 240px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    tbody tr:hover {
-      background: var(--tr-surface);
-    }
-  }
-
-  .month-separator td {
+  .report-separator td {
     padding: var(--tr-space-2xs) var(--tr-space-md);
     height: var(--row-height-dense);
     background: var(--tr-surface-sunken);
