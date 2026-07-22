@@ -614,7 +614,7 @@ Plans:
 3. Окно Настроек (организация, шаблоны, бэкапы, вкладка AD) использует новые токены/компоненты.
 4. Окно Пользователей использует новые токены/компоненты.
 
-**Plans**: 10 plans in 2 waves
+**Plans**: 16 plans in 4 waves (10 initial + 6 gap-closure from 28-VERIFICATION.md, gaps_found 2026-07-22)
 Plans:
 **Wave 1**
 
@@ -630,7 +630,21 @@ Plans:
 
 **Wave 2** *(depends on Wave 1 — финальный гейт)*
 
-- [ ] 28-10-PLAN.md — Финальный build-гейт + both-theme визуальный UAT (checkpoint) [WIN-06..09]
+- [x] 28-10-PLAN.md — Финальный build-гейт + both-theme визуальный UAT (checkpoint) [WIN-06..09] — status: gaps_found, см. 28-VERIFICATION.md
+
+**Gap Closure (from 28-VERIFICATION.md, live UAT gaps_found)**
+
+**Gap-closure Wave 1** *(parallel, no file overlap)*
+
+- [ ] 28-11-PLAN.md — GAP-1: Заявки native Select→Dropdown (RequestDetail Роль, RequestFormModal Категория) [WIN-06]
+- [ ] 28-12-PLAN.md — GAP-1: Настройки native Select→Dropdown (BackupSettings частота, NetworkSettings Bind-адрес, TemplateEditor тип шаблона D-08) [WIN-08]
+- [ ] 28-13-PLAN.md — GAP-1: Пользователи Роль + Отчёты PeriodSelector Месяц/Год native Select→Dropdown (fixes value-not-displayed regression) + GAP-3 partial (С/По range spacing) [WIN-09, WIN-07]
+- [ ] 28-14-PLAN.md — GAP-2: Заявки master/detail height overflow (RequestsPage.svelte page-content flex root-cause fix) + Автор column width budget + checkpoint [WIN-06]
+- [ ] 28-15-PLAN.md — GAP-4: Возвраты report load failure — diagnosed (schema/DTO CAST mismatch, pre-existing Phase 7 bug) + human decision checkpoint + conditional fix [WIN-07]
+
+**Gap-closure Wave 2** *(depends on 28-15 — shares Отчёты surface)*
+
+- [ ] 28-16-PLAN.md — GAP-3: Отчёты table framing + height overflow (ReportsPage.svelte reports-content root-cause fix, ReportTable.svelte framed=true) + checkpoint [WIN-07]
 
 **UI hint**: yes
 
