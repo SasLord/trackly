@@ -123,7 +123,6 @@
       emptyTitle="Нет данных за выбранный период"
       emptyBody="Измените диапазон дат или выберите другой тип отчёта."
       head={tableHead}
-      framed={false}
       fillHeight
     >
       {#each grouped as item}
