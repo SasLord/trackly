@@ -38,7 +38,7 @@
 - [x] **WIN-06**: Заявки
 - [x] **WIN-07**: Отчёты
 - [x] **WIN-08**: Настройки
-- [ ] **WIN-09**: Пользователи
+- [x] **WIN-09**: Пользователи
 - [ ] **WIN-10**: Экраны входа — Логин / Pending / Blocked / FirstRunWizard
 - [ ] **WIN-11**: Интерфейс сотрудника (EmployeeLayout)
 - [x] **WIN-12**: Адаптивность окон Дашборд и Устройства (брейкпоинты, сворачиваемый/выезжающий сайдбар, мобильные раскладки — сознательное расширение D-15 Фазы 26 поверх «соответствия макету»)
@@ -126,7 +126,7 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | WIN-06 | Phase 28 | Complete |
 | WIN-07 | Phase 28 | Complete |
 | WIN-08 | Phase 28 | Complete |
-| WIN-09 | Phase 28 | Pending |
+| WIN-09 | Phase 28 | Complete |
 | WIN-10 | Phase 29 | Pending |
 | WIN-11 | Phase 29 | Pending |
 | QA-02 | Phase 30 | Pending |

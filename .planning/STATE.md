@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-22T06:53:13.834Z"
+last_updated: "2026-07-22T07:03:37.334Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 18
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 28 (support-admin-windows) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-07-22
 
@@ -254,6 +254,7 @@ Last activity: 2026-07-22
 | Phase 28 P06 | 8min | 2 tasks | 2 files |
 | Phase 28 P07 | 5 min | 2 tasks | 2 files |
 | Phase 28 P08 | 8 min | 1 tasks | 1 files |
+| Phase 28 P09 | 8min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -626,6 +627,8 @@ Recent decisions affecting current work:
 - [Phase 28]: 28-06: .fingerprint в NetworkSettings намеренно не тронут (bare font-family: monospace) — вне явного объёма плана, симметрично StorageSettings.db-path-code
 - [Phase 28]: org-email в OrgSettings использует Input type="text" вместо native type="email" (28-07) — Input.svelte контракт не поддерживает 'email' тип; серверная валидация остаётся авторитетной
 - [Phase 28]: Plan 28-08: TemplateEditor kind-select — .select-shrink wrapper (fit-content + min-width 220px), reused from BackupSettings.svelte, avoids Select's width:100% stretching in the label+select flex row
+- [Phase 28]: Пароль в UserFormModal остаётся raw type=password (T-28-09-01) — обязательное исключение из D-04, Input.svelte не поддерживает password-тип
+- [Phase 28]: Email в UserFormModal через Input type=text — нативная HTML5-валидация email потеряна, серверная валидация авторитетна
 
 ### Pending Todos
 
@@ -713,8 +716,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-22T06:45:46.065Z
-Stopped at: Completed 28-07-PLAN.md
+Last session: 2026-07-22T07:03:37.326Z
+Stopped at: Completed 28-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
