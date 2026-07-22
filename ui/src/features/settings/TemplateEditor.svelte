@@ -2,6 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import Select from '$lib/components/Select.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
@@ -215,13 +216,15 @@
   <!-- Template selector -->
   <div class="template-selector-row">
     <label class="form-label" for="template-kind">Шаблон</label>
-    <select id="template-kind" class="form-select" bind:value={selectedKind}>
-      {#each templates as tmpl (tmpl.kind)}
-        <option value={tmpl.kind}>
-          {KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind}
-        </option>
-      {/each}
-    </select>
+    <div class="select-shrink">
+      <Select id="template-kind" value={selectedKind} onchange={(v) => (selectedKind = v)}>
+        {#each templates as tmpl (tmpl.kind)}
+          <option value={tmpl.kind}>
+            {KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind}
+          </option>
+        {/each}
+      </Select>
+    </div>
   </div>
 
   <!-- Available variables panel (T-07-04-02: reference only — not executed in browser).
@@ -325,20 +328,9 @@
     white-space: nowrap;
   }
 
-  .form-select {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
+  .select-shrink {
+    width: fit-content;
     min-width: 220px;
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
   }
 
   .variables-panel {
