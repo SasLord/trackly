@@ -2,12 +2,26 @@
   // Plan 06-05 Task 2: карточка заявки с lifecycle кнопками + история (REQ-07).
   // REQ-05: «Установить картридж» → OperationModal с preFillPrinterId.
   // По паттерну CartridgeDetail.svelte.
+  // Plan 28-02 Task 1 (D-01): rebuilt on the shared DetailPanel/DetailSection/
+  // DetailField primitives (extracted in 27-01), per PrinterDetail.svelte
+  // precedent (not ActDetail) for the header — the title carries two badges
+  // (тип+статус) plus a meta-row (автор/дата), which does not fit a plain
+  // string `title` prop. panelTitle = typeLabel; title-row (badges) +
+  // meta-row are rendered verbatim as the first content inside DetailPanel's
+  // children, matching PrinterDetail's title-badges precedent. Lifecycle
+  // buttons without an attached inline field moved into the actions snippet;
+  // «Выполнить» stays with its completeNotes Textarea in the body (inline
+  // mini-form, unchanged). The 4 confirm-Modal blocks are untouched (D-04
+  // territory, not D-01).
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Select from '$lib/components/Select.svelte';
+  import DetailPanel from '$lib/components/DetailPanel.svelte';
+  import DetailSection from '$lib/components/DetailSection.svelte';
+  import DetailField from '$lib/components/DetailField.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
@@ -116,6 +130,10 @@
           ? 'Замена картриджа'
           : 'Свободная форма',
   );
+
+  // D-01: DetailPanel's header title is a plain string — the two-badge +
+  // meta-row header lives as bespoke content inside children (see template).
+  const panelTitle = $derived<string | undefined>(request ? typeLabel : undefined);
 
   // Load history when request changes
   $effect(() => {
@@ -394,20 +412,83 @@
   }
 </script>
 
-<div class="request-detail" aria-live="polite">
-  {#if loading}
-    <div class="loading">
-      <Spinner size="md" />
-      <span>Загрузка заявки…</span>
-    </div>
-  {:else if request === null}
-    <div class="empty">
-      <h2 class="empty-heading">Выберите заявку</h2>
-      <p class="empty-body">Выберите заявку слева, чтобы увидеть детали и историю.</p>
-    </div>
-  {:else}
-    <!-- Header -->
-    <header class="detail-header">
+{#if loading}
+  <div class="detail-loading" aria-live="polite">
+    <Spinner size="md" />
+    <span>Загрузка заявки…</span>
+  </div>
+{:else}
+  <DetailPanel
+    title={panelTitle}
+    empty={request === null}
+    emptyTitle="Выберите заявку"
+    emptyBody="Выберите заявку слева, чтобы увидеть детали и историю."
+  >
+    {#snippet actions()}
+      {#if request}
+        {#if isAdRegister}
+          {#if isAdmin && request.status === 'open'}
+            <Button variant="primary" onclick={openApproveModal}>Подтвердить</Button>
+            <Button
+              variant="destructive"
+              onclick={() => {
+                rejectNotes = '';
+                rejectModalOpen = true;
+              }}
+            >
+              Отклонить
+            </Button>
+          {/if}
+        {:else if isSpecialist}
+          {#if request.status === 'open'}
+            <Button variant="primary" onclick={handleAccept}>Принять в работу</Button>
+            <Button
+              variant="destructive"
+              onclick={() => {
+                rejectNotes = '';
+                rejectModalOpen = true;
+              }}
+            >
+              Отклонить
+            </Button>
+          {:else if request.status === 'in_progress' && request.requestType === 'free_form'}
+            <Button
+              variant="destructive"
+              onclick={() => {
+                rejectNotes = '';
+                rejectModalOpen = true;
+              }}
+            >
+              Отклонить
+            </Button>
+          {:else if request.status === 'in_progress' && request.requestType === 'cartridge_replace'}
+            <Button variant="primary" onclick={() => (operationModalOpen = true)}>
+              Установить картридж
+            </Button>
+            <Button
+              variant="destructive"
+              onclick={() => {
+                rejectNotes = '';
+                rejectModalOpen = true;
+              }}
+            >
+              Отклонить
+            </Button>
+          {/if}
+        {:else if isOwnRequest && request.status === 'open'}
+          <Button variant="destructive" onclick={() => (cancelModalOpen = true)}>
+            Отменить заявку
+          </Button>
+        {/if}
+        {#if isSpecialist && (!isAdRegister || isAdmin)}
+          <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>Удалить</Button>
+        {/if}
+      {/if}
+    {/snippet}
+
+    {#if request}
+      <!-- Header (D-01): title-row (2 Badge) + meta-row, verbatim — PrinterDetail
+           title-badges precedent, does not fit DetailPanel's plain-string title. -->
       <div class="title-row">
         <Badge variant="default">{typeLabel}</Badge>
         <Badge variant={statusVariant}>{statusLabel}</Badge>
@@ -422,205 +503,112 @@
           <span class="meta-value">{relativeDate(request.createdAtUtc)}</span>
         </span>
       </div>
-    </header>
 
-    <!-- Поля по типу заявки -->
-    <section class="section">
-      <h3 class="section-heading">Информация</h3>
-      <div class="fields-grid">
-        {#if request.requestType === 'ad_register'}
-          <div class="field">
-            <span class="field-label">ФИО</span>
-            <span class="field-value">{request.description ?? request.requesterName ?? '—'}</span>
-          </div>
-          <div class="field">
-            <span class="field-label">Логин</span>
-            <span class="field-value">{request.requesterName ?? '—'}</span>
-          </div>
-          <div class="field">
-            <span class="field-label">Тип</span>
-            <span class="field-value">
-              {isAdRestore ? 'Восстановление доступа' : 'Регистрация'}
-            </span>
-          </div>
-        {:else if request.requestType === 'cartridge_replace'}
-          <div class="field">
-            <span class="field-label">Принтер</span>
-            <span class="field-value">{request.printerName ?? '—'}</span>
-          </div>
-          {#if request.description}
-            <div class="field field-wide">
-              <span class="field-label">Комментарий</span>
-              <span class="field-value">{request.description}</span>
-            </div>
+      <!-- Поля по типу заявки -->
+      <DetailSection heading="Информация">
+        <div class="fields-grid">
+          {#if request.requestType === 'ad_register'}
+            <DetailField label="ФИО" value={request.description ?? request.requesterName ?? null} />
+            <DetailField label="Логин" value={request.requesterName ?? null} />
+            <DetailField
+              label="Тип"
+              value={isAdRestore ? 'Восстановление доступа' : 'Регистрация'}
+            />
+          {:else if request.requestType === 'cartridge_replace'}
+            <DetailField label="Принтер" value={request.printerName ?? null} />
+            {#if request.description}
+              <div class="field-wide">
+                <DetailField label="Комментарий" value={request.description} />
+              </div>
+            {/if}
+          {:else}
+            {#if request.categoryName}
+              <DetailField label="Категория" value={request.categoryName} />
+            {/if}
+            {#if request.description}
+              <div class="field-wide">
+                <DetailField label="Описание" value={request.description} />
+              </div>
+            {/if}
           {/if}
-        {:else}
-          {#if request.categoryName}
-            <div class="field">
-              <span class="field-label">Категория</span>
-              <span class="field-value">{request.categoryName}</span>
+        </div>
+      </DetailSection>
+
+      <!-- ad_register: резолюция (только admin, REQ-06/T-09-21) -->
+      {#if isAdRegister}
+        {#if isAdmin && request.status !== 'open' && request.resolutionNotes}
+          <DetailSection>
+            <div class="resolution">
+              <DetailField label="Комментарий" value={request.resolutionNotes} />
             </div>
-          {/if}
-          {#if request.description}
-            <div class="field field-wide">
-              <span class="field-label">Описание</span>
-              <span class="field-value">{request.description}</span>
-            </div>
-          {/if}
+          </DetailSection>
         {/if}
-      </div>
-    </section>
-
-    <!-- ad_register действия (только admin, REQ-06/T-09-21) -->
-    {#if isAdRegister}
-      {#if isAdmin}
-        <section class="section">
-          {#if request.status === 'open'}
+      {:else if isSpecialist}
+        {#if request.status === 'in_progress' && request.requestType === 'free_form'}
+          <!-- in_progress + free_form: инлайн-мини-форма «Выполнить» — Textarea
+               остаётся вместе с кнопкой submit, НЕ переносится в header actions. -->
+          <DetailSection>
+            <div class="complete-form">
+              <div class="field">
+                <label class="label" for="complete-notes">Комментарий специалиста</label>
+                <Textarea
+                  value={completeNotes}
+                  placeholder="Необязательно"
+                  id="complete-notes"
+                  oninput={(v) => (completeNotes = v)}
+                />
+              </div>
+            </div>
             <div class="actions">
-              <Button variant="primary" onclick={openApproveModal}>Подтвердить</Button>
-              <Button
-                variant="destructive"
-                onclick={() => {
-                  rejectNotes = '';
-                  rejectModalOpen = true;
-                }}
-              >
-                Отклонить
+              <Button variant="primary" loading={completeSubmitting} onclick={handleComplete}>
+                Выполнить
               </Button>
             </div>
-          {:else if request.resolutionNotes}
+          </DetailSection>
+        {:else if (request.status === 'completed' || request.status === 'rejected') && request.resolutionNotes}
+          <DetailSection>
             <div class="resolution">
-              <span class="field-label">Комментарий</span>
-              <span class="field-value">{request.resolutionNotes}</span>
+              <DetailField label="Комментарий специалиста" value={request.resolutionNotes} />
             </div>
-          {/if}
-        </section>
-      {/if}
-    {:else if isSpecialist}
-      <section class="section">
-        {#if request.status === 'open'}
-          <!-- open: Принять в работу / Отклонить -->
-          <div class="actions">
-            <Button variant="primary" onclick={handleAccept}>Принять в работу</Button>
-            <Button
-              variant="destructive"
-              onclick={() => {
-                rejectNotes = '';
-                rejectModalOpen = true;
-              }}
-            >
-              Отклонить
-            </Button>
-          </div>
-        {:else if request.status === 'in_progress' && request.requestType === 'free_form'}
-          <!-- in_progress + free_form: Выполнить / Отклонить -->
-          <div class="complete-form">
-            <div class="field">
-              <label class="label" for="complete-notes">Комментарий специалиста</label>
-              <Textarea
-                value={completeNotes}
-                placeholder="Необязательно"
-                id="complete-notes"
-                oninput={(v) => (completeNotes = v)}
-              />
-            </div>
-          </div>
-          <div class="actions">
-            <Button variant="primary" loading={completeSubmitting} onclick={handleComplete}>
-              Выполнить
-            </Button>
-            <Button
-              variant="destructive"
-              onclick={() => {
-                rejectNotes = '';
-                rejectModalOpen = true;
-              }}
-            >
-              Отклонить
-            </Button>
-          </div>
-        {:else if request.status === 'in_progress' && request.requestType === 'cartridge_replace'}
-          <!-- in_progress + cartridge_replace: Установить картридж / Отклонить -->
-          <div class="actions">
-            <Button variant="primary" onclick={() => (operationModalOpen = true)}>
-              Установить картридж
-            </Button>
-            <Button
-              variant="destructive"
-              onclick={() => {
-                rejectNotes = '';
-                rejectModalOpen = true;
-              }}
-            >
-              Отклонить
-            </Button>
-          </div>
-        {:else if request.status === 'completed' || request.status === 'rejected'}
-          <!-- Terminal — show resolution notes -->
-          {#if request.resolutionNotes}
-            <div class="resolution">
-              <span class="field-label">Комментарий специалиста</span>
-              <span class="field-value">{request.resolutionNotes}</span>
-            </div>
-          {/if}
+          </DetailSection>
         {/if}
-      </section>
-    {:else if isOwnRequest && request.status === 'open'}
-      <!-- GAP-12-07/A4: Employee — cancel own open request (this branch is
-           only reached when !isAdRegister && !isSpecialist per the if/else
-           chain above) -->
-      <section class="section">
-        <div class="actions">
-          <Button variant="destructive" onclick={() => (cancelModalOpen = true)}>
-            Отменить заявку
-          </Button>
-        </div>
-      </section>
-    {:else if (request.status === 'completed' || request.status === 'rejected') && request.resolutionNotes}
-      <!-- Employee view of terminal state resolution notes -->
-      <section class="section">
-        <div class="resolution">
-          <span class="field-label">Комментарий специалиста</span>
-          <span class="field-value">{request.resolutionNotes}</span>
-        </div>
-      </section>
-    {/if}
-
-    <!-- GAP-12-07/A4: Admin/Manager delete — any status, independent of status branches above.
-         WR-04 (revised): ad_register requests govern an AD user row → delete is Admin-only. -->
-    {#if isSpecialist && (!isAdRegister || isAdmin)}
-      <section class="section">
-        <div class="actions">
-          <Button variant="destructive" onclick={() => (deleteModalOpen = true)}>Удалить</Button>
-        </div>
-      </section>
-    {/if}
-
-    <!-- История (REQ-07) -->
-    <section class="section">
-      <h3 class="section-heading">История</h3>
-      {#if historyLoading}
-        <div class="history-loading">
-          <Spinner size="sm" />
-        </div>
-      {:else if historyEntries.length === 0}
-        <p class="history-empty">История пуста</p>
-      {:else}
-        <ul class="history-list">
-          {#each historyEntries as entry (entry.id)}
-            <li class="history-row">
-              <span class="history-text">
-                {formatFullDate(entry.createdAtUtc)} — {actionLabel(entry.action)}{entry.actorName
-                  ? `; ${entry.actorName}`
-                  : ''}{entry.notes ? `; ${entry.notes}` : ''}
-              </span>
-            </li>
-          {/each}
-        </ul>
+      {:else if isOwnRequest && request.status === 'open'}
+        <!-- GAP-12-07/A4: Employee — cancel own open request; action-only
+             (button lives in header actions), no body content here. -->
+      {:else if (request.status === 'completed' || request.status === 'rejected') && request.resolutionNotes}
+        <!-- Employee view of terminal state resolution notes -->
+        <DetailSection>
+          <div class="resolution">
+            <DetailField label="Комментарий специалиста" value={request.resolutionNotes} />
+          </div>
+        </DetailSection>
       {/if}
-    </section>
-  {/if}
-</div>
+
+      <!-- История (REQ-07) -->
+      <DetailSection heading="История">
+        {#if historyLoading}
+          <div class="history-loading">
+            <Spinner size="sm" />
+          </div>
+        {:else if historyEntries.length === 0}
+          <p class="history-empty">История пуста</p>
+        {:else}
+          <ul class="history-list">
+            {#each historyEntries as entry (entry.id)}
+              <li class="history-row">
+                <span class="history-text">
+                  {formatFullDate(entry.createdAtUtc)} — {actionLabel(entry.action)}{entry.actorName
+                    ? `; ${entry.actorName}`
+                    : ''}{entry.notes ? `; ${entry.notes}` : ''}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </DetailSection>
+    {/if}
+  </DetailPanel>
+{/if}
 
 <!-- Confirm-modal «Отклонить» -->
 <Modal open={rejectModalOpen} title={rejectModalTitle} onClose={() => (rejectModalOpen = false)}>
@@ -714,15 +702,10 @@
 {/if}
 
 <style lang="scss">
-  .request-detail {
+  .detail-loading {
     height: 100%;
     overflow: auto;
     padding: var(--tr-space-xl);
-    background: var(--tr-bg);
-  }
-
-  .loading,
-  .empty {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -731,23 +714,6 @@
     min-height: 320px;
     text-align: center;
     color: var(--tr-text-secondary);
-  }
-
-  .empty-heading {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0;
-    max-width: 360px;
-    color: var(--tr-text-secondary);
-  }
-
-  .detail-header {
-    margin-bottom: var(--tr-space-2xl);
   }
 
   .title-row {
@@ -762,6 +728,7 @@
     display: flex;
     gap: var(--tr-space-xl);
     flex-wrap: wrap;
+    margin-bottom: var(--tr-space-2xl);
   }
 
   .meta-item {
@@ -778,21 +745,14 @@
     color: var(--tr-text-primary);
   }
 
-  .section {
-    margin-bottom: var(--tr-space-2xl);
-  }
-
-  .section-heading {
-    margin: 0 0 var(--tr-space-md);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
   .fields-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--tr-space-md);
+  }
+
+  .field-wide {
+    grid-column: 1 / -1;
   }
 
   .field {
@@ -801,19 +761,9 @@
     gap: 2px;
   }
 
-  .field-wide {
-    grid-column: 1 / -1;
-  }
-
-  .field-label,
   .label {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
-  }
-
-  .field-value {
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-primary);
   }
 
   .actions {
@@ -828,9 +778,6 @@
   }
 
   .resolution {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
     padding: var(--tr-space-md);
     background: var(--tr-surface);
     border-radius: var(--tr-radius-xs);
