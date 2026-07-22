@@ -2,7 +2,10 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-12 (GAP-1): Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — implicit-label pattern, как в CartridgeFormBody.svelte
+  // (Phase 27-G1 precedent).
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
@@ -30,6 +33,19 @@
     fingerprint: null,
     desktop_lock_enabled: false,
   });
+
+  // GAP-1: опции для Dropdown (flat + variant="select") — «Bind-адрес».
+  const HOST_OPTIONS = [
+    { id: '0.0.0.0', label: '0.0.0.0 (все интерфейсы)' },
+    { id: '127.0.0.1', label: '127.0.0.1 (только localhost)' },
+  ];
+  const hostLabel = $derived(HOST_OPTIONS.find((o) => o.id === settings.host)?.label ?? '');
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandHost(): { id: string; label: string }[] {
+    return [];
+  }
 
   let saving = $state(false);
   let toggling = $state(false);
@@ -190,16 +206,30 @@
         </div>
 
         <div class="form-field">
-          <label class="form-label" for="net-host">Bind-адрес</label>
-          <Select
-            id="net-host"
-            value={settings.host}
-            disabled={saving || serverRunning}
-            onchange={(v) => (settings.host = v)}
-          >
-            <option value="0.0.0.0">0.0.0.0 (все интерфейсы)</option>
-            <option value="127.0.0.1">127.0.0.1 (только localhost)</option>
-          </Select>
+          <label class="form-label dropdown-label">
+            <span class="label-text">Bind-адрес</span>
+            <Dropdown
+              variant="select"
+              flat={true}
+              value={hostLabel}
+              placeholder="Выберите адрес"
+              searchPlaceholder="Поиск"
+              disabled={saving || serverRunning}
+              loading={false}
+              groups={HOST_OPTIONS}
+              getGroupId={(o) => o.id}
+              getGroupName={(o) => o.label}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(o) => o.id === settings.host}
+              onExpandGroup={noExpandHost}
+              getMemberId={(o) => o.id}
+              getMemberName={(o) => o.label}
+              onSearch={() => {}}
+              onPickGroup={(o) => (settings.host = o.id)}
+              onPickMember={() => {}}
+            />
+          </label>
         </div>
 
         <div class="form-field form-field--full">
@@ -389,6 +419,14 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
+  }
+
+  // Plan 28-12 (GAP-1): Dropdown не принимает `id`, поэтому подпись оборачивает
+  // поле (implicit label) вместо `for`/`id` association.
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .save-row {
