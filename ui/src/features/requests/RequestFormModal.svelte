@@ -5,7 +5,11 @@
   // D-Req-Form-01: сотрудник не выбирает модель картриджа (только принтер).
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный
+  // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
+  // (Phase 27-G1) для канонического паттерна. GroupedPrinterSelect (принтер)
+  // остаётся нетронутым — вне области GAP-1's 7-site list.
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import GroupedPrinterSelect from '$lib/components/GroupedPrinterSelect.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
@@ -45,6 +49,27 @@
   // frontend redeploy.
   let categories = $state<RequestCategoryDto[]>([]);
   let categoriesLoading = $state(false);
+
+  // Plan 28-11 (GAP-1): опции для Dropdown (flat + variant="select") — «Категория».
+  // NONE_CATEGORY_ID — строковый sentinel для "Без категории" (getGroupId
+  // возвращает string | number, null нельзя закодировать напрямую).
+  const NONE_CATEGORY_ID = 'none';
+  const categoryOptions = $derived([
+    { id: NONE_CATEGORY_ID, label: 'Без категории' },
+    ...categories.map((c) => ({ id: String(c.id), label: c.name })),
+  ]);
+  const selectedCategoryKey = $derived(
+    categoryId !== null ? String(categoryId) : NONE_CATEGORY_ID,
+  );
+  const selectedCategoryLabel = $derived(
+    categoryOptions.find((o) => o.id === selectedCategoryKey)?.label ?? '',
+  );
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandCategory(): { id: string; label: string }[] {
+    return [];
+  }
 
   // Form instance counter — resets form on each open.
   let openInstanceCounter = $state(0);
@@ -234,19 +259,31 @@
       {:else}
         <!-- Категория (опционально) -->
         <div class="field">
-          <label class="label" for="req-category">Категория</label>
-          <Select
-            value={categoryId !== null ? String(categoryId) : ''}
-            id="req-category"
-            onchange={(v) => {
-              categoryId = v ? parseInt(v, 10) : null;
-            }}
-          >
-            <option value="">Без категории</option>
-            {#each categories as cat (cat.id)}
-              <option value={String(cat.id)}>{cat.name}</option>
-            {/each}
-          </Select>
+          <label class="label dropdown-label">
+            <span class="label-text">Категория</span>
+            <Dropdown
+              variant="select"
+              flat={true}
+              value={selectedCategoryLabel}
+              placeholder="Без категории"
+              searchPlaceholder="Поиск категории"
+              loading={false}
+              groups={categoryOptions}
+              getGroupId={(o) => o.id}
+              getGroupName={(o) => o.label}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(o) => o.id === selectedCategoryKey}
+              onExpandGroup={noExpandCategory}
+              getMemberId={(o) => o.id}
+              getMemberName={(o) => o.label}
+              onSearch={() => {}}
+              onPickGroup={(o) => {
+                categoryId = o.id === NONE_CATEGORY_ID ? null : parseInt(o.id, 10);
+              }}
+              onPickMember={() => {}}
+            />
+          </label>
           {#if categoriesLoading && categories.length === 0}
             <span class="field-hint">Загрузка категорий…</span>
           {/if}
@@ -296,6 +333,16 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-secondary);
     font-weight: var(--tr-font-weight-regular);
+  }
+
+  // Plan 28-11 (GAP-1): Dropdown не принимает `id`, поэтому подпись оборачивает
+  // поле (implicit label) вместо `for`/`id` association — сохраняет вертикальный
+  // макет «подпись сверху, поле снизу», как у остальных .field (CartridgeFormBody
+  // precedent, Phase 27-G1).
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .type-toggle {
