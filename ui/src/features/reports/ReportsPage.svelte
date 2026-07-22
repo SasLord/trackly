@@ -508,7 +508,9 @@
 
   .reports-content {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 0 var(--tr-space-2xl);
     display: flex;
     flex-direction: column;
