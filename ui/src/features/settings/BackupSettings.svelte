@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-12 (GAP-1): Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — Dropdown не принимает `id`/`for`, поэтому
+  // подпись оборачивает поле (implicit label), как в CartridgeFormBody.svelte
+  // (Phase 27-G1 precedent).
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Input from '$lib/components/Input.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
@@ -20,6 +24,22 @@
   let backupFolder = $state<string | null>(null);
   let schedule = $state('');
   let retention = $state(7);
+
+  // GAP-1: опции для Dropdown (flat + variant="select") — «Расписание».
+  const SCHEDULE_OPTIONS = [
+    { id: '', label: 'Отключено' },
+    { id: 'daily', label: 'Ежедневно' },
+    { id: 'weekly', label: 'Еженедельно' },
+  ];
+  const scheduleLabel = $derived(
+    SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? '',
+  );
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandSchedule(): { id: string; label: string }[] {
+    return [];
+  }
   let lastBackupTime = $state<string | null>(null);
   let backingUp = $state(false);
   let savingConfig = $state(false);
@@ -145,19 +165,32 @@
 
       <!-- Schedule -->
       <div class="config-row">
-        <label class="config-label" for="backup-schedule">Расписание</label>
-        <div class="select-shrink">
-          <Select
-            id="backup-schedule"
-            value={schedule}
-            disabled={!backupFolder}
-            onchange={(v) => (schedule = v)}
-          >
-            <option value="">Отключено</option>
-            <option value="daily">Ежедневно</option>
-            <option value="weekly">Еженедельно</option>
-          </Select>
-        </div>
+        <label class="config-label dropdown-label">
+          <span>Расписание</span>
+          <div class="select-shrink">
+            <Dropdown
+              variant="select"
+              flat={true}
+              value={scheduleLabel}
+              placeholder="Отключено"
+              searchPlaceholder="Поиск"
+              disabled={!backupFolder}
+              loading={false}
+              groups={SCHEDULE_OPTIONS}
+              getGroupId={(o) => o.id}
+              getGroupName={(o) => o.label}
+              getGroupCount={() => 0}
+              isGroupExpandable={() => false}
+              isGroupSelected={(o) => o.id === schedule}
+              onExpandGroup={noExpandSchedule}
+              getMemberId={(o) => o.id}
+              getMemberName={(o) => o.label}
+              onSearch={() => {}}
+              onPickGroup={(o) => (schedule = o.id)}
+              onPickMember={() => {}}
+            />
+          </div>
+        </label>
         {#if !backupFolder}
           <p class="helper-text">Выберите папку для активации автобэкапа</p>
         {/if}
@@ -255,6 +288,14 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
+  }
+
+  // Plan 28-12 (GAP-1): Dropdown не принимает `id`, поэтому подпись оборачивает
+  // поле (implicit label) вместо `for`/`id` association.
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .folder-display {
