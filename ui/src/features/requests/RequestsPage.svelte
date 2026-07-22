@@ -292,7 +292,11 @@
 
   .page-content {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: var(--tr-space-xl) var(--tr-space-2xl);
   }
 
