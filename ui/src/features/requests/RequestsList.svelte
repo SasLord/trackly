@@ -32,9 +32,10 @@
 </script>
 
 {#snippet tableHead()}
+  <!-- UAT (Заявки): Автор (с датой) moved to the first column. -->
+  <th>Автор</th>
   <th>Тип</th>
   <th>Описание</th>
-  <th>Автор</th>
   <th class="th-status">Статус</th>
 {/snippet}
 

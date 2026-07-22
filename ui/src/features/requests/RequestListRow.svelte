@@ -89,24 +89,27 @@
 </script>
 
 <TableRow {selected} class="request-row">
+  <!-- UAT (Заявки): Автор (с датой) is now the first column, so the single
+       keyboard entry point (role=button/tabindex/onkeydown) lives here. -->
   <td
-    class="cell cell-type"
+    class="cell cell-author"
     role="button"
     tabindex="0"
     aria-pressed={selected}
     {onclick}
     onkeydown={handleKeydown}
   >
+    {request.requesterName ?? '—'}
+    <span class="cell-date">{relativeDate(request.createdAtUtc)}</span>
+  </td>
+  <td class="cell cell-type" {onclick}>
     <Badge variant="default" size="sm">{typeLabel}</Badge>
     {#if isAdRestore}
+      <!-- UAT: two badges stack on separate lines within the cell. -->
       <Badge variant="warning" size="sm">Восстановление доступа</Badge>
     {/if}
   </td>
   <td class="cell cell-desc" title={shortDesc} {onclick}>{shortDesc}</td>
-  <td class="cell cell-author" {onclick}>
-    {request.requesterName ?? '—'}
-    <span class="cell-date">{relativeDate(request.createdAtUtc)}</span>
-  </td>
   <td class="cell cell-status" {onclick}>
     <Badge variant={statusVariant}>{statusLabel}</Badge>
   </td>
@@ -127,16 +130,13 @@
   }
 
   .cell-type {
+    // UAT (Заявки): two badges (e.g. «Регистрация AD» + «Восстановление
+    // доступа») stack on separate lines instead of overflowing the row width.
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: var(--tr-space-2xs);
-    white-space: nowrap;
     max-width: 190px;
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: inset 0 0 0 2px var(--tr-accent);
-    }
   }
 
   .cell-desc {
@@ -153,6 +153,13 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 0;
+
+    // UAT: Автор is now the first column and the single keyboard entry point,
+    // so the focus ring lives here (moved from .cell-type).
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
+    }
   }
 
   .cell-date {
