@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-22T05:57:31.050Z"
+last_updated: "2026-07-22T06:05:53.894Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 18
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 28 (support-admin-windows) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-07-22
 
@@ -248,6 +248,7 @@ Last activity: 2026-07-22
 | Phase 27 P09 | ~4h57min | 2 tasks | 31 files |
 | Phase 28 P01 | 4min | 2 tasks | 4 files |
 | Phase 28 P02 | 20 min | 2 tasks | 2 files |
+| Phase 28 P03 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -612,6 +613,8 @@ Recent decisions affecting current work:
 - [Phase 27]: Both-theme UAT (D-02) не auto-approved несмотря на auto_advance=true — требуется живой человеческий просмотр обеих тем; approved после cargo tauri dev UAT + 24 fix-коммитов (батчи B-G: fill-height master-detail, единый фон полей, кастомный Dropdown в Картриджах, sticky-шапка деталей, inset selected-row) — Визуальная проверка raised-vs-surface distinction в обеих темах требует реальных глаз; gate=blocking в плане 27-09 соблюдён буквально
 - [Phase ?]: RequestsSearchAndTabs: justify-content:space-between replaces .tabs{flex:1} wrapper to keep create-button right-aligned without a bespoke flex wrapper (28-01)
 - [Phase 28]: 28-02: panelTitle = typeLabel (простая строка), title-row (2 Badge) + meta-row — bespoke первый контент children по прецеденту PrinterDetail
+- [Phase 28]: ReportSubNav count fallback for missing statusCounts changed from string '–' to number 0 (Tabs.count typed number) — accepted minor edge-case
+- [Phase 28]: PeriodSelector onMonthChange/onYearChange changed signature from Event to string (native select removed); period-recalculation logic unchanged
 
 ### Pending Todos
 
@@ -699,8 +702,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-22T05:52:42.314Z
-Stopped at: Phase 28 UI-SPEC approved
+Last session: 2026-07-22T06:05:53.887Z
+Stopped at: Completed 28-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
