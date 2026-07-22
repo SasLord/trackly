@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import Input from '$lib/components/Input.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
@@ -233,36 +234,23 @@
   <div class="form-grid">
     <div class="form-field form-field--full">
       <label class="form-label" for="org-name">Название организации</label>
-      <input
-        id="org-name"
-        class="form-input"
-        type="text"
-        bind:value={orgName}
-        placeholder="ООО «Название»"
-      />
+      <Input id="org-name" type="text" bind:value={orgName} placeholder="ООО «Название»" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-inn">ИНН</label>
-      <input
-        id="org-inn"
-        class="form-input"
-        type="text"
-        bind:value={inn}
-        placeholder="0000000000"
-      />
+      <Input id="org-inn" type="text" bind:value={inn} placeholder="0000000000" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-kpp">КПП</label>
-      <input id="org-kpp" class="form-input" type="text" bind:value={kpp} placeholder="000000000" />
+      <Input id="org-kpp" type="text" bind:value={kpp} placeholder="000000000" />
     </div>
 
     <div class="form-field form-field--full">
       <label class="form-label" for="org-address">Адрес</label>
-      <input
+      <Input
         id="org-address"
-        class="form-input"
         type="text"
         bind:value={address}
         placeholder="г. Москва, ул. Примерная, д. 1"
@@ -271,9 +259,8 @@
 
     <div class="form-field form-field--full">
       <label class="form-label" for="org-address-line2">Адрес (2-я строка)</label>
-      <input
+      <Input
         id="org-address-line2"
-        class="form-input"
         type="text"
         bind:value={addressLine2}
         placeholder="офис 305, корпус 2"
@@ -282,57 +269,30 @@
 
     <div class="form-field">
       <label class="form-label" for="org-phone">Телефон</label>
-      <input
-        id="org-phone"
-        class="form-input"
-        type="text"
-        bind:value={phone}
-        placeholder="+7 (000) 000-00-00"
-      />
+      <Input id="org-phone" type="text" bind:value={phone} placeholder="+7 (000) 000-00-00" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-fax">Факс</label>
-      <input
-        id="org-fax"
-        class="form-input"
-        type="text"
-        bind:value={fax}
-        placeholder="+7 (000) 000-00-00"
-      />
+      <Input id="org-fax" type="text" bind:value={fax} placeholder="+7 (000) 000-00-00" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-email">E-mail</label>
-      <input
-        id="org-email"
-        class="form-input"
-        type="email"
-        bind:value={email}
-        placeholder="info@example.ru"
-      />
+      <!-- Input.svelte type prop does not include 'email' (only text|number|search);
+           native HTML5 email validation is lost here — server validation remains
+           authoritative. Documented in 28-07-SUMMARY.md. -->
+      <Input id="org-email" type="text" bind:value={email} placeholder="info@example.ru" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-okpo">ОКПО</label>
-      <input
-        id="org-okpo"
-        class="form-input"
-        type="text"
-        bind:value={okpo}
-        placeholder="00000000"
-      />
+      <Input id="org-okpo" type="text" bind:value={okpo} placeholder="00000000" />
     </div>
 
     <div class="form-field">
       <label class="form-label" for="org-ogrn">ОГРН</label>
-      <input
-        id="org-ogrn"
-        class="form-input"
-        type="text"
-        bind:value={ogrn}
-        placeholder="0000000000000"
-      />
+      <Input id="org-ogrn" type="text" bind:value={ogrn} placeholder="0000000000000" />
     </div>
   </div>
 
@@ -424,21 +384,6 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
-  }
-
-  .form-input {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
   }
 
   .save-row {
