@@ -92,3 +92,12 @@ D-06 for Reports (WIN-07) is closed: both `ReportSubNav` and `PeriodSelector` ar
 ---
 *Phase: 28-support-admin-windows*
 *Completed: 2026-07-22*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/reports/ReportSubNav.svelte
+- FOUND: ui/src/features/reports/PeriodSelector.svelte
+- FOUND: .planning/phases/28-support-admin-windows/28-03-SUMMARY.md
+- FOUND commit: a30f126
+- FOUND commit: 4fad1a3
+- FOUND commit: 76eb926
