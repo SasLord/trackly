@@ -1,19 +1,17 @@
 <script lang="ts">
-  // D-PRN-01 (Phase 11 Plan 02): printer dropdown grouped by location, with
-  // gray section headers. Replaces the flat <Select> previously used in
-  // RequestFormModal.svelte once the data source switched from the closed
-  // devices.list({type_id:2}) call to requests.printerOptions() (minimal DTO:
-  // id/name/location only).
-  //
+  // D-PRN-01 (Phase 11 Plan 02): printer dropdown grouped by location.
   // Server already sorts options by location then name, no-location last
-  // (RequestService::printer_options ORDER BY clause) — this component only
-  // groups for rendering, it does not re-sort.
+  // (RequestService::printer_options ORDER BY) — this component only groups
+  // for rendering, it does not re-sort.
   //
-  // AUTO-01: этот компонент оборачивает нативный <select> — браузер рендерит
-  // option-popup вне DOM-дерева страницы, поэтому overflow: hidden модалки его
-  // не обрезает; portal/anchor-слой (см. dropdownAnchor.ts) здесь не требуется.
-  // Единственный position: absolute элемент в файле — декоративная
-  // caret-иконка (pointer-events: none), не кликабельный список.
+  // Phase 28 UAT (GAP-1 follow-up): the native <select> option-popup rendered
+  // in the OS chrome (unstyled, ignores the app theme). Re-based on the shared
+  // custom `Dropdown` primitive (variant="select", grouped drill-in) — same
+  // design-system surface and location-grouping semantics (each location is a
+  // drill-in group; a single location auto-flattens to its printers). The
+  // Props contract is unchanged (`value` = selected printer id as string,
+  // `onchange(idString)`), so the consumer (RequestFormModal) needs no edits.
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import type { RequestPrinterOptionDto } from '../../bindings-phase6';
 
   interface Props {
@@ -36,10 +34,17 @@
 
   const NO_LOCATION_LABEL = 'Без расположения';
 
-  // Group by location label, preserving server-provided order (server sorts
-  // location-having groups alphabetically already; the no-location group is
-  // already last in `options` since the server appends it last).
-  const groups = $derived.by(() => {
+  interface PrinterGroup {
+    label: string;
+    printers: RequestPrinterOptionDto[];
+  }
+
+  function printerName(p: RequestPrinterOptionDto): string {
+    return p.name || `Принтер #${p.id}`;
+  }
+
+  // Group by location label, preserving server-provided order.
+  const groups = $derived.by<PrinterGroup[]>(() => {
     const map = new Map<string, RequestPrinterOptionDto[]>();
     for (const opt of options) {
       const label = opt.location ?? NO_LOCATION_LABEL;
@@ -50,106 +55,34 @@
         map.set(label, [opt]);
       }
     }
-    return Array.from(map.entries());
+    return Array.from(map.entries()).map(([label, printers]) => ({ label, printers }));
+  });
+
+  // Selected printer's display name (Dropdown's `value` is the display string).
+  const selectedLabel = $derived.by(() => {
+    const sel = options.find((o) => String(o.id) === value);
+    return sel ? printerName(sel) : '';
   });
 </script>
 
-<div class="select-wrapper">
-  <select
-    {id}
-    {disabled}
-    class="select"
-    class:invalid
-    {value}
-    onchange={(e) => {
-      const v = (e.currentTarget as HTMLSelectElement).value;
-      onchange?.(v);
-    }}
-  >
-    <option value="">Выберите принтер</option>
-    {#if options.length === 0}
-      <option value="" disabled>Принтеры не найдены</option>
-    {:else}
-      {#each groups as [label, printers] (label)}
-        <optgroup {label}>
-          {#each printers as p (p.id)}
-            <option value={String(p.id)}>{p.name || `Принтер #${p.id}`}</option>
-          {/each}
-        </optgroup>
-      {/each}
-    {/if}
-  </select>
-  <!-- Caret icon -->
-  <svg class="caret" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-    <path
-      d="M2 4l4 4 4-4"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </svg>
-</div>
-
-<style lang="scss">
-  .select-wrapper {
-    position: relative;
-    display: block;
-    width: 100%;
-  }
-
-  .select {
-    display: block;
-    width: 100%;
-    height: 36px;
-    padding: 0 var(--tr-space-2xl) 0 var(--tr-space-md);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    line-height: var(--tr-line-height-body);
-    appearance: none;
-    cursor: pointer;
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.invalid {
-      border-color: var(--tr-danger);
-    }
-
-    &:disabled {
-      background: var(--tr-surface-sunken);
-      color: var(--tr-text-tertiary);
-      cursor: not-allowed;
-    }
-
-    // Gray section headers for grouped printer options.
-    optgroup {
-      background: var(--tr-surface-sunken);
-      color: var(--tr-text-secondary);
-      font-weight: var(--tr-font-weight-semibold);
-      font-style: normal;
-    }
-
-    option {
-      background: var(--tr-bg);
-      color: var(--tr-text-primary);
-      font-weight: var(--tr-font-weight-regular);
-    }
-  }
-
-  .caret {
-    position: absolute;
-    right: var(--tr-space-md);
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--tr-text-secondary);
-    pointer-events: none;
-  }
-</style>
+<Dropdown
+  variant="select"
+  {id}
+  value={selectedLabel}
+  placeholder="Выберите принтер"
+  searchable={false}
+  {disabled}
+  {invalid}
+  loading={false}
+  {groups}
+  getGroupId={(g) => g.label}
+  getGroupName={(g) => g.label}
+  getGroupCount={(g) => g.printers.length}
+  isGroupExpandable={(g) => g.printers.length > 0}
+  onExpandGroup={(g) => g.printers}
+  getMemberId={(m) => m.id}
+  getMemberName={printerName}
+  onSearch={() => {}}
+  onPickGroup={() => {}}
+  onPickMember={(m) => onchange?.(String(m.id))}
+/>

@@ -27,6 +27,9 @@
      *  `$bindable`. The caller re-renders `value` itself via `onQueryInput`/
      *  pick callbacks. */
     value: string;
+    /** Forwarded to the field element so an external `<label for=…>` keeps
+     *  its association when a native `<select id>` is replaced by Dropdown. */
+    id?: string;
     placeholder?: string;
     /** select-variant only, wired in Plan 25-03. */
     searchPlaceholder?: string;
@@ -74,6 +77,7 @@
     variant,
     flat = false,
     value,
+    id,
     placeholder,
     searchPlaceholder = 'Поиск',
     searchable = true,
@@ -523,6 +527,7 @@
       bind:this={inputEl}
       class="tr-dropdown-field"
       class:invalid
+      {id}
       {value}
       {placeholder}
       {disabled}
@@ -546,6 +551,7 @@
       bind:this={triggerEl}
       class="tr-dropdown-field-button"
       class:invalid
+      {id}
       {disabled}
       role="combobox"
       aria-expanded={open}
