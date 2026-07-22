@@ -70,9 +70,7 @@
   function noExpandRole(): { id: string; label: string }[] {
     return [];
   }
-  const approveRoleLabel = $derived(
-    ROLE_OPTIONS.find((o) => o.id === approveRole)?.label ?? '',
-  );
+  const approveRoleLabel = $derived(ROLE_OPTIONS.find((o) => o.id === approveRole)?.label ?? '');
 
   // GAP-12-07/A4: delete (Admin/Manager, any status) and self-cancel
   // (Employee author, open status only) lifecycle actions.

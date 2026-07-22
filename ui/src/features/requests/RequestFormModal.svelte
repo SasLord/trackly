@@ -58,9 +58,7 @@
     { id: NONE_CATEGORY_ID, label: 'Без категории' },
     ...categories.map((c) => ({ id: String(c.id), label: c.name })),
   ]);
-  const selectedCategoryKey = $derived(
-    categoryId !== null ? String(categoryId) : NONE_CATEGORY_ID,
-  );
+  const selectedCategoryKey = $derived(categoryId !== null ? String(categoryId) : NONE_CATEGORY_ID);
   const selectedCategoryLabel = $derived(
     categoryOptions.find((o) => o.id === selectedCategoryKey)?.label ?? '',
   );
