@@ -141,6 +141,7 @@
         value={selectedMonthLabel}
         placeholder="Месяц"
         searchPlaceholder="Поиск"
+        searchable={false}
         loading={false}
         groups={monthOptions}
         getGroupId={(o) => o.id}
@@ -161,6 +162,7 @@
         value={selectedYearLabel}
         placeholder="Год"
         searchPlaceholder="Поиск"
+        searchable={false}
         loading={false}
         groups={yearOptions}
         getGroupId={(o) => o.id}
@@ -184,6 +186,7 @@
         value={selectedYearLabel}
         placeholder="Год"
         searchPlaceholder="Поиск"
+        searchable={false}
         loading={false}
         groups={yearOptions}
         getGroupId={(o) => o.id}
@@ -220,10 +223,14 @@
 <style lang="scss">
   .period-selector {
     display: flex;
-    align-items: flex-start;
+    // UAT (Отчёты): controls were "pulled to the top" vs the segmented mode
+    // switcher — center-align so the 28px Tabs, month/year Dropdowns, and the
+    // export buttons in .controls-row all sit on one visual line. Drop the
+    // vertical padding so the block height is exactly the 28px control height
+    // (no 4px halo that offset it against the right-side export buttons).
+    align-items: center;
     gap: var(--tr-space-xs);
     flex-wrap: wrap;
-    padding: var(--tr-space-2xs) 0;
   }
 
   .snapshot-hint {

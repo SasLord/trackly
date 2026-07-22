@@ -30,6 +30,10 @@
     placeholder?: string;
     /** select-variant only, wired in Plan 25-03. */
     searchPlaceholder?: string;
+    /** select-variant only: show the in-panel search box (default true).
+     *  Set false for short, fully-visible option lists (e.g. month/year
+     *  pickers) where a search field is noise rather than help. */
+    searchable?: boolean;
     invalid?: boolean;
     disabled?: boolean;
     /** Caller-controlled fetch-in-flight flag — drives the panel's
@@ -72,6 +76,7 @@
     value,
     placeholder,
     searchPlaceholder = 'Поиск',
+    searchable = true,
     invalid = false,
     disabled = false,
     loading,
@@ -565,9 +570,10 @@
       use:dropdownAnchor={{ anchorEl: inputEl ?? triggerEl, maxHeight: flat ? 240 : 280 }}
       bind:this={panelEl}
     >
-      {#if variant === 'select'}
+      {#if variant === 'select' && searchable}
         <!-- D-03/UI-SPEC "Dropdown — две формы": in-panel search box, the
-             first child of the panel (before drill-in header or options). -->
+             first child of the panel (before drill-in header or options).
+             Suppressed when `searchable={false}` for short static lists. -->
         <li class="tr-dropdown-search">
           <span class="tr-dropdown-search-box">
             <span class="tr-dropdown-search-icon" aria-hidden="true">⌕</span>
@@ -591,7 +597,7 @@
              conditions, not one boolean. -->
         <li
           class="tr-dropdown-drill-header"
-          class:tr-dropdown-drill-header--offset={variant === 'select'}
+          class:tr-dropdown-drill-header--offset={variant === 'select' && searchable}
         >
           {#if showBack}
             <button

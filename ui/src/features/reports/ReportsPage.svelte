@@ -511,7 +511,12 @@
     min-height: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0 var(--tr-space-2xl);
+    // UAT (Отчёты): the framed table was flush against the window's bottom
+    // edge — add a bottom breathing gap so the card doesn't touch the edge,
+    // matching the vertical rhythm of the other windows (Акты page-content
+    // uses --tr-space-xl). Top stays 0 (the sub-nav hugs the PageHeader as
+    // before); only the bottom gap was missing.
+    padding: 0 var(--tr-space-2xl) var(--tr-space-xl);
     display: flex;
     flex-direction: column;
     gap: var(--tr-space-xs);
