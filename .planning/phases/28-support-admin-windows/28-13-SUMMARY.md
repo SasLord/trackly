@@ -97,3 +97,12 @@ None - no external service configuration required.
 ---
 *Phase: 28-support-admin-windows*
 *Completed: 2026-07-22*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/users/UserFormModal.svelte
+- FOUND: ui/src/features/reports/PeriodSelector.svelte
+- FOUND: .planning/phases/28-support-admin-windows/28-13-SUMMARY.md
+- FOUND: commit 61f4c05 (Task 1)
+- FOUND: commit 1b1e7fc (Task 2)
+- FOUND: commit a13ab92 (SUMMARY.md)
