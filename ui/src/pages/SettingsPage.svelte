@@ -7,15 +7,14 @@
   import TemplateEditor from '../features/settings/TemplateEditor.svelte';
   import ActiveDirectorySettings from '../features/settings/ActiveDirectorySettings.svelte';
   import SettingsSubNav from '../features/settings/SettingsSubNav.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   // GAP-S2: track active subsection; default to 'network' (first tab)
   let activeSection = $state('network');
 </script>
 
 <div class="settings-page">
-  <header class="page-header">
-    <h1 class="page-title">Настройки</h1>
-  </header>
+  <PageHeader title="Настройки" />
   <div class="settings-content">
     <!-- GAP-S2: sub-section switch-bar -->
     <SettingsSubNav {activeSection} onSectionChange={(s) => (activeSection = s)} />
@@ -51,19 +50,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .page-header {
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
   }
 
   .settings-content {

@@ -1,6 +1,9 @@
 <script lang="ts">
   // Plan 07-11 Task 1: Settings sub-section switch-bar (GAP-S2).
   // Splits the Settings page into per-subsection views matching the component layout.
+  // Plan 28-05 Task 1 (D-06): bespoke tab-bar replaced with the shared Tabs primitive
+  // (variant="underline", no count — 7 sections have no counters).
+  import Tabs from '$lib/components/Tabs.svelte';
 
   const SECTIONS = [
     { key: 'network', label: 'Сеть' },
@@ -20,57 +23,10 @@
   const { activeSection, onSectionChange }: Props = $props();
 </script>
 
-<div class="settings-sub-nav" role="tablist" aria-label="Раздел настроек">
-  {#each SECTIONS as section}
-    <button
-      class="tab"
-      class:active={section.key === activeSection}
-      type="button"
-      role="tab"
-      aria-selected={section.key === activeSection}
-      onclick={() => onSectionChange(section.key)}
-    >
-      {section.label}
-    </button>
-  {/each}
-</div>
-
-<style lang="scss">
-  .settings-sub-nav {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    flex-wrap: wrap;
-    flex-shrink: 0;
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: pointer;
-    height: 32px;
-    white-space: nowrap;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-    }
-  }
-</style>
+<Tabs
+  variant="underline"
+  tabs={SECTIONS.map((s) => ({ key: s.key, label: s.label }))}
+  active={activeSection}
+  ariaLabel="Раздел настроек"
+  onchange={onSectionChange}
+/>
