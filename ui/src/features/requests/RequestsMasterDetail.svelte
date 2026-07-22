@@ -1,5 +1,9 @@
 <script lang="ts">
   // Plan 06-05: master-detail CSS-grid layout (35% / 65%) — по паттерну CartridgesMasterDetail.svelte.
+  // Plan 28-01 (D-02): panels moved to --tr-surface-raised + elev-1 (closes D-13 regression);
+  // FIX B1 flex-fill layout ported from ActsMasterDetail.svelte so List (Table fillHeight) and
+  // Detail (DetailPanel, plan 28-02) own their own internal scroll instead of the panel sizing to
+  // a viewport-relative min-height. Grid columns (35%/65%) and the <1099px fallback are unchanged.
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -24,23 +28,56 @@
     grid-template-columns: 35% 65%;
     gap: var(--tr-space-md);
     align-items: stretch;
-    min-height: calc(100vh - 240px);
+    // FIX B1: fill the remaining height of page-content instead of sizing to
+    // a viewport-relative min-height — closes the gap at the bottom of the
+    // window and lets the panels below scroll internally.
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .master {
-    background: var(--tr-surface);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
+    box-shadow: var(--tr-elev-1);
     overflow: hidden;
     min-width: 320px;
+    // FIX B1: panel is a flex column so its single child (the master List's
+    // Table) can flex-fill and scroll internally instead of the panel itself
+    // growing to content height.
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  // FIX B1: stretch whatever the master snippet renders (the List's Table
+  // root) to fill the panel — Table's own fillHeight mode then owns the
+  // sticky header / internal scroll / pinned footer.
+  .master > :global(*) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .detail {
-    background: var(--tr-bg);
+    background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
-    overflow: auto;
+    box-shadow: var(--tr-elev-1);
+    // FIX B1: was `overflow: auto` (the panel itself scrolled, sizing to
+    // content and leaving a gap below). Now hidden — DetailPanel/detail-loading
+    // scroll internally instead.
+    overflow: hidden;
     min-width: 480px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  // FIX B1: stretch whatever the detail snippet renders (DetailPanel, or the
+  // detail-loading spinner wrapper) to fill the panel height.
+  .detail > :global(*) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   @media (max-width: 1099px) {

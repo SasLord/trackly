@@ -1,7 +1,14 @@
 <script lang="ts">
   // Plan 06-05: поиск + switch-bar статусов заявок + кнопка «Создать заявку».
   // По паттерну PrintersSearchAndTabs.svelte.
+  // Plan 28-01 (D-05): switch-bar migrated to shared Tabs primitive (variant="underline"),
+  // per ActsSearchAndTabs.svelte precedent — bespoke <button class="tab"> removed. This
+  // component has no search input (no debounce/Input, unlike Acts) — only status tabs +
+  // «Создать заявку». StatusTab includes `null` ("Все") — Tabs requires a string key, so a
+  // String()-adapter + `key === 'null'` round-trip is required (same pattern as
+  // DeviceFilters.svelte).
   import Button from '$lib/components/Button.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
   import type { RequestFilter } from '../../bindings-phase6';
   import type { CurrentUser } from '$lib/stores/auth.svelte';
 
@@ -39,23 +46,21 @@
   }
 
   // identity is accepted for future role-based tab enhancements (RBAC enforced in backend).
+
+  // String-key adapter — required because Tabs' contract is `Tab.key: string`, but
+  // StatusTab includes `null` (for «Все»). No `count` — this component currently has
+  // no status counters to pass, and inventing them is out of scope (SC #4).
+  const tabItems = $derived(TABS.map((t) => ({ key: String(t.key), label: t.label })));
 </script>
 
 <div class="search-and-tabs">
-  <div class="tabs" role="tablist" aria-label="Статус заявок">
-    {#each TABS as tab (String(tab.key))}
-      <button
-        class="tab"
-        class:active={filter.status === tab.key}
-        onclick={() => handleTabClick(tab.key)}
-        role="tab"
-        aria-selected={filter.status === tab.key}
-        type="button"
-      >
-        <span class="tab-label">{tab.label}</span>
-      </button>
-    {/each}
-  </div>
+  <Tabs
+    variant="underline"
+    tabs={tabItems}
+    active={String(filter.status)}
+    ariaLabel="Статус заявок"
+    onchange={(key) => handleTabClick(key === 'null' ? null : (key as StatusTab))}
+  />
   {#if canCreate}
     <Button variant="primary" onclick={onCreateClick}>Создать заявку</Button>
   {/if}
@@ -66,47 +71,12 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    // Tabs replaces the old .tabs{flex:1} wrapper — space-between keeps the same
+    // visual result (tabs left-aligned, «Создать заявку» pushed to the far right)
+    // without reintroducing a bespoke flex-growing wrapper div around Tabs.
+    justify-content: space-between;
     gap: var(--tr-space-md);
     margin-bottom: var(--tr-space-md);
     flex-wrap: wrap;
-  }
-
-  .tabs {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    flex-wrap: wrap;
-    flex: 1;
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-regular);
-    cursor: pointer;
-    height: 32px;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-      font-weight: var(--tr-font-weight-semibold);
-    }
   }
 </style>
