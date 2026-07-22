@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import Input from '$lib/components/Input.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
@@ -131,7 +133,7 @@
       <div class="config-row">
         <span class="config-label">Папка</span>
         <div class="folder-display">
-          <code class="folder-code">{backupFolder ?? 'Не выбрана'}</code>
+          <code class="folder-code tr-mono">{backupFolder ?? 'Не выбрана'}</code>
           <Button variant="secondary" size="sm" loading={pickingFolder} onclick={pickFolder}>
             Выбрать папку
           </Button>
@@ -144,16 +146,18 @@
       <!-- Schedule -->
       <div class="config-row">
         <label class="config-label" for="backup-schedule">Расписание</label>
-        <select
-          id="backup-schedule"
-          class="form-select"
-          bind:value={schedule}
-          disabled={!backupFolder}
-        >
-          <option value="">Отключено</option>
-          <option value="daily">Ежедневно</option>
-          <option value="weekly">Еженедельно</option>
-        </select>
+        <div class="select-shrink">
+          <Select
+            id="backup-schedule"
+            value={schedule}
+            disabled={!backupFolder}
+            onchange={(v) => (schedule = v)}
+          >
+            <option value="">Отключено</option>
+            <option value="daily">Ежедневно</option>
+            <option value="weekly">Еженедельно</option>
+          </Select>
+        </div>
         {#if !backupFolder}
           <p class="helper-text">Выберите папку для активации автобэкапа</p>
         {/if}
@@ -163,14 +167,14 @@
       <div class="config-row">
         <label class="config-label" for="backup-retention">Ретенция</label>
         <div class="input-group">
-          <input
-            id="backup-retention"
-            class="form-input"
-            type="number"
-            min="1"
-            max="99"
-            bind:value={retention}
-          />
+          <div class="input-shrink">
+            <Input
+              id="backup-retention"
+              type="number"
+              value={String(retention)}
+              oninput={(v) => (retention = Number(v) || 1)}
+            />
+          </div>
           <span class="input-suffix">копий</span>
         </div>
       </div>
@@ -261,7 +265,6 @@
   }
 
   .folder-code {
-    font-family: monospace;
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-primary);
     overflow: hidden;
@@ -274,26 +277,9 @@
     display: inline-block;
   }
 
-  .form-select {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
+  .select-shrink {
     width: fit-content;
     min-width: 180px;
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
   }
 
   .input-group {
@@ -302,21 +288,8 @@
     gap: var(--tr-space-xs);
   }
 
-  .form-input {
+  .input-shrink {
     width: 80px;
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    text-align: right;
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
   }
 
   .input-suffix {
