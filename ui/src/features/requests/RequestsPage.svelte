@@ -8,6 +8,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import { apiCall } from '$lib/api/client';
+  import PageHeader from '$lib/components/PageHeader.svelte';
   import RequestsMasterDetail from './RequestsMasterDetail.svelte';
   import RequestsSearchAndTabs from './RequestsSearchAndTabs.svelte';
   import RequestsList from './RequestsList.svelte';
@@ -219,9 +220,7 @@
 </script>
 
 <div class="requests-page">
-  <header class="page-header">
-    <h1 class="page-title">Заявки</h1>
-  </header>
+  <PageHeader title="Заявки" />
 
   <div class="page-content">
     {#if isEmployee}
@@ -289,25 +288,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--tr-space-xl) var(--tr-space-2xl);
-    border-bottom: 1px solid var(--tr-border);
-    flex-shrink: 0;
-    gap: var(--tr-space-md);
-    flex-wrap: wrap;
-  }
-
-  .page-title {
-    margin: 0;
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-    line-height: var(--tr-line-height-h3);
   }
 
   .page-content {
