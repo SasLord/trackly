@@ -1,7 +1,12 @@
 <script lang="ts">
   // Plan 06-05: master-panel list — по паттерну CartridgesList.svelte.
+  // Plan 28-01 (D-03): rebuilt on shared Table/TableRow primitives per ActsList.svelte
+  // precedent — bespoke .rows/.loading/.empty/.pagination removed, Table now owns the
+  // frame/skeleton/empty-state. No pagination — this list never had one, footer only
+  // shows the record count (+ spinner while a background refresh is loading).
   import Spinner from '$lib/components/Spinner.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Table from '$lib/components/Table.svelte';
   import RequestListRow from './RequestListRow.svelte';
   import type { RequestDto } from '../../bindings-phase6';
 
@@ -21,86 +26,70 @@
   }
 
   const { items, loading, selectedId, emptyConfig, onSelect }: Props = $props();
+
+  const skeletonLoading = $derived(loading && items.length === 0);
+  const isEmpty = $derived(!loading && items.length === 0);
 </script>
 
-<div class="requests-list">
-  {#if loading && items.length === 0}
-    <div class="loading">
-      <Spinner size="md" />
-    </div>
-  {:else if items.length === 0}
-    <div class="empty">
-      <h3 class="empty-heading">{emptyConfig.heading}</h3>
-      <p class="empty-body">{emptyConfig.body}</p>
-      {#if emptyConfig.actionLabel && emptyConfig.onAction}
+{#snippet tableHead()}
+  <th>Тип</th>
+  <th>Описание</th>
+  <th>Автор</th>
+  <th class="th-status">Статус</th>
+{/snippet}
+
+{#snippet footer()}
+  {#if !skeletonLoading}
+    {#if isEmpty && emptyConfig.actionLabel && emptyConfig.onAction}
+      <div class="empty-action">
         <Button variant="primary" onclick={emptyConfig.onAction}>{emptyConfig.actionLabel}</Button>
-      {/if}
-    </div>
-  {:else}
-    <div class="rows">
-      {#each items as r (r.id)}
-        <RequestListRow request={r} selected={r.id === selectedId} onclick={() => onSelect(r.id)} />
-      {/each}
-    </div>
-    <footer class="pagination">
-      <span class="pager-info">{items.length} записей</span>
-      {#if loading}
-        <Spinner size="sm" />
-      {/if}
-    </footer>
+      </div>
+    {:else if !isEmpty}
+      <footer class="list-footer">
+        <span class="pager-info">{items.length} записей</span>
+        {#if loading}
+          <Spinner size="sm" />
+        {/if}
+      </footer>
+    {/if}
   {/if}
-</div>
+{/snippet}
+
+<Table
+  columns={4}
+  loading={skeletonLoading}
+  empty={isEmpty}
+  emptyTitle={emptyConfig.heading}
+  emptyBody={emptyConfig.body}
+  head={tableHead}
+  {footer}
+  framed={false}
+  fillHeight
+>
+  {#each items as r (r.id)}
+    <RequestListRow request={r} selected={r.id === selectedId} onclick={() => onSelect(r.id)} />
+  {/each}
+</Table>
 
 <style lang="scss">
-  .requests-list {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: var(--tr-surface);
+  .th-status {
+    width: 120px;
   }
 
-  .rows {
-    flex: 1;
-    overflow: auto;
-  }
-
-  .loading,
-  .empty {
-    flex: 1;
+  .empty-action {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    gap: var(--tr-space-xs);
-    padding: var(--tr-space-4xl);
-    text-align: center;
   }
 
-  .empty-heading {
-    margin: 0 0 var(--tr-space-2xs);
-    font-size: var(--tr-font-size-h3);
-    font-weight: var(--tr-font-weight-semibold);
-    color: var(--tr-text-primary);
-  }
-
-  .empty-body {
-    margin: 0 0 var(--tr-space-md);
-    color: var(--tr-text-secondary);
-    font-size: var(--tr-font-size-body);
-  }
-
-  .pagination {
+  .list-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-top: 1px solid var(--tr-border);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-    background: var(--tr-surface);
   }
 
   .pager-info {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
     font-variant-numeric: tabular-nums;
   }
 </style>

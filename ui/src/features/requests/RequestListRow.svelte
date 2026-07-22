@@ -1,7 +1,15 @@
 <script lang="ts">
   // Plan 06-05: строка списка заявок.
   // По паттерну CartridgeListRow.svelte.
+  // Plan 28-01 (D-03): rebuilt on shared TableRow primitive per ActListRow.svelte
+  // precedent — bespoke two-line `.row` div replaced with a 4-column <TableRow>
+  // (Тип/Описание/Автор/Статус). TableRow does not forward arbitrary attrs
+  // (onclick/role/tabindex) to its own <tr> — row click/keyboard-select is wired
+  // on the <td> cells we own here (onclick on every cell for full-row mouse click;
+  // role="button"+tabindex+onkeydown on the first cell as the single keyboard
+  // entry point, mirroring the previous single-div tab-stop).
   import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import type { RequestDto } from '../../bindings-phase6';
 
   interface Props {
@@ -80,106 +88,79 @@
   }
 </script>
 
-<div
-  class="row"
-  class:selected
-  role="button"
-  tabindex="0"
-  aria-pressed={selected}
-  {onclick}
-  onkeydown={handleKeydown}
->
-  <div class="top">
-    <span class="type-badge">
-      <Badge variant="default" size="sm">{typeLabel}</Badge>
-    </span>
+<TableRow {selected} class="request-row">
+  <td
+    class="cell cell-type"
+    role="button"
+    tabindex="0"
+    aria-pressed={selected}
+    {onclick}
+    onkeydown={handleKeydown}
+  >
+    <Badge variant="default" size="sm">{typeLabel}</Badge>
     {#if isAdRestore}
-      <span class="type-badge">
-        <Badge variant="warning" size="sm">Восстановление доступа</Badge>
-      </span>
+      <Badge variant="warning" size="sm">Восстановление доступа</Badge>
     {/if}
-    <span class="desc">{shortDesc}</span>
-    <span class="status-badge">
-      <Badge variant={statusVariant}>{statusLabel}</Badge>
-    </span>
-  </div>
-  <div class="bottom">
-    <span class="author">{request.requesterName ?? '—'}</span>
-    <span class="date">{relativeDate(request.createdAtUtc)}</span>
-  </div>
-</div>
+  </td>
+  <td class="cell cell-desc" title={shortDesc} {onclick}>{shortDesc}</td>
+  <td class="cell cell-author" {onclick}>
+    {request.requesterName ?? '—'}
+    <span class="cell-date">{relativeDate(request.createdAtUtc)}</span>
+  </td>
+  <td class="cell cell-status" {onclick}>
+    <Badge variant={statusVariant}>{statusLabel}</Badge>
+  </td>
+</TableRow>
 
 <style lang="scss">
-  .row {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--tr-space-2xs);
-    min-height: var(--row-height, 40px);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-bottom: 1px solid var(--tr-border);
+  // TableRow renders its own <tr> (a DIFFERENT Svelte scope-hash than this file) —
+  // caller-supplied class needs `:global()`, and the ancestor part of the selector
+  // must stay in THIS file's scope: `.request-row :global(> td)`, never
+  // `:global(.request-row > td)` (specificity trap, see TableRow.svelte contract).
+  :global(tr.request-row) {
     cursor: pointer;
-    border-left: 3px solid transparent;
+  }
 
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
+  .cell {
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-primary);
+  }
+
+  .cell-type {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-2xs);
+    white-space: nowrap;
 
     &:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
-
-    &.selected {
-      border-left-color: var(--tr-accent);
-      background: color-mix(in srgb, var(--tr-accent) 8%, transparent);
-    }
   }
 
-  .top {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    font-size: var(--tr-font-size-body);
-    line-height: 1.2;
-  }
-
-  .type-badge {
-    flex-shrink: 0;
-  }
-
-  .desc {
+  .cell-desc {
     color: var(--tr-text-secondary);
     font-size: var(--tr-font-size-label);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
-    min-width: 0;
+    max-width: 0; // makes text-overflow work in table cells
   }
 
-  .status-badge {
-    flex-shrink: 0;
-    margin-left: auto;
-  }
-
-  .bottom {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-
-  .author {
+  .cell-author {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 0;
   }
 
-  .date {
-    flex-shrink: 0;
+  .cell-date {
+    display: block;
     color: var(--tr-text-tertiary);
-    margin-left: var(--tr-space-xs);
+    font-size: var(--tr-font-size-label);
+  }
+
+  .cell-status {
+    white-space: nowrap;
   }
 </style>
