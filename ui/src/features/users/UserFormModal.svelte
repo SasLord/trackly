@@ -1,6 +1,18 @@
 <script lang="ts">
+  // Plan 28-09 (D-04): rebuilt on Input/Select/Checkbox primitives per
+  // DeviceFormBody.svelte precedent (.form-field/.form-label + primitive +
+  // {#if fieldErr}<span class="field-error">). Пароль — обязательное raw
+  // password-input исключение: Input.svelte's `type` contract is
+  // 'text' | 'number' | 'search' only, no 'password' — rendering it via
+  // `Input type="text"` would strip masking and show password characters in
+  // plaintext (T-28-09-01). Email uses Input type="text" — Input.svelte has
+  // no 'email' type either; native HTML5 email validation is lost here, the
+  // server-side validation remains authoritative (documented in SUMMARY).
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
+  import Input from '$lib/components/Input.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import type { UserDto } from '../../bindings';
 
   interface UserFormData {
@@ -124,17 +136,15 @@
 
 <Modal {open} title={modalTitle} size="md" onClose={onCancel}>
   <div class="user-form">
-    <div class="form-field">
+    <div class="form-field" class:has-error={loginErr !== null}>
       <label class="form-label" for="uf-login">Логин</label>
-      <input
+      <Input
         id="uf-login"
-        class="form-input"
-        class:is-error={loginErr !== null}
-        type="text"
-        bind:value={form.login}
+        value={form.login}
+        invalid={loginErr !== null}
         disabled={saving || mode === 'edit'}
-        readonly={mode === 'edit'}
         placeholder="Логин пользователя"
+        oninput={(v) => (form.login = v)}
       />
       {#if loginErr}
         <span class="field-error">{loginErr}</span>
@@ -143,24 +153,29 @@
 
     <div class="form-field">
       <label class="form-label" for="uf-fullname">ФИО</label>
-      <input
+      <Input
         id="uf-fullname"
-        class="form-input"
-        type="text"
-        bind:value={form.full_name}
+        value={form.full_name}
         disabled={saving}
         placeholder="Полное имя"
+        oninput={(v) => (form.full_name = v)}
       />
     </div>
 
-    <div class="form-field">
+    <div class="form-field" class:has-error={passwordErr !== null}>
       <label class="form-label" for="uf-password">
         {mode === 'create' ? 'Пароль' : 'Новый пароль (оставьте пустым, чтобы не менять)'}
       </label>
+      <!--
+        T-28-09-01 — обязательное raw-исключение из D-04: Input.svelte не
+        поддерживает password-тип (контракт ограничен 'text'|'number'|
+        'search'). Рендер через Input с текстовым типом ЗАПРЕЩЁН — это сняло
+        бы маскировку пароля и показало бы вводимые символы открытым текстом.
+      -->
       <input
         id="uf-password"
-        class="form-input"
-        class:is-error={passwordErr !== null}
+        class="input"
+        class:invalid={passwordErr !== null}
         type="password"
         bind:value={form.password}
         disabled={saving}
@@ -172,19 +187,19 @@
       {/if}
     </div>
 
-    <div class="form-field">
+    <div class="form-field" class:has-error={roleErr !== null}>
       <label class="form-label" for="uf-role">Роль</label>
-      <select
+      <Select
         id="uf-role"
-        class="form-select"
-        class:is-error={roleErr !== null}
-        bind:value={form.role}
+        value={form.role}
+        invalid={roleErr !== null}
         disabled={saving}
+        onchange={(v) => (form.role = v)}
       >
         {#each roleOptions as opt}
           <option value={opt.value}>{opt.label}</option>
         {/each}
-      </select>
+      </Select>
       {#if roleErr}
         <span class="field-error">{roleErr}</span>
       {/if}
@@ -192,21 +207,25 @@
 
     <div class="form-field">
       <label class="form-label" for="uf-email">Email (необязательно)</label>
-      <input
+      <Input
         id="uf-email"
-        class="form-input"
-        type="email"
-        bind:value={form.email}
+        type="text"
+        value={form.email}
         disabled={saving}
         placeholder="user@example.com"
+        oninput={(v) => (form.email = v)}
       />
     </div>
 
     <div class="form-field form-field--checkbox">
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={form.is_active} disabled={saving} />
-        <span>Активен</span>
-      </label>
+      <Checkbox
+        id="uf-active"
+        checked={form.is_active}
+        disabled={saving}
+        onchange={(checked) => (form.is_active = checked)}
+      >
+        Активен
+      </Checkbox>
     </div>
 
     {#if error}
@@ -247,27 +266,41 @@
     color: var(--tr-text-secondary);
   }
 
-  .form-input,
-  .form-select {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
+  // Пароль — raw password-input (T-28-09-01), не Input-примитив.
+  // Стиль дублирует Input.svelte's .input/.invalid токены 1:1 для визуальной
+  // консистентности с остальными полями формы, не создавая параллельного
+  // конкурирующего оформления.
+  .input {
+    display: block;
+    width: 100%;
+    height: 36px;
+    padding: 0 var(--tr-space-md);
+    background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: var(--tr-radius-sm);
+    font-family: var(--tr-font-family);
+    font-size: var(--tr-font-size-body);
+    line-height: var(--tr-line-height-body);
 
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
+    &::placeholder {
+      color: var(--tr-text-tertiary);
     }
 
-    &.is-error {
+    &:focus-visible {
+      outline: none;
+      border-color: var(--tr-accent);
+      box-shadow: 0 0 0 3px var(--tr-focus-ring);
+    }
+
+    &.invalid {
       border-color: var(--tr-danger);
+      box-shadow: 0 0 0 3px var(--tr-danger-ring);
     }
 
     &:disabled {
-      opacity: 0.6;
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-tertiary);
       cursor: not-allowed;
     }
   }
@@ -284,20 +317,5 @@
     border-radius: var(--tr-radius-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-primary);
-    cursor: pointer;
-
-    input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--tr-accent);
-    }
   }
 </style>
