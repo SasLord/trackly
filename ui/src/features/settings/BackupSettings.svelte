@@ -31,9 +31,7 @@
     { id: 'daily', label: 'Ежедневно' },
     { id: 'weekly', label: 'Еженедельно' },
   ];
-  const scheduleLabel = $derived(
-    SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? '',
-  );
+  const scheduleLabel = $derived(SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? '');
   // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
   // (isGroupExpandable всегда false), но Dropdown требует типизированную
   // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).

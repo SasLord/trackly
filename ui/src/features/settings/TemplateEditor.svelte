@@ -105,7 +105,10 @@
 
   // GAP-1: опции для Dropdown (flat + variant="select") — «Шаблон».
   const templateOptions = $derived(
-    templates.map((tmpl) => ({ id: tmpl.kind, label: KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind })),
+    templates.map((tmpl) => ({
+      id: tmpl.kind,
+      label: KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind,
+    })),
   );
   const selectedKindLabel = $derived(
     templateOptions.find((o) => o.id === selectedKind)?.label ?? '',
