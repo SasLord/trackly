@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
+  import Input from '$lib/components/Input.svelte';
 
   let threshold = $state(2);
 
@@ -38,16 +39,21 @@
     <label class="form-label" for="threshold-input">
       Уведомлять, когда остаток картриджей модели меньше
     </label>
-    <div class="input-group">
-      <input
-        id="threshold-input"
-        class="form-input"
-        type="number"
-        min="1"
-        max="999"
-        bind:value={threshold}
-        onblur={saveThreshold}
-      />
+    <!--
+      Input.svelte has no onblur prop and does not forward arbitrary DOM events
+      to the inner <input>. Native "blur" does not bubble, so onblur on this
+      wrapper would never fire. "focusout" DOES bubble by spec, so wrapping
+      the primitive in onfocusout preserves the "save on blur" behavior.
+    -->
+    <div class="input-group" onfocusout={saveThreshold}>
+      <div class="threshold-input-wrap">
+        <Input
+          id="threshold-input"
+          type="number"
+          value={String(threshold)}
+          oninput={(v) => (threshold = Number(v) || 0)}
+        />
+      </div>
       <span class="input-suffix">штук</span>
     </div>
     <p class="helper-text">Значение сохраняется автоматически при потере фокуса.</p>
@@ -88,22 +94,8 @@
     gap: var(--tr-space-xs);
   }
 
-  .form-input {
+  .threshold-input-wrap {
     width: 80px;
-    padding: var(--tr-space-2xs) 2px var(--tr-space-2xs) var(--tr-space-xs);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    text-align: right;
-    appearance: auto;
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
   }
 
   .input-suffix {
