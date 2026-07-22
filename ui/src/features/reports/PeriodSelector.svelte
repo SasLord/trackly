@@ -1,7 +1,10 @@
 <script lang="ts">
   // Plan 07-06 Task 1: Period selector — Месяц / Год / Диапазон modes.
   // Snapshot reports disable controls with helper text (T-07-06-03 date range validation).
+  // Plan 28-03 Task 2 (D-06): mode switch on Tabs segmented, month/year on Select primitive.
   import DatePicker from '$lib/components/DatePicker.svelte';
+  import Tabs from '$lib/components/Tabs.svelte';
+  import Select from '$lib/components/Select.svelte';
 
   type PeriodMode = 'month' | 'year' | 'range';
 
@@ -60,13 +63,15 @@
     }
   }
 
-  function onMonthChange(e: Event) {
-    selectedMonth = Number((e.currentTarget as HTMLSelectElement).value);
+  // Plan 28-03: Select's onchange hands back a string value (native <select>
+  // removed) — same period-recalculation logic, just adapted to a string input.
+  function onMonthChange(v: string) {
+    selectedMonth = Number(v);
     onPeriodChange({ mode: 'month', year: selectedYear, month: selectedMonth });
   }
 
-  function onYearChange(e: Event) {
-    selectedYear = Number((e.currentTarget as HTMLSelectElement).value);
+  function onYearChange(v: string) {
+    selectedYear = Number(v);
     if (mode === 'month') {
       onPeriodChange({ mode: 'month', year: selectedYear, month: selectedMonth });
     } else {
@@ -94,43 +99,36 @@
 </script>
 
 <div class="period-selector" role="group" aria-label="Выбор периода">
-  <div class="period-buttons">
-    {#each MODES as m}
-      <button
-        type="button"
-        class="period-btn"
-        class:active={mode === m.key}
-        disabled={isSnapshot}
-        aria-disabled={isSnapshot ? 'true' : undefined}
-        onclick={() => !isSnapshot && setMode(m.key)}
-      >
-        {m.label}
-      </button>
-    {/each}
-  </div>
+  <Tabs
+    variant="segmented"
+    tabs={MODES.map((m) => ({ key: m.key, label: m.label, disabled: isSnapshot }))}
+    active={mode}
+    ariaLabel="Режим периода"
+    onchange={(key) => setMode(key as PeriodMode)}
+  />
 
   {#if isSnapshot}
     <p class="snapshot-hint">Отчёт отражает текущее состояние</p>
   {:else if mode === 'month'}
     <div class="period-controls">
-      <select class="period-select" value={selectedMonth} onchange={onMonthChange}>
+      <Select value={String(selectedMonth)} onchange={onMonthChange}>
         {#each MONTHS as name, i}
           <option value={i + 1}>{name}</option>
         {/each}
-      </select>
-      <select class="period-select" value={selectedYear} onchange={onYearChange}>
+      </Select>
+      <Select value={String(selectedYear)} onchange={onYearChange}>
         {#each years as y}
           <option value={y}>{y}</option>
         {/each}
-      </select>
+      </Select>
     </div>
   {:else if mode === 'year'}
     <div class="period-controls">
-      <select class="period-select" value={selectedYear} onchange={onYearChange}>
+      <Select value={String(selectedYear)} onchange={onYearChange}>
         {#each years as y}
           <option value={y}>{y}</option>
         {/each}
-      </select>
+      </Select>
     </div>
   {:else if mode === 'range'}
     <div class="period-controls period-range">
@@ -159,60 +157,6 @@
     padding: var(--tr-space-2xs) 0;
   }
 
-  .period-buttons {
-    display: flex;
-    gap: 2px;
-  }
-
-  .period-btn {
-    padding: var(--tr-space-2xs) var(--tr-space-xs);
-    background: transparent;
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-    cursor: pointer;
-    height: 28px;
-
-    &:first-child {
-      border-radius: var(--tr-radius-xs) 0 0 var(--tr-radius-xs);
-    }
-
-    &:last-child {
-      border-radius: 0 var(--tr-radius-xs) var(--tr-radius-xs) 0;
-    }
-
-    &:not(:first-child) {
-      margin-left: -1px;
-    }
-
-    &:hover:not(:disabled) {
-      background: var(--tr-surface-sunken);
-      color: var(--tr-text-primary);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-      z-index: 1;
-      position: relative;
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-accent);
-      z-index: 1;
-      position: relative;
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
   .snapshot-hint {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
@@ -225,30 +169,25 @@
     align-items: center;
     gap: var(--tr-space-2xs);
     flex-wrap: wrap;
+
+    // Plan 28-03: Select defaults to full-width/36px form-field sizing —
+    // constrain to content width + the 28px filter-row height (GAP-R3
+    // precedent below, same treatment as DatePicker in .range-label).
+    :global(.select-wrapper) {
+      width: auto;
+      min-width: 110px;
+    }
+
+    :global(.select) {
+      height: 28px;
+      font-size: var(--tr-font-size-label);
+    }
   }
 
   // GAP-R3: date inputs in range mode must be same height as other filter controls (28px)
   .period-range {
     align-items: center;
     flex-wrap: wrap;
-  }
-
-  .period-select {
-    height: 28px;
-    padding: 0 var(--tr-space-xs);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-label);
-    cursor: pointer;
-
-    &:focus-visible {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
   }
 
   .range-label {
