@@ -71,7 +71,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 25: Таблицы и Dropdown** - Строки таблицы + строка-группа, новый компонент Dropdown/комбобокс. (верификация 2026-07-19 → gaps_found, 4/5; gap closure 25-08-PLAN.md добавлен — WR-01/WR-02/WR-06 в Dropdown.svelte) (completed 2026-07-19)
 - [x] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design, включая адаптивность. (completed 2026-07-20)
 - [x] **Phase 27: Окна основного рабочего процесса** - Акты, Картриджи, Принтеры — без макета, вёрстка из компонентной системы. (completed 2026-07-21)
-- [ ] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета.
+- [ ] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета. (10 plans planned)
 - [ ] **Phase 29: Вход и интерфейс сотрудника** - Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout — отдельные layout-shell.
 - [ ] **Phase 30: Качество — доступность и паритет платформ** - AA-контраст, focus ring, визуальный паритет Tauri WebView vs LAN-браузер.
 
@@ -614,7 +614,23 @@ Plans:
 3. Окно Настроек (организация, шаблоны, бэкапы, вкладка AD) использует новые токены/компоненты.
 4. Окно Пользователей использует новые токены/компоненты.
 
-**Plans**: TBD (not yet planned)
+**Plans**: 10 plans in 2 waves
+Plans:
+**Wave 1**
+
+- [ ] 28-01-PLAN.md — Заявки: структура (MasterDetail D-02, SearchAndTabs→Tabs D-05, List/ListRow→Table D-03)
+- [ ] 28-02-PLAN.md — Заявки: деталь→DetailPanel (D-01), FormModal (D-04), RequestsPage→PageHeader
+- [ ] 28-03-PLAN.md — Отчёты: суб-навигация→Tabs (ReportSubNav + PeriodSelector, D-06)
+- [ ] 28-04-PLAN.md — Отчёты: ReportTable→Table динамические колонки (D-07), ReportFilters аудит, ReportsPage→PageHeader
+- [ ] 28-05-PLAN.md — Настройки: оболочка (SettingsSubNav→Tabs D-06, SettingsPage→PageHeader) + Threshold/Storage панели (D-04)
+- [ ] 28-06-PLAN.md — Настройки: Backup (D-04 + --tr-text-mono) + Network панели (D-04)
+- [ ] 28-07-PLAN.md — Настройки: ActiveDirectory (D-04, radio-group-адаптер) + Org панели (D-04)
+- [ ] 28-08-PLAN.md — Настройки: TemplateEditor kind-select→Select (D-08, строго ограничено)
+- [ ] 28-09-PLAN.md — Пользователи: List/ListRow→Table (D-03) + FormModal (D-04) + UsersPage→PageHeader
+
+**Wave 2** *(depends on Wave 1 — финальный гейт)*
+
+- [ ] 28-10-PLAN.md — Финальный build-гейт + both-theme визуальный UAT (checkpoint) [WIN-06..09]
 
 **UI hint**: yes
 
@@ -698,7 +714,7 @@ Plans:
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
-| 28. Окна поддержки и администрирования | v1.2 | 0/TBD | Not started | - |
+| 28. Окна поддержки и администрирования | v1.2 | 0/10 | Planned | - |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
