@@ -2,9 +2,15 @@
   // Plan 07-06 Task 1: Period selector — Месяц / Год / Диапазон modes.
   // Snapshot reports disable controls with helper text (T-07-06-03 date range validation).
   // Plan 28-03 Task 2 (D-06): mode switch on Tabs segmented, month/year on Select primitive.
+  // Plan 28-13 (GAP-1): Select (нативный <select>) заменён на кастомный
+  // Dropdown (flat + variant="select") — также фиксит регрессию, при которой
+  // выбранное значение не отображалось (Select's internal bind:value на
+  // $bindable prop без двустороннего связывания родителя desync'ится от
+  // реактивных апдейтов; Dropdown's явная одностороння controlled-value
+  // конвенция этой проблемы не имеет).
   import DatePicker from '$lib/components/DatePicker.svelte';
   import Tabs from '$lib/components/Tabs.svelte';
-  import Select from '$lib/components/Select.svelte';
+  import Dropdown from '$lib/components/Dropdown.svelte';
 
   type PeriodMode = 'month' | 'year' | 'range';
 
@@ -48,6 +54,24 @@
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 4 }, (_, i) => currentYear - 3 + i);
+
+  // Plan 28-13 (GAP-1): опции для Dropdown (flat + variant="select").
+  const monthOptions = MONTHS.map((name, i) => ({ id: i + 1, label: name }));
+  const yearOptions = years.map((y) => ({ id: y, label: String(y) }));
+  const selectedMonthLabel = $derived(
+    monthOptions.find((o) => o.id === selectedMonth)?.label ?? '',
+  );
+  const selectedYearLabel = $derived(yearOptions.find((o) => o.id === selectedYear)?.label ?? '');
+
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию для вывода TMember (иначе `() => []` выводит `never[]`).
+  function noExpandMonth(): { id: number; label: string }[] {
+    return [];
+  }
+  function noExpandYear(): { id: number; label: string }[] {
+    return [];
+  }
 
   function setMode(m: PeriodMode) {
     mode = m;
@@ -111,24 +135,69 @@
     <p class="snapshot-hint">Отчёт отражает текущее состояние</p>
   {:else if mode === 'month'}
     <div class="period-controls">
-      <Select value={String(selectedMonth)} onchange={onMonthChange}>
-        {#each MONTHS as name, i}
-          <option value={i + 1}>{name}</option>
-        {/each}
-      </Select>
-      <Select value={String(selectedYear)} onchange={onYearChange}>
-        {#each years as y}
-          <option value={y}>{y}</option>
-        {/each}
-      </Select>
+      <Dropdown
+        variant="select"
+        flat={true}
+        value={selectedMonthLabel}
+        placeholder="Месяц"
+        searchPlaceholder="Поиск"
+        loading={false}
+        groups={monthOptions}
+        getGroupId={(o) => o.id}
+        getGroupName={(o) => o.label}
+        getGroupCount={() => 0}
+        isGroupExpandable={() => false}
+        isGroupSelected={(o) => o.id === selectedMonth}
+        onExpandGroup={noExpandMonth}
+        getMemberId={(o) => o.id}
+        getMemberName={(o) => o.label}
+        onSearch={() => {}}
+        onPickGroup={(o) => onMonthChange(String(o.id))}
+        onPickMember={() => {}}
+      />
+      <Dropdown
+        variant="select"
+        flat={true}
+        value={selectedYearLabel}
+        placeholder="Год"
+        searchPlaceholder="Поиск"
+        loading={false}
+        groups={yearOptions}
+        getGroupId={(o) => o.id}
+        getGroupName={(o) => o.label}
+        getGroupCount={() => 0}
+        isGroupExpandable={() => false}
+        isGroupSelected={(o) => o.id === selectedYear}
+        onExpandGroup={noExpandYear}
+        getMemberId={(o) => o.id}
+        getMemberName={(o) => o.label}
+        onSearch={() => {}}
+        onPickGroup={(o) => onYearChange(String(o.id))}
+        onPickMember={() => {}}
+      />
     </div>
   {:else if mode === 'year'}
     <div class="period-controls">
-      <Select value={String(selectedYear)} onchange={onYearChange}>
-        {#each years as y}
-          <option value={y}>{y}</option>
-        {/each}
-      </Select>
+      <Dropdown
+        variant="select"
+        flat={true}
+        value={selectedYearLabel}
+        placeholder="Год"
+        searchPlaceholder="Поиск"
+        loading={false}
+        groups={yearOptions}
+        getGroupId={(o) => o.id}
+        getGroupName={(o) => o.label}
+        getGroupCount={() => 0}
+        isGroupExpandable={() => false}
+        isGroupSelected={(o) => o.id === selectedYear}
+        onExpandGroup={noExpandYear}
+        getMemberId={(o) => o.id}
+        getMemberName={(o) => o.label}
+        onSearch={() => {}}
+        onPickGroup={(o) => onYearChange(String(o.id))}
+        onPickMember={() => {}}
+      />
     </div>
   {:else if mode === 'range'}
     <div class="period-controls period-range">
@@ -173,21 +242,29 @@
     // Plan 28-03: Select defaults to full-width/36px form-field sizing —
     // constrain to content width + the 28px filter-row height (GAP-R3
     // precedent below, same treatment as DatePicker in .range-label).
-    :global(.select-wrapper) {
+    // Plan 28-13 (GAP-1): re-targeted at Dropdown's select-variant classes —
+    // Dropdown's trigger is a `<button class="tr-dropdown-field-button">`,
+    // not an `<input>`, so Select's old `.select-wrapper`/`.select` selectors
+    // would silently do nothing here.
+    :global(.tr-dropdown) {
       width: auto;
       min-width: 110px;
     }
 
-    :global(.select) {
+    :global(.tr-dropdown-field-button) {
       height: 28px;
       font-size: var(--tr-font-size-label);
     }
   }
 
   // GAP-R3: date inputs in range mode must be same height as other filter controls (28px)
+  // GAP-3 partial (28-13): breathing room between the two С/По label+DatePicker
+  // groups — previously inherited the tight .period-controls gap and read as
+  // cramped/misaligned against the rest of the filter row.
   .period-range {
     align-items: center;
     flex-wrap: wrap;
+    gap: var(--tr-space-md);
   }
 
   .range-label {
