@@ -11,7 +11,10 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-13 (GAP-1): Select (нативный <select>) заменён на кастомный
+  // Dropdown (flat + variant="select") для поля «Роль», по прецеденту
+  // CartridgeFormBody.svelte (Plan 27-G1).
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import type { UserDto } from '../../bindings';
 
@@ -40,6 +43,13 @@
     { value: 'employee', label: 'Сотрудник' },
   ];
 
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию для вывода TMember (иначе `() => []` выводит `never[]`).
+  function noExpandRole(): { value: string; label: string }[] {
+    return [];
+  }
+
   let form = $state<UserFormData>({
     login: '',
     full_name: '',
@@ -51,6 +61,8 @@
 
   let saving = $state(false);
   let error = $state<string | null>(null);
+
+  const selectedRoleLabel = $derived(roleOptions.find((o) => o.value === form.role)?.label ?? '');
 
   // Per-field validation errors
   let loginErr = $state<string | null>(null);
@@ -188,18 +200,31 @@
     </div>
 
     <div class="form-field" class:has-error={roleErr !== null}>
-      <label class="form-label" for="uf-role">Роль</label>
-      <Select
-        id="uf-role"
-        value={form.role}
-        invalid={roleErr !== null}
-        disabled={saving}
-        onchange={(v) => (form.role = v)}
-      >
-        {#each roleOptions as opt}
-          <option value={opt.value}>{opt.label}</option>
-        {/each}
-      </Select>
+      <label class="form-label dropdown-label">
+        <span>Роль</span>
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={selectedRoleLabel}
+          placeholder="Выберите роль"
+          searchPlaceholder="Поиск"
+          invalid={roleErr !== null}
+          disabled={saving}
+          loading={false}
+          groups={roleOptions}
+          getGroupId={(o) => o.value}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.value === form.role}
+          onExpandGroup={noExpandRole}
+          getMemberId={(o) => o.value}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => (form.role = o.value)}
+          onPickMember={() => {}}
+        />
+      </label>
       {#if roleErr}
         <span class="field-error">{roleErr}</span>
       {/if}
@@ -264,6 +289,16 @@
     font-size: var(--tr-font-size-label);
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
+  }
+
+  // Plan 28-13 (GAP-1): Dropdown не принимает `id`, поэтому подпись
+  // оборачивает поле (implicit label) вместо `for`/`id` association —
+  // сохраняет вертикальный макет «подпись сверху, поле снизу» (см.
+  // CartridgeFormBody.svelte's .dropdown-label precedent).
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   // Пароль — raw password-input (T-28-09-01), не Input-примитив.
