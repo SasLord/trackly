@@ -131,6 +131,7 @@
     align-items: center;
     gap: var(--tr-space-2xs);
     white-space: nowrap;
+    max-width: 190px;
 
     &:focus-visible {
       outline: none;
@@ -161,6 +162,7 @@
   }
 
   .cell-status {
+    width: 110px;
     white-space: nowrap;
   }
 </style>
