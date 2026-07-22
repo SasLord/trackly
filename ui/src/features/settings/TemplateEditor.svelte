@@ -2,7 +2,11 @@
   import { onMount, untrack } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-12 (GAP-1): Select (нативный <select>) заменён на кастомный Dropdown
+  // (flat + variant="select") — implicit-label pattern, как в CartridgeFormBody.svelte
+  // (Phase 27-G1 precedent). D-08: strictly the kind-selector control only — the
+  // rest of this component's editing/preview surface is untouched.
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
@@ -98,6 +102,20 @@
 
   // The currently selected template object
   const selectedTemplate = $derived(templates.find((t) => t.kind === selectedKind) ?? null);
+
+  // GAP-1: опции для Dropdown (flat + variant="select") — «Шаблон».
+  const templateOptions = $derived(
+    templates.map((tmpl) => ({ id: tmpl.kind, label: KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind })),
+  );
+  const selectedKindLabel = $derived(
+    templateOptions.find((o) => o.id === selectedKind)?.label ?? '',
+  );
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandKind(): { id: string; label: string }[] {
+    return [];
+  }
 
   // Plan 17-03 (D-12): per-kind variables panel content
   const currentVariables = $derived(VARIABLES_BY_KIND[selectedKind] ?? []);
@@ -215,16 +233,31 @@
 
   <!-- Template selector -->
   <div class="template-selector-row">
-    <label class="form-label" for="template-kind">Шаблон</label>
-    <div class="select-shrink">
-      <Select id="template-kind" value={selectedKind} onchange={(v) => (selectedKind = v)}>
-        {#each templates as tmpl (tmpl.kind)}
-          <option value={tmpl.kind}>
-            {KIND_LABELS[tmpl.kind] ?? tmpl.label ?? tmpl.kind}
-          </option>
-        {/each}
-      </Select>
-    </div>
+    <label class="form-label dropdown-label">
+      <span>Шаблон</span>
+      <div class="select-shrink">
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={selectedKindLabel}
+          placeholder="Выберите шаблон"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={templateOptions}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === selectedKind}
+          onExpandGroup={noExpandKind}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => (selectedKind = o.id)}
+          onPickMember={() => {}}
+        />
+      </div>
+    </label>
   </div>
 
   <!-- Available variables panel (T-07-04-02: reference only — not executed in browser).
@@ -326,6 +359,15 @@
     font-weight: var(--tr-font-weight-medium);
     color: var(--tr-text-secondary);
     white-space: nowrap;
+  }
+
+  // Plan 28-12 (GAP-1): Dropdown не принимает `id`, поэтому подпись оборачивает
+  // поле (implicit label) вместо `for`/`id` association.
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
+    white-space: normal;
   }
 
   .select-shrink {
