@@ -1,4 +1,9 @@
 <script lang="ts">
+  // Plan 28-09 (D-03): rebuilt on shared Table primitive per ActsList.svelte
+  // precedent — bespoke <table>/.th/.empty-state removed, Table now owns the
+  // frame/empty-state. UsersList has no loading state (unlike ActsList) and
+  // no pagination — simplest of the D-03 consumers.
+  import Table from '$lib/components/Table.svelte';
   import type { UserDto } from '../../bindings';
   import UserListRow from './UserListRow.svelte';
 
@@ -11,55 +16,17 @@
   const { items, onEdit, onDelete }: Props = $props();
 </script>
 
-<div class="users-list-container">
-  {#if items.length === 0}
-    <div class="empty-state">Пользователи не найдены</div>
-  {:else}
-    <table class="users-table">
-      <thead>
-        <tr>
-          <th class="th">Логин</th>
-          <th class="th">ФИО</th>
-          <th class="th">Роль</th>
-          <th class="th">Email</th>
-          <th class="th">Статус</th>
-          <th class="th">Действия</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each items as user (user.id)}
-          <UserListRow {user} {onEdit} {onDelete} />
-        {/each}
-      </tbody>
-    </table>
-  {/if}
-</div>
+{#snippet tableHead()}
+  <th>Логин</th>
+  <th>ФИО</th>
+  <th>Роль</th>
+  <th>Email</th>
+  <th>Статус</th>
+  <th class="th-actions">Действия</th>
+{/snippet}
 
-<style lang="scss">
-  .users-list-container {
-    overflow-x: auto;
-  }
-
-  .empty-state {
-    padding: var(--tr-space-2xl);
-    text-align: center;
-    color: var(--tr-text-tertiary);
-    font-size: var(--tr-font-size-body);
-  }
-
-  .users-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--tr-font-size-body);
-  }
-
-  .th {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    text-align: left;
-    font-size: var(--tr-font-size-label);
-    font-weight: var(--tr-font-weight-medium);
-    color: var(--tr-text-tertiary);
-    border-bottom: 1px solid var(--tr-border);
-    white-space: nowrap;
-  }
-</style>
+<Table columns={6} empty={items.length === 0} emptyTitle="Пользователи не найдены" head={tableHead}>
+  {#each items as user (user.id)}
+    <UserListRow {user} {onEdit} {onDelete} />
+  {/each}
+</Table>

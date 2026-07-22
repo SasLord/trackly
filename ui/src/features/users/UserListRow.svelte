@@ -1,4 +1,12 @@
 <script lang="ts">
+  // Plan 28-09 (D-03): rebuilt on shared TableRow primitive per ActListRow.svelte
+  // precedent — bespoke <tr>/.badge replaced with <TableRow>/<Badge>. Inline
+  // delete-confirmation ("Удалить?"/"Да"/"Нет") kept verbatim (UI-SPEC §7.4
+  // forbids replacing it with a modal). The 4 small text buttons (Изменить/
+  // Удалить/Да/Нет) keep the bespoke .btn-action class — Button primitive
+  // targets larger CTAs, not inline table-row actions (Claude's Discretion).
+  import Badge from '$lib/components/Badge.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
   import type { UserDto } from '../../bindings';
 
   const ROLE_LABELS: Record<string, string> = {
@@ -31,16 +39,16 @@
   }
 </script>
 
-<tr class="user-row">
+<TableRow class="user-row">
   <td class="cell">{user.login}</td>
   <td class="cell">{user.full_name}</td>
   <td class="cell">{ROLE_LABELS[user.role] ?? user.role}</td>
   <td class="cell">{user.email ?? '—'}</td>
   <td class="cell">
     {#if user.is_active}
-      <span class="badge badge--active">Активен</span>
+      <Badge variant="success">Активен</Badge>
     {:else}
-      <span class="badge badge--blocked">Заблокирован</span>
+      <Badge variant="default">Заблокирован</Badge>
     {/if}
   </td>
   <td class="cell cell--actions">
@@ -55,21 +63,16 @@
       </button>
     {/if}
   </td>
-</tr>
+</TableRow>
 
 <style lang="scss">
-  .user-row {
-    &:hover {
-      background: color-mix(in srgb, var(--tr-text-primary) 3%, transparent);
-    }
-  }
-
+  // TableRow renders its own <tr> (a DIFFERENT Svelte scope-hash than this
+  // file) — caller-supplied class needs :global(), ancestor part stays in
+  // THIS file's scope: `.user-row :global(> td)`, never
+  // `:global(.user-row > td)` (specificity trap, see TableRow.svelte contract).
   .cell {
-    padding: var(--tr-space-xs) var(--tr-space-md);
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
-    border-bottom: 1px solid var(--tr-border);
-    vertical-align: middle;
   }
 
   .cell--actions {
@@ -77,24 +80,6 @@
     display: flex;
     gap: var(--tr-space-2xs);
     align-items: center;
-  }
-
-  .badge {
-    display: inline-block;
-    padding: 2px var(--tr-space-xs);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-label);
-    font-weight: var(--tr-font-weight-medium);
-
-    &--active {
-      background: color-mix(in srgb, var(--tr-success) 15%, transparent);
-      color: var(--tr-success-text);
-    }
-
-    &--blocked {
-      background: color-mix(in srgb, var(--tr-text-tertiary) 15%, transparent);
-      color: var(--tr-text-tertiary);
-    }
   }
 
   .btn-action {
