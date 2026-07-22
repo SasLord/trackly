@@ -3,7 +3,9 @@
   // Domain sub-nav (Устройства / Картриджи) + report type switch-bar.
   // Plan 07-10 Task 2: GAP-R2 — both navs share one row on desktop.
   //                    GAP-R5 — badges on ALL tabs (active: real count; inactive: –).
-  import Badge from '$lib/components/Badge.svelte';
+  // Plan 28-03 Task 1 (D-06): both levels moved onto the shared Tabs primitive
+  // (segmented for domain, underline+count for report type) — no bespoke tab markup.
+  import Tabs from '$lib/components/Tabs.svelte';
 
   type DomainKey = 'devices' | 'cartridges';
 
@@ -59,7 +61,8 @@
     rowCount: number;
     /** Real per-tab counts from reports_get_report_counts (G2-5b).
      *  When provided, all tabs show statusCounts[key] ?? 0.
-     *  When absent, active tab shows rowCount and inactive tabs show '–'. */
+     *  When absent, active tab shows rowCount and inactive tabs show 0
+     *  (Plan 28-03: Tabs.count is typed number, no string dash fallback). */
     statusCounts?: Record<string, number>;
     onDomainChange: (_d: DomainKey) => void;
     onReportChange: (_r: string) => void;
@@ -79,39 +82,25 @@
 
 <!-- GAP-R2: domain-nav (left) and report-nav (right) on the same flex row on desktop -->
 <div class="report-sub-nav">
-  <nav class="domain-nav" aria-label="Домен отчётов">
-    {#each DOMAINS as d}
-      <button
-        class="tab"
-        class:active={d.key === activeDomain}
-        type="button"
-        onclick={() => onDomainChange(d.key)}
-        aria-pressed={d.key === activeDomain}
-      >
-        {d.label}
-      </button>
-    {/each}
-  </nav>
+  <Tabs
+    variant="segmented"
+    tabs={DOMAINS.map((d) => ({ key: d.key, label: d.label }))}
+    active={activeDomain}
+    ariaLabel="Домен отчётов"
+    onchange={(key) => onDomainChange(key as DomainKey)}
+  />
 
-  <div class="report-nav" role="tablist" aria-label="Тип отчёта">
-    {#each activeReports as r}
-      <button
-        class="tab"
-        class:active={r.key === activeReport}
-        type="button"
-        role="tab"
-        aria-selected={r.key === activeReport}
-        onclick={() => onReportChange(r.key)}
-      >
-        {r.label}
-        <!-- G2-5b: when statusCounts provided, show real count for ALL tabs;
-             otherwise fall back to rowCount (active) / '–' (inactive) for compat -->
-        <Badge variant={r.key === activeReport ? 'accent' : 'default'} size="sm">
-          {statusCounts ? (statusCounts[r.key] ?? 0) : r.key === activeReport ? rowCount : '–'}
-        </Badge>
-      </button>
-    {/each}
-  </div>
+  <Tabs
+    variant="underline"
+    tabs={activeReports.map((r) => ({
+      key: r.key,
+      label: r.label,
+      count: statusCounts ? (statusCounts[r.key] ?? 0) : r.key === activeReport ? rowCount : 0,
+    }))}
+    active={activeReport}
+    ariaLabel="Тип отчёта"
+    onchange={onReportChange}
+  />
 </div>
 
 <style lang="scss">
@@ -120,59 +109,11 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: space-between;
     gap: var(--tr-space-md);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
     flex-wrap: wrap;
-  }
-
-  .domain-nav {
-    display: flex;
-    gap: var(--tr-space-2xs);
     padding: var(--tr-space-xs) 0;
-    flex-shrink: 0;
-    // No border-bottom here — parent .report-sub-nav owns the single bottom border
-  }
-
-  .report-nav {
-    display: flex;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-xs) 0;
-    flex: 1;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    // role=tablist is valid on div
-  }
-
-  .tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
-    padding: var(--tr-space-2xs) var(--tr-space-md);
-    background: transparent;
-    color: var(--tr-text-primary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-family: var(--tr-font-family);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: pointer;
-    height: 32px;
-    white-space: nowrap;
-
-    &:hover {
-      background: var(--tr-surface-sunken);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
-
-    &.active {
-      background: color-mix(in srgb, var(--tr-accent) 10%, transparent);
-      border-color: var(--tr-accent);
-      color: var(--tr-text-primary);
-    }
   }
 </style>
