@@ -18,7 +18,10 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
-  import Select from '$lib/components/Select.svelte';
+  // Plan 28-11 (GAP-1): Select (нативный <select>) заменён на кастомный
+  // Dropdown (flat + variant="select") — см. CartridgeFormBody.svelte
+  // (Phase 27-G1) для канонического паттерна.
+  import Dropdown from '$lib/components/Dropdown.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
@@ -54,6 +57,22 @@
   let approveModalOpen = $state(false);
   let approveRole = $state('employee');
   let approveSubmitting = $state(false);
+
+  // Plan 28-11 (GAP-1): опции для Dropdown (flat + variant="select") — «Роль».
+  const ROLE_OPTIONS = [
+    { id: 'employee', label: 'Сотрудник' },
+    { id: 'manager', label: 'Специалист' },
+    { id: 'admin', label: 'Администратор' },
+  ];
+  // Плоские опции без drill-in — onExpandGroup никогда реально не вызывается
+  // (isGroupExpandable всегда false), но Dropdown требует типизированную
+  // функцию, чтобы вывести TMember (иначе `() => []` выводит `never[]`).
+  function noExpandRole(): { id: string; label: string }[] {
+    return [];
+  }
+  const approveRoleLabel = $derived(
+    ROLE_OPTIONS.find((o) => o.id === approveRole)?.label ?? '',
+  );
 
   // GAP-12-07/A4: delete (Admin/Manager, any status) and self-cancel
   // (Employee author, open status only) lifecycle actions.
@@ -669,12 +688,29 @@
       ролью.
     </p>
     <div class="field" style="margin-top: var(--tr-space-md);">
-      <label class="label" for="approve-role">Роль</label>
-      <Select value={approveRole} id="approve-role" onchange={(v) => (approveRole = v)}>
-        <option value="employee">Сотрудник</option>
-        <option value="manager">Специалист</option>
-        <option value="admin">Администратор</option>
-      </Select>
+      <label class="label dropdown-label">
+        <span class="label-text">Роль</span>
+        <Dropdown
+          variant="select"
+          flat={true}
+          value={approveRoleLabel}
+          placeholder="Выберите роль"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={ROLE_OPTIONS}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === approveRole}
+          onExpandGroup={noExpandRole}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => (approveRole = o.id)}
+          onPickMember={() => {}}
+        />
+      </label>
     </div>
     {#snippet footer()}
       <Button variant="secondary" onclick={() => (approveModalOpen = false)}>Отмена</Button>
@@ -764,6 +800,16 @@
   .label {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
+  }
+
+  // Plan 28-11 (GAP-1): Dropdown не принимает `id`, поэтому подпись оборачивает
+  // поле (implicit label) вместо `for`/`id` association — сохраняет вертикальный
+  // макет «подпись сверху, поле снизу», как у остальных .field (CartridgeFormBody
+  // precedent, Phase 27-G1).
+  .dropdown-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
   }
 
   .actions {
