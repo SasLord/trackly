@@ -625,7 +625,7 @@ Plans:
 - [x] 28-05-PLAN.md — Настройки: оболочка (SettingsSubNav→Tabs D-06, SettingsPage→PageHeader) + Threshold/Storage панели (D-04)
 - [x] 28-06-PLAN.md — Настройки: Backup (D-04 + --tr-text-mono) + Network панели (D-04)
 - [x] 28-07-PLAN.md — Настройки: ActiveDirectory (D-04, radio-group-адаптер) + Org панели (D-04)
-- [ ] 28-08-PLAN.md — Настройки: TemplateEditor kind-select→Select (D-08, строго ограничено)
+- [x] 28-08-PLAN.md — Настройки: TemplateEditor kind-select→Select (D-08, строго ограничено)
 - [ ] 28-09-PLAN.md — Пользователи: List/ListRow→Table (D-03) + FormModal (D-04) + UsersPage→PageHeader
 
 **Wave 2** *(depends on Wave 1 — финальный гейт)*
@@ -714,7 +714,7 @@ Plans:
 | 25. Таблицы и Dropdown | v1.2 | 8/8 | Complete    | 2026-07-19 |
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
-| 28. Окна поддержки и администрирования | v1.2 | 7/10 | In Progress|  |
+| 28. Окна поддержки и администрирования | v1.2 | 8/10 | In Progress|  |
 | 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
