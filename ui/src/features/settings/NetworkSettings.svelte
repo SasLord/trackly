@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
+  import Input from '$lib/components/Input.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import type { ServerStatusDto } from '../../bindings';
@@ -177,39 +180,37 @@
       <div class="form-grid">
         <div class="form-field">
           <label class="form-label" for="net-port">Порт</label>
-          <input
+          <Input
             id="net-port"
-            class="form-input"
             type="number"
-            min="1"
-            max="65535"
-            bind:value={settings.port}
+            value={String(settings.port)}
             disabled={saving || serverRunning}
+            oninput={(v) => (settings.port = Number(v) || 0)}
           />
         </div>
 
         <div class="form-field">
           <label class="form-label" for="net-host">Bind-адрес</label>
-          <select
+          <Select
             id="net-host"
-            class="form-select"
-            bind:value={settings.host}
+            value={settings.host}
             disabled={saving || serverRunning}
+            onchange={(v) => (settings.host = v)}
           >
             <option value="0.0.0.0">0.0.0.0 (все интерфейсы)</option>
             <option value="127.0.0.1">127.0.0.1 (только localhost)</option>
-          </select>
+          </Select>
         </div>
 
         <div class="form-field form-field--full">
           <label class="form-label" for="net-cert">Путь к сертификату (пусто = авто)</label>
-          <input
+          <Input
             id="net-cert"
-            class="form-input"
             type="text"
-            bind:value={settings.cert_path}
+            value={settings.cert_path}
             disabled={saving || serverRunning}
             placeholder="Оставьте пустым для самоподписанного сертификата"
+            oninput={(v) => (settings.cert_path = v)}
           />
         </div>
       </div>
@@ -230,15 +231,14 @@
     <h2 class="section-title">Безопасность рабочего стола</h2>
 
     <div class="form-field">
-      <label class="checkbox-label">
-        <input
-          type="checkbox"
-          checked={settings.desktop_lock_enabled}
-          disabled={lockToggling}
-          onchange={(e) => toggleDesktopLock((e.target as HTMLInputElement).checked)}
-        />
-        <span class="checkbox-text">Требовать вход в десктопе</span>
-      </label>
+      <Checkbox
+        id="desktop-lock"
+        checked={settings.desktop_lock_enabled}
+        disabled={lockToggling}
+        onchange={(checked) => toggleDesktopLock(checked)}
+      >
+        Требовать вход в десктопе
+      </Checkbox>
       <p class="helper-text">
         Когда включено, при запуске приложения требуется ввод логина и пароля. Без этой настройки
         рабочее место всегда работает в режиме администратора.
@@ -391,27 +391,6 @@
     color: var(--tr-text-secondary);
   }
 
-  .form-input,
-  .form-select {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-  }
-
   .save-row {
     display: flex;
     align-items: center;
@@ -422,25 +401,6 @@
   .save-hint {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    font-size: var(--tr-font-size-body);
-    color: var(--tr-text-primary);
-    cursor: pointer;
-
-    input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--tr-accent);
-    }
-  }
-
-  .checkbox-text {
-    font-weight: var(--tr-font-weight-medium);
   }
 
   .helper-text {
