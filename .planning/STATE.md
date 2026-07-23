@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
-status: executing
-last_updated: "2026-07-22T14:19:11.860Z"
-last_activity: 2026-07-22 -- Phase 28 execution started
+status: verifying
+last_updated: "2026-07-23T13:05:00.406Z"
+last_activity: 2026-07-23
 progress:
   total_phases: 18
   completed_phases: 14
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 28 (support-admin-windows) — EXECUTING
-Plan: 1 of 16
-Status: Executing Phase 28
-Last activity: 2026-07-22 -- Phase 28 execution started
+Plan: 16 of 16
+Status: Phase complete — ready for verification
+Last activity: 2026-07-23
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -255,6 +255,7 @@ Last activity: 2026-07-22 -- Phase 28 execution started
 | Phase 28 P07 | 5 min | 2 tasks | 2 files |
 | Phase 28 P08 | 8 min | 1 tasks | 1 files |
 | Phase 28 P09 | 8min | 2 tasks | 4 files |
+| Phase 28 P10 | N/A | 2 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -629,6 +630,7 @@ Recent decisions affecting current work:
 - [Phase 28]: Plan 28-08: TemplateEditor kind-select — .select-shrink wrapper (fit-content + min-width 220px), reused from BackupSettings.svelte, avoids Select's width:100% stretching in the label+select flex row
 - [Phase 28]: Пароль в UserFormModal остаётся raw type=password (T-28-09-01) — обязательное исключение из D-04, Input.svelte не поддерживает password-тип
 - [Phase 28]: Email в UserFormModal через Input type=text — нативная HTML5-валидация email потеряна, серверная валидация авторитетна
+- [Phase 28]: Phase 28 Plan 10: both-theme UAT (D-01..D-08, SC #1-4) approved by human after gap-closure round (28-11..28-16) — Known '0' vs legacy '-' report-counter diff (28-03) reconfirmed as sole intentional visual difference; does not misrepresent data
 
 ### Pending Todos
 
@@ -716,8 +718,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-22T07:03:37.326Z
-Stopped at: Completed 28-09-PLAN.md
+Last session: 2026-07-23T13:05:00.398Z
+Stopped at: Completed 28-10-PLAN.md (both-theme UAT approved, phase 28 all 16 plans complete)
 Resume file: None
 
 ## Operator Next Steps
