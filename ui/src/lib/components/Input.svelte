@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte';
 
   interface Props {
-    type?: 'text' | 'number' | 'search';
+    type?: 'text' | 'number' | 'search' | 'password';
     value: string;
     placeholder?: string;
     disabled?: boolean;
