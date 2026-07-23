@@ -196,6 +196,7 @@ async fn users_create_read_update_delete() {
                     role: None,
                     email: None,
                     is_active: Some(false),
+                    password: None,
                 },
                 &admin,
             )
@@ -451,6 +452,7 @@ async fn users_update_email_clear_vs_keep() {
                     role: None,
                     email: None,
                     is_active: None,
+                    password: None,
                 },
                 &admin,
             )
@@ -472,6 +474,7 @@ async fn users_update_email_clear_vs_keep() {
                     role: None,
                     email: Some(None),
                     is_active: None,
+                    password: None,
                 },
                 &admin,
             )
@@ -481,6 +484,147 @@ async fn users_update_email_clear_vs_keep() {
             cleared.email, None,
             "Some(None) должно очищать email в NULL"
         );
+    })
+    .await
+    .expect("test exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// users_update_password_change (WR-01)
+// ---------------------------------------------------------------------------
+
+/// WR-01: editing a user with a non-empty `password` must actually rotate the
+/// stored argon2id hash — the old password stops working, the new one logs in.
+/// An empty-string `password` on a later edit must leave the credential intact
+/// (the «оставьте пустым, чтобы не менять» contract), while other fields still
+/// update.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn users_update_password_change() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_auth_service();
+        let admin = Identity::trusted_admin();
+
+        // Keeper admin so demotion/last-admin guards never interfere; the
+        // target is a plain manager whose password we rotate.
+        svc.create_user(admin_new("keeper"), &admin)
+            .await
+            .expect("create keeper admin");
+
+        let dave = svc
+            .create_user(
+                UserNew {
+                    login: "dave".to_string(),
+                    full_name: "Дэйв".to_string(),
+                    password: "password123".to_string(),
+                    role: "manager".to_string(),
+                    email: None,
+                },
+                &admin,
+            )
+            .await
+            .expect("create dave");
+
+        // Sanity: original password logs in.
+        svc.login(trackly_app::dto::auth::LoginRequest {
+            login: "dave".to_string(),
+            password: "password123".to_string(),
+            remember: false,
+        })
+        .await
+        .expect("login с исходным паролем");
+
+        // EDIT with a new password → hash must rotate.
+        let after_change = svc
+            .update_user(
+                dave.id,
+                dave.version,
+                UserPatch {
+                    full_name: None,
+                    role: None,
+                    email: None,
+                    is_active: None,
+                    password: Some("newpassword456".to_string()),
+                },
+                &admin,
+            )
+            .await
+            .expect("update_user со сменой пароля");
+
+        // New password works.
+        svc.login(trackly_app::dto::auth::LoginRequest {
+            login: "dave".to_string(),
+            password: "newpassword456".to_string(),
+            remember: false,
+        })
+        .await
+        .expect("login с новым паролем должен пройти");
+
+        // Old password no longer works.
+        let old_err = svc
+            .login(trackly_app::dto::auth::LoginRequest {
+                login: "dave".to_string(),
+                password: "password123".to_string(),
+                remember: false,
+            })
+            .await
+            .expect_err("старый пароль должен быть отклонён");
+        assert!(
+            matches!(old_err, trackly_core::error::AppError::Unauthorized),
+            "ожидали Unauthorized для старого пароля, получили {old_err:?}"
+        );
+
+        // EDIT with an empty password → credential untouched, other fields apply.
+        let after_empty = svc
+            .update_user(
+                after_change.id,
+                after_change.version,
+                UserPatch {
+                    full_name: Some("Дэйв Обновлённый".to_string()),
+                    role: None,
+                    email: None,
+                    is_active: None,
+                    password: Some(String::new()),
+                },
+                &admin,
+            )
+            .await
+            .expect("update_user с пустым паролем");
+        assert_eq!(
+            after_empty.full_name, "Дэйв Обновлённый",
+            "непарольные поля должны обновиться при пустом пароле"
+        );
+
+        // Password still the rotated one — empty string did not change it.
+        svc.login(trackly_app::dto::auth::LoginRequest {
+            login: "dave".to_string(),
+            password: "newpassword456".to_string(),
+            remember: false,
+        })
+        .await
+        .expect("пустой пароль не должен менять учётные данные");
+
+        // Too-short non-empty password → Validation error (field = password).
+        let short_err = svc
+            .update_user(
+                after_empty.id,
+                after_empty.version,
+                UserPatch {
+                    full_name: None,
+                    role: None,
+                    email: None,
+                    is_active: None,
+                    password: Some("short".to_string()),
+                },
+                &admin,
+            )
+            .await
+            .expect_err("короткий пароль должен быть отклонён");
+        match short_err {
+            trackly_core::error::AppError::Validation { field, .. } => {
+                assert_eq!(field, "password", "поле ошибки должно быть 'password'");
+            }
+            other => panic!("ожидали Validation, получили {other:?}"),
+        }
     })
     .await
     .expect("test exceeded 30s budget");
@@ -512,6 +656,7 @@ async fn last_admin_cannot_be_demoted_or_deleted() {
                     role: Some("manager".to_string()),
                     email: None,
                     is_active: None,
+                    password: None,
                 },
                 &admin,
             )
@@ -532,6 +677,7 @@ async fn last_admin_cannot_be_demoted_or_deleted() {
                     role: None,
                     email: None,
                     is_active: Some(false),
+                    password: None,
                 },
                 &admin,
             )
@@ -564,6 +710,7 @@ async fn last_admin_cannot_be_demoted_or_deleted() {
                 role: Some("manager".to_string()),
                 email: None,
                 is_active: None,
+                password: None,
             },
             &admin,
         )

@@ -1225,6 +1225,29 @@ impl AuthService {
             Role::from_str(role_str)?;
         }
 
+        // WR-01: optional password change on edit. Empty string / None → no
+        // change; a non-empty new password is validated (len >= 8, same rule
+        // and message as create) and hashed via argon2id off the writer thread
+        // (CPU-bound → spawn_blocking, mirroring `create_user`).
+        let new_password_hash: Option<String> = match patch.password.as_deref() {
+            Some(pw) if !pw.is_empty() => {
+                if pw.len() < 8 {
+                    return Err(AppError::Validation {
+                        field: "password".to_string(),
+                        message: "Пароль должен быть не менее 8 символов".to_string(),
+                    });
+                }
+                let password = Secret::new(pw.to_string());
+                let hash = tokio::task::spawn_blocking(move || hash_password(&password))
+                    .await
+                    .map_err(|e| AppError::Internal {
+                        source_chain: format!("spawn_blocking hash update_user: {e}"),
+                    })??;
+                Some(hash)
+            }
+            _ => None,
+        };
+
         let now = self.clock.unix_seconds();
         let caller_id = caller.user_id;
 
@@ -1292,6 +1315,8 @@ impl AuthService {
 
                 // WR-02: explicit UPDATE — COALESCE leaves unset columns untouched;
                 // the email CASE handles Some(None) (clear to NULL) vs None (keep).
+                // WR-01: password_hash COALESCE — Some(new hash) rotates the
+                // password, None leaves it untouched (empty/None input above).
                 let rows_changed = tx
                     .execute(
                         "UPDATE users SET \
@@ -1300,8 +1325,9 @@ impl AuthService {
                          full_name = COALESCE(?2, full_name), \
                          role = COALESCE(?3, role), \
                          email = CASE WHEN ?4 = 1 THEN ?5 ELSE email END, \
-                         is_active = COALESCE(?6, is_active) \
-                         WHERE id = ?7 AND version = ?8 AND deleted_at_utc IS NULL",
+                         is_active = COALESCE(?6, is_active), \
+                         password_hash = COALESCE(?7, password_hash) \
+                         WHERE id = ?8 AND version = ?9 AND deleted_at_utc IS NULL",
                         rusqlite::params![
                             now,
                             patch.full_name,
@@ -1309,6 +1335,7 @@ impl AuthService {
                             patch.email.is_some() as i64,
                             patch.email.flatten(),
                             patch.is_active.map(|b| b as i64),
+                            new_password_hash,
                             id,
                             version
                         ],
