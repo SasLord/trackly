@@ -105,7 +105,9 @@
         <span class="user-name">{authStore.user.fullName}</span>
         <span class="user-role">Сотрудник</span>
       {/if}
-      <ThemeSwitcher />
+      <div class="theme-switcher-slot">
+        <ThemeSwitcher />
+      </div>
       <Button variant="ghost" size="sm" onclick={logout} disabled={loggingOut}>
         {loggingOut ? 'Выход…' : 'Выйти'}
       </Button>
@@ -156,11 +158,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
+    flex-shrink: 0;
   }
 
   .user-role {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
+  }
+
+  .theme-switcher-slot {
+    flex-shrink: 0;
+    width: max-content;
   }
 
   .employee-content {
