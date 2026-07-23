@@ -676,7 +676,7 @@ Plans:
 **Wave 2** *(depends on Wave 1 — параллельны друг другу, нет пересечения файлов)*
 
 - [x] 29-02-PLAN.md — LoginPage + FirstRunWizard на примитивах + AuthShell/FormField (D-01/D-02)
-- [ ] 29-03-PLAN.md — PendingScreen + BlockedScreen на AuthShell(stack)/Button (D-02)
+- [x] 29-03-PLAN.md — PendingScreen + BlockedScreen на AuthShell(stack)/Button (D-02)
 
 **Wave 3** *(depends on Wave 2)*
 
@@ -741,7 +741,7 @@ Plans:
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
 | 28. Окна поддержки и администрирования | v1.2 | 16/16 | Complete    | 2026-07-23 |
-| 29. Вход и интерфейс сотрудника | v1.2 | 2/4 | In Progress|  |
+| 29. Вход и интерфейс сотрудника | v1.2 | 3/4 | In Progress|  |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
 ## Coverage

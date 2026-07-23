@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-23T16:47:56.423Z"
+last_updated: "2026-07-23T16:55:58.625Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 18
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 29 (login-and-employee-shell) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-07-23
 
@@ -259,6 +259,7 @@ Last activity: 2026-07-23
 | Phase 28 P10 | N/A | 2 tasks | 0 files |
 | Phase 29 P01 | 6min | 3 tasks | 3 files |
 | Phase 29 P02 | 12min | 2 tasks | 3 files |
+| Phase 29 P03 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -637,6 +638,7 @@ Recent decisions affecting current work:
 - [Phase ?]: Phase 29 Plan 01: AuthShell does not render title element — each screen keeps its own heading as children (title-to-content spacing differs per screen)
 - [Phase ?]: Phase 29 Plan 01: FormField error color uses --tr-danger-text (Fields.dc.html), deliberate deviation from LoginPage's pre-existing --tr-danger convention
 - [Phase 29]: Plan 29-02: Input.svelte gains additive autocomplete prop (HTMLInputAttributes['autocomplete']) to support LoginPage/FirstRunWizard migration
+- [Phase 29]: Plan 29-03: PendingScreen needed local .pending-card text-align:center wrapper — AuthShell's non-stack default has no built-in text-align
 
 ### Pending Todos
 
@@ -725,9 +727,9 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-23T16:47:50.556Z
-Stopped at: Completed 29-02-PLAN.md
-Resume file: None
+Last session: 2026-07-23T16:55:49.879Z
+Stopped at: Completed 29-03-PLAN.md
+Resume file: 
 
 ## Operator Next Steps
 
