@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
-status: verifying
-last_updated: "2026-07-23T13:05:00.406Z"
+status: ready_to_plan
+last_updated: 2026-07-23T13:33:33.396Z
 last_activity: 2026-07-23
 progress:
   total_phases: 18
   completed_phases: 14
   total_plans: 93
-  completed_plans: 93
+  completed_plans: 214
   percent: 78
+stopped_at: Phase 28 complete (16/16) — ready to discuss Phase 29
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 28 — support-admin-windows
+**Current focus:** Phase 29 — вход и интерфейс сотрудника
 
 ## Current Position
 
-Phase: 28 (support-admin-windows) — EXECUTING
-Plan: 16 of 16
-Status: Phase complete — ready for verification
+Phase: 29
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-07-23
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -40,7 +41,7 @@ Last activity: 2026-07-23
 
 **Velocity:**
 
-- Total plans completed: 138
+- Total plans completed: 154
 - Average duration: —
 - Total execution time: —
 
@@ -68,6 +69,7 @@ Last activity: 2026-07-23
 | 23 | 8 | - | - |
 | 25 | 8 | - | - |
 | 26 | 8 | - | - |
+| 28 | 16 | - | - |
 
 **Recent Trend:**
 
