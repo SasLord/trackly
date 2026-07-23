@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-23T16:36:37.243Z"
+last_updated: "2026-07-23T16:47:56.423Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 18
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 29 (login-and-employee-shell) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-23
 
@@ -258,6 +258,7 @@ Last activity: 2026-07-23
 | Phase 28 P09 | 8min | 2 tasks | 4 files |
 | Phase 28 P10 | N/A | 2 tasks | 0 files |
 | Phase 29 P01 | 6min | 3 tasks | 3 files |
+| Phase 29 P02 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -635,6 +636,7 @@ Recent decisions affecting current work:
 - [Phase 28]: Phase 28 Plan 10: both-theme UAT (D-01..D-08, SC #1-4) approved by human after gap-closure round (28-11..28-16) — Known '0' vs legacy '-' report-counter diff (28-03) reconfirmed as sole intentional visual difference; does not misrepresent data
 - [Phase ?]: Phase 29 Plan 01: AuthShell does not render title element — each screen keeps its own heading as children (title-to-content spacing differs per screen)
 - [Phase ?]: Phase 29 Plan 01: FormField error color uses --tr-danger-text (Fields.dc.html), deliberate deviation from LoginPage's pre-existing --tr-danger convention
+- [Phase 29]: Plan 29-02: Input.svelte gains additive autocomplete prop (HTMLInputAttributes['autocomplete']) to support LoginPage/FirstRunWizard migration
 
 ### Pending Todos
 
@@ -723,8 +725,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-23T16:36:37.235Z
-Stopped at: Completed 29-01-PLAN.md
+Last session: 2026-07-23T16:47:50.556Z
+Stopped at: Completed 29-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
