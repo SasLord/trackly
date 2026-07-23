@@ -61,11 +61,14 @@
   }) {
     if (editTarget) {
       // Edit mode — build UserPatch (only non-empty fields)
+      // WR-01: forward the new password only when the admin typed one; an
+      // empty field means «не менять» (the backend treats null/empty as no-op).
       const patch: UserPatch = {
         full_name: data.full_name || null,
         role: data.role || null,
         email: data.email ? data.email : null,
         is_active: data.is_active,
+        password: data.password ? data.password : null,
       };
       await apiCall<UserDto>('users_update', {
         id: editTarget.id,
