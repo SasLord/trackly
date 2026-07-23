@@ -102,12 +102,18 @@
     {request.requesterName ?? '—'}
     <span class="cell-date">{relativeDate(request.createdAtUtc)}</span>
   </td>
-  <td class="cell cell-type" {onclick}>
-    <Badge variant="default" size="sm">{typeLabel}</Badge>
-    {#if isAdRestore}
-      <!-- UAT: two badges stack on separate lines within the cell. -->
-      <Badge variant="warning" size="sm">Восстановление доступа</Badge>
-    {/if}
+  <td class="cell-type" {onclick}>
+    <!-- Inner flex wrapper stacks the two badges; the <td> itself stays a
+         normal table-cell so it participates in the table's column-width model
+         (a `display:flex` <td> is pulled out of that model and breaks
+         distribution + row borders at wide widths — the Acts row never does
+         this). -->
+    <div class="type-badges">
+      <Badge variant="default" size="sm">{typeLabel}</Badge>
+      {#if isAdRestore}
+        <Badge variant="warning" size="sm">Восстановление доступа</Badge>
+      {/if}
+    </div>
   </td>
   <td class="cell cell-desc" title={shortDesc} {onclick}>{shortDesc}</td>
   <td class="cell cell-status" {onclick}>
@@ -124,38 +130,38 @@
     cursor: pointer;
   }
 
+  // Base cell: ellipsis-truncating elastic column, exactly like ActListRow's
+  // `.cell` (max-width:0 lets the browser's table-layout:auto shrink/grow these
+  // predictably so the fixed/content columns get their space and the two
+  // elastic columns — Автор, Описание — share the remainder). Applied to
+  // Автор/Описание/Статус; the Тип cell opts out (it holds badges, not text).
   .cell {
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
   }
 
-  .cell-type {
-    // UAT (Заявки): two badges (e.g. «Регистрация AD» + «Восстановление
-    // доступа») stack on separate lines instead of overflowing the row width.
+  // Тип: content-sized table-cell (no max-width:0, no ellipsis). The inner
+  // .type-badges flex column does the vertical stacking so the <td> keeps
+  // normal table-cell semantics.
+  .type-badges {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--tr-space-2xs);
-    max-width: 190px;
   }
 
   .cell-desc {
     color: var(--tr-text-secondary);
     font-size: var(--tr-font-size-label);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 0; // makes text-overflow work in table cells
   }
 
   .cell-author {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 0;
-
-    // UAT: Автор is now the first column and the single keyboard entry point,
-    // so the focus ring lives here (moved from .cell-type).
+    // UAT: Автор is the first column and the single keyboard entry point, so
+    // the focus ring lives here (moved from .cell-type).
     &:focus-visible {
       outline: none;
       box-shadow: inset 0 0 0 2px var(--tr-accent);
@@ -168,8 +174,9 @@
     font-size: var(--tr-font-size-label);
   }
 
+  // Статус: fixed-width column (base .cell supplies nowrap/ellipsis; the width
+  // override wins the column budget, same pattern as ActListRow's .cell-count).
   .cell-status {
     width: 110px;
-    white-space: nowrap;
   }
 </style>
