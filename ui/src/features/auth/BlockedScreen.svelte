@@ -25,6 +25,8 @@
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
+  import AuthShell from '$lib/components/AuthShell.svelte';
+  import Button from '$lib/components/Button.svelte';
 
   interface Props {
     login: string;
@@ -58,81 +60,49 @@
   }
 </script>
 
-<div class="login-container">
-  <div class="login-card">
-    {#if submitted}
-      <h1 class="login-title">Запрос отправлен</h1>
-      <p class="screen-body">
-        Запрос на восстановление доступа отправлен администратору. Доступ появится после
-        подтверждения.
-      </p>
-      <button class="btn-link" type="button" onclick={onBackToLogin}>
-        Войти под другим пользователем
-      </button>
-    {:else if blockedDetails.pending}
-      <h1 class="login-title">Запрос на рассмотрении</h1>
-      <p class="screen-body">
-        Ваш запрос на восстановление доступа уже отправлен администратору и ожидает решения.
-        Повторно отправлять его не нужно.
-      </p>
-      <button class="btn-link" type="button" onclick={onBackToLogin}>
-        Войти под другим пользователем
-      </button>
-    {:else if blockedDetails.rejection_reason}
-      <h1 class="login-title">Запрос отклонён</h1>
-      <p class="screen-body">
-        Запрос на восстановление доступа отклонён. Причина: {blockedDetails.rejection_reason}
-      </p>
-      {#if serverError}
-        <div class="server-error">{serverError}</div>
-      {/if}
-      <button class="btn-submit" type="button" disabled={submitting} onclick={handleRestoreRequest}>
-        {#if submitting}Отправка…{:else}Запросить снова{/if}
-      </button>
-      <button class="btn-link" type="button" onclick={onBackToLogin}>
-        Войти под другим пользователем
-      </button>
-    {:else}
-      <h1 class="login-title">Доступ закрыт</h1>
-      <p class="screen-body">
-        Ваша учётная запись отключена. Вы можете запросить восстановление доступа у администратора.
-      </p>
-      {#if serverError}
-        <div class="server-error">{serverError}</div>
-      {/if}
-      <button class="btn-submit" type="button" disabled={submitting} onclick={handleRestoreRequest}>
-        {#if submitting}Отправка…{:else}Запросить восстановление доступа{/if}
-      </button>
-      <button class="btn-link" type="button" onclick={onBackToLogin}>
-        Войти под другим пользователем
-      </button>
+<AuthShell stack>
+  {#if submitted}
+    <h1 class="login-title">Запрос отправлен</h1>
+    <p class="screen-body">
+      Запрос на восстановление доступа отправлен администратору. Доступ появится после
+      подтверждения.
+    </p>
+    <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
+  {:else if blockedDetails.pending}
+    <h1 class="login-title">Запрос на рассмотрении</h1>
+    <p class="screen-body">
+      Ваш запрос на восстановление доступа уже отправлен администратору и ожидает решения. Повторно
+      отправлять его не нужно.
+    </p>
+    <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
+  {:else if blockedDetails.rejection_reason}
+    <h1 class="login-title">Запрос отклонён</h1>
+    <p class="screen-body">
+      Запрос на восстановление доступа отклонён. Причина: {blockedDetails.rejection_reason}
+    </p>
+    {#if serverError}
+      <div class="server-error">{serverError}</div>
     {/if}
-  </div>
-</div>
+    <Button variant="primary" loading={submitting} onclick={handleRestoreRequest}>
+      Запросить снова
+    </Button>
+    <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
+  {:else}
+    <h1 class="login-title">Доступ закрыт</h1>
+    <p class="screen-body">
+      Ваша учётная запись отключена. Вы можете запросить восстановление доступа у администратора.
+    </p>
+    {#if serverError}
+      <div class="server-error">{serverError}</div>
+    {/if}
+    <Button variant="primary" loading={submitting} onclick={handleRestoreRequest}>
+      Запросить восстановление доступа
+    </Button>
+    <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
+  {/if}
+</AuthShell>
 
 <style lang="scss">
-  .login-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: var(--tr-bg);
-  }
-
-  .login-card {
-    background: var(--tr-surface);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-lg);
-    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
-    width: 100%;
-    max-width: 360px;
-    box-shadow: var(--tr-elev-2);
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: var(--tr-space-md);
-  }
-
   .login-title {
     margin: 0;
     font-size: var(--tr-font-size-h3);
@@ -155,43 +125,5 @@
     border-radius: var(--tr-radius-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
-  }
-
-  .btn-submit {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    background: var(--tr-accent);
-    color: var(--tr-text-inverse);
-    border: none;
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: pointer;
-    transition: opacity 0.1s;
-
-    &:hover:not(:disabled) {
-      opacity: 0.9;
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-  }
-
-  .btn-link {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--tr-accent);
-    font-size: var(--tr-font-size-body);
-    cursor: pointer;
-
-    &:hover {
-      text-decoration: underline;
-    }
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
   }
 </style>
