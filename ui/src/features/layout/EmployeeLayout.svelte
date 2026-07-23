@@ -120,7 +120,8 @@
   .employee-shell {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     background: var(--tr-bg);
   }
 
@@ -164,8 +165,7 @@
 
   .employee-content {
     flex: 1;
-    padding: var(--tr-space-xl);
-    min-height: calc(100vh - var(--header-height));
+    min-height: 0;
     overflow: auto;
   }
 
