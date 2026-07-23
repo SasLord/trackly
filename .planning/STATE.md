@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-23T16:31:43.504Z"
-last_activity: 2026-07-23 -- Phase 29 planning complete
+last_updated: "2026-07-23T16:36:37.243Z"
+last_activity: 2026-07-23
 progress:
   total_phases: 18
   completed_phases: 14
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 29 — вход и интерфейс сотрудника
+**Current focus:** Phase 29 — login-and-employee-shell
 
 ## Current Position
 
-Phase: 29
-Plan: Not started
+Phase: 29 (login-and-employee-shell) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-23 -- Phase 29 planning complete
+Last activity: 2026-07-23
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -257,6 +257,7 @@ Last activity: 2026-07-23 -- Phase 29 planning complete
 | Phase 28 P08 | 8 min | 1 tasks | 1 files |
 | Phase 28 P09 | 8min | 2 tasks | 4 files |
 | Phase 28 P10 | N/A | 2 tasks | 0 files |
+| Phase 29 P01 | 6min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -632,6 +633,8 @@ Recent decisions affecting current work:
 - [Phase 28]: Пароль в UserFormModal остаётся raw type=password (T-28-09-01) — обязательное исключение из D-04, Input.svelte не поддерживает password-тип
 - [Phase 28]: Email в UserFormModal через Input type=text — нативная HTML5-валидация email потеряна, серверная валидация авторитетна
 - [Phase 28]: Phase 28 Plan 10: both-theme UAT (D-01..D-08, SC #1-4) approved by human after gap-closure round (28-11..28-16) — Known '0' vs legacy '-' report-counter diff (28-03) reconfirmed as sole intentional visual difference; does not misrepresent data
+- [Phase ?]: Phase 29 Plan 01: AuthShell does not render title element — each screen keeps its own heading as children (title-to-content spacing differs per screen)
+- [Phase ?]: Phase 29 Plan 01: FormField error color uses --tr-danger-text (Fields.dc.html), deliberate deviation from LoginPage's pre-existing --tr-danger convention
 
 ### Pending Todos
 
@@ -720,9 +723,9 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-23T16:13:19.105Z
-Stopped at: Phase 29 context gathered
-Resume file: .planning/phases/29-login-and-employee-shell/29-CONTEXT.md
+Last session: 2026-07-23T16:36:37.235Z
+Stopped at: Completed 29-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
