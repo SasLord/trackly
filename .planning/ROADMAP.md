@@ -666,9 +666,21 @@ Plans:
 2. EmployeeLayout (сайдбар, форма заявки, список собственных заявок) использует новые токены/компоненты.
 3. Визуальный язык соответствует переработанному основному приложению, несмотря на отдельную оболочку.
 
-**Plans**: TBD (not yet planned)
-
+**Plans**: 4 plans in 3 waves
 **UI hint**: yes
+
+**Wave 1**
+
+- [ ] 29-01-PLAN.md — Общие артефакты: Input `type='password'` (D-01), AuthShell + FormField (D-02)
+
+**Wave 2** *(depends on Wave 1 — параллельны друг другу, нет пересечения файлов)*
+
+- [ ] 29-02-PLAN.md — LoginPage + FirstRunWizard на примитивах + AuthShell/FormField (D-01/D-02)
+- [ ] 29-03-PLAN.md — PendingScreen + BlockedScreen на AuthShell(stack)/Button (D-02)
+
+**Wave 3** *(depends on Wave 2)*
+
+- [ ] 29-04-PLAN.md — EmployeeLayout header-chrome пасс (D-03) + финальный гейт + both-theme визуальный UAT + RequestsPage-парность (D-04)
 
 ---
 
@@ -729,7 +741,7 @@ Plans:
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
 | 28. Окна поддержки и администрирования | v1.2 | 16/16 | Complete    | 2026-07-23 |
-| 29. Вход и интерфейс сотрудника | v1.2 | 0/TBD | Not started | - |
+| 29. Вход и интерфейс сотрудника | v1.2 | 0/4 | Planned | - |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
 ## Coverage
