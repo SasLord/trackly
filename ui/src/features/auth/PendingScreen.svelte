@@ -2,6 +2,9 @@
   // Phase 9 Plan 05 — Screen 2 (UI-SPEC). Informational terminal state shown
   // after `auth_login` returns AppError code REGISTRATION_PENDING (pending
   // registration mode, D-REG-01). No primary CTA — purely informational.
+  import AuthShell from '$lib/components/AuthShell.svelte';
+  import Button from '$lib/components/Button.svelte';
+
   interface Props {
     onBackToLogin: () => void;
   }
@@ -9,36 +12,19 @@
   const { onBackToLogin }: Props = $props();
 </script>
 
-<div class="login-container">
-  <div class="login-card">
+<AuthShell>
+  <div class="pending-card">
     <h1 class="login-title">Заявка отправлена</h1>
     <p class="screen-body">
       Ваша заявка на регистрацию отправлена администратору. Доступ появится после подтверждения.
       Попробуйте войти позже.
     </p>
-    <button class="btn-link" type="button" onclick={onBackToLogin}>
-      Войти под другим пользователем
-    </button>
+    <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
   </div>
-</div>
+</AuthShell>
 
 <style lang="scss">
-  .login-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: var(--tr-bg);
-  }
-
-  .login-card {
-    background: var(--tr-surface);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-lg);
-    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
-    width: 100%;
-    max-width: 360px;
-    box-shadow: var(--tr-elev-2);
+  .pending-card {
     text-align: center;
   }
 
@@ -55,22 +41,5 @@
     font-size: var(--tr-font-size-body);
     line-height: var(--tr-line-height-body);
     color: var(--tr-text-secondary);
-  }
-
-  .btn-link {
-    background: transparent;
-    border: none;
-    padding: 0;
-    color: var(--tr-accent);
-    font-size: var(--tr-font-size-body);
-    cursor: pointer;
-
-    &:hover {
-      text-decoration: underline;
-    }
-    &:focus-visible {
-      outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
-    }
   }
 </style>
