@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import type { HTMLInputAttributes } from 'svelte/elements';
 
   interface Props {
     type?: 'text' | 'number' | 'search' | 'password';
@@ -9,6 +10,7 @@
     invalid?: boolean;
     id?: string;
     'aria-describedby'?: string;
+    autocomplete?: HTMLInputAttributes['autocomplete'];
     oninput?: (_value: string) => void;
     /** Optional left icon; absent by default — no layout change when omitted. */
     iconLeft?: Snippet;
@@ -22,6 +24,7 @@
     invalid = false,
     id,
     'aria-describedby': ariaDescribedby,
+    autocomplete,
     oninput,
     iconLeft,
   }: Props = $props();
@@ -40,6 +43,7 @@
     class:invalid
     class:has-icon={!!iconLeft}
     {value}
+    {autocomplete}
     aria-describedby={ariaDescribedby}
     aria-invalid={invalid || undefined}
     oninput={(e) => {

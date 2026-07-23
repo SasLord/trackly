@@ -6,6 +6,11 @@
   import type { AccessBlockedDetails, AppError } from '$lib/api/errors';
   import PendingScreen from './PendingScreen.svelte';
   import BlockedScreen from './BlockedScreen.svelte';
+  import AuthShell from '$lib/components/AuthShell.svelte';
+  import FormField from '$lib/components/FormField.svelte';
+  import Input from '$lib/components/Input.svelte';
+  import Button from '$lib/components/Button.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
 
   // D-Sec-01 / T-09-20: single generic message for ALL credential/account-state
   // failures (no enumeration). Distinct copy ONLY for infra (AD unreachable).
@@ -91,94 +96,64 @@
 {:else if screen === 'blocked'}
   <BlockedScreen {login} {password} {blockedDetails} onBackToLogin={backToLogin} />
 {:else}
-  <div class="login-container">
-    <div class="login-card">
-      <h1 class="login-title">Вход в систему</h1>
-      <form
-        class="login-form"
-        onsubmit={(e) => {
-          e.preventDefault();
-          handleSubmit();
-        }}
+  <AuthShell>
+    <h1 class="login-title">Вход в систему</h1>
+    <form
+      class="login-form"
+      onsubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+    >
+      <FormField
+        label="Логин"
+        id="login-input"
+        error={loginError}
+        hint="Логин: us100, user@domain или DOMAIN\User"
       >
-        <div class="form-field">
-          <label class="form-label" for="login-input">Логин</label>
-          <input
+        {#snippet children({ describedBy, invalid })}
+          <Input
             id="login-input"
-            class="form-input"
-            class:is-error={loginError !== null}
             type="text"
-            placeholder="Логин"
             bind:value={login}
             disabled={loading}
+            {invalid}
+            aria-describedby={describedBy}
             autocomplete="username"
           />
-          {#if loginError}
-            <span class="field-error">{loginError}</span>
-          {:else}
-            <span class="format-hint">Логин: us100, user@domain или DOMAIN\user</span>
-          {/if}
-        </div>
+        {/snippet}
+      </FormField>
 
-        <div class="form-field">
-          <label class="form-label" for="password-input">Пароль</label>
-          <input
+      <FormField label="Пароль" id="password-input" error={passwordError}>
+        {#snippet children({ describedBy, invalid })}
+          <Input
             id="password-input"
-            class="form-input"
-            class:is-error={passwordError !== null}
             type="password"
-            placeholder="Пароль"
             bind:value={password}
             disabled={loading}
+            {invalid}
+            aria-describedby={describedBy}
             autocomplete="current-password"
           />
-          {#if passwordError}
-            <span class="field-error">{passwordError}</span>
-          {/if}
-        </div>
+        {/snippet}
+      </FormField>
 
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={remember} disabled={loading} />
-          <span class="checkbox-text">Запомнить меня</span>
-        </label>
+      <Checkbox bind:checked={remember} disabled={loading}>Запомнить меня</Checkbox>
 
-        {#if serverError}
-          <div class="server-error">{serverError}</div>
-        {/if}
+      {#if serverError}
+        <div class="server-error">{serverError}</div>
+      {/if}
 
-        <button class="btn-submit" type="submit" disabled={loading}>
-          {#if loading}Вход...{:else}Войти{/if}
-        </button>
+      <Button type="submit" variant="primary" {loading}>Войти</Button>
 
-        <!-- D-UX-03: reserved space for v2 SSO. Visually muted/disabled, NO
-             click handler, NO fabricated display name (UI-SPEC Screen 1). -->
-        <button class="btn-sso-reserved" type="button" disabled tabindex="-1">
-          Вход по учётной записи Windows (скоро)
-        </button>
-      </form>
-    </div>
-  </div>
+      <!-- D-UX-03: reserved space for v2 SSO. Visually muted/disabled, NO
+           click handler, NO fabricated display name (UI-SPEC Screen 1). -->
+      <Button type="button" variant="ghost" disabled>Вход по учётной записи Windows (скоро)</Button>
+    </form>
+  </AuthShell>
 {/if}
 
 <style lang="scss">
-  .login-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: var(--tr-bg);
-  }
-
-  .login-card {
-    background: var(--tr-surface);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-lg);
-    padding: var(--tr-space-2xl) var(--tr-space-4xl, 2rem);
-    width: 100%;
-    max-width: 360px;
-    box-shadow: var(--tr-elev-2);
-  }
-
   .login-title {
     margin: 0 0 var(--tr-space-xl);
     font-size: var(--tr-font-size-h3);
@@ -193,84 +168,6 @@
     gap: var(--tr-space-md);
   }
 
-  .form-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--tr-space-2xs);
-  }
-
-  .form-label {
-    font-size: var(--tr-font-size-label);
-    font-weight: var(--tr-font-weight-medium);
-    color: var(--tr-text-secondary);
-  }
-
-  .form-input {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    background: var(--tr-bg);
-    color: var(--tr-text-primary);
-
-    &:focus {
-      outline: none;
-      border-color: var(--tr-accent);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tr-accent) 20%, transparent);
-    }
-
-    &.is-error {
-      border-color: var(--tr-danger);
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-  }
-
-  .field-error {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-danger);
-  }
-
-  .format-hint {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
-    line-height: var(--tr-line-height-label);
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-xs);
-    cursor: pointer;
-
-    input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--tr-accent);
-      cursor: pointer;
-    }
-  }
-
-  .checkbox-text {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-secondary);
-  }
-
-  .btn-sso-reserved {
-    margin-top: var(--tr-space-2xs);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    background: var(--tr-surface-sunken);
-    color: var(--tr-text-tertiary);
-    border: 1px solid var(--tr-border);
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: not-allowed;
-  }
-
   .server-error {
     padding: var(--tr-space-xs) var(--tr-space-md);
     background: color-mix(in srgb, var(--tr-danger) 10%, transparent);
@@ -278,27 +175,5 @@
     border-radius: var(--tr-radius-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
-  }
-
-  .btn-submit {
-    margin-top: var(--tr-space-2xs);
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    background: var(--tr-accent);
-    color: var(--tr-text-inverse);
-    border: none;
-    border-radius: var(--tr-radius-xs);
-    font-size: var(--tr-font-size-body);
-    font-weight: var(--tr-font-weight-medium);
-    cursor: pointer;
-    transition: opacity 0.1s;
-
-    &:hover:not(:disabled) {
-      opacity: 0.9;
-    }
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
   }
 </style>
