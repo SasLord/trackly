@@ -77,6 +77,12 @@ pub struct UserPatch {
     /// `Some(None)` — убрать email; `Some(Some(addr))` — установить; `None` — не менять.
     pub email: Option<Option<String>>,
     pub is_active: Option<bool>,
+    /// Новый пароль в открытом виде (WR-01). `None` или пустая строка — не
+    /// менять; непустое значение хэшируется через argon2id (как при создании,
+    /// см. `AuthService::update_user`). Отсутствие поля в JSON десериализуется
+    /// как `None` — старые клиенты продолжают работать.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 /// Запрос на смену пароля.
