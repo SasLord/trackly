@@ -36,3 +36,24 @@ are out of scope for the current task).
 in a follow-up (likely a one-line `use` fix), then re-run
 `cargo test -p trackly-app --test export_bindings` to regenerate
 `ui/src/bindings.ts` and get a clean whole-project `svelte-check`/`build`.
+
+---
+
+## CORRECTION (orchestrator, 2026-07-23) — NOT a real code bug
+
+The diagnosis above is a **misattribution**. On the main working tree the
+`trackly-app` lib compiles cleanly and `export_bindings` runs green
+(`cargo build -p trackly-app --lib` → Finished; `cargo test -p trackly-app
+--test export_bindings` → ok). The `SpaAssets::get` "not found" error only
+appears **inside git worktrees**: `SpaAssets` derives `rust_embed::RustEmbed`
+with `#[folder = "../../ui/dist"]`, and `ui/dist` is **gitignored** — so a
+freshly-created worktree (which contains only tracked files) has no `ui/dist`,
+and the rust_embed derive macro fails to generate `get` when its folder is
+absent. `http/mod.rs`'s trait import is fine.
+
+No `use` fix is needed. The correct workaround for worktree-based execution is
+to build `ui/dist` inside the worktree first (`pnpm --dir ui build`), or run
+backend-touching plans on the main tree where `ui/dist` already exists — which
+is what plan 28-15 did. This matches the known project gotchas
+"dev_browser_testing_needs_ui_build" and "ci_test_requirements" (ui/dist must
+be a real pnpm build). No follow-up action required.
