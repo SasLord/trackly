@@ -125,7 +125,7 @@
   }
 
   .employee-header {
-    height: var(--header-height, 56px);
+    height: var(--header-height);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -165,7 +165,7 @@
   .employee-content {
     flex: 1;
     padding: var(--tr-space-xl);
-    min-height: calc(100vh - 56px);
+    min-height: calc(100vh - var(--header-height));
     overflow: auto;
   }
 
