@@ -75,7 +75,7 @@
       отправлять его не нужно.
     </p>
     <Button variant="link" onclick={onBackToLogin}>Войти под другим пользователем</Button>
-  {:else if blockedDetails.rejection_reason}
+  {:else if blockedDetails.rejection_reason !== null}
     <h1 class="login-title">Запрос отклонён</h1>
     <p class="screen-body">
       Запрос на восстановление доступа отклонён. Причина: {blockedDetails.rejection_reason}
