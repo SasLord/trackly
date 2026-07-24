@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
-status: planning
-last_updated: "2026-07-24T13:45:45.523Z"
-last_activity: "2026-07-24 - Completed quick task 260724-pxf: fix WR-01 WS refcount leak + WR-02 empty-string rejection_reason (phase-29 review)"
+status: executing
+last_updated: "2026-07-24T17:14:07.984Z"
+last_activity: 2026-07-24
 progress:
-  total_phases: 18
-  completed_phases: 14
-  total_plans: 93
-  completed_plans: 218
-  percent: 78
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 1
+  percent: 0
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 30 — качество — доступность и паритет платформ
+**Current focus:** Phase 30 — quality-a11y-platform-parity
 
 ## Current Position
 
-Phase: 30
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-07-24 - Completed quick task 260724-pxf: fix WR-01 WS refcount leak + WR-02 empty-string rejection_reason (phase-29 review)
+Phase: 30 (quality-a11y-platform-parity) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-24
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -262,6 +262,7 @@ Last activity: 2026-07-24 - Completed quick task 260724-pxf: fix WR-01 WS refcou
 | Phase 29 P02 | 12min | 2 tasks | 3 files |
 | Phase 29 P03 | 8min | 2 tasks | 2 files |
 | Phase 29 P04 | 15min | 3 tasks | 1 files |
+| Phase 30 P01 | ~20min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -642,6 +643,9 @@ Recent decisions affecting current work:
 - [Phase 29]: Plan 29-02: Input.svelte gains additive autocomplete prop (HTMLInputAttributes['autocomplete']) to support LoginPage/FirstRunWizard migration
 - [Phase 29]: Plan 29-03: PendingScreen needed local .pending-card text-align:center wrapper — AuthShell's non-stack default has no built-in text-align
 - [Phase 29]: EmployeeLayout fill-to-bottom mirrors admin Layout.svelte definite-height pattern (D-04 parity); ThemeSwitcher bounded at consumer, not shared component
+- [Phase 30]: Canonical 43-pair WCAG contrast table hardcoded in check-contrast.mjs (no CLI params) — closed-world by design, matches check-tokens.mjs Rule 3
+- [Phase 30]: rgba()-based tokens (soft/focus-ring/danger-ring/overlay/row-selected) intentionally excluded from contrast table — alpha compositing out of scope, residual risk closed by manual UAT in plan 30-03
+- [Phase 30]: check-focus-outline.mjs uses brace-depth stack to find enclosing rule — single algorithm handles same-block (ActListRow) and cross-nested-block (Tabs.svelte) paired outline/box-shadow patterns
 
 ### Pending Todos
 
@@ -731,10 +735,10 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:45:45.515Z
+Last session: 2026-07-24T17:14:07.977Z
 Stopped at: Phase 30 context gathered
 Resume file: 
 
-.planning/phases/30-quality-a11y-platform-parity/30-CONTEXT.md
+None
 
 - Start the next milestone with /gsd-new-milestone

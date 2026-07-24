@@ -46,7 +46,7 @@
 ### Качество (QA)
 
 - [x] **QA-01**: Устранены неопределённые токены — `--font-size-sm` (`PersonAutocomplete.svelte:312`), `--radius-lg` (`LoginPage.svelte:175`, `BlockedScreen.svelte:125`, `FirstRunWizard.svelte:190`)
-- [ ] **QA-02**: Доступность — контраст AA, кольцо фокуса на всех интерактивных элементах
+- [x] **QA-02**: Доступность — контраст AA, кольцо фокуса на всех интерактивных элементах
 - [ ] **QA-03**: Десктоп (Tauri WebView) и LAN-браузер выглядят одинаково
 
 ---
@@ -129,7 +129,7 @@ box-shadow .12s` на кнопках. Это противоречит `transitio
 | WIN-09 | Phase 28 | Complete |
 | WIN-10 | Phase 29 | Complete |
 | WIN-11 | Phase 29 | Complete |
-| QA-02 | Phase 30 | Pending |
+| QA-02 | Phase 30 | Complete |
 | QA-03 | Phase 30 | Pending |
 
 **Coverage:** 26/26 v1.2 requirements mapped ✓ — no orphans.

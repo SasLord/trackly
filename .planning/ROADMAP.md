@@ -18,7 +18,7 @@
 
 **Wave 1**
 
-- [ ] 30-01-PLAN.md — check-contrast.mjs + check-focus-outline.mjs скрипт-гейты, починка 4 AA-провалов токенов (--tr-text-tertiary/--tr-warning/--tr-success)
+- [x] 30-01-PLAN.md — check-contrast.mjs + check-focus-outline.mjs скрипт-гейты, починка 4 AA-провалов токенов (--tr-text-tertiary/--tr-warning/--tr-success)
 
 **Wave 2** *(depends on Wave 1)*
 
