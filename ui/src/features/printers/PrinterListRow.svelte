@@ -131,8 +131,9 @@
     max-width: 0; // makes text-overflow work in table cells
 
     &:focus-visible {
+      // ring теперь на уровне строки, см. TableRow.svelte .tr-row:has(:focus-visible) (Gap 4, план 30-05)
+      // check-focus-outline: ignore
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
   }
 
