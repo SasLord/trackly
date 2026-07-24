@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-24T17:14:07.984Z"
+last_updated: "2026-07-24T17:20:13.268Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 30 (quality-a11y-platform-parity) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -263,6 +263,7 @@ Last activity: 2026-07-24
 | Phase 29 P03 | 8min | 2 tasks | 2 files |
 | Phase 29 P04 | 15min | 3 tasks | 1 files |
 | Phase 30 P01 | ~20min | 3 tasks | 4 files |
+| Phase 30 P02 | 5min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -646,6 +647,8 @@ Recent decisions affecting current work:
 - [Phase 30]: Canonical 43-pair WCAG contrast table hardcoded in check-contrast.mjs (no CLI params) — closed-world by design, matches check-tokens.mjs Rule 3
 - [Phase 30]: rgba()-based tokens (soft/focus-ring/danger-ring/overlay/row-selected) intentionally excluded from contrast table — alpha compositing out of scope, residual risk closed by manual UAT in plan 30-03
 - [Phase 30]: check-focus-outline.mjs uses brace-depth stack to find enclosing rule — single algorithm handles same-block (ActListRow) and cross-nested-block (Tabs.svelte) paired outline/box-shadow patterns
+- [Phase 30]: 30-02: Dropdown search-input использует outward 2px focus-ring (не inset) — панель scrolls (overflow:auto), не clips
+- [Phase 30]: 30-02: .tr-dropdown-option (drill-in panel) намеренно не тронут — UAT-кандидат для финального чекпоинта плана 30-03
 
 ### Pending Todos
 
@@ -735,7 +738,7 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-24T17:14:07.977Z
+Last session: 2026-07-24T17:20:06.466Z
 Stopped at: Phase 30 context gathered
 Resume file: 
 

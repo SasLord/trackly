@@ -22,7 +22,7 @@
 
 **Wave 2** *(depends on Wave 1)*
 
-- [ ] 30-02-PLAN.md — точечные focus-ring фиксы: Dropdown search-input, ModelListRow kebab (inset-ring), TableRow chevron (inset-ring)
+- [x] 30-02-PLAN.md — точечные focus-ring фиксы: Dropdown search-input, ModelListRow kebab (inset-ring), TableRow chevron (inset-ring)
 
 **Wave 3** *(depends on Wave 2 — финальный гейт)*
 
