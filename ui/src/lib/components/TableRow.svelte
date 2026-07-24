@@ -92,6 +92,15 @@
     }
   }
 
+  // Row-wide focus ring: fires from ANY focusable descendant (chevron, single-
+  // entry-point cell, kebab button), not just a direct child — replaces 4
+  // duplicated cell-level box-shadow rules with one shared primitive rule
+  // (Gap 4, 30-VERIFICATION.md; план 30-05). Coexists with .tr-row-chevron's
+  // own narrower &:focus-visible ring below (both visible simultaneously).
+  .tr-row:has(:focus-visible) {
+    box-shadow: inset 0 0 0 2px var(--tr-accent);
+  }
+
   .tr-row-group {
     background: var(--tr-group);
     cursor: pointer;
