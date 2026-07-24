@@ -178,7 +178,7 @@
 
     &:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px var(--tr-focus-ring);
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
     }
   }
 
