@@ -63,10 +63,22 @@
   onMount(() => {
     if (authStore.user?.role !== 'employee') return;
 
+    // WR-01: connectWs() bumps the shared refCount synchronously but resolves
+    // its teardown asynchronously. If this component unmounts before the promise
+    // resolves, the cleanup below runs while `unlisten` is still undefined — the
+    // later-arriving release would never fire and refCount would leak across
+    // fast mount/unmount cycles. The `disposed` flag tears the connection down
+    // immediately when the promise resolves after unmount. The release fn is
+    // idempotent (see ws.ts refCount/released guards), so this is safe.
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     connectWs()
       .then((fn) => {
-        unlisten = fn;
+        if (disposed) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       })
       .catch(() => {
         // WS connection is non-fatal — graceful-degrade, no notifications.
@@ -74,6 +86,7 @@
     const unsubscribe = onWsEvent(handleEmployeeWsEvent);
 
     return () => {
+      disposed = true;
       unsubscribe();
       unlisten?.();
     };
