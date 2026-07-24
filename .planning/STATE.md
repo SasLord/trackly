@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-24T17:20:13.268Z"
+last_updated: "2026-07-24T18:37:22.452Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 3
-  completed_plans: 2
+  total_plans: 6
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 30 (quality-a11y-platform-parity) — EXECUTING
-Plan: 3 of 3
+Plan: 2 of 6
 Status: Ready to execute
 Last activity: 2026-07-24
 
@@ -264,6 +264,7 @@ Last activity: 2026-07-24
 | Phase 29 P04 | 15min | 3 tasks | 1 files |
 | Phase 30 P01 | ~20min | 3 tasks | 4 files |
 | Phase 30 P02 | 5min | 3 tasks | 3 files |
+| Phase 30 P04 | ~10min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -649,6 +650,8 @@ Recent decisions affecting current work:
 - [Phase 30]: check-focus-outline.mjs uses brace-depth stack to find enclosing rule — single algorithm handles same-block (ActListRow) and cross-nested-block (Tabs.svelte) paired outline/box-shadow patterns
 - [Phase 30]: 30-02: Dropdown search-input использует outward 2px focus-ring (не inset) — панель scrolls (overflow:auto), не clips
 - [Phase 30]: 30-02: .tr-dropdown-option (drill-in panel) намеренно не тронут — UAT-кандидат для финального чекпоинта плана 30-03
+- [Phase 30-04]: No focus-restore-on-close for the new search-input auto-focus $effect (30-04) — matches plan's explicit out-of-scope instruction
+- [Phase 30-04]: ArrowLeft with showBack=false is an intentional no-op, not a panel-close (30-04) — asymmetric with Escape's fallback since there's nothing to navigate back to
 
 ### Pending Todos
 
@@ -738,7 +741,7 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-24T17:20:06.466Z
+Last session: 2026-07-24T18:32:13.805Z
 Stopped at: Phase 30 context gathered
 Resume file: 
 
