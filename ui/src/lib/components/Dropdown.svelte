@@ -488,6 +488,18 @@
       if (members.length === 0) return;
       activeIndex = members.length - 1;
       scrollActiveIntoView();
+    } else if (e.key === 'ArrowLeft') {
+      // Gap 5 (30-04, D-02): explicit, more discoverable keyboard exit from
+      // a manual drill-in — same guard/action as the existing Escape branch
+      // above (`!inGroupsView && showBack -> backToGroups()`), the
+      // `!inGroupsView` half is already implied by being inside this
+      // member-view block. AUTO-05's auto-flattened single-group view has
+      // showBack=false (nowhere to go back to) — ArrowLeft is then a no-op,
+      // unlike Escape it must NOT close the panel as a side effect.
+      if (showBack) {
+        e.preventDefault();
+        backToGroups();
+      }
     } else if (e.key === 'Enter') {
       // WR-02: Enter must never bubble to a host <form> submit — suppressed
       // unconditionally (the pre-existing regression floor). D-12 adds the
