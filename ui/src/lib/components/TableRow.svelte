@@ -154,5 +154,10 @@
     &.expanded {
       transform: rotate(90deg);
     }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--tr-accent);
+    }
   }
 </style>
