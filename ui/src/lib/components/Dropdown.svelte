@@ -137,6 +137,11 @@
   let inputEl = $state<HTMLInputElement | null>(null);
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let panelEl = $state<HTMLUListElement | null>(null);
+  /** Gap 3 (30-04, D-02) focus-management: ref to the in-panel search input
+   *  (select-variant + searchable), so the effect below can move DOM focus
+   *  into it as soon as the panel opens — see the `$effect` right after the
+   *  click-outside effect. */
+  let searchInputEl = $state<HTMLInputElement | null>(null);
 
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -518,6 +523,22 @@
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   });
+
+  /** Gap 3 (30-04, D-02) focus-management: the select-variant search panel is
+   *  portaled into `<body>`, outside the natural tab order, so
+   *  `.tr-dropdown-search-input` was physically unreachable by keyboard —
+   *  DOM focus stayed on the trigger button after opening. Moves focus into
+   *  the search input the moment the panel opens, uniformly across every
+   *  open path (toggleSelectOpen/openPanel/the ArrowDown-on-closed-panel
+   *  regression floor) since all of them funnel through `open = true` here.
+   *  No cleanup/restore-on-close step — out of this gap's literal scope
+   *  (Escape/click-outside/Tab already close the panel via their own paths
+   *  without needing a focus-restore jump). */
+  $effect(() => {
+    if (open && variant === 'select' && searchable) {
+      searchInputEl?.focus();
+    }
+  });
 </script>
 
 <div class="tr-dropdown">
@@ -585,6 +606,7 @@
             <span class="tr-dropdown-search-icon" aria-hidden="true">⌕</span>
             <input
               type="text"
+              bind:this={searchInputEl}
               class="tr-dropdown-search-input"
               aria-label="Поиск"
               placeholder={searchPlaceholder}
