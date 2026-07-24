@@ -932,6 +932,10 @@
     &::placeholder {
       color: var(--tr-text-tertiary);
     }
+
+    &:focus-visible {
+      box-shadow: 0 0 0 2px var(--tr-focus-ring);
+    }
   }
 
   // D-01/checkpoint fix #1: sticky drill-in header, opaque background so
