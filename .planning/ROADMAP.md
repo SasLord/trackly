@@ -72,7 +72,7 @@ Trackly — портативное приложение для учёта тех
 - [x] **Phase 26: Окна с готовым макетом** - Дашборд и Устройства — точное соответствие макету Claude Design, включая адаптивность. (completed 2026-07-20)
 - [x] **Phase 27: Окна основного рабочего процесса** - Акты, Картриджи, Принтеры — без макета, вёрстка из компонентной системы. (completed 2026-07-21)
 - [x] **Phase 28: Окна поддержки и администрирования** - Заявки, Отчёты, Настройки, Пользователи — без макета. (10 plans planned) (completed 2026-07-23)
-- [ ] **Phase 29: Вход и интерфейс сотрудника** - Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout — отдельные layout-shell.
+- [x] **Phase 29: Вход и интерфейс сотрудника** - Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout — отдельные layout-shell. (completed 2026-07-24)
 - [ ] **Phase 30: Качество — доступность и паритет платформ** - AA-контраст, focus ring, визуальный паритет Tauri WebView vs LAN-браузер.
 
 ## Phase Details
@@ -680,7 +680,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2)*
 
-- [ ] 29-04-PLAN.md — EmployeeLayout header-chrome пасс (D-03) + финальный гейт + both-theme визуальный UAT + RequestsPage-парность (D-04)
+- [x] 29-04-PLAN.md — EmployeeLayout header-chrome пасс (D-03) + финальный гейт + both-theme визуальный UAT + RequestsPage-парность (D-04)
 
 ---
 
@@ -741,7 +741,7 @@ Plans:
 | 26. Окна с готовым макетом | v1.2 | 8/8 | Complete    | 2026-07-20 |
 | 27. Окна основного рабочего процесса | v1.2 | 9/9 | Complete   | 2026-07-21 |
 | 28. Окна поддержки и администрирования | v1.2 | 16/16 | Complete    | 2026-07-23 |
-| 29. Вход и интерфейс сотрудника | v1.2 | 3/4 | In Progress|  |
+| 29. Вход и интерфейс сотрудника | v1.2 | 4/4 | Complete   | 2026-07-24 |
 | 30. Качество — доступность и паритет платформ | v1.2 | 0/TBD | Not started | - |
 
 ## Coverage
