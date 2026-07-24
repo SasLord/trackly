@@ -32,6 +32,6 @@
 
 - [x] 30-04-PLAN.md — Dropdown reachability: focus-management на search-input при открытии панели (Gap 3, регресс 30-02) + ArrowLeft-выход из drill-in группы (Gap 5, keyboard-trap)
 - [x] 30-05-PLAN.md — единая row-level модель кольца фокуса в TableRow.svelte (.tr-row:has(:focus-visible)), консолидация 4 дублированных cell-level колец (Gap 4)
-- [ ] 30-06-PLAN.md — Дашборд: inset-кольцо на переключателе периода (Gap 1) + min-height:0 на .dashboard-grid, устраняющий скролл всего app-shell (Gap 2)
+- [x] 30-06-PLAN.md — Дашборд: inset-кольцо на переключателе периода (Gap 1) + min-height:0 на .dashboard-grid, устраняющий скролл всего app-shell (Gap 2)
 
 **UI hint**: yes
