@@ -92,13 +92,50 @@
     }
   }
 
-  // Row-wide focus ring: fires from ANY focusable descendant (chevron, single-
-  // entry-point cell, kebab button), not just a direct child — replaces 4
+  // Row-wide keyboard focus ring: fires from ANY focusable descendant (chevron,
+  // single-entry-point cell, kebab button), not just a direct child — replaces 4
   // duplicated cell-level box-shadow rules with one shared primitive rule
   // (Gap 4, 30-VERIFICATION.md; план 30-05). Coexists with .tr-row-chevron's
   // own narrower &:focus-visible ring below (both visible simultaneously).
-  .tr-row:has(:focus-visible) {
-    box-shadow: inset 0 0 0 2px var(--tr-accent);
+  //
+  // The ring is drawn on the row's <td> CELLS, not on the <tr>: box-shadow is
+  // NOT painted on a <tr> (table-row box) under `border-collapse: collapse`
+  // (Table.svelte:.tr-table) in Blink (WebView2 — primary target) or WebKit
+  // (WKWebView — dev/macOS), so a <tr>-level ring matches but renders nothing
+  // on both target engines (CR-01, 30-REVIEW). Cell-level box-shadow DOES render
+  // here — the .selected accent below (`> td:first-child`) is the live proof.
+  // Uses the same in-scope `.tr-row … :global(> td)` selector shape the rest of
+  // this file relies on (see the base-<td> comment below). Top + bottom edges on
+  // every cell, left edge on first, right edge on last → a continuous full-row ring.
+  .tr-row:has(:focus-visible) :global(> td) {
+    box-shadow:
+      inset 0 2px 0 var(--tr-accent),
+      inset 0 -2px 0 var(--tr-accent);
+  }
+  .tr-row:has(:focus-visible) :global(> td:first-child) {
+    box-shadow:
+      inset 2px 0 0 var(--tr-accent),
+      inset 0 2px 0 var(--tr-accent),
+      inset 0 -2px 0 var(--tr-accent);
+  }
+  .tr-row:has(:focus-visible) :global(> td:last-child) {
+    box-shadow:
+      inset -2px 0 0 var(--tr-accent),
+      inset 0 2px 0 var(--tr-accent),
+      inset 0 -2px 0 var(--tr-accent);
+  }
+  // Selected + focused first cell: box-shadow does NOT stack across separate
+  // rules (the winning rule replaces, not merges), and the plain focus
+  // first-child ring (specificity 0,4,1) ties with the .selected accent
+  // (`> td:first-child`, also 0,4,1) below — a tie the later source rule would
+  // win, dropping one indicator. Compose BOTH the 3px selected accent AND the
+  // ring edges in one declaration; this rule's specificity (0,5,1) beats both,
+  // so a selected+focused row keeps its accent AND its ring.
+  .tr-row.selected:has(:focus-visible) :global(> td:first-child) {
+    box-shadow:
+      inset 3px 0 0 var(--tr-accent),
+      inset 0 2px 0 var(--tr-accent),
+      inset 0 -2px 0 var(--tr-accent);
   }
 
   .tr-row-group {
