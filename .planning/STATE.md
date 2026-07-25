@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-25T09:15:35.676Z"
-last_activity: 2026-07-25 -- Phase 30 planning complete
+last_updated: "2026-07-25T09:29:41.824Z"
+last_activity: 2026-07-25
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 30 (quality-a11y-platform-parity) — EXECUTING
-Plan: 6 of 6
+Plan: 2 of 9
 Status: Ready to execute
-Last activity: 2026-07-25 -- Phase 30 planning complete
+Last activity: 2026-07-25
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -267,6 +267,7 @@ Last activity: 2026-07-25 -- Phase 30 planning complete
 | Phase 30 P04 | ~10min | 2 tasks | 1 files |
 | Phase 30 P05 | 12min | 2 tasks | 5 files |
 | Phase 30 P06 | 8min | 2 tasks | 2 files |
+| Phase 30 P07 | 12min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -655,6 +656,7 @@ Recent decisions affecting current work:
 - [Phase 30-04]: No focus-restore-on-close for the new search-input auto-focus $effect (30-04) — matches plan's explicit out-of-scope instruction
 - [Phase 30-04]: ArrowLeft with showBack=false is an intentional no-op, not a panel-close (30-04) — asymmetric with Escape's fallback since there's nothing to navigate back to
 - [Phase 30]: 30-05: check-focus-outline ignore marker must be a single line immediately before outline: none; (script only checks current+previous line, not multi-line comment blocks)
+- [Phase 30]: Task 2 live-check (30-07): CSS-харнесс в headless Chromium/Playwright вместо реального приложения (auth недоступен в этой среде) — точно воспроизведены селекторы Layout.svelte/DashboardPage.svelte после фикса — Полноценный запуск требовал бы настройки dev-аутентификации/сид-данных ради одноразовой проверки чисто-CSS фикса; харнесс тестирует ровно тот CSS grid-track-sizing механизм, который был root cause
 
 ### Pending Todos
 
@@ -744,7 +746,7 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-24T18:51:22.937Z
+Last session: 2026-07-25T09:29:33.229Z
 Stopped at: Completed 30-06-PLAN.md
 Resume file: 
 
