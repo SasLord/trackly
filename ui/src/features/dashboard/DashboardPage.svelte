@@ -245,7 +245,15 @@
   .dashboard-page {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    // Fill the flex-column .content (Layout.svelte) via flex, NOT `height: 100%`:
+    // a percentage height does not reliably resolve through a stretched grid item
+    // in WebKit (WKWebView, macOS dev). `flex: 1` + `min-height: 0` is the robust
+    // cross-engine pattern — min-height:0 overrides the flex default of
+    // `min-height: auto`, which otherwise lets this item grow to its tall
+    // (un-virtualised StatWidget + ChartWidget) content and push the whole app
+    // shell past 100vh, scrolling the layout instead of the grid (Gap 2, QA-03).
+    flex: 1;
+    min-height: 0;
   }
 
   .period-selector {
