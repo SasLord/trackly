@@ -245,14 +245,16 @@
   .dashboard-page {
     display: flex;
     flex-direction: column;
-    // Fill the flex-column .content (Layout.svelte) via flex, NOT `height: 100%`:
-    // a percentage height does not reliably resolve through a stretched grid item
-    // in WebKit (WKWebView, macOS dev). `flex: 1` + `min-height: 0` is the robust
-    // cross-engine pattern — min-height:0 overrides the flex default of
-    // `min-height: auto`, which otherwise lets this item grow to its tall
-    // (un-virtualised StatWidget + ChartWidget) content and push the whole app
-    // shell past 100vh, scrolling the layout instead of the grid (Gap 2, QA-03).
-    flex: 1;
+    // Anchor the page directly to the viewport (height: 100vh), NOT to the parent
+    // chain. `height: 100%` / `flex: 1` both depend on .content (Layout.svelte, the
+    // app shell) resolving to a definite height — which it does not reliably do in
+    // WKWebView, and which Svelte HMR often fails to hot-apply for the shell anyway.
+    // 100vh is viewport-absolute and lands via this leaf component's own HMR, so the
+    // page fills exactly one screen and .dashboard-grid scrolls internally instead
+    // of the whole app shell overflowing past the bottom (Gap 2, QA-03). min-height:0
+    // defeats the flex default `min-height: auto` that would otherwise let the tall
+    // (un-virtualised StatWidget + ChartWidget) content expand the box.
+    height: 100vh;
     min-height: 0;
   }
 
