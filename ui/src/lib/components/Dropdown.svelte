@@ -143,6 +143,12 @@
    *  click-outside effect. */
   let searchInputEl = $state<HTMLInputElement | null>(null);
 
+  /** Gap 3 part 2 (30-08, D-02): current in-panel search-box query, used ONLY
+   *  to drive `visibleGroups`' client-side filter below — Dropdown otherwise
+   *  remains a "zero data-fetching" primitive (props doc above), the
+   *  consumer's `onSearch`/`groups` prop contract is unchanged. */
+  let searchQuery = $state('');
+
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
 
   // WR-05 precedent (PersonAutocomplete.svelte/ActFormItemsTable.svelte):
@@ -268,6 +274,20 @@
     return meta ? `${getGroupName(activeGroup)} · ${meta}` : getGroupName(activeGroup);
   });
 
+  /** Gap 3 part 2 (30-08, D-02): client-side filter closing the "zero
+   *  filtering" gap for ALL existing flat+select+searchable consumers (11
+   *  migrated native <select>s) with one change here instead of touching
+   *  each consumer file. Active ONLY for the flat+select+searchable
+   *  combination with a non-empty query — every other case (combobox
+   *  variant, grouped/drill-in mode, `searchable={false}`, empty query)
+   *  passes `groups` through unchanged, preserving the documented
+   *  zero-data-fetching contract for real API-backed search (`onSearch`). */
+  const visibleGroups = $derived.by(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (variant !== 'select' || !flat || !searchable || q === '') return groups;
+    return groups.filter((g) => getGroupName(g).toLowerCase().includes(q));
+  });
+
   function scheduleSearch(query: string) {
     if (searchDebounce) clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => onSearch(query), 250);
@@ -331,6 +351,7 @@
    *  programmatic value change does not fire `oninput`. */
   function handleInput(e: Event) {
     const query = (e.currentTarget as HTMLInputElement).value;
+    searchQuery = query;
     open = true;
     activeIndex = -1;
     resetDrillState();
@@ -344,6 +365,10 @@
   function openPanel(query: string) {
     if (searchDebounce) clearTimeout(searchDebounce);
     open = true;
+    // Gap 3 part 2 (30-08): resets the filter on every (pre)open, same rule
+    // as the drill-in state reset just below — matches the existing
+    // resetDrillState() docstring's "every place that sets open = true".
+    searchQuery = query;
     activeIndex = -1;
     // WR-02/BL-01: see resetDrillState() docstring above for the full
     // rationale — this is one of the two call sites that must reset the
@@ -376,8 +401,8 @@
   function activeOptionId(): string | undefined {
     if (activeIndex < 0) return undefined;
     if (flat || viewMode === 'groups') {
-      if (activeIndex >= groups.length) return undefined;
-      return `${uid}-opt-${getGroupId(groups[activeIndex])}`;
+      if (activeIndex >= visibleGroups.length) return undefined;
+      return `${uid}-opt-${getGroupId(visibleGroups[activeIndex])}`;
     }
     if (activeIndex >= members.length) return undefined;
     return `${uid}-opt-${getMemberId(members[activeIndex])}`;
@@ -420,29 +445,29 @@
     if (inGroupsView) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (groups.length === 0) return;
-        activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % groups.length;
+        if (visibleGroups.length === 0) return;
+        activeIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % visibleGroups.length;
         scrollActiveIntoView();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (groups.length === 0) return;
-        activeIndex = activeIndex <= 0 ? groups.length - 1 : activeIndex - 1;
+        if (visibleGroups.length === 0) return;
+        activeIndex = activeIndex <= 0 ? visibleGroups.length - 1 : activeIndex - 1;
         scrollActiveIntoView();
       } else if (e.key === 'Home') {
         e.preventDefault();
-        if (groups.length === 0) return;
+        if (visibleGroups.length === 0) return;
         activeIndex = 0;
         scrollActiveIntoView();
       } else if (e.key === 'End') {
         e.preventDefault();
-        if (groups.length === 0) return;
-        activeIndex = groups.length - 1;
+        if (visibleGroups.length === 0) return;
+        activeIndex = visibleGroups.length - 1;
         scrollActiveIntoView();
       } else if (e.key === 'Enter') {
-        if (activeIndex >= 0 && activeIndex < groups.length) {
+        if (activeIndex >= 0 && activeIndex < visibleGroups.length) {
           e.preventDefault();
           e.stopPropagation();
-          handleOptionClick(groups[activeIndex]);
+          handleOptionClick(visibleGroups[activeIndex]);
         }
       } else if (e.key === 'Tab') {
         // WR-01: Tab must never both start an async drillInto AND
@@ -457,7 +482,7 @@
         // immediate Tab with no arrow key first would otherwise read
         // groups[-1] === undefined and crash both production consumers'
         // isExpandable/isGroupExpandable calls.
-        const g = groups[activeIndex];
+        const g = visibleGroups[activeIndex];
         if (g && !(!flat && isGroupExpandable(g))) {
           onPickGroup(g);
         }
@@ -712,10 +737,10 @@
         {/if}
       {:else if loading}
         <li class="tr-dropdown-loading"><Spinner size="sm" />Загрузка…</li>
-      {:else if groups.length === 0}
+      {:else if visibleGroups.length === 0}
         <li class="tr-dropdown-empty">Ничего не найдено</li>
       {:else}
-        {#each groups as g, i (getGroupId(g))}
+        {#each visibleGroups as g, i (getGroupId(g))}
           <li>
             <button
               type="button"
