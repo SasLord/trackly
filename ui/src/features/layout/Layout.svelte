@@ -170,6 +170,14 @@
   .content {
     display: flex;
     flex-direction: column;
+    // Anchor the scroll container to the viewport DIRECTLY (height: 100vh), not to
+    // the grid track: WKWebView (macOS dev) does not reliably resolve the
+    // `grid-template-rows: minmax(0, 1fr)` track to a definite height, so a child's
+    // `flex: 1` / `height: 100%` had nothing definite to fill and the page grew past
+    // the viewport — producing a SECOND scrollbar on `.content` on top of the page's
+    // own inner scroll (double scroll on Dashboard). 100vh is viewport-absolute and
+    // engine-independent; pages then scroll their own inner region only (Gap 2, QA-03).
+    height: 100vh;
     overflow: auto;
     min-height: 0;
     background: var(--tr-surface);
