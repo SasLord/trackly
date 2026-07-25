@@ -92,23 +92,27 @@
     }
   }
 
-  // Keyboard focus ring: a self-contained inset ring on the row's FIRST cell,
-  // fired from any focusable descendant (chevron, single-entry-point cell, kebab).
-  // A full-row ring across every <td> was tried (30-05/30-09) but under
-  // `border-collapse: collapse` (Table.svelte:.tr-table) the middle-cell top/bottom
-  // edges render inconsistently and a neighbouring row's hover background paints
-  // over them, so the ring reads as "first cell only" anyway and looks broken.
-  // Keep it contained to the first cell — box-shadow (not outline/border) because
-  // it is layout-neutral and DOES paint on a <td> here (the .selected accent below
-  // is the live proof), unlike on a <tr> which paints nothing under border-collapse.
-  .tr-row:not(.tr-row-group):has(:focus-visible) :global(> td:first-child) {
+  // Keyboard focus ring: a self-contained INSET ring on the row's first cell,
+  // which is the row's single focusable entry point (`<td role="button" tabindex=0>`
+  // rendered by every *ListRow consumer). We target that cell's OWN :focus-visible
+  // state via a fully-`:global()` selector on purpose:
+  //   - box-shadow (not outline/border) so the ring is layout-neutral and draws
+  //     inside the cell (`inset`), unlike the browser default which draws OUTWARD
+  //     and gets clipped by the list/master container's left edge.
+  //   - `:global(...)` around `> td:first-child:focus-visible` is REQUIRED. A
+  //     `.tr-row:has(:focus-visible)` form does NOT work: Svelte rewrites the
+  //     `:has()` argument to `:has(:where(.svelte-hash):focus-visible)`, which only
+  //     matches a focused element carrying THIS component's scope class — but the
+  //     focusable cell lives in the CONSUMER's scope, so the rule never fired and
+  //     the global `*:focus-visible` outward ring won (30-09 UAT regression).
+  // Group rows are excluded — they use `.tr-row-chevron`'s own inset ring below.
+  .tr-row:not(.tr-row-group) :global(> td:first-child:focus-visible) {
+    outline: none;
     box-shadow: inset 0 0 0 2px var(--tr-accent);
   }
-  // Selected + focused: keep BOTH the 3px selected accent and the focus ring.
-  // box-shadow does NOT stack across separate rules (winner replaces), so compose
-  // both in one declaration; this rule's specificity (0,5,1) beats the base
-  // .selected accent (0,4,1) below, so a selected+focused row keeps both.
-  .tr-row.selected:not(.tr-row-group):has(:focus-visible) :global(> td:first-child) {
+  // Selected + focused first cell: keep BOTH the 3px selected accent and the ring
+  // (box-shadow does not stack across rules — compose both in one declaration).
+  .tr-row.selected:not(.tr-row-group) :global(> td:first-child:focus-visible) {
     box-shadow:
       inset 0 0 0 2px var(--tr-accent),
       inset 3px 0 0 var(--tr-accent);
