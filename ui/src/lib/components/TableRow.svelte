@@ -106,16 +106,20 @@
   //     focusable cell lives in the CONSUMER's scope, so the rule never fired and
   //     the global `*:focus-visible` outward ring won (30-09 UAT regression).
   // Group rows are excluded — they use `.tr-row-chevron`'s own inset ring below.
+  // Colour + thickness match the app-wide focus ring (global.scss `*:focus-visible`
+  // = `0 0 0 3px var(--tr-focus-ring)`), just drawn INSET so it isn't clipped by the
+  // list/master container edge. Use the SAME `--tr-focus-ring` token, not the solid
+  // `--tr-accent`, so the table ring reads identically to every other focus ring.
   .tr-row:not(.tr-row-group) :global(> td:first-child:focus-visible) {
     outline: none;
-    box-shadow: inset 0 0 0 2px var(--tr-accent);
+    box-shadow: inset 0 0 0 3px var(--tr-focus-ring);
   }
-  // Selected + focused first cell: keep BOTH the 3px selected accent and the ring
-  // (box-shadow does not stack across rules — compose both in one declaration).
+  // Selected + focused first cell: keep BOTH the selected accent (solid, left edge)
+  // and the focus ring (box-shadow does not stack across rules — compose in one).
   .tr-row.selected:not(.tr-row-group) :global(> td:first-child:focus-visible) {
     box-shadow:
-      inset 0 0 0 2px var(--tr-accent),
-      inset 3px 0 0 var(--tr-accent);
+      inset 3px 0 0 var(--tr-accent),
+      inset 0 0 0 3px var(--tr-focus-ring);
   }
 
   .tr-row-group {
@@ -184,7 +188,8 @@
 
     &:focus-visible {
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--tr-accent);
+      // Same unified focus-ring token as the row's first-cell ring above.
+      box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
     }
   }
 </style>
