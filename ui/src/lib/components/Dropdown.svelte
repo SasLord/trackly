@@ -496,7 +496,19 @@
       // member-view block. AUTO-05's auto-flattened single-group view has
       // showBack=false (nowhere to go back to) — ArrowLeft is then a no-op,
       // unlike Escape it must NOT close the panel as a side effect.
-      if (showBack) {
+      //
+      // WR-01: handleKeydown is bound to two TEXT inputs (the combobox field
+      // and the select-variant in-panel search input) as well as the select
+      // button trigger. In a text input, ArrowLeft normally moves the caret —
+      // hijacking it for backToGroups() breaks text editing mid-query (and Gap
+      // 3 now parks the caret in the search input whenever the panel is open).
+      // Only consume ArrowLeft when there is no caret to move: a non-INPUT
+      // target (the button trigger), or the caret already at position 0 with no
+      // selection. Otherwise let the browser move the caret normally.
+      const el = e.currentTarget as HTMLElement | null;
+      const isInput = el instanceof HTMLInputElement;
+      const atStart = !isInput || (el.selectionStart === 0 && el.selectionEnd === 0);
+      if (showBack && atStart) {
         e.preventDefault();
         backToGroups();
       }
