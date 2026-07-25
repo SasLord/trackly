@@ -245,16 +245,16 @@
   .dashboard-page {
     display: flex;
     flex-direction: column;
-    // Anchor the page directly to the viewport (height: 100vh), NOT to the parent
-    // chain. `height: 100%` / `flex: 1` both depend on .content (Layout.svelte, the
-    // app shell) resolving to a definite height — which it does not reliably do in
-    // WKWebView, and which Svelte HMR often fails to hot-apply for the shell anyway.
-    // 100vh is viewport-absolute and lands via this leaf component's own HMR, so the
-    // page fills exactly one screen and .dashboard-grid scrolls internally instead
-    // of the whole app shell overflowing past the bottom (Gap 2, QA-03). min-height:0
-    // defeats the flex default `min-height: auto` that would otherwise let the tall
-    // (un-virtualised StatWidget + ChartWidget) content expand the box.
-    height: 100vh;
+    // Fill .content exactly (height: 100%, same as every other *-page) and let
+    // .dashboard-grid scroll internally. The one thing the original was missing is
+    // `min-height: 0`: without it a flex column's default `min-height: auto` lets
+    // the tall (un-virtualised StatWidget + ChartWidget) content expand this box
+    // past its parent, which — before .content became `overflow: hidden` — produced
+    // the app-shell double scroll. With min-height:0 here AND overflow:hidden on the
+    // shell, the page fits any resolved .content height in any engine (verified: even
+    // when .content computes shorter than 100vh, height:100% adapts and only the grid
+    // scrolls) (Gap 2, QA-03).
+    height: 100%;
     min-height: 0;
   }
 
