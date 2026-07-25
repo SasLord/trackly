@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 30-quality-a11y-platform-parity
 source: [30-01-SUMMARY.md, 30-02-SUMMARY.md, 30-04-SUMMARY.md, 30-05-SUMMARY.md, 30-06-SUMMARY.md, 30-REVIEW-FIX.md]
 started: 2026-07-25T00:00:00Z
-updated: 2026-07-25T09:00:00Z
+updated: 2026-07-25T10:00:00Z
 ---
 
 ## Current Test
@@ -79,9 +79,14 @@ blocked: 0
   reason: "User reported: кольцо больше не обрезано, но обводка прилипает к тексту — нет свободного места у текста по краям (нужен внутренний отступ у .toggle-btn)"
   severity: cosmetic
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: ".toggle-btn имеет padding: 2px 1px 5px — горизонтальный отступ всего 1px. Inset-кольцо (box-shadow: inset 0 0 0 2px var(--tr-accent)) рисуется внутри бокса, поэтому при 1px паддинге кольцо вплотную к тексту ('прилипает')."
+  artifacts:
+    - path: "ui/src/features/dashboard/PeriodToggle.svelte:36"
+      issue: "padding: 2px 1px 5px — 1px по горизонтали не оставляет запаса под inset-кольцо"
+    - path: "ui/src/features/dashboard/PeriodToggle.svelte:54-57"
+      issue: "inset 2px focus-ring без горизонтального запаса"
+  missing:
+    - "Увеличить горизонтальный padding у .toggle-btn (напр. 2px 8px 5px), чтобы inset-кольцо имело запас от текста; сохранить скругление верхних углов"
   debug_session: ""
 
 - truth: "На Дашборде скроллится только контент раздела; сайдбар/хедер зафиксированы, скролла на весь layout нет"
@@ -89,9 +94,16 @@ blocked: 0
   reason: "User reported: по-прежнему два скролла — появляется скролл на весь layout приложения (включая сайдбар), которого быть не должно. 30-06 фикс (min-height:0 на .dashboard-grid) не закрыл гэп."
   severity: major
   test: 2
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "Гипотеза (нужна проверка в devtools на живом приложении): .app-layout — grid height:100vh/overflow:hidden, .content (main) — растянутый grid-item с overflow:auto/min-height:0, а .dashboard-page использует height:100%. Скролл всего приложения (сайдбар+хедер уезжают) означает, что цепочка высот до .dashboard-grid не удерживает скролл внутри контента — вероятно .content не даёт .dashboard-page definite-высоту, либо .dashboard-grid переполняет удерживаемую область. Фикс 30-06 (min-height:0 на .dashboard-grid) проблему не снял."
+  artifacts:
+    - path: "ui/src/features/layout/Layout.svelte:122-128"
+      issue: ".app-layout grid height:100vh/overflow:hidden — единственная неявная auto-строка"
+    - path: "ui/src/features/layout/Layout.svelte:169-173"
+      issue: ".content overflow:auto/min-height:0 (grid-item)"
+    - path: "ui/src/features/dashboard/DashboardPage.svelte:245-281"
+      issue: ".dashboard-page height:100% + .dashboard-grid flex:1/min-height:0/overflow:auto"
+  missing:
+    - "Удержать скролл только внутри .dashboard-grid: убедиться, что .content задаёт definite-высоту для .dashboard-page (напр. .content как flex-column + min-height:0), сверить с корректно скроллящейся страницей (DevicesPage/PrintersPage) и подтвердить в devtools, какой именно элемент получает скроллбар"
   debug_session: ""
 
 - truth: "Dropdown с поиском: авто-фокус на поле без видимой синей обводки; ввод фильтрует список; стрелки+Enter выбирают пункт"
@@ -99,9 +111,18 @@ blocked: 0
   reason: "User reported: авто-фокус есть, но (1) синяя focus-обводка у поиска портит вид и Tab уводит фокус в никуда, скрывая панель; (2) ввод в поиск НЕ фильтрует список. Требуется: сохранить авто-фокус, убрать синий фокус-ринг у .tr-dropdown-search-input, реализовать фильтрацию списка по вводу, стрелки↑↓ + Enter для выбора (стрелки уже работают)."
   severity: major
   test: 3
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "(1) Синяя обводка: .tr-dropdown-search-input:focus-visible { box-shadow: 0 0 0 2px var(--tr-focus-ring) } (Dropdown.svelte:999-1001) срабатывает, потому что Gap-3-эффект (Dropdown.svelte:572-582) переводит DOM-фокус в поиск при открытии → кольцо видно всегда. (2) Фильтрация не работает: Dropdown по контракту НЕ фильтрует сам (props doc:46-47 'already-filtered list'; handleInput:332-339 лишь зовёт onQueryInput/onSearch), а select-variant консьюмеры фильтров (Картриджи Тип/Модель — из миграции нативных <select>) отдают статический groups и no-op onSearch → ввод ничего не фильтрует. Стрелки↑↓/Enter в groups-view уже работают (handleKeydown:420-446)."
+  artifacts:
+    - path: "ui/src/lib/components/Dropdown.svelte:999-1001"
+      issue: ".tr-dropdown-search-input:focus-visible box-shadow — нежелательное синее кольцо на авто-фокусированном поиске"
+    - path: "ui/src/lib/components/Dropdown.svelte:46-47, 332-353"
+      issue: "контракт 'zero filtering' — фильтрация целиком на консьюмере через onSearch"
+    - path: "консьюмеры select+searchable (Картриджи Тип/Модель фильтры и прочие мигрированные нативные select)"
+      issue: "статический groups + no-op onSearch → нет клиентской фильтрации по вводу"
+  missing:
+    - "Убрать &:focus-visible box-shadow у .tr-dropdown-search-input (авто-фокус сохранить, синее кольцо убрать)"
+    - "Сделать так, чтобы ввод фильтровал список: либо добавить опциональную клиентскую фильтрацию в select-variant Dropdown, либо подключить onSearch каждого select+searchable консьюмера к фильтрации своего списка опций; проверить стрелки↑↓ + Enter на подсвеченном пункте"
+    - "Для очень коротких статических списков (напр. Тип: Все/Картридж/Фотобарабан) рассмотреть searchable={false} — поле поиска там шум"
   debug_session: ""
 
 - truth: "Кольцо фокуса строки таблицы охватывает всю строку, не обрезается, согласованно между таблицами"
@@ -109,9 +130,16 @@ blocked: 0
   reason: "User reported: по-прежнему выделяется только первая ячейка (не вся строка); мало того — раньше первая ячейка выделялась целиком, а теперь левая граница кольца не влезает и обрезается. Проявляется в Принтерах (master-detail список). 30-05 (.tr-row:has(:focus-visible)) + CR-01 (<td> cell rules) не дали row-wide кольца в этом списке."
   severity: major
   test: 7
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "PrinterListRow строит строку через <TableRow> с фокусируемой первой <td class='cell-name' role=button tabindex=0>. Правила TableRow .tr-row:has(:focus-visible) > td должны рисовать кольцо на всю строку, но в master-detail списке Принтеров видно кольцо только у первой ячейки, а его левая inset-грань (inset 2px 0 0) обрезается overflow:hidden контейнера списка/framed-таблицы. .cell-name к тому же overflow:hidden/max-width:0. Верх/низ кольца по остальным ячейкам либо не видны, либо не рендерятся в этой раскладке на WKWebView."
+  artifacts:
+    - path: "ui/src/lib/components/TableRow.svelte:110-139"
+      issue: "row-wide ring через :has(:focus-visible) > td; левая грань на > td:first-child (inset 2px 0 0)"
+    - path: "ui/src/features/printers/PrinterListRow.svelte:73-104, 128-138"
+      issue: "фокусируемая .cell-name с overflow:hidden/max-width:0; ring делегирован в TableRow"
+    - path: "ui/src/lib/components/Table.svelte (framed overflow:hidden)"
+      issue: "клиппинг левой inset-грани кольца по краю панели"
+  missing:
+    - "Добиться, чтобы row-level кольцо рисовалось на всю строку в master-detail списках и не обрезалось слева: проверить, что overflow контейнера таблицы/панели не режет левую inset-грань первой ячейки (запас паддинга или сместить inset с самого края), подтвердить, что :has(:focus-visible) > td правила красят все ячейки на WKWebView. Требуется живая проверка."
   debug_session: ""
 
 - truth: "Модель фокуса таблиц согласована: Устройства-группы — только шеврон (без row-ring); кольца шеврона/кебаба со скруглёнными углами"
@@ -119,7 +147,13 @@ blocked: 0
   reason: "User reported: остальные типы интерактива ОК. В таблицах: (1) на групповых строках Устройств появилось лишнее row-level кольцо в дополнение к шеврону — оставить только шеврон (Устройства-таблица отличается моделью фокуса от остальных; побочка 30-05 .tr-row:has(:focus-visible) на не-фокусируемых строках Устройств); (2) фокус-кольцо шеврона имеет квадратные углы — нужно скругление под дизайн. Поправка пользователя: кебаб «три точки» в Устройствах уже скруглён; проверить кебаб в остальных таблицах."
   severity: minor
   test: 9
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "(1) .tr-row:has(:focus-visible) срабатывает от ЛЮБОГО фокусируемого потомка, поэтому фокус на шевроне групповой строки Устройств добавляет row-wide кольцо ПОВЕРХ собственного кольца .tr-row-chevron:focus-visible (двойное кольцо). Групповые строки Устройств не задуманы как row-focusable — фокус только на шевроне. (2) .tr-row-chevron имеет width/height 18px, но без border-radius → его inset-кольцо с квадратными углами."
+  artifacts:
+    - path: "ui/src/lib/components/TableRow.svelte:110-114"
+      issue: ".tr-row:has(:focus-visible) > td — ловит фокус шеврона в групповых строках, добавляя лишнее row-кольцо"
+    - path: "ui/src/lib/components/TableRow.svelte:183-208"
+      issue: ".tr-row-chevron без border-radius → квадратные углы фокус-кольца"
+  missing:
+    - "Ограничить row-wide кольцо, чтобы оно НЕ дублировалось на шевроне в групповых строках (Устройства): исключить групповые строки .tr-row-group из :has-правила или не применять row-ring, когда фокус на шевроне"
+    - "Добавить border-radius у .tr-row-chevron, чтобы фокус-кольцо было скруглённым; проверить кебаб «три точки» в не-Устройства таблицах (в Устройствах кебаб уже скруглён по поправке пользователя)"
   debug_session: ""
