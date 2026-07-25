@@ -107,18 +107,18 @@
   // Uses the same in-scope `.tr-row … :global(> td)` selector shape the rest of
   // this file relies on (see the base-<td> comment below). Top + bottom edges on
   // every cell, left edge on first, right edge on last → a continuous full-row ring.
-  .tr-row:has(:focus-visible) :global(> td) {
+  .tr-row:not(.tr-row-group):has(:focus-visible) :global(> td) {
     box-shadow:
       inset 0 2px 0 var(--tr-accent),
       inset 0 -2px 0 var(--tr-accent);
   }
-  .tr-row:has(:focus-visible) :global(> td:first-child) {
+  .tr-row:not(.tr-row-group):has(:focus-visible) :global(> td:first-child) {
     box-shadow:
       inset 2px 0 0 var(--tr-accent),
       inset 0 2px 0 var(--tr-accent),
       inset 0 -2px 0 var(--tr-accent);
   }
-  .tr-row:has(:focus-visible) :global(> td:last-child) {
+  .tr-row:not(.tr-row-group):has(:focus-visible) :global(> td:last-child) {
     box-shadow:
       inset -2px 0 0 var(--tr-accent),
       inset 0 2px 0 var(--tr-accent),
@@ -131,7 +131,7 @@
   // win, dropping one indicator. Compose BOTH the 3px selected accent AND the
   // ring edges in one declaration; this rule's specificity (0,5,1) beats both,
   // so a selected+focused row keeps its accent AND its ring.
-  .tr-row.selected:has(:focus-visible) :global(> td:first-child) {
+  .tr-row.selected:not(.tr-row-group):has(:focus-visible) :global(> td:first-child) {
     box-shadow:
       inset 3px 0 0 var(--tr-accent),
       inset 0 2px 0 var(--tr-accent),
@@ -187,6 +187,7 @@
     width: 18px;
     height: 18px;
     padding: 0;
+    border-radius: var(--tr-radius-xs);
     margin-right: var(--tr-space-2xs);
     background: transparent;
     border: none;
