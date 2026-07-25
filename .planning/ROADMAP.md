@@ -38,6 +38,6 @@
 
 - [x] 30-07-PLAN.md — Дашборд, 3-я итерация: горизонтальный запас у inset-кольца переключателя периода (Gap 1) + Layout.svelte grid-template-rows/.content flex-column, root-cause фикс изолированного скролла (Gap 2)
 - [x] 30-08-PLAN.md — Dropdown, 2-я итерация: убрать синее кольцо на всегда-сфокусированном search-input + встроенная клиентская фильтрация select+flat+searchable (закрывает 'zero filtering' для 11 консьюмеров одним изменением) + searchable={false} на коротком списке «Тип» (Gap 3)
-- [ ] 30-09-PLAN.md — Таблицы, 3-я итерация: TableRow.svelte исключает .tr-row-group из row-wide кольца (устраняет дублирование на шевроне Устройств) + скруглённый шеврон (Gap 9); Table.svelte padding-запас против клипа левой inset-грани в master-detail списках (Gap 7)
+- [x] 30-09-PLAN.md — Таблицы, 3-я итерация: TableRow.svelte исключает .tr-row-group из row-wide кольца (устраняет дублирование на шевроне Устройств) + скруглённый шеврон (Gap 9); Table.svelte padding-запас против клипа левой inset-грани в master-detail списках (Gap 7)
 
 **UI hint**: yes

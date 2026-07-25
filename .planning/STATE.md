@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
 status: executing
-last_updated: "2026-07-25T09:35:58.168Z"
+last_updated: "2026-07-25T09:48:12.297Z"
 last_activity: 2026-07-25
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 30 (quality-a11y-platform-parity) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-07-25
 
@@ -269,6 +269,7 @@ Last activity: 2026-07-25
 | Phase 30 P06 | 8min | 2 tasks | 2 files |
 | Phase 30 P07 | 12min | 2 tasks | 2 files |
 | Phase 30 P08 | 15min | 3 tasks | 2 files |
+| Phase 30 P09 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -659,6 +660,7 @@ Recent decisions affecting current work:
 - [Phase 30]: 30-05: check-focus-outline ignore marker must be a single line immediately before outline: none; (script only checks current+previous line, not multi-line comment blocks)
 - [Phase 30]: Task 2 live-check (30-07): CSS-харнесс в headless Chromium/Playwright вместо реального приложения (auth недоступен в этой среде) — точно воспроизведены селекторы Layout.svelte/DashboardPage.svelte после фикса — Полноценный запуск требовал бы настройки dev-аутентификации/сид-данных ради одноразовой проверки чисто-CSS фикса; харнесс тестирует ровно тот CSS grid-track-sizing механизм, который был root cause
 - [Phase 30-08]: Dropdown search-input: убрать всегда-видимое кольцо фокуса, добавить встроенную клиентскую фильтрацию (visibleGroups) — Кольцо было визуальным шумом на всегда-сфокусированном поле; фильтрация нужна для 11 flat+select+searchable консьюмеров одним изменением вместо правки каждого файла (Gap 3, QA-02)
+- [Phase 30]: Плана 30-09: live-проверка Gap 7 в реальном приложении отложена до открытого UAT re-run чекпоинта 30-03 Task 3 — синтетическая проверка (Playwright + реальный compiled CSS в WebKit/Chromium) подтвердила механизм фикса вместо неё
 
 ### Pending Todos
 
@@ -748,8 +750,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-25T09:35:58.161Z
-Stopped at: Completed 30-08-PLAN.md
+Last session: 2026-07-25T09:48:12.289Z
+Stopped at: Completed 30-09-PLAN.md
 Resume file: 
 
 None

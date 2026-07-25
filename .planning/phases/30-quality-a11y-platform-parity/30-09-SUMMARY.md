@@ -108,6 +108,15 @@ None - no external service configuration required.
 - Gap 9 is verified closed with high confidence (synthetic Playwright check directly confirms the CSS mechanism, and the bug was not WebKit-rendering-dependent — a straightforward `:has()`/`:not()` selector match).
 - Gap 7 fix is implemented and mechanism-verified, but genuine live confirmation in the running Tauri desktop app or LAN browser is still needed before the UAT gap can be closed with full confidence — this is the next action item for the already-open UAT re-run checkpoint (30-03 Task 3).
 
+## Self-Check: PASSED
+
+- FOUND: ui/src/lib/components/TableRow.svelte
+- FOUND: ui/src/lib/components/Table.svelte
+- FOUND: .planning/phases/30-quality-a11y-platform-parity/30-09-SUMMARY.md
+- FOUND commit: c4355e0
+- FOUND commit: ffbb20b
+- FOUND commit: 8b0c414
+
 ---
 *Phase: 30-quality-a11y-platform-parity*
 *Completed: 2026-07-25*
