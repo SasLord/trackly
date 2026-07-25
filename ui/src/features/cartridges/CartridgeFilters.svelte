@@ -104,6 +104,7 @@
         <Dropdown
           variant="select"
           flat={true}
+          searchable={false}
           value={kindLabel}
           placeholder="Все"
           searchPlaceholder="Поиск"
