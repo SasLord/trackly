@@ -987,6 +987,10 @@
     min-width: 0;
     background: transparent;
     border: none;
+    // Поле авто-фокусируется безусловно при открытии панели ($effect строки 572-582) — видимое
+    // кольцо было бы визуальным шумом на всегда-сфокусированном поле, не accessibility-сигналом
+    // (Gap 3, UAT re-run Test 3, план 30-08).
+    // check-focus-outline: ignore
     outline: none;
     color: var(--tr-text-primary);
     font-family: var(--tr-font-family);
@@ -994,10 +998,6 @@
 
     &::placeholder {
       color: var(--tr-text-tertiary);
-    }
-
-    &:focus-visible {
-      box-shadow: 0 0 0 2px var(--tr-focus-ring);
     }
   }
 
