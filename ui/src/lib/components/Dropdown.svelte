@@ -1025,6 +1025,13 @@
       color: var(--tr-text-tertiary);
     }
   }
+  // The global `*:focus-visible` rule (global.scss) adds a blue box-shadow ring to
+  // EVERY focusable element. Killing `outline` on the input above is not enough —
+  // this always-focused search field must also opt out of that global box-shadow,
+  // otherwise the blue ring persists (Gap 3, 30-08 follow-up).
+  :global(.tr-dropdown-panel .tr-dropdown-search-input:focus-visible) {
+    box-shadow: none;
+  }
 
   // D-01/checkpoint fix #1: sticky drill-in header, opaque background so
   // member rows don't show through while scrolling underneath it.
