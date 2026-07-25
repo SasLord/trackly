@@ -290,6 +290,17 @@
     padding: 24px;
   }
 
+  // The grid is a scrollable flex column, so its direct children (.stat-row and
+  // ChartWidget's .chart-widget) must keep their natural CONTENT height and let the
+  // grid scroll — never shrink. Without this, the flex default `flex-shrink: 1`
+  // compresses .chart-widget down toward its `min-height: 220px` while its real
+  // content (header + 180px SVG + legend) is ~300px, so the legend spills OUT the
+  // bottom of the card and (in WKWebView) pushes a second app-level scrollbar
+  // (Gap 2, QA-03 — the actual root cause behind the Dashboard overflow).
+  .dashboard-grid > :global(*) {
+    flex-shrink: 0;
+  }
+
   .stat-row {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
