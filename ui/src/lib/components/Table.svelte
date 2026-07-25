@@ -133,6 +133,7 @@
 
   .tr-table-wrapper {
     width: 100%;
+    padding: 0 var(--tr-space-3xs);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
