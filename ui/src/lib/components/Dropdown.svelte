@@ -461,6 +461,8 @@
         if (g && !(!flat && isGroupExpandable(g))) {
           onPickGroup(g);
         }
+        // WR-02: Tab advances focus forward — don't restore focus to the trigger.
+        skipFocusRestoreOnClose = true;
         open = false;
       }
       return;
@@ -526,6 +528,8 @@
       if (activeIndex >= 0 && activeIndex < members.length) {
         onPickMember(members[activeIndex]);
       }
+      // WR-02: Tab advances focus forward — don't restore focus to the trigger.
+      skipFocusRestoreOnClose = true;
       open = false;
     }
   }
@@ -555,13 +559,26 @@
    *  the search input the moment the panel opens, uniformly across every
    *  open path (toggleSelectOpen/openPanel/the ArrowDown-on-closed-panel
    *  regression floor) since all of them funnel through `open = true` here.
-   *  No cleanup/restore-on-close step — out of this gap's literal scope
-   *  (Escape/click-outside/Tab already close the panel via their own paths
-   *  without needing a focus-restore jump). */
+   *  WR-02: restore-on-close IS needed. The search <input> lives in the
+   *  portaled panel and unmounts the instant `open` becomes false (pick /
+   *  Escape / click-outside), so the browser drops DOM focus to <body> —
+   *  stranding keyboard/screen-reader users at the top of the document
+   *  (WCAG 2.4.3 Focus Order). On the open→close transition we re-focus the
+   *  still-mounted trigger button, EXCEPT when Tab caused the close: Tab is
+   *  deliberately advancing focus forward out of the panel, so re-grabbing
+   *  focus would trap the user (the Tab branches set skipFocusRestoreOnClose). */
+  let wasOpen = false;
+  let skipFocusRestoreOnClose = false;
   $effect(() => {
     if (open && variant === 'select' && searchable) {
       searchInputEl?.focus();
+    } else if (!open && wasOpen && variant === 'select' && searchable) {
+      if (!skipFocusRestoreOnClose) {
+        triggerEl?.focus();
+      }
     }
+    skipFocusRestoreOnClose = false;
+    wasOpen = open;
   });
 </script>
 
