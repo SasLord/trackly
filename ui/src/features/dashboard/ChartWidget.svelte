@@ -355,6 +355,17 @@
 
 <style lang="scss">
   .chart-widget {
+    // MUST be a positioning context: the visually-hidden `.sr-only` data table
+    // below is `position: absolute`. Without a positioned ancestor its containing
+    // block is the initial containing block (<html>), and a <table> ignores
+    // `height: 1px` (height is a min for tables) so it lays out at full content
+    // height (~77px). Being anchored to <html>, it is NOT clipped by the shell's
+    // `.content { overflow: hidden }` (overflow does not clip abs descendants whose
+    // CB is an ancestor of the overflow box) — so it extended the root scroll height
+    // and produced the app-level second scrollbar on Dashboard. `position: relative`
+    // makes THIS card its containing block, so `.content` clips it like everything
+    // else. The table has no top/left, so nothing moves visually (Gap 2, QA-03).
+    position: relative;
     background: var(--tr-surface);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-md);
