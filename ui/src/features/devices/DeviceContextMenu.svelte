@@ -291,17 +291,23 @@
     font-family: var(--tr-font-family);
 
     &:hover {
-      background: var(--tr-surface);
+      background: var(--tr-row-hover);
     }
   }
 
-  // Keyboard focus highlight for menu items. The app-wide outward focus ring would
-  // extend past the narrow portal edges, so use a background highlight (same as
-  // hover) — the standard ARIA menu focus indicator.
-  :global(.ctx-menu-item:focus-visible) {
+  // Focus highlight for menu items. Use `:focus`, NOT `:focus-visible`: we move
+  // focus into the menu programmatically (openMenu → tick → item.focus()), and
+  // browsers do not reliably apply `:focus-visible` to a scripted focus — so the
+  // highlight would not show. `:focus` always matches when the item is focused,
+  // which is exactly the ARIA-menu "active item" indicator. The app-wide outward
+  // ring is suppressed here (it would spill past the narrow portal), replaced by a
+  // background tint. Must be --tr-row-hover, NOT --tr-surface: the menu background
+  // is --tr-surface-raised and in LIGHT theme --tr-surface == --tr-surface-raised
+  // (both #ffffff), so a --tr-surface highlight was invisible.
+  :global(.ctx-menu-item:focus) {
     outline: none;
     box-shadow: none;
-    background: var(--tr-surface);
+    background: var(--tr-row-hover);
   }
 
   :global(.ctx-menu-item--destructive) {

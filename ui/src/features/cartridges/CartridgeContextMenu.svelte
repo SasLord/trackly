@@ -225,8 +225,12 @@
     white-space: nowrap;
     font-family: var(--tr-font-family);
 
+    // --tr-row-hover, NOT --tr-surface: `.ctx-menu-item` is a GLOBAL class shared
+    // with DeviceContextMenu, and in light theme --tr-surface == --tr-surface-raised
+    // (the menu bg), making the highlight invisible. Both consumers must use the
+    // same dedicated hover tint or the later-loaded rule wins and breaks the other.
     &:hover {
-      background: var(--tr-surface);
+      background: var(--tr-row-hover);
     }
   }
 
