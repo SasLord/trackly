@@ -159,7 +159,6 @@
     flex-direction: column;
     gap: var(--tr-space-xs);
     padding: var(--tr-space-xs) var(--tr-space-xs) var(--tr-space-xs);
-    border-bottom: 1px solid var(--tr-border);
   }
 
   .extra-filters {
