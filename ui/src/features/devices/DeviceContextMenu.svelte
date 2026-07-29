@@ -1,3 +1,10 @@
+<script module lang="ts">
+  // Shared across ALL DeviceContextMenu instances: only one menu may be open at a
+  // time. Opening a menu closes any previously-open one — fixes the bug where you
+  // could Tab from one kebab to the next and stack multiple open menus.
+  let closeCurrentlyOpenMenu: (() => void) | null = null;
+</script>
+
 <script lang="ts">
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
@@ -25,14 +32,13 @@
   let menuX = $state(0);
   let menuY = $state(0);
 
-  // Ссылка на кнопку-триггер (⋮).
+  // Ссылка на кнопку-триггер (⋮) и на само меню (для управления фокусом).
   let triggerEl = $state<HTMLButtonElement | null>(null);
+  let menuEl = $state<HTMLDivElement | null>(null);
 
-  function toggleMenu() {
-    if (menuOpen) {
-      menuOpen = false;
-      return;
-    }
+  function openMenu() {
+    // Закрыть любое другое открытое меню (fix «висящих» меню при Tab).
+    closeCurrentlyOpenMenu?.();
     if (triggerEl) {
       const rect = triggerEl.getBoundingClientRect();
       // Позиционируем меню так, чтобы оно открывалось вниз и вправо от кнопки,
@@ -41,20 +47,79 @@
       menuY = rect.bottom + 4;
     }
     menuOpen = true;
+    closeCurrentlyOpenMenu = closeMenu;
+  }
+
+  /** Закрыть меню. `returnFocus` — вернуть фокус на кнопку-триггер (для клавиатуры). */
+  function closeMenu(returnFocus = false) {
+    if (!menuOpen) return;
+    menuOpen = false;
+    if (closeCurrentlyOpenMenu === closeMenu) closeCurrentlyOpenMenu = null;
+    if (returnFocus) triggerEl?.focus();
+  }
+
+  function toggleMenu() {
+    if (menuOpen) closeMenu(true);
+    else openMenu();
+  }
+
+  // При открытии меню перевести фокус на первый пункт — иначе клавиатурой по
+  // меню пройтись нельзя (фокус остаётся на триггере). ARIA menu pattern.
+  $effect(() => {
+    if (menuOpen && menuEl) {
+      menuEl.querySelector<HTMLElement>('.ctx-menu-item')?.focus();
+    }
+  });
+
+  // Клавиатурная навигация внутри меню: стрелки/Home/End — между пунктами,
+  // Escape — закрыть и вернуть фокус на триггер, Tab — закрыть (не оставлять висеть).
+  function handleMenuKeydown(e: KeyboardEvent) {
+    if (!menuEl) return;
+    const items = Array.from(menuEl.querySelectorAll<HTMLElement>('.ctx-menu-item'));
+    if (items.length === 0) return;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        items[(idx + 1) % items.length]?.focus();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        items[(idx - 1 + items.length) % items.length]?.focus();
+        break;
+      case 'Home':
+        e.preventDefault();
+        items[0]?.focus();
+        break;
+      case 'End':
+        e.preventDefault();
+        items[items.length - 1]?.focus();
+        break;
+      case 'Escape':
+        e.preventDefault();
+        closeMenu(true);
+        break;
+      case 'Tab':
+        // Не оставляем меню висеть при уходе фокусом — закрываем и возвращаем
+        // фокус на триггер, дальше пользователь табает штатно.
+        e.preventDefault();
+        closeMenu(true);
+        break;
+    }
   }
 
   function handleEdit() {
-    menuOpen = false;
+    closeMenu();
     onEdit(device);
   }
 
   function handlePrintAcceptance() {
-    menuOpen = false;
+    closeMenu();
     onPrintAcceptance?.(device);
   }
 
   function openConfirm() {
-    menuOpen = false;
+    closeMenu();
     confirmOpen = true;
   }
 
@@ -84,13 +149,13 @@
     if (triggerEl && triggerEl.contains(target)) return;
     // Если клик внутри самого меню — игнорируем (клик по пункту закроет сам).
     if (target.closest('.ctx-menu-portal')) return;
-    menuOpen = false;
+    closeMenu();
   }
 
   // Закрыть меню при прокрутке или ресайзе — простейший способ избежать
   // «висящего» меню с устаревшими координатами.
   function handleScrollOrResize() {
-    if (menuOpen) menuOpen = false;
+    if (menuOpen) closeMenu();
   }
 </script>
 
@@ -119,14 +184,13 @@
 -->
 {#if menuOpen}
   <div
+    bind:this={menuEl}
     use:portal
     class="ctx-menu-portal"
     role="menu"
     tabindex="-1"
     style="left:{menuX}px; top:{menuY}px;"
-    onkeydown={(e) => {
-      if (e.key === 'Escape') menuOpen = false;
-    }}
+    onkeydown={handleMenuKeydown}
   >
     <button class="ctx-menu-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
     {#if onPrintAcceptance}
@@ -231,6 +295,15 @@
     &:hover {
       background: var(--tr-surface);
     }
+  }
+
+  // Keyboard focus highlight for menu items. The app-wide outward focus ring would
+  // extend past the narrow portal edges, so use a background highlight (same as
+  // hover) — the standard ARIA menu focus indicator.
+  :global(.ctx-menu-item:focus-visible) {
+    outline: none;
+    box-shadow: none;
+    background: var(--tr-surface);
   }
 
   :global(.ctx-menu-item--destructive) {
