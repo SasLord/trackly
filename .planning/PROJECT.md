@@ -10,7 +10,7 @@ Trackly — приложение для учёта и отслеживания �
 
 ## Current State
 
-**Shipped:** v1.1.2 (2026-07-15) — пост-релизные доработки UX и печати: portal-дропдауны и device-picker с группировкой (Фаза 18), редактирование handover-актов + точная дата передачи (Фаза 19), печать актов с реквизитами организации и второй строкой адреса (Фаза 20), коды картриджей/фотобарабанов (Фаза 21), редактирование возвратов (Фаза 22). Ранее: v1.1.1 (2026-07-07, акт по образцу Word + HTML-печать), v1.0 + v1.1 (фазы 1–13).
+**Shipped:** v1.2 (2026-07-29) — редизайн UI и дизайн-система (Фазы 23–30): единый слой токенов `--tr-*` для обеих тем, переработанные примитивы (Button/Input/Select/Textarea/Checkbox/Badge/Modal/Tabs/Dropdown), строки таблиц, все ~12 окон, доступность (WCAG AA-контраст + видимое кольцо фокуса, durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs`) и паритет desktop↔LAN. 26/26 требований. Ранее: v1.1.2 (2026-07-15, пост-релизные доработки UX/печати, Фазы 18–22), v1.1.1 (2026-07-07), v1.0 + v1.1 (фазы 1–13).
 
 Trackly поставляет полный учёт устройств / актов / картриджей / принтеров (SNMP) / заявок,
 отчёты, дашборд и настройки в портативном и серверном (LAN) режимах, с релизным пайплайном
@@ -23,7 +23,16 @@ Trackly поставляет полный учёт устройств / акто
 
 Полная история — `.planning/MILESTONES.md`; детали фаз — `.planning/milestones/`.
 
-## Current Milestone: v1.2 Редизайн UI и дизайн-система
+## Next Milestone: не начат
+
+Milestone v1.2 завершён и заархивирован. Следующий цикл — через `/gsd-new-milestone`
+(questioning → research → requirements → roadmap). Кандидаты — в «Backlog (v2 и далее)» и
+«Out of Scope» ниже, плюс бэклог-элемент 999.1 (role-based route gating).
+
+## Last Milestone: v1.2 Редизайн UI и дизайн-система ✅ (shipped 2026-07-29)
+
+<details>
+<summary>Цели и контекст v1.2 (завершён — детали в milestones/v1.2-ROADMAP.md, аудит 26/26 tech_debt)</summary>
 
 **Goal:** Перевести интерфейс на новую дизайн-систему (спроектирована в Claude Design) — единый слой
 токенов, переработанные примитивы и все окна — не потеряв плотность рабочего инструмента.
@@ -54,7 +63,9 @@ Trackly поставляет полный учёт устройств / акто
   box-shadow .12s` на кнопках, что противоречит прошлому решению UI-SPEC §Motion (`transition: none`
   в `Button.svelte:46`, введено ради корректного переключения темы).
 
-## Last Milestone: v1.1.2 Пост-релизные доработки UX и печати ✅ (shipped 2026-07-15)
+</details>
+
+## Earlier Milestone: v1.1.2 Пост-релизные доработки UX и печати ✅ (shipped 2026-07-15)
 
 <details>
 <summary>Цели и контекст v1.1.2 (завершён — детали в milestones/v1.1.2-ROADMAP.md)</summary>
@@ -110,15 +121,21 @@ Kerberos/NTLM (ADV-01), английская локализация (I18N), Wind
 адреса (PRN-01, ORG-01/02); коды картриджей/фотобарабанов (CRT-01). Все 12/12 satisfied.
 См. `.planning/milestones/v1.1.2-REQUIREMENTS.md`.
 
-**Итог:** все 120 v1-требований validated (120/120). Полная трассировка — `.planning/milestones/v1.1-REQUIREMENTS.md`.
+**v1.2 (shipped 2026-07-29, phases 23–30):** редизайн UI и дизайн-система — слой токенов `--tr-*`
+(DS-01..04), переработанные примитивы (CMP-01..07), все окна (WIN-01..12), доступность WCAG AA +
+кольцо фокуса (QA-01/02) и паритет desktop↔LAN (QA-03). Все 26/26 satisfied.
+См. `.planning/milestones/v1.2-REQUIREMENTS.md`.
+
+**Итог:** все 146 v1-требований validated (146/146). Полная трассировка — по архивам в `.planning/milestones/`.
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-**v1.2 — Редизайн UI и дизайн-система** (started 2026-07-16). Требования определяются; трассировка
-появится в `.planning/REQUIREMENTS.md` и `.planning/ROADMAP.md`. Все прошлые требования остаются
-в Validated. Кандидаты на будущее — в «Backlog (v2 и далее)» и «Out of Scope» ниже.
+Активного milestone нет — v1.2 завершён и заархивирован. Следующий цикл открывается через
+`/gsd-new-milestone` (определит новые требования). Кандидаты — «Backlog (v2 и далее)» и
+«Out of Scope» ниже, плюс бэклог-элемент 999.1 (role-based route gating — UX-полировка,
+не безопасность).
 
 ### Out of Scope
 
@@ -210,4 +227,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 13: Редизайн совместимости Принтеры↔Картриджи** (completed 2026-06-26) — V032 миграция: `printer_brand`+`printer_model` → единый `printer_name`, снос per-device junction (V029); `cartridges_sqlite.rs` матчит совместимость по `devices.name` (case-insensitive + TRIM, D-05 pass-through только в selection-фильтре); удалены 4 V029-команды, новая read-only `printers_get_compatible_aggregates` (агрегаты по статусу); карточка принтера: агрегаты совместимости + блок данных устройства (через `DeviceFormModal`) + установленный картридж по коду; `ModelFormModal` — единый free-text-блок «Совместимые принтеры»; kind-aware дефолт авто-возврата фотобарабана (state 5 «Изношенный»); снят лимит списка принтеров; `suggest_compat_printer` re-sourced с free-text истории на `devices.name`. Завершает milestone v1.1. (SPEC-13-R1..R8)
 
 ---
-*Last updated: 2026-07-24 — Фаза 29 «Вход и интерфейс сотрудника» завершена (4/4 плана; верификация 15/15 must-haves; автогейты — app-wide svelte-check 0 ошибок, build ✓; both-theme UAT одобрен). 4 экрана входа (Login/FirstRunWizard/Pending/Blocked) и EmployeeLayout переведены на общие примитивы дизайн-системы (Input/Button/Checkbox + AuthShell/FormField) без потери поведения (WIN-10, WIN-11). Попутно закрыты два pre-existing бага EmployeeLayout из UAT: контент до низа вьюпорта с паддингом (паритет с админ-shell, D-04) и обрезка имени сотрудника до «A…» (ThemeSwitcher хогал строку). Code review: 0 critical / 2 warning (оба pre-existing, вне scope — вынесены в follow-up) / 3 info. Следующая — Фаза 30 «Качество — доступность и паритет платформ». Ранее: Фаза 28 «Окна поддержки и администрирования» завершена (16/16 планов после gap-closure 28-11..28-16; SC #1–#4). Ранее: Фаза 26 «Окна с готовым макетом» и Фаза 27 «Ключевые рабочие окна» завершены; 2026-07-16 — начат milestone v1.2 «Редизайн UI и дизайн-система» (фазы с 23), референс — .planning/reference/design-system-v2/. Предыдущий milestone v1.1.2 (фазы 18–22, 12/12 требований) завершён и заархивирован 2026-07-15.*
+*Last updated: 2026-07-29 — milestone **v1.2 «Редизайн UI и дизайн-система» завершён и заархивирован** (Фазы 23–30, 26/26 требований, аудит tech_debt без блокеров). Фаза 30 «Качество — доступность и паритет платформ» закрыта: durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs` + WCAG AA-токены + видимое кольцо фокуса на всех типах интерактива + паритет desktop↔LAN; двухраундовая gap-closure (30-04..09) + финальная серия UAT-фиксов 29.07 (таблицы focus-ring/высота/футер, комбобокс, Дашборд overflow — root-cause `position:absolute` sr-only таблицы графика мимо `overflow:hidden`, Картриджи, Пользователи staircase, a11y контекстного меню). both-theme UAT подписан пользователем; реальный Windows-билд `v1.2.0` собран (проверка отдельно). Тех-долг → бэклог (raw select на Дашборде, Nyquist VALIDATION у фаз 25–28, best-effort Windows-паритет). Бэклог 999.1 (role-based route gating) отложен. Следующий milestone — через `/gsd-new-milestone`.*

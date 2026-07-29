@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Requirement Coverage
-status: executing
-last_updated: "2026-07-25T09:48:12.297Z"
-last_activity: 2026-07-25
+status: Awaiting next milestone
+last_updated: "2026-07-29T16:41:47.743Z"
+last_activity: 2026-07-29 — Milestone v1.2 completed and archived
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
-  completed_plans: 8
-  percent: 0
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: 30 (quality-a11y-platform-parity) — EXECUTING
-Plan: 4 of 9
-Status: Ready to execute
-Last activity: 2026-07-25
+Phase: Milestone v1.2 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-29 — Milestone v1.2 completed and archived
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -755,5 +755,49 @@ Stopped at: Completed 30-09-PLAN.md
 Resume file: 
 
 None
+
+- Start the next milestone with /gsd-new-milestone
+
+## Deferred Items
+
+Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt across the project (not v1.2 blockers — all 26 v1.2 requirements satisfied). Track in backlog.
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | knowledge-base | unknown |
+| quick | 260618-vtm-backup-date-schedule-template-fixes | missing |
+| quick | 260621-r8x-fix-fk-constraint-on-request-accept-assi | missing |
+| quick | 260630-v4m-fix-tls-cert-san-for-wildcard-bind-host | missing |
+| quick | 260702-vtf-y-tooltip | missing |
+| quick | 260704-uw3-template-seed-upgrade | missing |
+| quick | 260704-wxw-act-pdf-word-fidelity-redesign | missing |
+| quick | 260715-gt2-act-edit-device-quantity | missing |
+| quick | 260718-x8t-tabs-segmented-width | unknown |
+| quick | 260719-ocq-close-bl-01-unify-dropdown-drill-in-rese | missing |
+| quick | 260723-syw-wr01-user-edit-password | missing |
+| quick | 260724-pxf-fix-wr-01-ws-refcount-leak-and-wr-02-emp | missing |
+| uat_gap | ? | open |
+| uat_gap | ? | partial |
+| uat_gap | ? | unknown |
+| uat_gap | ? | passed |
+| uat_gap | ? | testing |
+| uat_gap | ? | passed |
+| uat_gap | ? | passed |
+| uat_gap | ? | partial |
+| uat_gap | ? | partial |
+| uat_gap | ? | passed |
+| uat_gap | ? | resolved |
+| uat_gap | ? | passed |
+| uat_gap | ? | diagnosed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | human_needed |
+| verification_gap | ? | gaps_found |
+
+## Operator Next Steps
 
 - Start the next milestone with /gsd-new-milestone

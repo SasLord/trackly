@@ -1,5 +1,23 @@
 # Milestones: Trackly
 
+## v1.2 Редизайн UI и дизайн-система (Shipped: 2026-07-29)
+
+**Phases completed:** 1 phases, 9 plans, 22 tasks
+
+**Key accomplishments:**
+
+- Two new zero-dependency lint scripts (check-contrast.mjs, check-focus-outline.mjs) wired into `pnpm lint`, plus 4 corrected `_tokens.scss` color values that now pass WCAG AA in both light and dark themes.
+- Three targeted CSS fixes closing the last check-focus-outline.mjs violation and two ancestor-overflow ring-clipping defects, using idioms already established elsewhere in the codebase — zero markup/logic changes.
+- Plan:
+- Search-panel auto-focus + ArrowLeft drill-in exit close Gap 3 (search input unreachable by keyboard) and Gap 5 (drill-in trap) in Dropdown.svelte, with zero architectural changes.
+- Consolidated 4 duplicated cell-level focus-ring box-shadows into one shared `.tr-row:has(:focus-visible)` rule in TableRow.svelte, closing Gap 4 (focus ring drawn around first cell instead of the whole row, inconsistent across tables) without adding any new row interactivity.
+- Fixed clipped focus ring on PeriodToggle (inset idiom) and app-shell-wide scroll bleed on DashboardPage (min-height:0) — two independent Gap 1/Gap 2 defects on the same screen.
+- PeriodToggle padding 2px→8px горизонтально закрывает Gap 1 (кольцо больше не прилипает к тексту); Layout.svelte grid-template-rows: minmax(0, 1fr) + .content flex-column закрывает Gap 2 на корневом layout-уровне — root cause был не в DashboardPage.svelte (30-06 чинил не тот файл), а в отсутствии явного grid-template-rows на .app-layout, что заставляло единственную implicit-строку сайзиться по max-content вместо доступного 100vh.
+- Removed the always-visible focus ring on Dropdown's in-panel search input and added a client-side substring filter (`visibleGroups`) that closes the "zero filtering" gap for all 11 existing flat+select+searchable consumers with one change in `Dropdown.svelte`.
+- TableRow.svelte row-wide focus ring now excludes `.tr-row-group` (no more duplicate ring over the chevron's own ring) and the chevron ring is rounded; Table.svelte's `.tr-table-wrapper` gained a 2px padding safety margin against a WebKit inset-shadow clip artifact in Printers' master-detail list.
+
+---
+
 ## v1.1.2 — Пост-релизные доработки UX и печати
 
 **Shipped:** 2026-07-15
