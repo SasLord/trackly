@@ -72,15 +72,16 @@
 
 {#snippet footer()}
   {#if !skeletonLoading && !isEmpty}
-    <footer class="list-footer">
-      <span class="pagination-info">
-        {#if showGroups}
-          Групп: {groups.length}
-        {:else}
-          Показано {items.length} из {total}
-        {/if}
-      </span>
-    </footer>
+    <!-- Content only — Table.svelte already wraps this in <footer class="tr-table-footer">
+         with its own border-top + padding. A second wrapping <footer> here produced the
+         doubled, over-tall footer with two top borders. -->
+    <span class="pagination-info">
+      {#if showGroups}
+        Групп: {groups.length}
+      {:else}
+        Показано {items.length} из {total}
+      {/if}
+    </span>
   {/if}
 {/snippet}
 
@@ -93,6 +94,7 @@
   head={tableHead}
   {footer}
   minWidth="860px"
+  fillHeight
 >
   {#if showGroups}
     {#each groups as group (group.repr.id)}
@@ -134,15 +136,6 @@
   }
   .th-actions {
     width: 40px;
-  }
-
-  // Footer
-  .list-footer {
-    padding: var(--tr-space-xs) var(--tr-space-md);
-    border-top: 1px solid var(--tr-border);
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
   }
 
   .pagination-info {

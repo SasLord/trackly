@@ -332,10 +332,24 @@
     height: 100%;
   }
 
+  // The section itself must NOT scroll — the table scrolls internally (fillHeight),
+  // filling to the bottom of the window with a symmetric 16px margin. Matches the
+  // other sections' "framed table fills the panel" model.
   .page-content {
     flex: 1;
-    overflow: auto;
-    padding: 16px 24px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-sm);
+    overflow: hidden;
+    padding: var(--tr-space-md);
+  }
+
+  // DeviceList's root is the framed <Table fillHeight> — let it grow to fill the
+  // remaining height below the filter bar and scroll its own body.
+  .page-content > :global(.tr-table-framed) {
+    flex: 1;
+    min-height: 0;
   }
 
   .actions-inline {
