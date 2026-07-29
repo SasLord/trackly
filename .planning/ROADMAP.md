@@ -26,7 +26,7 @@
 
 **Wave 3** *(depends on Wave 2 — финальный гейт)*
 
-- [ ] 30-03-PLAN.md — 30-WINDOWS-PARITY.md чек-лист + финальные автогейты + блокирующий both-theme UAT (QA-02/QA-03) — **открыт**, блокирующий UAT (Task 3) нашёл 5 гэпов 2026-07-25 (см. 30-VERIFICATION.md), маршрутизировано в gap-closure (Wave 4); Wave 4's re-run UAT РЕ-ОТКРЫЛ 5 новых гэпов 2026-07-25 (см. 30-UAT.md), маршрутизировано во 2-й раунд gap-closure (Wave 5); Task 3 будет повторно прогнан после Wave 5.
+- [x] 30-03-PLAN.md — 30-WINDOWS-PARITY.md чек-лист + финальные автогейты + блокирующий both-theme UAT (QA-02/QA-03) — **открыт**, блокирующий UAT (Task 3) нашёл 5 гэпов 2026-07-25 (см. 30-VERIFICATION.md), маршрутизировано в gap-closure (Wave 4); Wave 4's re-run UAT РЕ-ОТКРЫЛ 5 новых гэпов 2026-07-25 (см. 30-UAT.md), маршрутизировано во 2-й раунд gap-closure (Wave 5); Task 3 будет повторно прогнан после Wave 5.
 
 **Wave 4** *(gap closure round 1 — depends on Wave 3's UAT findings; все 3 плана независимы друг от друга, файлы не пересекаются, выполнялись параллельно)*
 
