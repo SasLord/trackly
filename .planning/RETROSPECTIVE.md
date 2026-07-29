@@ -2,6 +2,31 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v1.2 — Редизайн UI и дизайн-система
+
+**Shipped:** 2026-07-29
+**Phases:** 8 (23–30) | **Plans:** Фаза 30 — 9 (остальные фазы — в архивах)
+
+### What Was Built
+Единая дизайн-система: слой токенов `--tr-*` для обеих тем, переработанные примитивы, строки таблиц, Dropdown, все ~12 окон. Фаза 30 — планка качества: durable a11y-гейты (`check-contrast.mjs`/`check-focus-outline.mjs`), WCAG AA-контраст, видимое кольцо фокуса на всех типах интерактива, паритет desktop (WKWebView) ↔ LAN-браузер.
+
+### What Worked
+- Durable скрипт-гейты вместо разовых проверок — контраст/кольцо теперь ловятся автоматически в `pnpm lint`.
+- Замер `scrollHeight/clientHeight` в devtools реального WKWebView — единственный надёжный способ найти точный переполняющийся элемент (нашёл `position:absolute` sr-only таблицу графика, тянувшую корневой скролл мимо всех `overflow:hidden`).
+
+### What Was Inefficient
+- Дашборд-overflow чинился **множество раундов** по неверным гипотезам (min-height → grid-rows → flex → chart-widget), пока не сняли прямой замер в работающем приложении. Урок: при layout-баге сразу снимать computed-метрики в целевом движке, а не теоретизировать.
+- Синтетические Chromium/Playwright «проверки» дважды давали ложную уверенность — WKWebView-специфичные баги (border-collapse, flex `min-height:auto`, `:has()` scope-trap, percentage-height через grid) в них не воспроизводились.
+
+### Patterns Established
+- App-shell scroll: `.content` = `overflow:hidden`, каждая `*-page` = `height:100%` + `min-height:0` со своим внутренним скроллом.
+- Таблица focus-ring = inset-кольцо на первой ячейке единым токеном `--tr-focus-ring` (full-row-ring отброшен под border-collapse).
+- Меню/portal: фокус ставить ПОСЛЕ `tick()` (re-parent сбрасывает фокус); подсветка пункта — `:focus` (не `:focus-visible`, который не срабатывает на программный фокус).
+
+### Key Lessons
+- Проверять в реальном движке (WKWebView), а не в Blink-харнессе; при сомнении — снимать метрики, а не гадать.
+- `check-*` авто-гейты сознательно не видят клипы/наложения/tab-порядок — блокирующий человеческий UAT в обеих темах обязателен и не авто-одобряется.
+
 ## Milestone: v1.1.2 — Пост-релизные доработки UX и печати
 
 **Shipped:** 2026-07-15
