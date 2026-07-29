@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+  import { tick } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
@@ -36,7 +37,7 @@
   let triggerEl = $state<HTMLButtonElement | null>(null);
   let menuEl = $state<HTMLDivElement | null>(null);
 
-  function openMenu() {
+  async function openMenu() {
     // Закрыть любое другое открытое меню (fix «висящих» меню при Tab).
     closeCurrentlyOpenMenu?.();
     if (triggerEl) {
@@ -48,6 +49,11 @@
     }
     menuOpen = true;
     closeCurrentlyOpenMenu = closeMenu;
+    // Перевести фокус на первый пункт ПОСЛЕ того, как DOM обновился и use:portal
+    // перенёс меню в <body>. Через `tick()` — иначе фокус ставится до переноса
+    // узла (detach→attach сбрасывает фокус), и клавиатурой по меню не пройти.
+    await tick();
+    menuEl?.querySelector<HTMLElement>('.ctx-menu-item')?.focus();
   }
 
   /** Закрыть меню. `returnFocus` — вернуть фокус на кнопку-триггер (для клавиатуры). */
@@ -62,14 +68,6 @@
     if (menuOpen) closeMenu(true);
     else openMenu();
   }
-
-  // При открытии меню перевести фокус на первый пункт — иначе клавиатурой по
-  // меню пройтись нельзя (фокус остаётся на триггере). ARIA menu pattern.
-  $effect(() => {
-    if (menuOpen && menuEl) {
-      menuEl.querySelector<HTMLElement>('.ctx-menu-item')?.focus();
-    }
-  });
 
   // Клавиатурная навигация внутри меню: стрелки/Home/End — между пунктами,
   // Escape — закрыть и вернуть фокус на триггер, Tab — закрыть (не оставлять висеть).
