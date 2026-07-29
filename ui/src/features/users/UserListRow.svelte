@@ -52,16 +52,18 @@
     {/if}
   </td>
   <td class="cell cell--actions">
-    {#if confirmDelete}
-      <span class="confirm-text">Удалить?</span>
-      <button class="btn-action btn-action--danger" onclick={handleConfirmDelete}>Да</button>
-      <button class="btn-action" onclick={handleCancelDelete}>Нет</button>
-    {:else}
-      <button class="btn-action" onclick={() => onEdit(user)} title="Изменить">Изменить</button>
-      <button class="btn-action btn-action--danger" onclick={handleDeleteClick} title="Удалить">
-        Удалить
-      </button>
-    {/if}
+    <div class="cell-actions-inner">
+      {#if confirmDelete}
+        <span class="confirm-text">Удалить?</span>
+        <button class="btn-action btn-action--danger" onclick={handleConfirmDelete}>Да</button>
+        <button class="btn-action" onclick={handleCancelDelete}>Нет</button>
+      {:else}
+        <button class="btn-action" onclick={() => onEdit(user)} title="Изменить">Изменить</button>
+        <button class="btn-action btn-action--danger" onclick={handleDeleteClick} title="Удалить">
+          Удалить
+        </button>
+      {/if}
+    </div>
   </td>
 </TableRow>
 
@@ -75,8 +77,14 @@
     color: var(--tr-text-primary);
   }
 
+  // Keep the <td> a real table-cell — putting `display: flex` on the <td> itself
+  // overrides `display: table-cell`, so this cell stopped aligning to the row's
+  // baseline/height like its siblings and its border-bottom rendered 1-2px off
+  // (the "staircase"). Flex layout lives on an inner wrapper instead.
   .cell--actions {
     white-space: nowrap;
+  }
+  .cell-actions-inner {
     display: flex;
     gap: var(--tr-space-2xs);
     align-items: center;
