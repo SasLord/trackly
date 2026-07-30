@@ -1,46 +1,169 @@
-//! Spike 001 — compile/link probe for server-side AD SSO (Kerberos/SPNEGO) via `sspi`.
+//! Spike 002 — server-side SPNEGO/Negotiate (Kerberos) acceptor via `sspi`.
 //!
-//! GOAL of this module: prove that the `sspi` crate (Devolutions) — including its
-//! server-side Kerberos/Negotiate acceptance code and crypto backend — **compiles and
-//! links for the portable Windows MSVC target** used by Trackly's release build, and
-//! type-checks on the macOS dev box (`cargo check`). It is deliberately NOT the real
-//! SSO endpoint — that is spike 002 (`negotiate-endpoint-h2off`).
+//! Validates a browser's `Authorization: Negotiate <base64>` token against the service's
+//! keytab-derived key and, on success, returns the authenticated AD account name. This is
+//! the Rust counterpart of adwebapp's gokrb5 `/auth/ad` acceptor.
 //!
-//! Why a probe is enough for the compile-proof: cargo builds the *entire* `sspi`
-//! dependency crate for the target regardless of which items Trackly references, so the
-//! server-side accept module (`sspi::kerberos::server`) and its crypto are compiled by
-//! the mere presence of the dependency plus one real reference below. The single hardest
-//! unknown this de-risks is whether that dependency (with `default-features = false`, i.e.
-//! without the `aws-lc-rs` C-crypto TLS provider) builds on Windows MSVC in CI at all.
+//! ⚠️ BUILD-VERIFIED, NOT LIVE-VERIFIED. This code compiles and links (spike 001 proved the
+//! whole `sspi` server path builds for Windows MSVC), but the actual Kerberos handshake can
+//! only be exercised against a real Domain Controller — done on Windows/AD hardware, not the
+//! dev macOS box. The two spots whose *runtime* behavior is unproven until that test:
+//!   1. `acquire_credentials_handle` for a Negotiate *server* (the service key is supplied via
+//!      `ServerProperties`, so no `with_auth_data` — needs live confirmation).
+//!   2. `resolve_with_client(&mut net)` — the accept API takes a `NetworkClient`. For an
+//!      offline service-ticket decrypt (keytab key present, no U2U) it should never touch the
+//!      network; `OfflineNetworkClient` errors loudly if it ever is called, which tomorrow's
+//!      test will surface. If it turns out the network IS needed, we enable sspi's
+//!      `network_client` feature or point it at the KDC.
 //!
-//! The live Kerberos handshake against a real Domain Controller is validated separately
-//! on Windows/AD hardware — it cannot be exercised from the dev macOS box (no domain
-//! reachable), which is exactly why the whole feature is being spiked build-first.
-//!
-//! REAL server-accept shape (built out in spike 002), for reference:
-//! - `sspi::KerberosServerConfig { kerberos_config, server_properties }`
-//! - `Kerberos::new_server_from_config(cfg, props)` where
-//!   `ServerProperties.ticket_decryption_key` / `.additional_service_keys` hold the
-//!   keytab-derived service key — the ticket is decrypted **offline, no KDC round-trip**.
-//! - accept loop: `acquire_credentials_handle().with_credential_use(Inbound)` then
-//!   `accept_security_context().with_input(..).with_output(..).execute()` (per
-//!   `sspi/examples/server.rs`).
+//! The keytab reading is in `super::keytab` and IS fully unit-tested (deterministic parsing).
 
-use sspi::KerberosConfig;
+use std::time::Duration;
 
-/// Name reported by the probe — proves the module linked and ran.
-pub const SSO_PROBE_TAG: &str = "trackly-ad-sso-spike-001";
+use sspi::network_client::NetworkClient;
+use sspi::{
+    BufferType, CredentialUse, DataRepresentation, KerberosConfig, KerberosServerConfig, Negotiate,
+    NegotiateConfig, NetworkRequest, SecurityBuffer, SecurityStatus, ServerRequestFlags, Sspi,
+    SspiImpl,
+};
+use sspi::kerberos::ServerProperties;
 
-/// Construct an `sspi` Kerberos *config* to type-check the crate's public surface that
-/// spike 002 will build on. Constructing the config is side-effect-free — it only parses
-/// the (here empty) KDC URL and stores the client computer name; no network, no KDC
-/// contact. Returns whether a KDC URL was resolved from the input (empty here → `false`).
+/// How far the acceptor tolerates clock skew between client and this server when validating
+/// the ticket's timestamps. Kerberos' customary allowance is 5 minutes.
+const MAX_TIME_SKEW: Duration = Duration::from_secs(5 * 60);
+
+/// Outcome of one SPNEGO accept step.
+#[derive(Debug)]
+pub enum SsoOutcome {
+    /// Handshake complete — `username` is the authenticated AD account (SAM/UPN as sspi
+    /// reports it). `reply_token` (possibly empty) must be returned to the client in the
+    /// `WWW-Authenticate: Negotiate <base64>` header.
+    Authenticated { username: String, reply_token: Vec<u8> },
+    /// Handshake needs another round trip — send `reply_token` back with a 401 and expect a
+    /// follow-up token. (Kerberos usually completes in one step; NTLM-style continuation is
+    /// where this occurs.)
+    Continue { reply_token: Vec<u8> },
+    /// Token rejected (bad/foreign ticket, wrong SPN, expired). Generic on purpose.
+    Denied,
+}
+
+/// Local error type — keeps `sspi` out of the trackly-core port surface. Never carries key
+/// material.
+#[derive(Debug, thiserror::Error)]
+pub enum SsoError {
+    #[error("SSO server not configured (keytab/SPN missing)")]
+    NotConfigured,
+    #[error("keytab: {0}")]
+    Keytab(#[from] super::keytab::KeytabError),
+    #[error("sspi negotiate accept failed: {0}")]
+    Sspi(String),
+}
+
+/// A `NetworkClient` that refuses to do any network I/O. For an offline service-ticket
+/// decrypt (keytab key present) the acceptor must not contact the KDC; if it ever tries,
+/// this returns an error rather than silently reaching out, and the failure tells us the
+/// offline assumption was wrong (a spike-002 finding to resolve before shipping).
+struct OfflineNetworkClient;
+
+impl NetworkClient for OfflineNetworkClient {
+    fn send(&self, _request: &NetworkRequest) -> sspi::Result<Vec<u8>> {
+        Err(sspi::Error::new(
+            sspi::ErrorKind::NoAuthenticatingAuthority,
+            "AD SSO acceptor attempted a network/KDC call, but only offline keytab \
+             validation is configured (spike-002: offline assumption violated)",
+        ))
+    }
+}
+
+/// Accept one SPNEGO/Negotiate token.
 ///
-/// This function exists so `trackly-infra` genuinely *references* `sspi`, forcing the
-/// dependency (server-accept code included) to be compiled and linked for the target.
-pub fn sspi_link_probe(kdc_url: &str, client_computer_name: &str) -> bool {
-    let cfg = KerberosConfig::new(kdc_url, client_computer_name.to_string());
-    cfg.kdc_url.is_some()
+/// * `spn` — the service principal in `SERVICE/host` form, e.g. `HTTP/web.example.local`
+///   (realm-agnostic; must match the SPN the keytab was generated for and the name the
+///   browser used in the address bar).
+/// * `keytab_bytes` — raw contents of the `.keytab` file (`ktpass … /crypto AES256-SHA1`).
+/// * `client_computer_name` — this server's own machine/workstation name (diagnostic only).
+/// * `input_token` — the raw (already base64-decoded) bytes from `Authorization: Negotiate`.
+pub fn accept_spnego(
+    spn: &str,
+    keytab_bytes: &[u8],
+    client_computer_name: &str,
+    input_token: &[u8],
+) -> Result<SsoOutcome, SsoError> {
+    if spn.is_empty() || keytab_bytes.is_empty() {
+        return Err(SsoError::NotConfigured);
+    }
+
+    // Pull the AES256 service key for this SPN out of the keytab (unit-tested parser).
+    let service_key = super::keytab::aes256_key_for_spn(keytab_bytes, spn)?;
+
+    // SPN "HTTP/web.example.local" → sname components ["HTTP", "web.example.local"].
+    let sname: Vec<&str> = spn.split('/').collect();
+
+    // Server config: Kerberos server keyed by the keytab-derived long-term key. No KDC URL —
+    // the ticket is decrypted locally (offline), matching adwebapp's model.
+    let kerberos_config = KerberosConfig::new("", client_computer_name.to_string());
+    let server_properties = ServerProperties::new(
+        &sname,
+        None, // no bound user credentials — pure acceptor
+        MAX_TIME_SKEW,
+        Some(service_key.into()),
+    )
+    .map_err(|e| SsoError::Sspi(e.to_string()))?;
+    let server_config = KerberosServerConfig {
+        kerberos_config,
+        server_properties,
+    };
+
+    let negotiate_config =
+        NegotiateConfig::from_protocol_config(Box::new(server_config), client_computer_name.to_string());
+    let mut server =
+        Negotiate::new_server(negotiate_config, Vec::new()).map_err(|e| SsoError::Sspi(e.to_string()))?;
+
+    // Inbound credentials handle (server side). The service key lives in ServerProperties, so
+    // no `with_auth_data` here — see the module-level runtime-unknown note (1).
+    let mut acq = server
+        .acquire_credentials_handle()
+        .with_credential_use(CredentialUse::Inbound)
+        .execute(&mut server)
+        .map_err(|e| SsoError::Sspi(e.to_string()))?;
+
+    let mut input = [SecurityBuffer::new(input_token.to_vec(), BufferType::Token)];
+    let mut output = vec![SecurityBuffer::new(Vec::with_capacity(1024), BufferType::Token)];
+
+    let builder = server
+        .accept_security_context()
+        .with_credentials_handle(&mut acq.credentials_handle)
+        .with_context_requirements(ServerRequestFlags::ALLOCATE_MEMORY)
+        .with_target_data_representation(DataRepresentation::Native)
+        .with_input(&mut input)
+        .with_output(&mut output);
+
+    let mut net = OfflineNetworkClient;
+    let result = server
+        .accept_security_context_impl(builder)
+        .map_err(|e| SsoError::Sspi(e.to_string()))?
+        .resolve_with_client(&mut net)
+        .map_err(|e| SsoError::Sspi(e.to_string()))?;
+
+    let reply_token = output.remove(0).buffer;
+
+    match result.status {
+        SecurityStatus::Ok | SecurityStatus::CompleteNeeded | SecurityStatus::CompleteAndContinue => {
+            // Authenticated — read the client's AD account name off the established context.
+            let username = server
+                .query_context_names()
+                .map_err(|e| SsoError::Sspi(e.to_string()))?
+                .username
+                .inner()
+                .to_string();
+            Ok(SsoOutcome::Authenticated {
+                username,
+                reply_token,
+            })
+        }
+        SecurityStatus::ContinueNeeded => Ok(SsoOutcome::Continue { reply_token }),
+        _ => Ok(SsoOutcome::Denied),
+    }
 }
 
 #[cfg(test)]
@@ -48,21 +171,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn probe_tag_is_stable() {
-        assert_eq!(SSO_PROBE_TAG, "trackly-ad-sso-spike-001");
+    fn empty_config_is_not_configured() {
+        // Guards the fast-path rejection without needing any sspi machinery — the live
+        // handshake itself is real-AD-only (see module note).
+        let out = accept_spnego("", b"", "HOST", b"\x01\x02");
+        assert!(matches!(out, Err(SsoError::NotConfigured)));
+        let out2 = accept_spnego("HTTP/web.example.local", b"", "HOST", b"\x01");
+        assert!(matches!(out2, Err(SsoError::NotConfigured)));
     }
 
     #[test]
-    fn empty_kdc_url_resolves_to_none() {
-        // Empty input → no KDC URL parsed. This both type-checks `sspi`'s
-        // `KerberosConfig` public API and forces the crate to link into the
-        // test binary (the macOS half of the compile-proof).
-        assert!(!sspi_link_probe("", "TRACKLY-SPIKE-HOST"));
-    }
-
-    #[test]
-    fn explicit_kdc_url_resolves_to_some() {
-        // A bare host:port is normalized to tcp://host:port by sspi's parser.
-        assert!(sspi_link_probe("dc.example.test:88", "TRACKLY-SPIKE-HOST"));
+    fn bad_keytab_surfaces_keytab_error() {
+        // A non-empty but invalid keytab must produce a typed Keytab error, not a panic.
+        let out = accept_spnego("HTTP/web.example.local", b"not-a-keytab", "HOST", b"\x01");
+        assert!(matches!(out, Err(SsoError::Keytab(_))));
     }
 }

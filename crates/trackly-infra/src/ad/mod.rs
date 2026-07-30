@@ -19,6 +19,7 @@
 //! ```
 
 pub mod discovery;
+pub mod keytab;
 pub mod mock;
 pub mod real;
 pub mod sso;
