@@ -21,3 +21,4 @@
 pub mod discovery;
 pub mod mock;
 pub mod real;
+pub mod sso;

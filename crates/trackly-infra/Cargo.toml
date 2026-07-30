@@ -31,3 +31,8 @@ snmp2 = { workspace = true }
 tempfile = { workspace = true }
 ldap3 = { version = "0.12.1", default-features = false, features = ["tls-rustls-ring"] }
 hickory-resolver = "0.26.1"
+# Spike 001 (AD SSO / Kerberos-SPNEGO server-side accept). `default-features = false`
+# drops the `aws-lc-rs` C-crypto TLS provider (only needed for the unused
+# `network_client`/rustls path) to keep the portable Windows build free of a
+# mandatory native crypto toolchain dependency — CI proves whether this holds.
+sspi = { version = "0.21", default-features = false }
