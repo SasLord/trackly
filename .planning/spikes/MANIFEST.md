@@ -35,7 +35,7 @@ Design decisions locked so far (non-negotiable for the real build):
 
 | # | Name | Type | Validates | Verdict | Tags |
 |---|------|------|-----------|---------|------|
-| 001 | sspi-windows-compile | standard | Given Trackly's build, when `sspi` (server-side Kerberos/Negotiate accept) is added behind the AD adapter layer, then it compiles+links for Windows MSVC in CI and `cargo check` on macOS | PARTIAL (macOS ✓, Windows CI pending) | rust, kerberos, sspi, ci, portable |
+| 001 | sspi-windows-compile | standard | Given Trackly's build, when `sspi` (server-side Kerberos/Negotiate accept) is added behind the AD adapter layer, then it compiles+links for Windows MSVC in CI and `cargo check` on macOS | VALIDATED ✓ (macOS + Windows MSVC) | rust, kerberos, sspi, ci, portable |
 | 002 | negotiate-endpoint-h2off | standard | Given the axum server, when a `/auth/ad`-style endpoint returns `401 + WWW-Authenticate: Negotiate` and h2 is disabled, then the handshake shape is correct and existing simple_bind auth still works | PENDING | axum, spnego, http2, tls |
 | 003 | frontend-autologin-config | standard | Given an anonymous page, when the silent `fetch` + `ad_skip` cookie fallback + SPN/service-account config (placeholders) are wired, then the SSO flow is reachable end-to-end for live-AD testing | PENDING | frontend, config, sso |
 

@@ -3,7 +3,7 @@ spike: 001
 name: sspi-windows-compile
 type: standard
 validates: "Given Trackly's build, when the sspi crate (server-side Kerberos/Negotiate accept) is added behind the AD adapter layer, then it compiles+links for the Windows MSVC target in CI and cargo check on macOS"
-verdict: PARTIAL
+verdict: VALIDATED
 related: [002, 003]
 tags: [rust, kerberos, sspi, ci, portable]
 ---
@@ -72,7 +72,23 @@ gh workflow run release.yml --ref spike/ad-sso-kerberos --field version=0.0.0-ss
 
 ## Results
 
-**PARTIAL — macOS half PASSES; Windows CI verdict pending.**
+**VALIDATED — builds clean on both macOS and Windows MSVC.**
+
+- **Windows CI: PASS.** `release.yml` dry-run (run `30541316563`, ref `spike/ad-sso-kerberos`,
+  `version=0.0.1`) — `build (windows-latest, --bundles nsis)` **success**, plus macOS + Linux +
+  checksums all green. This is the authoritative proof: `sspi 0.21.3` server-side
+  Kerberos/Negotiate accept + pure-Rust crypto compiles and **links** for the portable Windows
+  target in Trackly's real release build — no C-toolchain/link failure.
+- **Downloadable Windows artifacts** produced in the draft release (`v0.0.1`):
+  `trackly-v0.0.1-windows-x64-portable.zip` + `Trackly_0.0.1_x64-setup.exe`.
+- macOS `cargo check`: PASS (see below), pure-Rust crypto tree confirmed.
+
+**Caveat — what this does NOT yet prove:** this build only contains the compile/link *probe*,
+not a working SSO endpoint. The live Kerberos handshake against a real DC is exercised only
+once spikes 002 (Negotiate endpoint + h2-off) and 003 (frontend auto-login + keytab/SPN config)
+land — that is the real-AD test.
+
+### macOS detail
 
 - **macOS `cargo check -p trackly-infra`: PASS (exit 0), clean** — no warnings/errors from
   `ad::sso` or the `sspi` dependency. Confirms the `sspi` public API our probe uses
