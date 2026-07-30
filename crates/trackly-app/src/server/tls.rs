@@ -58,14 +58,29 @@ fn compute_fingerprint(der_bytes: &[u8]) -> String {
         .join(":")
 }
 
+/// ALPN, ограниченный `http/1.1` — HTTP/2 сознательно отключён (spike-002, AD SSO).
+///
+/// SPNEGO/Negotiate (Kerberos-вход через `/api/v1/auth_ad_sso`) — двухшаговый обмен
+/// (`401 + WWW-Authenticate: Negotiate` → повтор запроса с билетом) в рамках ОДНОГО
+/// соединения. Мультиплексирование HTTP/2 такой привязки не гарантирует, и строгие
+/// корпоративные браузеры рвут соединение на `/auth/ad` с ERR_INVALID_RESPONSE
+/// (в adwebapp это лечится `NextProtos = ["http/1.1"]`, см. reference `main.go`).
+/// Пустой ALPN тоже не даёт h2, но мы закрепляем http/1.1 явно, чтобы serving-стек
+/// (hyper `auto`) не мог договориться на h2 ни при каких условиях. Порталу h2 не нужен
+/// (внутренний LAN-сервис, не высоконагруженный).
+fn pin_http1_alpn(config: &mut ServerConfig) {
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+}
+
 /// Создать `rustls::ServerConfig` из сертификата и ключа в DER.
 fn build_server_config(cert_der: Vec<u8>, key_der: Vec<u8>) -> anyhow::Result<ServerConfig> {
     ensure_crypto_provider();
     let certs = vec![CertificateDer::from(cert_der)];
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der));
-    let config = ServerConfig::builder()
+    let mut config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
+    pin_http1_alpn(&mut config);
     Ok(config)
 }
 
@@ -295,9 +310,10 @@ pub fn load_from_pem(cert_pem: &str, key_pem: &str) -> anyhow::Result<TlsBundle>
     let key_der = private_key(&mut key_reader)?
         .ok_or_else(|| anyhow::anyhow!("load_from_pem: no private key found in key_pem"))?;
 
-    let config = ServerConfig::builder()
+    let mut config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert_ders, key_der)?;
+    pin_http1_alpn(&mut config);
 
     Ok(TlsBundle {
         acceptor: TlsAcceptor::from(Arc::new(config)),

@@ -152,6 +152,25 @@ pub struct AdConfig {
     /// `false` — включается явно только в «Расширенные» как небезопасный
     /// opt-in для нестандартных сетей.
     pub no_tls_verify: bool,
+
+    // ── AD SSO (Kerberos/SPNEGO passwordless вход, spike-002) ──────────────
+    // Все три поля `#[serde(default)]` — старые конфиги без них парсятся,
+    // а SSO по умолчанию выключен (безопасный дефолт).
+    /// Включить passwordless-вход через AD (Kerberos/Negotiate) в server mode.
+    /// Требует заполненных `spn` и `keytab_path`.
+    #[serde(default)]
+    pub sso_enabled: bool,
+    /// Service Principal Name сервиса в форме `HTTP/host.domain` (например
+    /// `HTTP/web.example.local`), под который сгенерирован keytab. Пусто → SSO
+    /// не активируется. РЕАЛЬНОЕ значение задаётся в рантайм-конфиге рядом с БД
+    /// (gitignored), в git — только плейсхолдеры.
+    #[serde(default)]
+    pub spn: String,
+    /// Путь к `.keytab` (ktpass `/crypto AES256-SHA1 /out server.keytab`) рядом
+    /// с исполняемым файлом. Читается при попытке SSO-входа; байты ключа службы
+    /// никогда не логируются и не покидают процесс.
+    #[serde(default)]
+    pub keytab_path: String,
 }
 
 impl Default for AdConfig {
@@ -165,6 +184,9 @@ impl Default for AdConfig {
             base_dn: String::new(),
             name_attr: "displayName".to_string(),
             no_tls_verify: false,
+            sso_enabled: false,
+            spn: String::new(),
+            keytab_path: String::new(),
         }
     }
 }

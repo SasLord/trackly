@@ -20,6 +20,7 @@ pub mod reports;
 pub mod requests;
 pub mod settings;
 pub mod settings_org;
+pub mod sso;
 pub mod templates;
 pub mod users;
 pub mod ws;
@@ -121,6 +122,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(reports::router())
         .merge(dashboard::router())
         .merge(settings_org::router())
+        .merge(sso::router())
         // Session layer применяется ко всем маршрутам
         .layer(session_layer);
 

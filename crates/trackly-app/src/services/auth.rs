@@ -263,6 +263,31 @@ impl AuthService {
         }
     }
 
+    /// Passwordless AD SSO login (spike-002 / Kerberos-SPNEGO).
+    ///
+    /// The caller (`/api/v1/auth_ad_sso` HTTP handler) has ALREADY authenticated the user
+    /// by validating their Kerberos ticket against the service keytab server-side — there
+    /// is no LDAP bind and no password here. We only run the *same* provisioning seam the
+    /// LDAPS-bind path uses (`on_ad_bind_success`), so an SSO user resolves to a Trackly
+    /// account with identical semantics to plain AD login: active → session-eligible
+    /// `UserDto`; pending/blocked → the same `RegistrationPending`/`AccessBlocked` errors.
+    ///
+    /// SSO requires AD to be enabled (same gate as `try_ad_login`'s fallback).
+    ///
+    /// NOTE (full-parity follow-up): `display_name` currently falls back to the SAM login
+    /// because SSO has no bind to search from. A service-account displayName lookup (as in
+    /// the adwebapp reference) is deferred to the AD-SSO milestone.
+    pub async fn sso_login(
+        &self,
+        ad_username: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        if !self.ad_enabled().await? {
+            return Err(AppError::Unauthorized);
+        }
+        self.on_ad_bind_success(ad_username, display_name).await
+    }
+
     /// Пробует локальный (argon2id) логин. Не делает constant-time
     /// различия между "пользователь не найден" и "пароль неверный" по
     /// времени (CR-05 dummy-hash verify), но возвращает разные исходы
