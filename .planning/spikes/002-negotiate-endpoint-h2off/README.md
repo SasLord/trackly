@@ -50,7 +50,11 @@ LDAPS-bind paths are untouched.
 
 - `cargo check -p trackly-app` green (exit 0); keytab parser unit tests + acceptor guard
   tests green (28 `ad::` tests pass, no regression); `server::tls` tests green (ALPN pin did
-  not break cert generation); Windows CI build to be confirmed by the release dry-run.
+  not break cert generation).
+- **Windows CI: PASS.** `release.yml` dry-run (run `30545680082`, ref `spike/ad-sso-kerberos`,
+  `version=0.0.2`) — `build (windows-latest, --bundles nsis)` + macOS + Linux + checksums all
+  green. The full SSO layer (keytab + sspi acceptor + endpoint + h2-off + frontend) compiles
+  and links for Windows MSVC. Downloadable draft build `v0.0.2` produced.
 - **Not yet proven (tomorrow's real-AD test):** the actual Kerberos exchange. Two runtime
   unknowns documented in `ad::sso`: (1) `acquire_credentials_handle` shape for a Negotiate
   *server*; (2) `accept_security_context` must stay offline — `OfflineNetworkClient` errors
