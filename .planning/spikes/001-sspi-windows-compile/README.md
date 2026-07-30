@@ -3,7 +3,7 @@ spike: 001
 name: sspi-windows-compile
 type: standard
 validates: "Given Trackly's build, when the sspi crate (server-side Kerberos/Negotiate accept) is added behind the AD adapter layer, then it compiles+links for the Windows MSVC target in CI and cargo check on macOS"
-verdict: PENDING
+verdict: PARTIAL
 related: [002, 003]
 tags: [rust, kerberos, sspi, ci, portable]
 ---
@@ -72,4 +72,21 @@ gh workflow run release.yml --ref spike/ad-sso-kerberos --field version=0.0.0-ss
 
 ## Results
 
-_PENDING._ macOS `cargo check`/`cargo test` result and Windows CI verdict to be filled in.
+**PARTIAL — macOS half PASSES; Windows CI verdict pending.**
+
+- **macOS `cargo check -p trackly-infra`: PASS (exit 0), clean** — no warnings/errors from
+  `ad::sso` or the `sspi` dependency. Confirms the `sspi` public API our probe uses
+  (`sspi::KerberosConfig::new` + `kdc_url`, re-exported at `sspi/src/lib.rs:120`) type-checks
+  and the whole crate compiles.
+- **Portable-crypto hypothesis holds on macOS:** with `default-features = false`, the resolved
+  `sspi 0.21.3` build pulls a **pure-Rust crypto tree** — `picky-krb`, `curve25519-dalek`,
+  `ed25519-dalek`, `rsa`, `sha1`/`sha2`, `p256`/`p384`/`p521` — and **no `aws-lc-rs`, no
+  OpenSSL, no C toolchain**. This is the portable win the spike was testing for.
+- **Surprise / note:** even `default-features = false` still pulls `async-dnssd`, `tokio`,
+  `futures` (pure-Rust) — a heavier dep tree than expected, but all portable-safe. Build was
+  slow locally only due to 3 concurrent `cargo check` runs (rust-analyzer contention), not the
+  crate itself.
+
+**Remaining (the actual proof):** Windows MSVC build in CI must go green with `sspi` present.
+That is the platform where a C-crypto/link problem would surface — validated via the release
+dry-run on this branch. Live Kerberos handshake against a real DC is spike 002/real-AD.
