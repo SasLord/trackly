@@ -22,6 +22,10 @@
     base_dn: '',
     name_attr: 'displayName',
     no_tls_verify: false,
+    sso_enabled: false,
+    sso_spn: '',
+    sso_keytab_path: '',
+    sso_keytab_present: false,
   });
 
   let saving = $state(false);
@@ -63,6 +67,7 @@
       const payload: SetAdPayload = {
         enabled: settings.enabled,
         autoAccept: settings.auto_accept,
+        ssoEnabled: settings.sso_enabled,
       };
       await apiCall<void>('settings_set_ad', { payload });
       pushToast('success', 'Настройки сохранены');
@@ -138,6 +143,45 @@
             </span>
           </span>
         </Radio>
+      </div>
+    </div>
+
+    <div class="form-field sso-block">
+      <Checkbox
+        id="ad-sso-enabled"
+        checked={settings.sso_enabled}
+        disabled={saving}
+        onchange={(checked) => (settings.sso_enabled = checked)}
+      >
+        Вход без пароля через Active Directory (Kerberos SSO)
+      </Checkbox>
+      <p class="helper-text">
+        Сотрудники на доменных компьютерах входят через браузер автоматически, без ввода логина и
+        пароля. Требует SPN и keytab, заданные в <code>trackly.config.toml</code>.
+      </p>
+
+      <div class="sso-status" class:is-dimmed={!settings.sso_enabled}>
+        <div class="sso-status-row">
+          <span class="form-label">SPN сервиса</span>
+          <span class="sso-value">{settings.sso_spn || '— не задан в конфиге —'}</span>
+        </div>
+        <div class="sso-status-row">
+          <span class="form-label">Файл keytab</span>
+          {#if !settings.sso_keytab_path}
+            <span class="sso-value is-error">— путь не задан в конфиге —</span>
+          {:else if settings.sso_keytab_present}
+            <span class="sso-value is-success">найден: {settings.sso_keytab_path}</span>
+          {:else}
+            <span class="sso-value is-error">не найден: {settings.sso_keytab_path}</span>
+          {/if}
+        </div>
+        {#if settings.sso_enabled && (!settings.sso_spn || !settings.sso_keytab_present)}
+          <p class="helper-text is-error-text">
+            SSO включён, но не настроен: задайте <code>spn</code> и <code>keytab_path</code> в секции
+            <code>[ad]</code> файла <code>trackly.config.toml</code> и положите keytab рядом с
+            программой.
+          </p>
+        {/if}
       </div>
     </div>
 
@@ -308,5 +352,46 @@
     &.is-error {
       color: var(--tr-danger);
     }
+  }
+
+  .sso-block {
+    border-top: 1px solid var(--tr-border);
+    padding-top: var(--tr-space-md);
+  }
+
+  .sso-status {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
+    margin-top: var(--tr-space-xs);
+
+    &.is-dimmed {
+      opacity: 0.6;
+    }
+  }
+
+  .sso-status-row {
+    display: flex;
+    gap: var(--tr-space-sm);
+    align-items: baseline;
+  }
+
+  .sso-value {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-primary);
+    font-family: var(--tr-font-mono, monospace);
+    word-break: break-all;
+
+    &.is-success {
+      color: var(--tr-success);
+    }
+
+    &.is-error {
+      color: var(--tr-danger);
+    }
+  }
+
+  .is-error-text {
+    color: var(--tr-danger);
   }
 </style>

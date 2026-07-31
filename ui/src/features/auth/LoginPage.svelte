@@ -22,9 +22,13 @@
   let password = $state('');
   let remember = $state(false);
   let loading = $state(false);
+  let ssoLoading = $state(false);
   let loginError = $state<string | null>(null);
   let passwordError = $state<string | null>(null);
   let serverError = $state<string | null>(null);
+
+  // AD SSO button is server-mode/LAN-browser only (no Negotiate flow in the Tauri desktop).
+  const isTauri = typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
 
   // Screen routing: 'login' (default) | 'pending' | 'blocked' (D-REG / D-REG-03).
   let screen = $state<'login' | 'pending' | 'blocked'>('login');
@@ -37,6 +41,34 @@
     screen = 'login';
     password = '';
     serverError = null;
+  }
+
+  // Explicit "Вход через Active Directory" — triggers the browser Negotiate handshake
+  // against GET /api/v1/auth_ad_sso. On success the backend issues a session cookie and we
+  // reload so App.svelte picks up the authenticated user. Clears the `ad_skip` suppression
+  // cookie first so an explicit click always retries even after a silent attempt was skipped.
+  async function handleAdSso() {
+    serverError = null;
+    ssoLoading = true;
+    document.cookie = 'trackly_ad_skip=; path=/; Max-Age=0; SameSite=Lax';
+    try {
+      const res = await fetch('/api/v1/auth_ad_sso', { credentials: 'same-origin' });
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+        if (data?.ok) {
+          window.location.reload();
+          return;
+        }
+      }
+      serverError =
+        res.status === 503
+          ? 'Вход через Active Directory не настроен на сервере.'
+          : 'Не удалось войти через Active Directory — войдите по логину и паролю.';
+    } catch {
+      serverError = 'Не удалось связаться с сервером для входа через Active Directory.';
+    } finally {
+      ssoLoading = false;
+    }
   }
 
   async function handleSubmit() {
@@ -146,9 +178,20 @@
 
       <Button type="submit" variant="primary" {loading}>Войти</Button>
 
-      <!-- D-UX-03: reserved space for v2 SSO. Visually muted/disabled, NO
-           click handler, NO fabricated display name (UI-SPEC Screen 1). -->
-      <Button type="button" variant="ghost" disabled>Вход по учётной записи Windows (скоро)</Button>
+      <!-- AD SSO (Kerberos/SPNEGO) — server-mode/LAN-browser only. Hidden in the Tauri
+           desktop (no Negotiate flow). Triggers the transparent domain login; if there is
+           no ticket / SSO is off, it just shows an error and normal login stays available. -->
+      {#if !isTauri}
+        <Button
+          type="button"
+          variant="ghost"
+          loading={ssoLoading}
+          disabled={loading}
+          onclick={handleAdSso}
+        >
+          Вход через Active Directory
+        </Button>
+      {/if}
     </form>
   </AuthShell>
 {/if}

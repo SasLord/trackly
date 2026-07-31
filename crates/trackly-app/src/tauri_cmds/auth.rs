@@ -373,7 +373,10 @@ pub async fn build_settings_get_ad_tauri(ctx: &AppCtx) -> Result<AdSettingsDto, 
 
     let enabled = ctx.auth.ad_enabled().await?;
     let auto_accept = ctx.auth.ad_auto_accept().await?;
+    let sso_enabled = ctx.auth.ad_sso_enabled().await?;
     let ad_config = &ctx.config.ad;
+    let sso_keytab_present =
+        !ad_config.keytab_path.is_empty() && std::path::Path::new(&ad_config.keytab_path).is_file();
 
     Ok(AdSettingsDto {
         enabled,
@@ -384,6 +387,10 @@ pub async fn build_settings_get_ad_tauri(ctx: &AppCtx) -> Result<AdSettingsDto, 
         base_dn: ad_config.base_dn.clone(),
         name_attr: ad_config.name_attr.clone(),
         no_tls_verify: ad_config.no_tls_verify,
+        sso_enabled,
+        sso_spn: ad_config.spn.clone(),
+        sso_keytab_path: ad_config.keytab_path.clone(),
+        sso_keytab_present,
     })
 }
 
@@ -407,6 +414,9 @@ pub async fn build_settings_set_ad_tauri(
     ctx.auth.set_ad_enabled(payload.enabled, &caller).await?;
     ctx.auth
         .set_ad_auto_accept(payload.auto_accept, &caller)
+        .await?;
+    ctx.auth
+        .set_ad_sso_enabled(payload.sso_enabled, &caller)
         .await?;
 
     Ok(())

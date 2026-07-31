@@ -43,6 +43,14 @@ export type AdSettingsDto = {
   base_dn: string;
   name_attr: string;
   no_tls_verify: boolean;
+  /** Live toggle for passwordless AD SSO (Kerberos/SPNEGO), in `app_settings`. */
+  sso_enabled: boolean;
+  /** Service SPN (`HTTP/host.domain`) from `trackly.config.toml` — read-only. */
+  sso_spn: string;
+  /** Keytab path from `trackly.config.toml` — read-only. */
+  sso_keytab_path: string;
+  /** Whether the keytab file exists on disk (server-computed status). */
+  sso_keytab_present: boolean;
 };
 
 /**
@@ -58,6 +66,8 @@ export type AdSettingsDto = {
 export type SetAdPayload = {
   enabled: boolean;
   autoAccept: boolean;
+  /** Live toggle for passwordless AD SSO (Kerberos). Independent of `enabled`. */
+  ssoEnabled: boolean;
 };
 
 /**

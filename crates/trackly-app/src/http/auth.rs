@@ -228,6 +228,11 @@ pub async fn build_auth_status(ctx: &AppCtx, session: Session) -> Result<AuthSta
 pub struct SetAdPayload {
     pub enabled: bool,
     pub auto_accept: bool,
+    /// Живой тумблер AD-SSO (Kerberos). Независим от `enabled`.
+    /// `#[serde(default)]` — старые клиенты без этого поля шлют payload как
+    /// раньше (тогда SSO трактуется как выключенный), backward-compat.
+    #[serde(default)]
+    pub sso_enabled: bool,
 }
 
 /// Вернуть текущие настройки AD: live (`enabled`/`auto_accept` из
@@ -244,7 +249,10 @@ pub async fn build_settings_get_ad(
 
     let enabled = ctx.auth.ad_enabled().await?;
     let auto_accept = ctx.auth.ad_auto_accept().await?;
+    let sso_enabled = ctx.auth.ad_sso_enabled().await?;
     let ad_config = &ctx.config.ad;
+    let sso_keytab_present =
+        !ad_config.keytab_path.is_empty() && std::path::Path::new(&ad_config.keytab_path).is_file();
 
     Ok(AdSettingsDto {
         enabled,
@@ -255,6 +263,10 @@ pub async fn build_settings_get_ad(
         base_dn: ad_config.base_dn.clone(),
         name_attr: ad_config.name_attr.clone(),
         no_tls_verify: ad_config.no_tls_verify,
+        sso_enabled,
+        sso_spn: ad_config.spn.clone(),
+        sso_keytab_path: ad_config.keytab_path.clone(),
+        sso_keytab_present,
     })
 }
 
@@ -277,6 +289,9 @@ pub async fn build_settings_set_ad(
     ctx.auth.set_ad_enabled(payload.enabled, &caller).await?;
     ctx.auth
         .set_ad_auto_accept(payload.auto_accept, &caller)
+        .await?;
+    ctx.auth
+        .set_ad_sso_enabled(payload.sso_enabled, &caller)
         .await?;
 
     Ok(())

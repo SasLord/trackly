@@ -102,8 +102,11 @@ pub async fn handler_ad_sso(
 ) -> Response {
     let ad = &ctx.config.ad;
 
-    // Gate: SSO must be explicitly enabled and configured. Default off ⇒ 503, nothing else.
-    if !ad.sso_enabled || ad.spn.is_empty() || ad.keytab_path.is_empty() {
+    // Gate: SSO must be explicitly enabled (live app_settings toggle, editable in the AD
+    // settings UI) and configured (SPN + keytab from bootstrap TOML). Default off ⇒ 503,
+    // nothing else. A read failure is treated as "off" (fail closed).
+    let sso_on = ctx.auth.ad_sso_enabled().await.unwrap_or(false);
+    if !sso_on || ad.spn.is_empty() || ad.keytab_path.is_empty() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "error": "Вход через Active Directory недоступен на этом сервере" })),

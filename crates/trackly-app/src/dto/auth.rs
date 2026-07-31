@@ -188,6 +188,18 @@ pub struct AdSettingsDto {
     pub name_attr: String,
     /// Отключить проверку TLS-сертификата LDAPS (небезопасный opt-in).
     pub no_tls_verify: bool,
+
+    // ── AD SSO (Kerberos/SPNEGO passwordless вход) ────────────────────────
+    /// Живой тумблер passwordless-входа через AD (Kerberos). Независим от
+    /// `enabled` (LDAPS логин/пароль). Хранится в `app_settings`.
+    pub sso_enabled: bool,
+    /// SPN сервиса (`HTTP/host.domain`) из `trackly.config.toml` — read-only
+    /// bootstrap config, показывается для наглядности.
+    pub sso_spn: String,
+    /// Путь к keytab из `trackly.config.toml` — read-only bootstrap config.
+    pub sso_keytab_path: String,
+    /// Найден ли файл keytab на диске (вычисляется на сервере) — статус для UI.
+    pub sso_keytab_present: bool,
 }
 
 // ---------------------------------------------------------------------------

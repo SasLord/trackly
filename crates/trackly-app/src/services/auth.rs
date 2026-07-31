@@ -885,6 +885,49 @@ impl AuthService {
             .await
     }
 
+    /// Читает `ad_sso_enabled` из `app_settings` (passwordless Kerberos/SPNEGO
+    /// вход). По умолчанию `false`. Отдельный тумблер от `ad_enabled`: LDAPS-вход
+    /// логином/паролем и AD-SSO включаются независимо.
+    pub async fn ad_sso_enabled(&self) -> Result<bool, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            let conn = readers.acquire();
+            let result: rusqlite::Result<String> = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'ad_sso_enabled'",
+                [],
+                |r| r.get(0),
+            );
+            match result {
+                Ok(v) => Ok(v == "1"),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+                Err(e) => Err(map_rusqlite(e)),
+            }
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking ad_sso_enabled: {e}"),
+        })?
+    }
+
+    /// Устанавливает `ad_sso_enabled` в `app_settings`. Требует `ManageSettings`.
+    pub async fn set_ad_sso_enabled(&self, enabled: bool, caller: &Identity) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+        let value = if enabled { "1" } else { "0" };
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('ad_sso_enabled', ?1, ?2, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                    rusqlite::params![value, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+    }
+
     /// Проверяет доступность AD-сервера БЕЗ учётных данных пользователя
     /// (admin-действие "Проверить подключение", Phase 9 gap-closure).
     ///
