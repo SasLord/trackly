@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-03T12:42:05.350Z"
+last_updated: "2026-08-03T13:37:51.571Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 31 (ad-bind-ad) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-03
 
@@ -271,6 +271,7 @@ Last activity: 2026-08-03
 | Phase 30 P08 | 15min | 3 tasks | 2 files |
 | Phase 30 P09 | 35min | 2 tasks | 2 files |
 | Phase 31 P1 | 39min | 3 tasks | 5 files |
+| Phase 31 P03 | 50min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -668,6 +669,8 @@ Recent decisions affecting current work:
 - [Phase 30]: Плана 30-09: live-проверка Gap 7 в реальном приложении отложена до открытого UAT re-run чекпоинта 30-03 Task 3 — синтетическая проверка (Playwright + реальный compiled CSS в WebKit/Chromium) подтвердила механизм фикса вместо неё
 - [Phase 31]: MockAdDirectory reuses existing us100/us200 fixture identities (no new placeholder names)
 - [Phase 31]: TtlCache<V> implemented generically to support two independently-TTL'd instances (display_name, role) in Plan 31-02
+- [Phase 31]: Plan 31-03: role_hint threaded ONLY into auto_register_ad_user/create_pending_registration; on_ad_bind_success's other branches untouched
+- [Phase 31]: Plan 31-03: try_ad_login (password-bind path) passes role_hint: None — directory role enrichment is SSO-only in this phase
 
 ### Pending Todos
 
@@ -757,8 +760,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-03T11:56:57.154Z
-Stopped at: Completed 30-09-PLAN.md
+Last session: 2026-08-03T13:37:51.563Z
+Stopped at: Completed 31-03-PLAN.md
 Resume file: 
 
 None
