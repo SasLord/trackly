@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
-status: executing
-last_updated: "2026-08-03T13:37:51.571Z"
+status: ready_to_plan
+last_updated: 2026-08-03T15:17:19.229Z
 last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 231
   percent: 0
+stopped_at: Phase 31 complete (4/4) — ready to discuss Phase 32
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 31 — plan 31-02 complete (RealAdDirectory + AdConfig); next: 31-03 wire into AuthService
+**Current focus:** Phase 32 — авто админ по списку логинов + релиз sso в main
 
 ## Current Position
 
-Phase: 31 (ad-bind-ad) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
+Phase: 32
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -40,7 +41,7 @@ Last activity: 2026-08-03
 
 **Velocity:**
 
-- Total plans completed: 158
+- Total plans completed: 162
 - Average duration: —
 - Total execution time: —
 
@@ -70,6 +71,7 @@ Last activity: 2026-08-03
 | 26 | 8 | - | - |
 | 28 | 16 | - | - |
 | 29 | 4 | - | - |
+| 31 | 4 | - | - |
 
 **Recent Trend:**
 
