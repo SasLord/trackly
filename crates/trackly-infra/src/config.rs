@@ -395,7 +395,7 @@ mod tests {
         );
 
         let app = AppConfig {
-            ad: std::mem::replace(&mut ad, AdConfig::default()),
+            ad: std::mem::take(&mut ad),
             ..AppConfig::default()
         };
         let app_debug = format!("{app:?}");
