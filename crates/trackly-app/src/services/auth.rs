@@ -22,6 +22,7 @@ use tracing::warn;
 use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::ports::ad::{AdClient, AuthOutcome};
+use trackly_core::ports::ad_directory::{AdDirectory, DirectoryError, DirectoryResult};
 use trackly_core::primitives::clock::Clock;
 use trackly_core::primitives::secret::Secret;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -147,6 +148,10 @@ pub struct AuthService {
     /// AD client — `RealAdClient` in prod, `MockAdClient` on dev macOS
     /// (D-Mock-01). Used by `login()`'s local→AD fallback (USR-08).
     pub(crate) ad_client: Arc<dyn AdClient + Send + Sync>,
+    /// AD directory — `RealAdDirectory` in prod, `MockAdDirectory` on dev
+    /// macOS (D-Mock-01). Used by `sso_login`'s displayName/role enrichment
+    /// (SSO-01/SSO-03).
+    pub(crate) directory: Arc<dyn AdDirectory + Send + Sync>,
     /// WS broadcast sender — shared with `RequestService` (same `AppCtx`
     /// channel) so `ad_register` requests created from `on_ad_bind_success`
     /// emit `WsEvent::NewRequest` to admins too (REQ-04 reuse, Phase 9 Plan 03).
@@ -161,6 +166,7 @@ impl AuthService {
         clock: Arc<dyn Clock + Send + Sync>,
         ad_client: Arc<dyn AdClient + Send + Sync>,
         ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+        directory: Arc<dyn AdDirectory + Send + Sync>,
     ) -> Self {
         Self {
             writer,
@@ -168,6 +174,7 @@ impl AuthService {
             clock,
             ad_client,
             ws_tx,
+            directory,
         }
     }
 
@@ -274,9 +281,14 @@ impl AuthService {
     ///
     /// SSO requires AD to be enabled (same gate as `try_ad_login`'s fallback).
     ///
-    /// NOTE (full-parity follow-up): `display_name` currently falls back to the SAM login
-    /// because SSO has no bind to search from. A service-account displayName lookup (as in
-    /// the adwebapp reference) is deferred to the AD-SSO milestone.
+    /// Resolves a real ФИО (displayName) + AD-group role hint via the
+    /// injected `AdDirectory` (service-account bind, SSO-01/SSO-03) before
+    /// delegating to the same `on_ad_bind_success` provisioning seam the
+    /// LDAPS-bind path uses. Directory enrichment is fail-closed and
+    /// availability-preserving: any non-`Ok` outcome degrades to the
+    /// bare login / no role elevation rather than failing the login itself
+    /// (T-31-03b — SSO availability must not depend on the OPTIONAL
+    /// directory-enrichment feature).
     pub async fn sso_login(
         &self,
         ad_username: &str,
@@ -285,7 +297,29 @@ impl AuthService {
         if !self.ad_enabled().await? {
             return Err(AppError::Unauthorized);
         }
-        self.on_ad_bind_success(ad_username, display_name).await
+        let (resolved_display_name, role_hint) = match self.directory.resolve(ad_username).await {
+            Ok(DirectoryResult {
+                display_name: resolved,
+                role,
+            }) => (resolved, role),
+            // Expected, silent-degrade steady state (Pitfall 5) — directory
+            // enrichment is an optional feature, not configuring it is not
+            // an operational error worth logging per request.
+            Err(DirectoryError::NotConfigured) => (display_name.to_string(), None),
+            // Loggable — distinguishable from the silent NotConfigured case
+            // (T-31-03c): an admin can tell "AD is down" from "AD directory
+            // enrichment isn't configured".
+            Err(err @ (DirectoryError::Unreachable | DirectoryError::ServiceBindFailed)) => {
+                tracing::warn!(
+                    login = ad_username,
+                    error = ?err,
+                    "AD directory lookup failed during SSO enrichment; degrading to bare login, role not elevated"
+                );
+                (display_name.to_string(), None)
+            }
+        };
+        self.on_ad_bind_success(ad_username, &resolved_display_name, role_hint)
+            .await
     }
 
     /// Пробует локальный (argon2id) логин. Не делает constant-time
@@ -345,7 +379,12 @@ impl AuthService {
             AuthOutcome::BadCreds => Err(AppError::Unauthorized),
             AuthOutcome::Unreachable => Err(AppError::ServiceUnavailable { service: "ad" }),
             AuthOutcome::Ok { display_name } => {
-                self.on_ad_bind_success(&req.login, &display_name).await
+                // Password-bind path has no directory-resolved role hint
+                // (out of scope for this phase — only SSO's service-account
+                // bind resolves roles); existing hardcoded-'employee'
+                // default behavior for this path is unchanged.
+                self.on_ad_bind_success(&req.login, &display_name, None)
+                    .await
             }
         }
     }
@@ -366,6 +405,7 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
@@ -388,9 +428,11 @@ impl AuthService {
             Some(blocked_or_deleted) => self.report_blocked_access(blocked_or_deleted.id).await,
             None => {
                 if self.ad_auto_accept().await? {
-                    self.auto_register_ad_user(login, display_name).await
+                    self.auto_register_ad_user(login, display_name, role_hint)
+                        .await
                 } else {
-                    self.create_pending_registration(login, display_name).await
+                    self.create_pending_registration(login, display_name, role_hint)
+                        .await
                 }
             }
         }
@@ -490,10 +532,12 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
         let now = self.clock.unix_seconds();
         let login_owned = login.to_string();
         let display_name_owned = display_name.to_string();
+        let role = role_hint.map(|r| r.as_str()).unwrap_or("employee");
 
         let (user_id, request_id) = self
             .writer
@@ -504,8 +548,8 @@ impl AuthService {
                     "INSERT INTO users \
                      (login, full_name, password_hash, role, ad_user, is_active, \
                       created_at_utc, updated_at_utc, version) \
-                     VALUES (?1, ?2, NULL, 'employee', 1, 1, ?3, ?3, 1)",
-                    rusqlite::params![login_owned, display_name_owned, now],
+                     VALUES (?1, ?2, NULL, ?4, 1, 1, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now, role],
                 )
                 .map_err(map_rusqlite)?;
                 let user_id = tx.last_insert_rowid();
@@ -561,10 +605,12 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
         let now = self.clock.unix_seconds();
         let login_owned = login.to_string();
         let display_name_owned = display_name.to_string();
+        let role = role_hint.map(|r| r.as_str()).unwrap_or("employee");
 
         let (_user_id, request_id) = self
             .writer
@@ -575,8 +621,8 @@ impl AuthService {
                     "INSERT INTO users \
                      (login, full_name, password_hash, role, ad_user, is_active, \
                       created_at_utc, updated_at_utc, version) \
-                     VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
-                    rusqlite::params![login_owned, display_name_owned, now],
+                     VALUES (?1, ?2, NULL, ?4, 1, 0, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now, role],
                 )
                 .map_err(map_rusqlite)?;
                 let user_id = tx.last_insert_rowid();
@@ -1749,4 +1795,69 @@ fn row_to_user_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserDto> {
         created_at_utc: row.get(7)?,
         updated_at_utc: row.get(8)?,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests — sso_login's AdDirectory resolve + fail-closed degrade (SSO-01/SSO-03)
+// ---------------------------------------------------------------------------
+//
+// Scoped deliberately small (2 tests) — full end-to-end SSO coverage lives in
+// Plan 31-04's dedicated integration test file. These prove `sso_login`'s
+// body actually calls `self.directory.resolve(...)` and branches correctly
+// on both the happy path and the fail-closed degrade path, not just that it
+// compiles.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use trackly_infra::ad::directory_mock::MockAdDirectory;
+    use trackly_infra::ad::mock::MockAdClient;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_writer_and_readers;
+
+    fn make_service(directory: Arc<dyn AdDirectory + Send + Sync>) -> (AuthService, tempfile::TempDir) {
+        let (writer, readers, dir) = test_writer_and_readers();
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        let ad_client: Arc<dyn AdClient + Send + Sync> = Arc::new(MockAdClient::default_fixtures());
+        let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+        let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx), directory);
+        (svc, dir)
+    }
+
+    #[tokio::test]
+    async fn sso_login_resolves_known_user_and_role_via_mock_directory() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        svc.set_ad_enabled(true, &Identity::trusted_admin())
+            .await
+            .expect("enable ad");
+        svc.set_ad_auto_accept(true, &Identity::trusted_admin())
+            .await
+            .expect("enable auto-accept");
+
+        let user = svc
+            .sso_login("us100", "us100")
+            .await
+            .expect("sso_login should succeed");
+
+        assert_eq!(user.full_name, "Иванов Иван Иванович");
+        assert_eq!(user.role, "manager");
+    }
+
+    #[tokio::test]
+    async fn sso_login_degrades_role_when_directory_unreachable() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::unreachable()));
+        svc.set_ad_enabled(true, &Identity::trusted_admin())
+            .await
+            .expect("enable ad");
+        svc.set_ad_auto_accept(true, &Identity::trusted_admin())
+            .await
+            .expect("enable auto-accept");
+
+        let user = svc
+            .sso_login("us300", "us300")
+            .await
+            .expect("sso_login must never fail on directory-unreachable");
+
+        assert_eq!(user.full_name, "us300");
+        assert_eq!(user.role, "employee");
+    }
 }

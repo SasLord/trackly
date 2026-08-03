@@ -260,6 +260,10 @@ mod tests {
             base_dn: "dc=corp,dc=local".to_string(),
             name_attr: "displayName".to_string(),
             no_tls_verify: false,
+            sso_enabled: false,
+            sso_spn: String::new(),
+            sso_keytab_path: String::new(),
+            sso_keytab_present: false,
         };
         let json = serde_json::to_string(&dto).unwrap();
         let back: AdSettingsDto = serde_json::from_str(&json).unwrap();
