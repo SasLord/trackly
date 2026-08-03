@@ -13,3 +13,67 @@
 # port = 8443
 # Адрес привязки. По умолчанию: 0.0.0.0 (все сетевые интерфейсы).
 # bind = "0.0.0.0"
+
+# [ad]
+# Параметры Active Directory (Phase 9 / Phase 31, D-AD-01).
+# Bootstrap-дефолты на первом запуске; live-переключатели (enabled/автоприём)
+# редактируются администратором через Настройки → Active Directory в приложении.
+
+# Включить ли AD-вход. По умолчанию: false.
+# enabled = false
+# Использовать MockAdClient вместо RealAdClient (только для разработки,
+# не для production/Windows). По умолчанию: false.
+# use_mock = false
+# Хост контроллера домена. Пусто → auto-detect (DNS SRV / env).
+# host = "dc1.example.local"
+# Порт LDAPS. По умолчанию: 636.
+# port = 636
+# DNS-суффикс домена. Пусто → auto-detect (USERDNSDOMAIN).
+# domain = "example.local"
+# Base DN для LDAP-поиска. Пусто → выводится из domain.
+# base_dn = "dc=example,dc=local"
+# Имя атрибута для ФИО. По умолчанию: displayName (fallback на cn, затем на логин).
+# name_attr = "displayName"
+# Отключить проверку TLS-сертификата LDAPS (небезопасный opt-in для
+# нестандартных сетей). По умолчанию: false.
+# no_tls_verify = false
+
+# ── AD SSO (Kerberos/SPNEGO passwordless вход) ──────────────────────────────
+# Включить passwordless-вход через AD (Kerberos/Negotiate) в server mode.
+# Требует заполненных spn и keytab_path. По умолчанию: false.
+# sso_enabled = false
+# Service Principal Name сервиса (например HTTP/web.example.local), под
+# который сгенерирован keytab. Пусто → SSO не активируется.
+# spn = "HTTP/web.example.local"
+# Путь к .keytab (ktpass /crypto AES256-SHA1 /out server.keytab) рядом с
+# исполняемым файлом.
+# keytab_path = "server.keytab"
+
+# ── Служебный AD-bind (Phase 31, SSO-01/SSO-03) ─────────────────────────────
+# ВАЖНО: bind_dn/bind_password — учётные данные служебной учётной записи
+# (read-only, наименьшие привилегии). Реальные значения храните ТОЛЬКО в
+# рантайм-конфиге рядом с БД (файл gitignored) — в git этого репозитория
+# должны попадать только плейсхолдеры вида ниже, никогда не реальный логин/пароль.
+# DN (или UPN) служебной учётной записи для read-only LDAP-bind.
+# bind_dn = "svc-trackly-ro@example.local"
+# Пароль служебной учётной записи. НИКОГДА не логируется/не печатается.
+# bind_password = "CHANGE_ME"
+# TTL (сек) кэша резолва displayName. По умолчанию: 1800 (30 минут) —
+# низкие ставки безопасности, можно кэшировать дольше.
+# display_name_cache_ttl_secs = 1800
+# TTL (сек) кэша резолва роли/группы. По умолчанию: 300 (5 минут) — короче
+# displayName-кэша, т.к. напрямую влияет на авторизацию (доступ должен
+# отзываться оперативно).
+# group_cache_ttl_secs = 300
+
+# Таблица «AD-группа → роль» (Phase 31, SSO-03). Приоритет при попадании
+# пользователя в НЕСКОЛЬКО групп: Admin > Manager > Employee
+# (highest-privilege-wins) НЕЗАВИСИМО от порядка записей ниже.
+# Указывайте ПОЛНЫЙ distinguished name группы (не короткое имя) — избегает
+# лишнего LDAP round-trip на резолв имени в DN.
+# [[ad.role_mapping]]
+# group_dn = "CN=IT-Admins,OU=Groups,DC=example,DC=local"
+# role = "admin"
+# [[ad.role_mapping]]
+# group_dn = "CN=IT-Managers,OU=Groups,DC=example,DC=local"
+# role = "manager"
