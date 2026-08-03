@@ -133,6 +133,24 @@ pub struct UserAnyState {
     pub has_open_register_request: bool,
 }
 
+/// Normalize a login for `admin_logins` matching (Phase 32, SSO-02, D-09):
+/// strip `@domain` (UPN) suffix, strip `DOMAIN\` (NetBIOS) prefix, lowercase.
+///
+/// Independent copy of the same technique used by
+/// `RealAdDirectory::cache_key`/`MockAdDirectory::lookup_key` — NOT shared,
+/// per this codebase's established "small independent adapters" convention
+/// (see `trackly-infra::ad::directory` module doc) AND because this check
+/// must remain structurally decoupled from the `AdDirectory` port (D-10:
+/// works even when the directory is unreachable/unconfigured).
+fn normalize_login_for_admin_check(login: &str) -> String {
+    let without_upn_suffix = login.split('@').next().unwrap_or(login);
+    let without_netbios_prefix = without_upn_suffix
+        .rsplit('\\')
+        .next()
+        .unwrap_or(without_upn_suffix);
+    without_netbios_prefix.to_lowercase()
+}
+
 // ---------------------------------------------------------------------------
 // AuthService
 // ---------------------------------------------------------------------------
@@ -156,6 +174,11 @@ pub struct AuthService {
     /// channel) so `ad_register` requests created from `on_ad_bind_success`
     /// emit `WsEvent::NewRequest` to admins too (REQ-04 reuse, Phase 9 Plan 03).
     pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+    /// Список нормализованных доменных логинов, получающих принудительную
+    /// роль admin при AD-bind (Phase 32, SSO-02). Пустой набор (дефолт из
+    /// `new()`) = фича выключена — существующие call sites/тесты не
+    /// затронуты. Заполняется через `with_admin_logins`.
+    pub(crate) admin_logins: Arc<std::collections::HashSet<String>>,
 }
 
 impl AuthService {
@@ -175,7 +198,32 @@ impl AuthService {
             ad_client,
             ws_tx,
             directory,
+            admin_logins: Arc::new(std::collections::HashSet::new()),
         }
+    }
+
+    /// Builder: настроить список доверенных доменных логинов, получающих
+    /// принудительную роль admin при AD-bind (Phase 32, SSO-02). Пустой
+    /// список (дефолт из `new()`) = фича выключена — существующие call
+    /// sites/тесты не затронуты. Каждый логин нормализуется (lowercase, без
+    /// UPN/NetBIOS аффиксов) при построении множества.
+    pub fn with_admin_logins(mut self, logins: Vec<String>) -> Self {
+        self.admin_logins = Arc::new(
+            logins
+                .iter()
+                .map(|l| normalize_login_for_admin_check(l))
+                .collect(),
+        );
+        self
+    }
+
+    /// Локальная set-проверка членства в `admin_logins` (D-10 — БЕЗ
+    /// обращения к каталогу). Требует нормализации ОБЕИХ сторон одинаково
+    /// (запись в конфиге И логин на входе) — иначе `us100` в конфиге не
+    /// сматчится с `us100@example.local`/`EXAMPLE\us100`, приходящими с SSO.
+    fn is_admin_login(&self, login: &str) -> bool {
+        self.admin_logins
+            .contains(&normalize_login_for_admin_check(login))
     }
 
     // -----------------------------------------------------------------------
@@ -1868,5 +1916,34 @@ mod tests {
 
         assert_eq!(user.full_name, "us300");
         assert_eq!(user.role, "employee");
+    }
+
+    // -------------------------------------------------------------------
+    // normalize_login_for_admin_check / is_admin_login (Phase 32, SSO-02)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn normalize_login_for_admin_check_strips_upn_and_netbios_and_lowercases() {
+        assert_eq!(normalize_login_for_admin_check("us100"), "us100");
+        assert_eq!(
+            normalize_login_for_admin_check("US100@example.local"),
+            "us100"
+        );
+        assert_eq!(normalize_login_for_admin_check("EXAMPLE\\us100"), "us100");
+    }
+
+    #[tokio::test]
+    async fn is_admin_login_defaults_to_empty_set_when_builder_not_called() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        assert!(!svc.is_admin_login("us100"));
+        assert!(!svc.is_admin_login("US100@example.local"));
+    }
+
+    #[tokio::test]
+    async fn is_admin_login_matches_upn_and_netbios_forms_after_with_admin_logins() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        let svc = svc.with_admin_logins(vec!["us100".to_string()]);
+        assert!(svc.is_admin_login("US100@example.local"));
+        assert!(svc.is_admin_login("EXAMPLE\\us100"));
     }
 }
