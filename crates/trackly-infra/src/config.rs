@@ -231,6 +231,18 @@ pub struct AdConfig {
     /// валидное стационарное состояние («маппинг не настроен»).
     #[serde(default)]
     pub role_mapping: Vec<RoleMappingEntry>,
+    /// Список доверенных доменных логинов (Phase 32, SSO-02) в форме
+    /// `sAMAccountName` (например `us100`). Матчинг case-insensitive и
+    /// нормализует UPN/NetBIOS-формы к чистому логину — см.
+    /// `trackly-app::services::auth::is_admin_login`. Любой логин из списка
+    /// получает роль `admin` и немедленную активацию на КАЖДОМ AD/SSO-входе,
+    /// в обход `ad_auto_accept`, pending-заявок и ручной блокировки (D-07) —
+    /// это осознанная точка доверия деплою (тот, кто редактирует этот файл,
+    /// может создать администратора). Пустой/отсутствующий список (дефолт) —
+    /// фича полностью выключена (D-03). Не содержит секретов — безопасно
+    /// печатать неотредактированным, в отличие от `bind_password`.
+    #[serde(default)]
+    pub admin_logins: Vec<String>,
 }
 
 impl std::fmt::Debug for AdConfig {
@@ -260,6 +272,7 @@ impl std::fmt::Debug for AdConfig {
             )
             .field("group_cache_ttl_secs", &self.group_cache_ttl_secs)
             .field("role_mapping", &self.role_mapping)
+            .field("admin_logins", &self.admin_logins)
             .finish()
     }
 }
@@ -283,6 +296,7 @@ impl Default for AdConfig {
             display_name_cache_ttl_secs: 1800,
             group_cache_ttl_secs: 300,
             role_mapping: Vec::new(),
+            admin_logins: Vec::new(),
         }
     }
 }
@@ -334,6 +348,7 @@ mod tests {
         assert_eq!(cfg.ad.bind_dn, "");
         assert_eq!(cfg.ad.bind_password, "");
         assert_eq!(cfg.ad.role_mapping, Vec::new());
+        assert_eq!(cfg.ad.admin_logins, Vec::<String>::new());
     }
 
     /// Behavior 2: an `[ad]` section present but omitting bind_dn/bind_password/
@@ -357,6 +372,7 @@ mod tests {
         assert_eq!(cfg.ad.display_name_cache_ttl_secs, 1800);
         assert_eq!(cfg.ad.group_cache_ttl_secs, 300);
         assert_eq!(cfg.ad.role_mapping, Vec::new());
+        assert_eq!(cfg.ad.admin_logins, Vec::<String>::new());
     }
 
     /// Behavior 3: manual Debug impl redacts bind_password, both on AdConfig
@@ -414,6 +430,32 @@ mod tests {
                 group_dn: "CN=IT-Admins,OU=Groups,DC=example,DC=local".to_string(),
                 role: "admin".to_string(),
             }
+        );
+    }
+
+    /// Behavior 5 (Phase 32, SSO-02): `admin_logins` is a flat TOML string
+    /// array (no `[[ad.admin_logins]]` table-array needed, unlike
+    /// `role_mapping` which wraps a struct). Defaults to empty when absent,
+    /// deserializes populated when present.
+    #[test]
+    fn admin_logins_flat_array_deserializes_and_defaults_empty() {
+        let empty: AppConfig = toml::from_str("").expect("empty config parses");
+        assert_eq!(empty.ad.admin_logins, Vec::<String>::new());
+
+        let toml_str = "[ad]\n\
+             enabled = true\n\
+             use_mock = false\n\
+             host = \"dc1.example.local\"\n\
+             port = 636\n\
+             domain = \"example.local\"\n\
+             base_dn = \"dc=example,dc=local\"\n\
+             name_attr = \"displayName\"\n\
+             no_tls_verify = false\n\
+             admin_logins = [\"us100\", \"us777\"]\n";
+        let cfg: AppConfig = toml::from_str(toml_str).expect("admin_logins parses");
+        assert_eq!(
+            cfg.ad.admin_logins,
+            vec!["us100".to_string(), "us777".to_string()]
         );
     }
 }
