@@ -322,14 +322,19 @@ impl AppCtx {
         // Phase 5 Plan 02: auth service + server_ctl.
         // Phase 9 Plan 02: + ad_client (local→AD login fallback, USR-08).
         // Phase 9 Plan 03: + ws_tx (ad_register NewRequest broadcast).
-        let auth = Arc::new(AuthService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-            ad_client,
-            ws_broadcast.clone(),
-            directory,
-        ));
+        // Phase 32 Plan 02: + with_admin_logins (SSO-02 forced-admin
+        // provisioning, deployment-time TOML list, D-01).
+        let auth = Arc::new(
+            AuthService::new(
+                writer.clone(),
+                readers.clone(),
+                clock.clone(),
+                ad_client,
+                ws_broadcast.clone(),
+                directory,
+            )
+            .with_admin_logins(config.ad.admin_logins.clone()),
+        );
 
         // Phase 6 Plan 03: SNMP client + PrinterService + RequestService +
         // background poll task.

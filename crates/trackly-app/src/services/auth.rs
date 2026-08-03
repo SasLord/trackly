@@ -455,6 +455,17 @@ impl AuthService {
         display_name: &str,
         role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
+        // Phase 32 (SSO-02): a login on the deployment-time admin_logins
+        // list is forced into an active Administrator, overriding EVERY
+        // branch below (unknown/pending/blocked/active-non-admin/
+        // active-admin) — see `force_admin_provisioning`. This check is a
+        // pure local set lookup (D-10), independent of AD/directory
+        // reachability, so it applies identically to BOTH callers of this
+        // function: `sso_login` (passwordless SSO) and `try_ad_login`
+        // (LDAPS password bind) — D-04..D-08 locked in 32-CONTEXT.md.
+        if self.is_admin_login(login) {
+            return self.force_admin_provisioning(login, display_name).await;
+        }
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
             // Pending registration (never approved yet): `is_active=0`,
@@ -484,6 +495,232 @@ impl AuthService {
                 }
             }
         }
+    }
+
+    /// Forced-admin provisioning state machine (Phase 32, SSO-02). Called
+    /// ONLY when `is_admin_login(login)` is true, from the top of
+    /// `on_ad_bind_success` — overrides ALL FIVE pre-existing user states
+    /// (D-04..D-07):
+    /// - unknown → INSERT an active admin user directly, NO `ad_register`/
+    ///   `requests` row created (bypass, not auto-accept-with-info-request).
+    /// - pending (never approved, open `ad_register`/`register` request) →
+    ///   activate+promote to admin AND auto-complete the dangling open
+    ///   request, in the SAME writer tx (Pitfall 2).
+    /// - blocked/soft-deleted → revive as active admin (D-07 — overrides
+    ///   manual block).
+    /// - active, role != admin → escalate to admin (D-06).
+    /// - active, role == admin already → NO-OP (idempotency — do not bump
+    ///   `version`/`updated_at_utc` on every login).
+    ///
+    /// Every write branch inserts a mandatory `audit_log` row
+    /// (`action='ad_auto_admin'`, `payload_json: {"prior_state": ...}`) in
+    /// the SAME writer transaction as the `users`/`requests` mutation
+    /// (T-32-04, V9 ASVS — durable trail for this explicit, config-authored
+    /// privilege escalation).
+    async fn force_admin_provisioning(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        match self.find_user_any_state(login).await? {
+            None => self.force_admin_insert_unknown(login, display_name).await,
+            Some(u) if u.is_active && !u.deleted && u.role == "admin" => {
+                // Already active admin — no-op write, just return the session.
+                self.get_by_login(login).await
+            }
+            Some(u) if u.is_active && !u.deleted => {
+                self.force_admin_escalate_active(u.id, u.role).await
+            }
+            Some(u) if !u.is_active && !u.deleted && u.has_open_register_request => {
+                self.force_admin_activate_pending(u.id).await
+            }
+            Some(u) => self.force_admin_revive_blocked(u.id).await,
+        }
+    }
+
+    /// Forced-admin, unknown login (D-04): INSERT an active admin user
+    /// directly — NO `ad_register`/`requests` row at all (this is a
+    /// bypass path, not an auto-accept-with-info-request path).
+    async fn force_admin_insert_unknown(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let login_owned = login.to_string();
+        let display_name_owned = display_name.to_string();
+
+        let user_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO users \
+                     (login, full_name, password_hash, role, ad_user, is_active, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, NULL, 'admin', 1, 1, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let user_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "unknown" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(user_id)
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, pending login (D-04, D-07, Pitfall 2): activate+promote
+    /// to admin (no `deleted_at_utc` touch — was never active) AND
+    /// auto-complete the dangling open `ad_register`/`register` request in
+    /// the SAME writer tx, so it doesn't linger for an admin to
+    /// approve/reject a user who is already an active Administrator.
+    async fn force_admin_activate_pending(&self, user_id: i64) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', is_active = 1, \
+                     updated_at_utc = ?1, version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                // Unconditional WHERE ... status='open' (no version=? clause)
+                // — this is a system-triggered transition, not an admin UI
+                // action with a caller-supplied version to optimistic-lock
+                // against (mirrors request_service.rs::approve_ad_register's
+                // completion UPDATE shape, minus the version check).
+                tx.execute(
+                    "UPDATE requests SET status = 'completed', updated_at_utc = ?1, \
+                     version = version + 1 \
+                     WHERE requested_by_user_id = ?2 AND request_type = 'ad_register' \
+                       AND ad_subtype = 'register' AND status = 'open' \
+                       AND deleted_at_utc IS NULL",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "pending" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, blocked/soft-deleted login (D-07 — explicit override of
+    /// manual block/soft-delete): revive as active admin
+    /// (`deleted_at_utc = NULL`), mirroring
+    /// `request_service.rs::approve_ad_register`'s "restore" branch shape.
+    async fn force_admin_revive_blocked(&self, user_id: i64) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', is_active = 1, deleted_at_utc = NULL, \
+                     updated_at_utc = ?1, version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "blocked" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, active-non-admin login (D-06 — escalation of an
+    /// existing user): UPDATE role only, `is_active` already 1, no
+    /// `deleted_at_utc` touch.
+    async fn force_admin_escalate_active(
+        &self,
+        user_id: i64,
+        prior_role: String,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', updated_at_utc = ?1, \
+                     version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": format!("active_{prior_role}") })
+                            .to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
     }
 
     /// Re-attempted bind for a user already in the pending-registration
