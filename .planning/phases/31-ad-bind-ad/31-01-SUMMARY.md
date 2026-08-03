@@ -110,3 +110,8 @@ None - no external service configuration required.
 ---
 *Phase: 31-ad-bind-ad*
 *Completed: 2026-08-03*
+
+## Self-Check: PASSED
+
+All created files verified present on disk; all task/fixup/summary commit hashes
+(`6115c63`, `685ea5b`, `86ce4b3`, `cf8354c`) verified present in `git log`.

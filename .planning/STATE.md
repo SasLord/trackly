@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-03T11:16:41.820Z"
-last_activity: 2026-08-03 -- Phase 31 planning complete
+last_updated: "2026-08-03T11:58:22.398Z"
+last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 31 — service-account-ad-bind-fio-roles
+**Current focus:** Phase 31 — ad-bind-ad
 
 ## Current Position
 
-Phase: 31 — Служебный AD-bind — ФИО и роли из AD-групп (ready to plan)
-Plan: —
+Phase: 31 (ad-bind-ad) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-08-03 -- Phase 31 planning complete
+Last activity: 2026-08-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -270,6 +270,7 @@ Last activity: 2026-08-03 -- Phase 31 planning complete
 | Phase 30 P07 | 12min | 2 tasks | 2 files |
 | Phase 30 P08 | 15min | 3 tasks | 2 files |
 | Phase 30 P09 | 35min | 2 tasks | 2 files |
+| Phase 31 P1 | 39min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -665,6 +666,8 @@ Recent decisions affecting current work:
 - [Phase 30]: Task 2 live-check (30-07): CSS-харнесс в headless Chromium/Playwright вместо реального приложения (auth недоступен в этой среде) — точно воспроизведены селекторы Layout.svelte/DashboardPage.svelte после фикса — Полноценный запуск требовал бы настройки dev-аутентификации/сид-данных ради одноразовой проверки чисто-CSS фикса; харнесс тестирует ровно тот CSS grid-track-sizing механизм, который был root cause
 - [Phase 30-08]: Dropdown search-input: убрать всегда-видимое кольцо фокуса, добавить встроенную клиентскую фильтрацию (visibleGroups) — Кольцо было визуальным шумом на всегда-сфокусированном поле; фильтрация нужна для 11 flat+select+searchable консьюмеров одним изменением вместо правки каждого файла (Gap 3, QA-02)
 - [Phase 30]: Плана 30-09: live-проверка Gap 7 в реальном приложении отложена до открытого UAT re-run чекпоинта 30-03 Task 3 — синтетическая проверка (Playwright + реальный compiled CSS в WebKit/Chromium) подтвердила механизм фикса вместо неё
+- [Phase 31]: MockAdDirectory reuses existing us100/us200 fixture identities (no new placeholder names)
+- [Phase 31]: TtlCache<V> implemented generically to support two independently-TTL'd instances (display_name, role) in Plan 31-02
 
 ### Pending Todos
 
@@ -754,7 +757,7 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-25T09:48:12.289Z
+Last session: 2026-08-03T11:56:57.154Z
 Stopped at: Completed 30-09-PLAN.md
 Resume file: 
 
