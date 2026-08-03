@@ -303,7 +303,7 @@
   // ring is suppressed here (it would spill past the narrow portal), replaced by a
   // background tint. Must be --tr-row-hover, NOT --tr-surface: the menu background
   // is --tr-surface-raised and in LIGHT theme --tr-surface == --tr-surface-raised
-  // (both #ffffff), so a --tr-surface highlight was invisible.
+  // (both resolve to the same white), so a --tr-surface highlight was invisible.
   :global(.ctx-menu-item:focus) {
     outline: none;
     box-shadow: none;

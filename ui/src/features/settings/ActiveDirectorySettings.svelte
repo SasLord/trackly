@@ -177,9 +177,9 @@
         </div>
         {#if settings.sso_enabled && (!settings.sso_spn || !settings.sso_keytab_present)}
           <p class="helper-text is-error-text">
-            SSO включён, но не настроен: задайте <code>spn</code> и <code>keytab_path</code> в секции
-            <code>[ad]</code> файла <code>trackly.config.toml</code> и положите keytab рядом с
-            программой.
+            SSO включён, но не настроен: задайте <code>spn</code> и <code>keytab_path</code> в
+            секции
+            <code>[ad]</code> файла <code>trackly.config.toml</code> и положите keytab рядом с программой.
           </p>
         {/if}
       </div>
