@@ -1814,12 +1814,21 @@ mod tests {
     use trackly_infra::clock_impl::SystemClock;
     use trackly_infra::test_support::test_writer_and_readers;
 
-    fn make_service(directory: Arc<dyn AdDirectory + Send + Sync>) -> (AuthService, tempfile::TempDir) {
+    fn make_service(
+        directory: Arc<dyn AdDirectory + Send + Sync>,
+    ) -> (AuthService, tempfile::TempDir) {
         let (writer, readers, dir) = test_writer_and_readers();
         let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
         let ad_client: Arc<dyn AdClient + Send + Sync> = Arc::new(MockAdClient::default_fixtures());
         let (ws_tx, _) = tokio::sync::broadcast::channel(128);
-        let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx), directory);
+        let svc = AuthService::new(
+            writer,
+            readers,
+            clock,
+            ad_client,
+            Arc::new(ws_tx),
+            directory,
+        );
         (svc, dir)
     }
 

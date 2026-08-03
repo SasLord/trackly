@@ -15,6 +15,7 @@ use trackly_app::services::AuthService;
 use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
+use trackly_infra::ad::directory_mock::MockAdDirectory;
 use trackly_infra::ad::mock::MockAdClient;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
@@ -26,7 +27,15 @@ fn make_auth_service_with_ad(
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let (ws_tx, _) = tokio::sync::broadcast::channel(128);
-    let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx));
+    let directory = Arc::new(MockAdDirectory::default_fixtures());
+    let svc = AuthService::new(
+        writer,
+        readers,
+        clock,
+        ad_client,
+        Arc::new(ws_tx),
+        directory,
+    );
     (svc, dir)
 }
 

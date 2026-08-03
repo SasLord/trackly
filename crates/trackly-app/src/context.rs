@@ -38,7 +38,10 @@ use crate::services::{
     DashboardService, DeviceService, OrgDbService, OrganizationService, PrinterService,
     ReportService, RequestService, TemplateService,
 };
-use trackly_infra::ad::{mock::MockAdClient, real::RealAdClient};
+use trackly_infra::ad::{
+    directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
+    real::RealAdClient,
+};
 use trackly_infra::snmp::{mock::MockSnmpClient, real::RealSnmpClient};
 
 /// Composition-root. Cloneable; делится между Tauri commands и axum handlers.
@@ -296,6 +299,20 @@ impl AppCtx {
             Arc::new(RealAdClient::new(config.ad.clone()))
         };
 
+        // Phase 31 Plan 03: AdDirectory selection mirrors the SAME use_ad_mock
+        // switch above (no new env var) — service-account bind for
+        // displayName/role SSO enrichment (SSO-01/SSO-03).
+        tracing::info!(
+            ad_directory_mode = if use_ad_mock { "mock" } else { "real" },
+            "AD directory selected"
+        );
+        let directory: Arc<dyn trackly_core::ports::ad_directory::AdDirectory + Send + Sync> =
+            if use_ad_mock {
+                Arc::new(MockAdDirectory::default_fixtures())
+            } else {
+                Arc::new(RealAdDirectory::new(config.ad.clone()))
+            };
+
         // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
         // Created before AuthService (Phase 9 Plan 03) so on_ad_bind_success's
         // ad_register write paths can broadcast WsEvent::NewRequest too (REQ-04 reuse).
@@ -311,6 +328,7 @@ impl AppCtx {
             clock.clone(),
             ad_client,
             ws_broadcast.clone(),
+            directory,
         ));
 
         // Phase 6 Plan 03: SNMP client + PrinterService + RequestService +
