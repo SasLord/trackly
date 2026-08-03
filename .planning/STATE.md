@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
-status: ready_to_plan
-last_updated: 2026-08-03T15:17:19.229Z
+status: planning
+last_updated: "2026-08-03T15:37:05.820Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 231
-  percent: 0
-stopped_at: Phase 31 complete (4/4) — ready to discuss Phase 32
+  completed_plans: 4
+  percent: 33
 ---
 
 # Project State
@@ -762,11 +761,11 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-03T13:37:51.563Z
-Stopped at: Completed 31-03-PLAN.md
+Last session: 2026-08-03T15:37:05.812Z
+Stopped at: Phase 32 context gathered
 Resume file: 
 
-None
+.planning/phases/32-sso-main/32-CONTEXT.md
 
 - Start the next milestone with /gsd-new-milestone
 
