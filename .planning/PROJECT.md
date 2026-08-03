@@ -100,6 +100,25 @@ Quality-гейты закрыты на этапе close (2026-07-15): UAT 19 (7/
 уведомления (NTF: SMTP/Telegram/Webhook), Pantum auto-restart (PNT), полный SSO
 Kerberos/NTLM (ADV-01), английская локализация (I18N), Windows 7 32-bit (WIN7).
 
+## Current Milestone: v1.3 «AD-SSO паритет + полировка превью печати»
+
+**Goal:** довести passwordless AD-SSO (Kerberos/SPNEGO) до полного паритета с reference-проектом
+adwebapp и привести предпросмотр печати к «вордовскому» виду.
+
+**Target features:**
+- **Служебный bind (service-account LDAP)** → реальные ФИО (displayName) из AD для SSO-пользователей
+  вместо доменного логина; с кэшем (по образцу adwebapp `ldap.go`).
+- **Роли из AD** — авто-админ для указанных доменных логинов (аналог `ADMIN_AD_LOGINS`) и/или
+  маппинг AD-групп → роли (чтобы не подтверждать первого администратора вручную).
+- **Мерж** `spike/ad-sso-kerberos` в `main` + релиз нормальной версией (уход от спайковых `0.0.x`).
+- **Полировка превью печати** (Акты / Приёмка / Отчёты) — лист A4 на сероватой подложке,
+  внутренние поля (margins), WYSIWYG-совпадение с реальной печатью через `@media print`.
+
+**Key context:** SSO-спайк уже LIVE-VALIDATED на реальном AD (ветка `spike/ad-sso-kerberos`,
+крейт `sspi 0.21`, keytab-валидация offline). Приватность org-данных — жёсткое требование:
+в git только плейсхолдеры, реальные значения (домен, SPN, ФИО) — в gitignored `trackly.config.toml`.
+Превью печати — чисто фронтенд/CSS (акты уже на HTML-шаблонах, backend отдаёт HTML-строку).
+
 ## Requirements
 
 ### Validated
@@ -132,10 +151,10 @@ Kerberos/NTLM (ADV-01), английская локализация (I18N), Wind
 
 <!-- Current scope. Building toward these. -->
 
-Активного milestone нет — v1.2 завершён и заархивирован. Следующий цикл открывается через
-`/gsd-new-milestone` (определит новые требования). Кандидаты — «Backlog (v2 и далее)» и
-«Out of Scope» ниже, плюс бэклог-элемент 999.1 (role-based route gating — UX-полировка,
-не безопасность).
+**v1.3 «AD-SSO паритет + полировка превью печати»** (активен, стартовал 2026-08-03).
+Требования определяются ниже (SSO-*, PRV-*). Строим: служебный bind для реальных ФИО,
+роли из AD (авто-админ / группы), мерж SSO-спайка в main, «вордовский» предпросмотр печати.
+Отложенный бэклог-элемент 999.1 (role-based route gating) — по-прежнему в бэклоге.
 
 ### Out of Scope
 
@@ -227,4 +246,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 13: Редизайн совместимости Принтеры↔Картриджи** (completed 2026-06-26) — V032 миграция: `printer_brand`+`printer_model` → единый `printer_name`, снос per-device junction (V029); `cartridges_sqlite.rs` матчит совместимость по `devices.name` (case-insensitive + TRIM, D-05 pass-through только в selection-фильтре); удалены 4 V029-команды, новая read-only `printers_get_compatible_aggregates` (агрегаты по статусу); карточка принтера: агрегаты совместимости + блок данных устройства (через `DeviceFormModal`) + установленный картридж по коду; `ModelFormModal` — единый free-text-блок «Совместимые принтеры»; kind-aware дефолт авто-возврата фотобарабана (state 5 «Изношенный»); снят лимит списка принтеров; `suggest_compat_printer` re-sourced с free-text истории на `devices.name`. Завершает milestone v1.1. (SPEC-13-R1..R8)
 
 ---
-*Last updated: 2026-07-29 — milestone **v1.2 «Редизайн UI и дизайн-система» завершён и заархивирован** (Фазы 23–30, 26/26 требований, аудит tech_debt без блокеров). Фаза 30 «Качество — доступность и паритет платформ» закрыта: durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs` + WCAG AA-токены + видимое кольцо фокуса на всех типах интерактива + паритет desktop↔LAN; двухраундовая gap-closure (30-04..09) + финальная серия UAT-фиксов 29.07 (таблицы focus-ring/высота/футер, комбобокс, Дашборд overflow — root-cause `position:absolute` sr-only таблицы графика мимо `overflow:hidden`, Картриджи, Пользователи staircase, a11y контекстного меню). both-theme UAT подписан пользователем; реальный Windows-билд `v1.2.0` собран (проверка отдельно). Тех-долг → бэклог (raw select на Дашборде, Nyquist VALIDATION у фаз 25–28, best-effort Windows-паритет). Бэклог 999.1 (role-based route gating) отложен. Следующий milestone — через `/gsd-new-milestone`.*
+*Last updated: 2026-08-03 — milestone **v1.3 «AD-SSO паритет + полировка превью печати» стартовал** (продолжение LIVE-VALIDATED SSO-спайка на ветке spike/ad-sso-kerberos: реальные ФИО через служебный bind, роли из AD, мерж в main; плюс «вордовский» предпросмотр печати). Требования SSO-*/PRV- определяются, роадмап продолжает нумерацию фаз с ~31. Предыдущий: v1.2 «Редизайн UI и дизайн-система» завершён и заархивирован* (Фазы 23–30, 26/26 требований, аудит tech_debt без блокеров). Фаза 30 «Качество — доступность и паритет платформ» закрыта: durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs` + WCAG AA-токены + видимое кольцо фокуса на всех типах интерактива + паритет desktop↔LAN; двухраундовая gap-closure (30-04..09) + финальная серия UAT-фиксов 29.07 (таблицы focus-ring/высота/футер, комбобокс, Дашборд overflow — root-cause `position:absolute` sr-only таблицы графика мимо `overflow:hidden`, Картриджи, Пользователи staircase, a11y контекстного меню). both-theme UAT подписан пользователем; реальный Windows-билд `v1.2.0` собран (проверка отдельно). Тех-долг → бэклог (raw select на Дашборде, Nyquist VALIDATION у фаз 25–28, best-effort Windows-паритет). Бэклог 999.1 (role-based route gating) отложен. Следующий milestone — через `/gsd-new-milestone`.*
