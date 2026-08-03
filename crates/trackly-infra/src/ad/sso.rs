@@ -138,11 +138,11 @@ pub fn accept_spnego(
         .with_input(&mut input)
         .with_output(&mut output);
 
-    let mut net = OfflineNetworkClient;
+    let net = OfflineNetworkClient;
     let result = server
         .accept_security_context_impl(builder)
         .map_err(|e| SsoError::Sspi(e.to_string()))?
-        .resolve_with_client(&mut net)
+        .resolve_with_client(&net)
         .map_err(|e| SsoError::Sspi(e.to_string()))?;
 
     let reply_token = output.remove(0).buffer;
