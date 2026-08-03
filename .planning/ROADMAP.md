@@ -47,7 +47,7 @@
 | ----- | --------- | ----- | ------ | --------- |
 | 23–29 | v1.2 | — | Complete | (см. архив) |
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
-| 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 0/TBD | Not started | - |
+| 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 0/4 | Planned | - |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 0/TBD | Not started | - |
 | 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
 
@@ -71,7 +71,11 @@
 4. При недоступности AD-каталога в момент проверки членства в группе система ведёт себя fail-closed — роль не повышается по умолчанию, пользователь остаётся в обычном пути (pending/Сотрудник), ошибка не приводит к тихому провалу авторизации.
 5. Приватность: домен, служебная учётная запись и её параметры bind читаются из gitignored `trackly.config.toml`; в git (тесты, фикстуры, конфиг-примеры) — только плейсхолдеры, никаких реальных ФИО/логинов/имени домена организации.
 
-**Plans**: TBD
+**Plans**:
+- [ ] 31-01-PLAN.md — AdDirectory port contract + MockAdDirectory fixtures + TtlCache primitive (Wave 1)
+- [ ] 31-02-PLAN.md — AdConfig service-bind/group-mapping fields + RealAdDirectory (service-account bind, memberOf/LDAP_MATCHING_RULE_IN_CHAIN group check) (Wave 2)
+- [ ] 31-03-PLAN.md — Wire AdDirectory into AuthService.sso_login + role threading + context.rs mock/real selection (Wave 3)
+- [ ] 31-04-PLAN.md — End-to-end SSO-01/SSO-03 integration tests + full workspace verification gate (Wave 4)
 
 ---
 

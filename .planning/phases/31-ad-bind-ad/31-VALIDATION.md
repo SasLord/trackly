@@ -1,9 +1,9 @@
 ---
 phase: 31
 slug: ad-bind-ad
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: planned
+nyquist_compliant: true
+wave_0_complete: false  # Wave 0 items are scheduled as Plan 31-01 (port+mock+cache) + part of 31-04 (integration test) — not yet EXECUTED, only planned
 created: 2026-08-03
 ---
 
@@ -78,11 +78,11 @@ created: 2026-08-03
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify or Wave 0 dependencies (all 9 tasks across 31-01..31-04 have `<automated>`)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (ad_directory.rs/directory_mock.rs/cache.rs -> Plan 31-01; ad_directory_sso.rs -> Plan 31-04 Task 1; TRACKLY_AD_MOCK convention extended -> Plan 31-03 Task 2)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s (per-task `cargo test -p <crate> <module>` scoped commands)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** planned 2026-08-03 — 4 plans (31-01..31-04), all 9 tasks have automated `<verify>`, Wave 0 gaps distributed across Plan 31-01 (port/mock/cache) and Plan 31-04 Task 1 (integration test file). See PLAN.md files for exact task->requirement mapping.
