@@ -65,10 +65,7 @@ mod tests {
     fn put_then_get_returns_value() {
         let cache: TtlCache<String> = TtlCache::new(Duration::from_secs(60));
         cache.put("us100".to_string(), "Иванов Иван Иванович".to_string());
-        assert_eq!(
-            cache.get("us100"),
-            Some("Иванов Иван Иванович".to_string())
-        );
+        assert_eq!(cache.get("us100"), Some("Иванов Иван Иванович".to_string()));
     }
 
     #[test]

@@ -151,10 +151,7 @@ mod tests {
     async fn upn_and_netbios_forms_resolve_to_same_fixture() {
         let mock = MockAdDirectory::default_fixtures();
 
-        let upn_result = mock
-            .resolve("us100@example.local")
-            .await
-            .expect("no error");
+        let upn_result = mock.resolve("us100@example.local").await.expect("no error");
         assert_eq!(
             upn_result,
             DirectoryResult {
