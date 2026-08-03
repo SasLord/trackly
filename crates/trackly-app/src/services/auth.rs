@@ -1241,7 +1241,11 @@ impl AuthService {
     }
 
     /// Устанавливает `ad_sso_enabled` в `app_settings`. Требует `ManageSettings`.
-    pub async fn set_ad_sso_enabled(&self, enabled: bool, caller: &Identity) -> Result<(), AppError> {
+    pub async fn set_ad_sso_enabled(
+        &self,
+        enabled: bool,
+        caller: &Identity,
+    ) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
         let value = if enabled { "1" } else { "0" };
         let now = self.clock.unix_seconds();

@@ -168,7 +168,10 @@ async fn archived_at_utc_absent_for_partially_returned_parent() {
             .expect("do_return partial");
 
         let parent = svc.get(handover.id).await.expect("get parent");
-        assert!(!parent.archived, "partially-returned parent must not be archived");
+        assert!(
+            !parent.archived,
+            "partially-returned parent must not be archived"
+        );
         assert!(
             parent.archived_at_utc.is_none(),
             "archived_at_utc must be None when archived == false"

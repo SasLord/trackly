@@ -20,13 +20,13 @@
 
 use std::time::Duration;
 
+use sspi::kerberos::ServerProperties;
 use sspi::network_client::NetworkClient;
 use sspi::{
     BufferType, CredentialUse, DataRepresentation, KerberosConfig, KerberosServerConfig, Negotiate,
     NegotiateConfig, NetworkRequest, SecurityBuffer, SecurityStatus, ServerRequestFlags, Sspi,
     SspiImpl,
 };
-use sspi::kerberos::ServerProperties;
 
 /// How far the acceptor tolerates clock skew between client and this server when validating
 /// the ticket's timestamps. Kerberos' customary allowance is 5 minutes.
@@ -38,7 +38,10 @@ pub enum SsoOutcome {
     /// Handshake complete — `username` is the authenticated AD account (SAM/UPN as sspi
     /// reports it). `reply_token` (possibly empty) must be returned to the client in the
     /// `WWW-Authenticate: Negotiate <base64>` header.
-    Authenticated { username: String, reply_token: Vec<u8> },
+    Authenticated {
+        username: String,
+        reply_token: Vec<u8>,
+    },
     /// Handshake needs another round trip — send `reply_token` back with a 401 and expect a
     /// follow-up token. (Kerberos usually completes in one step; NTLM-style continuation is
     /// where this occurs.)
@@ -114,10 +117,12 @@ pub fn accept_spnego(
         server_properties,
     };
 
-    let negotiate_config =
-        NegotiateConfig::from_protocol_config(Box::new(server_config), client_computer_name.to_string());
-    let mut server =
-        Negotiate::new_server(negotiate_config, Vec::new()).map_err(|e| SsoError::Sspi(e.to_string()))?;
+    let negotiate_config = NegotiateConfig::from_protocol_config(
+        Box::new(server_config),
+        client_computer_name.to_string(),
+    );
+    let mut server = Negotiate::new_server(negotiate_config, Vec::new())
+        .map_err(|e| SsoError::Sspi(e.to_string()))?;
 
     // Inbound credentials handle (server side). The service key lives in ServerProperties, so
     // no `with_auth_data` here — see the module-level runtime-unknown note (1).
@@ -128,7 +133,10 @@ pub fn accept_spnego(
         .map_err(|e| SsoError::Sspi(e.to_string()))?;
 
     let mut input = [SecurityBuffer::new(input_token.to_vec(), BufferType::Token)];
-    let mut output = vec![SecurityBuffer::new(Vec::with_capacity(1024), BufferType::Token)];
+    let mut output = vec![SecurityBuffer::new(
+        Vec::with_capacity(1024),
+        BufferType::Token,
+    )];
 
     let builder = server
         .accept_security_context()
@@ -148,7 +156,9 @@ pub fn accept_spnego(
     let reply_token = output.remove(0).buffer;
 
     match result.status {
-        SecurityStatus::Ok | SecurityStatus::CompleteNeeded | SecurityStatus::CompleteAndContinue => {
+        SecurityStatus::Ok
+        | SecurityStatus::CompleteNeeded
+        | SecurityStatus::CompleteAndContinue => {
             // Authenticated — read the client's AD account name off the established context.
             let username = server
                 .query_context_names()

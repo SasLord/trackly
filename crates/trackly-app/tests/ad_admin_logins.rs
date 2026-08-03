@@ -46,8 +46,15 @@ fn make_auth_service_with_admin_logins(
     let ad_client: Arc<dyn trackly_core::ports::ad::AdClient + Send + Sync> =
         Arc::new(MockAdClient::default_fixtures());
     let (ws_tx, _) = tokio::sync::broadcast::channel(128);
-    let svc = AuthService::new(writer, readers, clock, ad_client, Arc::new(ws_tx), directory)
-        .with_admin_logins(admin_logins);
+    let svc = AuthService::new(
+        writer,
+        readers,
+        clock,
+        ad_client,
+        Arc::new(ws_tx),
+        directory,
+    )
+    .with_admin_logins(admin_logins);
     (svc, dir)
 }
 
@@ -211,8 +218,7 @@ async fn admin_logins_pending_user_activated_and_request_completed() {
     };
 
     // Second AuthService sharing the SAME writer/readers, admin_logins=["us100"].
-    let svc2 =
-        make_auth_service_sharing(&svc, vec!["us100".to_string()], mock_directory_default());
+    let svc2 = make_auth_service_sharing(&svc, vec!["us100".to_string()], mock_directory_default());
     svc2.set_ad_enabled(true, &admin_caller())
         .await
         .expect("enable AD on shared svc2");
@@ -348,11 +354,9 @@ async fn admin_logins_already_admin_is_idempotent_noop() {
     let readers = svc.readers.clone();
     let version_before: i64 = tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
-        conn.query_row(
-            "SELECT version FROM users WHERE login = 'us100'",
-            [],
-            |r| r.get(0),
-        )
+        conn.query_row("SELECT version FROM users WHERE login = 'us100'", [], |r| {
+            r.get(0)
+        })
         .expect("query version before")
     })
     .await
@@ -369,11 +373,9 @@ async fn admin_logins_already_admin_is_idempotent_noop() {
     let readers2 = svc.readers.clone();
     let version_after: i64 = tokio::task::spawn_blocking(move || {
         let conn = readers2.acquire();
-        conn.query_row(
-            "SELECT version FROM users WHERE login = 'us100'",
-            [],
-            |r| r.get(0),
-        )
+        conn.query_row("SELECT version FROM users WHERE login = 'us100'", [], |r| {
+            r.get(0)
+        })
         .expect("query version after")
     })
     .await

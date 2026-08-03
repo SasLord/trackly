@@ -148,7 +148,11 @@ fn parse_entry(body: &[u8]) -> Result<KeytabKey, KeytabError> {
     let enctype = cur.u16()?;
     let key = cur.counted()?.to_vec();
     // Optional 4-byte kvno overrides vno8 when present.
-    let kvno = if cur.remaining() >= 4 { cur.u32()? } else { vno8 };
+    let kvno = if cur.remaining() >= 4 {
+        cur.u32()?
+    } else {
+        vno8
+    };
 
     Ok(KeytabKey {
         realm,

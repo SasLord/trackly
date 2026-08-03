@@ -52,7 +52,9 @@ async fn seed_devices_with_state(
     loc_a: i64,
     condition: &str,
 ) -> Vec<i64> {
-    let names: Vec<String> = (0..count).map(|i| format!("UpdateTestDevice {i}")).collect();
+    let names: Vec<String> = (0..count)
+        .map(|i| format!("UpdateTestDevice {i}"))
+        .collect();
     let condition = condition.to_string();
     writer
         .execute(move |conn| {
@@ -204,7 +206,10 @@ async fn header_only_edit_does_not_touch_devices() {
 
         for (idx, &id) in device_ids.iter().enumerate() {
             let post = read_device_snap(&svc, id).await;
-            assert_eq!(post, pre[idx], "device state byte-for-byte unchanged (D-05)");
+            assert_eq!(
+                post, pre[idx],
+                "device state byte-for-byte unchanged (D-05)"
+            );
         }
     })
     .await
@@ -241,7 +246,11 @@ async fn add_position_transitions_device() {
 
         let post_extra = read_device_snap(&svc, extra_id).await;
         assert_eq!(post_extra.status_id, 2, "extra device now в_работе");
-        assert_eq!(post_extra.location_id, Some(loc_b), "extra device at act's location");
+        assert_eq!(
+            post_extra.location_id,
+            Some(loc_b),
+            "extra device at act's location"
+        );
 
         // Audit row exists for the added device.
         let readers = svc.readers.clone();
@@ -465,7 +474,11 @@ async fn remove_position_restores_prior_state() {
         // Removed device restored to pre-handover state (на_складе/loc_a/Новое).
         let post = read_device_snap(&svc, removed_id).await;
         assert_eq!(post.status_id, 1, "restored to на_складе");
-        assert_eq!(post.location_id, Some(loc_a), "restored to pre-handover location");
+        assert_eq!(
+            post.location_id,
+            Some(loc_a),
+            "restored to pre-handover location"
+        );
         assert_eq!(post.condition.as_deref(), Some("Новое"));
 
         // Kept device unaffected.
@@ -547,7 +560,10 @@ async fn double_edit_restores_most_recent_snapshot() {
         let mut update3 = update_dto_from(&after2, &ids_with_x);
         update3.location_id = Some(loc_c);
         update3.location_name = None;
-        let after3 = svc.update(update3).await.expect("edit #3: re-add X at loc_c");
+        let after3 = svc
+            .update(update3)
+            .await
+            .expect("edit #3: re-add X at loc_c");
         let post_edit3 = read_device_snap(&svc, device_x).await;
         assert_eq!(post_edit3.status_id, 2, "edit #3: X в_работе");
         assert_eq!(post_edit3.location_id, Some(loc_c));
@@ -643,7 +659,10 @@ async fn reject_removal_of_returned_device() {
         let post_d1 = read_device_snap(&svc, device_ids[1]).await;
         let post_replacement = read_device_snap(&svc, replacement_id).await;
         assert_eq!(post_d0, pre_d0, "already-returned device unchanged");
-        assert_eq!(post_d1, pre_d1, "still-outstanding device unchanged (no partial mutation)");
+        assert_eq!(
+            post_d1, pre_d1,
+            "still-outstanding device unchanged (no partial mutation)"
+        );
         assert_eq!(
             post_replacement, pre_replacement,
             "replacement device never added (whole transaction rolled back)"
@@ -761,7 +780,10 @@ async fn number_change_rejects_duplicate() {
 
         let mut update = update_dto_from(&act_a, &device_ids_a);
         update.number_override = Some(act_b.number_raw);
-        let err = svc.update(update).await.expect_err("should reject duplicate number");
+        let err = svc
+            .update(update)
+            .await
+            .expect_err("should reject duplicate number");
         match err {
             AppError::Conflict { reason } => {
                 assert!(reason.contains(&act_b.number_raw.to_string()));
@@ -831,7 +853,10 @@ async fn remove_last_outstanding_archives_act() {
         // Remove the last outstanding device (device 1), keeping only the
         // already-returned device 0 in the item set.
         let update = update_dto_from(&handover_after_return, &[device_ids[0]]);
-        let updated = svc.update(update).await.expect("remove last outstanding device");
+        let updated = svc
+            .update(update)
+            .await
+            .expect("remove last outstanding device");
 
         assert!(
             updated.archived,
@@ -900,7 +925,10 @@ async fn add_device_to_archived_unarchives() {
         let extra_id = extra_ids[0];
         let new_device_ids = vec![device_ids[0], extra_id];
         let update = update_dto_from(&handover_after_return, &new_device_ids);
-        let updated = svc.update(update).await.expect("add device to archived act");
+        let updated = svc
+            .update(update)
+            .await
+            .expect("add device to archived act");
 
         assert!(
             !updated.archived,
@@ -909,7 +937,10 @@ async fn add_device_to_archived_unarchives() {
         );
 
         let post_extra = read_device_snap(&svc, extra_id).await;
-        assert_eq!(post_extra.status_id, 2, "newly added device transitions to в_работе");
+        assert_eq!(
+            post_extra.status_id, 2,
+            "newly added device transitions to в_работе"
+        );
     })
     .await
     .expect("add_device_to_archived_unarchives budget");
@@ -971,7 +1002,9 @@ async fn rename_with_return_frees_old_number() {
         // Rename the handover to a fresh, unrelated number.
         let mut update = update_dto_from(&handover_after_return, &device_ids);
         update.number_override = Some(90000);
-        svc.update(update).await.expect("rename handover to a free number");
+        svc.update(update)
+            .await
+            .expect("rename handover to a free number");
 
         // The OLD number must now be reusable — create a brand-new handover
         // that explicitly requests it.
@@ -1049,7 +1082,10 @@ async fn complectation_edit_writes_audit() {
             .await
             .expect("spawn_blocking")
         };
-        assert_eq!(count, 1, "first комплектация edit writes exactly one audit row");
+        assert_eq!(
+            count, 1,
+            "first комплектация edit writes exactly one audit row"
+        );
         assert!(
             before_json
                 .as_deref()

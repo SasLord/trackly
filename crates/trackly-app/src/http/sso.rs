@@ -119,8 +119,9 @@ pub async fn handler_ad_sso(
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
     let token_b64 = match auth_header {
-        Some(h) if h.len() > NEGOTIATE_PREFIX.len()
-            && h[..NEGOTIATE_PREFIX.len()].eq_ignore_ascii_case(NEGOTIATE_PREFIX) =>
+        Some(h)
+            if h.len() > NEGOTIATE_PREFIX.len()
+                && h[..NEGOTIATE_PREFIX.len()].eq_ignore_ascii_case(NEGOTIATE_PREFIX) =>
         {
             h[NEGOTIATE_PREFIX.len()..].trim()
         }
@@ -143,7 +144,10 @@ pub async fn handler_ad_sso(
     let keytab_bytes = match std::fs::read(&ad.keytab_path) {
         Ok(b) => b,
         Err(e) => {
-            tracing::error!("AD SSO: не удалось прочитать keytab {}: {e}", ad.keytab_path);
+            tracing::error!(
+                "AD SSO: не удалось прочитать keytab {}: {e}",
+                ad.keytab_path
+            );
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(json!({ "error": "Файл keytab недоступен на сервере" })),

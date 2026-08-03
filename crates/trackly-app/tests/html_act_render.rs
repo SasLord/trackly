@@ -7,9 +7,7 @@
 use std::sync::Arc;
 
 use rusqlite::params;
-use trackly_app::dto::act::{
-    ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto,
-};
+use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::dto::reports::OrgPatch;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::act_service::format_ru_date;
