@@ -18,6 +18,7 @@
 //! };
 //! ```
 
+pub mod directory_mock;
 pub mod discovery;
 pub mod keytab;
 pub mod mock;
