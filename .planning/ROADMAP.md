@@ -72,9 +72,20 @@
 5. Приватность: домен, служебная учётная запись и её параметры bind читаются из gitignored `trackly.config.toml`; в git (тесты, фикстуры, конфиг-примеры) — только плейсхолдеры, никаких реальных ФИО/логинов/имени домена организации.
 
 **Plans**:
+**Wave 1**
+
 - [ ] 31-01-PLAN.md — AdDirectory port contract + MockAdDirectory fixtures + TtlCache primitive (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 31-02-PLAN.md — AdConfig service-bind/group-mapping fields + RealAdDirectory (service-account bind, memberOf/LDAP_MATCHING_RULE_IN_CHAIN group check) (Wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 31-03-PLAN.md — Wire AdDirectory into AuthService.sso_login + role threading + context.rs mock/real selection (Wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 31-04-PLAN.md — End-to-end SSO-01/SSO-03 integration tests + full workspace verification gate (Wave 4)
 
 ---

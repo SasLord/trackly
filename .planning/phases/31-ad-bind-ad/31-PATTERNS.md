@@ -420,10 +420,23 @@ Add a new field the SAME way `ad_client` was added: `pub(crate) directory: Arc<d
 with an accompanying doc-comment in the same style ("`RealAdDirectory` in prod, `MockAdDirectory`
 on dev macOS (D-Mock-01). Used by `sso_login`'s displayName/role enrichment (SSO-01/SSO-03).")
 and a new trailing constructor parameter. **Breaking-change ripple:** `AuthService::new` is a
-POSITIONAL constructor with 5 params today; adding a 6th param breaks EVERY call site. There
-are exactly two call sites to update: `crates/trackly-app/src/context.rs:308` (production
-wiring) and `crates/trackly-app/tests/ad_auth.rs:29` (`make_auth_service_with_ad` test helper)
-— see below for both.
+POSITIONAL constructor with 5 params today; adding a 6th param breaks EVERY call site.
+**CORRECTED (plan-checker BLOCKER):** there are **8** call sites to update, not 2 — re-verified
+via `grep -rn "AuthService::new" crates/`. Two of the 8 live INSIDE the `trackly-app` lib crate's
+own `#[cfg(test)]` modules (same compilation unit as `auth.rs`), so leaving them broken makes
+`auth.rs`'s own `--lib` test target fail to compile. Full inventory:
+- `crates/trackly-app/src/context.rs:308` — production wiring (mock/real `use_ad_mock` switch)
+- `crates/trackly-app/src/http/health.rs:75` — `#[cfg(test)] mod tests::minimal_ctx` (same lib crate)
+- `crates/trackly-app/src/tauri_cmds/health.rs:91` — `#[cfg(test)] mod tests::minimal_ctx` (same lib crate)
+- `crates/trackly-app/tests/ad_auth.rs:29` — `make_auth_service_with_ad` helper
+- `crates/trackly-app/tests/specta_roundtrip.rs:63` — inline construction
+- `crates/trackly-app/tests/auth_smoke.rs:24` — `make_auth_service` helper
+- `crates/trackly-app/tests/users_crud.rs:22` — `make_auth_service` helper
+- `crates/trackly-app/tests/ad_register.rs:33` — `make_auth_service_with_ad` helper
+
+Every site EXCEPT `context.rs` injects the 6th arg as `Arc::new(MockAdDirectory::default_fixtures())`
+(none exercise the fail-closed path). Plan 31-03 owns all 8 (Task 1: the two same-lib-crate
+`health.rs` sites; Task 2: `context.rs` + the 5 `tests/*.rs` binaries).
 
 **`sso_login` — exact current code to modify** (verified live, lines 266-289):
 ```rust

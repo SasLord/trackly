@@ -459,9 +459,16 @@ replacement of an outdated one.
 to explicitly confirm/lock as decisions before or during planning are A3 (config vs DB for
 role mapping) and A4 (DN vs bare-name for group config).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three open questions were resolved by adopting the research recommendations below; the
+> Phase 31 plans (31-01..31-04) faithfully implement each. No `/gsd-discuss-phase 31` override
+> was requested, so the recommendations stand as the locked decisions.
 
 1. **Should the group→role mapping be editable via the Settings UI, or TOML-only?**
+   **RESOLVED:** TOML-only. Plans implement `[[ad.role_mapping]]` in `trackly.config.toml`
+   (bootstrap-only, matching the existing `host`/`base_dn` read-only-displayed precedent); no
+   CRUD-mapping UI is built in this phase.
    - What we know: `ActiveDirectorySettings.svelte`'s own code comment explicitly documents
      the existing split — `enabled`/`auto_accept` are DB-backed/UI-writable via
      `settings_set_ad`; `host`/`port`/`domain`/`base_dn`/`name_attr`/`no_tls_verify`/SSO
@@ -495,6 +502,9 @@ role mapping) and A4 (DN vs bare-name for group config).
      5 min, direct authorization impact). No manual-invalidation admin action needed for v1 —
      defer to a future phase if operationally requested. Make BOTH TTLs configurable in
      `trackly.config.toml` (not hardcoded) so an admin can tune them without a rebuild.
+   **RESOLVED:** Split, independently-configurable TTLs — `display_name_cache_ttl_secs`
+   (default 1800s) and `group_cache_ttl_secs` (default 300s) in `trackly.config.toml`. No
+   manual cache-invalidation admin action in v1.
 
 3. **What role does a user get if they match MULTIPLE mapped groups (e.g., member of both
    "Managers" and "Admins")?**
@@ -507,6 +517,8 @@ role mapping) and A4 (DN vs bare-name for group config).
      circuiting on the first (highest) match — this also minimizes LDAP round trips (check
      the Admin-mapped group first; only check Manager-mapped group if Admin check is negative).
      Confirm with the user during `/gsd-discuss-phase 31` if this matters to them operationally.
+   **RESOLVED:** Highest-privilege-wins (Admin > Manager > Employee), implemented as a
+   pure/unit-tested `pick_highest_role` helper in Plan 31-02.
 
 ## Environment Availability
 

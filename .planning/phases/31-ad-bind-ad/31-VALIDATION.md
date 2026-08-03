@@ -43,9 +43,11 @@ created: 2026-08-03
 |-----|----------|-----------|-------------------|-------------|--------|
 | SSO-01 | Known `sAMAccountName` resolves to fixture displayName | unit | `cargo test -p trackly-infra ad::directory_mock` | ❌ W0 | ⬜ pending |
 | SSO-01 | Unknown login falls back to login itself (no panic) | unit | same | ❌ W0 | ⬜ pending |
-| SSO-01 | Cache hit avoids a second directory call (call-count spy) | unit | `cargo test -p trackly-infra ad::cache` | ❌ W0 | ⬜ pending |
-| SSO-01 | Cache entry expires after TTL → fresh lookup | unit | same (short-TTL injection) | ❌ W0 | ⬜ pending |
-| SSO-01 | `sso_login()` shows resolved displayName, not bare login | integration | `cargo test -p trackly-app --test ad_directory_sso` | ❌ W0 | ⬜ pending |
+| SSO-01 | `TtlCache<V>` primitive: put/get round-trip, empty-key miss, TTL-expiry, key-isolation | unit | `cargo test -p trackly-infra ad::cache` | ❌ W0 | ⬜ pending |
+| SSO-01 | `RealAdDirectory::resolve` cache hit (BOTH display_name_cache + role_cache) short-circuits — NO LDAP call attempted, proven against an unreachable host/port (ROADMAP SC #2 / "с кэшем") | unit | `cargo test -p trackly-infra ad::directory::tests::cache_hit_short_circuits_ldap_call` (Plan 31-02 Task 2) | ❌ W0 | ⬜ pending |
+| SSO-01 | `RealAdDirectory::resolve` cache MISS still attempts (and correctly fails) a fresh lookup — cache never fabricates a hit | unit | `cargo test -p trackly-infra ad::directory::tests::cache_miss_falls_through_to_fresh_unreachable_lookup` (Plan 31-02 Task 2) | ❌ W0 | ⬜ pending |
+| SSO-01 | `sso_login()` resolves displayName/role via injected `AdDirectory` and degrades correctly when unreachable — wave-3 self-verification (closes plan-checker WARNING 3, does NOT duplicate the full 31-04 suite) | unit | `cargo test -p trackly-app --lib services::auth::tests` (Plan 31-03 Task 1) | ❌ W0 | ⬜ pending |
+| SSO-01 | `sso_login()` shows resolved displayName, not bare login (full end-to-end, 7-scenario suite) | integration | `cargo test -p trackly-app --test ad_directory_sso` | ❌ W0 | ⬜ pending |
 | SSO-03 | User in configured group gets mapped role on first login | integration | same new file | ❌ W0 | ⬜ pending |
 | SSO-03 | User in NO configured group gets default `employee` (regression) | integration | same file | ❌ W0 | ⬜ pending |
 | SSO-03 | Directory unreachable during group check → role NOT elevated (fail-closed) | integration | `MockAdDirectory::unreachable()` fixture | ❌ W0 | ⬜ pending |
