@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-08-03T07:25:43.464Z"
 last_activity: 2026-08-03
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 30 — quality-a11y-platform-parity
+**Current focus:** Phase 31 — service-account-ad-bind-fio-roles
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 31 — Служебный AD-bind — ФИО и роли из AD-групп (ready to plan)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-03 — Milestone v1.3 started
+Status: Roadmap created (Фазы 31-33) — awaiting /gsd-plan-phase 31
+Last activity: 2026-08-03 — ROADMAP.md/REQUIREMENTS.md/STATE.md updated for v1.3 (SSO-01/02/03, PRV-01/02/03 mapped 6/6)
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -298,6 +298,9 @@ Last activity: 2026-08-03 — Milestone v1.3 started
 - Phase 28 added (2026-07-16): Окна поддержки и администрирования — Заявки, Отчёты, Настройки, Пользователи; макета нет. Milestone v1.2 (WIN-06, WIN-07, WIN-08, WIN-09).
 - Phase 29 added (2026-07-16): Вход и интерфейс сотрудника — Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout; отдельные layout-shell от основного приложения, макета нет. Milestone v1.2 (WIN-10, WIN-11).
 - Phase 30 added (2026-07-16): Качество — доступность (AA-контраст, focus ring) и визуальный паритет Tauri WebView vs LAN-браузер; финальная сквозная проверка по всем окнам фаз 26–29. Milestone v1.2 (QA-02, QA-03).
+- Phase 31 added (2026-08-03): Служебный AD-bind — ФИО и роли из AD-групп — service-account LDAP bind (по образцу adwebapp `ldap.go`) резолвит `displayName` для SSO-пользователей с кэшем; маппинг AD-группа → роль через `memberOf`, fail-closed при недоступности каталога. Milestone v1.3 (SSO-01, SSO-03).
+- Phase 32 added (2026-08-03): Авто-админ по списку логинов + релиз SSO в main — настраиваемый список доменных логинов (аналог `ADMIN_AD_LOGINS`) получает роль «Администратор» сразу при первом SSO-входе; операционный итог фазы (не REQ) — мерж `spike/ad-sso-kerberos` в `main` и релиз обычной версии. Milestone v1.3 (SSO-02).
+- Phase 33 added (2026-08-03): Полировка предпросмотра печати — модалка предпросмотра (Акты/Приёмка/Отчёты) показывает лист A4 на сероватой подложке с полями (margins), WYSIWYG-совпадение предпросмотра и `@media print`. Независима от Phase 31/32 (чистый фронтенд/CSS). Milestone v1.3 (PRV-01, PRV-02, PRV-03).
 
 ### Decisions
 
@@ -309,6 +312,7 @@ Recent decisions affecting current work:
 - **«Расходник»:** ОСТАЁТСЯ как тип устройства (бумага, одноразовые флешки и пр.) — НЕ для картриджей; картриджи живут в собственном разделе
 - **PDF engine:** krilla 0.7 default, Typst-as-lib — backup по итогам spike в Phase 3
 - **Pantum auto-restart:** alert-only в v1 (PRN-06); авто-restart — v2 (PNT)
+- **Roadmap v1.3:** 3 фазы (31–33), продолжение нумерации с Phase 30 (v1.2), без искусственного дробления под granularity=standard (6 требований). SSO-01/03 объединены в Phase 31 (общая инфраструктура service-account bind); SSO-02 + мерж спайка в main — Phase 32; PRV-01..03 — независимая Phase 33 (фронтенд/CSS, можно параллельно с SSO).
 - [Phase ?]: Plan 01-01: MSRV 1.85 to 1.88 (Tauri 2 dep graph)
 - [Phase ?]: Plan 01-01: rusqlite 0.39 to 0.38, refinery 0.8 to 0.9 (rusqlite-bundled feature)
 - [Phase ?]: Plan 01-01: Included tauri-plugin-single-instance from Day 1 per RESEARCH Open Question 2
@@ -800,4 +804,4 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- ROADMAP.md ready for v1.3 (Фазы 31-33, 6/6 requirements mapped). Run /gsd-plan-phase 31 to begin planning.
