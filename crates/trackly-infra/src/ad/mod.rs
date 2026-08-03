@@ -19,6 +19,7 @@
 //! ```
 
 pub mod cache;
+pub mod directory;
 pub mod directory_mock;
 pub mod discovery;
 pub mod keytab;
