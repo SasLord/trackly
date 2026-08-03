@@ -25,14 +25,57 @@ pub mod templates;
 pub mod users;
 pub mod ws;
 
+use axum::extract::{Request, State};
+use axum::middleware::Next;
+use axum::response::Response;
 use axum::{http::HeaderValue, Router};
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::set_header::SetResponseHeaderLayer;
-use tower_sessions::{cookie::SameSite, Expiry, SessionManagerLayer};
+use tower_sessions::{cookie::SameSite, Expiry, Session, SessionManagerLayer};
 
 use crate::context::AppCtx;
+use crate::http::auth::SessionIdentity;
 use crate::server::rusqlite_session_store::RusqliteSessionStore;
+
+/// Refresh the session's cached role from the DB on each request, so a role change (e.g.
+/// an admin elevating an AD-SSO-registered user from «Сотрудник» to «Администратор»)
+/// applies WITHOUT a re-login.
+///
+/// The session stores only a role *snapshot* taken at login (`SessionIdentity`), and every
+/// `session_identity()` caller (112 of them) authorizes against that snapshot. Without this
+/// middleware an elevated/demoted user keeps the old role until the cookie is reissued —
+/// which surfaced as "admin UI but 403 on data" right after the first SSO login+approval.
+///
+/// Runs inside the session layer (session already loaded). One indexed read per
+/// authenticated request — negligible on a LAN. On any lookup error the session is left
+/// untouched (never a spurious logout on a transient DB hiccup); role is rewritten only
+/// when it actually differs, to avoid needless session-store writes.
+async fn refresh_session_role(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    req: Request,
+    next: Next,
+) -> Response {
+    if let Ok(Some(si)) = session.get::<SessionIdentity>("identity").await {
+        if let Some(uid) = si.user_id {
+            if let Ok(user) = ctx.auth.get_user_by_id(uid).await {
+                if user.role != si.role {
+                    let _ = session
+                        .insert(
+                            "identity",
+                            SessionIdentity {
+                                user_id: Some(uid),
+                                role: user.role,
+                            },
+                        )
+                        .await;
+                }
+            }
+        }
+    }
+    next.run(req).await
+}
 
 /// Построить полный axum Router со всеми middleware.
 ///
@@ -123,6 +166,13 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(dashboard::router())
         .merge(settings_org::router())
         .merge(sso::router())
+        // Role-refresh middleware — INNER to the session layer (session must be loaded
+        // first). Rewrites the session's cached role from the DB so role changes apply
+        // without a re-login (see `refresh_session_role`).
+        .layer(axum::middleware::from_fn_with_state(
+            ctx.clone(),
+            refresh_session_role,
+        ))
         // Session layer применяется ко всем маршрутам
         .layer(session_layer);
 

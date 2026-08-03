@@ -50,9 +50,21 @@
     return false;
   }
 
+  // An authenticated user must never sit on the `#/login` route. This happens after an
+  // AD-SSO login (the SSO button reloads the page while the hash is still `#/login`, left
+  // over from client.ts's 401 redirect) — the router would then render LoginPage INSIDE the
+  // Layout: sidebar + a stuck "Вход в систему". Send them to the role's default page (`#/`
+  // → Dashboard for admin/manager, Заявки for employee).
+  function redirectAwayFromLogin() {
+    const h = window.location.hash;
+    if (h === '#/login' || h === '#login' || h === '' || h === '#') {
+      window.location.hash = '#/';
+    }
+  }
+
   onMount(async () => {
     try {
-      const authed = await loadAuthStatus();
+      let authed = await loadAuthStatus();
 
       // Passwordless AD SSO (spike-002/003): only in a server-mode/LAN browser, only when
       // not already authenticated and not on the first-run bootstrap screen. On success the
@@ -60,8 +72,10 @@
       // On failure `trySilentAdSso` self-suppresses (ad_skip) and we fall through to LoginPage.
       if (!authed && !isTauri && !bootstrapNeeded) {
         const ssoOk = await trySilentAdSso();
-        if (ssoOk) await loadAuthStatus();
+        if (ssoOk) authed = await loadAuthStatus();
       }
+
+      if (authed) redirectAwayFromLogin();
     } catch {
       // Ignore — apiCall 401 redirect is handled in client.ts.
     } finally {
