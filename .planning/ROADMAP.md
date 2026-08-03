@@ -47,7 +47,7 @@
 | ----- | --------- | ----- | ------ | --------- |
 | 23–29 | v1.2 | — | Complete | (см. архив) |
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
-| 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 1/4 | In Progress|  |
+| 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 2/4 | In Progress|  |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 0/TBD | Not started | - |
 | 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
 
@@ -78,7 +78,7 @@
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 31-02-PLAN.md — AdConfig service-bind/group-mapping fields + RealAdDirectory (service-account bind, memberOf/LDAP_MATCHING_RULE_IN_CHAIN group check) (Wave 2)
+- [x] 31-02-PLAN.md — AdConfig service-bind/group-mapping fields + RealAdDirectory (service-account bind, memberOf/LDAP_MATCHING_RULE_IN_CHAIN group check) (Wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

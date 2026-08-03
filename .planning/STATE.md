@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-03T11:58:22.398Z"
+last_updated: "2026-08-03T12:42:05.350Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 3
@@ -20,7 +20,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 31 — ad-bind-ad
+**Current focus:** Phase 31 — plan 31-02 complete (RealAdDirectory + AdConfig); next: 31-03 wire into AuthService
 
 ## Current Position
 
