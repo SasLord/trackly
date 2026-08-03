@@ -496,9 +496,12 @@ fn admin_logins_flat_array_deserializes_and_defaults_empty() {
 explicit user/discuss-phase confirmation before the planner locks the design, since it changes
 which functions get modified and which regression tests are required.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during planning (2026-08-03). Resolutions inline below.
 
 1. **Does admin_logins apply to BOTH `sso_login` and `try_ad_login` (LDAPS password fallback), or SSO only?**
+   - **RESOLVED:** Inject at `on_ad_bind_success` (covers both paths) — locked in Plan 32-02; the dual-entry-point regression case is covered by Plan 32-03's test matrix.
    - What we know: CONTEXT.md's own "Claude's Discretion" section explicitly leaves the exact
      injection point open ("важно лишь итоговое поведение из D-04..D-08"). The requirement ID
      is literally named "SSO-02" and ROADMAP Success Criteria 1-2 both say "при... SSO-входе".
@@ -517,6 +520,7 @@ which functions get modified and which regression tests are required.
      cost, high value for later maintainers).
 
 2. **Should the audit_log action name be `ad_auto_admin`, or something more specific per-transition (e.g. distinguishing "first-time grant" from "escalation" from "revival")?**
+   - **RESOLVED:** Single `ad_auto_admin` action string with prior-state in `payload_json` — used consistently in Plans 32-02/32-03.
    - What we know: CONTEXT.md's discretion section suggests `ad_auto_admin` as one option. The
      existing convention uses distinct action strings per INSERT/UPDATE shape elsewhere
      (`ad_auto_register` vs `ad_pending_register` vs `ad_register_approve` are all different
@@ -532,6 +536,7 @@ which functions get modified and which regression tests are required.
      pattern). Low-risk either way; planner's call.
 
 3. **Does a full `ci-full` dry-run (via `workflow_dispatch` or a throwaway PR) need to be triggered on this branch BEFORE the real merge, to catch anything beyond the fmt drift already found?**
+   - **RESOLVED:** Yes — open a PR `spike/ad-sso-kerberos` → `main` for a free `ci-full` dry-run before the real merge; implemented in Plan 32-04.
    - What we know: `ci-full.yml` only runs on `pull_request` or `push: branches: [main]` — this
      branch has never had `ci-full` run against it (only `ci-fast`, which is ubuntu-only and
      already shows the fmt failure). `ci-full` additionally runs the ProcMon Windows portable-mode
