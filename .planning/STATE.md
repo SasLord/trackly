@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-03T17:34:02.993Z"
+last_updated: "2026-08-03T18:03:56.195Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 32 (sso-main) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-03
 
@@ -274,6 +274,7 @@ Last activity: 2026-08-03
 | Phase 31 P1 | 39min | 3 tasks | 5 files |
 | Phase 31 P03 | 50min | 2 tasks | 10 files |
 | Phase 32 P01 | 35min | 2 tasks | 2 files |
+| Phase 32 P02 | 55min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -674,6 +675,9 @@ Recent decisions affecting current work:
 - [Phase 31]: Plan 31-03: role_hint threaded ONLY into auto_register_ad_user/create_pending_registration; on_ad_bind_success's other branches untouched
 - [Phase 31]: Plan 31-03: try_ad_login (password-bind path) passes role_hint: None — directory role enrichment is SSO-only in this phase
 - [Phase 32]: Plan 32-01: admin_logins stored as flat TOML string array in AdConfig, mirroring role_mapping pattern (D-01)
+- [Phase 32]: Injection at on_ad_bind_success (both sso_login and try_ad_login) — DRY, ADMIN_AD_LOGINS parity
+- [Phase 32]: Single audit_log action 'ad_auto_admin' with payload_json.prior_state distinguishing branches
+- [Phase 32]: admin_logins threaded via with_admin_logins builder (not new constructor arg) to avoid touching 9 existing AuthService::new call sites
 
 ### Pending Todos
 
@@ -763,8 +767,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-03T17:34:02.985Z
-Stopped at: Completed 32-01-PLAN.md
+Last session: 2026-08-03T18:03:56.187Z
+Stopped at: Completed 32-02-PLAN.md
 Resume file: 
 
 None
