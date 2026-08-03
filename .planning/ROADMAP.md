@@ -48,7 +48,7 @@
 | 23–29 | v1.2 | — | Complete | (см. архив) |
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
-| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 3/5 | In Progress|  |
+| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 4/5 | In Progress|  |
 | 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
 
 ## Phase Details
@@ -121,7 +121,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 32-04-PLAN.md — Fix workspace cargo fmt drift + full verification gate + open PR for ci-full dry-run (Wave 4)
+- [x] 32-04-PLAN.md — Fix workspace cargo fmt drift + full verification gate + open PR for ci-full dry-run (Wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion, human-gated)*
 
