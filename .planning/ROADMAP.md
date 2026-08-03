@@ -48,7 +48,7 @@
 | 23–29 | v1.2 | — | Complete | (см. архив) |
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
-| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 0/5 | Not started | - |
+| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 1/5 | In Progress|  |
 | 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
 
 ## Phase Details
@@ -109,7 +109,7 @@
 **Plans**:
 **Wave 1**
 
-- [ ] 32-01-PLAN.md — AdConfig.admin_logins config field + parsing tests + trackly.config.toml.example docs (Wave 1)
+- [x] 32-01-PLAN.md — AdConfig.admin_logins config field + parsing tests + trackly.config.toml.example docs (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

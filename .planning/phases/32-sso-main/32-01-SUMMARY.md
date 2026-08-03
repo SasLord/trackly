@@ -92,3 +92,12 @@ None - no external service configuration required. `admin_logins` remains unset 
 ---
 *Phase: 32-sso-main*
 *Completed: 2026-08-03*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-infra/src/config.rs
+- FOUND: trackly.config.toml.example
+- FOUND: .planning/phases/32-sso-main/32-01-SUMMARY.md
+- FOUND: commit 7df340e
+- FOUND: commit 8a46fda
+- FOUND: commit 5526573

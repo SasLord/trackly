@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-03T16:56:00.883Z"
-last_activity: 2026-08-03 -- Phase 32 planning complete
+last_updated: "2026-08-03T17:34:02.993Z"
+last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 4
+  completed_plans: 5
   percent: 33
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 32 — авто админ по списку логинов + релиз sso в main
+**Current focus:** Phase 32 — sso-main
 
 ## Current Position
 
-Phase: 32
-Plan: Not started
+Phase: 32 (sso-main) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-03 -- Phase 32 planning complete
+Last activity: 2026-08-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -273,6 +273,7 @@ Last activity: 2026-08-03 -- Phase 32 planning complete
 | Phase 30 P09 | 35min | 2 tasks | 2 files |
 | Phase 31 P1 | 39min | 3 tasks | 5 files |
 | Phase 31 P03 | 50min | 2 tasks | 10 files |
+| Phase 32 P01 | 35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -672,6 +673,7 @@ Recent decisions affecting current work:
 - [Phase 31]: TtlCache<V> implemented generically to support two independently-TTL'd instances (display_name, role) in Plan 31-02
 - [Phase 31]: Plan 31-03: role_hint threaded ONLY into auto_register_ad_user/create_pending_registration; on_ad_bind_success's other branches untouched
 - [Phase 31]: Plan 31-03: try_ad_login (password-bind path) passes role_hint: None — directory role enrichment is SSO-only in this phase
+- [Phase 32]: Plan 32-01: admin_logins stored as flat TOML string array in AdConfig, mirroring role_mapping pattern (D-01)
 
 ### Pending Todos
 
@@ -761,11 +763,11 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-03T15:37:05.812Z
-Stopped at: Phase 32 context gathered
+Last session: 2026-08-03T17:34:02.985Z
+Stopped at: Completed 32-01-PLAN.md
 Resume file: 
 
-.planning/phases/32-sso-main/32-CONTEXT.md
+None
 
 - Start the next milestone with /gsd-new-milestone
 
