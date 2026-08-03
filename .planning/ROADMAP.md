@@ -48,7 +48,7 @@
 | 23–29 | v1.2 | — | Complete | (см. архив) |
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
-| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 0/TBD | Not started | - |
+| 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 0/5 | Not started | - |
 | 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
 
 ## Phase Details
@@ -106,7 +106,26 @@
 2. Логин из этого списка при первом SSO-входе становится активным пользователем с ролью Администратор немедленно — без промежуточной заявки на подтверждение.
 3. Логин, отсутствующий в списке, проходит прежний путь провижининга (авто-регистрация / заявка на подтверждение / маппинг по AD-группе из Phase 31) — список не расширяет доступ никому, кроме явно перечисленных логинов.
 
-**Plans**: TBD
+**Plans**:
+**Wave 1**
+
+- [ ] 32-01-PLAN.md — AdConfig.admin_logins config field + parsing tests + trackly.config.toml.example docs (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 32-02-PLAN.md — AuthService admin_logins builder/normalization + forced-admin state machine + context.rs wiring (Wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 32-03-PLAN.md — Full SSO-02 state-matrix integration tests (unknown/pending/blocked/escalation/idempotent/not-in-list/directory-unreachable) (Wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 32-04-PLAN.md — Fix workspace cargo fmt drift + full verification gate + open PR for ci-full dry-run (Wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion, human-gated)*
+
+- [ ] 32-05-PLAN.md — Human-approved merge spike/ad-sso-kerberos → main + push v1.3.0 release tag (Wave 5, autonomous: false)
 
 **Note** (не привязано к отдельному REQ-ID, операционный итог фазы/milestone): ветка `spike/ad-sso-kerberos` мержится в `main`, версия выходит из спайковой линейки `0.0.x` в обычный релизный тег.
 
