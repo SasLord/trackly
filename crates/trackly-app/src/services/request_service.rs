@@ -148,6 +148,10 @@ impl RequestService {
     ///
     /// D-REQ-01: for an Employee caller, counts are scoped to
     /// `requested_by_user_id = caller.user_id` — never the org-wide totals.
+    ///
+    /// REQ-06: `ad_register` rows are excluded from every bucket for
+    /// non-admin callers, mirroring `list()` — a caller's counts must never
+    /// reflect rows they cannot see via `list()`/`get()`.
     pub async fn counts(&self, caller: &Identity) -> Result<RequestCountsDto, AppError> {
         let requested_by_user_id = if matches!(caller.role, trackly_core::auth::Role::Employee) {
             if caller.user_id.is_none() {
@@ -157,12 +161,13 @@ impl RequestService {
         } else {
             None
         };
+        let exclude_ad_register = !matches!(caller.role, trackly_core::auth::Role::Admin);
 
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            let c = repo.counts(&conn, requested_by_user_id)?;
+            let c = repo.counts(&conn, requested_by_user_id, exclude_ad_register)?;
             Ok(RequestCountsDto {
                 all: c.all,
                 open: c.open,

@@ -35,9 +35,15 @@ pub trait RequestRepository {
     /// `requested_by_user_id` (D-REQ-01): when `Some(id)`, counts are scoped
     /// to requests owned by that user — the Employee-scoped path. `None`
     /// means unrestricted (Admin/Manager).
+    ///
+    /// `exclude_ad_register` (REQ-06): when `true`, rows with
+    /// `request_type = 'ad_register'` are excluded from every bucket —
+    /// enforced by the service for non-admin callers, same mechanism as
+    /// `list()`.
     fn counts(
         &self,
         conn: &Self::Conn,
         requested_by_user_id: Option<i64>,
+        exclude_ad_register: bool,
     ) -> Result<RequestCounts, AppError>;
 }

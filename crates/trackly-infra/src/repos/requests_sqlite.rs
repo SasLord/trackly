@@ -320,13 +320,19 @@ impl RequestRepository for SqliteRequestRepository {
         &self,
         conn: &Self::Conn,
         requested_by_user_id: Option<i64>,
+        exclude_ad_register: bool,
     ) -> Result<RequestCounts, AppError> {
+        // REQ-06: non-admin callers never see ad_register rows in counts,
+        // mirroring the exclusion already enforced in list().
+        let exclude_ad_register_i64: i64 = if exclude_ad_register { 1 } else { 0 };
+
         let all: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -335,8 +341,9 @@ impl RequestRepository for SqliteRequestRepository {
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE status = 'open' AND deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -345,8 +352,9 @@ impl RequestRepository for SqliteRequestRepository {
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE status = 'in_progress' AND deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -355,8 +363,9 @@ impl RequestRepository for SqliteRequestRepository {
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE status = 'completed' AND deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -365,8 +374,9 @@ impl RequestRepository for SqliteRequestRepository {
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE status = 'rejected' AND deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
@@ -375,8 +385,9 @@ impl RequestRepository for SqliteRequestRepository {
             .query_row(
                 "SELECT COUNT(*) FROM requests \
                  WHERE status = 'cancelled' AND deleted_at_utc IS NULL \
-                   AND (?1 IS NULL OR requested_by_user_id = ?1)",
-                params![requested_by_user_id],
+                   AND (?1 IS NULL OR requested_by_user_id = ?1) \
+                   AND (?2 = 0 OR request_type != 'ad_register')",
+                params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
             .map_err(map_rusqlite)?;
