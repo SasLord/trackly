@@ -126,3 +126,9 @@ Plan 33-04 (print-path rework, D-06) can proceed — the on-screen preview contr
 ---
 *Phase: 33-print-preview-polish*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+SUMMARY.md verified to exist on disk; all 5 referenced commit hashes
+(`eac828d`, `5846bb0`, `8797663`, `49ce1fb`, `c4a6f25`) verified present
+in `git log --oneline --all`.

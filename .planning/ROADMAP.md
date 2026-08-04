@@ -49,7 +49,7 @@
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 5/5 | Complete    | 2026-08-04 |
-| 33. Полировка предпросмотра печати | v1.3 | 2/4 | In Progress|  |
+| 33. Полировка предпросмотра печати | v1.3 | 3/4 | In Progress|  |
 
 ## Phase Details
 
@@ -156,7 +156,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 33-02-PLAN.md — CSP hash-source for Paged.js bootstrap + drift-detection + @page parity test (D-13, D-14) (Wave 2)
-- [ ] 33-03-PLAN.md — On-screen preview: srcdoc/bridge wiring, degraded fallback, sheet chrome, fit-to-width, footer meta (Wave 2)
+- [x] 33-03-PLAN.md — On-screen preview: srcdoc/bridge wiring, degraded fallback, sheet chrome, fit-to-width, footer meta (Wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion — 33-04 depends on 33-03, same file)*
 

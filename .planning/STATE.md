@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-04T15:08:00.933Z"
+last_updated: "2026-08-04T15:27:57.648Z"
 last_activity: 2026-08-04
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 67
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 33 (print-preview-polish) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-08-04
 
@@ -278,6 +278,7 @@ Last activity: 2026-08-04
 | Phase 32 P02 | 55min | 2 tasks | 2 files |
 | Phase 33 P01 | 35min | 3 tasks | 7 files |
 | Phase 33 P02 | ~50min | 3 tasks | 5 files |
+| Phase 33 P03 | 35min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -684,6 +685,8 @@ Recent decisions affecting current work:
 - [Phase 33]: pagedjs pinned to exact 0.4.3 (no caret) so Plan 33-02's CSP sha256 hash-source cannot silently drift on pnpm install
 - [Phase 33]: bootstrapScript.js kept static/non-interpolated; ui/eslint.config.js extended with parent/HTMLIFrameElement/MessageEvent globals + a script-mode override for the new bootstrap script
 - [Phase ?]: PRV-CSP: CSP hash-source computed once (sha256-5ZDjul5PEiak1qhxbmi9Rx3W4tYmf4sQbt9wgef8vQY=) and hardcoded as a literal in http/mod.rs, verified by ui/scripts/check-pagedjs-csp-hash.mjs drift gate wired into pnpm lint
+- [Phase 33]: Paged.js srcdoc built imperatively (not $derived) once per render, to avoid iframe reload/pagination loss on theme toggle
+- [Phase 33]: pagedjs dist bundle imported via relative filesystem path (not bare package specifier) — its package.json exports map has no ./dist/* subpath entries, which broke vite build once the module became reachable from the app entry graph
 
 ### Pending Todos
 
@@ -776,8 +779,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-04T15:01:33.464Z
-Stopped at: Phase 33 UI-SPEC approved
+Last session: 2026-08-04T15:27:57.639Z
+Stopped at: Completed 33-03-PLAN.md
 Resume file: 
 
 None
