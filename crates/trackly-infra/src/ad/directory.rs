@@ -16,16 +16,13 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use ldap3::{ldap_escape, LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
+use ldap3::{ldap_escape, LdapConnAsync, Scope, SearchEntry};
 use trackly_core::auth::Role;
 use trackly_core::ports::ad_directory::{AdDirectory, DirectoryError, DirectoryResult};
 
 use crate::ad::cache::TtlCache;
+use crate::ad::transport::build_ldap_conn;
 use crate::config::AdConfig;
-
-/// Connection timeout for the initial LDAPS connect (mirrors `real.rs`'s
-/// Pitfall 7 — always bound a timeout so a dead DC fails fast).
-const CONN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Production AD directory adapter — service-account bind + search + group
 /// check over `ldap3`, with a two-instance TTL cache in front.
@@ -136,10 +133,7 @@ impl AdDirectory for RealAdDirectory {
         }
 
         // (3) Connect.
-        let settings = LdapConnSettings::new()
-            .set_conn_timeout(CONN_TIMEOUT)
-            .set_no_tls_verify(self.cfg.no_tls_verify);
-        let url = format!("ldaps://{}:{}", self.cfg.host, self.cfg.port);
+        let (url, settings) = build_ldap_conn(&self.cfg);
 
         let (conn, mut ldap) = match LdapConnAsync::with_settings(settings, &url).await {
             Ok(v) => v,
@@ -345,7 +339,7 @@ mod tests {
     fn unreachable_but_configured_cfg() -> AdConfig {
         AdConfig {
             host: "127.0.0.1".to_string(),
-            port: 1, // nothing listens here — any real connection attempt fails fast
+            port: Some(1), // nothing listens here — any real connection attempt fails fast
             bind_dn: "svc-trackly-ro@example.local".to_string(),
             bind_password: "CHANGE_ME".to_string(),
             base_dn: "dc=example,dc=local".to_string(),

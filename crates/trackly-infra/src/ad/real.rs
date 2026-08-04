@@ -9,19 +9,14 @@
 //! normal authentication outcomes, not infrastructure errors (mirrors
 //! `RealSnmpClient`'s `Ok(None)`-for-unreachable philosophy).
 
-use std::time::Duration;
-
 use async_trait::async_trait;
-use ldap3::{ldap_escape, LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
+use ldap3::{ldap_escape, LdapConnAsync, Scope, SearchEntry};
 use trackly_core::error::AppError;
 use trackly_core::ports::ad::{AdClient, AuthOutcome};
 use trackly_core::primitives::secret::Secret;
 
+use crate::ad::transport::build_ldap_conn;
 use crate::config::AdConfig;
-
-/// Connection timeout for the initial LDAPS connect (Pitfall 7 — always
-/// bound a timeout so a dead DC fails fast as `Unreachable`).
-const CONN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Production AD client — binds via `ldap3` over LDAPS and resolves the
 /// bound user's display name (D-Config-02: displayName → cn → login).
@@ -70,10 +65,7 @@ impl AdClient for RealAdClient {
             return Ok(AuthOutcome::BadCreds);
         }
 
-        let settings = LdapConnSettings::new()
-            .set_conn_timeout(CONN_TIMEOUT)
-            .set_no_tls_verify(self.cfg.no_tls_verify);
-        let url = format!("ldaps://{}:{}", self.cfg.host, self.cfg.port);
+        let (url, settings) = build_ldap_conn(&self.cfg);
 
         let (conn, mut ldap) = match LdapConnAsync::with_settings(settings, &url).await {
             Ok(v) => v,
@@ -137,10 +129,7 @@ impl AdClient for RealAdClient {
     /// bind to confirm the server actually speaks LDAP (not just a TCP
     /// listener). No end-user credentials are involved.
     async fn test_connection(&self) -> Result<AuthOutcome, AppError> {
-        let settings = LdapConnSettings::new()
-            .set_conn_timeout(CONN_TIMEOUT)
-            .set_no_tls_verify(self.cfg.no_tls_verify);
-        let url = format!("ldaps://{}:{}", self.cfg.host, self.cfg.port);
+        let (url, settings) = build_ldap_conn(&self.cfg);
 
         let (conn, mut ldap) = match LdapConnAsync::with_settings(settings, &url).await {
             Ok(v) => v,
