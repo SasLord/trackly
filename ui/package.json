@@ -13,7 +13,7 @@
     "prebuild": "cargo test -p trackly-app --test export_bindings",
     "preview": "vite preview",
     "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "eslint . --ext .ts,.svelte && prettier --check . && node scripts/check-tokens.mjs && node scripts/check-contrast.mjs && node scripts/check-focus-outline.mjs",
+    "lint": "eslint . --ext .ts,.svelte && prettier --check . && node scripts/check-tokens.mjs && node scripts/check-contrast.mjs && node scripts/check-focus-outline.mjs && node scripts/check-pagedjs-csp-hash.mjs",
     "tauri": "cd ../crates/trackly-app && node ../../ui/node_modules/@tauri-apps/cli/tauri.js"
   },
   "dependencies": {
