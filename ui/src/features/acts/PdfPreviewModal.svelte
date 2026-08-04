@@ -321,8 +321,17 @@
    * inline style and body markup from the self-contained backend-rendered
    * HTML string, mounts them into a hidden host in the main document, and
    * calls window.print() on the top-level window.
+   *
+   * Phase 33 (D-06/C-03): re-runs Paged.js pagination against #act-print-root
+   * before printing, via a dynamic `import('pagedjs')` — self-hosted ESM,
+   * code-split by Vite, served from the app's own 'self' origin, so it needs
+   * no CSP script-src change (unlike the opaque-origin preview iframe's
+   * inline script, which does). window.print() now fires only after
+   * pagination resolves, not immediately after the synchronous DOM
+   * injection — printing must reflect the paginated result, not fire before
+   * it exists.
    */
-  function printViaTopLevel(html: string) {
+  async function printViaTopLevel(html: string) {
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     const bodyHtml = parsed.body?.innerHTML ?? '';
     const styleHtml = Array.from(parsed.head?.querySelectorAll('style') ?? [])
@@ -335,7 +344,6 @@
       printRoot.id = PRINT_ROOT_ID;
       document.body.appendChild(printRoot);
     }
-    printRoot.innerHTML = bodyHtml;
 
     let printStyle = document.getElementById(PRINT_STYLE_ID) as HTMLStyleElement | null;
     if (!printStyle) {
@@ -369,6 +377,22 @@
     };
     window.addEventListener('afterprint', cleanup);
 
+    const { Previewer } = await import('pagedjs');
+    const previewer = new Previewer();
+    try {
+      await previewer.preview(bodyHtml, [styleHtml], printRoot);
+    } catch {
+      // RESEARCH.md Open Question 2: Polisher.add()'s stylesheet-argument
+      // shape for this explicit (non-auto) invocation was never empirically
+      // confirmed. If passing the raw <style>...</style>-wrapped outerHTML
+      // string above does not parse (visible symptom: pagination completes
+      // but @page margins/fonts are not applied to #act-print-root), fall
+      // back to the inner CSS text only, mirroring the wrapper-stripping
+      // pattern already used above for printStyle.textContent.
+      printRoot.innerHTML = '';
+      await previewer.preview(bodyHtml, [styleHtml.replace(/<\/?style[^>]*>/gi, '')], printRoot);
+    }
+
     window.focus();
     window.print();
   }
@@ -379,7 +403,7 @@
       if (isTauri) {
         await printViaSystemBrowser(htmlContent);
       } else {
-        printViaTopLevel(htmlContent);
+        await printViaTopLevel(htmlContent);
       }
     } catch {
       pushToast('error', 'Не удалось открыть документ для печати');
