@@ -219,6 +219,39 @@ async fn ad_register_admin_only() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 1b: counts() mirrors list()'s admin-only visibility (REQ-06)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ad_register_excluded_from_employee_counts() {
+    let (svc, writer, _dir) = make_service();
+    let (user_id, _request_id) = seed_pending_register(&writer, "us306", "Кузнецова Анна").await;
+
+    let as_employee = svc
+        .counts(&employee(user_id))
+        .await
+        .expect("counts as employee");
+    assert_eq!(
+        as_employee.all, 0,
+        "employee counts.all не должен включать собственную ad_register заявку"
+    );
+    assert_eq!(
+        as_employee.open, 0,
+        "employee counts.open не должен включать собственную ad_register заявку"
+    );
+
+    let as_admin = svc.counts(&admin()).await.expect("counts as admin");
+    assert_eq!(
+        as_admin.all, 1,
+        "admin counts.all должен включать ad_register заявку"
+    );
+    assert_eq!(
+        as_admin.open, 1,
+        "admin counts.open должен включать ad_register заявку"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Test 2: approve with explicit role (D-REG-02)
 // ---------------------------------------------------------------------------
 
