@@ -51,6 +51,7 @@ const browserGlobals = {
   SVGSVGElement: 'readonly',
   btoa: 'readonly',
   MediaQueryListEvent: 'readonly',
+  parent: 'readonly',
 };
 
 // Svelte 5 rune globals (available in .svelte.ts and .svelte files)
@@ -80,6 +81,19 @@ export default [
     ignores: ['node_modules/', 'dist/', 'public/', 'src/bindings.ts', 'pnpm-lock.yaml'],
   },
   js.configs.recommended,
+  // Phase 33 (D-04/C-02): standalone Paged.js bootstrap script, inlined via
+  // Vite's `?raw` import into the print-preview iframe's srcdoc. Plain
+  // browser script (no import/export, so sourceType: 'script'), kept under
+  // src/ (unlike public/theme-init.js's "no module graph" precedent above)
+  // because its raw text is consumed at build time by pagedPreviewBootstrap.ts.
+  {
+    files: ['src/lib/pdfPreview/bootstrapScript.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: browserGlobals,
+    },
+  },
   // Node/config files
   {
     files: ['vite.config.ts', 'svelte.config.js', 'eslint.config.js', 'scripts/**/*.mjs'],
