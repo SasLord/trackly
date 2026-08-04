@@ -45,6 +45,7 @@
   import { buildSrcdoc, THEME_CHROME } from '$lib/pdfPreview/pagedPreviewBootstrap';
   import { attachBridge } from '$lib/pdfPreview/pagedPreviewBridge';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import { pluralizeRu } from '$lib/utils/pluralize';
 
   interface AcceptancePayload {
     deviceId: number;
@@ -163,7 +164,8 @@
    *  way or the other (done or degraded), not merely until the HTML string
    *  arrived. */
   const showLoading = $derived(
-    loading || (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded'),
+    loading ||
+      (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded'),
   );
 
   $effect(() => {
@@ -389,11 +391,7 @@
     {:else if htmlContent !== null}
       {#if paginationStatus === 'degraded'}
         <div class="pdf-page-frame">
-          <iframe
-            sandbox=""
-            srcdoc={htmlContent}
-            title="Предпросмотр документа"
-            class="pdf-iframe"
+          <iframe sandbox="" srcdoc={htmlContent} title="Предпросмотр документа" class="pdf-iframe"
           ></iframe>
         </div>
       {:else}
@@ -422,8 +420,26 @@
   </div>
 
   {#snippet footer()}
+    {#if paginationStatus === 'done' && pageTotal !== null}
+      <div class="pdf-preview-footer-meta">
+        <p class="pdf-preview-page-count">
+          {pageTotal}
+          {pluralizeRu(pageTotal, ['страница', 'страницы', 'страниц'])}
+        </p>
+        <p class="pdf-preview-hint">
+          Печать использует масштаб 100% и поля по умолчанию — проверьте эти настройки в диалоге
+          печати.
+        </p>
+      </div>
+    {/if}
     <Button variant="secondary" onclick={onClose}>Закрыть</Button>
-    <Button variant="primary" onclick={handlePrint} disabled={loading || errorMsg !== null}>
+    <Button
+      variant="primary"
+      onclick={handlePrint}
+      disabled={loading ||
+        errorMsg !== null ||
+        (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded')}
+    >
       Печать
     </Button>
   {/snippet}
@@ -472,6 +488,26 @@
     font-weight: 500;
     color: var(--tr-text-tertiary);
     margin: 0;
+  }
+  .pdf-preview-footer-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-3xs);
+    text-align: left;
+  }
+  .pdf-preview-page-count {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tr-text-secondary);
+  }
+  .pdf-preview-hint {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--tr-text-tertiary);
   }
   .state {
     display: flex;
