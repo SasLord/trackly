@@ -41,8 +41,10 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from '$lib/api/acts';
   import { apiCall } from '$lib/api/client';
-
-  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  import { isTauri } from '$lib/stores/transport.svelte';
+  import { buildSrcdoc, THEME_CHROME } from '$lib/pdfPreview/pagedPreviewBootstrap';
+  import { attachBridge } from '$lib/pdfPreview/pagedPreviewBridge';
+  import { themeStore } from '$lib/stores/theme.svelte';
 
   interface AcceptancePayload {
     deviceId: number;
@@ -88,6 +90,35 @@
   let loading = $state(false);
   let errorMsg = $state<string | null>(null);
 
+  /** Phase 33 (D-02/D-07/D-10/D-11): Paged.js on-screen pagination state. */
+  let srcdoc = $state<string | null>(null);
+  let paginationStatus = $state<'idle' | 'pending' | 'done' | 'degraded'>('idle');
+  let pageProgress = $state(0);
+  let pageTotal = $state<number | null>(null);
+  let naturalHeightPx = $state(1123);
+  let iframeEl = $state<HTMLIFrameElement | null>(null);
+
+  const PAGINATION_TIMEOUT_MS = 8000;
+  /** Not $state — plain closure-shared handle, not rendered anywhere. */
+  let degradeTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  function clearDegradeTimeout() {
+    if (degradeTimeoutHandle !== null) {
+      clearTimeout(degradeTimeoutHandle);
+      degradeTimeoutHandle = null;
+    }
+  }
+
+  /** D-02: revert to the pre-Phase-33 unpaginated preview. */
+  function enterDegraded(reason: string) {
+    paginationStatus = 'degraded';
+    console.warn(
+      '[PdfPreviewModal] Paged.js pagination ' +
+        reason +
+        ' — falling back to unpaginated preview (D-02).',
+    );
+  }
+
   function renderCall(): Promise<string> {
     if (mode === 'acceptance') {
       if (!acceptancePayload) {
@@ -129,6 +160,8 @@
     if (!ready) {
       htmlContent = null;
       errorMsg = null;
+      srcdoc = null;
+      paginationStatus = 'idle';
       return;
     }
 
@@ -141,6 +174,18 @@
         const html = await renderCall();
         if (cancelled) return;
         htmlContent = html;
+        // Built ONCE, imperatively — never as a $derived, which would re-run
+        // (and reload the iframe) on every later themeStore.resolved change
+        // and destroy in-progress pagination state (RESEARCH.md Pitfall 5).
+        srcdoc = buildSrcdoc(html, themeStore.resolved);
+        paginationStatus = 'pending';
+        pageProgress = 0;
+        pageTotal = null;
+        degradeTimeoutHandle = setTimeout(() => {
+          if (paginationStatus !== 'done') {
+            enterDegraded('timeout');
+          }
+        }, PAGINATION_TIMEOUT_MS);
       } catch (e: unknown) {
         if (cancelled) return;
         const msg =
@@ -155,7 +200,50 @@
 
     return () => {
       cancelled = true;
+      clearDegradeTimeout();
     };
+  });
+
+  // Wires the opaque-origin postMessage bridge to the paginated preview
+  // iframe once it is mounted (bind:this={iframeEl} in the template).
+  $effect(() => {
+    if (iframeEl === null) return;
+    return attachBridge(iframeEl, (data) => {
+      const msg = data as { type?: string };
+      switch (msg.type) {
+        case 'trackly-pagedjs-progress': {
+          pageProgress = (data as { pages: number }).pages;
+          break;
+        }
+        case 'trackly-pagedjs-done': {
+          const d = data as { total: number; height: number };
+          pageTotal = d.total;
+          naturalHeightPx = d.height;
+          paginationStatus = 'done';
+          clearDegradeTimeout();
+          break;
+        }
+        case 'trackly-pagedjs-error': {
+          clearDegradeTimeout();
+          enterDegraded('error: ' + (data as { message: string }).message);
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  });
+
+  // Live theme propagation into the already-loaded iframe — postMessage
+  // ONLY, never reassigns `srcdoc` (that would reload the iframe and lose
+  // in-progress pagination, RESEARCH.md Pitfall 5).
+  $effect(() => {
+    if (iframeEl?.contentWindow && paginationStatus !== 'idle') {
+      iframeEl.contentWindow.postMessage(
+        { type: 'trackly-theme-update', backdrop: THEME_CHROME[themeStore.resolved].backdrop },
+        '*',
+      );
+    }
   });
 
   const PRINT_ROOT_ID = 'act-print-root';
