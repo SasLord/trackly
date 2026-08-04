@@ -49,7 +49,7 @@
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 5/5 | Complete    | 2026-08-04 |
-| 33. Полировка предпросмотра печати | v1.3 | 0/TBD | Not started | - |
+| 33. Полировка предпросмотра печати | v1.3 | 0/4 | Planned | - |
 
 ## Phase Details
 
@@ -148,6 +148,18 @@
 3. То, что пользователь видит в модалке предпросмотра, совпадает (WYSIWYG) с тем, что выводится на печать через `@media print` — единый источник стилей листа для экрана и печати, без расхождений в масштабе/отступах.
 4. Поведение из критериев 1–3 одинаково для всех документов, использующих общую модалку предпросмотра (Акты, Приёмка, Отчёты) — не только для одного типа документа.
 
-**Plans**: TBD
+**Plans**:
+**Wave 1**
+
+- [ ] 33-01-PLAN.md — Paged.js dependency + srcdoc/bridge/pluralization contract (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 33-02-PLAN.md — CSP hash-source for Paged.js bootstrap + drift-detection + @page parity test (D-13, D-14) (Wave 2)
+- [ ] 33-03-PLAN.md — On-screen preview: srcdoc/bridge wiring, degraded fallback, sheet chrome, fit-to-width, footer meta (Wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion — 33-04 depends on 33-03, same file)*
+
+- [ ] 33-04-PLAN.md — Print paths (desktop + LAN) through Paged.js (D-06) (Wave 3)
 
 **UI hint**: yes
