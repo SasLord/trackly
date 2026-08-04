@@ -149,6 +149,32 @@ fn default_group_cache_ttl_secs() -> u64 {
     300
 }
 
+/// Транспортный режим LDAP-подключения (quick task 260804-ire).
+/// Сериализуется/десериализуется в TOML как `"ldaps"`/`"plain"`/`"starttls"`.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LdapTlsMode {
+    /// TLS с самого начала (`ldaps://`). Дефолт — byte-for-byte как до
+    /// введения этого поля.
+    #[default]
+    Ldaps,
+    /// Незашифрованный `ldap://`. Пароли идут в открытом виде — явный
+    /// opt-in для DC без рабочего LDAPS.
+    Plain,
+    /// `ldap://` с апгрейдом до TLS через StartTLS.
+    StartTls,
+}
+
+impl LdapTlsMode {
+    /// Порт по умолчанию для режима, когда `AdConfig::port` не задан явно.
+    pub fn default_port(&self) -> u16 {
+        match self {
+            LdapTlsMode::Ldaps => 636,
+            LdapTlsMode::Plain | LdapTlsMode::StartTls => 389,
+        }
+    }
+}
+
 /// `[ad]` — параметры Active Directory (Phase 9, D-AD-01 / D-Config-01).
 ///
 /// Все поля, кроме `enabled`/`use_mock`/`port`/`name_attr`/`no_tls_verify`,
@@ -168,8 +194,12 @@ pub struct AdConfig {
     pub use_mock: bool,
     /// Хост контроллера домена. Пусто → auto-detect (DNS SRV / env).
     pub host: String,
-    /// Порт LDAPS. По умолчанию 636.
-    pub port: u16,
+    /// Явно заданный порт LDAP-подключения. `None` (не задан в TOML) →
+    /// порт выводится из `ldap_tls_mode` через `resolved_port()` (636 для
+    /// `ldaps`, 389 для `plain`/`starttls`). Явно заданный порт ВСЕГДА
+    /// побеждает дефолт режима — см. `resolved_port()`.
+    #[serde(default)]
+    pub port: Option<u16>,
     /// DNS-суффикс домена (например `corp.local`). Пусто → auto-detect
     /// (`USERDNSDOMAIN`).
     pub domain: String,
@@ -231,6 +261,18 @@ pub struct AdConfig {
     /// валидное стационарное состояние («маппинг не настроен»).
     #[serde(default)]
     pub role_mapping: Vec<RoleMappingEntry>,
+    /// Транспортный режим LDAP-подключения (quick task 260804-ire). Три
+    /// значения:
+    /// - `ldaps` (по умолчанию) — TLS с самого начала, `ldaps://host:636`,
+    ///   поведение byte-for-byte как до этой фичи.
+    /// - `plain` — незашифрованный `ldap://host:389`. Пароль служебной
+    ///   учётной записи и учётные данные пользователей идут в открытом
+    ///   виде по сети — используйте ТОЛЬКО если DC не обслуживает рабочий
+    ///   LDAPS. Логируется одно предупреждение при загрузке конфига.
+    /// - `starttls` — `ldap://host:389` с апгрейдом до TLS через StartTLS
+    ///   (`LdapConnSettings::set_starttls(true)`).
+    #[serde(default)]
+    pub ldap_tls_mode: LdapTlsMode,
     /// Список доверенных доменных логинов (Phase 32, SSO-02) в форме
     /// `sAMAccountName` (например `us100`). Матчинг case-insensitive и
     /// нормализует UPN/NetBIOS-формы к чистому логину — см.
@@ -273,6 +315,7 @@ impl std::fmt::Debug for AdConfig {
             .field("group_cache_ttl_secs", &self.group_cache_ttl_secs)
             .field("role_mapping", &self.role_mapping)
             .field("admin_logins", &self.admin_logins)
+            .field("ldap_tls_mode", &self.ldap_tls_mode)
             .finish()
     }
 }
@@ -283,7 +326,7 @@ impl Default for AdConfig {
             enabled: false,
             use_mock: false,
             host: String::new(),
-            port: 636,
+            port: None,
             domain: String::new(),
             base_dn: String::new(),
             name_attr: "displayName".to_string(),
@@ -297,7 +340,20 @@ impl Default for AdConfig {
             group_cache_ttl_secs: 300,
             role_mapping: Vec::new(),
             admin_logins: Vec::new(),
+            ldap_tls_mode: LdapTlsMode::Ldaps,
         }
+    }
+}
+
+impl AdConfig {
+    /// Resolves the port that will actually be dialed: an explicitly
+    /// configured `port` always wins; otherwise falls back to the
+    /// mode-derived default (636 for `ldaps`, 389 for `plain`/`starttls`).
+    /// This is the ONLY place that resolves "unset" port → mode default —
+    /// both `ad::transport::build_ldap_conn` and the Settings DTO read
+    /// sites route through it.
+    pub fn resolved_port(&self) -> u16 {
+        self.port.unwrap_or_else(|| self.ldap_tls_mode.default_port())
     }
 }
 
@@ -326,10 +382,21 @@ impl AppConfig {
             .unwrap_or("trackly.config.toml")
             .to_string();
 
-        toml::from_str::<Self>(&contents).map_err(|e| AppError::Validation {
+        let parsed: Self = toml::from_str(&contents).map_err(|e| AppError::Validation {
             field,
             message: format!("TOML parse error: {e}"),
-        })
+        })?;
+
+        if parsed.ad.ldap_tls_mode == LdapTlsMode::Plain {
+            tracing::warn!(
+                "AD ldap_tls_mode is set to \"plain\" — service-account bind password and \
+                 user credentials will be sent in cleartext over the network. This is an \
+                 explicit opt-in; switch to \"ldaps\" or \"starttls\" if the domain \
+                 controller supports it."
+            );
+        }
+
+        Ok(parsed)
     }
 }
 
@@ -457,5 +524,92 @@ mod tests {
             cfg.ad.admin_logins,
             vec!["us100".to_string(), "us777".to_string()]
         );
+    }
+
+    /// Behavior 6 (quick task 260804-ire): whole `[ad]` section absent →
+    /// `ldap_tls_mode` defaults to `Ldaps`, `port` stays `None`,
+    /// `resolved_port()` derives 636 — the byte-for-byte-unchanged default
+    /// path.
+    #[test]
+    fn empty_config_defaults_to_ldaps_and_resolved_port_636() {
+        let cfg: AppConfig = toml::from_str("").expect("empty config parses");
+        assert_eq!(cfg.ad.ldap_tls_mode, LdapTlsMode::Ldaps);
+        assert_eq!(cfg.ad.port, None);
+        assert_eq!(cfg.ad.resolved_port(), 636);
+    }
+
+    /// Behavior 7 (quick task 260804-ire): an `[ad]` section present but
+    /// omitting BOTH `ldap_tls_mode` and `port` still parses (proves both
+    /// are now optional) and resolves to `Ldaps` + 636 — backward compat
+    /// for existing configs upgrading to a newer binary without editing
+    /// their TOML.
+    #[test]
+    fn partial_ad_section_without_transport_fields_resolves_ldaps_636() {
+        let toml_str = "[ad]\n\
+             enabled = true\n\
+             use_mock = false\n\
+             host = \"dc1.example.local\"\n\
+             domain = \"example.local\"\n\
+             base_dn = \"dc=example,dc=local\"\n\
+             name_attr = \"displayName\"\n\
+             no_tls_verify = false\n";
+        let cfg: AppConfig = toml::from_str(toml_str).expect("partial [ad] section parses");
+        assert_eq!(cfg.ad.ldap_tls_mode, LdapTlsMode::Ldaps);
+        assert_eq!(cfg.ad.port, None);
+        assert_eq!(cfg.ad.resolved_port(), 636);
+    }
+
+    /// Behavior 8 (quick task 260804-ire): `ldap_tls_mode = "plain"` (and
+    /// separately `"starttls"`) without an explicit `port` resolves to 389.
+    #[test]
+    fn plain_and_starttls_modes_resolve_to_port_389() {
+        let base = "enabled = true\n\
+             use_mock = false\n\
+             host = \"dc1.example.local\"\n\
+             domain = \"example.local\"\n\
+             base_dn = \"dc=example,dc=local\"\n\
+             name_attr = \"displayName\"\n\
+             no_tls_verify = false\n";
+
+        let plain: AppConfig =
+            toml::from_str(&format!("[ad]\n{base}ldap_tls_mode = \"plain\"\n"))
+                .expect("plain mode parses");
+        assert_eq!(plain.ad.ldap_tls_mode, LdapTlsMode::Plain);
+        assert_eq!(plain.ad.resolved_port(), 389);
+
+        let starttls: AppConfig =
+            toml::from_str(&format!("[ad]\n{base}ldap_tls_mode = \"starttls\"\n"))
+                .expect("starttls mode parses");
+        assert_eq!(starttls.ad.ldap_tls_mode, LdapTlsMode::StartTls);
+        assert_eq!(starttls.ad.resolved_port(), 389);
+    }
+
+    /// Behavior 9 (quick task 260804-ire): `ldap_tls_mode = "plain"` WITH
+    /// an explicit `port = 636` still resolves to 636 — explicit always
+    /// wins, even against the "other" mode's conventional port.
+    #[test]
+    fn explicit_port_always_wins_over_mode_default() {
+        let toml_str = "[ad]\n\
+             enabled = true\n\
+             use_mock = false\n\
+             host = \"dc1.example.local\"\n\
+             domain = \"example.local\"\n\
+             base_dn = \"dc=example,dc=local\"\n\
+             name_attr = \"displayName\"\n\
+             no_tls_verify = false\n\
+             ldap_tls_mode = \"plain\"\n\
+             port = 636\n";
+        let cfg: AppConfig =
+            toml::from_str(toml_str).expect("plain mode with explicit port parses");
+        assert_eq!(cfg.ad.port, Some(636));
+        assert_eq!(cfg.ad.resolved_port(), 636);
+    }
+
+    /// Pure-fn test: `LdapTlsMode::default_port()` per variant.
+    #[test]
+    fn ldap_tls_mode_default_port_per_variant() {
+        assert_eq!(LdapTlsMode::Ldaps.default_port(), 636);
+        assert_eq!(LdapTlsMode::Plain.default_port(), 389);
+        assert_eq!(LdapTlsMode::StartTls.default_port(), 389);
     }
 }
