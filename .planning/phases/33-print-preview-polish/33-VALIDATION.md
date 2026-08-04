@@ -1,8 +1,8 @@
 ---
 phase: 33
 slug: print-preview-polish
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-04
 ---
@@ -41,14 +41,20 @@ D-13's structural `@page`-parity assertion, since the artifact under test is a R
 
 ## Per-Task Verification Map
 
-*To be filled by the planner — one row per task, mapped to PRV-01/PRV-02/PRV-03 and to the
-threat model entry for D-14 (CSP change).*
+Verified by gsd-plan-checker (2026-08-04): **every task across all four plans carries an
+`<automated>` verify command**, no watch-mode flags, no E2E-latency issues. Sampling continuity
+is therefore trivially satisfied — hence `nyquist_compliant: true` in the frontmatter.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| — | — | — | — | — | — | — | — | — | ⬜ pending |
+| 33-01-* | 01 | 1 | PRV-01 | — | N/A | typecheck/build | `pnpm --dir ui check` / `pnpm --dir ui build` | ✅ | ⬜ pending |
+| 33-02-* | 02 | 2 | PRV-01, PRV-03 | D-14 (CSP `script-src` hash source) | Inline preview bootstrap runs under a hash source, never `'unsafe-inline'`; hash drift is caught by a lint gate rather than silently disabling preview | integration | `node ui/scripts/check-pagedjs-csp-hash.mjs && pnpm --dir ui build && TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test security_headers` | ❌ W0 | ⬜ pending |
+| 33-02-* (D-13) | 02 | 2 | PRV-02 | — | N/A | integration | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test html_page_parity` | ❌ W0 | ⬜ pending |
+| 33-03-* | 03 | 2 | PRV-01, PRV-02 | — | Preview iframe stays `sandbox="allow-scripts"` without `allow-same-origin`; bridge validates `event.source`, not `event.origin` | typecheck | `pnpm --dir ui check` | ✅ | ⬜ pending |
+| 33-04-* | 04 | 3 | PRV-03 | — | N/A | typecheck + manual | `pnpm --dir ui check` + Manual-Only table below | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*File Exists: ❌ W0 = the test file is created by the plan itself, not a pre-existing fixture.*
 
 ---
 
@@ -70,6 +76,7 @@ These require a real render and human eyes.
 |----------|-------------|------------|-------------------|
 | Лист A4 на сероватой подложке, поля видны | PRV-01, PRV-02 | Визуальная композиция; никакой строковый assert её не докажет | Открыть предпросмотр акта в desktop-режиме и в LAN-браузере, сверить обе темы |
 | Превью совпадает с бумагой | PRV-03 | Требует реальной печати/Save-as-PDF при дефолтных настройках диалога | Напечатать длинный акт (N≥2 устройств) и длинный отчёт; сверить число страниц и точки разрыва с превью |
+| **LAN-печать: поля и шрифты применились к `#act-print-root`** | PRV-03 | Отдельный риск, а не часть предыдущей строки. RESEARCH.md Open Question 2 — точная форма аргумента `Polisher.add()` не подтверждена; план 33-04 закладывает fallback (снять теги-обёртку), корректность которого `pnpm --dir ui check` проверить не может | В LAN-браузере нажать «Печать» на акте и на отчёте. В превью печати убедиться, что поля 20mm/15mm применились и шрифт документа не подменился шрифтом приложения. Если поля нулевые или шрифт чужой — сработал неверный вариант `Polisher.add()`, чинить в 33-04 Task 2 |
 | Paged.js грузится в LAN-режиме (CSP) | PRV-01 | Проявляется только под реальным axum-сервером с CSP-заголовком, не в dev-сборке | `pnpm --dir ui build`, поднять server mode, открыть превью в браузере, проверить консоль на CSP-ошибки |
 | Fit-to-width на узком окне | PRV-01 | Зависит от реальной ширины вьюпорта | Сузить окно/открыть в LAN-браузере на ноутбуке — горизонтального скролла быть не должно |
 
@@ -82,6 +89,6 @@ These require a real render and human eyes.
 - [ ] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
 - [ ] Feedback latency < 240s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-04 (gsd-plan-checker: 0 blockers, 3 warnings — all three applied)
