@@ -18,8 +18,8 @@ created: 2026-08-04
 | Property | Value |
 |----------|-------|
 | **Framework** | Rust: `cargo test` (existing, `crates/trackly-app/tests/`). Frontend: **none** — `ui/` has no Vitest/Jest (verified in RESEARCH.md); existing gates are `svelte-check` + zero-dependency Node lint scripts in `ui/scripts/`. |
-| **Config file** | Rust: `crates/trackly-app/Cargo.toml`. Frontend: `ui/package.json` (`lint`, `check` scripts). |
-| **Quick run command** | `pnpm --dir ui check` (svelte-check + lint) |
+| **Config file** | Rust: `crates/trackly-app/Cargo.toml`. Frontend: `ui/package.json` (`svelte-check`, `lint`, `build` scripts — there is **no** aggregate `check` script; confirmed during 33-01 execution). |
+| **Quick run command** | `pnpm --dir ui svelte-check && pnpm --dir ui lint` (нет агрегирующего скрипта `check`) |
 | **Full suite command** | `cargo test -p trackly-app` (needs `TRACKLY_AD_MOCK` / `TRACKLY_SNMP_MOCK` env + a real `pnpm --dir ui build` output in `ui/dist`) |
 | **Estimated runtime** | ~30 s frontend, ~2–4 min Rust |
 
@@ -32,7 +32,7 @@ D-13's structural `@page`-parity assertion, since the artifact under test is a R
 
 ## Sampling Rate
 
-- **After every task commit:** `pnpm --dir ui check`
+- **After every task commit:** `pnpm --dir ui svelte-check && pnpm --dir ui lint`
 - **After every plan wave:** `cargo test -p trackly-app` (with mock env vars set)
 - **Before `/gsd-verify-work`:** both green
 - **Max feedback latency:** 240 seconds
@@ -47,11 +47,11 @@ is therefore trivially satisfied — hence `nyquist_compliant: true` in the fron
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 33-01-* | 01 | 1 | PRV-01 | — | N/A | typecheck/build | `pnpm --dir ui check` / `pnpm --dir ui build` | ✅ | ⬜ pending |
+| 33-01-* | 01 | 1 | PRV-01 | — | N/A | typecheck/build | `pnpm --dir ui svelte-check && pnpm --dir ui lint` / `pnpm --dir ui build` | ✅ | ⬜ pending |
 | 33-02-* | 02 | 2 | PRV-01, PRV-03 | D-14 (CSP `script-src` hash source) | Inline preview bootstrap runs under a hash source, never `'unsafe-inline'`; hash drift is caught by a lint gate rather than silently disabling preview | integration | `node ui/scripts/check-pagedjs-csp-hash.mjs && pnpm --dir ui build && TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test security_headers` | ❌ W0 | ⬜ pending |
 | 33-02-* (D-13) | 02 | 2 | PRV-02 | — | N/A | integration | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --test html_page_parity` | ❌ W0 | ⬜ pending |
-| 33-03-* | 03 | 2 | PRV-01, PRV-02 | — | Preview iframe stays `sandbox="allow-scripts"` without `allow-same-origin`; bridge validates `event.source`, not `event.origin` | typecheck | `pnpm --dir ui check` | ✅ | ⬜ pending |
-| 33-04-* | 04 | 3 | PRV-03 | — | N/A | typecheck + manual | `pnpm --dir ui check` + Manual-Only table below | ✅ | ⬜ pending |
+| 33-03-* | 03 | 2 | PRV-01, PRV-02 | — | Preview iframe stays `sandbox="allow-scripts"` without `allow-same-origin`; bridge validates `event.source`, not `event.origin` | typecheck | `pnpm --dir ui svelte-check && pnpm --dir ui lint` | ✅ | ⬜ pending |
+| 33-04-* | 04 | 3 | PRV-03 | — | N/A | typecheck + manual | `pnpm --dir ui svelte-check && pnpm --dir ui lint` + Manual-Only table below | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 *File Exists: ❌ W0 = the test file is created by the plan itself, not a pre-existing fixture.*
@@ -76,7 +76,7 @@ These require a real render and human eyes.
 |----------|-------------|------------|-------------------|
 | Лист A4 на сероватой подложке, поля видны | PRV-01, PRV-02 | Визуальная композиция; никакой строковый assert её не докажет | Открыть предпросмотр акта в desktop-режиме и в LAN-браузере, сверить обе темы |
 | Превью совпадает с бумагой | PRV-03 | Требует реальной печати/Save-as-PDF при дефолтных настройках диалога | Напечатать длинный акт (N≥2 устройств) и длинный отчёт; сверить число страниц и точки разрыва с превью |
-| **LAN-печать: поля и шрифты применились к `#act-print-root`** | PRV-03 | Отдельный риск, а не часть предыдущей строки. RESEARCH.md Open Question 2 — точная форма аргумента `Polisher.add()` не подтверждена; план 33-04 закладывает fallback (снять теги-обёртку), корректность которого `pnpm --dir ui check` проверить не может | В LAN-браузере нажать «Печать» на акте и на отчёте. В превью печати убедиться, что поля 20mm/15mm применились и шрифт документа не подменился шрифтом приложения. Если поля нулевые или шрифт чужой — сработал неверный вариант `Polisher.add()`, чинить в 33-04 Task 2 |
+| **LAN-печать: поля и шрифты применились к `#act-print-root`** | PRV-03 | Отдельный риск, а не часть предыдущей строки. RESEARCH.md Open Question 2 — точная форма аргумента `Polisher.add()` не подтверждена; план 33-04 закладывает fallback (снять теги-обёртку), корректность которого `pnpm --dir ui svelte-check && pnpm --dir ui lint` проверить не может | В LAN-браузере нажать «Печать» на акте и на отчёте. В превью печати убедиться, что поля 20mm/15mm применились и шрифт документа не подменился шрифтом приложения. Если поля нулевые или шрифт чужой — сработал неверный вариант `Polisher.add()`, чинить в 33-04 Task 2 |
 | Paged.js грузится в LAN-режиме (CSP) | PRV-01 | Проявляется только под реальным axum-сервером с CSP-заголовком, не в dev-сборке | `pnpm --dir ui build`, поднять server mode, открыть превью в браузере, проверить консоль на CSP-ошибки |
 | Fit-to-width на узком окне | PRV-01 | Зависит от реальной ширины вьюпорта | Сузить окно/открыть в LAN-браузере на ноутбуке — горизонтального скролла быть не должно |
 
