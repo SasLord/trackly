@@ -104,18 +104,6 @@
 # отзываться оперативно).
 # group_cache_ttl_secs = 300
 
-# Таблица «AD-группа → роль» (Phase 31, SSO-03). Приоритет при попадании
-# пользователя в НЕСКОЛЬКО групп: Admin > Manager > Employee
-# (highest-privilege-wins) НЕЗАВИСИМО от порядка записей ниже.
-# Указывайте ПОЛНЫЙ distinguished name группы (не короткое имя) — избегает
-# лишнего LDAP round-trip на резолв имени в DN.
-# [[ad.role_mapping]]
-# group_dn = "CN=IT-Admins,OU=Groups,DC=example,DC=local"
-# role = "admin"
-# [[ad.role_mapping]]
-# group_dn = "CN=IT-Managers,OU=Groups,DC=example,DC=local"
-# role = "manager"
-
 # Список доменных логинов (Phase 32, SSO-02) — sAMAccountName, case-insensitive
 # (us100, US100@example.local, EXAMPLE\us100 — все матчатся на "us100").
 # Любой логин из этого списка получает роль admin И немедленную активацию
@@ -128,6 +116,25 @@
 # Требует ПЕРЕЗАПУСКА процесса — изменения не подхватываются "на лету"
 # (как и все остальные TOML-only [ad]-настройки).
 # admin_logins = ["us100", "us777"]
+
+# ВАЖНО (структура TOML): admin_logins ДОЛЖЕН стоять раньше [[ad.role_mapping]]
+# ниже. Любая простая пара `ключ = значение` после первого заголовка
+# `[[ad.role_mapping]]` относится к ПОСЛЕДНЕЙ открытой записи этого массива
+# таблиц, а не обратно к [ad] — если переставить admin_logins ниже, значение
+# молча «прилипнет» к role_mapping и потеряется (RoleMappingEntry не знает
+# такого поля, serde тихо его отбросит).
+
+# Таблица «AD-группа → роль» (Phase 31, SSO-03). Приоритет при попадании
+# пользователя в НЕСКОЛЬКО групп: Admin > Manager > Employee
+# (highest-privilege-wins) НЕЗАВИСИМО от порядка записей ниже.
+# Указывайте ПОЛНЫЙ distinguished name группы (не короткое имя) — избегает
+# лишнего LDAP round-trip на резолв имени в DN.
+# [[ad.role_mapping]]
+# group_dn = "CN=IT-Admins,OU=Groups,DC=example,DC=local"
+# role = "admin"
+# [[ad.role_mapping]]
+# group_dn = "CN=IT-Managers,OU=Groups,DC=example,DC=local"
+# role = "manager"
 
 # [logging]
 # Все поля этой секции ОБЯЗАТЕЛЬНЫ, если она раскомментирована.

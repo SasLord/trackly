@@ -18,10 +18,11 @@
 //! 5. `trackly_app::logging::init(&paths, &config)` — tracing-subscriber + tracing-appender
 //!    daily rotation, using whichever config step 4 produced (real or recovered default);
 //!    возвращает `WorkerGuard`, который дальше живёт внутри AppCtx (Pitfall #6).
-//! 5b. If step 4 recovered from an error, surface it now that logging exists:
-//!     `tracing::error!` + `config_recovery::write_config_error_file` (always, portable-mode
-//!     safe) + best-effort native dialog (desktop/interactive only, skipped for
-//!     `--self-test`).
+//!
+//! After step 5, if step 4 recovered from an error, it is surfaced now that logging exists:
+//! `tracing::error!` + `config_recovery::write_config_error_file` (always, portable-mode
+//! safe) + best-effort native dialog (desktop/interactive only, skipped for `--self-test`).
+//!
 //! 6. Build tokio multi-thread runtime; `block_on` async lifecycle:
 //!    - 6a/b/c. `AppCtx::build` — probe-read user_version → writer open → migrations → writer worker → reader pool.
 //! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
