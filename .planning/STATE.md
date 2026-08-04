@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Requirement Coverage
-status: Awaiting next milestone
-last_updated: "2026-07-29T16:41:47.743Z"
-last_activity: 2026-07-29 — Milestone v1.2 completed and archived
+milestone: v1.3
+milestone_name: AD-SSO паритет + полировка превью печати
+status: executing
+last_updated: "2026-08-03T18:03:56.195Z"
+last_activity: 2026-08-03
 progress:
-  total_phases: 1
+  total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 9
-  percent: 100
+  completed_plans: 6
+  percent: 33
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 30 — quality-a11y-platform-parity
+**Current focus:** Phase 32 — sso-main
 
 ## Current Position
 
-Phase: Milestone v1.2 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-29 — Milestone v1.2 completed and archived
+Phase: 32 (sso-main) — EXECUTING
+Plan: 3 of 5
+Status: Ready to execute
+Last activity: 2026-08-03
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +40,7 @@ Last activity: 2026-07-29 — Milestone v1.2 completed and archived
 
 **Velocity:**
 
-- Total plans completed: 158
+- Total plans completed: 162
 - Average duration: —
 - Total execution time: —
 
@@ -70,6 +70,7 @@ Last activity: 2026-07-29 — Milestone v1.2 completed and archived
 | 26 | 8 | - | - |
 | 28 | 16 | - | - |
 | 29 | 4 | - | - |
+| 31 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -270,6 +271,10 @@ Last activity: 2026-07-29 — Milestone v1.2 completed and archived
 | Phase 30 P07 | 12min | 2 tasks | 2 files |
 | Phase 30 P08 | 15min | 3 tasks | 2 files |
 | Phase 30 P09 | 35min | 2 tasks | 2 files |
+| Phase 31 P1 | 39min | 3 tasks | 5 files |
+| Phase 31 P03 | 50min | 2 tasks | 10 files |
+| Phase 32 P01 | 35min | 2 tasks | 2 files |
+| Phase 32 P02 | 55min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -298,6 +303,9 @@ Last activity: 2026-07-29 — Milestone v1.2 completed and archived
 - Phase 28 added (2026-07-16): Окна поддержки и администрирования — Заявки, Отчёты, Настройки, Пользователи; макета нет. Milestone v1.2 (WIN-06, WIN-07, WIN-08, WIN-09).
 - Phase 29 added (2026-07-16): Вход и интерфейс сотрудника — Логин/Pending/Blocked/FirstRunWizard, EmployeeLayout; отдельные layout-shell от основного приложения, макета нет. Milestone v1.2 (WIN-10, WIN-11).
 - Phase 30 added (2026-07-16): Качество — доступность (AA-контраст, focus ring) и визуальный паритет Tauri WebView vs LAN-браузер; финальная сквозная проверка по всем окнам фаз 26–29. Milestone v1.2 (QA-02, QA-03).
+- Phase 31 added (2026-08-03): Служебный AD-bind — ФИО и роли из AD-групп — service-account LDAP bind (по образцу adwebapp `ldap.go`) резолвит `displayName` для SSO-пользователей с кэшем; маппинг AD-группа → роль через `memberOf`, fail-closed при недоступности каталога. Milestone v1.3 (SSO-01, SSO-03).
+- Phase 32 added (2026-08-03): Авто-админ по списку логинов + релиз SSO в main — настраиваемый список доменных логинов (аналог `ADMIN_AD_LOGINS`) получает роль «Администратор» сразу при первом SSO-входе; операционный итог фазы (не REQ) — мерж `spike/ad-sso-kerberos` в `main` и релиз обычной версии. Milestone v1.3 (SSO-02).
+- Phase 33 added (2026-08-03): Полировка предпросмотра печати — модалка предпросмотра (Акты/Приёмка/Отчёты) показывает лист A4 на сероватой подложке с полями (margins), WYSIWYG-совпадение предпросмотра и `@media print`. Независима от Phase 31/32 (чистый фронтенд/CSS). Milestone v1.3 (PRV-01, PRV-02, PRV-03).
 
 ### Decisions
 
@@ -309,6 +317,7 @@ Recent decisions affecting current work:
 - **«Расходник»:** ОСТАЁТСЯ как тип устройства (бумага, одноразовые флешки и пр.) — НЕ для картриджей; картриджи живут в собственном разделе
 - **PDF engine:** krilla 0.7 default, Typst-as-lib — backup по итогам spike в Phase 3
 - **Pantum auto-restart:** alert-only в v1 (PRN-06); авто-restart — v2 (PNT)
+- **Roadmap v1.3:** 3 фазы (31–33), продолжение нумерации с Phase 30 (v1.2), без искусственного дробления под granularity=standard (6 требований). SSO-01/03 объединены в Phase 31 (общая инфраструктура service-account bind); SSO-02 + мерж спайка в main — Phase 32; PRV-01..03 — независимая Phase 33 (фронтенд/CSS, можно параллельно с SSO).
 - [Phase ?]: Plan 01-01: MSRV 1.85 to 1.88 (Tauri 2 dep graph)
 - [Phase ?]: Plan 01-01: rusqlite 0.39 to 0.38, refinery 0.8 to 0.9 (rusqlite-bundled feature)
 - [Phase ?]: Plan 01-01: Included tauri-plugin-single-instance from Day 1 per RESEARCH Open Question 2
@@ -661,6 +670,14 @@ Recent decisions affecting current work:
 - [Phase 30]: Task 2 live-check (30-07): CSS-харнесс в headless Chromium/Playwright вместо реального приложения (auth недоступен в этой среде) — точно воспроизведены селекторы Layout.svelte/DashboardPage.svelte после фикса — Полноценный запуск требовал бы настройки dev-аутентификации/сид-данных ради одноразовой проверки чисто-CSS фикса; харнесс тестирует ровно тот CSS grid-track-sizing механизм, который был root cause
 - [Phase 30-08]: Dropdown search-input: убрать всегда-видимое кольцо фокуса, добавить встроенную клиентскую фильтрацию (visibleGroups) — Кольцо было визуальным шумом на всегда-сфокусированном поле; фильтрация нужна для 11 flat+select+searchable консьюмеров одним изменением вместо правки каждого файла (Gap 3, QA-02)
 - [Phase 30]: Плана 30-09: live-проверка Gap 7 в реальном приложении отложена до открытого UAT re-run чекпоинта 30-03 Task 3 — синтетическая проверка (Playwright + реальный compiled CSS в WebKit/Chromium) подтвердила механизм фикса вместо неё
+- [Phase 31]: MockAdDirectory reuses existing us100/us200 fixture identities (no new placeholder names)
+- [Phase 31]: TtlCache<V> implemented generically to support two independently-TTL'd instances (display_name, role) in Plan 31-02
+- [Phase 31]: Plan 31-03: role_hint threaded ONLY into auto_register_ad_user/create_pending_registration; on_ad_bind_success's other branches untouched
+- [Phase 31]: Plan 31-03: try_ad_login (password-bind path) passes role_hint: None — directory role enrichment is SSO-only in this phase
+- [Phase 32]: Plan 32-01: admin_logins stored as flat TOML string array in AdConfig, mirroring role_mapping pattern (D-01)
+- [Phase 32]: Injection at on_ad_bind_success (both sso_login and try_ad_login) — DRY, ADMIN_AD_LOGINS parity
+- [Phase 32]: Single audit_log action 'ad_auto_admin' with payload_json.prior_state distinguishing branches
+- [Phase 32]: admin_logins threaded via with_admin_logins builder (not new constructor arg) to avoid touching 9 existing AuthService::new call sites
 
 ### Pending Todos
 
@@ -750,8 +767,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-07-25T09:48:12.289Z
-Stopped at: Completed 30-09-PLAN.md
+Last session: 2026-08-03T18:03:56.187Z
+Stopped at: Completed 32-02-PLAN.md
 Resume file: 
 
 None
@@ -800,4 +817,4 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- ROADMAP.md ready for v1.3 (Фазы 31-33, 6/6 requirements mapped). Run /gsd-plan-phase 31 to begin planning.

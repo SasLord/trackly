@@ -550,9 +550,15 @@ mod tests {
             }],
         };
         let s = serde_json::to_string(&dto).expect("ser");
-        assert!(s.contains("expected_version"), "snake_case 'expected_version'");
+        assert!(
+            s.contains("expected_version"),
+            "snake_case 'expected_version'"
+        );
         assert!(!s.contains("expectedVersion"), "must NOT use camelCase");
-        assert!(s.contains("number_override"), "snake_case 'number_override'");
+        assert!(
+            s.contains("number_override"),
+            "snake_case 'number_override'"
+        );
         assert!(!s.contains("numberOverride"), "must NOT use camelCase");
         assert!(
             s.contains("handover_date_utc"),
@@ -563,10 +569,7 @@ mod tests {
             s.contains("complectation_at_time"),
             "snake_case 'complectation_at_time'"
         );
-        assert!(
-            !s.contains("complectationAtTime"),
-            "must NOT use camelCase"
-        );
+        assert!(!s.contains("complectationAtTime"), "must NOT use camelCase");
     }
 
     #[test]
@@ -596,7 +599,10 @@ mod tests {
             }],
         };
         let s = serde_json::to_string(&dto).expect("ser");
-        assert!(s.contains("expected_version"), "snake_case 'expected_version'");
+        assert!(
+            s.contains("expected_version"),
+            "snake_case 'expected_version'"
+        );
         assert!(!s.contains("expectedVersion"), "must NOT use camelCase");
         assert!(
             s.contains("handover_date_utc"),

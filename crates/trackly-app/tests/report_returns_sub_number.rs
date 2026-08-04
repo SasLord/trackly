@@ -39,9 +39,7 @@ async fn seed_devices(
     writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
     count: usize,
 ) -> Vec<i64> {
-    let names: Vec<String> = (0..count)
-        .map(|i| format!("GapReturnDevice {i}"))
-        .collect();
+    let names: Vec<String> = (0..count).map(|i| format!("GapReturnDevice {i}")).collect();
     writer
         .execute(move |conn| {
             let tx = conn.transaction().map_err(map_rusqlite)?;

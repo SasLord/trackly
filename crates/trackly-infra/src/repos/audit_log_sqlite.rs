@@ -289,8 +289,14 @@ mod tests {
             .select_latest_device_mutation_pair(&tx, 42, 7)
             .expect("select")
             .expect("row exists");
-        assert_eq!(pair.0, "{\"status_id\":2}", "before_json of newest act-42 row");
-        assert_eq!(pair.1, "{\"status_id\":4}", "after_json of newest act-42 row");
+        assert_eq!(
+            pair.0, "{\"status_id\":2}",
+            "before_json of newest act-42 row"
+        );
+        assert_eq!(
+            pair.1, "{\"status_id\":4}",
+            "after_json of newest act-42 row"
+        );
 
         tx.commit().expect("commit");
     }

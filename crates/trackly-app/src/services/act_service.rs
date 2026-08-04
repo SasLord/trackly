@@ -743,12 +743,7 @@ impl ActService {
                          (act_id, device_id, quantity, condition_at_time, \
                           complectation_at_time, parent_act_item_id) \
                          VALUES (?1, ?2, 1, ?3, ?4, NULL)",
-                        params![
-                            payload.id,
-                            dev_id,
-                            before.state.as_deref(),
-                            complectation,
-                        ],
+                        params![payload.id, dev_id, before.state.as_deref(), complectation,],
                     )
                     .map_err(map_rusqlite)?;
                 }
@@ -798,8 +793,7 @@ impl ActService {
                                         before_json: Some(before_json),
                                         after_json: Some(after_json),
                                         payload_json: Some(
-                                            serde_json::json!({ "act_id": payload.id })
-                                                .to_string(),
+                                            serde_json::json!({ "act_id": payload.id }).to_string(),
                                         ),
                                         created_at_utc: now,
                                     },
@@ -862,18 +856,14 @@ impl ActService {
                                 payload.id
                             ),
                         })?;
-                    let snapshot: serde_json::Value = serde_json::from_str(&before_json)
-                        .map_err(|e| AppError::Internal {
+                    let snapshot: serde_json::Value =
+                        serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                             source_chain: format!(
                                 "update: corrupt before_json for device {removed_id}: {e}"
                             ),
                         })?;
-                    let restored = devices_repo.restore_from_snapshot_in_tx(
-                        &tx,
-                        removed_id,
-                        &snapshot,
-                        now,
-                    )?;
+                    let restored = devices_repo
+                        .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update remove after_json: {e}"),
@@ -1672,7 +1662,11 @@ impl ActService {
                     for &device_id in &dids {
                         effective_by_device.insert(
                             device_id,
-                            (per_device_qty, effective_condition.clone(), effective_location),
+                            (
+                                per_device_qty,
+                                effective_condition.clone(),
+                                effective_location,
+                            ),
                         );
                     }
                 }
@@ -1834,8 +1828,8 @@ impl ActService {
                                 payload.id
                             ),
                         })?;
-                    let expected: serde_json::Value = serde_json::from_str(&after_json)
-                        .map_err(|e| AppError::Internal {
+                    let expected: serde_json::Value =
+                        serde_json::from_str(&after_json).map_err(|e| AppError::Internal {
                             source_chain: format!(
                                 "update_return: corrupt after_json for device {dev_id}: {e}"
                             ),
@@ -1871,18 +1865,14 @@ impl ActService {
                                 payload.id
                             ),
                         })?;
-                    let snapshot: serde_json::Value = serde_json::from_str(&before_json)
-                        .map_err(|e| AppError::Internal {
+                    let snapshot: serde_json::Value =
+                        serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                             source_chain: format!(
                                 "update_return: corrupt before_json for device {removed_id}: {e}"
                             ),
                         })?;
-                    let restored = devices_repo.restore_from_snapshot_in_tx(
-                        &tx,
-                        removed_id,
-                        &snapshot,
-                        now,
-                    )?;
+                    let restored = devices_repo
+                        .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return remove after_json: {e}"),

@@ -1,6 +1,7 @@
 //! Real AD client adapter using `ldap3::LdapConnAsync` (D-AD-01, D-Mock-01).
 //!
-//! CRITICAL: This module is the ONLY place in the codebase that imports `ldap3`.
+//! CRITICAL: This module and `crate::ad::directory` are the only two places
+//! in the codebase that import `ldap3`.
 //! `trackly-core::ports::ad::AdClient` trait must remain ldap3-free.
 //!
 //! Always wraps the connect call's outcome and the bind result-code into

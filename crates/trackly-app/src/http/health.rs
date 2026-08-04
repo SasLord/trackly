@@ -31,6 +31,7 @@ mod tests {
     use tokio_util::sync::CancellationToken;
     use tower::ServiceExt;
     use trackly_core::primitives::clock::Clock;
+    use trackly_infra::ad::directory_mock::MockAdDirectory;
     use trackly_infra::clock_impl::SystemClock;
     use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
 
@@ -78,6 +79,7 @@ mod tests {
             clock.clone(),
             ad_client,
             ws_broadcast.clone(),
+            Arc::new(MockAdDirectory::default_fixtures()),
         ));
         let (poll_tx, _poll_rx) = tokio::sync::mpsc::channel::<i64>(64);
         let snmp_client: Arc<dyn trackly_core::ports::snmp::SnmpClient + Send + Sync> =

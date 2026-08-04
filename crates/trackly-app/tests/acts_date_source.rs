@@ -12,6 +12,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rusqlite::params;
 use trackly_app::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActItemNewDto, ActReturnDto, ActReturnItemDto,
     Pagination as ActPagination,
@@ -22,7 +23,6 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
-use rusqlite::params;
 
 fn make_acts_service() -> (ActService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -141,7 +141,11 @@ async fn search_with_empty_query_sorts_by_handover_date_not_creation_order() {
         let act_b = create_handover_with_date(&svc, device_b, "Г. Четвёртый", t).await;
 
         let resp = svc
-            .search(String::new(), ActFilter::default(), ActPagination::default())
+            .search(
+                String::new(),
+                ActFilter::default(),
+                ActPagination::default(),
+            )
             .await
             .expect("search");
 

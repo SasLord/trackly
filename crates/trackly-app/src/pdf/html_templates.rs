@@ -247,8 +247,7 @@ mod tests {
         upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
-            let contents =
-                std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
             assert_eq!(
                 &contents, current,
                 "{filename} must be upgraded to the current bundled body"
@@ -271,7 +270,10 @@ mod tests {
         upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
 
         let contents = std::fs::read_to_string(&path).expect("still exists");
-        assert_eq!(contents, custom, "user-customized file must not be overwritten");
+        assert_eq!(
+            contents, custom,
+            "user-customized file must not be overwritten"
+        );
     }
 
     /// D-12 Test 3: a file already on the current bundled body is a no-op —

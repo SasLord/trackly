@@ -22,6 +22,7 @@ use tracing::warn;
 use trackly_core::auth::{authorize, Action, Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::ports::ad::{AdClient, AuthOutcome};
+use trackly_core::ports::ad_directory::{AdDirectory, DirectoryError, DirectoryResult};
 use trackly_core::primitives::clock::Clock;
 use trackly_core::primitives::secret::Secret;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -132,6 +133,24 @@ pub struct UserAnyState {
     pub has_open_register_request: bool,
 }
 
+/// Normalize a login for `admin_logins` matching (Phase 32, SSO-02, D-09):
+/// strip `@domain` (UPN) suffix, strip `DOMAIN\` (NetBIOS) prefix, lowercase.
+///
+/// Independent copy of the same technique used by
+/// `RealAdDirectory::cache_key`/`MockAdDirectory::lookup_key` — NOT shared,
+/// per this codebase's established "small independent adapters" convention
+/// (see `trackly-infra::ad::directory` module doc) AND because this check
+/// must remain structurally decoupled from the `AdDirectory` port (D-10:
+/// works even when the directory is unreachable/unconfigured).
+fn normalize_login_for_admin_check(login: &str) -> String {
+    let without_upn_suffix = login.split('@').next().unwrap_or(login);
+    let without_netbios_prefix = without_upn_suffix
+        .rsplit('\\')
+        .next()
+        .unwrap_or(without_upn_suffix);
+    without_netbios_prefix.to_lowercase()
+}
+
 // ---------------------------------------------------------------------------
 // AuthService
 // ---------------------------------------------------------------------------
@@ -147,10 +166,19 @@ pub struct AuthService {
     /// AD client — `RealAdClient` in prod, `MockAdClient` on dev macOS
     /// (D-Mock-01). Used by `login()`'s local→AD fallback (USR-08).
     pub(crate) ad_client: Arc<dyn AdClient + Send + Sync>,
+    /// AD directory — `RealAdDirectory` in prod, `MockAdDirectory` on dev
+    /// macOS (D-Mock-01). Used by `sso_login`'s displayName/role enrichment
+    /// (SSO-01/SSO-03).
+    pub(crate) directory: Arc<dyn AdDirectory + Send + Sync>,
     /// WS broadcast sender — shared with `RequestService` (same `AppCtx`
     /// channel) so `ad_register` requests created from `on_ad_bind_success`
     /// emit `WsEvent::NewRequest` to admins too (REQ-04 reuse, Phase 9 Plan 03).
     pub(crate) ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+    /// Список нормализованных доменных логинов, получающих принудительную
+    /// роль admin при AD-bind (Phase 32, SSO-02). Пустой набор (дефолт из
+    /// `new()`) = фича выключена — существующие call sites/тесты не
+    /// затронуты. Заполняется через `with_admin_logins`.
+    pub(crate) admin_logins: Arc<std::collections::HashSet<String>>,
 }
 
 impl AuthService {
@@ -161,6 +189,7 @@ impl AuthService {
         clock: Arc<dyn Clock + Send + Sync>,
         ad_client: Arc<dyn AdClient + Send + Sync>,
         ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>,
+        directory: Arc<dyn AdDirectory + Send + Sync>,
     ) -> Self {
         Self {
             writer,
@@ -168,7 +197,33 @@ impl AuthService {
             clock,
             ad_client,
             ws_tx,
+            directory,
+            admin_logins: Arc::new(std::collections::HashSet::new()),
         }
+    }
+
+    /// Builder: настроить список доверенных доменных логинов, получающих
+    /// принудительную роль admin при AD-bind (Phase 32, SSO-02). Пустой
+    /// список (дефолт из `new()`) = фича выключена — существующие call
+    /// sites/тесты не затронуты. Каждый логин нормализуется (lowercase, без
+    /// UPN/NetBIOS аффиксов) при построении множества.
+    pub fn with_admin_logins(mut self, logins: Vec<String>) -> Self {
+        self.admin_logins = Arc::new(
+            logins
+                .iter()
+                .map(|l| normalize_login_for_admin_check(l))
+                .collect(),
+        );
+        self
+    }
+
+    /// Локальная set-проверка членства в `admin_logins` (D-10 — БЕЗ
+    /// обращения к каталогу). Требует нормализации ОБЕИХ сторон одинаково
+    /// (запись в конфиге И логин на входе) — иначе `us100` в конфиге не
+    /// сматчится с `us100@example.local`/`EXAMPLE\us100`, приходящими с SSO.
+    fn is_admin_login(&self, login: &str) -> bool {
+        self.admin_logins
+            .contains(&normalize_login_for_admin_check(login))
     }
 
     // -----------------------------------------------------------------------
@@ -263,6 +318,58 @@ impl AuthService {
         }
     }
 
+    /// Passwordless AD SSO login (spike-002 / Kerberos-SPNEGO).
+    ///
+    /// The caller (`/api/v1/auth_ad_sso` HTTP handler) has ALREADY authenticated the user
+    /// by validating their Kerberos ticket against the service keytab server-side — there
+    /// is no LDAP bind and no password here. We only run the *same* provisioning seam the
+    /// LDAPS-bind path uses (`on_ad_bind_success`), so an SSO user resolves to a Trackly
+    /// account with identical semantics to plain AD login: active → session-eligible
+    /// `UserDto`; pending/blocked → the same `RegistrationPending`/`AccessBlocked` errors.
+    ///
+    /// SSO requires AD to be enabled (same gate as `try_ad_login`'s fallback).
+    ///
+    /// Resolves a real ФИО (displayName) + AD-group role hint via the
+    /// injected `AdDirectory` (service-account bind, SSO-01/SSO-03) before
+    /// delegating to the same `on_ad_bind_success` provisioning seam the
+    /// LDAPS-bind path uses. Directory enrichment is fail-closed and
+    /// availability-preserving: any non-`Ok` outcome degrades to the
+    /// bare login / no role elevation rather than failing the login itself
+    /// (T-31-03b — SSO availability must not depend on the OPTIONAL
+    /// directory-enrichment feature).
+    pub async fn sso_login(
+        &self,
+        ad_username: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        if !self.ad_enabled().await? {
+            return Err(AppError::Unauthorized);
+        }
+        let (resolved_display_name, role_hint) = match self.directory.resolve(ad_username).await {
+            Ok(DirectoryResult {
+                display_name: resolved,
+                role,
+            }) => (resolved, role),
+            // Expected, silent-degrade steady state (Pitfall 5) — directory
+            // enrichment is an optional feature, not configuring it is not
+            // an operational error worth logging per request.
+            Err(DirectoryError::NotConfigured) => (display_name.to_string(), None),
+            // Loggable — distinguishable from the silent NotConfigured case
+            // (T-31-03c): an admin can tell "AD is down" from "AD directory
+            // enrichment isn't configured".
+            Err(err @ (DirectoryError::Unreachable | DirectoryError::ServiceBindFailed)) => {
+                tracing::warn!(
+                    login = ad_username,
+                    error = ?err,
+                    "AD directory lookup failed during SSO enrichment; degrading to bare login, role not elevated"
+                );
+                (display_name.to_string(), None)
+            }
+        };
+        self.on_ad_bind_success(ad_username, &resolved_display_name, role_hint)
+            .await
+    }
+
     /// Пробует локальный (argon2id) логин. Не делает constant-time
     /// различия между "пользователь не найден" и "пароль неверный" по
     /// времени (CR-05 dummy-hash verify), но возвращает разные исходы
@@ -320,7 +427,12 @@ impl AuthService {
             AuthOutcome::BadCreds => Err(AppError::Unauthorized),
             AuthOutcome::Unreachable => Err(AppError::ServiceUnavailable { service: "ad" }),
             AuthOutcome::Ok { display_name } => {
-                self.on_ad_bind_success(&req.login, &display_name).await
+                // Password-bind path has no directory-resolved role hint
+                // (out of scope for this phase — only SSO's service-account
+                // bind resolves roles); existing hardcoded-'employee'
+                // default behavior for this path is unchanged.
+                self.on_ad_bind_success(&req.login, &display_name, None)
+                    .await
             }
         }
     }
@@ -341,7 +453,19 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
+        // Phase 32 (SSO-02): a login on the deployment-time admin_logins
+        // list is forced into an active Administrator, overriding EVERY
+        // branch below (unknown/pending/blocked/active-non-admin/
+        // active-admin) — see `force_admin_provisioning`. This check is a
+        // pure local set lookup (D-10), independent of AD/directory
+        // reachability, so it applies identically to BOTH callers of this
+        // function: `sso_login` (passwordless SSO) and `try_ad_login`
+        // (LDAPS password bind) — D-04..D-08 locked in 32-CONTEXT.md.
+        if self.is_admin_login(login) {
+            return self.force_admin_provisioning(login, display_name).await;
+        }
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
             // Pending registration (never approved yet): `is_active=0`,
@@ -363,12 +487,240 @@ impl AuthService {
             Some(blocked_or_deleted) => self.report_blocked_access(blocked_or_deleted.id).await,
             None => {
                 if self.ad_auto_accept().await? {
-                    self.auto_register_ad_user(login, display_name).await
+                    self.auto_register_ad_user(login, display_name, role_hint)
+                        .await
                 } else {
-                    self.create_pending_registration(login, display_name).await
+                    self.create_pending_registration(login, display_name, role_hint)
+                        .await
                 }
             }
         }
+    }
+
+    /// Forced-admin provisioning state machine (Phase 32, SSO-02). Called
+    /// ONLY when `is_admin_login(login)` is true, from the top of
+    /// `on_ad_bind_success` — overrides ALL FIVE pre-existing user states
+    /// (D-04..D-07):
+    /// - unknown → INSERT an active admin user directly, NO `ad_register`/
+    ///   `requests` row created (bypass, not auto-accept-with-info-request).
+    /// - pending (never approved, open `ad_register`/`register` request) →
+    ///   activate+promote to admin AND auto-complete the dangling open
+    ///   request, in the SAME writer tx (Pitfall 2).
+    /// - blocked/soft-deleted → revive as active admin (D-07 — overrides
+    ///   manual block).
+    /// - active, role != admin → escalate to admin (D-06).
+    /// - active, role == admin already → NO-OP (idempotency — do not bump
+    ///   `version`/`updated_at_utc` on every login).
+    ///
+    /// Every write branch inserts a mandatory `audit_log` row
+    /// (`action='ad_auto_admin'`, `payload_json: {"prior_state": ...}`) in
+    /// the SAME writer transaction as the `users`/`requests` mutation
+    /// (T-32-04, V9 ASVS — durable trail for this explicit, config-authored
+    /// privilege escalation).
+    async fn force_admin_provisioning(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        match self.find_user_any_state(login).await? {
+            None => self.force_admin_insert_unknown(login, display_name).await,
+            Some(u) if u.is_active && !u.deleted && u.role == "admin" => {
+                // Already active admin — no-op write, just return the session.
+                self.get_by_login(login).await
+            }
+            Some(u) if u.is_active && !u.deleted => {
+                self.force_admin_escalate_active(u.id, u.role).await
+            }
+            Some(u) if !u.is_active && !u.deleted && u.has_open_register_request => {
+                self.force_admin_activate_pending(u.id).await
+            }
+            Some(u) => self.force_admin_revive_blocked(u.id).await,
+        }
+    }
+
+    /// Forced-admin, unknown login (D-04): INSERT an active admin user
+    /// directly — NO `ad_register`/`requests` row at all (this is a
+    /// bypass path, not an auto-accept-with-info-request path).
+    async fn force_admin_insert_unknown(
+        &self,
+        login: &str,
+        display_name: &str,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+        let login_owned = login.to_string();
+        let display_name_owned = display_name.to_string();
+
+        let user_id = self
+            .writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO users \
+                     (login, full_name, password_hash, role, ad_user, is_active, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, NULL, 'admin', 1, 1, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now],
+                )
+                .map_err(map_rusqlite)?;
+                let user_id = tx.last_insert_rowid();
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "unknown" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(user_id)
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, pending login (D-04, D-07, Pitfall 2): activate+promote
+    /// to admin (no `deleted_at_utc` touch — was never active) AND
+    /// auto-complete the dangling open `ad_register`/`register` request in
+    /// the SAME writer tx, so it doesn't linger for an admin to
+    /// approve/reject a user who is already an active Administrator.
+    async fn force_admin_activate_pending(&self, user_id: i64) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', is_active = 1, \
+                     updated_at_utc = ?1, version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                // Unconditional WHERE ... status='open' (no version=? clause)
+                // — this is a system-triggered transition, not an admin UI
+                // action with a caller-supplied version to optimistic-lock
+                // against (mirrors request_service.rs::approve_ad_register's
+                // completion UPDATE shape, minus the version check).
+                tx.execute(
+                    "UPDATE requests SET status = 'completed', updated_at_utc = ?1, \
+                     version = version + 1 \
+                     WHERE requested_by_user_id = ?2 AND request_type = 'ad_register' \
+                       AND ad_subtype = 'register' AND status = 'open' \
+                       AND deleted_at_utc IS NULL",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "pending" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, blocked/soft-deleted login (D-07 — explicit override of
+    /// manual block/soft-delete): revive as active admin
+    /// (`deleted_at_utc = NULL`), mirroring
+    /// `request_service.rs::approve_ad_register`'s "restore" branch shape.
+    async fn force_admin_revive_blocked(&self, user_id: i64) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', is_active = 1, deleted_at_utc = NULL, \
+                     updated_at_utc = ?1, version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": "blocked" }).to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
+    }
+
+    /// Forced-admin, active-non-admin login (D-06 — escalation of an
+    /// existing user): UPDATE role only, `is_active` already 1, no
+    /// `deleted_at_utc` touch.
+    async fn force_admin_escalate_active(
+        &self,
+        user_id: i64,
+        prior_role: String,
+    ) -> Result<UserDto, AppError> {
+        let now = self.clock.unix_seconds();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "UPDATE users SET role = 'admin', updated_at_utc = ?1, \
+                     version = version + 1 WHERE id = ?2",
+                    rusqlite::params![now, user_id],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.execute(
+                    "INSERT INTO audit_log \
+                     (entity_type, entity_id, action, user_id, before_json, after_json, \
+                      payload_json, created_at_utc) \
+                     VALUES ('user', ?1, 'ad_auto_admin', ?1, NULL, NULL, ?2, ?3)",
+                    rusqlite::params![
+                        user_id,
+                        serde_json::json!({ "prior_state": format!("active_{prior_role}") })
+                            .to_string(),
+                        now
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
     }
 
     /// Re-attempted bind for a user already in the pending-registration
@@ -465,10 +817,12 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
         let now = self.clock.unix_seconds();
         let login_owned = login.to_string();
         let display_name_owned = display_name.to_string();
+        let role = role_hint.map(|r| r.as_str()).unwrap_or("employee");
 
         let (user_id, request_id) = self
             .writer
@@ -479,8 +833,8 @@ impl AuthService {
                     "INSERT INTO users \
                      (login, full_name, password_hash, role, ad_user, is_active, \
                       created_at_utc, updated_at_utc, version) \
-                     VALUES (?1, ?2, NULL, 'employee', 1, 1, ?3, ?3, 1)",
-                    rusqlite::params![login_owned, display_name_owned, now],
+                     VALUES (?1, ?2, NULL, ?4, 1, 1, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now, role],
                 )
                 .map_err(map_rusqlite)?;
                 let user_id = tx.last_insert_rowid();
@@ -536,10 +890,12 @@ impl AuthService {
         &self,
         login: &str,
         display_name: &str,
+        role_hint: Option<Role>,
     ) -> Result<UserDto, AppError> {
         let now = self.clock.unix_seconds();
         let login_owned = login.to_string();
         let display_name_owned = display_name.to_string();
+        let role = role_hint.map(|r| r.as_str()).unwrap_or("employee");
 
         let (_user_id, request_id) = self
             .writer
@@ -550,8 +906,8 @@ impl AuthService {
                     "INSERT INTO users \
                      (login, full_name, password_hash, role, ad_user, is_active, \
                       created_at_utc, updated_at_utc, version) \
-                     VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
-                    rusqlite::params![login_owned, display_name_owned, now],
+                     VALUES (?1, ?2, NULL, ?4, 1, 0, ?3, ?3, 1)",
+                    rusqlite::params![login_owned, display_name_owned, now, role],
                 )
                 .map_err(map_rusqlite)?;
                 let user_id = tx.last_insert_rowid();
@@ -851,6 +1207,53 @@ impl AuthService {
                 conn.execute(
                     "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
                      VALUES ('ad_enabled', ?1, ?2, ?2) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                    rusqlite::params![value, now],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+    }
+
+    /// Читает `ad_sso_enabled` из `app_settings` (passwordless Kerberos/SPNEGO
+    /// вход). По умолчанию `false`. Отдельный тумблер от `ad_enabled`: LDAPS-вход
+    /// логином/паролем и AD-SSO включаются независимо.
+    pub async fn ad_sso_enabled(&self) -> Result<bool, AppError> {
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            let conn = readers.acquire();
+            let result: rusqlite::Result<String> = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'ad_sso_enabled'",
+                [],
+                |r| r.get(0),
+            );
+            match result {
+                Ok(v) => Ok(v == "1"),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+                Err(e) => Err(map_rusqlite(e)),
+            }
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking ad_sso_enabled: {e}"),
+        })?
+    }
+
+    /// Устанавливает `ad_sso_enabled` в `app_settings`. Требует `ManageSettings`.
+    pub async fn set_ad_sso_enabled(
+        &self,
+        enabled: bool,
+        caller: &Identity,
+    ) -> Result<(), AppError> {
+        authorize(caller, &Action::ManageSettings)?;
+        let value = if enabled { "1" } else { "0" };
+        let now = self.clock.unix_seconds();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('ad_sso_enabled', ?1, ?2, ?2) \
                      ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
                     rusqlite::params![value, now],
                 )
@@ -1681,4 +2084,107 @@ fn row_to_user_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserDto> {
         created_at_utc: row.get(7)?,
         updated_at_utc: row.get(8)?,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests — sso_login's AdDirectory resolve + fail-closed degrade (SSO-01/SSO-03)
+// ---------------------------------------------------------------------------
+//
+// Scoped deliberately small (2 tests) — full end-to-end SSO coverage lives in
+// Plan 31-04's dedicated integration test file. These prove `sso_login`'s
+// body actually calls `self.directory.resolve(...)` and branches correctly
+// on both the happy path and the fail-closed degrade path, not just that it
+// compiles.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use trackly_infra::ad::directory_mock::MockAdDirectory;
+    use trackly_infra::ad::mock::MockAdClient;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_writer_and_readers;
+
+    fn make_service(
+        directory: Arc<dyn AdDirectory + Send + Sync>,
+    ) -> (AuthService, tempfile::TempDir) {
+        let (writer, readers, dir) = test_writer_and_readers();
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        let ad_client: Arc<dyn AdClient + Send + Sync> = Arc::new(MockAdClient::default_fixtures());
+        let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+        let svc = AuthService::new(
+            writer,
+            readers,
+            clock,
+            ad_client,
+            Arc::new(ws_tx),
+            directory,
+        );
+        (svc, dir)
+    }
+
+    #[tokio::test]
+    async fn sso_login_resolves_known_user_and_role_via_mock_directory() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        svc.set_ad_enabled(true, &Identity::trusted_admin())
+            .await
+            .expect("enable ad");
+        svc.set_ad_auto_accept(true, &Identity::trusted_admin())
+            .await
+            .expect("enable auto-accept");
+
+        let user = svc
+            .sso_login("us100", "us100")
+            .await
+            .expect("sso_login should succeed");
+
+        assert_eq!(user.full_name, "Иванов Иван Иванович");
+        assert_eq!(user.role, "manager");
+    }
+
+    #[tokio::test]
+    async fn sso_login_degrades_role_when_directory_unreachable() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::unreachable()));
+        svc.set_ad_enabled(true, &Identity::trusted_admin())
+            .await
+            .expect("enable ad");
+        svc.set_ad_auto_accept(true, &Identity::trusted_admin())
+            .await
+            .expect("enable auto-accept");
+
+        let user = svc
+            .sso_login("us300", "us300")
+            .await
+            .expect("sso_login must never fail on directory-unreachable");
+
+        assert_eq!(user.full_name, "us300");
+        assert_eq!(user.role, "employee");
+    }
+
+    // -------------------------------------------------------------------
+    // normalize_login_for_admin_check / is_admin_login (Phase 32, SSO-02)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn normalize_login_for_admin_check_strips_upn_and_netbios_and_lowercases() {
+        assert_eq!(normalize_login_for_admin_check("us100"), "us100");
+        assert_eq!(
+            normalize_login_for_admin_check("US100@example.local"),
+            "us100"
+        );
+        assert_eq!(normalize_login_for_admin_check("EXAMPLE\\us100"), "us100");
+    }
+
+    #[tokio::test]
+    async fn is_admin_login_defaults_to_empty_set_when_builder_not_called() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        assert!(!svc.is_admin_login("us100"));
+        assert!(!svc.is_admin_login("US100@example.local"));
+    }
+
+    #[tokio::test]
+    async fn is_admin_login_matches_upn_and_netbios_forms_after_with_admin_logins() {
+        let (svc, _dir) = make_service(Arc::new(MockAdDirectory::default_fixtures()));
+        let svc = svc.with_admin_logins(vec!["us100".to_string()]);
+        assert!(svc.is_admin_login("US100@example.local"));
+        assert!(svc.is_admin_login("EXAMPLE\\us100"));
+    }
 }

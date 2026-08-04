@@ -18,6 +18,11 @@
 //! };
 //! ```
 
+pub mod cache;
+pub mod directory;
+pub mod directory_mock;
 pub mod discovery;
+pub mod keytab;
 pub mod mock;
 pub mod real;
+pub mod sso;

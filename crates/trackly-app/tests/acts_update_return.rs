@@ -326,7 +326,11 @@ async fn un_return_restores_prior_state() {
         // — the state it had immediately before this return's own do_return).
         let post = read_device_snap(&svc, removed_id).await;
         assert_eq!(post.status_id, 2, "restored to в_работе");
-        assert_eq!(post.location_id, Some(loc_a), "restored to pre-return location");
+        assert_eq!(
+            post.location_id,
+            Some(loc_a),
+            "restored to pre-return location"
+        );
         assert_eq!(post.condition.as_deref(), Some("Новое"));
 
         // Kept device unaffected.
@@ -375,7 +379,11 @@ async fn add_outstanding_device_to_return() {
 
         let post_extra = read_device_snap(&svc, extra_id).await;
         assert_eq!(post_extra.status_id, 1, "extra device now на_складе");
-        assert_eq!(post_extra.location_id, Some(loc_b), "extra device at bulk location");
+        assert_eq!(
+            post_extra.location_id,
+            Some(loc_b),
+            "extra device at bulk location"
+        );
         assert_eq!(post_extra.condition.as_deref(), Some("Хорошее"));
     })
     .await
@@ -456,7 +464,10 @@ async fn reject_un_return_after_reissue() {
         assert_eq!(act_after.version, ret.version, "version unchanged");
         assert_eq!(act_after.items.len(), 2, "items unchanged");
         let post = read_device_snap(&svc, reissued_id).await;
-        assert_eq!(post.status_id, 2, "reissued device still в_работе (untouched)");
+        assert_eq!(
+            post.status_id, 2,
+            "reissued device still в_работе (untouched)"
+        );
     })
     .await
     .expect("reject_un_return_after_reissue budget");
@@ -480,7 +491,11 @@ async fn reject_edit_after_manual_device_relocation() {
         let ret = do_return_for(&svc, &handover, &device_ids, "Хорошее", loc_b).await;
 
         // Manual device-page edit: location only (status stays на_складе).
-        let device_svc = DeviceService::new(svc.writer.clone(), svc.readers.clone(), Arc::new(SystemClock));
+        let device_svc = DeviceService::new(
+            svc.writer.clone(),
+            svc.readers.clone(),
+            Arc::new(SystemClock),
+        );
         let dev_before = read_device_snap(&svc, dev_id).await;
         let readers_v = svc.readers.clone();
         let dev_version: i64 = tokio::task::spawn_blocking(move || {
@@ -515,8 +530,15 @@ async fn reject_edit_after_manual_device_relocation() {
             .await
             .expect("manual device relocation");
         let dev_after = read_device_snap(&svc, dev_id).await;
-        assert_eq!(dev_after.status_id, dev_before.status_id, "status unchanged (на_складе)");
-        assert_eq!(dev_after.location_id, Some(loc_c), "location manually changed");
+        assert_eq!(
+            dev_after.status_id, dev_before.status_id,
+            "status unchanged (на_складе)"
+        );
+        assert_eq!(
+            dev_after.location_id,
+            Some(loc_c),
+            "location manually changed"
+        );
 
         // update_return attempts to edit condition (apply_to_all=false
         // isolates the intent per-row) with a location override supplied
@@ -690,7 +712,11 @@ async fn version_mismatch_returns_conflict() {
         let act_after = svc.get(ret.id).await.expect("re-fetch return");
         assert_eq!(act_after.version, ret.version, "version unchanged");
         let post = read_device_snap(&svc, device_ids[0]).await;
-        assert_eq!(post.condition.as_deref(), Some("Хорошее"), "device unchanged");
+        assert_eq!(
+            post.condition.as_deref(),
+            Some("Хорошее"),
+            "device unchanged"
+        );
     })
     .await
     .expect("version_mismatch_returns_conflict budget");
@@ -848,7 +874,10 @@ async fn un_return_after_retained_edit_restores_original_pre_return_state() {
         // "Новое") — NOT the intermediate post-return/pre-edit state
         // (на_складе, loc_c, "Б/У") that the buggy code would restore.
         let post_dev1 = read_device_snap(&svc, dev1).await;
-        assert_eq!(post_dev1.status_id, 2, "restored to в_работе (true pre-return state)");
+        assert_eq!(
+            post_dev1.status_id, 2,
+            "restored to в_работе (true pre-return state)"
+        );
         assert_eq!(
             post_dev1.location_id,
             Some(loc_a),
