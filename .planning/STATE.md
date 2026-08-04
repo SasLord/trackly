@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
 status: executing
-last_updated: "2026-08-04T14:09:38.892Z"
-last_activity: 2026-08-04 -- Phase 33 planning complete
+last_updated: "2026-08-04T14:37:17.874Z"
+last_activity: 2026-08-04
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
   percent: 67
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 33 — полировка предпросмотра печати
+**Current focus:** Phase 33 — print-preview-polish
 
 ## Current Position
 
-Phase: 33
-Plan: Not started
+Phase: 33 (print-preview-polish) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-08-04 -- Phase 33 planning complete
+Last activity: 2026-08-04
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -276,6 +276,7 @@ Last activity: 2026-08-04 -- Phase 33 planning complete
 | Phase 31 P03 | 50min | 2 tasks | 10 files |
 | Phase 32 P01 | 35min | 2 tasks | 2 files |
 | Phase 32 P02 | 55min | 2 tasks | 2 files |
+| Phase 33 P01 | 35min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -679,6 +680,8 @@ Recent decisions affecting current work:
 - [Phase 32]: Injection at on_ad_bind_success (both sso_login and try_ad_login) — DRY, ADMIN_AD_LOGINS parity
 - [Phase 32]: Single audit_log action 'ad_auto_admin' with payload_json.prior_state distinguishing branches
 - [Phase 32]: admin_logins threaded via with_admin_logins builder (not new constructor arg) to avoid touching 9 existing AuthService::new call sites
+- [Phase 33]: pagedjs pinned to exact 0.4.3 (no caret) so Plan 33-02's CSP sha256 hash-source cannot silently drift on pnpm install
+- [Phase 33]: bootstrapScript.js kept static/non-interpolated; ui/eslint.config.js extended with parent/HTMLIFrameElement/MessageEvent globals + a script-mode override for the new bootstrap script
 
 ### Pending Todos
 
@@ -771,11 +774,11 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-04T12:19:51.374Z
+Last session: 2026-08-04T14:37:10.529Z
 Stopped at: Phase 33 UI-SPEC approved
 Resume file: 
 
-.planning/phases/33-print-preview-polish/33-UI-SPEC.md
+None
 
 - Start the next milestone with /gsd-new-milestone
 

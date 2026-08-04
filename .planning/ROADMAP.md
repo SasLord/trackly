@@ -49,7 +49,7 @@
 | 30. Quality — a11y & parity | v1.2 | 9/9 | Complete | 2026-07-29 |
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete    | 2026-08-03 |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 5/5 | Complete    | 2026-08-04 |
-| 33. Полировка предпросмотра печати | v1.3 | 0/4 | Planned | - |
+| 33. Полировка предпросмотра печати | v1.3 | 1/4 | In Progress|  |
 
 ## Phase Details
 
@@ -151,7 +151,7 @@
 **Plans**:
 **Wave 1**
 
-- [ ] 33-01-PLAN.md — Paged.js dependency + srcdoc/bridge/pluralization contract (Wave 1)
+- [x] 33-01-PLAN.md — Paged.js dependency + srcdoc/bridge/pluralization contract (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

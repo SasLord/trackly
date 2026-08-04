@@ -123,3 +123,9 @@ Plan 33-02 (CSP hash) can now compute its build-time SHA-256 over `PAGED_PREVIEW
 ---
 *Phase: 33-print-preview-polish*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All 4 created files + this SUMMARY.md verified to exist on disk; all 4 commit hashes
+(`bf2f294`, `dceea5b`, `1a8681c`, and this file's own docs commit) verified present in
+`git log --oneline --all`.
