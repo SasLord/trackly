@@ -5,8 +5,10 @@
 //! заданы вручную через `impl Default` для каждой секции (понятнее, чем
 //! `#[serde(default = "...")]` paths-функции на каждое поле).
 //!
-//! Malformed TOML → `AppError::Validation { field: "trackly.config.toml", ... }`,
-//! ловится в `main.rs` через `?` и печатается админу.
+//! Malformed TOML → `AppError::Validation { field: "trackly.config.toml", ... }`. `main.rs`
+//! no longer propagates this via `?` (quick task 260804-lk0) — it routes through
+//! `trackly_app::config_recovery::load_or_recover`, which falls back to `Self::default()`
+//! and surfaces the error via log + config-error.txt + best-effort dialog.
 //!
 //! Неизвестные ключи (forward-compat): `toml::from_str` по умолчанию их
 //! игнорирует (мы не пишем `#[serde(deny_unknown_fields)]`) — это

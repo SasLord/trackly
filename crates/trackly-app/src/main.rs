@@ -10,9 +10,18 @@
 //! 1. `Paths::resolve()` — root all I/O on `current_exe()?.parent()?`.
 //! 2. `set_webview2_data_folder()` — MUST be before any tokio runtime / thread spawn / tauri::Builder.
 //! 3. Parse `--self-test` flag.
-//! 4. `AppConfig::load_or_default()` — read `trackly.config.toml` or use defaults.
-//! 5. `trackly_app::logging::init(&paths, &config)` — tracing-subscriber + tracing-appender daily rotation;
+//! 4. `trackly_app::config_recovery::load_or_recover(...)` — read `trackly.config.toml`;
+//!    NEVER propagates a fatal error (quick task 260804-lk0 — this used to be
+//!    `AppConfig::load_or_default(...)?`, which silently killed the process pre-logger).
+//!    Malformed/unreadable config falls back to `AppConfig::default()` and carries the
+//!    error message forward for step 5b.
+//! 5. `trackly_app::logging::init(&paths, &config)` — tracing-subscriber + tracing-appender
+//!    daily rotation, using whichever config step 4 produced (real or recovered default);
 //!    возвращает `WorkerGuard`, который дальше живёт внутри AppCtx (Pitfall #6).
+//! 5b. If step 4 recovered from an error, surface it now that logging exists:
+//!     `tracing::error!` + `config_recovery::write_config_error_file` (always, portable-mode
+//!     safe) + best-effort native dialog (desktop/interactive only, skipped for
+//!     `--self-test`).
 //! 6. Build tokio multi-thread runtime; `block_on` async lifecycle:
 //!    - 6a/b/c. `AppCtx::build` — probe-read user_version → writer open → migrations → writer worker → reader pool.
 //! 7. Self-test branch: print diagnostics, drop AppCtx (which cancels shutdown + drops log_guard), exit 0.
@@ -24,7 +33,7 @@ use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::server::{start_server_on_addr, ServerHandle};
 use trackly_app::services::run_supervisor;
 use trackly_app::webview_env;
-use trackly_infra::{AppConfig, Paths};
+use trackly_infra::Paths;
 
 fn main() -> anyhow::Result<()> {
     // Step 1: resolve all paths from current_exe().
@@ -43,14 +52,39 @@ fn main() -> anyhow::Result<()> {
     // Step 3: parse --self-test flag.
     let self_test = std::env::args().any(|a| a == "--self-test");
 
-    // Step 4: load config (or defaults).
-    let config = AppConfig::load_or_default(paths.config_file())?;
+    // Step 4: load config, fail-soft (quick task 260804-lk0). Never propagates a fatal `?`
+    // for a malformed trackly.config.toml — that used to exit main() silently under
+    // windows_subsystem="windows" (no console to print the Err to) BEFORE the logger
+    // existed. Falls back to AppConfig::default() and carries the error message for
+    // step 5b to surface once logging is up.
+    let (config, config_load_error) =
+        trackly_app::config_recovery::load_or_recover(paths.config_file());
 
     // Step 5: tracing-subscriber + tracing-appender (D-Logging-01). Файлы
     // ложатся в `<exe_dir>/logs/trackly.log.<YYYY-MM-DD>` (portable-mode
     // invariant). Возвращённый WorkerGuard живёт внутри AppCtx; пока он
     // не drop'нется, background-thread аппендера не остановится.
     let log_guard = trackly_app::logging::init(&paths, &config)?;
+
+    // Step 5b: NOW that logging exists, surface a recovered config error loudly through
+    // every channel available — log file (always), a portable-mode-safe config-error.txt
+    // next to the exe (always, works headless too), and a best-effort native dialog
+    // (desktop/interactive only; skipped for --self-test so CI never blocks on a dialog
+    // nobody can dismiss).
+    if let Some(err_msg) = config_load_error {
+        tracing::error!(
+            error = %err_msg,
+            "trackly.config.toml failed to load — falling back to defaults"
+        );
+        if let Err(e) = trackly_app::config_recovery::write_config_error_file(&paths, &err_msg) {
+            tracing::error!("failed to write config-error.txt: {e}");
+        }
+        if !self_test {
+            trackly_app::config_recovery::show_best_effort_dialog(&err_msg);
+        }
+    } else {
+        trackly_app::config_recovery::clear_config_error_file(&paths);
+    }
 
     // Step 6: build a multi-thread tokio runtime and run AppCtx::build.
     let rt = tokio::runtime::Builder::new_multi_thread()

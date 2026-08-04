@@ -18,6 +18,7 @@
 //! - `http` — axum роуты (Phase 1: `GET /api/v1/health`).
 //! - `specta_export` — `tauri_specta::Builder` для генерации `ui/src/bindings.ts`.
 
+pub mod config_recovery;
 pub mod context;
 pub mod csv;
 pub mod dto;
