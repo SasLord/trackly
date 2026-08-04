@@ -48,10 +48,17 @@ scale — this project's token system supersedes the template default).
 | `--tr-space-sm` | 12px | Horizontal gap between page-counter text and hint-line text in the footer (if both render on one line — see Copywriting) |
 | `--tr-space-xs` | 8px | Gap between Spinner and progress text in the loading state (already the existing `.state { gap: var(--tr-space-md) }` value stays for the icon↔heading gap; `--tr-space-xs` is for the new secondary progress line, see Typography) |
 
-Exceptions: the sheet's own internal margins (20mm/15mm, from `@page` in the HTML templates)
-are NOT part of this spacing scale — they are physical print units owned by D-01/D-13, not
-`--tr-space-*` tokens. Do not attempt to reconcile the two systems; they answer different
-questions (chrome spacing vs. document print margins).
+Exceptions:
+
+1. The sheet's own internal margins (20mm/15mm, from `@page` in the HTML templates) are NOT
+   part of this spacing scale — they are physical print units owned by D-01/D-13, not
+   `--tr-space-*` tokens. Do not attempt to reconcile the two systems; they answer different
+   questions (chrome spacing vs. document print margins).
+2. `--tr-space-3xs` (2px, used for the page-counter ↔ hint-line gap in the footer — see
+   Modal Chrome) is deliberately off the 4px grid. It is a real, pre-existing token from the
+   project's approved 11-level scale (Phase 23), not an invented value, and 2px is the correct
+   optical gap for two stacked de-emphasized meta lines. Flagged explicitly so the executor
+   does not "correct" it to `--tr-space-2xs`.
 
 ---
 
@@ -70,6 +77,16 @@ Rationale for reuse-only: this phase is chrome polish on an existing modal, not 
 surface — introducing new type roles would violate the "declare 3-4 sizes total" spirit by
 fragmenting an already-approved 9-role system. Total distinct roles touched: 4 (of the
 project's existing 9).
+
+**Weight budget for this phase: 400 and 500 only.** The 600-weight "Heading (error)" row above
+is listed for completeness because it appears on this surface, but it belongs to
+`.error-heading`, which this phase does not modify. Do not read the table as licence to
+introduce a third weight on any new element.
+
+**Color split on this surface:** backdrop (`--tr-surface-sunken`) is dominant, the white sheet
+stack is the secondary surface, and accent (`--tr-accent`) is reserved exclusively for the
+existing "Печать" button — roughly a 60/30/10 dominant/secondary/accent read. No other element
+on this surface may claim accent.
 
 ---
 
