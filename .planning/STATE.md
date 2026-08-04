@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
-status: executing
-last_updated: "2026-08-03T18:03:56.195Z"
+status: ready_to_plan
+last_updated: 2026-08-04T00:40:15.783Z
 last_activity: 2026-08-03
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 236
   percent: 33
+stopped_at: Phase 32 complete (5/5) — ready to discuss Phase 33
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 32 — sso-main
+**Current focus:** Phase 33 — полировка предпросмотра печати
 
 ## Current Position
 
-Phase: 32 (sso-main) — EXECUTING
-Plan: 3 of 5
-Status: Ready to execute
-Last activity: 2026-08-03
+Phase: 33
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-04
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -40,7 +41,7 @@ Last activity: 2026-08-03
 
 **Velocity:**
 
-- Total plans completed: 162
+- Total plans completed: 167
 - Average duration: —
 - Total execution time: —
 
@@ -71,6 +72,7 @@ Last activity: 2026-08-03
 | 28 | 16 | - | - |
 | 29 | 4 | - | - |
 | 31 | 4 | - | - |
+| 32 | 5 | - | - |
 
 **Recent Trend:**
 
