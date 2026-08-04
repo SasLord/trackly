@@ -113,3 +113,9 @@ Phase 33 (print-preview-polish) is now feature-complete across its 4 plans (Page
 ---
 *Phase: 33-print-preview-polish*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+Verified on disk: `ui/src/features/acts/PdfPreviewModal.svelte`, `ui/src/pagedjs.d.ts`,
+`.planning/phases/33-print-preview-polish/33-04-SUMMARY.md`. Verified in
+`git log --oneline --all`: `7d2b098`, `9e0bfe3`, `8027945`.
