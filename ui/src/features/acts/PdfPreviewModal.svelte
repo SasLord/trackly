@@ -42,7 +42,11 @@
   import { acts } from '$lib/api/acts';
   import { apiCall } from '$lib/api/client';
   import { isTauri } from '$lib/stores/transport.svelte';
-  import { buildSrcdoc, THEME_CHROME } from '$lib/pdfPreview/pagedPreviewBootstrap';
+  import {
+    buildSrcdoc,
+    THEME_CHROME,
+    PAGED_PREVIEW_INLINE_SCRIPT,
+  } from '$lib/pdfPreview/pagedPreviewBootstrap';
   import { attachBridge } from '$lib/pdfPreview/pagedPreviewBridge';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { pluralizeRu } from '$lib/utils/pluralize';
@@ -270,29 +274,41 @@
    * already works (proven by the LAN-browser path). Mirrors the pattern
    * already used by ReportsPage.svelte's printReport()/exportPdf().
    *
-   * Auto-print: inject a small script that calls window.print() AFTER the
-   * document fully loads (so the data:image logo is painted before the print
-   * dialog appears), with a short setTimeout fallback. This makes the system
-   * browser show the print dialog immediately on open. Injected ONLY here in
-   * the desktop branch — the LAN path is untouched. Safe: this runs as a
-   * standalone file:// document in the user's own browser, outside the app's
-   * CSP; the act HTML is server-rendered, not user-authored markup.
+   * Phase 33 (D-06/C-02/C-03): auto-print must wait for Paged.js pagination
+   * to finish, not the document `load` event — printing before pagination
+   * used the browser's own native pagination instead of the same engine the
+   * on-screen preview uses. The temp file now embeds the SAME frozen
+   * `PAGED_PREVIEW_INLINE_SCRIPT` bundle used by the on-screen preview
+   * (Plan 33-01) so it re-paginates the document itself before printing, and
+   * a small second script listens for the bootstrap's own
+   * `trackly-pagedjs-done` postMessage to trigger `window.print()`. In a
+   * top-level `file://` document (not an iframe), `parent === window`, so
+   * the bootstrap's `parent.postMessage(...)` call dispatches to `window`
+   * itself — a document can postMessage to itself, and this listener
+   * (registered on the same `window`) receives it. No CSP applies to this
+   * path: `tauri.conf.json` sets `"security": {"csp": null}` for the Tauri
+   * app, and Tauri does not control the *external* browser this temp file
+   * is opened in. Bundling Paged.js inline (not a CDN) keeps the temp file
+   * self-contained per C-02/portable-mode discipline.
    */
   async function printViaSystemBrowser(html: string) {
-    // Build the tag via concatenation so the literal '</scr'+'ipt>' does not
-    // prematurely close this component's own <script> block at compile time.
-    const autoPrint =
+    // Build both tags via concatenation so the literal '</scr'+'ipt>' does
+    // not prematurely close this component's own <script> block at compile
+    // time — same idiom already used elsewhere in this file.
+    const pagedjsScript = '<' + 'script>' + PAGED_PREVIEW_INLINE_SCRIPT + '<' + '/script>';
+    const printTriggerScript =
       '<' +
-      'script>window.addEventListener("load",function(){setTimeout(function(){window.print()},300)})<' +
+      'script>window.addEventListener("message",function(e){if(e.source!==window)return;if(e.data&&e.data.type==="trackly-pagedjs-done"){setTimeout(function(){window.print()},100)}})<' +
       '/script>';
-    const htmlWithAutoPrint = /<\/body>/i.test(html)
-      ? html.replace(/<\/body>/i, `${autoPrint}</body>`)
-      : `${html}${autoPrint}`;
+    const injected = pagedjsScript + printTriggerScript;
+    const htmlWithPagination = /<\/body>/i.test(html)
+      ? html.replace(/<\/body>/i, `${injected}</body>`)
+      : `${html}${injected}`;
 
     const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
     const { open: openPath } = await import('@tauri-apps/plugin-shell');
     const fileName = `trackly-print-${Date.now()}.html`;
-    await writeTextFile(fileName, htmlWithAutoPrint, { baseDir: BaseDirectory.Temp });
+    await writeTextFile(fileName, htmlWithPagination, { baseDir: BaseDirectory.Temp });
     const { tempDir, join } = await import('@tauri-apps/api/path');
     const filePath = await join(await tempDir(), fileName);
     await openPath(filePath);
