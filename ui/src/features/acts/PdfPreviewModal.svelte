@@ -97,6 +97,9 @@
   let pageTotal = $state<number | null>(null);
   let naturalHeightPx = $state(1123);
   let iframeEl = $state<HTMLIFrameElement | null>(null);
+  let frameWidthPx = $state(0);
+  /** D-11: fit-to-width scale, ceiling of 1 — never enlarges beyond natural size. */
+  const scaleFactor = $derived(frameWidthPx > 0 ? Math.min(1, frameWidthPx / 794) : 1);
 
   const PAGINATION_TIMEOUT_MS = 8000;
   /** Not $state — plain closure-shared handle, not rendered anywhere. */
@@ -154,6 +157,13 @@
         : mode === 'report'
           ? reportParams !== null
           : actId !== null),
+  );
+
+  /** D-07: keep showing the loading state until pagination has settled one
+   *  way or the other (done or degraded), not merely until the HTML string
+   *  arrived. */
+  const showLoading = $derived(
+    loading || (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded'),
   );
 
   $effect(() => {
@@ -361,10 +371,15 @@
 
 <Modal {open} {title} size="pdf-preview" {onClose}>
   <div class="pdf-preview">
-    {#if loading}
-      <div class="state state-loading">
+    {#if showLoading}
+      <div class="state state-loading" aria-live="polite">
         <Spinner size="md" />
-        <p>Генерируем PDF…</p>
+        <div style="display:flex;flex-direction:column;gap:var(--tr-space-xs);">
+          <p>Готовим документ…</p>
+          <p class="progress-detail">
+            {pageProgress === 0 ? 'Разбиваем на страницы…' : `Страница ${pageProgress}…`}
+          </p>
+        </div>
       </div>
     {:else if errorMsg !== null}
       <div class="state state-error">
@@ -372,10 +387,33 @@
         <p class="error-detail">{errorMsg}</p>
       </div>
     {:else if htmlContent !== null}
-      <div class="pdf-page-frame">
-        <iframe sandbox="" srcdoc={htmlContent} title="Document Preview" class="pdf-iframe"
-        ></iframe>
-      </div>
+      {#if paginationStatus === 'degraded'}
+        <div class="pdf-page-frame">
+          <iframe
+            sandbox=""
+            srcdoc={htmlContent}
+            title="Предпросмотр документа"
+            class="pdf-iframe"
+          ></iframe>
+        </div>
+      {:else}
+        <div class="pdf-page-frame" bind:clientWidth={frameWidthPx}>
+          <div class="pdf-scale-outer" style="height: {naturalHeightPx * scaleFactor}px">
+            <div
+              class="pdf-scale-inner"
+              style="width: 794px; height: {naturalHeightPx}px; transform: scale({scaleFactor}); transform-origin: top center;"
+            >
+              <iframe
+                sandbox="allow-scripts"
+                {srcdoc}
+                bind:this={iframeEl}
+                title="Предпросмотр документа"
+                class="pdf-iframe"
+              ></iframe>
+            </div>
+          </div>
+        </div>
+      {/if}
     {:else}
       <div class="state state-empty">
         <p>Нет данных для предпросмотра.</p>
@@ -410,7 +448,7 @@
     display: flex;
     justify-content: center;
     overflow: auto;
-    background: var(--tr-surface);
+    background: var(--tr-surface-sunken);
     border-radius: var(--tr-radius-xs);
     padding: var(--tr-space-md) 0;
   }
@@ -419,10 +457,21 @@
     min-width: 794px;
     height: 1123px;
     min-height: 1123px;
-    border: 1px solid var(--tr-border);
     box-shadow: var(--tr-elev-2);
     background: var(--tr-n-0);
     flex-shrink: 0;
+  }
+  .pdf-scale-outer {
+    flex-shrink: 0;
+  }
+  .pdf-scale-inner {
+    flex-shrink: 0;
+  }
+  .progress-detail {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tr-text-tertiary);
+    margin: 0;
   }
   .state {
     display: flex;
