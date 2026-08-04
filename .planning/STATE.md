@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
-status: executing
-last_updated: "2026-08-04T15:27:57.648Z"
+status: verifying
+last_updated: "2026-08-04T15:38:10.155Z"
 last_activity: 2026-08-04
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 13
-  completed_plans: 12
-  percent: 67
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 33 (print-preview-polish) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-04
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -279,6 +279,7 @@ Last activity: 2026-08-04
 | Phase 33 P01 | 35min | 3 tasks | 7 files |
 | Phase 33 P02 | ~50min | 3 tasks | 5 files |
 | Phase 33 P03 | 35min | 3 tasks | 2 files |
+| Phase 33 P04 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -687,6 +688,7 @@ Recent decisions affecting current work:
 - [Phase ?]: PRV-CSP: CSP hash-source computed once (sha256-5ZDjul5PEiak1qhxbmi9Rx3W4tYmf4sQbt9wgef8vQY=) and hardcoded as a literal in http/mod.rs, verified by ui/scripts/check-pagedjs-csp-hash.mjs drift gate wired into pnpm lint
 - [Phase 33]: Paged.js srcdoc built imperatively (not $derived) once per render, to avoid iframe reload/pagination loss on theme toggle
 - [Phase 33]: pagedjs dist bundle imported via relative filesystem path (not bare package specifier) — its package.json exports map has no ./dist/* subpath entries, which broke vite build once the module became reachable from the app entry graph
+- [Phase 33]: Plan 33-04: printViaTopLevel wraps previewer.preview() stylesheet-argument shape in try/catch with a wrapper-stripping fallback (RESEARCH.md Open Question 2, unverified by automated tests — see 33-VALIDATION.md manual UAT row)
 
 ### Pending Todos
 
@@ -779,8 +781,8 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 
 ## Session Continuity
 
-Last session: 2026-08-04T15:27:57.639Z
-Stopped at: Completed 33-03-PLAN.md
+Last session: 2026-08-04T15:38:10.147Z
+Stopped at: Completed 33-04-PLAN.md
 Resume file: 
 
 None
