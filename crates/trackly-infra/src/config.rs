@@ -353,7 +353,8 @@ impl AdConfig {
     /// both `ad::transport::build_ldap_conn` and the Settings DTO read
     /// sites route through it.
     pub fn resolved_port(&self) -> u16 {
-        self.port.unwrap_or_else(|| self.ldap_tls_mode.default_port())
+        self.port
+            .unwrap_or_else(|| self.ldap_tls_mode.default_port())
     }
 }
 
@@ -571,9 +572,8 @@ mod tests {
              name_attr = \"displayName\"\n\
              no_tls_verify = false\n";
 
-        let plain: AppConfig =
-            toml::from_str(&format!("[ad]\n{base}ldap_tls_mode = \"plain\"\n"))
-                .expect("plain mode parses");
+        let plain: AppConfig = toml::from_str(&format!("[ad]\n{base}ldap_tls_mode = \"plain\"\n"))
+            .expect("plain mode parses");
         assert_eq!(plain.ad.ldap_tls_mode, LdapTlsMode::Plain);
         assert_eq!(plain.ad.resolved_port(), 389);
 
