@@ -97,6 +97,25 @@ async fn security_headers_present() {
             "CSP must include img-src with data: for the act logo, got: {csp}"
         );
 
+        // PRV-CSP regression (Phase 33, D-14): script-src must grant the Paged.js
+        // preview bootstrap script a sha256- hash-source, and must NOT widen to
+        // 'unsafe-inline' — isolate the script-src segment specifically, since
+        // style-src legitimately keeps 'unsafe-inline' and a whole-string check
+        // would give a false pass/fail either way.
+        let script_src_segment = csp
+            .split(';')
+            .map(str::trim)
+            .find(|segment| segment.starts_with("script-src"))
+            .unwrap_or("");
+        assert!(
+            script_src_segment.contains("sha256-"),
+            "CSP script-src must include a sha256- hash-source for the Paged.js bootstrap script, got: {csp}"
+        );
+        assert!(
+            !script_src_segment.contains("unsafe-inline"),
+            "CSP script-src must NOT include 'unsafe-inline', got: {csp}"
+        );
+
         ctx.shutdown.cancel();
     })
     .await

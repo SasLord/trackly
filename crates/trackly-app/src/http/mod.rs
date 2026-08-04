@@ -203,8 +203,20 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // blocked in the LAN-browser preview and print (desktop opens file:// in the
             // system browser outside this CSP, so it was unaffected — LAN-only symptom).
             // data: images cannot execute scripts, so this does not weaken XSS defense.
+            // PRV-CSP (Phase 33, D-14): sha256 hash-source for the Paged.js preview
+            // bootstrap <script> inlined into PdfPreviewModal's srcdoc (see
+            // ui/src/lib/pdfPreview/pagedPreviewBootstrap.ts, PAGED_PREVIEW_INLINE_SCRIPT).
+            // srcdoc iframes inherit the creator document's CSP regardless of the sandbox
+            // attribute, so without this the inline script is silently blocked in
+            // LAN/server mode (works in Tauri desktop only, where csp: null). Hash MUST be
+            // regenerated (node ui/scripts/check-pagedjs-csp-hash.mjs --print) and this
+            // constant updated whenever bootstrapScript.js or the pinned pagedjs version
+            // changes — drift is caught by `pnpm lint` (check-pagedjs-csp-hash.mjs) and by
+            // tests/security_headers.rs. This is a hash source, not 'unsafe-inline' — an
+            // attacker-supplied inline script (e.g. via a maliciously edited act/report
+            // HTML template) produces a different hash and stays blocked.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
+                "default-src 'self'; script-src 'self' 'sha256-5ZDjul5PEiak1qhxbmi9Rx3W4tYmf4sQbt9wgef8vQY='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
             ),
         ));
 
