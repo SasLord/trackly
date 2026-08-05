@@ -161,6 +161,7 @@
     display: flex;
     align-items: center;
     gap: var(--tr-space-md);
+    min-width: 0;
   }
 
   .user-name {
@@ -170,13 +171,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 200px;
-    flex-shrink: 0;
+    min-width: 0;
+    flex-shrink: 1;
   }
 
   .user-role {
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .theme-switcher-slot {
