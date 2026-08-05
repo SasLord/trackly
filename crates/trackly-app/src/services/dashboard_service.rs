@@ -325,6 +325,7 @@ impl DashboardService {
                 let mut clauses = vec![
                     "r.deleted_at_utc IS NULL".to_string(),
                     "r.requested_by_user_id = ?1".to_string(),
+                    "r.request_type != 'ad_register'".to_string(),
                 ];
                 let mut owned: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(owner_user_id)];
                 let mut pidx = 2usize;
