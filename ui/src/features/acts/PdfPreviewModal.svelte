@@ -399,6 +399,9 @@
         top: 0;
       }
       @media print {
+        html, body {
+          background: #fff !important;
+        }
         body > :not(#${PRINT_ROOT_ID}) {
           display: none !important;
         }
@@ -406,6 +409,9 @@
           display: block !important;
           position: static;
           left: auto;
+        }
+        .pagedjs_page {
+          background: #fff !important;
         }
       }
     `;
