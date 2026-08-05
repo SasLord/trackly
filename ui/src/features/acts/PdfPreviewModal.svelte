@@ -376,19 +376,36 @@
     // Document's own inline styles (incl. @page) + visibility scoping: hide
     // the rest of the app and show only #print-root while printing. Scoping
     // is `@media print`-only so on-screen app layout is never affected.
+    //
+    // #act-print-root is hidden off-screen via `position: absolute; left:
+    // -100000px` instead of `display: none`. `display: none` zeroes out
+    // `getBoundingClientRect` for every box in the hidden subtree, and the
+    // `await previewer.preview(...)` call immediately below needs real
+    // geometry to paginate #act-print-root's content — Paged.js measures
+    // actual DOM layout to decide page breaks. Off-screen positioning keeps
+    // the container out of the visual viewport without collapsing its
+    // layout box. The `@media print` block resets the position back to
+    // `static`/`left: auto` so the printed/saved-as-PDF output is not pushed
+    // off the page. This is a defect fix on first principles (found by
+    // reading the code), NOT a confirmed fix for the specific LAN
+    // print-dialog failure reported in UAT — an earlier attempt to isolate
+    // it in a standalone harness was inconclusive (the control case, a
+    // visible container, also hung).
     printStyle.textContent = `
       ${cssText}
+      #${PRINT_ROOT_ID} {
+        position: absolute;
+        left: -100000px;
+        top: 0;
+      }
       @media print {
         body > :not(#${PRINT_ROOT_ID}) {
           display: none !important;
         }
         #${PRINT_ROOT_ID} {
           display: block !important;
-        }
-      }
-      @media screen {
-        #${PRINT_ROOT_ID} {
-          display: none !important;
+          position: static;
+          left: auto;
         }
       }
     `;
