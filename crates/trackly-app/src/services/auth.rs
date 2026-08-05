@@ -133,6 +133,29 @@ pub struct UserAnyState {
     pub has_open_register_request: bool,
 }
 
+/// Provenance of a `display_name` handed to `on_ad_bind_success` (quick task
+/// 260805-wik, closes SSO-01 gap: existing active users' `full_name` was
+/// never refreshed after directory-side ФИО changes).
+///
+/// Both callers of `on_ad_bind_success` can pass a `display_name` that is
+/// really just the bare login — `sso_login` falls back to it on every
+/// `DirectoryError` (D-1), and the password-bind path
+/// (`try_ad_login`/`RealAdClient` at `trackly-infra/src/ad/real.rs:119/121`)
+/// falls back to the login too (D-2). `NameSource` is the anti-corruption
+/// signal that lets `sync_active_user_name` tell these apart from a
+/// genuinely directory-resolved name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameSource {
+    /// The name came from a live, successful `AdDirectory::resolve` call
+    /// (`sso_login`'s `Ok(DirectoryResult { .. })` match arm ONLY) — genuinely
+    /// trustworthy, safe to write to `users.full_name` (D-1).
+    Directory,
+    /// Bare login, or any degraded/error-path value (`DirectoryError::
+    /// NotConfigured`/`Unreachable`/`ServiceBindFailed`, or the entire
+    /// password-bind path per D-2) — must NEVER overwrite a stored name.
+    Fallback,
+}
+
 /// Normalize a login for `admin_logins` matching (Phase 32, SSO-02, D-09):
 /// strip `@domain` (UPN) suffix, strip `DOMAIN\` (NetBIOS) prefix, lowercase.
 ///
@@ -345,28 +368,36 @@ impl AuthService {
         if !self.ad_enabled().await? {
             return Err(AppError::Unauthorized);
         }
-        let (resolved_display_name, role_hint) = match self.directory.resolve(ad_username).await {
+        let (resolved_display_name, role_hint, name_source) = match self
+            .directory
+            .resolve(ad_username)
+            .await
+        {
             Ok(DirectoryResult {
                 display_name: resolved,
                 role,
-            }) => (resolved, role),
+            }) => (resolved, role, NameSource::Directory),
             // Expected, silent-degrade steady state (Pitfall 5) — directory
             // enrichment is an optional feature, not configuring it is not
-            // an operational error worth logging per request.
-            Err(DirectoryError::NotConfigured) => (display_name.to_string(), None),
+            // an operational error worth logging per request. Fallback
+            // provenance (260805-wik D-1) — must not overwrite a stored name.
+            Err(DirectoryError::NotConfigured) => {
+                (display_name.to_string(), None, NameSource::Fallback)
+            }
             // Loggable — distinguishable from the silent NotConfigured case
             // (T-31-03c): an admin can tell "AD is down" from "AD directory
-            // enrichment isn't configured".
+            // enrichment isn't configured". Fallback provenance (260805-wik
+            // D-1) — must not overwrite a stored name.
             Err(err @ (DirectoryError::Unreachable | DirectoryError::ServiceBindFailed)) => {
                 tracing::warn!(
                     login = ad_username,
                     error = ?err,
                     "AD directory lookup failed during SSO enrichment; degrading to bare login, role not elevated"
                 );
-                (display_name.to_string(), None)
+                (display_name.to_string(), None, NameSource::Fallback)
             }
         };
-        self.on_ad_bind_success(ad_username, &resolved_display_name, role_hint)
+        self.on_ad_bind_success(ad_username, &resolved_display_name, role_hint, name_source)
             .await
     }
 
@@ -431,7 +462,17 @@ impl AuthService {
                 // (out of scope for this phase — only SSO's service-account
                 // bind resolves roles); existing hardcoded-'employee'
                 // default behavior for this path is unchanged.
-                self.on_ad_bind_success(&req.login, &display_name, None)
+                //
+                // NameSource::Fallback is hardcoded here, not derived from
+                // anything — deliberate, documented limitation (260805-wik
+                // D-2): this path has no way to distinguish a real directory
+                // name from the login-fallback value baked into
+                // `trackly-infra/src/ad/real.rs:119/121`'s `AuthOutcome::Ok`,
+                // so it must always degrade to "not trusted" until that
+                // port's `AuthOutcome::Ok` shape is extended (follow-up, if
+                // ever wanted: add provenance to `trackly-core::ports::ad`
+                // and its mocks).
+                self.on_ad_bind_success(&req.login, &display_name, None, NameSource::Fallback)
                     .await
             }
         }
@@ -454,6 +495,7 @@ impl AuthService {
         login: &str,
         display_name: &str,
         role_hint: Option<Role>,
+        name_source: NameSource,
     ) -> Result<UserDto, AppError> {
         // Phase 32 (SSO-02): a login on the deployment-time admin_logins
         // list is forced into an active Administrator, overriding EVERY
@@ -467,7 +509,10 @@ impl AuthService {
             return self.force_admin_provisioning(login, display_name).await;
         }
         match self.find_user_any_state(login).await? {
-            Some(found) if found.is_active && !found.deleted => self.get_by_login(login).await,
+            Some(found) if found.is_active && !found.deleted => {
+                self.sync_active_user_name(found.id, login, display_name, name_source)
+                    .await
+            }
             // Pending registration (never approved yet): `is_active=0`,
             // NOT soft-deleted, AND an open 'register'-subtype request still
             // exists — distinct from blocked (also `is_active=0`, not
@@ -1523,6 +1568,76 @@ impl AuthService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking get_by_login: {e}"),
         })?
+    }
+
+    /// Синхронизирует `full_name` существующего активного AD/SSO
+    /// пользователя с directory-resolved именем (quick task 260805-wik,
+    /// closes SSO-01 gap: `on_ad_bind_success`'s active-user branch used to
+    /// discard `display_name` entirely and just re-read the stale row).
+    ///
+    /// Anti-corruption guards (in order) — ANY of these skips the UPDATE and
+    /// returns the CURRENT row unchanged:
+    /// 1. `name_source != NameSource::Directory` (D-1) — the caller-supplied
+    ///    name is not provably directory-resolved (AD outage/misconfig
+    ///    degrade branch, or the entire password-bind path per D-2). Writing
+    ///    unconditionally here would let a single AD outage silently
+    ///    overwrite every active user's real ФИО with their bare login.
+    /// 2. Trimmed candidate is empty/whitespace-only (D-3 guard #1).
+    /// 3. Trimmed candidate equals the login itself, case-insensitively
+    ///    (D-3 guard #2) — belt-and-braces even if `name_source` were ever
+    ///    mis-wired to `Directory` for a fallback value.
+    /// 4. Trimmed candidate equals the currently stored `full_name` exactly
+    ///    (D-5) — a normal steady-state login (name unchanged) stays a pure
+    ///    read, no pointless `UPDATE`/`version` bump on every sign-in.
+    ///
+    /// No `audit_log` row is written — this is a routine, system-triggered
+    /// directory field sync, not an admin-initiated action (mirrors
+    /// `change_password`'s single-statement `UPDATE` shape, no manual
+    /// transaction wrapper).
+    async fn sync_active_user_name(
+        &self,
+        user_id: i64,
+        login: &str,
+        candidate_name: &str,
+        name_source: NameSource,
+    ) -> Result<UserDto, AppError> {
+        let current = self.get_by_login(login).await?;
+
+        // D-1: only a genuinely directory-resolved name may ever be written.
+        if name_source != NameSource::Directory {
+            return Ok(current);
+        }
+
+        let trimmed = candidate_name.trim();
+        // D-3 guard #1: empty/whitespace-only candidate.
+        if trimmed.is_empty() {
+            return Ok(current);
+        }
+        // D-3 guard #2: candidate equals the bare login (case-insensitive) —
+        // belt-and-braces even on the trusted branch.
+        if trimmed.eq_ignore_ascii_case(login.trim()) {
+            return Ok(current);
+        }
+        // D-5: no-op when the resolved name already matches what's stored.
+        if trimmed == current.full_name {
+            return Ok(current);
+        }
+
+        let now = self.clock.unix_seconds();
+        let new_name = trimmed.to_string();
+        self.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE users SET full_name = ?1, updated_at_utc = ?2, version = version + 1 \
+                     WHERE id = ?3 AND deleted_at_utc IS NULL",
+                    rusqlite::params![new_name, now, user_id],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await?;
+
+        self.get_user_by_id(user_id).await
     }
 
     /// Список пользователей с опциональным фильтром поиска и пагинацией.
