@@ -425,3 +425,35 @@ async fn sso_login_does_not_overwrite_stored_name_when_resolved_name_equals_logi
          stored full_name, even on the trusted Ok branch (D-3 belt-and-braces guard)"
     );
 }
+
+/// Pins guard D-1 (provenance) specifically — the three tests above do NOT.
+///
+/// Today `http/sso.rs:71` calls `sso_login(ad_username, ad_username)`, so in every
+/// degrade branch `resolved_display_name` happens to equal the login, and guard D-3
+/// (name == login) catches the write on its own. That makes D-1 and D-3 redundant
+/// *at the current call site*: deleting the `name_source != Directory` check leaves
+/// all three anti-corruption tests above green, which is exactly the silent-regression
+/// hole this test closes.
+///
+/// The scenario here is the plausible future in which the caller supplies a real-looking
+/// name from a degraded source (e.g. a display name carried on the Kerberos ticket) while
+/// the directory itself is unreachable. That name is NOT directory-resolved, so it must
+/// not be written — and only D-1 can tell, since it neither equals the login nor is empty.
+#[tokio::test]
+async fn sso_login_does_not_overwrite_stored_name_with_untrusted_caller_supplied_name() {
+    let (writer, readers, _dir) =
+        seed_active_us100(Arc::new(MockAdDirectory::default_fixtures())).await;
+
+    let svc = second_auth_service(writer, readers, mock_directory_unreachable());
+    let dto = svc
+        .sso_login("us100", "Петров Пётр Петрович")
+        .await
+        .expect("SSO login must still succeed even when directory is unreachable");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Иванович",
+        "a caller-supplied display_name reaching the degrade branch is NOT directory-resolved \
+         and must never be written, even though it is non-empty and differs from the login — \
+         this is guard D-1 (NameSource::Directory), and only this test pins it"
+    );
+}
