@@ -392,6 +392,28 @@
     // it in a standalone harness was inconclusive (the control case, a
     // visible container, also hung).
     printStyle.textContent = `
+      /* Reset the app's own body { line-height: 1.5 } (global.scss) so LAN
+         print (this DOM-injection path) matches desktop print
+         (printViaSystemBrowser, a standalone temp HTML with no app
+         stylesheet present) and falls back to the UA default (normal), same
+         as all three act templates intend (they deliberately omit
+         line-height). Load-bearing placement — do not move:
+         1. Inside @media print only — must never touch on-screen app
+            typography.
+         2. BEFORE the interpolated template stylesheet below (cssText), in
+            source order — cascade inside @media print then reads app
+            default -> this reset -> template's own body rule, so a
+            user-customized template's line-height (D-01: templates are
+            user-editable) still wins. Placing this after the template
+            stylesheet would override a template author's explicit choice
+            instead of only filling in when they didn't declare one. */
+      @media print {
+        body {
+          line-height: normal;
+          letter-spacing: normal;
+          word-spacing: normal;
+        }
+      }
       ${cssText}
       #${PRINT_ROOT_ID} {
         position: absolute;
