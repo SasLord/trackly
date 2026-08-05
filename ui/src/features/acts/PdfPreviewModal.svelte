@@ -409,13 +409,15 @@
 
   async function handlePrint() {
     if (!ready || htmlContent === null) return;
+    const printPath = isTauri ? 'printViaSystemBrowser' : 'printViaTopLevel';
     try {
       if (isTauri) {
         await printViaSystemBrowser(htmlContent);
       } else {
         await printViaTopLevel(htmlContent);
       }
-    } catch {
+    } catch (err) {
+      console.error('[PdfPreviewModal] handlePrint failed', printPath, err);
       pushToast('error', 'Не удалось открыть документ для печати');
     }
   }
