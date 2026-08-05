@@ -392,30 +392,37 @@
     // it in a standalone harness was inconclusive (the control case, a
     // visible container, also hung).
     printStyle.textContent = `
-      /* Reset the app's own body { line-height: 1.5 } (global.scss) so LAN
-         print (this DOM-injection path) matches desktop print
-         (printViaSystemBrowser, a standalone temp HTML with no app
-         stylesheet present) and falls back to the UA default (normal), same
-         as all three act templates intend (they deliberately omit
-         line-height). Load-bearing placement — do not move:
-         1. Inside @media print only — must never touch on-screen app
-            typography.
-         2. BEFORE the interpolated template stylesheet below (cssText), in
-            source order — cascade inside @media print then reads app
-            default -> this reset -> template's own body rule, so a
-            user-customized template's line-height (D-01: templates are
-            user-editable) still wins. Placing this after the template
-            stylesheet would override a template author's explicit choice
-            instead of only filling in when they didn't declare one. */
-      @media print {
-        body {
-          line-height: normal;
-          letter-spacing: normal;
-          word-spacing: normal;
-        }
-      }
-      ${cssText}
+      /* 260805-jwf: reset the ambient line-height/letter-spacing/word-spacing
+         that #act-print-root would otherwise INHERIT from the app's own
+         body { line-height: 1.5 } (global.scss), scoped to #act-print-root
+         (never body) so the app's own on-screen typography is never touched
+         — that scoping IS the fix for defect A (a prior font-leak
+         regression came from a rule that reached the app's body). Declared
+         UNCONDITIONALLY, outside any print-only media block, not only at
+         print time: Paged.js's Previewer measures/paginates this DOM on
+         screen, BEFORE window.print() runs, so a reset that only applied
+         inside a print-only media block paginated 1.5-spaced text on screen
+         and then printed it normal-spaced — that mismatch was defect B
+         (regression from 260805-ifj). No !important: an element's own declared value for an
+         inherited property always wins over an ancestor's inherited value
+         regardless of the ancestor's specificity, so a template rule that
+         targets a specific descendant directly (e.g. .header .requisites,
+         line-height: 1.35, a rule none currently declare on body itself)
+         still wins for that element.
+         The cssText variable (template's own style-tag contents, extracted
+         above) is deliberately NOT interpolated into this literal anymore —
+         Paged.js's own previewer.preview() call below already applies the
+         identical stylesheet via its stylesheets argument, and duplicating
+         it here was defect A's actual mechanism (that copy landed in this
+         shared top-level document, unscoped). What removes Paged.js's OWN injected
+         copy again after each print cycle is the captured Previewer's
+         polisher.destroy() call in the cleanup function below — without it,
+         Paged.js's Polisher.insert() (just as unscoped as the duplicate
+         removed here) would still leak past a single print cycle. */
       #${PRINT_ROOT_ID} {
+        line-height: normal;
+        letter-spacing: normal;
+        word-spacing: normal;
         position: absolute;
         left: -100000px;
         top: 0;
@@ -438,8 +445,19 @@
       }
     `;
 
+    // Captured after previewer.preview() resolves (see below) — Paged.js's
+    // own Polisher inserts style elements marked data-pagedjs-inserted-
+    // styles into this shared document's head (unscoped, same mechanism as
+    // the duplicate cssText interpolation removed above). destroy() removes
+    // every element it ever inserted; without this, nothing would stop
+    // those from surviving past a single print cycle (defect A).
+    let injectedPolisher: { destroy: () => void } | null = null;
+
     const cleanup = () => {
       printRoot!.innerHTML = '';
+      printStyle!.textContent = '';
+      injectedPolisher?.destroy();
+      injectedPolisher = null;
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
@@ -447,6 +465,7 @@
     const { Previewer } = await import('pagedjs');
     const previewer = new Previewer();
     await previewer.preview(bodyHtml, [{ 'act-preview.css': cssText }], printRoot);
+    injectedPolisher = previewer.polisher;
 
     window.focus();
     window.print();

@@ -15,6 +15,15 @@
  * here under-represented the real runtime API and made the object form a
  * type error even though Paged.js supports (and, per this fix, requires) it
  * for inline CSS text.
+ *
+ * Quick 260805-jwf: added `polisher`, the `Previewer` constructor's plain
+ * instance property (`this.polisher = new Polisher(false)`,
+ * `pagedjs/dist/paged.esm.js` ~L33031) exposing `Polisher.destroy()`
+ * (`this.styleEl.remove(); this.inserted.forEach(s => s.remove());`) — the
+ * only way to remove the `<style data-pagedjs-inserted-styles>` elements
+ * `Polisher.insert()` appends to `document.head` on every `preview()` call.
+ * Typed to the minimal surface `printViaTopLevel` actually calls, not the
+ * full (untyped, upstream) `Polisher` class.
  */
 declare module 'pagedjs' {
   export class Previewer {
@@ -24,5 +33,6 @@ declare module 'pagedjs' {
       stylesheets?: (string | Record<string, string>)[],
       renderTo?: HTMLElement,
     ): Promise<{ total: number }>;
+    polisher: { destroy: () => void };
   }
 }
