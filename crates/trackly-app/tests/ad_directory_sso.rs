@@ -11,16 +11,20 @@
 //! placeholder-логин us300 (не заведён нигде, для фейл-клоуз сценариев) —
 //! никаких реальных имён/доменов.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use trackly_app::services::AuthService;
-use trackly_core::auth::Identity;
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
-use trackly_core::ports::ad_directory::{AdDirectory, DirectoryError};
+use trackly_core::ports::ad_directory::{AdDirectory, DirectoryError, DirectoryResult};
 use trackly_core::primitives::clock::Clock;
-use trackly_infra::ad::directory_mock::MockAdDirectory;
+use trackly_infra::ad::directory_mock::{DirectoryFixture, MockAdDirectory};
 use trackly_infra::ad::mock::MockAdClient;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::pools::ReaderPool;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::test_support::test_writer_and_readers;
 
 /// Создаёт `AuthService` поверх свежего tempfile DB с ЯВНО заданными
@@ -250,5 +254,174 @@ async fn mock_directory_unreachable_returns_typed_error_not_boolean() {
         matches!(result, Err(DirectoryError::Unreachable)),
         "unreachable directory must return the typed DirectoryError::Unreachable variant, \
          not a collapsed boolean/Ok(default), got {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 260805-wik: existing-active-user full_name sync regression tests.
+//
+// Closes the SSO-01 gap where `on_ad_bind_success`'s active-user branch
+// discarded the directory-resolved `display_name` entirely. These tests also
+// pin down the anti-corruption guards (D-1/D-2/D-3/D-5) that prevent an AD
+// outage/misconfiguration from silently overwriting a stored ФИО with the
+// bare login.
+// ---------------------------------------------------------------------------
+
+/// Local, test-only `AdDirectory` whose `resolve` always degrades to
+/// `Err(DirectoryError::NotConfigured)` — mirrors this codebase's "small
+/// independent adapters" convention (see `directory_mock.rs`/
+/// `normalize_login_for_admin_check`'s doc comments). Deliberately NOT added
+/// to the shared `MockAdDirectory` in `trackly-infra`.
+struct NotConfiguredDirectory;
+
+#[async_trait]
+impl AdDirectory for NotConfiguredDirectory {
+    async fn resolve(&self, _sam_account_name: &str) -> Result<DirectoryResult, DirectoryError> {
+        Err(DirectoryError::NotConfigured)
+    }
+}
+
+/// Seeds an active `us100` user (via one `sso_login` call against
+/// `MockAdDirectory::default_fixtures()`, so `full_name` starts as
+/// "Иванов Иван Иванович") and returns the shared writer/readers/tempdir so a
+/// SECOND `AuthService` (constructed by each test below, with a different
+/// `directory`) can log the SAME login in again against the SAME `users`
+/// row — `test_writer_and_readers()` creates an independent, fresh DB on
+/// every call, so it must only be called ONCE per test.
+async fn seed_active_us100(
+    directory: Arc<dyn AdDirectory + Send + Sync>,
+) -> (Arc<WriterHandle>, Arc<ReaderPool>, tempfile::TempDir) {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+    let seed_svc = AuthService::new(
+        writer.clone(),
+        readers.clone(),
+        clock,
+        mock_ad_client_default(),
+        Arc::new(ws_tx),
+        directory,
+    );
+    seed_svc
+        .set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    seed_svc
+        .set_ad_auto_accept(true, &admin_caller())
+        .await
+        .expect("enable auto-accept");
+    seed_svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("seed sso_login for us100 must succeed");
+    (writer, readers, dir)
+}
+
+/// Builds a second `AuthService` sharing the given writer/readers (SAME
+/// underlying DB row as `seed_active_us100`'s user) with the given
+/// `directory`, for the "second login" half of each test below.
+fn second_auth_service(
+    writer: Arc<WriterHandle>,
+    readers: Arc<ReaderPool>,
+    directory: Arc<dyn AdDirectory + Send + Sync>,
+) -> AuthService {
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let (ws_tx, _) = tokio::sync::broadcast::channel(128);
+    AuthService::new(
+        writer,
+        readers,
+        clock,
+        mock_ad_client_default(),
+        Arc::new(ws_tx),
+        directory,
+    )
+}
+
+#[tokio::test]
+async fn sso_login_updates_existing_active_users_stored_name_on_directory_change() {
+    let (writer, readers, _dir) =
+        seed_active_us100(Arc::new(MockAdDirectory::default_fixtures())).await;
+
+    let mut changed = MockAdDirectory::default_fixtures();
+    changed.users.insert(
+        "us100".to_string(),
+        DirectoryFixture {
+            display_name: "Иванов Иван Петрович",
+            role: Some(Role::Manager),
+        },
+    );
+
+    let svc = second_auth_service(writer, readers, Arc::new(changed));
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("second sso_login must succeed");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Петрович",
+        "an existing active user's stored full_name must update to the newly \
+         directory-resolved ФИО when it has genuinely changed"
+    );
+}
+
+#[tokio::test]
+async fn sso_login_does_not_overwrite_stored_name_when_directory_unreachable() {
+    let (writer, readers, _dir) =
+        seed_active_us100(Arc::new(MockAdDirectory::default_fixtures())).await;
+
+    let svc = second_auth_service(writer, readers, mock_directory_unreachable());
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("SSO login must still succeed even when directory is unreachable");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Иванович",
+        "an unreachable directory must NEVER overwrite an existing active user's stored \
+         full_name with the bare-login fallback value"
+    );
+}
+
+#[tokio::test]
+async fn sso_login_does_not_overwrite_stored_name_when_directory_not_configured() {
+    let (writer, readers, _dir) =
+        seed_active_us100(Arc::new(MockAdDirectory::default_fixtures())).await;
+
+    let svc = second_auth_service(writer, readers, Arc::new(NotConfiguredDirectory));
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("SSO login must still succeed even when directory is not configured");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Иванович",
+        "a not-configured directory must NEVER overwrite an existing active user's stored \
+         full_name with the bare-login fallback value"
+    );
+}
+
+#[tokio::test]
+async fn sso_login_does_not_overwrite_stored_name_when_resolved_name_equals_login() {
+    let (writer, readers, _dir) =
+        seed_active_us100(Arc::new(MockAdDirectory::default_fixtures())).await;
+
+    // Empty fixture map: MockAdDirectory::resolve("us100") falls through to
+    // its unmapped-login fallback, returning Ok(DirectoryResult { display_name:
+    // "us100", role: None }) — a genuinely trusted (Ok) response whose value
+    // happens to equal the bare login itself.
+    let empty_directory = Arc::new(MockAdDirectory {
+        users: HashMap::new(),
+        unreachable: false,
+    });
+    let svc = second_auth_service(writer, readers, empty_directory);
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("SSO login must still succeed");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Иванович",
+        "a directory-resolved name equal to the bare login itself must never overwrite a \
+         stored full_name, even on the trusted Ok branch (D-3 belt-and-braces guard)"
     );
 }
