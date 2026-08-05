@@ -12,8 +12,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use rusqlite::params;
+
 use trackly_app::services::dashboard_service::DashboardService;
-use trackly_core::auth::Identity;
+use trackly_core::auth::{Identity, Role};
+use trackly_core::error::AppError;
+use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::AppConfig;
@@ -105,4 +109,132 @@ async fn dashboard_low_stock_reflects_cartridge_state() {
     })
     .await
     .expect("dashboard_low_stock_reflects_cartridge_state budget")
+}
+
+/// Seed one employee user with a single request row of the given
+/// `request_type`. Mirrors `seed_pending_register`'s INSERT shape from
+/// `requests_ad_register.rs` (cannot import it directly — separate
+/// integration test binary). Returns `(user_id, request_id)`.
+async fn seed_employee_with_request(
+    writer: &WriterHandle,
+    login: &str,
+    full_name: &str,
+    request_type: &str,
+) -> (i64, i64) {
+    let now = SystemClock.unix_seconds();
+    let login = login.to_string();
+    let full_name = full_name.to_string();
+    let request_type = request_type.to_string();
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
+                params![login, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let user_id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO requests \
+                 (request_type, status, requested_by_user_id, description, ad_subtype, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, 'open', ?2, ?3, NULL, ?4, ?4, 1)",
+                params![request_type, user_id, full_name, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let request_id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok((user_id, request_id))
+        })
+        .await
+        .expect("seed employee with request")
+}
+
+/// Regression test for the third (and last) of three independently-written
+/// request-counting code paths that leaked the invisible, auto-created
+/// `ad_register` row into an employee-visible count.
+///
+/// Test A: an employee whose ONLY request is `ad_register` must see zero
+/// counts from the dashboard widget — matching the empty list they see on
+/// the requests page.
+///
+/// Test B (control): the SAME employee's real (`free_form`) request is
+/// still counted normally — proving the exclusion is scoped to
+/// `ad_register`, not a blanket suppression of the employee's own requests.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dashboard_employee_widget_excludes_ad_register() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let config = Arc::new(AppConfig::default());
+
+        let svc = DashboardService::new(writer.clone(), readers, clock, config);
+
+        // Test A: employee's ONLY request is the auto-created ad_register row.
+        let (user_id, _request_id) =
+            seed_employee_with_request(&writer, "us400", "Employee AD", "ad_register").await;
+        let employee_identity = Identity {
+            user_id: Some(user_id),
+            role: Role::Employee,
+        };
+
+        let dto = svc
+            .get_all_widgets(&employee_identity, None)
+            .await
+            .expect("get_all_widgets for employee (ad_register only)");
+        assert_eq!(
+            dto.request_counts_open, 0,
+            "ad_register-only employee must see request_counts_open = 0"
+        );
+        assert_eq!(
+            dto.request_counts_in_progress, 0,
+            "ad_register-only employee must see request_counts_in_progress = 0"
+        );
+        assert_eq!(
+            dto.request_counts_completed, 0,
+            "ad_register-only employee must see request_counts_completed = 0"
+        );
+
+        // Test B (control): a REAL request for the same employee is still counted.
+        writer
+            .execute(move |conn| {
+                let now = SystemClock.unix_seconds();
+                conn.execute(
+                    "INSERT INTO requests \
+                     (request_type, status, requested_by_user_id, description, ad_subtype, \
+                      created_at_utc, updated_at_utc, version) \
+                     VALUES ('free_form', 'open', ?1, 'Нужен новый монитор', NULL, ?2, ?2, 1)",
+                    params![user_id, now],
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+                Ok(())
+            })
+            .await
+            .expect("seed control free_form request");
+
+        let dto = svc
+            .get_all_widgets(&employee_identity, None)
+            .await
+            .expect("get_all_widgets for employee (ad_register + free_form)");
+        assert_eq!(
+            dto.request_counts_open, 1,
+            "employee's real free_form request must still be counted"
+        );
+    })
+    .await
+    .expect("dashboard_employee_widget_excludes_ad_register budget")
 }
