@@ -17,7 +17,15 @@
 //   trackly-pagedjs-error     { message: string }
 //   trackly-theme-update      { backdrop: string }  (INCOMING, parent -> iframe)
 (function () {
-  var previewer = new window.Paged.Previewer();
+  // Paged.js's UMD build (dist/paged.min.js, pinned 0.4.3 — see
+  // pagedPreviewBootstrap.ts) attaches its exports to `window.PagedModule`,
+  // NOT `window.Paged`. `window.Paged` is the global name used only by the
+  // separate `dist/paged.polyfill.js` build, which this project does not
+  // import. Do not "fix" this back to `window.Paged` — that global is
+  // undefined at runtime and this line was previously the first thing to
+  // throw (before any postMessage could fire), which always forced the
+  // 8s D-02 degrade timeout.
+  var previewer = new window.PagedModule.Previewer();
   var pages = 0;
 
   previewer.chunker.on('renderedPage', function () {

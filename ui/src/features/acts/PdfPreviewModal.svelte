@@ -103,8 +103,14 @@
   let naturalHeightPx = $state(1123);
   let iframeEl = $state<HTMLIFrameElement | null>(null);
   let frameWidthPx = $state(0);
-  /** D-11: fit-to-width scale, ceiling of 1 — never enlarges beyond natural size. */
-  const scaleFactor = $derived(frameWidthPx > 0 ? Math.min(1, frameWidthPx / 794) : 1);
+  /** D-11: fit-to-width scale, ceiling of 1 — never enlarges beyond natural size.
+   *  Divisor is 842 (794px @page width + 24px horizontal gutter on each side,
+   *  see pagedPreviewBootstrap.ts's .pagedjs_pages padding), matching
+   *  .pdf-iframe/.pdf-scale-inner's actual box width — see debug session
+   *  print-preview-always-degrades.md, defect #5. Leaving this at 794 would
+   *  under-scale the sheet and reintroduce horizontal overflow at narrow
+   *  widths. */
+  const scaleFactor = $derived(frameWidthPx > 0 ? Math.min(1, frameWidthPx / 842) : 1);
 
   const PAGINATION_TIMEOUT_MS = 8000;
   /** Not $state — plain closure-shared handle, not rendered anywhere. */
@@ -228,6 +234,14 @@
       const msg = data as { type?: string };
       switch (msg.type) {
         case 'trackly-pagedjs-progress': {
+          // 33-UI-SPEC.md's timeout definition is "8s from srcdoc being set
+          // to the FIRST trackly-pagedjs-progress OR trackly-pagedjs-done
+          // message" (see 33-RESEARCH.md Pitfall 1: the timeout only exists
+          // to detect total silence — a CSP-blocked/failed bootstrap script
+          // — not to cap the full pagination run). Clear it here too, not
+          // only on 'done', or a normal multi-page document that is still
+          // actively paginating past the 8s mark would incorrectly degrade.
+          clearDegradeTimeout();
           pageProgress = (data as { pages: number }).pages;
           break;
         }
@@ -301,8 +315,15 @@
       'script>window.addEventListener("message",function(e){if(e.source!==window)return;if(e.data&&e.data.type==="trackly-pagedjs-done"){setTimeout(function(){window.print()},100)}})<' +
       '/script>';
     const injected = pagedjsScript + printTriggerScript;
+    // MUST use a replacer FUNCTION, not a string — `injected` embeds the full
+    // minified Paged.js bundle, which contains a literal `$`` substring (see
+    // the matching comment in pagedPreviewBootstrap.ts's buildSrcdoc). A
+    // string replacement argument interprets `$`` as a special "portion
+    // before the match" substitution pattern and corrupts the bundle; a
+    // function return value is inserted verbatim. Do not revert to a plain
+    // template-literal string replacement here.
     const htmlWithPagination = /<\/body>/i.test(html)
-      ? html.replace(/<\/body>/i, `${injected}</body>`)
+      ? html.replace(/<\/body>/i, () => `${injected}</body>`)
       : `${html}${injected}`;
 
     const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
@@ -413,15 +434,10 @@
 
 <Modal {open} {title} size="pdf-preview" {onClose}>
   <div class="pdf-preview">
-    {#if showLoading}
+    {#if loading}
       <div class="state state-loading" aria-live="polite">
         <Spinner size="md" />
-        <div style="display:flex;flex-direction:column;gap:var(--tr-space-xs);">
-          <p>Готовим документ…</p>
-          <p class="progress-detail">
-            {pageProgress === 0 ? 'Разбиваем на страницы…' : `Страница ${pageProgress}…`}
-          </p>
-        </div>
+        <p>Готовим документ…</p>
       </div>
     {:else if errorMsg !== null}
       <div class="state state-error">
@@ -435,11 +451,24 @@
           ></iframe>
         </div>
       {:else}
+        <!-- The pagination iframe must mount as soon as srcdoc exists,
+             regardless of paginationStatus — Paged.js's bootstrap script
+             (running inside srcdoc) is the ONLY thing that can ever move
+             paginationStatus off 'pending', via the trackly-pagedjs-progress/
+             -done postMessage bridge (attachBridge, keyed on iframeEl !==
+             null). Gating this branch behind showLoading previously made the
+             iframe unreachable while pending, so the bridge could never fire
+             and every preview fell through the 8s timeout into D-02 (see
+             debug session print-preview-always-degrades.md). The "pagination
+             in progress" UI is now an overlay layered on TOP of the mounted
+             iframe (opacity/position, never display:none — that would zero
+             out Paged.js's layout measurements) instead of a competing
+             top-level branch that excludes the iframe from the DOM. -->
         <div class="pdf-page-frame" bind:clientWidth={frameWidthPx}>
           <div class="pdf-scale-outer" style="height: {naturalHeightPx * scaleFactor}px">
             <div
               class="pdf-scale-inner"
-              style="width: 794px; height: {naturalHeightPx}px; transform: scale({scaleFactor}); transform-origin: top center;"
+              style="width: 842px; height: {naturalHeightPx}px; transform: scale({scaleFactor}); transform-origin: top center;"
             >
               <iframe
                 sandbox="allow-scripts"
@@ -447,9 +476,21 @@
                 bind:this={iframeEl}
                 title="Предпросмотр документа"
                 class="pdf-iframe"
+                style="height: {naturalHeightPx}px;"
               ></iframe>
             </div>
           </div>
+          {#if showLoading}
+            <div class="pagination-overlay" aria-live="polite">
+              <Spinner size="md" />
+              <div style="display:flex;flex-direction:column;gap:var(--tr-space-xs);">
+                <p>Готовим документ…</p>
+                <p class="progress-detail">
+                  {pageProgress === 0 ? 'Разбиваем на страницы…' : `Страница ${pageProgress}…`}
+                </p>
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
     {:else}
@@ -500,6 +541,7 @@
      inline styles governs print sizing, this is purely a screen-preview
      affordance. */
   .pdf-page-frame {
+    position: relative;
     flex: 1;
     display: flex;
     justify-content: center;
@@ -508,13 +550,84 @@
     border-radius: var(--tr-radius-xs);
     padding: var(--tr-space-md) 0;
   }
+  /* Sits on top of the already-mounted pagination iframe while Paged.js is
+     still running (paginationStatus === 'pending'). Deliberately opaque
+     (same background as .pdf-page-frame) so it visually matches the old
+     full-state spinner — but this is a sibling overlay, not a conditional
+     that removes the iframe from the DOM, so Paged.js's layout measurements
+     inside the iframe are never disturbed (no display:none anywhere in this
+     stack, see debug session print-preview-always-degrades.md). */
+  .pagination-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--tr-space-md);
+    text-align: center;
+    color: var(--tr-text-secondary);
+    background: var(--tr-surface-sunken);
+  }
   .pdf-iframe {
-    width: 794px;
-    min-width: 794px;
-    height: 1123px;
+    /* 794 (A4 @page width, D-01) + 24px horizontal gutter on each side, so
+       Paged.js's per-sheet shadow (D-09, drawn on .pagedjs_page inside the
+       iframe, see pagedPreviewBootstrap.ts) has room to paint instead of
+       clipping at the iframe edge. Must stay in sync with .pdf-scale-inner's
+       inline width and .pagedjs_pages's horizontal padding. */
+    width: 842px;
+    min-width: 842px;
+    /* Height is bound inline (see markup above) to naturalHeightPx — the
+       SAME value already driving .pdf-scale-inner's height — so the iframe's
+       own box grows with the actual paginated content instead of staying
+       frozen at the single-page placeholder. min-height keeps that
+       placeholder ONLY as the pre-pagination fallback (naturalHeightPx's own
+       initial $state is 1123, matching). A static `height: 1123px` here
+       previously overflowed by design (page + .pagedjs_pages's vertical
+       padding always exceeds 1123px) and produced a scrollbar nested INSIDE
+       the iframe on top of .pdf-page-frame's own outer scrollbar — see debug
+       session print-preview-always-degrades.md, defect #5 cause A. */
     min-height: 1123px;
-    box-shadow: var(--tr-elev-2);
-    background: var(--tr-n-0);
+    /* No box-shadow here (removed, was var(--tr-elev-2)): D-09 places the
+       shadow PER SHEET, on .pagedjs_page inside the iframe (see
+       pagedPreviewBootstrap.ts) — an outer shadow on this element would
+       outline the entire iframe box (i.e. the whole multi-page stack once
+       D-04 pagination is in play), duplicating and conflicting with the
+       per-sheet design instead of complementing it. See defect #5 cause C. */
+    /* border: none (defects #6 AND #7, print-preview-always-degrades.md):
+       this rule never declared its own `border`, so the browser's default UA
+       stylesheet rule `iframe:not([seamless]) { border: 2px inset; }`
+       (WHATWG html.spec.whatwg.org/multipage/rendering.html) applied instead
+       — the harsh dark inset border the user reported. It is also NOT purely
+       cosmetic: global.scss's universal `*, *::before, *::after { box-sizing:
+       border-box; }` reset applies to this element (the reset is a plain
+       document-wide stylesheet, unaffected by Svelte's per-component style
+       scoping), so this element's declared `height`/`width` are BORDER-BOX
+       sizes — the 2px top + 2px bottom UA-default border was being
+       subtracted from the usable content viewport handed to the framed
+       document, leaving it ~4px shorter than `naturalHeightPx` and forcing a
+       persistent internal scrollbar even though naturalHeightPx (measured
+       from .pagedjs_pages.scrollHeight, confirmed by reading
+       chunker.js/previewer.js: nothing else is ever appended to the iframe
+       document's <body> besides .pagedjs_pages and an inert hidden
+       <template>) was itself already fully correct. Removing the border
+       makes content-box height === naturalHeightPx exactly, fixing both the
+       visual regression and the leftover nested scroll from the same root
+       cause. Do NOT set this to a background colour instead (as tentatively
+       suggested in UAT) — the iframe is a transparent viewport onto the
+       backdrop and D-09's per-sheet shadow already separates sheet from
+       backdrop; any border here would just reintroduce a second, redundant
+       edge around the whole page stack. */
+    border: none;
+    /* var(--tr-surface-sunken), not var(--tr-n-0)/white: this background is
+       only ever visible for the brief instant before the iframe's own opaque-
+       origin document paints its body background (chrome.backdrop, see
+       pagedPreviewBootstrap.ts) over the entire viewport. Painting it white
+       first caused a flash against the dark-theme backdrop (near-black);
+       matching .pdf-page-frame's own backdrop colour here means that flash
+       blends into its surroundings instead of standing out. */
+    background: var(--tr-surface-sunken);
     flex-shrink: 0;
   }
   .pdf-scale-outer {

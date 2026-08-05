@@ -56,8 +56,23 @@ export function buildSrcdoc(actHtml: string, theme: 'light' | 'dark'): string {
   const style =
     '<style>' +
     `body { margin: 0; background: ${chrome.backdrop}; }` +
-    '.pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 16px 0; }' +
-    `.pagedjs_page { box-shadow: ${chrome.shadow}; }` +
+    // Horizontal padding (24px, matches --tr-space-xl in the parent app) gives
+    // .pagedjs_page's box-shadow room to paint without clipping at the iframe
+    // edges — the page's own content-box width equals the @page width (D-01),
+    // so with zero horizontal padding the shadow had nowhere to render and
+    // forced horizontal overflow inside the iframe (debug session
+    // print-preview-always-degrades.md, defect #5 cause B). Must stay in sync
+    // with .pdf-iframe's width (794 + 2*24 = 842px) in PdfPreviewModal.svelte.
+    '.pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 16px 24px; }' +
+    // D-08: the sheet is paper — ALWAYS white, in both themes, never the theme
+    // backdrop. Paged.js's stock interface.css (which would normally paint
+    // .pagedjs_page white) is deliberately not loaded (D-09), so nothing else
+    // supplies this background; without it .pagedjs_page is transparent and the
+    // body's own backdrop (line above) shows straight through the "sheet".
+    // Literal #fff, not a --tr-* custom property: this iframe is opaque-origin
+    // and cannot resolve the parent app's tokens (same reason chrome.backdrop
+    // above is already a literal hex, not a token reference).
+    `.pagedjs_page { box-shadow: ${chrome.shadow}; background: #fff; }` +
     '</style>';
 
   // '<' + 'script>' / '<' + '/script>' concatenation idiom, reused verbatim
@@ -67,7 +82,17 @@ export function buildSrcdoc(actHtml: string, theme: 'light' | 'dark'): string {
 
   const injected = style + script;
 
+  // MUST use a replacer FUNCTION, not a string, here. `injected` embeds the
+  // full minified Paged.js bundle, which contains a literal `$`` substring
+  // (a template-literal regex source ending in `...+$` immediately followed
+  // by its closing backtick — see paged.min.js). String.prototype.replace
+  // interprets `$`` / `$'` / `$&` / `$$` / `$<n>` specially ONLY when the
+  // replacement argument is a string; a function return value is inserted
+  // verbatim with no pattern substitution. Do not "simplify" this back to a
+  // template-literal string replacement — it silently splices a huge chunk
+  // of `actHtml` into the middle of the bundle and corrupts it (observed as
+  // `SyntaxError: Unexpected EOF` when the srcdoc iframe parses the script).
   return /<\/body>/i.test(actHtml)
-    ? actHtml.replace(/<\/body>/i, `${injected}</body>`)
+    ? actHtml.replace(/<\/body>/i, () => `${injected}</body>`)
     : `${actHtml}${injected}`;
 }
