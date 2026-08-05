@@ -358,6 +358,7 @@
     const styleHtml = Array.from(parsed.head?.querySelectorAll('style') ?? [])
       .map((el) => el.outerHTML)
       .join('\n');
+    const cssText = styleHtml.replace(/<\/?style[^>]*>/gi, '');
 
     let printRoot = document.getElementById(PRINT_ROOT_ID);
     if (!printRoot) {
@@ -376,7 +377,7 @@
     // the rest of the app and show only #print-root while printing. Scoping
     // is `@media print`-only so on-screen app layout is never affected.
     printStyle.textContent = `
-      ${styleHtml.replace(/<\/?style[^>]*>/gi, '')}
+      ${cssText}
       @media print {
         body > :not(#${PRINT_ROOT_ID}) {
           display: none !important;
@@ -400,19 +401,7 @@
 
     const { Previewer } = await import('pagedjs');
     const previewer = new Previewer();
-    try {
-      await previewer.preview(bodyHtml, [styleHtml], printRoot);
-    } catch {
-      // RESEARCH.md Open Question 2: Polisher.add()'s stylesheet-argument
-      // shape for this explicit (non-auto) invocation was never empirically
-      // confirmed. If passing the raw <style>...</style>-wrapped outerHTML
-      // string above does not parse (visible symptom: pagination completes
-      // but @page margins/fonts are not applied to #act-print-root), fall
-      // back to the inner CSS text only, mirroring the wrapper-stripping
-      // pattern already used above for printStyle.textContent.
-      printRoot.innerHTML = '';
-      await previewer.preview(bodyHtml, [styleHtml.replace(/<\/?style[^>]*>/gi, '')], printRoot);
-    }
+    await previewer.preview(bodyHtml, [{ 'act-preview.css': cssText }], printRoot);
 
     window.focus();
     window.print();
