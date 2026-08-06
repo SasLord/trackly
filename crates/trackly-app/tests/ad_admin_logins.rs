@@ -25,11 +25,11 @@ use rusqlite::params;
 
 use trackly_app::dto::auth::LoginRequest;
 use trackly_app::services::AuthService;
-use trackly_core::auth::Identity;
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::ports::ad_directory::AdDirectory;
 use trackly_core::primitives::clock::Clock;
-use trackly_infra::ad::directory_mock::MockAdDirectory;
+use trackly_infra::ad::directory_mock::{DirectoryFixture, MockAdDirectory};
 use trackly_infra::ad::mock::MockAdClient;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
@@ -449,5 +449,115 @@ async fn admin_logins_forces_admin_on_ldaps_password_bind_path_too() {
         dto.role, "admin",
         "the shared on_ad_bind_success injection point must cover BOTH sso_login and \
          try_ad_login entry points, not just SSO"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 260806-wk1 (WK1-01/WK1-02): force_admin_provisioning now resyncs full_name
+// via the existing sync_active_user_name helper on every non-INSERT branch.
+// ---------------------------------------------------------------------------
+
+/// Pins the "already active admin" branch's new write path (T-260806wk1-01):
+/// a directory-resolved ФИО change for an admin_logins login must update the
+/// stored full_name on next login, exactly like a regular active user.
+#[tokio::test]
+async fn admin_logins_already_admin_syncs_changed_name_from_directory() {
+    let mut directory = MockAdDirectory::default_fixtures();
+    directory.users.insert(
+        "us100".to_string(),
+        DirectoryFixture {
+            display_name: "Иванов Иван Петрович",
+            role: Some(Role::Manager),
+        },
+    );
+
+    let (svc, _dir) =
+        make_auth_service_with_admin_logins(vec!["us100".to_string()], Arc::new(directory));
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    seed_ad_user(&svc, "us100", "Иванов Иван Иванович", "admin").await;
+
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("already-admin login must still succeed");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Петрович",
+        "an already-active-admin login must resync full_name from the directory, exactly \
+         like a regular active user (closes the SSO-01 gap for forced admins)"
+    );
+    assert_eq!(dto.role, "admin");
+}
+
+/// Pins guard D-1 (NameSource, not the weaker name-equals-login guard) on
+/// the "already active admin" branch (T-260806wk1-02). The caller-supplied
+/// name here is non-empty and NOT equal to the login — a same-as-login
+/// variant would still pass even with the D-1 guard deleted (that was
+/// yesterday's useless-test trap, 260805-wik), so this shape is what makes
+/// the test meaningful.
+#[tokio::test]
+async fn admin_logins_already_admin_does_not_overwrite_name_with_untrusted_caller_supplied_name() {
+    let (svc, _dir) = make_auth_service_with_admin_logins(
+        vec!["us100".to_string()],
+        mock_directory_unreachable(),
+    );
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    seed_ad_user(&svc, "us100", "Иванов Иван Иванович", "admin").await;
+
+    let dto = svc
+        .sso_login("us100", "Петров Пётр Петрович")
+        .await
+        .expect("already-admin login must still succeed even when directory is unreachable");
+
+    assert_eq!(
+        dto.full_name, "Иванов Иван Иванович",
+        "an unreachable directory must NEVER overwrite a forced-admin user's stored full_name \
+         with an untrusted caller-supplied name, even though it is non-empty and differs from \
+         the login — this is guard D-1 (NameSource::Directory), and only this non-login-shaped \
+         caller-supplied name pins it"
+    );
+    assert_eq!(dto.role, "admin");
+}
+
+/// Pins that the sync call is not lost specifically inside
+/// `force_admin_escalate_active`'s branch (T-260806wk1-01, item 3): the
+/// escalation branch must both promote the user to admin AND sync their
+/// ФИО in the same login.
+#[tokio::test]
+async fn admin_logins_active_non_admin_escalation_also_syncs_changed_name() {
+    let mut directory = MockAdDirectory::default_fixtures();
+    directory.users.insert(
+        "us100".to_string(),
+        DirectoryFixture {
+            display_name: "Иванов Иван Петрович",
+            role: Some(Role::Manager),
+        },
+    );
+
+    let (svc, _dir) =
+        make_auth_service_with_admin_logins(vec!["us100".to_string()], Arc::new(directory));
+    svc.set_ad_enabled(true, &admin_caller())
+        .await
+        .expect("enable AD");
+    seed_ad_user(&svc, "us100", "Иванов Иван Иванович", "employee").await;
+
+    let dto = svc
+        .sso_login("us100", "us100")
+        .await
+        .expect("escalation login must succeed");
+
+    assert_eq!(
+        dto.role, "admin",
+        "the escalation branch must still promote the user to admin"
+    );
+    assert_eq!(
+        dto.full_name, "Иванов Иван Петрович",
+        "the escalation branch must ALSO sync the changed ФИО in the same login — proves the \
+         sync_active_user_name call is not lost specifically inside \
+         force_admin_escalate_active's branch"
     );
 }
