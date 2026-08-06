@@ -506,7 +506,9 @@ impl AuthService {
         // function: `sso_login` (passwordless SSO) and `try_ad_login`
         // (LDAPS password bind) — D-04..D-08 locked in 32-CONTEXT.md.
         if self.is_admin_login(login) {
-            return self.force_admin_provisioning(login, display_name).await;
+            return self
+                .force_admin_provisioning(login, display_name, name_source)
+                .await;
         }
         match self.find_user_any_state(login).await? {
             Some(found) if found.is_active && !found.deleted => {
@@ -562,24 +564,47 @@ impl AuthService {
     /// the SAME writer transaction as the `users`/`requests` mutation
     /// (T-32-04, V9 ASVS — durable trail for this explicit, config-authored
     /// privilege escalation).
+    ///
+    /// 260806-wk1 (WK1-01/WK1-02): all branches EXCEPT `unknown -> INSERT`
+    /// (D-3 — first-creation write is correct as-is) now also resync
+    /// `full_name` via the existing `sync_active_user_name` helper, reused
+    /// verbatim (D-1) — the same 4 anti-corruption guards from 260805-wik
+    /// (directory-only `NameSource`, non-empty, name != login, name !=
+    /// current) apply identically to forced-admin logins, so an
+    /// unreachable/degraded directory can never overwrite a forced-admin
+    /// user's stored ФИО. Role escalation, pending-activation, and
+    /// blocked/soft-delete revival write shapes are unchanged (D-5) — the
+    /// only new write is the already-guarded `full_name` UPDATE inside
+    /// `sync_active_user_name` itself.
     async fn force_admin_provisioning(
         &self,
         login: &str,
         display_name: &str,
+        name_source: NameSource,
     ) -> Result<UserDto, AppError> {
         match self.find_user_any_state(login).await? {
             None => self.force_admin_insert_unknown(login, display_name).await,
             Some(u) if u.is_active && !u.deleted && u.role == "admin" => {
-                // Already active admin — no-op write, just return the session.
-                self.get_by_login(login).await
+                // Already active admin — no write of its own, but still
+                // resync full_name (guarded) from the directory.
+                self.sync_active_user_name(u.id, login, display_name, name_source)
+                    .await
             }
             Some(u) if u.is_active && !u.deleted => {
-                self.force_admin_escalate_active(u.id, u.role).await
+                self.force_admin_escalate_active(u.id, u.role).await?;
+                self.sync_active_user_name(u.id, login, display_name, name_source)
+                    .await
             }
             Some(u) if !u.is_active && !u.deleted && u.has_open_register_request => {
-                self.force_admin_activate_pending(u.id).await
+                self.force_admin_activate_pending(u.id).await?;
+                self.sync_active_user_name(u.id, login, display_name, name_source)
+                    .await
             }
-            Some(u) => self.force_admin_revive_blocked(u.id).await,
+            Some(u) => {
+                self.force_admin_revive_blocked(u.id).await?;
+                self.sync_active_user_name(u.id, login, display_name, name_source)
+                    .await
+            }
         }
     }
 
