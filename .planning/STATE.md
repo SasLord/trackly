@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: AD-SSO паритет + полировка превью печати
-status: Awaiting next milestone
-last_updated: "2026-08-08T10:59:53.246Z"
-last_activity: 2026-08-08 — Completed quick task 260808-np4: unify ad_register visibility predicate
+milestone: v1.3.3
+milestone_name: Печатные формы и приватность данных
+status: planning
+last_updated: "2026-08-08T14:41:50.194Z"
+last_activity: 2026-08-08
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.3 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-08 — Milestone v1.3 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-08 — Milestone v1.3.3 started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
