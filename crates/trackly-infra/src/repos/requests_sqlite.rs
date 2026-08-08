@@ -76,6 +76,24 @@ fn map_row_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestRow> {
     })
 }
 
+/// REQ-06 / T-09-11: canonical bare predicate — non-admin callers never see
+/// `ad_register` rows. `alias`: the column-alias prefix in scope at the call
+/// site's FROM clause ("r." for list()'s joined query and
+/// dashboard_service's aliased `FROM requests r`, "" for counts()'s
+/// unaliased `FROM requests`).
+pub fn ad_register_predicate(alias: &str) -> String {
+    format!("{alias}request_type != 'ad_register'")
+}
+
+/// Wraps the bare predicate in the "(?N = 0 OR ...)" conditional form used by
+/// list()/counts(). `placeholder`: the positional SQL parameter (e.g. "?5")
+/// already bound to the caller's exclude_ad_register_i64 flag at that call
+/// site — this function does not manage or renumber parameters, callers own
+/// their own placeholder numbering.
+pub fn ad_register_exclude_clause(alias: &str, placeholder: &str) -> String {
+    format!("({placeholder} = 0 OR {})", ad_register_predicate(alias))
+}
+
 impl SqliteRequestRepository {
     // -----------------------------------------------------------------------
     // Tx-helpers (NOT in trait — orchestrated by RequestService)
@@ -259,16 +277,19 @@ impl RequestRepository for SqliteRequestRepository {
         // REQ-06 / T-09-11: non-admin callers never see ad_register rows —
         // enforced here at the SQL level, not row-hidden client-side.
         let exclude_ad_register_i64: i64 = if exclude_ad_register { 1 } else { 0 };
+        let ad_register_clause = ad_register_exclude_clause("r.", "?5");
 
         let total: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests r \
+                &format!(
+                    "SELECT COUNT(*) FROM requests r \
                  WHERE r.deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR r.status = ?1) \
                    AND (?2 IS NULL OR r.request_type = ?2) \
                    AND (?3 IS NULL OR r.assigned_to_user_id = ?3) \
                    AND (?4 IS NULL OR r.requested_by_user_id = ?4) \
-                   AND (?5 = 0 OR r.request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![
                     filter.status.as_deref(),
                     filter.request_type.as_deref(),
@@ -288,7 +309,7 @@ impl RequestRepository for SqliteRequestRepository {
                    AND (?2 IS NULL OR r.request_type = ?2) \
                    AND (?3 IS NULL OR r.assigned_to_user_id = ?3) \
                    AND (?4 IS NULL OR r.requested_by_user_id = ?4) \
-                   AND (?5 = 0 OR r.request_type != 'ad_register') \
+                   AND {ad_register_clause} \
                  ORDER BY r.created_at_utc DESC, r.id DESC \
                  LIMIT ?6 OFFSET ?7"
             ))
@@ -325,13 +346,16 @@ impl RequestRepository for SqliteRequestRepository {
         // REQ-06: non-admin callers never see ad_register rows in counts,
         // mirroring the exclusion already enforced in list().
         let exclude_ad_register_i64: i64 = if exclude_ad_register { 1 } else { 0 };
+        let ad_register_clause = ad_register_exclude_clause("", "?2");
 
         let all: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
@@ -339,10 +363,12 @@ impl RequestRepository for SqliteRequestRepository {
 
         let open: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE status = 'open' AND deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
@@ -350,10 +376,12 @@ impl RequestRepository for SqliteRequestRepository {
 
         let in_progress: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE status = 'in_progress' AND deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
@@ -361,10 +389,12 @@ impl RequestRepository for SqliteRequestRepository {
 
         let completed: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE status = 'completed' AND deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
@@ -372,10 +402,12 @@ impl RequestRepository for SqliteRequestRepository {
 
         let rejected: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE status = 'rejected' AND deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
@@ -383,10 +415,12 @@ impl RequestRepository for SqliteRequestRepository {
 
         let cancelled: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM requests \
+                &format!(
+                    "SELECT COUNT(*) FROM requests \
                  WHERE status = 'cancelled' AND deleted_at_utc IS NULL \
                    AND (?1 IS NULL OR requested_by_user_id = ?1) \
-                   AND (?2 = 0 OR request_type != 'ad_register')",
+                   AND {ad_register_clause}"
+                ),
                 params![requested_by_user_id, exclude_ad_register_i64],
                 |r| r.get(0),
             )
