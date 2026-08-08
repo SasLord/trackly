@@ -33,6 +33,7 @@
   const VARIABLES_BY_KIND: Record<string, VariableEntry[]> = {
     act_handover: [
       { code: 'org.name', desc: 'название организации' },
+      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
       { code: 'org.inn', desc: 'ИНН' },
       { code: 'org.kpp', desc: 'КПП' },
       { code: 'org.address', desc: 'адрес организации' },
@@ -55,6 +56,7 @@
     ],
     act_acceptance: [
       { code: 'org.name', desc: 'название организации' },
+      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
       { code: 'org.inn', desc: 'ИНН' },
       { code: 'org.kpp', desc: 'КПП' },
       { code: 'org.address', desc: 'адрес организации' },
@@ -70,6 +72,7 @@
     ],
     report: [
       { code: 'org.name', desc: 'название организации' },
+      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
       { code: 'org.inn', desc: 'ИНН' },
       { code: 'org.kpp', desc: 'КПП' },
       { code: 'org.address', desc: 'адрес организации' },
