@@ -10,7 +10,16 @@ Trackly — приложение для учёта и отслеживания �
 
 ## Current State
 
-**Shipped:** v1.2 (2026-07-29) — редизайн UI и дизайн-система (Фазы 23–30): единый слой токенов `--tr-*` для обеих тем, переработанные примитивы (Button/Input/Select/Textarea/Checkbox/Badge/Modal/Tabs/Dropdown), строки таблиц, все ~12 окон, доступность (WCAG AA-контраст + видимое кольцо фокуса, durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs`) и паритет desktop↔LAN. 26/26 требований. Ранее: v1.1.2 (2026-07-15, пост-релизные доработки UX/печати, Фазы 18–22), v1.1.1 (2026-07-07), v1.0 + v1.1 (фазы 1–13).
+**Shipped:** v1.3 (2026-08-08) — AD-SSO паритет + полировка превью печати (Фазы 31–33). Passwordless
+SSO доведён до паритета с reference-проектом adwebapp: реальные ФИО из каталога через служебный
+bind с кэшем, роли по членству в AD-группах (fail-closed при недоступности каталога), авто-админ
+по списку доменных логинов — решает проблему «первого администратора» в AD-only организации.
+Предпросмотр печати переведён на Paged.js: лист A4 на подложке с полями, и печать совпадает с
+превью на обоих путях — desktop и LAN-браузер. 6/6 требований. Релизы вехи: `v1.3.0` (SSO),
+`v1.3.1` (LDAP plain/StartTLS + Paged.js-печать), `v1.3.2` (синхронизация ФИО при смене фамилии
+в AD, включая администраторов).
+
+**Ранее:** v1.2 (2026-07-29) — редизайн UI и дизайн-система (Фазы 23–30): единый слой токенов `--tr-*` для обеих тем, переработанные примитивы (Button/Input/Select/Textarea/Checkbox/Badge/Modal/Tabs/Dropdown), строки таблиц, все ~12 окон, доступность (WCAG AA-контраст + видимое кольцо фокуса, durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs`) и паритет desktop↔LAN. 26/26 требований. Ранее: v1.1.2 (2026-07-15, пост-релизные доработки UX/печати, Фазы 18–22), v1.1.1 (2026-07-07), v1.0 + v1.1 (фазы 1–13).
 
 Trackly поставляет полный учёт устройств / актов / картриджей / принтеров (SNMP) / заявок,
 отчёты, дашборд и настройки в портативном и серверном (LAN) режимах, с релизным пайплайном
@@ -25,11 +34,43 @@ Trackly поставляет полный учёт устройств / акто
 
 ## Next Milestone: не начат
 
-Milestone v1.2 завершён и заархивирован. Следующий цикл — через `/gsd-new-milestone`
+Milestone v1.3 завершён и заархивирован. Следующий цикл — через `/gsd-new-milestone`
 (questioning → research → requirements → roadmap). Кандидаты — в «Backlog (v2 и далее)» и
 «Out of Scope» ниже, плюс бэклог-элемент 999.1 (role-based route gating).
 
-## Last Milestone: v1.2 Редизайн UI и дизайн-система ✅ (shipped 2026-07-29)
+**Долг, унаследованный из v1.3** (`milestones/v1.3-MILESTONE-AUDIT.md`):
+- SSO-01 не покрывает вход **по паролю** (LDAPS): `AuthOutcome::Ok` не несёт признака
+  происхождения имени, поэтому отличить настоящее ФИО от фолбэка на логин там нечем.
+  Закрывается расширением порта в `trackly-core`.
+- Phase 32 — единственная фаза вехи без подтверждённого Nyquist-покрытия
+  (`32-VALIDATION.md`: `nyquist_compliant: false`).
+- Предикат `request_type != 'ad_register'` продублирован в трёх независимых SQL-строителях —
+  структурная причина того, что один дефект пришлось чинить дважды.
+- Операционное: сменить пароль служебной учётки `svc-ldap-readonly`.
+
+## Last Milestone: v1.3 «AD-SSO паритет + полировка превью печати» ✅ (shipped 2026-08-08)
+
+<details>
+<summary>Цели и контекст v1.3 (завершён — детали в milestones/v1.3-ROADMAP.md, аудит 6/6 tech_debt)</summary>
+
+**Goal:** довести passwordless AD-SSO (Kerberos/SPNEGO) до полного паритета с reference-проектом
+adwebapp и привести предпросмотр печати к «вордовскому» виду.
+**Target features:**
+- **Служебный bind (service-account LDAP)** → реальные ФИО (displayName) из AD для SSO-пользователей
+  вместо доменного логина; с кэшем (по образцу adwebapp `ldap.go`).
+- **Роли из AD** — авто-админ для указанных доменных логинов (аналог `ADMIN_AD_LOGINS`) и/или
+  маппинг AD-групп → роли (чтобы не подтверждать первого администратора вручную).
+- **Мерж** `spike/ad-sso-kerberos` в `main` + релиз нормальной версией (уход от спайковых `0.0.x`).
+- **Полировка превью печати** (Акты / Приёмка / Отчёты) — лист A4 на сероватой подложке,
+  внутренние поля (margins), WYSIWYG-совпадение с реальной печатью через `@media print`.
+**Key context:** SSO-спайк уже LIVE-VALIDATED на реальном AD (ветка `spike/ad-sso-kerberos`,
+крейт `sspi 0.21`, keytab-валидация offline). Приватность org-данных — жёсткое требование:
+в git только плейсхолдеры, реальные значения (домен, SPN, ФИО) — в gitignored `trackly.config.toml`.
+Превью печати — чисто фронтенд/CSS (акты уже на HTML-шаблонах, backend отдаёт HTML-строку).
+
+</details>
+
+## Earlier Milestone: v1.2 Редизайн UI и дизайн-система ✅ (shipped 2026-07-29)
 
 <details>
 <summary>Цели и контекст v1.2 (завершён — детали в milestones/v1.2-ROADMAP.md, аудит 26/26 tech_debt)</summary>
@@ -100,25 +141,6 @@ Quality-гейты закрыты на этапе close (2026-07-15): UAT 19 (7/
 уведомления (NTF: SMTP/Telegram/Webhook), Pantum auto-restart (PNT), полный SSO
 Kerberos/NTLM (ADV-01), английская локализация (I18N), Windows 7 32-bit (WIN7).
 
-## Current Milestone: v1.3 «AD-SSO паритет + полировка превью печати»
-
-**Goal:** довести passwordless AD-SSO (Kerberos/SPNEGO) до полного паритета с reference-проектом
-adwebapp и привести предпросмотр печати к «вордовскому» виду.
-
-**Target features:**
-- **Служебный bind (service-account LDAP)** → реальные ФИО (displayName) из AD для SSO-пользователей
-  вместо доменного логина; с кэшем (по образцу adwebapp `ldap.go`).
-- **Роли из AD** — авто-админ для указанных доменных логинов (аналог `ADMIN_AD_LOGINS`) и/или
-  маппинг AD-групп → роли (чтобы не подтверждать первого администратора вручную).
-- **Мерж** `spike/ad-sso-kerberos` в `main` + релиз нормальной версией (уход от спайковых `0.0.x`).
-- **Полировка превью печати** (Акты / Приёмка / Отчёты) — лист A4 на сероватой подложке,
-  внутренние поля (margins), WYSIWYG-совпадение с реальной печатью через `@media print`.
-
-**Key context:** SSO-спайк уже LIVE-VALIDATED на реальном AD (ветка `spike/ad-sso-kerberos`,
-крейт `sspi 0.21`, keytab-валидация offline). Приватность org-данных — жёсткое требование:
-в git только плейсхолдеры, реальные значения (домен, SPN, ФИО) — в gitignored `trackly.config.toml`.
-Превью печати — чисто фронтенд/CSS (акты уже на HTML-шаблонах, backend отдаёт HTML-строку).
-
 ## Requirements
 
 ### Validated
@@ -145,7 +167,16 @@ adwebapp и привести предпросмотр печати к «ворд
 кольцо фокуса (QA-01/02) и паритет desktop↔LAN (QA-03). Все 26/26 satisfied.
 См. `.planning/milestones/v1.2-REQUIREMENTS.md`.
 
-**Итог:** все 146 v1-требований validated (146/146). Полная трассировка — по архивам в `.planning/milestones/`.
+**v1.3 (shipped 2026-08-08, phases 31–33):** AD-SSO паритет — реальные ФИО из каталога через
+служебный bind с кэшем (SSO-01), авто-админ по списку доменных логинов (SSO-02), роли по членству
+в AD-группах с fail-closed при недоступности каталога (SSO-03); предпросмотр печати на Paged.js —
+лист A4 на подложке (PRV-01), внутренние поля (PRV-02), WYSIWYG-совпадение печати с превью на
+обоих путях (PRV-03). Все 6/6 satisfied. См. `.planning/milestones/v1.3-REQUIREMENTS.md`.
+
+*Оговорка по SSO-01:* синхронизация ФИО при смене фамилии в AD работает на SSO-пути (включая
+администраторов из списка `admin_logins`), но НЕ на входе по паролю — см. долг в «Next Milestone».
+
+**Итог:** все 152 v1-требования validated (152/152). Полная трассировка — по архивам в `.planning/milestones/`.
 
 ### Active
 
@@ -246,4 +277,4 @@ This document evolves at phase transitions and milestone boundaries.
 - **Phase 13: Редизайн совместимости Принтеры↔Картриджи** (completed 2026-06-26) — V032 миграция: `printer_brand`+`printer_model` → единый `printer_name`, снос per-device junction (V029); `cartridges_sqlite.rs` матчит совместимость по `devices.name` (case-insensitive + TRIM, D-05 pass-through только в selection-фильтре); удалены 4 V029-команды, новая read-only `printers_get_compatible_aggregates` (агрегаты по статусу); карточка принтера: агрегаты совместимости + блок данных устройства (через `DeviceFormModal`) + установленный картридж по коду; `ModelFormModal` — единый free-text-блок «Совместимые принтеры»; kind-aware дефолт авто-возврата фотобарабана (state 5 «Изношенный»); снят лимит списка принтеров; `suggest_compat_printer` re-sourced с free-text истории на `devices.name`. Завершает milestone v1.1. (SPEC-13-R1..R8)
 
 ---
-*Last updated: 2026-08-03 — milestone **v1.3 «AD-SSO паритет + полировка превью печати» стартовал** (продолжение LIVE-VALIDATED SSO-спайка на ветке spike/ad-sso-kerberos: реальные ФИО через служебный bind, роли из AD, мерж в main; плюс «вордовский» предпросмотр печати). Требования SSO-*/PRV- определяются, роадмап продолжает нумерацию фаз с ~31. Предыдущий: v1.2 «Редизайн UI и дизайн-система» завершён и заархивирован* (Фазы 23–30, 26/26 требований, аудит tech_debt без блокеров). Фаза 30 «Качество — доступность и паритет платформ» закрыта: durable-гейты `check-contrast.mjs`/`check-focus-outline.mjs` + WCAG AA-токены + видимое кольцо фокуса на всех типах интерактива + паритет desktop↔LAN; двухраундовая gap-closure (30-04..09) + финальная серия UAT-фиксов 29.07 (таблицы focus-ring/высота/футер, комбобокс, Дашборд overflow — root-cause `position:absolute` sr-only таблицы графика мимо `overflow:hidden`, Картриджи, Пользователи staircase, a11y контекстного меню). both-theme UAT подписан пользователем; реальный Windows-билд `v1.2.0` собран (проверка отдельно). Тех-долг → бэклог (raw select на Дашборде, Nyquist VALIDATION у фаз 25–28, best-effort Windows-паритет). Бэклог 999.1 (role-based route gating) отложен. Следующий milestone — через `/gsd-new-milestone`.*
+*Last updated: 2026-08-08 — milestone **v1.3 «AD-SSO паритет + полировка превью печати» завершён и заархивирован** (Фазы 31–33, 13 планов, 6/6 требований, аудит tech_debt без блокеров). Passwordless SSO доведён до паритета с adwebapp: реальные ФИО через служебный bind с кэшем, роли по AD-группам с fail-closed, авто-админ по списку логинов. Предпросмотр печати переведён на Paged.js — печать совпадает с превью на обоих путях (desktop и LAN), многостраничность подтверждена живым UAT. Релизы вехи: v1.3.0, v1.3.1, v1.3.2. Пост-релизно закрыт пробел SSO-01: ФИО синхронизируется при смене фамилии в AD, включая администраторов из admin_logins. Унаследованный долг (вход по паролю не обновляет ФИО, Nyquist фазы 32, тройное дублирование предиката ad_register, смена пароля svc-ldap-readonly) — в «Next Milestone» выше и в milestones/v1.3-MILESTONE-AUDIT.md. Следующий milestone — через `/gsd-new-milestone`.*

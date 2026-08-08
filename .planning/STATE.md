@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: AD-SSO паритет + полировка превью печати
-status: verifying
-last_updated: "2026-08-04T15:38:10.155Z"
-last_activity: 2026-08-04
+status: Awaiting next milestone
+last_updated: "2026-08-08T09:05:35.242Z"
+last_activity: 2026-08-08 — Milestone v1.3 completed and archived
 progress:
   total_phases: 3
   completed_phases: 3
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: 33 (print-preview-polish) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-08-06 - Completed quick task 260806-wk1: ФИО администраторов из списка admin_logins тоже синхронизируется из каталога (закрыт пробел, найденный аудитом вехи v1.3)
+Phase: Milestone v1.3 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-08 — Milestone v1.3 completed and archived
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -753,6 +753,35 @@ progress). Both-theme live UAT (27-09) approved with these items noted for later
 | tech_debt | Нативные `<select>` в окнах Фазы 28 (Настройки/Дашборд/Отчёты/Пользователи) → перевести на кастомный `Dropdown`-примитив (Фаза 25), по аналогии с миграцией Картриджей в 27-09 (commit `80d0b41`) | deferred, likely Phase 28 or quick-task | 2026-07-21 |
 | tech_debt | `PersonAutocomplete` + `LocationAutocomplete` — визуально идентичны (27-09 батч E), но остаются двумя раздельными реализациями; кандидат на слияние в единый переиспользуемый компонент | deferred to milestone v1.2 end | 2026-07-21 |
 
+### Подтверждено при закрытии вехи v1.3 (2026-08-08)
+
+Пред-закрывающий аудит (`gsd-sdk query audit-open`) показал 49 открытых пунктов. Разобраны
+поштучно: **ни один не относится к фазам 31/32/33**, то есть к вехе v1.3. Состав:
+
+- **27 быстрозадач** со статусом `missing` — это отсутствие поля `status:` во frontmatter
+  их SUMMARY.md, а НЕ незавершённая работа. Все 27 записаны в таблице «Quick Tasks Completed»
+  ниже как `complete ✓`. Сканер к тому же местами разбирает слаги с мусором (хвосты вида
+  `...","`), то есть парсит таблицу STATE.md неаккуратно — ложные срабатывания.
+
+- **13 uat_gap + 8 verification_gap** — фазы 03–30, наследство вех v1.0–v1.2, уже принятое
+  при их закрытии (см. таблицу выше). Новых относительно v1.1 close: фазы 16, 17, 23, 24, 30.
+
+- **1 «debug-сессия» `knowledge-base`** — это `.planning/debug/knowledge-base.md`, накопительный
+  файл знаний, а не сессия. Ложное срабатывание сканера.
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| verification_gap | 16 — 16-VERIFICATION.md (v1.2) | human_needed | 2026-08-08 |
+| verification_gap | 24 — 24-VERIFICATION.md (v1.2) | gaps_found | 2026-08-08 |
+| uat_gap | 16 / 17 / 23 / 30 — UAT-файлы вех v1.1.2–v1.2 | passed/resolved/diagnosed, 0 pending | 2026-08-08 |
+| tooling | `audit-open` считает быстрозадачу незакрытой при отсутствии `status:` во frontmatter SUMMARY; 27 ложных срабатываний. Либо добавлять поле в шаблон, либо чинить сканер | deferred | 2026-08-08 |
+| tooling | `audit-open` неаккуратно парсит таблицу STATE.md — слаги приходят с хвостами `","` | deferred | 2026-08-08 |
+
+**Собственный долг вехи v1.3** зафиксирован отдельно в `milestones/v1.3-MILESTONE-AUDIT.md`
+(frontmatter `tech_debt`): SSO-01 не покрывает вход по паролю; Phase 32 без подтверждённого
+Nyquist-покрытия; тройное дублирование предиката `ad_register`; смена пароля служебной учётки
+`svc-ldap-readonly`.
+
 ## Quick Tasks Completed
 
 | Date | Slug | Summary | Status |
@@ -840,4 +869,4 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- ROADMAP.md ready for v1.3 (Фазы 31-33, 6/6 requirements mapped). Run /gsd-plan-phase 31 to begin planning.
+- Start the next milestone with /gsd-new-milestone

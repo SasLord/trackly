@@ -1,5 +1,24 @@
 # Milestones: Trackly
 
+## v1.3 AD-SSO паритет + полировка превью печати (Shipped: 2026-08-08)
+
+**Phases completed:** 3 phases, 13 plans, 20 tasks
+
+**Key accomplishments:**
+
+- Defined the ldap3-free `AdDirectory` port (displayName + AD-group role resolve) plus its two dependency-free building blocks — a deterministic `MockAdDirectory` and a generic hand-rolled `TtlCache<V>` — all unit-tested and compiling in isolation ahead of the real LDAP adapter (Plan 31-02).
+- Implemented the real LDAP service-account directory adapter — fixed-account bind, `sAMAccountName`→`displayName` resolve with cache, and `LDAP_MATCHING_RULE_IN_CHAIN` group→role mapping with fail-closed 3-state error handling — plus the `AdConfig` schema (redacting `Debug` for the bind password) and a refreshed placeholder config example.
+- `AuthService.sso_login` now resolves real displayName + AD-group role via the injected `AdDirectory` before provisioning, fail-closed on any directory error; both hardcoded `'employee'` SQL literals are replaced with `Role::as_str()`-derived values; all 8 `AuthService::new` call sites compile against the new 6-parameter signature.
+- Added `ad_directory_sso.rs`, a 7-test end-to-end suite that drives the real `AuthService.sso_login` → `AdDirectory` → role-mapped `UserDto` path, proving both SSO-01 (real ФИО) and SSO-03 (auto role from group, fail-closed) against the deterministic mock directory — the phase's acceptance proof — and ran the full-workspace verification gate green.
+- AdConfig.admin_logins: Vec<String> field added (config/parsing layer only) — deployment-time TOML source of truth for the auto-admin-by-login-list feature (SSO-02), mirroring the existing role_mapping pattern.
+- 5-branch forced-admin state machine wired into `on_ad_bind_success` (both SSO-passwordless and LDAPS-bind entry points), promoting any deployment-configured `admin_logins` entry to an active Administrator with a mandatory in-transaction audit trail — solves the "first administrator" problem for AD-only orgs.
+- Pinned `pagedjs` 0.4.3 dependency plus four new `ui/src/lib/` modules (bootstrap script, srcdoc builder, opaque-origin postMessage bridge, RU pluralization helper) establishing the frozen interface that Plans 33-02/33-03/33-04 build on — nothing wired into `PdfPreviewModal.svelte` yet.
+- Adds exactly one `sha256-<digest>'` hash-source to the LAN-mode axum CSP's `script-src` directive so the frozen Paged.js bootstrap script (Plan 33-01) can execute inside the preview `<iframe srcdoc>` in server mode, with an independent Node-side drift-detection gate wired into `pnpm lint`; also lands a structural regression test guarding that all three print templates declare identical `@page` blocks (D-13).
+- `PdfPreviewModal.svelte` now renders a real paginated A4 sheet stack via Paged.js — themed backdrop, no-border shadowed sheets, fit-to-width scaling, footer page counter/hint, and an 8-second degrade-to-unpaginated fallback — consuming Plan 33-01's frozen srcdoc/bridge contract, plus a Rule-3 fix for a pagedjs deep-import resolution bug surfaced by wiring it in.
+- Both print branches of `PdfPreviewModal.svelte` (desktop temp-file and LAN top-level injection) now print the same Paged.js-paginated output as the on-screen preview, closing the WYSIWYG gap (PRV-03, D-06) by waiting for pagination instead of the `load` event or synchronous DOM injection.
+
+---
+
 ## v1.2 Редизайн UI и дизайн-система (Shipped: 2026-07-29)
 
 **Phases completed:** 1 phases, 9 plans, 22 tasks
