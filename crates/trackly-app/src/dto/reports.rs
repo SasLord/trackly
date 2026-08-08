@@ -187,6 +187,8 @@ pub struct OrgPatch {
     pub ogrn: String,
     /// Second address line (ORG-02, Phase 20). Empty string = not filled in.
     pub address_line2: String,
+    /// Full legal name, multiline (DOC-05, Phase 34). Empty = not filled in.
+    pub full_name: String,
 }
 
 /// Logo upload/download DTO (SET-02).
@@ -222,6 +224,8 @@ pub struct OrgSettingsDto {
     pub ogrn: String,
     /// Second address line (ORG-02, Phase 20). Empty string = not filled in.
     pub address_line2: String,
+    /// Full legal name, multiline (DOC-05, Phase 34). Empty = not filled in.
+    pub full_name: String,
 }
 
 // ---------------------------------------------------------------------------
