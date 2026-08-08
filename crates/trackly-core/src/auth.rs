@@ -163,6 +163,17 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
     }
 }
 
+/// Проверяет, должна ли роль `role` не видеть заявки `ad_register` (REQ-06 / T-09-11).
+///
+/// Единственный источник правды для этого правила: только `Admin` видит заявки
+/// типа `ad_register` — `Manager` и `Employee` не видят. Вызывается из
+/// `RequestService::list`/`counts` (trackly-app), чтобы правило не могло снова
+/// разойтись между местами применения (ранее правило дублировалось в 3 местах
+/// независимо, что дважды приводило к регрессиям: quick-задачи 260804-l22 и 260805-nae).
+pub fn excludes_ad_register(role: &Role) -> bool {
+    !matches!(role, Role::Admin)
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -332,5 +343,22 @@ mod tests {
             role: Role::Employee,
         };
         assert!(authorize(&id, &Action::CancelOwnRequest).is_ok());
+    }
+
+    // excludes_ad_register (REQ-06 / T-09-11)
+
+    #[test]
+    fn excludes_ad_register_admin_is_false() {
+        assert!(!excludes_ad_register(&Role::Admin));
+    }
+
+    #[test]
+    fn excludes_ad_register_manager_is_true() {
+        assert!(excludes_ad_register(&Role::Manager));
+    }
+
+    #[test]
+    fn excludes_ad_register_employee_is_true() {
+        assert!(excludes_ad_register(&Role::Employee));
     }
 }

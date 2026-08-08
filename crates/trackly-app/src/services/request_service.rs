@@ -117,7 +117,7 @@ impl RequestService {
         page: Pagination,
         caller: &Identity,
     ) -> Result<RequestListResponse, AppError> {
-        let exclude_ad_register = !matches!(caller.role, trackly_core::auth::Role::Admin);
+        let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
 
         let mut filter = filter;
         if matches!(caller.role, trackly_core::auth::Role::Employee) {
@@ -161,7 +161,7 @@ impl RequestService {
         } else {
             None
         };
-        let exclude_ad_register = !matches!(caller.role, trackly_core::auth::Role::Admin);
+        let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
 
         let readers = self.readers.clone();
         let repo = self.request_repo.clone();
