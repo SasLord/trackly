@@ -654,3 +654,64 @@ async fn render_pdf_with_filled_specs_and_requisites_surfaces_data() {
     .await
     .expect("timeout");
 }
+
+/// Phase 34 Plan 03 — Task 3: a multi-line `full_name` (D-03) must reach the
+/// rendered HTML as escape-then-`<br />` — proving the newline-to-`<br>`
+/// transform reached the ACTUAL render output through the real
+/// `render_pdf` pipeline, not just `org_full_name_html`'s isolated unit
+/// tests. The raw unescaped newline must never survive into HTML output.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_pdf_with_multiline_full_name_renders_br_not_raw_newline() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline_with_org_db().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+
+        let org_db = Arc::new(OrgDbService::new(
+            p.writer.clone(),
+            p._readers.clone(),
+            Arc::new(SystemClock),
+            Arc::new(
+                Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths for org_db"),
+            ),
+        ));
+        let caller = Identity::trusted_admin();
+        org_db
+            .save_fields(
+                &caller,
+                OrgPatch {
+                    org_name: "ООО Тест".to_string(),
+                    inn: "7712345678".to_string(),
+                    kpp: "771001001".to_string(),
+                    address: "г. Москва, ул. Тестовая, 1".to_string(),
+                    phone: "+7 495 000-00-01".to_string(),
+                    fax: "+7 495 000-00-02".to_string(),
+                    email: "info@test-org.ru".to_string(),
+                    okpo: "87654321".to_string(),
+                    ogrn: "1027700654321".to_string(),
+                    address_line2: String::new(),
+                    full_name: "Общество с ограниченной ответственностью\nООО «Тест»".to_string(),
+                },
+            )
+            .await
+            .expect("save_fields");
+
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Кузнецов К.К.").await;
+        let html = p
+            .acts
+            .render_pdf(act.id)
+            .await
+            .expect("render_pdf with multiline full_name");
+
+        assert!(
+            html.contains("<br />"),
+            "expected <br /> from the escaped multiline full_name, got head: {:?}",
+            html.chars().take(500).collect::<String>()
+        );
+        assert!(
+            !html.contains("ответственностью\nООО"),
+            "raw unescaped newline must not survive into HTML output"
+        );
+    })
+    .await
+    .expect("timeout");
+}

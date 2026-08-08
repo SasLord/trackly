@@ -186,10 +186,18 @@ impl TemplateService {
     /// `html_templates::{resolve_templates_dir, load_template,
     /// DEFAULT_HTML_TEMPLATES}`. `id` is always `0` — file-backed items have
     /// no numeric row id.
+    ///
+    /// Phase 34 Plan 03: filenames starting with `_` (e.g. `_header.html`)
+    /// are shared partials, not standalone editable document kinds — they
+    /// are registered in `DEFAULT_HTML_TEMPLATES` so `list_all_for_editor`'s
+    /// sibling `render_with_timeout`/`load_template` call sites can resolve
+    /// them, but they are never surfaced as an editor "kind" (no user-facing
+    /// preview/save flow exists for an isolated partial fragment).
     pub async fn list_all_for_editor(&self) -> Result<Vec<TemplateEditorItem>, AppError> {
         let templates_dir = self.templates_dir()?;
         Ok(crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
             .iter()
+            .filter(|(filename, _)| !filename.starts_with('_'))
             .map(|(filename, default_body)| {
                 let kind = filename.trim_end_matches(".html").to_string();
                 let body = crate::pdf::html_templates::load_template(
