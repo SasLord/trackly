@@ -1,0 +1,91 @@
+{#- Shared document header partial (Phase 34, D-01..D-14).
+
+  Rescued from a hand-edited reference (`target/debug/templates/act_handover.html`,
+  gitignored, dies on `cargo clean`) and privacy-scrubbed: the reference's
+  hardcoded real organization name was replaced with `org.full_name`/`org.name`
+  placeholders below — this file never contains a literal organization name.
+
+  Renders, top to bottom: logo -> full legal name (`org.full_name`, independently
+  guarded, D-04) -> short name in parentheses (`org.name`, independently guarded,
+  D-04) -> requisites block (address, phone/fax/e-mail, ОКПО/ОГРН, ИНН/КПП, D-07
+  order). `{% include "_header.html" %}`-d by all three parent templates
+  (act_handover.html, act_acceptance.html, report.html) via the in-memory
+  Environment template registry wired in Plan 34-03 — never a filesystem loader
+  (D-13, unchanged).
+
+  Context variables used by this partial:
+    org.logo_data_uri, org.full_name, org.name, org.address, org.address_line2,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn, org.inn, org.kpp
+
+  Autoescape is ON (build_safe_html_env, T-16-01) — plain {{ var }} interpolation
+  is HTML-safe by construction. Two exceptions to autoescape here:
+  - `org.logo_data_uri | safe`: exclusively server-constructed base64 + a
+    hardcoded mime whitelist, never user-controlled HTML — `| safe` only
+    prevents autoescape from HTML-entity-encoding the URI's `/` characters,
+    which would otherwise corrupt the `data:` scheme.
+  - `org.full_name | safe` (T-34-01 mitigation, see `org_full_name_html` in
+    `pdf/minijinja_env.rs`): the raw value is HTML-escaped and newline-to-`<br
+    />`-converted by that helper BEFORE it ever reaches this template, in that
+    order (escape-then-insert) — `| safe` here only prevents this already-safe
+    HTML fragment from being double-escaped, it does not reopen the XSS
+    mitigation. `org.full_name` must never be passed to this template as raw
+    unescaped user input.
+-#}
+<style>
+  .header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6pt;
+    margin-bottom: 16pt;
+    width: 80mm;
+  }
+  .header .logo img {
+    max-height: 80pt;
+    max-width: 140pt;
+  }
+  .header .orgName {
+    font-size: 12pt;
+    line-height: 1.25;
+    font-weight: bold;
+    text-align: center;
+  }
+  .header .requisites {
+    font-size: 11pt;
+    text-align: center;
+  }
+  .header .orgName,
+  .header .requisites {
+    overflow-wrap: break-word;
+    -webkit-hyphens: auto;
+    hyphens: auto;
+  }
+</style>
+<!-- HEADER-START -->
+<div class="header">
+  <div class="logo">
+    {%- if org.logo_data_uri %}
+    {#- logo_data_uri is server-constructed exclusively from base64 output
+      (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+      hardcoded mime whitelist (act_service.rs) — `| safe` here does not
+      reopen T-16-01's XSS mitigation, it only prevents autoescape from
+      HTML-entity-encoding the `/` in "data:image/png;base64,..." into
+      `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
+    <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
+    {%- endif %}
+  </div>
+  <div class="orgName">
+    {{ org.full_name | safe }}
+    {%- if org.name %}<br />({{ org.name }}){%- endif %}
+  </div>
+  <div class="requisites">
+    {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+    {%- if org.address_line2 %}<div>{{ org.address_line2 }}</div>{%- endif %}
+    {%- if org.phone %}<div>Телефон {{ org.phone }}</div>{%- endif %}
+    {%- if org.fax %}<div>Факс {{ org.fax }}</div>{%- endif %}
+    {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+    {%- if org.okpo %}<div>ОКПО {{ org.okpo }}{%- if org.ogrn %}, ОГРН {{ org.ogrn }}{%- endif %}</div>{%- endif %}
+    {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %}, КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
+  </div>
+</div>
+<!-- HEADER-END -->
