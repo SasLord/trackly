@@ -178,7 +178,10 @@ async fn manager_cannot_see_ad_register_in_list_or_counts_admin_can() {
     // 5. Manager: counts() must report exactly 1 (the free_form request
     //    only) — precise count, not just > 0, to catch a predicate that
     //    silently becomes a no-op for one bucket but not others.
-    let manager_counts = svc.counts(&manager(manager_id)).await.expect("counts as manager");
+    let manager_counts = svc
+        .counts(&manager(manager_id))
+        .await
+        .expect("counts as manager");
     assert_eq!(
         manager_counts.all, 1,
         "manager counts.all must be exactly 1 (only the control free_form request)"
