@@ -8,6 +8,7 @@
 
 use crate::context::AppCtx;
 use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
+use crate::services::report_service::format_period_label;
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
@@ -208,10 +209,7 @@ pub async fn build_reports_export_pdf(
     let cols = columns_for(&report_type);
     let labels = column_labels_for(&report_type);
     let report_name = report_display_name(&report_type);
-    let period_label = period
-        .as_ref()
-        .map(|p| format!("{} {}", p.mode, p.year.unwrap_or(0)))
-        .unwrap_or_default();
+    let period_label = period.as_ref().map(format_period_label).unwrap_or_default();
     ctx.reports
         .export_pdf(
             &rows,

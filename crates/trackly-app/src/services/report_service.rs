@@ -163,6 +163,65 @@ fn parse_iso_date_to_utc(s: &str, offset: UtcOffset, end_of_day: bool) -> Option
 }
 
 // ---------------------------------------------------------------------------
+// Public helper: Russian period label for report headers/subtitles (34-06 gap fix)
+// ---------------------------------------------------------------------------
+
+/// Build a human-readable Russian period label for report headers/subtitles
+/// (e.g. the printed form's `.subtitle`). Never panics on missing/malformed
+/// optional fields — degrades to a partial or empty label instead of ever
+/// emitting the raw English `mode` discriminator.
+///
+/// - `"month"` + year/month → `"Сентябрь 2026"`
+/// - `"year"` + year → `"2026 год"`
+/// - `"range"` + date_from/date_to (ISO `YYYY-MM-DD`) → `"01.01.2026 — 31.03.2026"`
+pub fn format_period_label(dto: &PeriodDto) -> String {
+    match dto.mode.as_str() {
+        "month" => {
+            let year = match dto.year {
+                Some(y) => y,
+                None => return String::new(),
+            };
+            match dto.month {
+                Some(m) if (1..=12).contains(&m) => {
+                    format!("{} {year}", MONTH_NAMES_RU[(m - 1) as usize])
+                }
+                _ => year.to_string(),
+            }
+        }
+        "year" => match dto.year {
+            Some(y) => format!("{y} год"),
+            None => String::new(),
+        },
+        "range" => {
+            let from = dto.date_from.as_deref().and_then(format_ru_short_date);
+            let to = dto.date_to.as_deref().and_then(format_ru_short_date);
+            match (from, to) {
+                (Some(f), Some(t)) => format!("{f} — {t}"),
+                (Some(f), None) => f,
+                (None, Some(t)) => t,
+                (None, None) => String::new(),
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+/// Parse "YYYY-MM-DD" ISO string → "DD.MM.YYYY". Returns `None` on malformed
+/// or out-of-range input (never panics).
+fn format_ru_short_date(s: &str) -> Option<String> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let y: i32 = parts[0].parse().ok()?;
+    let m: u8 = parts[1].parse().ok()?;
+    let d: u8 = parts[2].parse().ok()?;
+    let month = Month::try_from(m).ok()?;
+    Date::from_calendar_date(y, month, d).ok()?;
+    Some(format!("{d:02}.{m:02}.{y:04}"))
+}
+
+// ---------------------------------------------------------------------------
 // Excel formula injection guard (T-07-03-05)
 // ---------------------------------------------------------------------------
 
@@ -1374,6 +1433,142 @@ mod tests {
         assert_eq!(month_key_to_russian("2026-09"), "Сентябрь 2026");
         assert_eq!(month_key_to_russian("2026-01"), "Январь 2026");
         assert_eq!(month_key_to_russian("2026-12"), "Декабрь 2026");
+    }
+
+    // -----------------------------------------------------------------------
+    // format_period_label tests (34-06 gap fix: Russian report subtitle)
+    // -----------------------------------------------------------------------
+
+    fn period(mode: &str) -> PeriodDto {
+        PeriodDto {
+            mode: mode.to_string(),
+            year: None,
+            month: None,
+            date_from: None,
+            date_to: None,
+        }
+    }
+
+    #[test]
+    fn format_period_label_month_mode() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            month: Some(9),
+            ..period("month")
+        };
+        assert_eq!(format_period_label(&dto), "Сентябрь 2026");
+    }
+
+    #[test]
+    fn format_period_label_month_mode_january() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            month: Some(1),
+            ..period("month")
+        };
+        assert_eq!(format_period_label(&dto), "Январь 2026");
+    }
+
+    #[test]
+    fn format_period_label_month_mode_missing_month_falls_back_to_year() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            month: None,
+            ..period("month")
+        };
+        assert_eq!(format_period_label(&dto), "2026");
+    }
+
+    #[test]
+    fn format_period_label_month_mode_out_of_range_month_falls_back_to_year() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            month: Some(13),
+            ..period("month")
+        };
+        assert_eq!(format_period_label(&dto), "2026");
+    }
+
+    #[test]
+    fn format_period_label_month_mode_missing_year_is_empty() {
+        let dto = PeriodDto {
+            year: None,
+            month: Some(9),
+            ..period("month")
+        };
+        assert_eq!(format_period_label(&dto), "");
+    }
+
+    #[test]
+    fn format_period_label_year_mode() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            ..period("year")
+        };
+        assert_eq!(format_period_label(&dto), "2026 год");
+    }
+
+    #[test]
+    fn format_period_label_year_mode_missing_year_is_empty() {
+        let dto = period("year");
+        assert_eq!(format_period_label(&dto), "");
+    }
+
+    #[test]
+    fn format_period_label_range_mode() {
+        let dto = PeriodDto {
+            date_from: Some("2026-01-01".to_string()),
+            date_to: Some("2026-03-31".to_string()),
+            ..period("range")
+        };
+        assert_eq!(format_period_label(&dto), "01.01.2026 — 31.03.2026");
+    }
+
+    #[test]
+    fn format_period_label_range_mode_missing_date_to() {
+        let dto = PeriodDto {
+            date_from: Some("2026-01-01".to_string()),
+            date_to: None,
+            ..period("range")
+        };
+        assert_eq!(format_period_label(&dto), "01.01.2026");
+    }
+
+    #[test]
+    fn format_period_label_range_mode_missing_date_from() {
+        let dto = PeriodDto {
+            date_from: None,
+            date_to: Some("2026-03-31".to_string()),
+            ..period("range")
+        };
+        assert_eq!(format_period_label(&dto), "31.03.2026");
+    }
+
+    #[test]
+    fn format_period_label_range_mode_malformed_dates_are_empty() {
+        let dto = PeriodDto {
+            date_from: Some("not-a-date".to_string()),
+            date_to: Some("2026-13-99".to_string()),
+            ..period("range")
+        };
+        assert_eq!(format_period_label(&dto), "");
+    }
+
+    #[test]
+    fn format_period_label_range_mode_missing_both_dates_is_empty() {
+        let dto = period("range");
+        assert_eq!(format_period_label(&dto), "");
+    }
+
+    #[test]
+    fn format_period_label_unknown_mode_never_leaks_english_discriminator() {
+        let dto = PeriodDto {
+            year: Some(2026),
+            ..period("bogus")
+        };
+        let label = format_period_label(&dto);
+        assert_eq!(label, "");
+        assert!(!label.contains("bogus"));
     }
 
     // -----------------------------------------------------------------------
