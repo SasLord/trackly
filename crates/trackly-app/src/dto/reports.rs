@@ -289,6 +289,41 @@ pub struct TemplateEditorItem {
     pub is_default: bool,
 }
 
+/// D-17: per-file upgrade status for the file-based HTML template mechanism
+/// (`crate::pdf::html_templates`, Plan 34-02). Unlike `TemplateEditorItem`
+/// (DB-backed `document_templates` table, `is_default: bool`), this is
+/// FILE-backed: there is no `is_default` column, so status is derived
+/// structurally by comparing on-disk bytes against
+/// `DEFAULT_HTML_TEMPLATES`/`KNOWN_LEGACY_DEFAULTS`. Backend-only for now —
+/// no UI consumer in this phase (D-17's explicit scope boundary); a missing
+/// or unreadable on-disk file folds into `Current` (the SAME "not yet
+/// materialized, no evidence of user customization" reasoning
+/// `upgrade_untouched_defaults_on_startup` already applies — a third status
+/// variant would only distinguish "absent" from "current," which is not
+/// meaningful for this endpoint's purpose of flagging hand-edited files).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateFileStatus {
+    /// On-disk content matches the current bundled default, OR matches a
+    /// known prior (legacy) default that the next startup will
+    /// auto-upgrade in place, OR the file is missing/unreadable.
+    Current,
+    /// On-disk content matches neither the current bundled default nor any
+    /// `KNOWN_LEGACY_DEFAULTS` snapshot — hand-customized by the user.
+    Customized,
+}
+
+/// D-17 response entry — one per file in `DEFAULT_HTML_TEMPLATES`.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TemplateStatusDto {
+    /// e.g. "act_handover.html", "_header.html".
+    pub filename: String,
+    pub status: TemplateFileStatus,
+    /// Resolved templates directory (`TRACKLY_TEMPLATES_DIR` override or
+    /// `<exe_dir>/templates`), repeated per entry for a flat response shape.
+    pub templates_dir: String,
+}
+
 // ---------------------------------------------------------------------------
 // Report tab counts (G2-5b)
 // ---------------------------------------------------------------------------

@@ -172,5 +172,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::settings_org::templates_update_body,
         crate::tauri_cmds::settings_org::templates_reset_to_default,
         crate::tauri_cmds::settings_org::templates_validate_preview,
+        crate::tauri_cmds::settings_org::templates_status,
     ])
 }

@@ -12,7 +12,9 @@ use tauri_plugin_shell::ShellExt;
 use crate::context::AppCtx;
 use crate::dto::reports::{
     BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
+    TemplateFileStatus, TemplateStatusDto,
 };
+use crate::pdf::html_templates::{resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS};
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};
@@ -280,6 +282,52 @@ pub async fn build_templates_reset_to_default(
     ctx.templates.reset_to_default(caller_identity, &kind).await
 }
 
+/// D-17: read-only per-file upgrade status for the 4 file-based HTML
+/// templates (`crate::pdf::html_templates`, Plan 34-02). Never writes to
+/// disk — reuses `DEFAULT_HTML_TEMPLATES`/`KNOWN_LEGACY_DEFAULTS` directly
+/// rather than duplicating comparison logic.
+///
+/// Status derivation mirrors `upgrade_untouched_defaults_on_startup`'s
+/// fail-closed classification: missing/unreadable file OR byte-identical to
+/// the current bundled default → `Current`; byte-identical to any
+/// `KNOWN_LEGACY_DEFAULTS` snapshot for that filename → still `Current` (a
+/// recognized legacy body is pending the SAME auto-upgrade path, not
+/// user-customized); anything else → `Customized`.
+pub async fn build_templates_status(ctx: &AppCtx) -> Result<Vec<TemplateStatusDto>, AppError> {
+    let templates_dir = resolve_templates_dir(&ctx.paths);
+    let templates_dir_str = templates_dir.display().to_string();
+
+    let mut out = Vec::with_capacity(DEFAULT_HTML_TEMPLATES.len());
+    for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
+        let on_disk = std::fs::read_to_string(templates_dir.join(filename)).ok();
+
+        let status = match on_disk {
+            None => TemplateFileStatus::Current, // missing/unreadable — not yet materialized
+            Some(body) if &body == current_default => TemplateFileStatus::Current,
+            Some(body) => {
+                let legacy_bodies = KNOWN_LEGACY_DEFAULTS
+                    .iter()
+                    .find(|(name, _)| name == filename)
+                    .map(|(_, bodies)| *bodies)
+                    .unwrap_or(&[]);
+                if legacy_bodies.iter().any(|legacy| *legacy == body) {
+                    TemplateFileStatus::Current // known legacy default — pending auto-upgrade, not customized
+                } else {
+                    TemplateFileStatus::Customized
+                }
+            }
+        };
+
+        out.push(TemplateStatusDto {
+            filename: filename.to_string(),
+            status,
+            templates_dir: templates_dir_str.clone(),
+        });
+    }
+
+    Ok(out)
+}
+
 /// Validate template syntax + render an HTML preview with per-kind demo context.
 pub async fn build_templates_validate_preview(
     ctx: &AppCtx,
@@ -446,6 +494,18 @@ pub async fn templates_reset_to_default(
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_templates_reset_to_default(state.inner(), &caller, kind).await
+}
+
+/// D-17: read-only, ManageSettings-gated (deliberately stricter than the
+/// unguarded `templates_list_for_editor` — see plan objective).
+#[tauri::command]
+#[specta::specta]
+pub async fn templates_status(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<Vec<TemplateStatusDto>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    authorize(&caller, &Action::ManageSettings)?;
+    build_templates_status(state.inner()).await
 }
 
 #[tauri::command]
