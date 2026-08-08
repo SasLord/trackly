@@ -62,8 +62,12 @@ pub fn build_safe_env() -> Environment<'static> {
 /// through this environment is HTML output (act_handover.html /
 /// act_acceptance.html), so `{{ var }}` interpolation must be HTML-escaped by
 /// default — this is the sole mitigation for T-16-01 (Tampering/Injection via
-/// device/org field interpolation). No `| safe` filter is used anywhere in
-/// the shipped templates.
+/// device/org field interpolation). The sanctioned `| safe` exceptions are
+/// `org.logo_data_uri` (server-constructed base64 + mime whitelist) and
+/// `org.full_name` (server-side `org_full_name_html`-escaped before `<br>`
+/// insertion) — `| safe` is permitted ONLY for values escaped or assembled
+/// exclusively server-side from non-user-HTML input; never for raw
+/// user/device/org field text.
 pub fn build_safe_html_env() -> Environment<'static> {
     let mut env = Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
@@ -79,18 +83,39 @@ pub fn build_safe_html_env() -> Environment<'static> {
 ///
 /// The environment is cloned per-render so concurrent renders don't pollute
 /// each other's template cache.
+///
+/// `extra_templates` registers additional named templates (e.g. the shared
+/// `_header.html` partial) alongside the main template BEFORE render — D-13:
+/// both `add_template_owned` calls happen before `env.get_template`/
+/// `tmpl.render`, and this remains the ONLY registration mechanism (`env
+/// .set_loader` is never called, so `{% include %}` cannot reach the
+/// filesystem). Call order between extras and the main template does not
+/// matter — MiniJinja resolves `{% include %}` at render time, not
+/// registration time.
 pub async fn render_with_timeout(
     env: &Environment<'static>,
     name: &str,
     template_src: &str,
     ctx: serde_json::Value,
+    extra_templates: &[(&str, &str)],
 ) -> Result<String, AppError> {
     let env_owned = env.clone();
     let name_owned = name.to_owned();
     let template_src_owned = template_src.to_owned();
+    let extra_owned: Vec<(String, String)> = extra_templates
+        .iter()
+        .map(|(n, s)| (n.to_string(), s.to_string()))
+        .collect();
 
     let join = tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         let mut env = env_owned;
+        for (extra_name, extra_src) in extra_owned {
+            env.add_template_owned(extra_name, extra_src)
+                .map_err(|e| AppError::Validation {
+                    field: "template".into(),
+                    message: format!("Template parse error: {e}"),
+                })?;
+        }
         env.add_template_owned(name_owned.clone(), template_src_owned)
             .map_err(|e| AppError::Validation {
                 field: "template".into(),
@@ -132,6 +157,7 @@ mod tests {
             "ok",
             "Hello, {{ name }}!",
             serde_json::json!({ "name": "мир" }),
+            &[],
         )
         .await
         .expect("render ok");
@@ -146,6 +172,7 @@ mod tests {
             "undef",
             "Hello, {{ missing_var }}!",
             serde_json::json!({}),
+            &[],
         )
         .await;
         match result {
@@ -166,6 +193,7 @@ mod tests {
             "loop",
             "{% for i in range(10000000) %}x{% endfor %}",
             serde_json::json!({}),
+            &[],
         )
         .await;
         match result {
@@ -179,10 +207,54 @@ mod tests {
     #[tokio::test]
     async fn env_rejects_parse_error() {
         let env = build_safe_env();
-        let result =
-            render_with_timeout(&env, "broken", "{% if unclosed", serde_json::json!({})).await;
+        let result = render_with_timeout(
+            &env,
+            "broken",
+            "{% if unclosed",
+            serde_json::json!({}),
+            &[],
+        )
+        .await;
         match result {
             Err(AppError::Validation { field, .. }) => assert_eq!(field, "template"),
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn env_render_with_timeout_registers_extra_partial_before_render() {
+        let env = build_safe_env();
+        let out = render_with_timeout(
+            &env,
+            "main",
+            "{% include \"partial\" %}Hi {{ name }}",
+            serde_json::json!({ "name": "мир" }),
+            &[("partial", "PARTIAL-")],
+        )
+        .await
+        .expect("render ok");
+        assert_eq!(out, "PARTIAL-Hi мир");
+    }
+
+    #[tokio::test]
+    async fn env_render_with_timeout_missing_partial_fails_cleanly() {
+        let env = build_safe_env();
+        let result = render_with_timeout(
+            &env,
+            "main",
+            "{% include \"missing\" %}",
+            serde_json::json!({}),
+            &[],
+        )
+        .await;
+        match result {
+            Err(AppError::Validation { field, message }) => {
+                assert_eq!(field, "template");
+                assert!(
+                    message.contains("render") || message.contains("template"),
+                    "expected render/template error message, got: {message}"
+                );
+            }
             other => panic!("expected Validation, got {other:?}"),
         }
     }
