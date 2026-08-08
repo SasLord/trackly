@@ -3,17 +3,15 @@
 
   Self-contained HTML5 document (inline <style>, no external CSS/CDN, D-11
   data: URI logo) reproducing the Word-sample block order fixed in Phase 15's
-  act_handover.minijinja: shared header partial (logo + org requisites,
-  Phase 34, see _header.html) -> centered title -> number/date -> intro
-  field_row -> per-item field_rows (label | underlined value, no "Устройство
-  №N") -> "Сроком до" -> optional parent-act paragraph -> two-line signatures
-  "Выдал/Получил".
+  act_handover.minijinja: 2-column header (logo + org requisites) -> centered
+  title -> number/date -> intro field_row -> per-item field_rows (label |
+  underlined value, no "Устройство №N") -> "Сроком до" -> optional parent-act
+  paragraph -> two-line signatures "Выдал/Получил".
 
   Context variables (same shape as act_service::render_pdf's ctx, D-04, plus
-  org.logo_data_uri replacing org.logo_path per D-11, plus org.full_name for
-  the shared header partial per Phase 34):
-    org.name, org.full_name, org.inn, org.kpp, org.address, org.address_line2,
-    org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
+  org.logo_data_uri replacing org.logo_path per D-11):
+    org.name, org.inn, org.kpp, org.address, org.address_line2, org.logo_data_uri,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
     act.receiver_name, act.deadline, act.deadline_human,
     act.location_name, act.items[], act.parent
@@ -28,11 +26,7 @@
   never user-controlled HTML — `| safe` only prevents autoescape from
   HTML-entity-encoding the URI's `/` characters, which would otherwise
   corrupt the `data:` scheme. The user may freely edit this file in VSCode;
-  the engine re-reads it from disk on every render (D-08). The header block
-  (logo/orgName/requisites markup + CSS) now lives exclusively in the shared
-  _header.html partial (D-12), pulled in below via the Jinja include
-  directive — resolved from the in-memory Environment template registry,
-  never a filesystem loader (D-13).
+  the engine re-reads it from disk on every render (D-08).
 -#}
 <html lang="ru">
 <head>
@@ -44,11 +38,26 @@
     margin: 20mm 15mm;
   }
   body {
-    font-family: "Times New Roman", Georgia, "PT Serif", "Liberation Serif", "DejaVu Serif", serif;
-    font-size: 12pt;
+    font-family: "DejaVu Sans", "Arial", sans-serif;
+    font-size: 11pt;
     color: #000;
     margin: 0;
     padding: 0;
+  }
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12pt;
+    align-items: flex-start;
+    margin-bottom: 16pt;
+  }
+  .header .logo img {
+    max-height: 60pt;
+    max-width: 120pt;
+  }
+  .header .requisites {
+    font-size: 9pt;
+    line-height: 1.35;
   }
   .title {
     text-align: center;
@@ -107,7 +116,30 @@
 </head>
 <body>
 
-  {% include "_header.html" %}
+  <div class="header">
+    <div class="logo">
+      {%- if org.logo_data_uri %}
+      {#- logo_data_uri is server-constructed exclusively from base64 output
+        (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+        hardcoded mime whitelist (act_service.rs) — `| safe` here does not
+        reopen T-16-01's XSS mitigation, it only prevents autoescape from
+        HTML-entity-encoding the `/` in "data:image/png;base64,..." into
+        `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
+      <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
+      {%- endif %}
+    </div>
+    <div class="requisites">
+      {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
+      {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
+      {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.address_line2 %}<div>{{ org.address_line2 }}</div>{%- endif %}
+      {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
+      {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
+      {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+      {%- if org.okpo %}<div>ОКПО {{ org.okpo }}</div>{%- endif %}
+      {%- if org.ogrn %}<div>ОГРН {{ org.ogrn }}</div>{%- endif %}
+    </div>
+  </div>
 
   <div class="title">Акт приема-передачи</div>
   <div class="subtitle">№{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>

@@ -4,13 +4,13 @@
   Self-contained HTML5 document (inline <style>, no external CSS/CDN) —
   fresh "чистый современный вид" table design (zebra rows, distinct thead,
   month-separator headings), NOT a direct port of the old DocSpec/krilla
-  layout. The organization header is the shared partial (_header.html,
-  Phase 34) for structural consistency across all printed documents.
+  layout. The organization header block below is copied verbatim from
+  act_handover.html (D-02) for visual consistency across all printed
+  documents.
 
-  Context variables (built in report_service.rs::export_pdf, D-04/D-05, plus
-  org.full_name per Phase 34):
-    org.name, org.full_name, org.inn, org.kpp, org.address, org.address_line2,
-    org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
+  Context variables (built in report_service.rs::export_pdf, D-04/D-05):
+    org.name, org.inn, org.kpp, org.address, org.address_line2, org.logo_data_uri,
+    org.phone, org.fax, org.email, org.okpo, org.ogrn
     report_name (string) — human-readable report title
     period_label (string) — human-readable period description
     columns (list of Russian column-label strings, D-03 — Rust-supplied,
@@ -24,11 +24,7 @@
   logo data URI (see inline comment at its use site, D-08): that value is
   exclusively server-constructed base64 + a hardcoded mime whitelist,
   never user-controlled HTML. The user may freely edit this file in
-  VSCode; the engine re-reads it from disk on every render. The header
-  block (logo/orgName/requisites markup + CSS) now lives exclusively in
-  the shared _header.html partial (D-12), pulled in below via the Jinja
-  include directive — resolved from the in-memory Environment template
-  registry, never a filesystem loader (D-13).
+  VSCode; the engine re-reads it from disk on every render.
 -#}
 <html lang="ru">
 <head>
@@ -40,15 +36,30 @@
     margin: 20mm 15mm;
   }
   body {
-    font-family: "Times New Roman", Georgia, "PT Serif", "Liberation Serif", "DejaVu Serif", serif;
-    font-size: 12pt;
+    font-family: "DejaVu Sans", "Arial", sans-serif;
+    font-size: 10.5pt;
     color: #1a1a1a;
     margin: 0;
     padding: 0;
   }
+  .header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12pt;
+    align-items: flex-start;
+    margin-bottom: 16pt;
+  }
+  .header .logo img {
+    max-height: 60pt;
+    max-width: 120pt;
+  }
+  .header .requisites {
+    font-size: 9pt;
+    line-height: 1.35;
+  }
   .title {
     text-align: center;
-    font-size: 14pt;
+    font-size: 15pt;
     font-weight: bold;
     margin: 8pt 0 0 0;
   }
@@ -109,7 +120,30 @@
 </head>
 <body>
 
-  {% include "_header.html" %}
+  <div class="header">
+    <div class="logo">
+      {%- if org.logo_data_uri %}
+      {#- logo_data_uri is server-constructed exclusively from base64 output
+        (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+        hardcoded mime whitelist (report_service.rs) — `| safe` here does not
+        reopen T-17-01-01's XSS mitigation, it only prevents autoescape from
+        HTML-entity-encoding the `/` in "data:image/png;base64,..." into
+        `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
+      <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
+      {%- endif %}
+    </div>
+    <div class="requisites">
+      {%- if org.name %}<div>{{ org.name }}</div>{%- endif %}
+      {%- if org.inn %}<div>ИНН {{ org.inn }}{% if org.kpp %} / КПП {{ org.kpp }}{% endif %}</div>{%- endif %}
+      {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
+      {%- if org.address_line2 %}<div>{{ org.address_line2 }}</div>{%- endif %}
+      {%- if org.phone %}<div>Тел.: {{ org.phone }}</div>{%- endif %}
+      {%- if org.fax %}<div>Факс: {{ org.fax }}</div>{%- endif %}
+      {%- if org.email %}<div>E-mail: {{ org.email }}</div>{%- endif %}
+      {%- if org.okpo %}<div>ОКПО {{ org.okpo }}</div>{%- endif %}
+      {%- if org.ogrn %}<div>ОГРН {{ org.ogrn }}</div>{%- endif %}
+    </div>
+  </div>
 
   <div class="title">{{ report_name }}</div>
   <div class="subtitle">{{ period_label }}</div>
