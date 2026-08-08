@@ -14,7 +14,9 @@ use crate::dto::reports::{
     BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
     TemplateFileStatus, TemplateStatusDto,
 };
-use crate::pdf::html_templates::{resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS};
+use crate::pdf::html_templates::{
+    resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS,
+};
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};

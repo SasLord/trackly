@@ -19,7 +19,7 @@ use trackly_core::auth::{authorize, Action};
 
 use crate::context::AppCtx;
 use crate::dto::reports::{
-    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem, TemplateStatusDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -30,7 +30,7 @@ use crate::tauri_cmds::settings_org::{
     build_settings_remove_org_logo, build_settings_save_backup_config,
     build_settings_save_org_fields, build_settings_save_org_logo,
     build_settings_set_low_stock_threshold, build_templates_list_for_editor,
-    build_templates_reset_to_default, build_templates_update_body,
+    build_templates_reset_to_default, build_templates_status, build_templates_update_body,
     build_templates_validate_preview,
 };
 
@@ -294,6 +294,26 @@ pub async fn handler_templates_reset_to_default(
     Ok(Json(()))
 }
 
+/// D-17: read-only, but ManageSettings-gated — deliberately stricter than
+/// `handler_templates_list_for_editor` above (see plan objective: disclosing
+/// which files an admin has hand-customized is more sensitive than merely
+/// listing DB-backed template bodies). Placed in the mutations section
+/// despite being non-mutating, per its authorization posture.
+pub async fn handler_templates_status(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<Vec<TemplateStatusDto>>, AppErrorResponse> {
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_templates_status(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_templates_validate_preview(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -369,4 +389,5 @@ pub fn router() -> Router<AppCtx> {
             "/api/v1/templates_validate_preview",
             post(handler_templates_validate_preview),
         )
+        .route("/api/v1/templates_status", post(handler_templates_status))
 }
