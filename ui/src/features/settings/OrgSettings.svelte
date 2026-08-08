@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
+  import Textarea from '$lib/components/Textarea.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
 
@@ -18,6 +19,7 @@
     okpo: string;
     ogrn: string;
     address_line2: string;
+    full_name: string;
   }
 
   let orgName = $state('');
@@ -25,6 +27,7 @@
   let kpp = $state('');
   let address = $state('');
   let addressLine2 = $state('');
+  let fullName = $state('');
   let hasLogo = $state(false);
   let phone = $state('');
   let fax = $state('');
@@ -57,6 +60,7 @@
       kpp = dto.kpp;
       address = dto.address;
       addressLine2 = dto.address_line2;
+      fullName = dto.full_name;
       hasLogo = dto.has_logo;
       phone = dto.phone;
       fax = dto.fax;
@@ -111,6 +115,7 @@
           kpp,
           address,
           address_line2: addressLine2,
+          full_name: fullName,
           phone,
           fax,
           email,
@@ -264,6 +269,17 @@
         type="text"
         bind:value={addressLine2}
         placeholder="офис 305, корпус 2"
+      />
+    </div>
+
+    <div class="form-field form-field--full">
+      <label class="form-label" for="org-full-name">Полное юридическое наименование</label>
+      <Textarea
+        id="org-full-name"
+        value={fullName}
+        rows={3}
+        placeholder={'Общество с ограниченной ответственностью\n«Название»'}
+        oninput={(v) => (fullName = v)}
       />
     </div>
 
