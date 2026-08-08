@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: planning
-last_updated: "2026-08-08T14:41:50.194Z"
+last_updated: "2026-08-08T15:10:00.000Z"
 last_activity: 2026-08-08
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 33 — print-preview-polish
+**Current focus:** Phase 34 — единая шапка документов (v1.3.3)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-08 — Milestone v1.3.3 started
+Phase: 34 of 38 (Единая шапка документов)
+Plan: — (not yet planned)
+Status: Ready to plan
+Last activity: 2026-08-08 — ROADMAP.md создан для v1.3.3 (Фазы 34–38, 11/11 требований
+DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
+
+Progress: [░░░░░░░░░░] 0%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -311,6 +314,12 @@ Last activity: 2026-08-08 — Milestone v1.3.3 started
 - Phase 31 added (2026-08-03): Служебный AD-bind — ФИО и роли из AD-групп — service-account LDAP bind (по образцу adwebapp `ldap.go`) резолвит `displayName` для SSO-пользователей с кэшем; маппинг AD-группа → роль через `memberOf`, fail-closed при недоступности каталога. Milestone v1.3 (SSO-01, SSO-03).
 - Phase 32 added (2026-08-03): Авто-админ по списку логинов + релиз SSO в main — настраиваемый список доменных логинов (аналог `ADMIN_AD_LOGINS`) получает роль «Администратор» сразу при первом SSO-входе; операционный итог фазы (не REQ) — мерж `spike/ad-sso-kerberos` в `main` и релиз обычной версии. Milestone v1.3 (SSO-02).
 - Phase 33 added (2026-08-03): Полировка предпросмотра печати — модалка предпросмотра (Акты/Приёмка/Отчёты) показывает лист A4 на сероватой подложке с полями (margins), WYSIWYG-совпадение предпросмотра и `@media print`. Независима от Phase 31/32 (чистый фронтенд/CSS). Milestone v1.3 (PRV-01, PRV-02, PRV-03).
+- Phase 34 added (2026-08-08): Единая шапка документов — лого + реквизиты организации (Times New Roman 12pt, A4 20/15мм) на всех трёх печатных формах, источник `org.name`, доставка новой шапки в существующие установки через новый срез `_legacy_defaults`. Первый шаг фазы — спасти правки пользователя из `target/debug/templates/`. Milestone v1.3.3 (DOC-04, DOC-05, DOC-06).
+- Phase 35 added (2026-08-08): Тело акта приёма-передачи — канонiчный текст (две стороны, «составили настоящий акт о нижеследующем», перечень/состояние/срок/подписи), согласованный с пользователем ДО вёрстки; без полосок-подчёркиваний под автоподставляемым текстом; горизонтальный блок подписей по строке на подписанта. Зависит от Phase 34 (общий файл шаблона). Milestone v1.3.3 (DOC-07, DOC-08, DOC-09).
+- Phase 36 added (2026-08-08): Пагинация акта по количеству устройств — один лист для одного устройства, «Приложение №1» со второго листа для нескольких. Зависит от Phase 35 (форма тела определяет разбивку). Milestone v1.3.3 (DOC-10, DOC-11).
+- Phase 37 added (2026-08-08): Приватность данных — обезличивание HEAD от уже утёкших реальных данных организации и сотрудников (код/шаблоны/тесты/`.planning/`-артефакты) + durable-гейт против повторной утечки по образцу `check-contrast.mjs`/`check-print-isolation.mjs`, подключённый в `pnpm lint`. История git не переписывается (решение пользователя). Порядок внутри фазы: сначала чистка, затем гейт — иначе гейт падает на собственном репозитории. Независима от направления шаблонов. Milestone v1.3.3 (PRIV-01, PRIV-02).
+- Phase 38 added (2026-08-08): Nyquist-покрытие Фазы 32 — закрытие унаследованного из v1.3 долга (`32-VALIDATION.md: nyquist_compliant: false` → `true`). Независима от остальных фаз. Milestone v1.3.3 (QA-04).
+- Phases 37+38 merged into one (2026-08-08, решение пользователя при утверждении роадмапа): чистка и гейт всё равно планируются и проверяются вместе, потому что гейт обязан проходить на уже очищенном HEAD. Прежняя Phase 39 (Nyquist) стала Phase 38. Итог: 5 фаз вместо 6, покрытие требований не изменилось.
 
 ### Decisions
 
@@ -827,13 +836,13 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T10:59:53.236Z
-Stopped at: Completed 260808-np4-PLAN.md
+Last session: 2026-08-08T15:10:00.000Z
+Stopped at: ROADMAP.md создан и утверждён для v1.3.3 (Фазы 34–38); ждёт /gsd-plan-phase 34
 Resume file: 
 
 None
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 34 with /gsd-plan-phase 34
 
 ## Deferred Items
 
@@ -877,4 +886,5 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 34 with /gsd-plan-phase 34 (Единая шапка документов — начать со спасения правок
+  пользователя из target/debug/templates/)

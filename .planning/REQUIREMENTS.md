@@ -91,16 +91,16 @@ UAT 2026-08-05. HTML-шаблоны живут файлами в `templates/` р
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOC-04 | — | Pending |
-| DOC-05 | — | Pending |
-| DOC-06 | — | Pending |
-| DOC-07 | — | Pending |
-| DOC-08 | — | Pending |
-| DOC-09 | — | Pending |
-| DOC-10 | — | Pending |
-| DOC-11 | — | Pending |
-| PRIV-01 | — | Pending |
-| PRIV-02 | — | Pending |
-| QA-04 | — | Pending |
+| DOC-04 | Phase 34 | Pending |
+| DOC-05 | Phase 34 | Pending |
+| DOC-06 | Phase 34 | Pending |
+| DOC-07 | Phase 35 | Pending |
+| DOC-08 | Phase 35 | Pending |
+| DOC-09 | Phase 35 | Pending |
+| DOC-10 | Phase 36 | Pending |
+| DOC-11 | Phase 36 | Pending |
+| PRIV-01 | Phase 37 | Pending |
+| PRIV-02 | Phase 37 | Pending |
+| QA-04 | Phase 38 | Pending |
 
-*Заполняется роадмаппером при создании ROADMAP.md.*
+11/11 requirements mapped to phases (Phase 34–38). No orphans.
