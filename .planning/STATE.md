@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-08T19:45:29.804Z"
+last_updated: "2026-08-08T20:02:36.184Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 34 (document-header) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-08
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███░░░░░░░] 33%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -284,6 +284,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 33 P03 | 35min | 3 tasks | 2 files |
 | Phase 33 P04 | 20min | 2 tasks | 2 files |
 | Phase 34 P01 | 30min | 3 tasks | 8 files |
+| Phase 34 P02 | ~25min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -703,6 +704,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 34-01: full_name appended as LAST column in org_settings so all pre-existing SELECT/UPDATE ordinal positions stay stable
 - [Phase ?]: 34-01: migrate_from_org_json legacy UPDATE left untouched — org.json has no full_name equivalent
 - [Phase ?]: 34-01: cargo clean -p trackly-infra required after adding a new migration file — refinery embed_migrations! has no rerun-if-changed hook for migrations/, so new .sql files are invisible to incremental rebuilds until a scoped clean
+- [Phase ?]: Rescued reference header from target/debug/templates/act_handover.html (still present, matched research mtime/size), privacy-scrubbed by manual substitution of org.full_name/org.name for the hardcoded real org name -- never a whole-file copy
+- [Phase ?]: v21 legacy snapshot taken via cp BEFORE the canonical templates' rewrite (D-15/Pitfall 5 timing), verified non-empty diff post-rewrite
+- [Phase ?]: _header.html registered in DEFAULT_HTML_TEMPLATES but NOT in KNOWN_LEGACY_DEFAULTS (no legacy predecessor) -- adjusted the pre-existing .first()-based upgrade test to skip filenames with no registered legacy slice
 
 ### Pending Todos
 
@@ -840,8 +844,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T19:45:29.795Z
-Stopped at: Completed 34-01-PLAN.md
+Last session: 2026-08-08T20:02:36.176Z
+Stopped at: Completed 34-02-PLAN.md
 Resume file: 
 
 None
