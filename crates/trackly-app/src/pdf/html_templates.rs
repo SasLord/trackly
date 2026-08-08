@@ -37,6 +37,10 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
         include_str!("../../templates/act_acceptance.html"),
     ),
     ("report.html", include_str!("../../templates/report.html")),
+    (
+        "_header.html",
+        include_str!("../../templates/_header.html"),
+    ),
 ];
 
 /// Registry of previously-shipped default bodies, keyed by filename (D-12).
@@ -60,21 +64,24 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
 pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
     (
         "act_handover.html",
-        &[include_str!(
-            "../../templates/_legacy_defaults/v20/act_handover.html"
-        )],
+        &[
+            include_str!("../../templates/_legacy_defaults/v20/act_handover.html"),
+            include_str!("../../templates/_legacy_defaults/v21/act_handover.html"),
+        ],
     ),
     (
         "act_acceptance.html",
-        &[include_str!(
-            "../../templates/_legacy_defaults/v20/act_acceptance.html"
-        )],
+        &[
+            include_str!("../../templates/_legacy_defaults/v20/act_acceptance.html"),
+            include_str!("../../templates/_legacy_defaults/v21/act_acceptance.html"),
+        ],
     ),
     (
         "report.html",
-        &[include_str!(
-            "../../templates/_legacy_defaults/v20/report.html"
-        )],
+        &[
+            include_str!("../../templates/_legacy_defaults/v20/report.html"),
+            include_str!("../../templates/_legacy_defaults/v21/report.html"),
+        ],
     ),
 ];
 
@@ -154,9 +161,14 @@ pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(),
                 "Auto-upgraded untouched default HTML template at {}",
                 path.display()
             );
+        } else {
+            tracing::warn!(
+                "Skipped auto-upgrade of {} — on-disk content matches neither current \
+                 default nor any known legacy default (user-customized); manual review \
+                 needed if a header/layout upgrade was expected.",
+                path.display()
+            );
         }
-        // else: user-customized (matches neither current nor any known legacy
-        // default) — leave untouched, fail closed.
     }
     Ok(())
 }
@@ -234,23 +246,89 @@ mod tests {
         let _guard = ENV_GUARD.lock().unwrap();
         let dir = tempfile::tempdir().expect("tempdir");
 
-        // Pre-populate disk with the OLD (pre-Phase-20) content for each file.
+        // Pre-populate disk with the OLD (pre-Phase-20) content for each file
+        // that has a registered legacy snapshot. `_header.html` (Phase 34) is
+        // a brand-new file with no legacy predecessor — it deliberately has
+        // no entry in `KNOWN_LEGACY_DEFAULTS` (a missing file is
+        // `materialize_defaults_on_startup`'s job, not this upgrade path's),
+        // so it is skipped here rather than treated as a test failure.
         for (filename, _current) in DEFAULT_HTML_TEMPLATES.iter() {
-            let legacy = KNOWN_LEGACY_DEFAULTS
+            let Some(legacy) = KNOWN_LEGACY_DEFAULTS
                 .iter()
                 .find(|(name, _)| name == filename)
                 .and_then(|(_, bodies)| bodies.first())
-                .expect("legacy snapshot registered for filename");
+            else {
+                continue;
+            };
             std::fs::write(dir.path().join(filename), legacy).expect("write legacy body");
         }
 
         upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            if !KNOWN_LEGACY_DEFAULTS.iter().any(|(name, _)| name == filename) {
+                continue;
+            }
             let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
             assert_eq!(
                 &contents, current,
                 "{filename} must be upgraded to the current bundled body"
+            );
+        }
+    }
+
+    /// Phase 34 D-15: proves the NEW v21 slice element specifically (not just
+    /// `.first()`/v20) drives a real upgrade — unlike the `.first()`-based
+    /// test above, this pulls index `1` (the v21 element) from each
+    /// filename's `KNOWN_LEGACY_DEFAULTS` slice.
+    #[test]
+    fn upgrade_replaces_v21_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let Some(bodies) = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| *bodies)
+            else {
+                continue; // e.g. _header.html — no legacy slice registered
+            };
+            let Some(v21_body) = bodies.get(1) else {
+                continue; // filename has no v21 element (shouldn't happen for the 3 main files)
+            };
+
+            // Precondition guard (D-15/Pitfall 5): if the v21 snapshot had
+            // been taken AFTER the rewrite instead of before, it would
+            // already equal the current bundled body and the upgrade
+            // assertion below would pass trivially without ever exercising
+            // a real upgrade. This makes that failure mode impossible to
+            // pass unnoticed.
+            assert_ne!(
+                v21_body, current,
+                "{filename}: v21 legacy snapshot must NOT equal the current bundled \
+                 default — otherwise the snapshot was taken after the rewrite and this \
+                 test cannot prove a real upgrade happened"
+            );
+
+            std::fs::write(dir.path().join(filename), v21_body).expect("write v21 body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let has_v21 = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| bodies.len() > 1)
+                .unwrap_or(false);
+            if !has_v21 {
+                continue;
+            }
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded from its v21 legacy body to the current bundled body"
             );
         }
     }
