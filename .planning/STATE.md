@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-08T21:13:16.173Z"
+last_updated: "2026-08-08T21:17:16.526Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 34 (document-header) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-08
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 67%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -286,6 +286,7 @@ Progress: [█████░░░░░] 50%
 | Phase 34 P01 | 30min | 3 tasks | 8 files |
 | Phase 34 P02 | ~25min | 3 tasks | 9 files |
 | Phase 34 P03 | 50min | 3 tasks | 8 files |
+| Phase 34 P04 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -710,6 +711,7 @@ Recent decisions affecting current work:
 - [Phase ?]: _header.html registered in DEFAULT_HTML_TEMPLATES but NOT in KNOWN_LEGACY_DEFAULTS (no legacy predecessor) -- adjusted the pre-existing .first()-based upgrade test to skip filenames with no registered legacy slice
 - [Phase 34]: 34-03: enabled minijinja's multi_template feature — required for {% include %} to parse, orthogonal to the no-filesystem-loader invariant
 - [Phase 34]: 34-03: list_all_for_editor filters filenames starting with '_' — shared partials like _header.html are not standalone editable document kinds
+- [Phase 34-04]: Placed full_name field after address-line2, before phone in OrgSettings.svelte, mirroring address_line2's 4-touchpoint shape
 
 ### Pending Todos
 
@@ -847,7 +849,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T21:13:16.165Z
+Last session: 2026-08-08T21:16:08.140Z
 Stopped at: Completed 34-03-PLAN.md
 Resume file: 
 
