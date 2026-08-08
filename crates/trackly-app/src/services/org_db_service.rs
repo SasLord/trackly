@@ -55,7 +55,7 @@ impl OrgDbService {
             conn.query_row(
                 "SELECT org_name, inn, kpp, address, \
                  (logo_blob IS NOT NULL) as has_logo, \
-                 phone, fax, email, okpo, ogrn, address_line2 \
+                 phone, fax, email, okpo, ogrn, address_line2, full_name \
                  FROM org_settings WHERE id = 1",
                 [],
                 |r| {
@@ -71,6 +71,7 @@ impl OrgDbService {
                         okpo: r.get(8)?,
                         ogrn: r.get(9)?,
                         address_line2: r.get(10)?,
+                        full_name: r.get(11)?,
                     })
                 },
             )
@@ -96,8 +97,8 @@ impl OrgDbService {
                     "UPDATE org_settings \
                      SET org_name=?2, inn=?3, kpp=?4, address=?5, \
                          phone=?6, fax=?7, email=?8, okpo=?9, ogrn=?10, \
-                         address_line2=?11, \
-                         updated_at_utc=?12, version=version+1 \
+                         address_line2=?11, full_name=?12, \
+                         updated_at_utc=?13, version=version+1 \
                      WHERE id=1",
                     params![
                         1i64,
@@ -111,6 +112,7 @@ impl OrgDbService {
                         patch.okpo,
                         patch.ogrn,
                         patch.address_line2,
+                        patch.full_name,
                         now
                     ],
                 )
@@ -402,7 +404,7 @@ impl OrgDbService {
                 "SELECT org_name, inn, kpp, address, \
                  (logo_blob IS NOT NULL) as has_logo, \
                  logo_blob, logo_mime, \
-                 phone, fax, email, okpo, ogrn, address_line2 \
+                 phone, fax, email, okpo, ogrn, address_line2, full_name \
                  FROM org_settings WHERE id = 1",
                 [],
                 |r| {
@@ -418,6 +420,7 @@ impl OrgDbService {
                         okpo: r.get(10)?,
                         ogrn: r.get(11)?,
                         address_line2: r.get(12)?,
+                        full_name: r.get(13)?,
                     };
                     let logo_blob: Option<Vec<u8>> = r.get(5)?;
                     let logo_mime: Option<String> = r.get(6)?;

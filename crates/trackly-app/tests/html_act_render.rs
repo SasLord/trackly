@@ -267,6 +267,7 @@ async fn html_acceptance_full_org_parity_with_handover() {
                 okpo: "12345678".into(),
                 ogrn: "1027700000000".into(),
                 address_line2: "офис 305, корпус 2".into(),
+                full_name: String::new(),
             },
         )
         .await

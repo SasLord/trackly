@@ -628,6 +628,7 @@ async fn render_pdf_with_filled_specs_and_requisites_surfaces_data() {
                     okpo: "87654321".to_string(),
                     ogrn: "1027700654321".to_string(),
                     address_line2: String::new(),
+                    full_name: String::new(),
                 },
             )
             .await

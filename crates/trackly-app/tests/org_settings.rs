@@ -52,6 +52,7 @@ async fn org_settings_save_and_load_round_trip() {
         assert_eq!(initial.email, "");
         assert_eq!(initial.okpo, "");
         assert_eq!(initial.ogrn, "");
+        assert_eq!(initial.full_name, "");
 
         // Сохраняем новые данные
         let patch = OrgPatch {
@@ -65,6 +66,8 @@ async fn org_settings_save_and_load_round_trip() {
             okpo: "12345678".to_string(),
             ogrn: "1027700123456".to_string(),
             address_line2: String::new(),
+            full_name: "Общество с ограниченной ответственностью\n«Тестовая компания»"
+                .to_string(),
         };
         svc.save_fields(&caller, patch).await.expect("save_fields");
 
@@ -79,6 +82,10 @@ async fn org_settings_save_and_load_round_trip() {
         assert_eq!(updated.email, "info@test.ru");
         assert_eq!(updated.okpo, "12345678");
         assert_eq!(updated.ogrn, "1027700123456");
+        assert_eq!(
+            updated.full_name,
+            "Общество с ограниченной ответственностью\n«Тестовая компания»"
+        );
         assert!(
             !updated.has_logo,
             "has_logo должен быть false — лого не загружали"

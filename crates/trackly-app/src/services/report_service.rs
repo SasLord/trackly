@@ -1418,6 +1418,7 @@ mod tests {
             okpo: String::new(),
             ogrn: String::new(),
             address_line2: String::new(),
+            full_name: String::new(),
         }
     }
 
