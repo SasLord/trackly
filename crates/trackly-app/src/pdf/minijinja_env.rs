@@ -21,8 +21,22 @@
 
 use std::time::Duration;
 
-use minijinja::{AutoEscape, Environment, UndefinedBehavior};
+use minijinja::{AutoEscape, Environment, HtmlEscape, UndefinedBehavior};
 use trackly_core::error::AppError;
+
+/// Prepare `org.full_name` for the `_header.html` `{{ org.full_name | safe }}`
+/// interpolation (Plan 34-02/34-03) — mirrors the pre-existing
+/// `org.logo_data_uri | safe` pattern.
+///
+/// D-03 requires the two-step order: escape HTML special characters FIRST
+/// (via `minijinja::HtmlEscape`), THEN replace `'\n'` with the literal string
+/// `"<br />"`. The reverse order is a stored-XSS vector because the org
+/// full-name field is authenticated-write / broadcast-read (any LAN user
+/// previewing an act/report can trigger a render of whatever an admin typed
+/// into org_settings.full_name).
+pub fn org_full_name_html(raw: &str) -> String {
+    format!("{}", HtmlEscape(raw)).replace('\n', "<br />")
+}
 
 /// Build a fresh MiniJinja `Environment` configured for Trackly safe-mode.
 ///
@@ -171,5 +185,38 @@ mod tests {
             Err(AppError::Validation { field, .. }) => assert_eq!(field, "template"),
             other => panic!("expected Validation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn org_full_name_html_replaces_newline_with_br() {
+        assert_eq!(
+            org_full_name_html("Строка1\nСтрока2"),
+            "Строка1<br />Строка2"
+        );
+    }
+
+    #[test]
+    fn org_full_name_html_escapes_before_inserting_br() {
+        let out = org_full_name_html("<script>x</script>\nстрока2");
+        assert!(
+            out.contains("&lt;script&gt;"),
+            "expected escaped script tag, got: {out}"
+        );
+        assert!(out.contains("<br />"), "expected literal <br />, got: {out}");
+        assert!(
+            !out.contains("<script>"),
+            "literal <script> must never survive, got: {out}"
+        );
+    }
+
+    #[test]
+    fn org_full_name_html_empty_input_is_empty_output() {
+        assert_eq!(org_full_name_html(""), "");
+    }
+
+    #[test]
+    fn org_full_name_html_escapes_ampersand() {
+        let out = org_full_name_html("A & B");
+        assert!(out.contains("&amp;"), "expected escaped ampersand, got: {out}");
     }
 }
