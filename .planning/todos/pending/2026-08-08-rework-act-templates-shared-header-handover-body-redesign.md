@@ -2,6 +2,9 @@
 created: 2026-08-08T14:01:15.546Z
 title: Rework act templates — shared header + handover body redesign
 area: docs
+resolves_phase: 34
+spans_phases: [34, 35, 36]
+milestone: v1.3.3
 files:
   - crates/trackly-app/templates/act_handover.html
   - crates/trackly-app/templates/act_acceptance.html
