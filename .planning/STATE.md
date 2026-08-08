@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-08T21:17:16.526Z"
+last_updated: "2026-08-08T21:40:25.735Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 34 (document-header) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-08-08
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 83%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -287,6 +287,7 @@ Progress: [███████░░░] 67%
 | Phase 34 P02 | ~25min | 3 tasks | 9 files |
 | Phase 34 P03 | 50min | 3 tasks | 8 files |
 | Phase 34 P04 | 15min | 2 tasks | 2 files |
+| Phase 34 P05 | 40min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -712,6 +713,7 @@ Recent decisions affecting current work:
 - [Phase 34]: 34-03: enabled minijinja's multi_template feature — required for {% include %} to parse, orthogonal to the no-filesystem-loader invariant
 - [Phase 34]: 34-03: list_all_for_editor filters filenames starting with '_' — shared partials like _header.html are not standalone editable document kinds
 - [Phase 34-04]: Placed full_name field after address-line2, before phone in OrgSettings.svelte, mirroring address_line2's 4-touchpoint shape
+- [Phase 34]: D-17: templates_status endpoint reports missing/unreadable file as Current (2-value enum, no third Missing variant)
 
 ### Pending Todos
 
@@ -849,7 +851,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T21:16:08.140Z
+Last session: 2026-08-08T21:39:02.944Z
 Stopped at: Completed 34-03-PLAN.md
 Resume file: 
 
