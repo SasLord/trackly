@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-08T19:15:40.190Z"
-last_activity: 2026-08-08 -- Phase 34 planning complete
+last_updated: "2026-08-08T19:45:29.804Z"
+last_activity: 2026-08-08
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 6
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -20,17 +20,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 34 — единая шапка документов (v1.3.3)
+**Current focus:** Phase 34 — document-header
 
 ## Current Position
 
-Phase: 34 of 38 (Единая шапка документов)
-Plan: — (not yet planned)
+Phase: 34 (document-header) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-08 -- Phase 34 planning complete
+Last activity: 2026-08-08
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 17%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -283,6 +283,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 33 P02 | ~50min | 3 tasks | 5 files |
 | Phase 33 P03 | 35min | 3 tasks | 2 files |
 | Phase 33 P04 | 20min | 2 tasks | 2 files |
+| Phase 34 P01 | 30min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -699,6 +700,9 @@ Recent decisions affecting current work:
 - [Phase 33]: pagedjs dist bundle imported via relative filesystem path (not bare package specifier) — its package.json exports map has no ./dist/* subpath entries, which broke vite build once the module became reachable from the app entry graph
 - [Phase 33]: Plan 33-04: printViaTopLevel wraps previewer.preview() stylesheet-argument shape in try/catch with a wrapper-stripping fallback (RESEARCH.md Open Question 2, unverified by automated tests — see 33-VALIDATION.md manual UAT row)
 - [Phase 260808-np4]: Consolidated REQ-06 ad_register visibility rule from 3 duplicated implementations (11 call sites) into 2 shared functions: trackly_core::auth::excludes_ad_register and requests_sqlite::ad_register_predicate/ad_register_exclude_clause
+- [Phase ?]: 34-01: full_name appended as LAST column in org_settings so all pre-existing SELECT/UPDATE ordinal positions stay stable
+- [Phase ?]: 34-01: migrate_from_org_json legacy UPDATE left untouched — org.json has no full_name equivalent
+- [Phase ?]: 34-01: cargo clean -p trackly-infra required after adding a new migration file — refinery embed_migrations! has no rerun-if-changed hook for migrations/, so new .sql files are invisible to incremental rebuilds until a scoped clean
 
 ### Pending Todos
 
@@ -836,11 +840,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T16:09:14.793Z
-Stopped at: Phase 34 context gathered
+Last session: 2026-08-08T19:45:29.795Z
+Stopped at: Completed 34-01-PLAN.md
 Resume file: 
 
-.planning/phases/34-document-header/34-CONTEXT.md
+None
 
 - Plan Phase 34 with /gsd-plan-phase 34
 

@@ -84,7 +84,7 @@
 | 31. Служебный AD-bind — ФИО и роли из AD-групп | v1.3 | 4/4 | Complete | 2026-08-03 |
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 5/5 | Complete | 2026-08-04 |
 | 33. Полировка предпросмотра печати | v1.3 | 4/4 | Complete | 2026-08-04 |
-| 34. Единая шапка документов | v1.3.3 | 0/6 | Not started | - |
+| 34. Единая шапка документов | v1.3.3 | 1/6 | In Progress|  |
 | 35. Тело акта приёма-передачи | v1.3.3 | 0/TBD | Not started | - |
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 0/TBD | Not started | - |
 | 37. Приватность данных | v1.3.3 | 0/TBD | Not started | - |
@@ -118,7 +118,7 @@
 
 **Wave 1**
 
-- [ ] 34-01-PLAN.md — org_settings.full_name миграция V036 + DTO/OrgDbService wiring + org_full_name_html escape-хелпер (D-01/D-03)
+- [x] 34-01-PLAN.md — org_settings.full_name миграция V036 + DTO/OrgDbService wiring + org_full_name_html escape-хелпер (D-01/D-03)
 - [ ] 34-02-PLAN.md — спасение правки в _header.html + срез _legacy_defaults/v21 + переверстка трёх канонических шаблонов (D-04..D-12, D-14..D-16)
 
 **Wave 2** *(depends on Wave 1)*
