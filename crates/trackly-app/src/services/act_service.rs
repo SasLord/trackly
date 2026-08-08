@@ -2583,6 +2583,16 @@ impl ActService {
             "act_handover.html",
             embedded_default,
         );
+        let embedded_header_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "_header.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let header_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "_header.html",
+            embedded_header_default,
+        );
 
         // Optional parent block для return-актов (Plan 04 рендерит handover,
         // но для cascade — оставляем path).
@@ -2630,6 +2640,7 @@ impl ActService {
                 "email": org_dto.email,
                 "okpo": org_dto.okpo,
                 "ogrn": org_dto.ogrn,
+                "full_name": crate::pdf::minijinja_env::org_full_name_html(&org_dto.full_name),
                 "logo_data_uri": logo_data_uri,
             },
             "act": {
@@ -2656,6 +2667,7 @@ impl ActService {
             "act_handover_html",
             &template_src,
             ctx,
+            &[("_header.html", &header_src)],
         )
         .await?;
 
@@ -2736,6 +2748,16 @@ impl ActService {
             "act_acceptance.html",
             embedded_default,
         );
+        let embedded_header_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "_header.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let header_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "_header.html",
+            embedded_header_default,
+        );
 
         // Загрузить device.
         let readers = self.readers.clone();
@@ -2789,6 +2811,7 @@ impl ActService {
                 "email": org_dto.email,
                 "okpo": org_dto.okpo,
                 "ogrn": org_dto.ogrn,
+                "full_name": crate::pdf::minijinja_env::org_full_name_html(&org_dto.full_name),
                 "logo_data_uri": logo_data_uri,
             },
             "device": device_json,
@@ -2805,6 +2828,7 @@ impl ActService {
             "act_acceptance_html",
             &template_src,
             ctx,
+            &[("_header.html", &header_src)],
         )
         .await?;
 

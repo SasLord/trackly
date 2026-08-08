@@ -338,11 +338,23 @@ impl TemplateService {
     /// erroring (preview should never crash on an unrecognized kind).
     pub async fn validate_preview(&self, kind: &str, body: &str) -> Result<String, AppError> {
         let demo_ctx = demo_context_for_kind(kind);
+        let templates_dir = self.templates_dir()?;
+        let embedded_header_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "_header.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let header_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "_header.html",
+            embedded_header_default,
+        );
         crate::pdf::minijinja_env::render_with_timeout(
             &crate::pdf::minijinja_env::build_safe_html_env(),
             "_preview",
             body,
             demo_ctx,
+            &[("_header.html", &header_src)],
         )
         .await
     }
@@ -365,16 +377,19 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
     // act_acceptance.html / report.html now all expect `logo_data_uri`).
     let org = serde_json::json!({
         "name": "ООО Демо Организация",
+        "full_name": crate::pdf::minijinja_env::org_full_name_html(
+            "Общество с ограниченной ответственностью\n«Демо Организация»"
+        ),
         "inn": "7700000000",
         "kpp": "770000000",
         "address": "г. Москва, ул. Примерная, д. 1",
         "address_line2": "офис 305, корпус 2",
         "logo_data_uri": null,
-        "phone": "(3919) 75-90-98",
-        "fax": "(3919) 75-08-59",
-        "email": "info@demo-org.ru",
-        "okpo": "10176125",
-        "ogrn": "1122452000714"
+        "phone": "+7 495 123-45-67",
+        "fax": "+7 495 123-45-68",
+        "email": "info@test.ru",
+        "okpo": "12345678",
+        "ogrn": "1027700123456"
     });
 
     match kind {

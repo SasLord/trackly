@@ -603,6 +603,16 @@ impl ReportService {
             "report.html",
             embedded_default,
         );
+        let embedded_header_default = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(f, _)| *f == "_header.html")
+            .map(|(_, body)| *body)
+            .unwrap_or("");
+        let header_src = crate::pdf::html_templates::load_template(
+            &templates_dir,
+            "_header.html",
+            embedded_header_default,
+        );
 
         // Month-grouping (D-04) — same algorithm as before, now accumulating
         // serde_json group objects instead of DocSpec Sections. Empty-case
@@ -646,6 +656,7 @@ impl ReportService {
                 "email": org.email,
                 "okpo": org.okpo,
                 "ogrn": org.ogrn,
+                "full_name": crate::pdf::minijinja_env::org_full_name_html(&org.full_name),
                 "logo_data_uri": logo_data_uri,
             },
             "report_name": report_name,
@@ -659,6 +670,7 @@ impl ReportService {
             "report_html",
             &template_src,
             ctx,
+            &[("_header.html", &header_src)],
         )
         .await
     }
