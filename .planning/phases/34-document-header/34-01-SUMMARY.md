@@ -121,6 +121,16 @@ None - no external service configuration required.
 - No template file was touched in this plan — zero risk of having broken any pre-existing HTML render test (confirmed: `pdf_render_act` 11/11, `html_act_render` 10/10 both green, unchanged assertions).
 - No blockers for Plan 34-02/34-03/34-04.
 
+## Self-Check: PASSED
+
+- FOUND: migrations/V036__org_settings_full_name.sql
+- FOUND: crates/trackly-app/src/pdf/minijinja_env.rs
+- FOUND: .planning/phases/34-document-header/34-01-SUMMARY.md
+- FOUND commit: edfdb94 (Task 1)
+- FOUND commit: 339510e (Task 2)
+- FOUND commit: 661188b (Task 3)
+- FOUND commit: 4739f06 (SUMMARY)
+
 ---
 *Phase: 34-document-header*
 *Completed: 2026-08-09*
