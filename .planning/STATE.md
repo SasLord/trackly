@@ -693,7 +693,13 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+1 pending — `/gsd-capture --list` для просмотра.
+
+- **2026-08-08 — Rework act templates: единая шапка + переработка тела акта приёма-передачи**
+  (`.planning/todos/pending/2026-08-08-rework-act-templates-shared-header-handover-body-redesign.md`).
+  ⚠️ Доработанная пользователем шапка лежит только в `target/debug/templates/` (gitignored,
+  умрёт от `cargo clean`) — переносить в `crates/trackly-app/templates/` первым делом.
+  Размер задачи — фаза, не quick.
 
 ### Blockers/Concerns
 
