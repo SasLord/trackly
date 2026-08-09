@@ -108,6 +108,22 @@ fn extract_header_fragment(html: &str) -> &str {
     &html[start..start + end]
 }
 
+/// Extracts the `<div class="orgName">...</div>` fragment out of a RENDERED
+/// header fragment. Non-greedy is safe here: `.orgName`'s children are only
+/// text / `<br />`, never a nested `<div>`.
+fn extract_org_name_node(header_fragment: &str) -> String {
+    let re = regex::Regex::new(r#"(?s)<div class="orgName">(.*?)</div>"#)
+        .expect("valid orgName extraction regex");
+    re.captures(header_fragment)
+        .unwrap_or_else(|| {
+            panic!("no <div class=\"orgName\">...</div> node in rendered header: {header_fragment}")
+        })
+        .get(1)
+        .expect("group 1")
+        .as_str()
+        .to_string()
+}
+
 async fn seed_device(writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>, name: &str) -> i64 {
     let name = name.to_string();
     writer
@@ -125,14 +141,18 @@ async fn seed_device(writer: &Arc<trackly_infra::db::writer_worker::WriterHandle
         .expect("seed device")
 }
 
-/// Test 3 (Phase 34 Plan 03, DOC-04 render-gate): after saving org fields
-/// including a non-empty `full_name` via the real `OrgDbService::save_fields`
-/// path, rendering all three document types through the real pipeline
-/// produces byte-identical `<!-- HEADER-START -->...<!-- HEADER-END -->`
-/// header fragments — structurally proving DOC-04 (identical header across
-/// all three forms) via a real render, not just a substring/include check.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn header_fragment_identical_across_all_three_forms() {
+/// Renders all three document forms through the REAL pipeline (ActService +
+/// ReportService) against an org whose `full_name` is `full_name` and whose
+/// short name is `org_name`, and returns their `<!-- HEADER-START -->` ..
+/// `<!-- HEADER-END -->` fragments in the order
+/// `(handover, acceptance, report)`.
+///
+/// Everything (fixture `TempDir` included) lives inside this function, so the
+/// caller only gets owned `String`s back.
+async fn render_header_fragments_for_org(
+    org_name: &str,
+    full_name: &str,
+) -> (String, String, String) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let paths = Arc::new(Paths::resolve_for_exe_dir(dir.path().to_path_buf()).expect("paths"));
@@ -168,7 +188,7 @@ async fn header_fragment_identical_across_all_three_forms() {
         .save_fields(
             &caller,
             OrgPatch {
-                org_name: "ООО Тест".to_string(),
+                org_name: org_name.to_string(),
                 inn: "7712345678".to_string(),
                 kpp: "771001001".to_string(),
                 address: "г. Москва, ул. Тестовая, 1".to_string(),
@@ -178,7 +198,7 @@ async fn header_fragment_identical_across_all_three_forms() {
                 okpo: "87654321".to_string(),
                 ogrn: "1027700654321".to_string(),
                 address_line2: "офис 1".to_string(),
-                full_name: "Общество с ограниченной ответственностью\nООО «Тест»".to_string(),
+                full_name: full_name.to_string(),
             },
         )
         .await
@@ -250,9 +270,29 @@ async fn header_fragment_identical_across_all_three_forms() {
         .await
         .expect("export_pdf");
 
-    let handover_fragment = extract_header_fragment(&handover_html);
-    let acceptance_fragment = extract_header_fragment(&acceptance_html);
-    let report_fragment = extract_header_fragment(&report_html);
+    let fragments = (
+        extract_header_fragment(&handover_html).to_string(),
+        extract_header_fragment(&acceptance_html).to_string(),
+        extract_header_fragment(&report_html).to_string(),
+    );
+    drop(dir);
+    fragments
+}
+
+/// Test 3 (Phase 34 Plan 03, DOC-04 render-gate): after saving org fields
+/// including a non-empty `full_name` via the real `OrgDbService::save_fields`
+/// path, rendering all three document types through the real pipeline
+/// produces byte-identical `<!-- HEADER-START -->...<!-- HEADER-END -->`
+/// header fragments — structurally proving DOC-04 (identical header across
+/// all three forms) via a real render, not just a substring/include check.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn header_fragment_identical_across_all_three_forms() {
+    let (handover_fragment, acceptance_fragment, report_fragment) =
+        render_header_fragments_for_org(
+            "ООО Тест",
+            "Общество с ограниченной ответственностью\nООО «Тест»",
+        )
+        .await;
 
     assert_eq!(
         handover_fragment, acceptance_fragment,
@@ -261,5 +301,59 @@ async fn header_fragment_identical_across_all_three_forms() {
     assert_eq!(
         acceptance_fragment, report_fragment,
         "act_acceptance and report header fragments must be byte-identical"
+    );
+}
+
+/// CR-01 regression gate (render-level, NOT a substring check on the template
+/// source): `V036` defaults `org_settings.full_name` to `''` for every
+/// pre-existing row, so an EMPTY `full_name` is the state of every upgraded
+/// install the moment the migration lands. The rendered `.orgName` node must
+/// then contain the short name ONLY — no stray `<br />`, and no orphan
+/// parentheses with nothing to parenthesize.
+///
+/// Deliberately asserts on the RENDERED node (all three forms), because the
+/// pre-fix defect was invisible to every existing test:
+/// `header_fragment_identical_across_all_three_forms` renders a non-empty
+/// `full_name`, and `html_act_render.rs`'s
+/// `html_acceptance_full_org_parity_with_handover` renders an empty one but
+/// only asserts that OTHER requisites are present.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn empty_full_name_renders_bare_short_name_without_stray_br_or_orphan_parens() {
+    let (handover_fragment, acceptance_fragment, report_fragment) =
+        render_header_fragments_for_org("ООО Тест", "").await;
+
+    for (form, fragment) in [
+        ("act_handover", &handover_fragment),
+        ("act_acceptance", &acceptance_fragment),
+        ("report", &report_fragment),
+    ] {
+        let node = extract_org_name_node(fragment);
+        let trimmed = node.trim();
+
+        assert!(
+            !trimmed.contains("<br"),
+            "{form}: .orgName must contain no <br /> when full_name is empty \
+             (a leading line break before the short name) — got {node:?}"
+        );
+        assert!(
+            !trimmed.contains('(') && !trimmed.contains(')'),
+            "{form}: .orgName must not wrap the short name in parentheses when \
+             there is no full legal name to parenthesize — got {node:?}"
+        );
+        assert_eq!(
+            trimmed, "ООО Тест",
+            "{form}: .orgName must render exactly the bare short name when \
+             full_name is empty — got {node:?}"
+        );
+    }
+
+    // The DOC-04 parity invariant must survive the empty-full_name path too.
+    assert_eq!(
+        handover_fragment, acceptance_fragment,
+        "empty full_name: handover/acceptance header fragments must stay byte-identical"
+    );
+    assert_eq!(
+        acceptance_fragment, report_fragment,
+        "empty full_name: acceptance/report header fragments must stay byte-identical"
     );
 }

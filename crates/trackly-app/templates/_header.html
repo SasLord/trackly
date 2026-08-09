@@ -5,9 +5,11 @@
   hardcoded real organization name was replaced with `org.full_name`/`org.name`
   placeholders below — this file never contains a literal organization name.
 
-  Renders, top to bottom: logo -> full legal name (`org.full_name`, independently
-  guarded, D-04) -> short name in parentheses (`org.name`, independently guarded,
-  D-04) -> requisites block (address, phone/fax/e-mail, ОКПО/ОГРН, ИНН/КПП, D-07
+  Renders, top to bottom: logo -> full legal name
+  (`org.full_name`, independently guarded, D-04) -> short name (`org.name`,
+  independently guarded, D-04 — in parentheses on its own line ONLY when
+  `org.full_name` is non-empty, bare otherwise) -> requisites block (address,
+  phone/fax/e-mail, ОКПО/ОГРН, ИНН/КПП, D-07
   order). `{% include "_header.html" %}`-d by all three parent templates
   (act_handover.html, act_acceptance.html, report.html) via the in-memory
   Environment template registry wired in Plan 34-03 — never a filesystem loader
@@ -74,9 +76,18 @@
     <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
     {%- endif %}
   </div>
+  {#- CR-01: BOTH names are independently guarded. `org.full_name` is empty on
+    every install that has not filled the V036 field yet (the migration defaults
+    it to ''), so an unguarded full-name interpolation followed by an
+    unconditional `<br />` used to emit a leading blank line plus a short name
+    orphaned inside parentheses with nothing to parenthesize. When `full_name`
+    is absent the short name is rendered on its own, WITHOUT parentheses —
+    matching the pre-Phase-34 (v21) header. Keep this comment OUTSIDE the
+    .orgName div: html_header_parity.rs's DOC-05 gate strips only Jinja
+    expression/statement spans from that node, not comment spans. -#}
   <div class="orgName">
-    {{ org.full_name | safe }}
-    {%- if org.name %}<br />({{ org.name }}){%- endif %}
+    {%- if org.full_name %}{{ org.full_name | safe }}{% endif %}
+    {%- if org.name %}{% if org.full_name %}<br />({{ org.name }}){% else %}{{ org.name }}{% endif %}{% endif %}
   </div>
   <div class="requisites">
     {%- if org.address %}<div>{{ org.address }}</div>{%- endif %}
