@@ -371,6 +371,85 @@ async fn html_svg_logo_with_script_embeds_img_only_no_inline_script() {
     );
 }
 
+/// WR-01 regression gate: the read-side logo mime allowlist must be enforced
+/// on BOTH act render paths, not only on `report_service::export_pdf`.
+///
+/// Phase 34 made all three printed forms share one `| safe` sink
+/// (`<img src="{{ org.logo_data_uri | safe }}">` in `_header.html`), so an
+/// unvalidated `logo_mime` read out of the mutable `org_settings` column
+/// would be interpolated straight into an HTML attribute. `save_logo`'s
+/// write-side allowlist is bypassed here deliberately (direct UPDATE) to
+/// simulate a mutated/legacy DB row — the read side must fail closed on its
+/// own.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_acts_drop_logo_when_stored_mime_is_disallowed() {
+    let p = make_full_pipeline().await;
+
+    let org_db = Arc::new(OrgDbService::new(
+        p.writer.clone(),
+        p._readers.clone(),
+        Arc::new(SystemClock),
+        Arc::new(Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths")),
+    ));
+    org_db
+        .save_logo(
+            &Identity::trusted_admin(),
+            LOGO_PNG.to_vec(),
+            "image/png".to_string(),
+        )
+        .await
+        .expect("save_logo");
+
+    // Attribute-breaking mime, as could reach the column via a hand-edited /
+    // migrated DB. Never writable through `save_logo`.
+    let hostile_mime = "image/png\" onerror=\"alert(1)";
+    let hostile_mime_owned = hostile_mime.to_string();
+    p.writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE org_settings SET logo_mime = ?1 WHERE id = 1",
+                params![hostile_mime_owned],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("force disallowed logo_mime");
+
+    let device_id = seed_device(&p.writer, "HTML-BadMime-Ноутбук").await;
+    let act = create_handover(&p.acts, &[device_id], "Выдалов В.В.", "Получилов П.П.").await;
+
+    let handover_html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+    let acceptance_html = p
+        .acts
+        .render_acceptance_pdf(
+            device_id,
+            "Отдалов О.О.".to_string(),
+            "Принялов П.П.".to_string(),
+            1_700_000_000,
+        )
+        .await
+        .expect("render_acceptance_pdf");
+
+    for (form, html) in [
+        ("act_handover", &handover_html),
+        ("act_acceptance", &acceptance_html),
+    ] {
+        assert!(
+            !html.contains("data:image/png"),
+            "{form}: logo must be dropped entirely when the stored mime is not \
+             on the allowlist. Head: {:?}",
+            html.chars().take(500).collect::<String>()
+        );
+        assert!(
+            !html.contains("onerror"),
+            "{form}: a disallowed mime must never reach the `| safe` src \
+             attribute. Head: {:?}",
+            html.chars().take(500).collect::<String>()
+        );
+    }
+}
+
 /// D-14 item 2: 1-vs-N devices — a multi-device handover renders every
 /// device's identity AND a long field value in full, no truncation.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

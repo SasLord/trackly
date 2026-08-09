@@ -619,34 +619,14 @@ impl ReportService {
         // `OrgDbService`-sourced org_settings BLOB (see build_reports_export_pdf
         // caller) — never from request-supplied bytes.
         //
-        // WR-05 mitigation: enforce the SAME mime allowlist used on write
-        // (`OrgDbService::save_logo`) here on read, before the mime string is
-        // interpolated into the `data:` URI. `report.html` already claimed
-        // (in its doc-comments) that this allowlist was enforced in
-        // report_service.rs — it wasn't; this makes that claim true. A
-        // `None` mime is treated as "ok" (the existing "image/png" default
-        // below applies, and unmimed bytes are still guaranteed to come from
-        // OrgDbService, not request input) but an EXPLICIT disallowed mime
-        // drops the logo entirely rather than embedding unverified bytes
-        // under a spoofed/default mime type.
-        let logo_mime_ok = logo_mime
-            .as_deref()
-            .map(|m| {
-                matches!(
-                    m.to_lowercase().as_str(),
-                    "image/png" | "image/jpeg" | "image/svg+xml"
-                )
-            })
-            .unwrap_or(true);
-        let logo_bytes = if logo_mime_ok { logo_bytes } else { None };
-        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
-            use base64::Engine;
-            let mime = logo_mime.as_deref().unwrap_or("image/png");
-            format!(
-                "data:{mime};base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        });
+        // Phase 17's WR-05 mitigation (read-side mime allowlist, mirroring
+        // `OrgDbService::save_logo`'s write-side one) now lives in
+        // `pdf::minijinja_env::logo_data_uri` — Phase 34's WR-01 extracted it
+        // there so the two act render paths, which feed the SAME shared
+        // `_header.html` `| safe` sink, enforce it identically instead of
+        // this being the only guarded path of three.
+        let logo_data_uri: Option<String> =
+            crate::pdf::minijinja_env::logo_data_uri(logo_bytes, logo_mime.as_deref());
 
         // Phase 17 (D-02/D-08): read the HTML template source from
         // templates/report.html (file-first, embedded-default fallback)

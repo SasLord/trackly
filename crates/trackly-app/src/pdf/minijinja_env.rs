@@ -38,6 +38,45 @@ pub fn org_full_name_html(raw: &str) -> String {
     format!("{}", HtmlEscape(raw)).replace('\n', "<br />")
 }
 
+/// Mime types accepted for the org logo. Mirrors `OrgDbService::save_logo`'s
+/// write-side allowlist (T-07-02-01) — kept in sync deliberately.
+const ALLOWED_LOGO_MIMES: [&str; 3] = ["image/png", "image/jpeg", "image/svg+xml"];
+
+/// Build the `data:` URI for `_header.html`'s `<img src="{{ org.logo_data_uri
+/// | safe }}">` sink, enforcing the logo mime allowlist on the READ side
+/// (WR-01).
+///
+/// Phase 17 added this read-side check to `report_service::export_pdf` only.
+/// Phase 34 then made all three printed forms share ONE `| safe` sink via the
+/// header partial, which left the two act paths interpolating an unvalidated
+/// `logo_mime` — read straight out of a mutable DB column — into an HTML
+/// attribute explicitly marked `| safe`. A mime such as `png" onerror="…`
+/// would break out of `src="…"`. Not currently exploitable (both write paths,
+/// `OrgDbService::save_logo` and `migrate_from_org_json`, constrain the
+/// value), but the defence-in-depth the project already chose must hold on
+/// all three paths, not one of three.
+///
+/// A `None` mime is treated as "ok" (the historic `image/png` default
+/// applies, and unmimed bytes still provably come from `OrgDbService`, never
+/// from request input); an EXPLICIT disallowed mime drops the logo entirely
+/// rather than embedding unverified bytes under a spoofed mime.
+pub fn logo_data_uri(bytes: Option<Vec<u8>>, mime: Option<&str>) -> Option<String> {
+    let mime_ok = mime
+        .map(|m| ALLOWED_LOGO_MIMES.contains(&m.to_lowercase().as_str()))
+        .unwrap_or(true);
+    if !mime_ok {
+        return None;
+    }
+    bytes.map(|bytes| {
+        use base64::Engine;
+        format!(
+            "data:{};base64,{}",
+            mime.unwrap_or("image/png"),
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )
+    })
+}
+
 /// Build a fresh MiniJinja `Environment` configured for Trackly safe-mode.
 ///
 /// The returned environment has NO templates registered — call sites add
@@ -284,6 +323,45 @@ mod tests {
     #[test]
     fn org_full_name_html_empty_input_is_empty_output() {
         assert_eq!(org_full_name_html(""), "");
+    }
+
+    #[test]
+    fn logo_data_uri_builds_uri_for_allowed_mime() {
+        let out = logo_data_uri(Some(vec![1, 2, 3]), Some("image/png")).expect("some uri");
+        assert!(
+            out.starts_with("data:image/png;base64,"),
+            "unexpected uri: {out}"
+        );
+    }
+
+    #[test]
+    fn logo_data_uri_is_case_insensitive_on_mime() {
+        assert!(logo_data_uri(Some(vec![1]), Some("IMAGE/JPEG")).is_some());
+    }
+
+    #[test]
+    fn logo_data_uri_drops_logo_for_disallowed_mime() {
+        // WR-01: an attribute-breaking mime must never reach the `| safe`
+        // `<img src="...">` sink — the whole logo is dropped instead.
+        assert_eq!(
+            logo_data_uri(Some(vec![1, 2, 3]), Some("image/png\" onerror=\"x")),
+            None
+        );
+        assert_eq!(logo_data_uri(Some(vec![1]), Some("text/html")), None);
+    }
+
+    #[test]
+    fn logo_data_uri_defaults_to_png_when_mime_absent() {
+        let out = logo_data_uri(Some(vec![1]), None).expect("some uri");
+        assert!(
+            out.starts_with("data:image/png;base64,"),
+            "unexpected uri: {out}"
+        );
+    }
+
+    #[test]
+    fn logo_data_uri_is_none_without_bytes() {
+        assert_eq!(logo_data_uri(None, Some("image/png")), None);
     }
 
     #[test]

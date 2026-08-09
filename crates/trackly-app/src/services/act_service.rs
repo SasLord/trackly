@@ -2560,14 +2560,12 @@ impl ActService {
         // T-16-05 mitigation: `logo_bytes` originates exclusively from
         // `OrgDbService::get_for_pdf` (org_settings BLOB, written only via
         // authenticated Settings UI) — never from request-supplied bytes.
-        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
-            use base64::Engine;
-            let mime = logo_mime.as_deref().unwrap_or("image/png");
-            format!(
-                "data:{mime};base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        });
+        //
+        // WR-01: the read-side mime allowlist lives in `logo_data_uri` so all
+        // three render paths that feed the shared `_header.html` `| safe`
+        // sink enforce it identically.
+        let logo_data_uri: Option<String> =
+            crate::pdf::minijinja_env::logo_data_uri(logo_bytes, logo_mime.as_deref());
         // Phase 16 (D-04/D-10): read the HTML template source from
         // templates/act_handover.html (file-first, embedded-default
         // fallback) instead of the DB-backed `document_templates` table.
@@ -2725,14 +2723,11 @@ impl ActService {
         // exclusively from `OrgDbService::get_for_pdf` (org_settings BLOB,
         // written only via authenticated Settings UI) — never from
         // request-supplied bytes.
-        let logo_data_uri: Option<String> = logo_bytes.map(|bytes| {
-            use base64::Engine;
-            let mime = logo_mime.as_deref().unwrap_or("image/png");
-            format!(
-                "data:{mime};base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        });
+        //
+        // WR-01: read-side mime allowlist enforced by `logo_data_uri`, shared
+        // with the handover and report render paths.
+        let logo_data_uri: Option<String> =
+            crate::pdf::minijinja_env::logo_data_uri(logo_bytes, logo_mime.as_deref());
         // Phase 16 (D-04/D-10): read the HTML template source from
         // templates/act_acceptance.html (file-first, embedded-default
         // fallback) instead of the DB-backed `document_templates` table.
