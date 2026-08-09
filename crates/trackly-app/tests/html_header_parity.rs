@@ -304,6 +304,27 @@ async fn header_fragment_identical_across_all_three_forms() {
     );
 }
 
+/// IN-02: with no logo uploaded, the header must emit NO `.logo` wrapper at
+/// all. The wrapper is a flex child of `.header`, so an empty one still
+/// consumed a full `gap: 6pt` slot above the organization name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn no_logo_uploaded_emits_no_logo_wrapper_div() {
+    let (handover_fragment, acceptance_fragment, report_fragment) =
+        render_header_fragments_for_org("ООО Тест", "ООО «Тест»").await;
+
+    for (form, fragment) in [
+        ("act_handover", &handover_fragment),
+        ("act_acceptance", &acceptance_fragment),
+        ("report", &report_fragment),
+    ] {
+        assert!(
+            !fragment.contains("class=\"logo\""),
+            "{form}: no logo is uploaded, so no .logo wrapper must be emitted — \
+             got {fragment:?}"
+        );
+    }
+}
+
 /// CR-01 regression gate (render-level, NOT a substring check on the template
 /// source): `V036` defaults `org_settings.full_name` to `''` for every
 /// pre-existing row, so an EMPTY `full_name` is the state of every upgraded

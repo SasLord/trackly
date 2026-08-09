@@ -19,6 +19,16 @@
     org.logo_data_uri, org.full_name, org.name, org.address, org.address_line2,
     org.phone, org.fax, org.email, org.okpo, org.ogrn, org.inn, org.kpp
 
+  The `<style>` block below is emitted at the include site, i.e. inside
+  `<body>` in all three documents. Browsers tolerate it; it is not valid per
+  spec. Kept here DELIBERATELY (IN-02): hoisting it into each parent's `<head>`
+  would re-duplicate the header CSS across act_handover.html /
+  act_acceptance.html / report.html — exactly the duplication this partial
+  exists to remove — and the three templates are user-editable, so the CSS
+  would immediately start drifting per install. Revisit only if strict validity
+  is ever required on the print path, and then via a `{% block head %}` rather
+  than by copying the rules.
+
   Autoescape is ON (build_safe_html_env, T-16-01) — plain {{ var }} interpolation
   is HTML-safe by construction. Two exceptions to autoescape here:
   - `org.logo_data_uri | safe`: exclusively server-constructed base64 + a
@@ -65,17 +75,23 @@
 </style>
 <!-- HEADER-START -->
 <div class="header">
+  {#- logo_data_uri is server-constructed exclusively from base64 output
+    (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
+    hardcoded mime allowlist (pdf::minijinja_env::logo_data_uri, enforced on
+    all three render paths) — `| safe` here does not reopen T-16-01's XSS
+    mitigation, it only prevents autoescape from HTML-entity-encoding the `/`
+    in "data:image/png;base64,..." into `&#x2f;`, which corrupts the URI
+    scheme and breaks the image.
+
+    IN-02: the guard wraps the `.logo` WRAPPER, not just the `<img>`. With the
+    guard inside, an install with no logo still emitted an empty
+    `<div class="logo">`, which is a flex child of `.header` and so consumed a
+    full `gap: 6pt` slot above the organization name. -#}
+  {%- if org.logo_data_uri %}
   <div class="logo">
-    {%- if org.logo_data_uri %}
-    {#- logo_data_uri is server-constructed exclusively from base64 output
-      (RFC 4648 alphabet [A-Za-z0-9+/=], never user-controlled HTML) plus a
-      hardcoded mime whitelist (act_service.rs) — `| safe` here does not
-      reopen T-16-01's XSS mitigation, it only prevents autoescape from
-      HTML-entity-encoding the `/` in "data:image/png;base64,..." into
-      `&#x2f;`, which corrupts the URI scheme and breaks the image. -#}
     <img src="{{ org.logo_data_uri | safe }}" alt="Логотип">
-    {%- endif %}
   </div>
+  {%- endif %}
   {#- CR-01: BOTH names are independently guarded. `org.full_name` is empty on
     every install that has not filled the V036 field yet (the migration defaults
     it to ''), so an unguarded full-name interpolation followed by an
