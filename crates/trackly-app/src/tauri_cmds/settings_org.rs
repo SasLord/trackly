@@ -298,46 +298,60 @@ pub async fn build_templates_reset_to_default(
 /// to fold into `Current`, which is exactly backwards for an endpoint whose
 /// purpose is flagging files the user has touched); anything else →
 /// `Customized`.
+/// WR-04: the read loop runs on `spawn_blocking`, not on the async executor.
+/// This function is awaited from an axum handler, and the loop does 4
+/// synchronous `read_to_string` calls over files with no size cap
+/// (`update_body` enforces none), so running it inline could stall a reactor
+/// thread serving other LAN clients. Every other IO path in this module
+/// (`build_settings_get_low_stock_threshold`, `build_settings_move_db`,
+/// `OrgDbService::*`) already offloads this way.
 pub async fn build_templates_status(ctx: &AppCtx) -> Result<Vec<TemplateStatusDto>, AppError> {
     let templates_dir = resolve_templates_dir(&ctx.paths);
-    let templates_dir_str = templates_dir.display().to_string();
 
-    let mut out = Vec::with_capacity(DEFAULT_HTML_TEMPLATES.len());
-    for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
-        let status = match read_template_if_present(&templates_dir, filename) {
-            // Absent — not yet materialized, no evidence of customization.
-            Ok(None) => TemplateFileStatus::Current,
-            Ok(Some(body)) if &body == current_default => TemplateFileStatus::Current,
-            Ok(Some(body)) => {
-                let legacy_bodies = KNOWN_LEGACY_DEFAULTS
-                    .iter()
-                    .find(|(name, _)| name == filename)
-                    .map(|(_, bodies)| *bodies)
-                    .unwrap_or(&[]);
-                if legacy_bodies.iter().any(|legacy| *legacy == body) {
-                    TemplateFileStatus::Current // known legacy default — pending auto-upgrade, not customized
-                } else {
-                    TemplateFileStatus::Customized
+    tokio::task::spawn_blocking(move || {
+        let templates_dir_str = templates_dir.display().to_string();
+
+        let mut out = Vec::with_capacity(DEFAULT_HTML_TEMPLATES.len());
+        for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
+            let status = match read_template_if_present(&templates_dir, filename) {
+                // Absent — not yet materialized, no evidence of customization.
+                Ok(None) => TemplateFileStatus::Current,
+                Ok(Some(body)) if &body == current_default => TemplateFileStatus::Current,
+                Ok(Some(body)) => {
+                    let legacy_bodies = KNOWN_LEGACY_DEFAULTS
+                        .iter()
+                        .find(|(name, _)| name == filename)
+                        .map(|(_, bodies)| *bodies)
+                        .unwrap_or(&[]);
+                    if legacy_bodies.iter().any(|legacy| *legacy == body) {
+                        TemplateFileStatus::Current // known legacy default — pending auto-upgrade, not customized
+                    } else {
+                        TemplateFileStatus::Customized
+                    }
                 }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Cannot read template {} ({e}) — reporting Unreadable. If you edited \
-                     this file, make sure it is saved as UTF-8 (не ANSI/Windows-1251).",
-                    templates_dir.join(filename).display()
-                );
-                TemplateFileStatus::Unreadable
-            }
-        };
+                Err(e) => {
+                    tracing::warn!(
+                        "Cannot read template {} ({e}) — reporting Unreadable. If you edited \
+                         this file, make sure it is saved as UTF-8 (не ANSI/Windows-1251).",
+                        templates_dir.join(filename).display()
+                    );
+                    TemplateFileStatus::Unreadable
+                }
+            };
 
-        out.push(TemplateStatusDto {
-            filename: filename.to_string(),
-            status,
-            templates_dir: templates_dir_str.clone(),
-        });
-    }
+            out.push(TemplateStatusDto {
+                filename: filename.to_string(),
+                status,
+                templates_dir: templates_dir_str.clone(),
+            });
+        }
 
-    Ok(out)
+        out
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking templates_status: {e}"),
+    })
 }
 
 /// Validate template syntax + render an HTML preview with per-kind demo context.
