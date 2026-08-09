@@ -28,6 +28,35 @@
     desc: string;
   }
 
+  // WR-05 (D-17): per-file on-disk status. The backend endpoint shipped in
+  // Phase 34 with zero consumers on either transport — this is the consumer it
+  // was built for. Mirrors `TemplateStatusDto` / `TemplateFileStatus` in
+  // bindings.ts (snake_case: the DTO has no camelCase rename).
+  type TemplateFileStatus = 'current' | 'customized' | 'unreadable';
+  interface TemplateStatusItem {
+    filename: string;
+    status: TemplateFileStatus;
+    templates_dir: string;
+  }
+
+  const STATUS_BADGE: Record<
+    Exclude<TemplateFileStatus, 'current'>,
+    { label: string; title: string; kind: 'warn' | 'error' }
+  > = {
+    customized: {
+      label: 'изменён вручную',
+      title:
+        'Файл шаблона на диске отличается от встроенного по умолчанию — обновления шаблона из новых версий приложения к нему больше не применяются автоматически.',
+      kind: 'warn',
+    },
+    unreadable: {
+      label: 'файл не читается',
+      title:
+        'Файл шаблона существует, но не читается как UTF-8 (например, сохранён в ANSI/Windows-1251). Печать использует встроенный шаблон по умолчанию, ваши правки не применяются. Сохраните файл в кодировке UTF-8.',
+      kind: 'error',
+    },
+  };
+
   // WR-08: all three forms now render the SAME shared `_header.html` partial,
   // so every kind gets the identical org.* block. Listed once here instead of
   // being re-typed (and drifting) per kind.
@@ -103,6 +132,7 @@
   let saving = $state(false);
   let confirmReset = $state(false);
   let resetting = $state(false);
+  let templateStatuses = $state<TemplateStatusItem[]>([]);
 
   // Svelte 5: $derived for unsaved changes indicator
   const isDirty = $derived(body !== originalBody);
@@ -130,6 +160,14 @@
   // Plan 17-03 (D-12): per-kind variables panel content
   const currentVariables = $derived(VARIABLES_BY_KIND[selectedKind] ?? []);
 
+  // WR-05: on-disk status of the currently selected kind, if it is not
+  // `current`. `null` renders no badge at all — the common case.
+  const currentStatusBadge = $derived.by(() => {
+    const entry = templateStatuses.find((s) => s.filename === `${selectedKind}.html`);
+    if (!entry || entry.status === 'current') return null;
+    return STATUS_BADGE[entry.status] ?? null;
+  });
+
   async function loadTemplates() {
     try {
       const list = await apiCall<TemplateEditorItem[]>('templates_list_for_editor', {});
@@ -155,8 +193,20 @@
     }
   }
 
+  // WR-05: read-only, ManageSettings-gated. Failure is non-fatal — the badge
+  // is informational, so a lost status must never block editing or raise a
+  // toast the user cannot act on.
+  async function loadTemplateStatuses() {
+    try {
+      templateStatuses = await apiCall<TemplateStatusItem[]>('templates_status', {});
+    } catch {
+      templateStatuses = [];
+    }
+  }
+
   onMount(() => {
     loadTemplates();
+    loadTemplateStatuses();
   });
 
   // When selectedKind changes: update body from loaded templates
@@ -204,6 +254,9 @@
         templates[idx] = { ...templates[idx], body };
       }
       originalBody = body;
+      // Saving makes the file differ from the bundled default — refresh so the
+      // badge appears immediately rather than after a reload.
+      await loadTemplateStatuses();
       pushToast('success', 'Шаблон сохранён');
     } catch (e: unknown) {
       const msg =
@@ -223,6 +276,9 @@
       confirmReset = false;
       // Reload templates to get default body
       await loadTemplates();
+      // Reset makes the file byte-identical to the default again — the badge
+      // must disappear.
+      await loadTemplateStatuses();
       pushToast('success', 'Шаблон сброшен до умолчания');
     } catch (e: unknown) {
       const msg =
@@ -268,6 +324,19 @@
         />
       </div>
     </label>
+
+    <!-- WR-05 (D-17): on-disk status of the selected template file. Rendered
+         only when the file is NOT byte-identical to the bundled default, so the
+         normal case shows nothing. -->
+    {#if currentStatusBadge}
+      <span
+        class="status-badge"
+        class:status-badge--error={currentStatusBadge.kind === 'error'}
+        title={currentStatusBadge.title}
+      >
+        {currentStatusBadge.label}
+      </span>
+    {/if}
   </div>
 
   <!-- Available variables panel (T-07-04-02: reference only — not executed in browser).
@@ -362,6 +431,23 @@
     align-items: center;
     gap: var(--tr-space-xs);
     flex-wrap: wrap;
+  }
+
+  .status-badge {
+    align-self: flex-end;
+    padding: 2px var(--tr-space-xs);
+    border-radius: var(--tr-radius-xs);
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
+    color: var(--tr-warning);
+    border: 1px solid var(--tr-warning);
+    white-space: nowrap;
+    cursor: help;
+
+    &.status-badge--error {
+      color: var(--tr-danger);
+      border-color: var(--tr-danger);
+    }
   }
 
   .form-label {
