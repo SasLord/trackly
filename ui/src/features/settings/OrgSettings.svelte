@@ -274,10 +274,15 @@
 
     <div class="form-field form-field--full">
       <label class="form-label" for="org-full-name">Полное юридическое наименование</label>
+      <!-- IN-03: mirrors the 512-character bound enforced by
+           OrgDbService::save_fields. The backend is the real gate (the HTTP
+           API bypasses this input entirely); maxlength just stops the user
+           typing past it and then being rejected on save. -->
       <Textarea
         id="org-full-name"
         value={fullName}
         rows={3}
+        maxlength={512}
         placeholder={'Общество с ограниченной ответственностью\n«Название»'}
         oninput={(v) => (fullName = v)}
       />

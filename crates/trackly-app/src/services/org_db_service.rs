@@ -24,6 +24,10 @@ use crate::services::organization_service::OrgData;
 
 const LOGO_MAX_BYTES: usize = 512 * 1024; // 512 KiB (T-07-02-01 + T-07-02-04)
 
+/// IN-03: верхняя граница `org_settings.full_name` в СИМВОЛАХ. Зеркалится
+/// атрибутом `maxlength` у textarea в `ui/src/features/settings/OrgSettings.svelte`.
+pub const FULL_NAME_MAX_CHARS: usize = 512;
+
 #[derive(Clone)]
 pub struct OrgDbService {
     pub writer: Arc<WriterHandle>,
@@ -84,12 +88,29 @@ impl OrgDbService {
     }
 
     /// Сохраняет текстовые поля организации.
+    ///
+    /// IN-03: `full_name` ограничено [`FULL_NAME_MAX_CHARS`] символами. Поле
+    /// многострочное, попадает в шапку КАЖДОГО печатного документа и на каждом
+    /// рендере проходит посимвольный `HtmlEscape`
+    /// (`pdf::minijinja_env::org_full_name_html`), поэтому неограниченная длина
+    /// — это и сломанная вёрстка печати, и лишняя работа на горячем пути.
+    /// Считаем именно СИМВОЛЫ (`chars().count()`), а не байты: 512 байт в UTF-8
+    /// это всего ~256 кириллических символов, что обрезало бы русское название
+    /// вдвое строже, чем латинское.
     pub async fn save_fields(
         &self,
         caller: &Identity,
         patch: crate::dto::reports::OrgPatch,
     ) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
+        if patch.full_name.chars().count() > FULL_NAME_MAX_CHARS {
+            return Err(AppError::Validation {
+                field: "full_name".to_string(),
+                message: format!(
+                    "Полное наименование не должно превышать {FULL_NAME_MAX_CHARS} символов"
+                ),
+            });
+        }
         let now = self.clock.unix_seconds();
         self.writer
             .execute(move |conn| {

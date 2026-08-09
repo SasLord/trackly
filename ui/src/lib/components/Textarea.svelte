@@ -6,6 +6,8 @@
     invalid?: boolean;
     id?: string;
     rows?: number;
+    /** Hard character cap enforced by the browser (mirrors a backend bound). */
+    maxlength?: number;
     oninput?: (_value: string) => void;
   }
 
@@ -16,6 +18,7 @@
     invalid = false,
     id,
     rows = 3,
+    maxlength,
     oninput,
   }: Props = $props();
 </script>
@@ -25,6 +28,7 @@
   {placeholder}
   {disabled}
   {rows}
+  {maxlength}
   class="textarea"
   class:invalid
   bind:value

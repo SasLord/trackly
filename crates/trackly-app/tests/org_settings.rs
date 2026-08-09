@@ -211,3 +211,50 @@ async fn org_logo_invalid_mime_rejected() {
     .await
     .expect("org_logo_invalid_mime_rejected budget")
 }
+
+/// IN-03: `full_name` feeds the header of every printed document and goes
+/// through a per-character `HtmlEscape` pass on every render, so it must be
+/// length-bounded. Bound is counted in CHARACTERS, not bytes — a byte bound
+/// would cut a Cyrillic name at roughly half the length of a Latin one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn org_full_name_length_is_bounded() {
+    let (svc, _dir) = make_org_service();
+    let caller = admin_caller();
+
+    let patch_with = |full_name: String| OrgPatch {
+        org_name: "ООО Тест".to_string(),
+        inn: "7712345678".to_string(),
+        kpp: "771001001".to_string(),
+        address: "г. Москва".to_string(),
+        phone: String::new(),
+        fax: String::new(),
+        email: String::new(),
+        okpo: String::new(),
+        ogrn: String::new(),
+        address_line2: String::new(),
+        full_name,
+    };
+
+    // Exactly at the bound — accepted.
+    let at_bound = "Я".repeat(trackly_app::services::org_db_service::FULL_NAME_MAX_CHARS);
+    svc.save_fields(&caller, patch_with(at_bound.clone()))
+        .await
+        .expect("a full_name exactly at the bound must be accepted");
+    assert_eq!(svc.get().await.expect("get").full_name, at_bound);
+
+    // One character over — rejected on the `full_name` field.
+    let over_bound = "Я".repeat(trackly_app::services::org_db_service::FULL_NAME_MAX_CHARS + 1);
+    match svc.save_fields(&caller, patch_with(over_bound)).await {
+        Err(trackly_core::error::AppError::Validation { field, .. }) => {
+            assert_eq!(field, "full_name")
+        }
+        other => panic!("expected Validation on field=full_name, got {other:?}"),
+    }
+
+    // Non-vacuous: the rejected write must not have landed.
+    assert_eq!(
+        svc.get().await.expect("get").full_name,
+        at_bound,
+        "a rejected save_fields must leave the stored value untouched"
+    );
+}
