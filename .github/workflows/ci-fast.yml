@@ -77,6 +77,14 @@ jobs:
         working-directory: ui
         run: pnpm build
 
+      # PRIV-01 (WR-11): the repository is PUBLIC and anything committed stays
+      # in git history even after deletion from HEAD, so the durable control is
+      # keeping real organization requisites from entering at all. Runs early —
+      # it is instant and a privacy violation should not wait on a 20-minute
+      # build to be reported.
+      - name: Privacy gate (organization requisites)
+        run: ./scripts/check-privacy-requisites.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
