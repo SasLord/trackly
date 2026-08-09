@@ -61,6 +61,17 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
 /// that predate THAT phase stop being recognized as untouched and silently
 /// stop receiving upgrades. Forgetting this only causes a MISSED upgrade (file
 /// stays on older-but-valid content), never a wrongful overwrite.
+///
+/// WR-06: EVERY filename in `DEFAULT_HTML_TEMPLATES` must have an entry here,
+/// even an empty one — enforced by
+/// `every_default_template_has_a_known_legacy_defaults_entry`. Without the
+/// empty-but-present entry the extension-point note above does not describe
+/// what a maintainer has to do for a brand-new file (add a whole new top-level
+/// tuple, not "a new entry in that filename's slice"), and both structural
+/// upgrade tests silently `continue` past it — so a header change would ship
+/// green while reaching no existing install: `materialize` skips the file (it
+/// exists), `upgrade` finds no legacy match, and the D-16 branch calls every
+/// install "user-customized".
 pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
     (
         "act_handover.html",
@@ -83,6 +94,12 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v21/report.html"),
         ],
     ),
+    // Phase 34 introduced `_header.html`; its CURRENT body is the first one
+    // ever shipped, so there is no prior default to recognize yet — hence the
+    // empty (but present, WR-06) slice. Before changing this file in a future
+    // phase, snapshot THIS body into `_legacy_defaults/vNN/_header.html` and
+    // add it here, or existing installs will never receive the new header.
+    ("_header.html", &[]),
 ];
 
 /// Resolves the templates directory: `TRACKLY_TEMPLATES_DIR` env var wins
@@ -302,10 +319,10 @@ mod tests {
 
         // Pre-populate disk with the OLD (pre-Phase-20) content for each file
         // that has a registered legacy snapshot. `_header.html` (Phase 34) is
-        // a brand-new file with no legacy predecessor — it deliberately has
-        // no entry in `KNOWN_LEGACY_DEFAULTS` (a missing file is
-        // `materialize_defaults_on_startup`'s job, not this upgrade path's),
-        // so it is skipped here rather than treated as a test failure.
+        // a brand-new file with no legacy predecessor — its
+        // `KNOWN_LEGACY_DEFAULTS` entry exists (WR-06) but is EMPTY (a missing
+        // file is `materialize_defaults_on_startup`'s job, not this upgrade
+        // path's), so it is skipped here rather than treated as a failure.
         for (filename, _current) in DEFAULT_HTML_TEMPLATES.iter() {
             let Some(legacy) = KNOWN_LEGACY_DEFAULTS
                 .iter()
@@ -320,13 +337,43 @@ mod tests {
         upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
 
         for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
-            if !KNOWN_LEGACY_DEFAULTS.iter().any(|(name, _)| name == filename) {
+            let has_legacy_body = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .is_some_and(|(_, bodies)| !bodies.is_empty());
+            if !has_legacy_body {
                 continue;
             }
             let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
             assert_eq!(
                 &contents, current,
                 "{filename} must be upgraded to the current bundled body"
+            );
+        }
+    }
+
+    /// WR-06 invariant gate: every filename in `DEFAULT_HTML_TEMPLATES` must
+    /// have an entry in `KNOWN_LEGACY_DEFAULTS` — empty is fine for a
+    /// brand-new file, ABSENT is not.
+    ///
+    /// Without this, a future body change to a file with no registered slice
+    /// ships green while reaching zero existing installs: `materialize` skips
+    /// it (the file exists), `upgrade` finds no legacy match, the D-16 branch
+    /// warns that every install is "user-customized", and both structural
+    /// upgrade tests above `continue` past the gap forever. `_header.html` —
+    /// now the single point of layout for all three printed forms, and so the
+    /// file most likely to change next — was in exactly that state.
+    #[test]
+    fn every_default_template_has_a_known_legacy_defaults_entry() {
+        for (filename, _) in DEFAULT_HTML_TEMPLATES.iter() {
+            assert!(
+                KNOWN_LEGACY_DEFAULTS
+                    .iter()
+                    .any(|(name, _)| name == filename),
+                "{filename} has no KNOWN_LEGACY_DEFAULTS entry — add one (an empty \
+                 slice is correct for a brand-new file; before CHANGING an existing \
+                 body, snapshot the pre-change body into _legacy_defaults/vNN/ and \
+                 append it to that filename's slice)"
             );
         }
     }
