@@ -143,7 +143,25 @@ pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(),
         let path = templates_dir.join(filename);
         let on_disk = match std::fs::read_to_string(&path) {
             Ok(body) => body,
-            Err(_) => continue, // missing/unreadable — materialize owns this case
+            // Absent is the expected case here — `materialize_defaults_on_startup`
+            // owns it and has already run.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            // WR-03: anything else (permissions, non-UTF-8 bytes) used to be
+            // swallowed identically, with no signal at all. The realistic
+            // trigger on the target platform is a Windows admin editing the
+            // file in Notepad and saving it as Windows-1251/ANSI — Cyrillic
+            // content guarantees non-UTF-8 bytes. Their edits then silently do
+            // nothing (the embedded default renders instead) and nothing in
+            // the app ever says why.
+            Err(e) => {
+                tracing::warn!(
+                    "Cannot read template {} ({e}) — skipping auto-upgrade and falling back \
+                     to the embedded default on render. If you edited this file, make sure \
+                     it is saved as UTF-8 (не ANSI/Windows-1251).",
+                    path.display()
+                );
+                continue;
+            }
         };
         if &on_disk == current_default {
             continue; // already current — no write
@@ -177,9 +195,45 @@ pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(),
 /// `embedded_default` if the file is absent or unreadable (D-06/D-08).
 /// Never panics, never returns an `Err` — generation must not fail because a
 /// template file was deleted after startup.
+///
+/// WR-03: "absent" is silent (the normal, expected fallback), but "present
+/// and unreadable" — permissions, or non-UTF-8 bytes from a Notepad
+/// ANSI/Windows-1251 save — is logged at `warn`. Without this the user's edits
+/// simply have no effect and the app offers no diagnosis from the inside.
 pub fn load_template(templates_dir: &Path, filename: &str, embedded_default: &str) -> String {
-    std::fs::read_to_string(templates_dir.join(filename))
-        .unwrap_or_else(|_| embedded_default.to_string())
+    let path = templates_dir.join(filename);
+    match std::fs::read_to_string(&path) {
+        Ok(body) => body,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => embedded_default.to_string(),
+        Err(e) => {
+            tracing::warn!(
+                "Cannot read template {} ({e}) — rendering the embedded default instead. \
+                 If you edited this file, make sure it is saved as UTF-8 \
+                 (не ANSI/Windows-1251).",
+                path.display()
+            );
+            embedded_default.to_string()
+        }
+    }
+}
+
+/// Classifies a template file on disk for the status endpoint (D-17) and for
+/// `load_template`'s siblings: `Ok(Some(body))` — readable; `Ok(None)` —
+/// absent (not yet materialized); `Err(io::Error)` — present but unreadable
+/// (WR-03: permissions or non-UTF-8 bytes).
+///
+/// Exists so callers stop conflating "absent" with "unreadable" — the D-17
+/// endpoint whose entire purpose is flagging hand-edited files used to report
+/// a Notepad-ANSI-mangled file as `Current`.
+pub fn read_template_if_present(
+    templates_dir: &Path,
+    filename: &str,
+) -> Result<Option<String>, std::io::Error> {
+    match std::fs::read_to_string(templates_dir.join(filename)) {
+        Ok(body) => Ok(Some(body)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]

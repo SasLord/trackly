@@ -15,7 +15,7 @@ use crate::dto::reports::{
     TemplateFileStatus, TemplateStatusDto,
 };
 use crate::pdf::html_templates::{
-    resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS,
+    read_template_if_present, resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS,
 };
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
@@ -290,23 +290,25 @@ pub async fn build_templates_reset_to_default(
 /// rather than duplicating comparison logic.
 ///
 /// Status derivation mirrors `upgrade_untouched_defaults_on_startup`'s
-/// fail-closed classification: missing/unreadable file OR byte-identical to
-/// the current bundled default → `Current`; byte-identical to any
+/// fail-closed classification: MISSING file OR byte-identical to the current
+/// bundled default → `Current`; byte-identical to any
 /// `KNOWN_LEGACY_DEFAULTS` snapshot for that filename → still `Current` (a
 /// recognized legacy body is pending the SAME auto-upgrade path, not
-/// user-customized); anything else → `Customized`.
+/// user-customized); present-but-unreadable → `Unreadable` (WR-03 — it used
+/// to fold into `Current`, which is exactly backwards for an endpoint whose
+/// purpose is flagging files the user has touched); anything else →
+/// `Customized`.
 pub async fn build_templates_status(ctx: &AppCtx) -> Result<Vec<TemplateStatusDto>, AppError> {
     let templates_dir = resolve_templates_dir(&ctx.paths);
     let templates_dir_str = templates_dir.display().to_string();
 
     let mut out = Vec::with_capacity(DEFAULT_HTML_TEMPLATES.len());
     for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
-        let on_disk = std::fs::read_to_string(templates_dir.join(filename)).ok();
-
-        let status = match on_disk {
-            None => TemplateFileStatus::Current, // missing/unreadable — not yet materialized
-            Some(body) if &body == current_default => TemplateFileStatus::Current,
-            Some(body) => {
+        let status = match read_template_if_present(&templates_dir, filename) {
+            // Absent — not yet materialized, no evidence of customization.
+            Ok(None) => TemplateFileStatus::Current,
+            Ok(Some(body)) if &body == current_default => TemplateFileStatus::Current,
+            Ok(Some(body)) => {
                 let legacy_bodies = KNOWN_LEGACY_DEFAULTS
                     .iter()
                     .find(|(name, _)| name == filename)
@@ -317,6 +319,14 @@ pub async fn build_templates_status(ctx: &AppCtx) -> Result<Vec<TemplateStatusDt
                 } else {
                     TemplateFileStatus::Customized
                 }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Cannot read template {} ({e}) — reporting Unreadable. If you edited \
+                     this file, make sure it is saved as UTF-8 (не ANSI/Windows-1251).",
+                    templates_dir.join(filename).display()
+                );
+                TemplateFileStatus::Unreadable
             }
         };
 

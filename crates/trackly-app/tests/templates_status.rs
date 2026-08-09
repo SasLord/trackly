@@ -196,3 +196,48 @@ async fn hand_edited_file_reports_customized_others_unaffected() {
         }
     }
 }
+
+/// WR-03: a file that EXISTS but cannot be decoded as UTF-8 must report
+/// `Unreadable`, not `Current`.
+///
+/// The realistic trigger on the target (Windows) platform is an admin editing
+/// `act_handover.html` in Notepad and saving it as ANSI/Windows-1251 —
+/// Cyrillic content guarantees the bytes are not valid UTF-8. Their edits then
+/// silently do nothing (the embedded default renders instead), and before this
+/// fix the one endpoint meant to flag hand-edited files reported `Current`,
+/// leaving the failure undiagnosable from inside the app.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn non_utf8_file_reports_unreadable_not_current() {
+    let (ctx, _dir) = minimal_ctx();
+    let templates_dir = resolve_templates_dir(&ctx.paths);
+    materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
+
+    // Windows-1251 bytes for a short Cyrillic string — invalid UTF-8, exactly
+    // what a Notepad "ANSI" save produces for Russian template content.
+    let cp1251_bytes: &[u8] = &[
+        0xD8, 0xE0, 0xE1, 0xEB, 0xEE, 0xED, // "Шаблон"
+    ];
+    std::fs::write(templates_dir.join("act_handover.html"), cp1251_bytes)
+        .expect("write cp1251 act_handover.html");
+
+    let statuses = build_templates_status(&ctx)
+        .await
+        .expect("build_templates_status");
+
+    for entry in &statuses {
+        if entry.filename == "act_handover.html" {
+            assert!(
+                matches!(entry.status, TemplateFileStatus::Unreadable),
+                "expected Unreadable for a non-UTF-8 act_handover.html, got {:?}",
+                entry.status
+            );
+        } else {
+            assert!(
+                matches!(entry.status, TemplateFileStatus::Current),
+                "expected Current (unaffected) for {}, got {:?}",
+                entry.filename,
+                entry.status
+            );
+        }
+    }
+}

@@ -294,23 +294,32 @@ pub struct TemplateEditorItem {
 /// (DB-backed `document_templates` table, `is_default: bool`), this is
 /// FILE-backed: there is no `is_default` column, so status is derived
 /// structurally by comparing on-disk bytes against
-/// `DEFAULT_HTML_TEMPLATES`/`KNOWN_LEGACY_DEFAULTS`. Backend-only for now —
-/// no UI consumer in this phase (D-17's explicit scope boundary); a missing
-/// or unreadable on-disk file folds into `Current` (the SAME "not yet
+/// `DEFAULT_HTML_TEMPLATES`/`KNOWN_LEGACY_DEFAULTS`.
+///
+/// A missing on-disk file folds into `Current` (the SAME "not yet
 /// materialized, no evidence of user customization" reasoning
-/// `upgrade_untouched_defaults_on_startup` already applies — a third status
-/// variant would only distinguish "absent" from "current," which is not
-/// meaningful for this endpoint's purpose of flagging hand-edited files).
+/// `upgrade_untouched_defaults_on_startup` already applies). A file that is
+/// present but UNREADABLE does not — see `Unreadable` (WR-03).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TemplateFileStatus {
     /// On-disk content matches the current bundled default, OR matches a
     /// known prior (legacy) default that the next startup will
-    /// auto-upgrade in place, OR the file is missing/unreadable.
+    /// auto-upgrade in place, OR the file is missing (not yet materialized).
     Current,
     /// On-disk content matches neither the current bundled default nor any
     /// `KNOWN_LEGACY_DEFAULTS` snapshot — hand-customized by the user.
     Customized,
+    /// The file EXISTS but cannot be read as UTF-8 text (permissions, or —
+    /// the realistic trigger on the target platform — a Windows admin
+    /// editing it in Notepad and saving as ANSI/Windows-1251, which Cyrillic
+    /// content guarantees is not valid UTF-8).
+    ///
+    /// WR-03: this used to be indistinguishable from `Current`, so the one
+    /// endpoint whose purpose is flagging hand-edited files reported the
+    /// mangled file as fine while the user's edits silently did nothing (the
+    /// embedded default rendered instead) — undiagnosable from inside the app.
+    Unreadable,
 }
 
 /// D-17 response entry — one per file in `DEFAULT_HTML_TEMPLATES`.
