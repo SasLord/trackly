@@ -50,6 +50,26 @@ pub const DEFAULT_TEMPLATES: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Single source of truth for "is this `DEFAULT_HTML_TEMPLATES` entry a
+/// user-editable document kind?" (WR-02).
+///
+/// Filenames starting with `_` (currently `_header.html`) are shared partials:
+/// registered so the render/preview pipelines can resolve
+/// `{% include "_header.html" %}`, but never a standalone editor kind — there
+/// is no user-facing preview/save flow for an isolated fragment, and the UI
+/// renders no reset button for a kind it never lists.
+///
+/// `list_all_for_editor`, `update_body` and `reset_to_default` MUST all gate
+/// on this. Before WR-02 only `list_all_for_editor` filtered, so
+/// `templates_update_body {"kind":"_header", …}` silently overwrote the header
+/// shared by all three forms with no way to see or revert it from the UI.
+fn is_editable_template_filename(filename: &str) -> bool {
+    crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
+        .iter()
+        .any(|(f, _)| *f == filename)
+        && !filename.starts_with('_')
+}
+
 #[derive(Clone)]
 pub struct TemplateService {
     pub writer: Arc<WriterHandle>,
@@ -197,7 +217,7 @@ impl TemplateService {
         let templates_dir = self.templates_dir()?;
         Ok(crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
             .iter()
-            .filter(|(filename, _)| !filename.starts_with('_'))
+            .filter(|(filename, _)| is_editable_template_filename(filename))
             .map(|(filename, default_body)| {
                 let kind = filename.trim_end_matches(".html").to_string();
                 let body = crate::pdf::html_templates::load_template(
@@ -232,6 +252,11 @@ impl TemplateService {
     /// `DEFAULT_HTML_TEMPLATES` allowlist BEFORE any path join or render
     /// (T-17-02-01 — no path-traversal surface, unrecognized `kind` never
     /// reaches `templates_dir.join(...)`, and never triggers a render).
+    ///
+    /// WR-02: the allowlist is narrowed by `is_editable_template_filename`, so
+    /// shared partials (`_header.html`) are rejected with `NotFound` exactly
+    /// like an unknown kind — they are hidden from `list_all_for_editor`, so a
+    /// write here would have been invisible and unrevertable from the UI.
     pub async fn update_body(
         &self,
         caller: &Identity,
@@ -241,10 +266,7 @@ impl TemplateService {
         authorize(caller, &Action::ManageSettings)?;
 
         let filename = format!("{kind}.html");
-        if !crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
-            .iter()
-            .any(|(f, _)| *f == filename)
-        {
+        if !is_editable_template_filename(&filename) {
             return Err(AppError::NotFound {
                 entity: "document_template",
                 id: 0,
@@ -277,13 +299,16 @@ impl TemplateService {
     ///
     /// Phase 17: overwrites `templates/{kind}.html` with the embedded
     /// `DEFAULT_HTML_TEMPLATES` body instead of `UPDATE document_templates`.
-    /// Same fixed-allowlist gate as `update_body` (T-17-02-01).
+    /// Same fixed-allowlist gate as `update_body` (T-17-02-01), narrowed to
+    /// editable kinds only (WR-02) — shared partials are not resettable
+    /// through the editor API either.
     pub async fn reset_to_default(&self, caller: &Identity, kind: &str) -> Result<(), AppError> {
         authorize(caller, &Action::ManageSettings)?;
 
         let filename = format!("{kind}.html");
         let default_body = crate::pdf::html_templates::DEFAULT_HTML_TEMPLATES
             .iter()
+            .filter(|(f, _)| is_editable_template_filename(f))
             .find(|(f, _)| *f == filename)
             .map(|(_, body)| *body)
             .ok_or(AppError::NotFound {
@@ -637,6 +662,55 @@ mod tests {
                 assert_eq!(entity, "document_template");
             }
             other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    /// WR-02: shared partials (`_`-prefixed filenames) are registered in
+    /// `DEFAULT_HTML_TEMPLATES` so the render/preview pipelines can resolve
+    /// `{% include "_header.html" %}`, but they are NOT editor kinds. Before
+    /// this fix `update_body`/`reset_to_default` validated against the
+    /// unfiltered allowlist, so `kind = "_header"` passed and silently
+    /// overwrote the header shared by all three printed forms — with no way
+    /// to see or revert it from the UI, which never lists the kind.
+    #[tokio::test]
+    async fn update_body_rejects_shared_partial_kind() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        let result = svc
+            .update_body(&admin, "_header", "<div>hijacked</div>".to_string())
+            .await;
+
+        match result {
+            Err(AppError::NotFound { entity, .. }) => {
+                assert_eq!(entity, "document_template");
+            }
+            other => panic!("expected NotFound for partial kind, got {other:?}"),
+        }
+
+        // Non-vacuous: the file must not have been written either.
+        let templates_dir = svc.templates_dir().expect("templates_dir");
+        assert!(
+            !templates_dir.join("_header.html").exists(),
+            "_header.html must not be written by a rejected update_body call"
+        );
+    }
+
+    /// WR-02 sibling gate: `reset_to_default` must reject partial kinds too,
+    /// otherwise the editor API still offers a write surface for a file it
+    /// never surfaces.
+    #[tokio::test]
+    async fn reset_to_default_rejects_shared_partial_kind() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        let result = svc.reset_to_default(&admin, "_header").await;
+
+        match result {
+            Err(AppError::NotFound { entity, .. }) => {
+                assert_eq!(entity, "default_template");
+            }
+            other => panic!("expected NotFound for partial kind, got {other:?}"),
         }
     }
 
