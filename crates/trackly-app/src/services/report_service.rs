@@ -172,6 +172,9 @@ fn parse_iso_date_to_utc(s: &str, offset: UtcOffset, end_of_day: bool) -> Option
 /// emitting the raw English `mode` discriminator.
 ///
 /// - `"month"` + year/month → `"Сентябрь 2026"`
+/// - `"month"` + year but missing/out-of-range month → `"2026 год"` (IN-01:
+///   identical wording to year mode, so the same underlying year never prints
+///   two different subtitles)
 /// - `"year"` + year → `"2026 год"`
 /// - `"range"` + date_from/date_to (ISO `YYYY-MM-DD`) → `"01.01.2026 — 31.03.2026"`
 pub fn format_period_label(dto: &PeriodDto) -> String {
@@ -185,7 +188,11 @@ pub fn format_period_label(dto: &PeriodDto) -> String {
                 Some(m) if (1..=12).contains(&m) => {
                     format!("{} {year}", MONTH_NAMES_RU[(m - 1) as usize])
                 }
-                _ => year.to_string(),
+                // IN-01: degrade to the SAME wording year mode uses. A bare
+                // "2026" here meant the printed subtitle for one and the same
+                // underlying year differed depending on which control the user
+                // happened to touch.
+                _ => format!("{year} год"),
             }
         }
         "year" => match dto.year {
@@ -1456,7 +1463,29 @@ mod tests {
             month: None,
             ..period("month")
         };
-        assert_eq!(format_period_label(&dto), "2026");
+        // IN-01: same wording as year mode — see the sibling test below.
+        assert_eq!(format_period_label(&dto), "2026 год");
+    }
+
+    /// IN-01: month mode degrading to a year and year mode proper must print
+    /// the SAME subtitle for the same year — otherwise the printed document
+    /// changes wording based on which control the user touched.
+    #[test]
+    fn format_period_label_month_degradation_matches_year_mode_wording() {
+        let degraded = PeriodDto {
+            year: Some(2026),
+            month: None,
+            ..period("month")
+        };
+        let year_mode = PeriodDto {
+            year: Some(2026),
+            month: None,
+            ..period("year")
+        };
+        assert_eq!(
+            format_period_label(&degraded),
+            format_period_label(&year_mode)
+        );
     }
 
     #[test]
@@ -1466,7 +1495,7 @@ mod tests {
             month: Some(13),
             ..period("month")
         };
-        assert_eq!(format_period_label(&dto), "2026");
+        assert_eq!(format_period_label(&dto), "2026 год");
     }
 
     #[test]
