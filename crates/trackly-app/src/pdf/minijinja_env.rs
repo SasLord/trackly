@@ -34,8 +34,16 @@ use trackly_core::error::AppError;
 /// full-name field is authenticated-write / broadcast-read (any LAN user
 /// previewing an act/report can trigger a render of whatever an admin typed
 /// into org_settings.full_name).
+/// IN-04: line endings are normalized to `\n` FIRST, so CRLF input does not
+/// leave a stray `\r` before the inserted `<br />` (`"a\r\nb"` used to yield
+/// `"a\r<br />b"`). The HTML textarea API normalizes to LF, but the HTTP API
+/// accepts raw JSON, so CRLF can genuinely reach the column. Normalizing
+/// before escaping is safe: `HtmlEscape` does not touch `\r` or `\n`, and the
+/// escape-then-insert ordering that the XSS mitigation depends on is
+/// unchanged.
 pub fn org_full_name_html(raw: &str) -> String {
-    format!("{}", HtmlEscape(raw)).replace('\n', "<br />")
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    format!("{}", HtmlEscape(normalized.as_str())).replace('\n', "<br />")
 }
 
 /// Mime types accepted for the org logo. Mirrors `OrgDbService::save_logo`'s
@@ -323,6 +331,19 @@ mod tests {
     #[test]
     fn org_full_name_html_empty_input_is_empty_output() {
         assert_eq!(org_full_name_html(""), "");
+    }
+
+    /// IN-04: CRLF input must not leave a stray `\r` before the `<br />`.
+    #[test]
+    fn org_full_name_html_normalizes_crlf() {
+        assert_eq!(org_full_name_html("a\r\nb"), "a<br />b");
+    }
+
+    /// Bare CR (classic-Mac line endings, and what a `\r`-only paste produces)
+    /// is a line break too, not a character to print.
+    #[test]
+    fn org_full_name_html_normalizes_lone_cr() {
+        assert_eq!(org_full_name_html("a\rb"), "a<br />b");
     }
 
     #[test]
