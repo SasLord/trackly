@@ -224,6 +224,38 @@ pub async fn build_reports_export_pdf(
         .await
 }
 
+/// Report types whose query is period-scoped. For these, `period` is
+/// mandatory — see `require_period`.
+pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 4] = [
+    "device_acts",
+    "device_returns",
+    "cartridge_consumption",
+    "cartridge_refills",
+];
+
+/// WR-07: reject an absent `period` for a period-scoped report instead of
+/// guessing one.
+///
+/// The previous `unwrap_or_else` substituted a hardcoded January 2026, so
+/// `POST /api/v1/reports_export_pdf` with `period: null` silently restricted
+/// the rows to that month while `format_period_label(None)` printed an EMPTY
+/// subtitle — the document then looked like a full-history report. (Before
+/// Phase 34 the label at least emitted the obviously-broken `"month 2026"`;
+/// fixing the label made the wrong output look authoritative.) The `Some(2026)`
+/// / `Some(1)` magic numbers were a latent time bomb on top.
+///
+/// The UI never hits this: `ReportsPage.svelte` sends `period: undefined` only
+/// for snapshot report types.
+fn require_period(report_type: &str, period: Option<PeriodDto>) -> Result<PeriodDto, AppError> {
+    period.ok_or_else(|| {
+        debug_assert!(PERIOD_BASED_REPORT_TYPES.contains(&report_type));
+        AppError::Validation {
+            field: "period".to_string(),
+            message: "Период обязателен для этого типа отчёта".to_string(),
+        }
+    })
+}
+
 /// Dispatch to the right list method based on report_type string.
 async fn fetch_report(
     ctx: &AppCtx,
@@ -231,31 +263,27 @@ async fn fetch_report(
     filter: ReportFilter,
     period: Option<PeriodDto>,
 ) -> Result<ReportResponse, AppError> {
-    let default_period = period.unwrap_or_else(|| PeriodDto {
-        mode: "month".to_string(),
-        year: Some(2026),
-        month: Some(1),
-        date_from: None,
-        date_to: None,
-    });
-
     match report_type {
-        "device_acts" => ctx.reports.list_device_acts(filter, default_period).await,
+        "device_acts" => {
+            ctx.reports
+                .list_device_acts(filter, require_period(report_type, period)?)
+                .await
+        }
         "device_returns" => {
             ctx.reports
-                .list_device_returns(filter, default_period)
+                .list_device_returns(filter, require_period(report_type, period)?)
                 .await
         }
         "device_in_use" => ctx.reports.list_device_in_use(filter).await,
         "device_in_stock" => ctx.reports.list_device_in_stock(filter).await,
         "cartridge_consumption" => {
             ctx.reports
-                .list_cartridge_consumption(filter, default_period)
+                .list_cartridge_consumption(filter, require_period(report_type, period)?)
                 .await
         }
         "cartridge_refills" => {
             ctx.reports
-                .list_cartridge_refills(filter, default_period)
+                .list_cartridge_refills(filter, require_period(report_type, period)?)
                 .await
         }
         "cartridge_in_use" => ctx.reports.list_cartridge_in_use(filter).await,
