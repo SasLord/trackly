@@ -277,6 +277,11 @@ impl TemplateService {
         // (build_safe_html_env + demo_context_for_kind). Ремаппим поле
         // ошибки на "body" — validate_preview возвращает field="template",
         // но существующий UI/тестовый контракт update_body ожидает "body".
+        //
+        // WR-09: этот ремап корректен ТОЛЬКО потому, что validate_preview
+        // отдельно пре-валидирует общий partial `_header.html` и возвращает
+        // его поломку как AppError::Internal — она проходит сквозь `other =>
+        // other` ниже и не выдаётся пользователю за ошибку в его теле.
         self.validate_preview(kind, &body)
             .await
             .map_err(|e| match e {
@@ -369,6 +374,15 @@ impl TemplateService {
     /// `act_acceptance`, `report`) via `demo_context_for_kind` — any other
     /// value degrades gracefully to the `act_handover` context rather than
     /// erroring (preview should never crash on an unrecognized kind).
+    ///
+    /// WR-09: the shared `_header.html` partial is pre-flighted on its own
+    /// against the same demo context BEFORE the main body is rendered with it
+    /// registered. A partial that fails to parse or render then surfaces as
+    /// `AppError::Internal` naming `_header.html`, instead of a
+    /// `Validation { field: "template" }` that `update_body` blindly remaps to
+    /// `field: "body"` — which told the admin editing `report.html` that THEIR
+    /// body was invalid when the fault was in a file the editor does not even
+    /// show them, and which no amount of editing `report.html` could clear.
     pub async fn validate_preview(&self, kind: &str, body: &str) -> Result<String, AppError> {
         let demo_ctx = demo_context_for_kind(kind);
         let templates_dir = self.templates_dir()?;
@@ -382,6 +396,30 @@ impl TemplateService {
             "_header.html",
             embedded_header_default,
         );
+
+        // Pre-flight the partial alone. `_header.html` reads only `org.*`,
+        // which every demo context supplies, so a failure here is genuinely
+        // the partial's own fault and never the caller's body.
+        if let Err(e) = crate::pdf::minijinja_env::render_with_timeout(
+            &crate::pdf::minijinja_env::build_safe_html_env(),
+            "_header_preflight",
+            &header_src,
+            demo_ctx.clone(),
+            &[],
+        )
+        .await
+        {
+            let detail = match e {
+                AppError::Validation { message, .. } => message,
+                other => format!("{other:?}"),
+            };
+            return Err(AppError::Internal {
+                source_chain: format!(
+                    "_header.html (общий заголовок документов) не отрисовывается: {detail}"
+                ),
+            });
+        }
+
         crate::pdf::minijinja_env::render_with_timeout(
             &crate::pdf::minijinja_env::build_safe_html_env(),
             "_preview",
@@ -694,6 +732,58 @@ mod tests {
             !templates_dir.join("_header.html").exists(),
             "_header.html must not be written by a rejected update_body call"
         );
+    }
+
+    /// WR-09: when the shared `_header.html` partial is itself broken, the
+    /// admin editing `report.html` must NOT be told their body is invalid.
+    ///
+    /// `update_body` remaps every `Validation` out of `validate_preview` onto
+    /// `field: "body"`, so before the pre-flight a broken partial produced an
+    /// unclearable "your template is invalid" for a file the editor never
+    /// shows — no amount of editing `report.html` could fix it.
+    #[tokio::test]
+    async fn broken_header_partial_is_not_blamed_on_the_user_body() {
+        let (svc, tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        // Break the shared partial on disk (unterminated `{% if %}`).
+        std::fs::write(tmp.path().join("_header.html"), "{% if org.name %}")
+            .expect("write broken _header.html");
+
+        let valid_body = "<html><body>{% include \"_header.html\" %}OK</body></html>".to_string();
+        let result = svc.update_body(&admin, "report", valid_body).await;
+
+        match result {
+            Err(AppError::Internal { source_chain }) => {
+                assert!(
+                    source_chain.contains("_header.html"),
+                    "the error must name the actual faulty file, got: {source_chain}"
+                );
+            }
+            Err(AppError::Validation { field, message }) => panic!(
+                "a broken shared partial must not surface as a validation error on the \
+                 user's own template (field={field}, message={message})"
+            ),
+            other => panic!("expected Internal naming _header.html, got {other:?}"),
+        }
+    }
+
+    /// Non-vacuous companion to the test above: a genuinely broken BODY must
+    /// still be reported against `field: "body"`, so the WR-09 pre-flight did
+    /// not simply reclassify every failure.
+    #[tokio::test]
+    async fn broken_user_body_is_still_reported_on_the_body_field() {
+        let (svc, _tmp, _guard) = build_test_svc_with_organization().await;
+        let admin = Identity::trusted_admin();
+
+        let result = svc
+            .update_body(&admin, "report", "{% if unclosed".to_string())
+            .await;
+
+        match result {
+            Err(AppError::Validation { field, .. }) => assert_eq!(field, "body"),
+            other => panic!("expected Validation on field=body, got {other:?}"),
+        }
     }
 
     /// WR-02 sibling gate: `reset_to_default` must reject partial kinds too,
