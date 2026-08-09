@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: executing
-last_updated: "2026-08-08T21:40:25.735Z"
-last_activity: 2026-08-08
+status: verifying
+last_updated: "2026-08-09T00:10:43.470Z"
+last_activity: 2026-08-09
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
-  percent: 0
+  completed_plans: 6
+  percent: 20
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 34 (document-header) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-08-08
+Status: Phase complete — ready for verification
+Last activity: 2026-08-09
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [████████░░] 83%
+Progress: [██████████] 100%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -288,6 +288,7 @@ Progress: [████████░░] 83%
 | Phase 34 P03 | 50min | 3 tasks | 8 files |
 | Phase 34 P04 | 15min | 2 tasks | 2 files |
 | Phase 34 P05 | 40min | 2 tasks | 5 files |
+| Phase 34 P06 | ~2h05min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -714,6 +715,11 @@ Recent decisions affecting current work:
 - [Phase 34]: 34-03: list_all_for_editor filters filenames starting with '_' — shared partials like _header.html are not standalone editable document kinds
 - [Phase 34-04]: Placed full_name field after address-line2, before phone in OrgSettings.svelte, mirroring address_line2's 4-touchpoint shape
 - [Phase 34]: D-17: templates_status endpoint reports missing/unreadable file as Current (2-value enum, no third Missing variant)
+- [Phase 34]: act_handover.html separate header was NOT a defect: canonical template already includes _header.html; on-disk file was user's hand-edited copy correctly preserved by D-14/D-16 upgrade logic, verified live on real pre-Phase-34 install
+- [Phase 34]: No 'template changed manually' UI indicator in Settings is expected — 34-05 is backend-only by design, UI consumer deferred to backlog DOC-12
+- [Phase 34]: C-01 (empty full_name, short name only) visual result reviewed and explicitly accepted as-is — direct consequence of D-04's independent-conditional-lines design
+- [Phase 34]: Task 1 Step 7 scripted scratch-directory upgrade procedure superseded by a stronger real-install observation (act_handover.html finding), not run as scripted
+- [Phase 34]: Report print-form .subtitle rendered raw English PeriodDto.mode discriminator ('year 2026') — fixed via ReportService::format_period_label covering both transports, found during UAT and scoped into phase 34 at user's direction
 
 ### Pending Todos
 
@@ -851,8 +857,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-08T21:39:02.944Z
-Stopped at: Completed 34-03-PLAN.md
+Last session: 2026-08-09T00:10:43.461Z
+Stopped at: Completed 34-06-PLAN.md
 Resume file: 
 
 None
