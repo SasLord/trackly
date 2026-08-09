@@ -122,18 +122,37 @@ pub fn resolve_templates_dir(paths: &Paths) -> PathBuf {
 /// hand-edited by the user) is never overwritten — this is deliberately NOT
 /// an auto-upgrade-in-place operation, unlike `template_service`'s DB seed
 /// path.
+///
+/// IN-05: write failures are logged and skipped, NOT propagated. `AppCtx::build`
+/// calls this with `?`, so a read-only share or a locked install directory used
+/// to make the whole application refuse to start — even though `load_template`
+/// would happily have served the embedded defaults, i.e. printing would have
+/// worked fine. Materializing files is a convenience (giving the user something
+/// to edit), never a precondition for rendering. The signature keeps returning
+/// `Result` for call-site compatibility; it is now always `Ok`.
 pub fn materialize_defaults_on_startup(templates_dir: &Path) -> Result<(), AppError> {
-    std::fs::create_dir_all(templates_dir).map_err(|e| AppError::Internal {
-        source_chain: format!("create_dir_all({}) failed: {e}", templates_dir.display()),
-    })?;
+    if let Err(e) = std::fs::create_dir_all(templates_dir) {
+        tracing::warn!(
+            "Cannot create templates directory {} ({e}) — printing will use the embedded \
+             defaults; template files will not be available for editing.",
+            templates_dir.display()
+        );
+        return Ok(());
+    }
 
     for (filename, default_body) in DEFAULT_HTML_TEMPLATES.iter() {
         let path = templates_dir.join(filename);
         if !path.exists() {
-            std::fs::write(&path, default_body).map_err(|e| AppError::Internal {
-                source_chain: format!("write({}) failed: {e}", path.display()),
-            })?;
-            tracing::info!("Materialized default HTML template at {}", path.display());
+            match std::fs::write(&path, default_body) {
+                Ok(()) => {
+                    tracing::info!("Materialized default HTML template at {}", path.display())
+                }
+                Err(e) => tracing::warn!(
+                    "Cannot write default template {} ({e}) — printing will use the embedded \
+                     default; this file will not be available for editing.",
+                    path.display()
+                ),
+            }
         }
     }
     Ok(())
@@ -155,6 +174,11 @@ pub fn materialize_defaults_on_startup(templates_dir: &Path) -> Result<(), AppEr
 ///   → overwrite with the current default (provably untouched → safe upgrade);
 /// - otherwise → leave untouched (user-customized; fail closed — D-12's core
 ///   safety property, never overwrite ambiguous content).
+///
+/// IN-05: as in `materialize_defaults_on_startup`, a write failure is logged
+/// and skipped rather than propagated — a read-only install directory must not
+/// prevent the application from starting when rendering degrades cleanly to the
+/// embedded defaults. Always returns `Ok`.
 pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(), AppError> {
     for (filename, current_default) in DEFAULT_HTML_TEMPLATES.iter() {
         let path = templates_dir.join(filename);
@@ -189,13 +213,17 @@ pub fn upgrade_untouched_defaults_on_startup(templates_dir: &Path) -> Result<(),
             .map(|(_, bodies)| *bodies)
             .unwrap_or(&[]);
         if legacy_bodies.iter().any(|legacy| *legacy == on_disk) {
-            std::fs::write(&path, current_default).map_err(|e| AppError::Internal {
-                source_chain: format!("write({}) failed: {e}", path.display()),
-            })?;
-            tracing::info!(
-                "Auto-upgraded untouched default HTML template at {}",
-                path.display()
-            );
+            match std::fs::write(&path, current_default) {
+                Ok(()) => tracing::info!(
+                    "Auto-upgraded untouched default HTML template at {}",
+                    path.display()
+                ),
+                Err(e) => tracing::warn!(
+                    "Cannot auto-upgrade untouched default template {} ({e}) — the on-disk \
+                     copy stays on its older (but valid) body.",
+                    path.display()
+                ),
+            }
         } else {
             tracing::warn!(
                 "Skipped auto-upgrade of {} — on-disk content matches neither current \
@@ -474,6 +502,54 @@ mod tests {
 
         let contents = std::fs::read_to_string(&path).expect("still exists");
         assert_eq!(contents, current, "already-current file must be unchanged");
+    }
+
+    /// IN-05: a read-only `templates/` directory must not fail startup.
+    ///
+    /// `AppCtx::build` calls both startup functions with `?`, so before this
+    /// fix a portable install on a read-only share or a locked install
+    /// directory refused to start — even though `load_template` would have
+    /// served the embedded defaults and printing would have worked.
+    #[test]
+    #[cfg(unix)]
+    fn readonly_templates_dir_does_not_fail_startup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let templates_dir = dir.path().join("templates");
+        std::fs::create_dir_all(&templates_dir).expect("create templates dir");
+
+        // r-xr-xr-x — traversable and readable, but not writable.
+        std::fs::set_permissions(&templates_dir, std::fs::Permissions::from_mode(0o555))
+            .expect("chmod read-only");
+
+        let materialize = materialize_defaults_on_startup(&templates_dir);
+        let upgrade = upgrade_untouched_defaults_on_startup(&templates_dir);
+
+        // Restore write permission so TempDir::drop can clean up.
+        let _ = std::fs::set_permissions(&templates_dir, std::fs::Permissions::from_mode(0o755));
+
+        assert!(
+            materialize.is_ok(),
+            "a read-only templates dir must not fail startup, got {materialize:?}"
+        );
+        assert!(
+            upgrade.is_ok(),
+            "a read-only templates dir must not fail startup, got {upgrade:?}"
+        );
+
+        // Non-vacuous: rendering still degrades cleanly to the embedded default.
+        let embedded = DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(name, _)| *name == "act_handover.html")
+            .map(|(_, body)| *body)
+            .expect("act_handover.html default present");
+        assert_eq!(
+            load_template(&templates_dir, "act_handover.html", embedded),
+            embedded,
+            "rendering must still work off the embedded default"
+        );
     }
 
     #[test]
