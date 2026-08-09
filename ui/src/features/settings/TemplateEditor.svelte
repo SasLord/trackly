@@ -28,21 +28,40 @@
     desc: string;
   }
 
+  // WR-08: all three forms now render the SAME shared `_header.html` partial,
+  // so every kind gets the identical org.* block. Listed once here instead of
+  // being re-typed (and drifting) per kind.
+  //
+  // `org.full_name` is documented as `org.full_name | safe` DELIBERATELY: the
+  // backend pre-escapes it and converts newlines to `<br />`
+  // (`pdf::minijinja_env::org_full_name_html`), so a user who follows this
+  // panel and writes plain `{{ org.full_name }}` gets autoescaped output —
+  // the literal text `<br />` and `&lt;` sequences printed on the act. The
+  // `| safe` requirement previously existed only in the `_header.html`
+  // doc-comment, which is exactly the file this editor hides.
+  const ORG_VARIABLES: VariableEntry[] = [
+    { code: 'org.name', desc: 'краткое название организации' },
+    {
+      code: 'org.full_name | safe',
+      desc: 'полное юридическое наименование (многострочное, уже экранировано — используйте с | safe)',
+    },
+    { code: 'org.inn', desc: 'ИНН' },
+    { code: 'org.kpp', desc: 'КПП' },
+    { code: 'org.address', desc: 'адрес организации' },
+    { code: 'org.address_line2', desc: 'адрес, вторая строка' },
+    { code: 'org.phone', desc: 'телефон' },
+    { code: 'org.fax', desc: 'факс' },
+    { code: 'org.email', desc: 'e-mail' },
+    { code: 'org.okpo', desc: 'ОКПО' },
+    { code: 'org.ogrn', desc: 'ОГРН' },
+    { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+  ];
+
   // Plan 17-03 (D-12): per-kind variables panel — each entry mirrors the
   // context documented in the corresponding templates/*.html doc-comment.
   const VARIABLES_BY_KIND: Record<string, VariableEntry[]> = {
     act_handover: [
-      { code: 'org.name', desc: 'название организации' },
-      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
-      { code: 'org.inn', desc: 'ИНН' },
-      { code: 'org.kpp', desc: 'КПП' },
-      { code: 'org.address', desc: 'адрес организации' },
-      { code: 'org.phone', desc: 'телефон' },
-      { code: 'org.fax', desc: 'факс' },
-      { code: 'org.email', desc: 'e-mail' },
-      { code: 'org.okpo', desc: 'ОКПО' },
-      { code: 'org.ogrn', desc: 'ОГРН' },
-      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      ...ORG_VARIABLES,
       { code: 'act.number', desc: 'номер акта' },
       { code: 'act.suffix', desc: 'суффикс номера' },
       { code: 'act.date_human', desc: 'дата акта (человекочитаемая)' },
@@ -55,12 +74,7 @@
       },
     ],
     act_acceptance: [
-      { code: 'org.name', desc: 'название организации' },
-      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
-      { code: 'org.inn', desc: 'ИНН' },
-      { code: 'org.kpp', desc: 'КПП' },
-      { code: 'org.address', desc: 'адрес организации' },
-      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      ...ORG_VARIABLES,
       { code: 'document.date_human', desc: 'дата приёма (человекочитаемая)' },
       { code: 'document.giver_name', desc: 'кто передал' },
       { code: 'document.receiver_name', desc: 'кто принял' },
@@ -71,17 +85,7 @@
       { code: 'device.condition', desc: 'состояние' },
     ],
     report: [
-      { code: 'org.name', desc: 'название организации' },
-      { code: 'org.full_name', desc: 'полное юридическое наименование (многострочное)' },
-      { code: 'org.inn', desc: 'ИНН' },
-      { code: 'org.kpp', desc: 'КПП' },
-      { code: 'org.address', desc: 'адрес организации' },
-      { code: 'org.phone', desc: 'телефон' },
-      { code: 'org.fax', desc: 'факс' },
-      { code: 'org.email', desc: 'e-mail' },
-      { code: 'org.okpo', desc: 'ОКПО' },
-      { code: 'org.ogrn', desc: 'ОГРН' },
-      { code: 'org.logo_data_uri', desc: 'логотип (data: URI)' },
+      ...ORG_VARIABLES,
       { code: 'report_name', desc: 'название отчёта' },
       { code: 'period_label', desc: 'описание периода' },
       { code: 'columns', desc: 'список заголовков колонок (строки)' },
