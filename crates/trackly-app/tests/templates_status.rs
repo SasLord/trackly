@@ -1,21 +1,49 @@
 //! Phase 34 Plan 05 — D-17 integration test: `build_templates_status`
 //! reports `Current` for untouched materialized defaults and `Customized`
 //! for a hand-edited file, per-file (unaffected siblings stay `Current`).
+//!
+//! WR-10: these tests WRITE template files, so they must never resolve the
+//! directory through `resolve_templates_dir`, which honours the
+//! `TRACKLY_TEMPLATES_DIR` env override — a documented, supported dev/test
+//! variable. A developer with it exported (or any future in-process test that
+//! leaks it) would otherwise have their real `templates/act_handover.html`
+//! overwritten with the fixture's junk and the other three files
+//! force-materialized. `build_templates_status` itself resolves via the env
+//! var, so each test pins the variable to its OWN tempdir under `ENV_GUARD`
+//! instead — hermetic in both directions.
 
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::reports::TemplateFileStatus;
-use trackly_app::pdf::html_templates::{
-    materialize_defaults_on_startup, resolve_templates_dir, DEFAULT_HTML_TEMPLATES,
-};
+use trackly_app::pdf::html_templates::{materialize_defaults_on_startup, DEFAULT_HTML_TEMPLATES};
 use trackly_app::tauri_cmds::settings_org::build_templates_status;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
+
+/// Serializes tests that set `TRACKLY_TEMPLATES_DIR` — `std::env` is
+/// process-global and Rust test threads run in parallel by default (mirrors
+/// the `ENV_GUARD` pattern in `pdf/html_templates.rs`).
+static ENV_GUARD: Mutex<()> = Mutex::new(());
+
+/// Pins `TRACKLY_TEMPLATES_DIR` to this test's own tempdir and returns the
+/// guard the caller must hold for the whole test. Never resolves — always
+/// binds — so nothing outside the fixture can be written to.
+fn pin_templates_dir(dir: &Path) -> MutexGuard<'static, ()> {
+    // A previous panicking test may have poisoned the mutex; the data is `()`
+    // so recovering is safe and keeps one failure from cascading.
+    let guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: guarded by ENV_GUARD for the duration of the calling test.
+    unsafe {
+        std::env::set_var("TRACKLY_TEMPLATES_DIR", dir);
+    }
+    guard
+}
 
 /// Minimal fully-wired `AppCtx` fixture (mirrors `specta_roundtrip.rs`'s
 /// `minimal_ctx`) — `build_templates_status` only reads `ctx.paths`, but the
@@ -138,7 +166,8 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fresh_materialized_dir_reports_current_for_all_four() {
     let (ctx, _dir) = minimal_ctx();
-    let templates_dir = resolve_templates_dir(&ctx.paths);
+    let templates_dir = ctx.paths.templates_dir().to_path_buf();
+    let _env_guard = pin_templates_dir(&templates_dir);
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     let statuses = build_templates_status(&ctx)
@@ -164,7 +193,8 @@ async fn fresh_materialized_dir_reports_current_for_all_four() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hand_edited_file_reports_customized_others_unaffected() {
     let (ctx, _dir) = minimal_ctx();
-    let templates_dir = resolve_templates_dir(&ctx.paths);
+    let templates_dir = ctx.paths.templates_dir().to_path_buf();
+    let _env_guard = pin_templates_dir(&templates_dir);
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     // Fictional, non-privacy-sensitive placeholder content — matches neither
@@ -209,7 +239,8 @@ async fn hand_edited_file_reports_customized_others_unaffected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn non_utf8_file_reports_unreadable_not_current() {
     let (ctx, _dir) = minimal_ctx();
-    let templates_dir = resolve_templates_dir(&ctx.paths);
+    let templates_dir = ctx.paths.templates_dir().to_path_buf();
+    let _env_guard = pin_templates_dir(&templates_dir);
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     // Windows-1251 bytes for a short Cyrillic string — invalid UTF-8, exactly
