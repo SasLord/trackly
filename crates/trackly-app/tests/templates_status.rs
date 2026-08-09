@@ -13,9 +13,10 @@
 //! instead — hermetic in both directions.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use tempfile::TempDir;
+use tokio::sync::{Mutex, MutexGuard};
 use tokio_util::sync::CancellationToken;
 
 use trackly_app::context::AppCtx;
@@ -27,17 +28,19 @@ use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_app_ctx::test_writer_and_readers;
 
 /// Serializes tests that set `TRACKLY_TEMPLATES_DIR` — `std::env` is
-/// process-global and Rust test threads run in parallel by default (mirrors
-/// the `ENV_GUARD` pattern in `pdf/html_templates.rs`).
-static ENV_GUARD: Mutex<()> = Mutex::new(());
+/// process-global and Rust test threads run in parallel by default.
+///
+/// `tokio::sync::Mutex` (not `std::sync::Mutex`), mirroring the same choice in
+/// `template_service.rs`'s test module: the guard is deliberately held across
+/// the `build_templates_status(..).await` below, which `std::sync::MutexGuard`
+/// would make a `clippy::await_holding_lock` violation (`-D warnings` in CI).
+static ENV_GUARD: Mutex<()> = Mutex::const_new(());
 
 /// Pins `TRACKLY_TEMPLATES_DIR` to this test's own tempdir and returns the
 /// guard the caller must hold for the whole test. Never resolves — always
 /// binds — so nothing outside the fixture can be written to.
-fn pin_templates_dir(dir: &Path) -> MutexGuard<'static, ()> {
-    // A previous panicking test may have poisoned the mutex; the data is `()`
-    // so recovering is safe and keeps one failure from cascading.
-    let guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+async fn pin_templates_dir(dir: &Path) -> MutexGuard<'static, ()> {
+    let guard = ENV_GUARD.lock().await;
     // SAFETY: guarded by ENV_GUARD for the duration of the calling test.
     unsafe {
         std::env::set_var("TRACKLY_TEMPLATES_DIR", dir);
@@ -167,7 +170,7 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
 async fn fresh_materialized_dir_reports_current_for_all_four() {
     let (ctx, _dir) = minimal_ctx();
     let templates_dir = ctx.paths.templates_dir().to_path_buf();
-    let _env_guard = pin_templates_dir(&templates_dir);
+    let _env_guard = pin_templates_dir(&templates_dir).await;
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     let statuses = build_templates_status(&ctx)
@@ -194,7 +197,7 @@ async fn fresh_materialized_dir_reports_current_for_all_four() {
 async fn hand_edited_file_reports_customized_others_unaffected() {
     let (ctx, _dir) = minimal_ctx();
     let templates_dir = ctx.paths.templates_dir().to_path_buf();
-    let _env_guard = pin_templates_dir(&templates_dir);
+    let _env_guard = pin_templates_dir(&templates_dir).await;
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     // Fictional, non-privacy-sensitive placeholder content — matches neither
@@ -240,7 +243,7 @@ async fn hand_edited_file_reports_customized_others_unaffected() {
 async fn non_utf8_file_reports_unreadable_not_current() {
     let (ctx, _dir) = minimal_ctx();
     let templates_dir = ctx.paths.templates_dir().to_path_buf();
-    let _env_guard = pin_templates_dir(&templates_dir);
+    let _env_guard = pin_templates_dir(&templates_dir).await;
     materialize_defaults_on_startup(&templates_dir).expect("materialize defaults");
 
     // Windows-1251 bytes for a short Cyrillic string — invalid UTF-8, exactly

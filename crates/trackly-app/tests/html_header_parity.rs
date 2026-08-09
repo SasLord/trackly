@@ -81,8 +81,7 @@ fn header_partial_org_name_node_has_no_hardcoded_literal() {
         .replace("</div>", "")
         .replace("<br", "")
         .replace("/>", "")
-        .replace('(', "")
-        .replace(')', "");
+        .replace(['(', ')'], "");
 
     let has_letter = remainder.chars().any(|c| c.is_alphabetic());
     assert!(
