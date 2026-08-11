@@ -1,8 +1,10 @@
 ---
 phase: 34-document-header
 verified: 2026-08-11T06:30:00Z
-status: human_needed
-score: 3/4 must-haves verified (1 requires fresh human confirmation)
+status: passed
+resolved: 2026-08-11T07:30:00Z
+resolution: "Both human_verification items below were completed by the user on 2026-08-11 against post-CR-01-fix code (desktop Tauri webview + LAN browser) and reported as passing. Tracked in 34-HUMAN-UAT.md (status: resolved). Truth #2 therefore moves from UNCERTAIN to VERIFIED; score is 4/4."
+score: 4/4 must-haves verified (truth #2 closed by human confirmation on 2026-08-11)
 overrides_applied: 0
 human_verification:
   - test: "Re-confirm visual header parity (desktop Tauri webview + LAN browser) on the CURRENT code, specifically the empty-org.full_name case (C-01) and a filled-org.full_name case, on all three print forms."

@@ -1,14 +1,14 @@
 ---
-status: partial
+status: resolved
 phase: 34-document-header
 source: [34-VERIFICATION.md]
 started: 2026-08-11T06:45:00Z
-updated: 2026-08-11T06:45:00Z
+updated: 2026-08-11T07:30:00Z
 ---
 
 ## Current Test
 
-[awaiting human testing]
+[complete — both items confirmed by the user on 2026-08-11]
 
 ## Tests
 
@@ -33,7 +33,7 @@ the pre-fix template, but the phase's own Success Criterion #2 explicitly requir
 a real rendered PDF/preview rather than a text/DOM assertion — overlap, overflow and font
 rendering are invisible to extraction-based tests (project convention, `act-pdf-word-fidelity`).
 
-result: [pending]
+result: passed — confirmed by the user in the running app (desktop + LAN browser) after the CR-01 fix landed
 
 ### 2. Look at the `templates_status` badge in Settings → Шаблоны in the running app
 
@@ -47,14 +47,14 @@ already been approved. It is a scope addition beyond plan 34-05's explicit "no U
 phase" boundary — a reasonable response to a dead-API-surface review finding, not a defect, but it
 has only been type-checked, linted and built, never looked at running.
 
-result: [pending]
+result: passed — confirmed by the user in the running app (desktop + LAN browser) after the CR-01 fix landed
 
 ## Summary
 
 total: 2
-passed: 0
+passed: 2
 issues: 0
-pending: 2
+pending: 0
 skipped: 0
 blocked: 0
 

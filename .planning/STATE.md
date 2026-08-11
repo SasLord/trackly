@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: verifying
-last_updated: "2026-08-09T00:10:43.470Z"
+status: ready_to_plan
+last_updated: 2026-08-11T06:26:53.592Z
 last_activity: 2026-08-09
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 6
+  completed_plans: 246
   percent: 20
+stopped_at: Phase 34 complete (6/6) — ready to discuss Phase 35
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 34 — document-header
+**Current focus:** Phase 35 — тело акта приёма передачи
 
 ## Current Position
 
-Phase: 34 (document-header) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-08-09
+Phase: 35
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-11
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
 Progress: [██████████] 100%
@@ -43,7 +44,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 167
+- Total plans completed: 173
 - Average duration: —
 - Total execution time: —
 
@@ -75,6 +76,7 @@ Progress: [██████████] 100%
 | 29 | 4 | - | - |
 | 31 | 4 | - | - |
 | 32 | 5 | - | - |
+| 34 | 6 | - | - |
 
 **Recent Trend:**
 
