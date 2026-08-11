@@ -96,3 +96,7 @@ Plan 02 (act text/signature-block body rewrite) can now safely change the bytes 
 ---
 *Phase: 35-act-handover-body*
 *Completed: 2026-08-11*
+
+## Self-Check: PASSED
+
+All created files and commit hashes verified present.
