@@ -154,12 +154,12 @@ async fn create_handover_with_giver(
     svc.create(payload).await.expect("create handover")
 }
 
-/// N=1 regression anchor. D-09 removed `giver_name` from the rendered body
-/// (it now only appears via the bare "Выдал" signature label); this test
-/// therefore asserts `receiver_name` — which D-09's intro paragraph does
-/// render — instead of the old giver_name-in-body assertion. The N=5
-/// multi-device case (with long-field wrap coverage) is covered separately
-/// by `render_handover_multi_device_wraps_long_fields` below.
+/// N=1 regression anchor. Phase 35 D-06 restored `act.giver_name` to the
+/// rendered body — it is now printed in the horizontal signature block
+/// alongside `receiver_name`. This test asserts `receiver_name`, which the
+/// D-01 intro paragraph renders. The N=5 multi-device case (with long-field
+/// wrap coverage) is covered separately by
+/// `render_handover_multi_device_wraps_long_fields` below.
 ///
 /// Phase 16 Plan 05: page-count (single-page) assertion removed — browser
 /// pagination via CSS `@page`/`page-break-inside` cannot be asserted from a
@@ -230,22 +230,30 @@ async fn render_handover_act_contains_d09_intro_phrase() {
     .expect("timeout");
 }
 
-/// Two-line signature sublabels (D-07): «Подпись»/«ФИО» under «Выдал»/«Получил».
-/// N=1 is sufficient — the signature block does not vary with device count.
+/// Horizontal one-line-per-signer signature block (Phase 35 D-06/D-07):
+/// «Выдал»/«Получил» + «Подпись» sublabel under the blank line, with the
+/// signer's printed name (`act.giver_name`) on the same row — no separate
+/// «ФИО» sublabel, since the name itself is now printed. N=1 is sufficient —
+/// the signature block does not vary with device count.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn signature_renders_two_line_labels() {
+async fn signature_renders_giver_name_horizontal_block() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
         let device_ids = seed_devices(&p.writer, 1).await;
         let act = create_handover_with_giver(&p.acts, &device_ids, "Иванов И.И.").await;
         let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        for expected in ["Выдал", "Получил", "Подпись", "ФИО"] {
+        for expected in ["Выдал", "Получил", "Подпись"] {
             assert!(
                 html.contains(expected),
                 "expected signature label {expected:?} missing. Head: {:?}",
                 html.chars().take(500).collect::<String>()
             );
         }
+        assert!(
+            html.contains("Иванов И.И."),
+            "expected printed giver_name in signature block. Head: {:?}",
+            html.chars().take(500).collect::<String>()
+        );
     })
     .await
     .expect("timeout");
