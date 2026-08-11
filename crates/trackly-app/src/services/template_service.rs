@@ -508,6 +508,7 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 "suffix": null,
                 "date": "2026-06-17",
                 "date_human": "17 июня 2026",
+                "giver_name": "Иванов И.И.",
                 "receiver_name": "Петров П.П.",
                 "location_name": "Офис 101",
                 "deadline": null,
