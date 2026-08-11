@@ -78,6 +78,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
         &[
             include_str!("../../templates/_legacy_defaults/v20/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v21/act_handover.html"),
+            include_str!("../../templates/_legacy_defaults/v22/act_handover.html"),
         ],
     ),
     (
@@ -85,6 +86,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
         &[
             include_str!("../../templates/_legacy_defaults/v20/act_acceptance.html"),
             include_str!("../../templates/_legacy_defaults/v21/act_acceptance.html"),
+            include_str!("../../templates/_legacy_defaults/v22/act_acceptance.html"),
         ],
     ),
     (
