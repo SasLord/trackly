@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: executing
-last_updated: "2026-08-11T18:13:33.886Z"
-last_activity: 2026-08-11 -- Phase 35 execution started
+status: verifying
+last_updated: "2026-08-11T23:54:36.692Z"
+last_activity: 2026-08-11
 progress:
   total_phases: 5
   completed_phases: 2
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 35 (act-handover-body) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 35
-Last activity: 2026-08-11 -- Phase 35 execution started
+Plan: 6 of 6
+Status: Phase complete — ready for verification
+Last activity: 2026-08-11
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
 Progress: [██████████] 100%
@@ -729,6 +729,8 @@ Recent decisions affecting current work:
 - [Phase 35]: act_acceptance.html signature block reworked to horizontal one-line-per-signer layout, byte-identical CSS/markup pattern to act_handover.html (D-09/D-06/D-07/D-08); duplicate Кто передал/Кто принял table rows removed
 - [Phase ?]: Full-suite cargo test -p trackly-app hangs on pre-existing login_remember_persistent_cookie test (lives inside trackly-app package, not just --workspace); use -- --skip login_remember_persistent_cookie for full-package verification
 - [Phase 35]: Phase 35 UAT approved: body/signature-block rework confirmed on both transports; multi-device pagination (Приложение №1) explicitly deferred to Phase 36 (DOC-10/DOC-11)
+- [Phase 35]: 35-06: G-01/CR-01 закрыт — гейт length==1 снят, .device-block самоидентифицируется именем устройства при любом N (D-02a); human-UAT на обоих транспортах approved
+- [Phase 35]: 35-06: известный follow-up (не исправлен в этом плане) — для act_handover.html не снят срез _legacy_defaults/v23/ под правку Task 1; практических последствий нет (тег не выпускался, материализованных копий с промежуточным телом на машине не осталось)
 
 ### Pending Todos
 
@@ -898,8 +900,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-11T18:13:33.877Z
-Stopped at: Completed 35-05-PLAN.md; phase 35 ready for verification
+Last session: 2026-08-11T23:54:36.683Z
+Stopped at: Completed 35-06-PLAN.md (Phase 35 complete — G-01..G-04 closed, Task 4 human-UAT approved); ready for /gsd-verify-work
 Resume file: 
 
 None
