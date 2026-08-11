@@ -8,8 +8,8 @@
   shared header partial (logo + org requisites, Phase 34, see _header.html)
   -> heading -> date key-value row -> device key-value rows -> horizontal
   one-line-per-signer signature block "Выдал: ⟨line⟩ ⟨printed name⟩ /
-  Получил: ⟨line⟩ ⟨printed name⟩" (document.giver_name/document.receiver_name
-  no longer duplicated in the table, Phase 35 D-09).
+  Получил: ⟨line⟩ ⟨printed name⟩" (giver/receiver names printed once, no
+  longer duplicated in the table, Phase 35 D-09).
 
   Context (full org header, brought to parity with act_handover.html per
   PRN-01/D-01/D-02/D-03 — Phase 20, plus org.full_name per Phase 34):
@@ -71,12 +71,37 @@
   .device-block {
     page-break-inside: avoid;
   }
-  .signature {
+  .signatures {
     margin-top: 30pt;
     page-break-inside: avoid;
   }
-  .signature .line {
-    margin: 10pt 0;
+  .signature-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10pt;
+    margin: 16pt 0 0 0;
+  }
+  .signature-row .signature-label {
+    white-space: nowrap;
+  }
+  .signature-field {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 160pt;
+  }
+  .signature-field .signature-line {
+    display: block;
+    width: 100%;
+    border-bottom: 1px solid #000;
+    min-height: 1.2em;
+  }
+  .signature-field .signature-sublabel {
+    font-size: 8pt;
+    margin-top: 2pt;
+  }
+  .signature-row .signature-name {
+    white-space: nowrap;
   }
 </style>
 </head>
@@ -101,9 +126,23 @@
     </table>
   </div>
 
-  <div class="signature">
-    <div class="line">Кто передал: {{ document.giver_name }}</div>
-    <div class="line">Кто принял: {{ document.receiver_name }}</div>
+  <div class="signatures">
+    <div class="signature-row">
+      <span class="signature-label">Выдал:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ document.giver_name }}</span>
+    </div>
+    <div class="signature-row">
+      <span class="signature-label">Получил:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ document.receiver_name }}</span>
+    </div>
   </div>
 
 </body>
