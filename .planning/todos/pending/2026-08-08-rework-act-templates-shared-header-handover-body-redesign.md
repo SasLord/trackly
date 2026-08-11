@@ -2,8 +2,9 @@
 created: 2026-08-08T14:01:15.546Z
 title: Rework act templates — shared header + handover body redesign
 area: docs
-resolves_phase: 34
+resolves_phase: 36
 spans_phases: [34, 35, 36]
+progress: "Phase 34 (общая шапка) done 2026-08-11 — _header.html + upgrade-механизм. Остаётся тело акта (35) и пагинация (36); resolves_phase перевешен на 36, чтобы todo не закрылся раньше времени."
 milestone: v1.3.3
 files:
   - crates/trackly-app/templates/act_handover.html
