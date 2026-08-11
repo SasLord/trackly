@@ -285,9 +285,9 @@ async fn handover_pdf_render_within_e2e() {
         let html = p.acts.render_pdf(handover.id).await.expect("render");
         assert!(html.len() > 1000);
         assert!(html.to_lowercase().contains("<html"));
-        // D-09 (Phase 15 plan 02) removed giver_name from the rendered body —
-        // it now only appears via the bare "Выдал" signature label.
-        // receiver_name is the D-09 intro-paragraph value that IS rendered.
+        // Phase 35 D-06 restored giver_name to the rendered body — it is now
+        // printed in the horizontal signature block. receiver_name is the
+        // D-01 intro-paragraph value that IS rendered.
         assert!(html.contains("Петров"));
     })
     .await
