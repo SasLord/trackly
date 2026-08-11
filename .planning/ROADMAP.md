@@ -151,7 +151,24 @@
      `act.receiver_name` без изменений бэкенда.
   5. Рендер настоящего PDF/превью (не текстовое сравнение) подтверждает вёрстку на обоих
      транспортах — десктоп и LAN-браузер.
-**Plans**: TBD
+**Plans**: 5 plans in 4 waves
+
+**Wave 1**
+
+- [ ] 35-01-PLAN.md — срез _legacy_defaults/v22 + регистрация в KNOWN_LEGACY_DEFAULTS + demo_context_for_kind act.giver_name
+
+**Wave 2** *(depends on Wave 1)*
+
+- [ ] 35-02-PLAN.md — act_handover.html: doc-комментарий/CSS, интро/поля/множественное число/«Сроком до», горизонтальный блок подписей (D-01..D-12)
+- [ ] 35-03-PLAN.md — act_acceptance.html: дедупликация ФИО в таблице + горизонтальный блок подписей (D-09/D-06/D-07)
+
+**Wave 3** *(depends on Wave 2)*
+
+- [ ] 35-04-PLAN.md — тестовый дрейф: pdf_render_act.rs, html_act_render.rs, acts_e2e_smoke.rs + структурный гейт DOC-07 (C-03)
+
+**Wave 4** *(depends on Wave 3)*
+
+- [ ] 35-05-PLAN.md — privacy-грep, операционная подготовка, ручная UAT-проверка на обоих транспортах (C-05/C-07)
 
 ### Phase 36: Пагинация акта по количеству устройств
 **Goal**: Разбивка акта приёма-передачи по листам зависит от количества устройств — один лист с
