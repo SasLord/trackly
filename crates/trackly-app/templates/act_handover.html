@@ -139,9 +139,7 @@
 
   {%- for item in act.items %}
   <div class="device-block">
-    {%- if act.items | length == 1 %}
     <div class="field-row">было получено устройство: {{ item.name }}</div>
-    {%- endif %}
     {%- if item.inventory_no %}
     <div class="field-row">Инвентарный номер: {{ item.inventory_no }}</div>
     {%- endif %}

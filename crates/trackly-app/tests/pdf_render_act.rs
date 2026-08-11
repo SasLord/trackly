@@ -332,6 +332,126 @@ async fn render_handover_multi_device_wraps_long_fields() {
     .expect("timeout");
 }
 
+/// Phase 35 Plan 06 (G-01/CR-01 closure, D-02a): each `.device-block` must
+/// self-identify with its own device name AND its own optional-field values,
+/// independent of item count. Seeds 3 devices, gives device 0 an
+/// `inventory_no`, device 1 a `complectation` (kit) value, and leaves device 2
+/// with NO optional fields at all — the exact "empty block" case CR-01
+/// flagged as losing all identifiable content. Splitting the rendered HTML on
+/// the literal `<div class="device-block">` marker and asserting per-index
+/// co-location (name + own field, absence of the other two devices' fields)
+/// would FAIL against the pre-Plan-06 `length == 1`-gated template, since
+/// none of the three blocks would contain a device name at all for N=3.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_multi_device_fields_attributable_to_own_device() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 3).await;
+
+        // Device 0 gets an inventory number.
+        {
+            let device_id = device_ids[0];
+            p.writer
+                .execute(move |conn| {
+                    conn.execute(
+                        "UPDATE devices SET inventory_number = ?1 WHERE id = ?2",
+                        params!["ИНВ-АТРИБУЦИЯ-0", device_id],
+                    )
+                    .map(|_| ())
+                    .map_err(map_rusqlite)
+                })
+                .await
+                .expect("set device 0 inventory_number");
+        }
+
+        let act = create_handover_with_giver(&p.acts, &device_ids, "Морозов М.М.").await;
+
+        // Device 1 (act.items[1]) gets a kit value; act_id/device_id come from
+        // the created act's own item rows.
+        {
+            let act_id = act.id;
+            let device_id = act.items[1].device_id;
+            p.writer
+                .execute(move |conn| {
+                    conn.execute(
+                        "UPDATE act_items SET complectation_at_time = ?1 \
+                         WHERE act_id = ?2 AND device_id = ?3",
+                        params!["КОМПЛЕКТ-АТРИБУЦИЯ-1", act_id, device_id],
+                    )
+                    .map(|_| ())
+                    .map_err(map_rusqlite)
+                })
+                .await
+                .expect("set act_items[1] complectation_at_time");
+        }
+        // Device 2 (act.items[2]) intentionally receives NO optional field —
+        // covers CR-01's "empty block loses all identifiable content" case.
+
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+        let parts: Vec<&str> = html.split("<div class=\"device-block\">").collect();
+        assert_eq!(
+            parts.len(),
+            4,
+            "expected 1 preamble part + 3 device-block parts (N=3 items). Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+
+        let names = ["Ноутбук-0", "Ноутбук-1", "Ноутбук-2"];
+        for i in 0..3 {
+            let block = parts[i + 1];
+            assert!(
+                block.contains(names[i]),
+                "device-block {i} must contain its own name {:?}. Head: {:?}",
+                names[i],
+                html.chars().take(800).collect::<String>()
+            );
+            for (j, other_name) in names.iter().enumerate() {
+                if j != i {
+                    assert!(
+                        !block.contains(other_name),
+                        "device-block {i} must NOT contain other device's name {:?}. Head: {:?}",
+                        other_name,
+                        html.chars().take(800).collect::<String>()
+                    );
+                }
+            }
+        }
+
+        assert!(
+            parts[1].contains("ИНВ-АТРИБУЦИЯ-0"),
+            "device-block 0 must contain its own inventory_no. Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+        assert!(
+            !parts[2].contains("ИНВ-АТРИБУЦИЯ-0") && !parts[3].contains("ИНВ-АТРИБУЦИЯ-0"),
+            "device-blocks 1/2 must NOT contain device 0's inventory_no. Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+
+        assert!(
+            parts[2].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
+            "device-block 1 must contain its own complectation value. Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+        assert!(
+            !parts[1].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1") && !parts[3].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
+            "device-blocks 0/2 must NOT contain device 1's complectation value. Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+
+        // Device 2 has zero optional fields, but its block must still
+        // self-identify via the device name (CR-01's "empty block" defect).
+        assert!(
+            parts[3].contains("Ноутбук-2"),
+            "device-block 2 (no optional fields) must still contain its own name. Head: {:?}",
+            html.chars().take(800).collect::<String>()
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 /// 260704-wxw success criterion carried into Phase 16: the default
 /// `act_handover.html` must emit `field-row`-style blocks (full-length
 /// labels), never a «Устройство №N» heading/counter nor the abbreviated
