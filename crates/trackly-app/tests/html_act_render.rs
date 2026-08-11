@@ -185,7 +185,7 @@ async fn html_handover_contains_required_blocks_and_logo() {
 
     let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
-    for expected in ["Акт приема-передачи", "Выдал", "Получил", "Подпись"] {
+    for expected in ["Акт приема-передачи", "Выдал:", "Получил:", "Подпись"] {
         assert!(
             html.contains(expected),
             "expected block/label {expected:?} missing from handover HTML. Head: {:?}",

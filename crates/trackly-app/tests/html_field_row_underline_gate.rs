@@ -18,9 +18,13 @@
 //! Reads the template via `include_str!` (compile-time, relative to this
 //! test file's own location), so the test is independent of `cargo test`'s
 //! working directory. This test only READS `act_handover.html` — it never
-//! modifies `crates/trackly-app/templates/*.html`.
+//! modifies `crates/trackly-app/templates/*.html`. Phase 35 Plan 06 (G-04/
+//! IN-01) extended this file to also cover `act_acceptance.html`'s equivalent
+//! signature-line underline, closing the structural-gate gap the code review
+//! flagged for that template.
 
 const ACT_HANDOVER_HTML: &str = include_str!("../templates/act_handover.html");
+const ACT_ACCEPTANCE_HTML: &str = include_str!("../templates/act_acceptance.html");
 
 /// Extracts the content of the first `<style>...</style>` block from `text`,
 /// panicking if no `<style>` block is found.
@@ -81,6 +85,30 @@ fn field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain() {
     assert!(
         signature_line_body.contains("border-bottom"),
         "`.signature-field .signature-line` must declare border-bottom (D-06). \
+         Rule body: {signature_line_body}"
+    );
+}
+
+/// G-04/IN-01: structural DOC-07-equivalent gate for `act_acceptance.html`.
+/// Unlike `act_handover.html`, this template has no `.field-row`/
+/// `.value-blank` pattern (it uses `table.kv` for the details table), so
+/// exactly ONE `border-bottom` source is legitimate: the signature line
+/// (D-09), shared markup/CSS with `act_handover.html`'s signature block.
+#[test]
+fn acceptance_signature_line_css_has_exactly_one_legitimate_border_bottom() {
+    let style = extract_style_block(ACT_ACCEPTANCE_HTML);
+
+    let count = style.matches("border-bottom").count();
+    assert_eq!(
+        count, 1,
+        "found {count} border-bottom occurrences in act_acceptance.html's <style>, \
+         expected exactly 1 (.signature-field .signature-line)"
+    );
+
+    let signature_line_body = extract_rule_body(&style, ".signature-field .signature-line");
+    assert!(
+        signature_line_body.contains("border-bottom"),
+        "`.signature-field .signature-line` must declare border-bottom (D-09). \
          Rule body: {signature_line_body}"
     );
 }
