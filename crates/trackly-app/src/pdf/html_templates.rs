@@ -464,6 +464,66 @@ mod tests {
         }
     }
 
+    /// Phase 35 Plan 06 (WR-01 closure): structural sibling of
+    /// `upgrade_replaces_v21_legacy_default_with_current_bundled_body`, proving
+    /// the NEW v22 slice element (the pre-Phase-35 body snapshot, C-01) drives
+    /// a real upgrade for installs currently on that body — pulls index `2`
+    /// (the v22 element) instead of index `1`. For `report.html` (2-element
+    /// slice: v20, v21) and `_header.html` (empty slice), `bodies.get(2)` is
+    /// `None`, so this test correctly `continue`s past them and only exercises
+    /// `act_handover.html`/`act_acceptance.html`, which are the only two
+    /// filenames with a v22 snapshot.
+    #[test]
+    fn upgrade_replaces_v22_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let Some(bodies) = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| *bodies)
+            else {
+                continue; // e.g. _header.html — no legacy slice registered
+            };
+            let Some(v22_body) = bodies.get(2) else {
+                continue; // filename has no v22 element (e.g. report.html)
+            };
+
+            // Precondition guard (Pitfall 5, mirrors the v21 test above): if
+            // the v22 snapshot had been taken AFTER the Phase 35 rewrite
+            // instead of before, it would already equal the current bundled
+            // body and the upgrade assertion below would pass trivially
+            // without ever exercising a real upgrade.
+            assert_ne!(
+                v22_body, current,
+                "{filename}: v22 legacy snapshot must NOT equal the current bundled \
+                 default — otherwise the snapshot was taken after the rewrite and this \
+                 test cannot prove a real upgrade happened"
+            );
+
+            std::fs::write(dir.path().join(filename), v22_body).expect("write v22 body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let has_v22 = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| bodies.len() > 2)
+                .unwrap_or(false);
+            if !has_v22 {
+                continue;
+            }
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded from its v22 legacy body to the current bundled body"
+            );
+        }
+    }
+
     /// D-12 Test 2: a user-customized file (matches neither the current default
     /// nor any known legacy default) is NEVER overwritten — the fail-closed
     /// safety guarantee (T-20-06-01 mitigation).
