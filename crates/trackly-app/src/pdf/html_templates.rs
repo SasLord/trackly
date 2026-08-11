@@ -483,6 +483,96 @@ mod tests {
         );
     }
 
+    /// Captures `tracing` output into a shared byte buffer so a test can assert
+    /// on what the application actually logged. Cloneable + `io::Write`, which
+    /// is what `fmt().with_writer(|| ...)` needs.
+    #[derive(Clone)]
+    struct CapturedLogs(std::sync::Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturedLogs {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// D-16: the fail-closed skip must be OBSERVABLE, not silent.
+    ///
+    /// `upgrade_leaves_user_customized_file_untouched` above only proves the
+    /// bytes survive; that is exactly the state a Phase-20/34 header upgrade
+    /// looks like when it silently never reaches an install. This test asserts
+    /// the operator gets told: a `warn` naming the skipped file. Deleting the
+    /// `else` branch in `upgrade_untouched_defaults_on_startup` keeps the
+    /// sibling test green and turns this one red.
+    ///
+    /// Uses a THREAD-LOCAL scoped subscriber (`set_default`, not
+    /// `set_global_default`) — the lib test binary runs many tests in one
+    /// process and a global default can only ever be installed once.
+    #[test]
+    fn upgrade_warns_when_it_skips_a_user_customized_file() {
+        let _guard = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // Hand-edited file → matches neither the current default nor any known
+        // legacy default → must be skipped AND warned about. Fictional
+        // placeholder content only (public repo, no real org/personal data).
+        let custom = "<html><p>hand-edited</p></html>";
+        std::fs::write(dir.path().join("act_handover.html"), custom).expect("write custom body");
+
+        // Control: a file already on the current bundled body is a no-op and
+        // must NOT be warned about — otherwise the "warn" assertion below
+        // would pass for an implementation that warns indiscriminately.
+        let current_report = DEFAULT_HTML_TEMPLATES
+            .iter()
+            .find(|(name, _)| *name == "report.html")
+            .map(|(_, body)| *body)
+            .expect("report.html default present");
+        std::fs::write(dir.path().join("report.html"), current_report).expect("write current body");
+
+        let buffer = std::sync::Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = CapturedLogs(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .finish();
+
+        {
+            let _log_guard = tracing::subscriber::set_default(subscriber);
+            upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+        }
+
+        let captured = String::from_utf8(buffer.lock().unwrap_or_else(|e| e.into_inner()).clone())
+            .expect("captured logs are UTF-8");
+
+        assert!(
+            captured.contains("Skipped auto-upgrade"),
+            "skipping a user-customized template must emit a warn, captured logs were: \
+             {captured:?}"
+        );
+        assert!(
+            captured.contains("act_handover.html"),
+            "the warn must name the skipped file, captured logs were: {captured:?}"
+        );
+        assert!(
+            !captured.contains("report.html"),
+            "an already-current file must not be reported as skipped, captured logs were: \
+             {captured:?}"
+        );
+
+        // Non-vacuous: the skip is still a real skip — the bytes are preserved.
+        let contents =
+            std::fs::read_to_string(dir.path().join("act_handover.html")).expect("still exists");
+        assert_eq!(contents, custom);
+    }
+
     /// D-12 Test 3: a file already on the current bundled body is a no-op —
     /// no wrongful rewrite, content stays identical.
     #[test]
