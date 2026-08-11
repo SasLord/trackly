@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: planning
-last_updated: "2026-08-11T10:14:43.173Z"
-last_activity: 2026-08-11
+status: executing
+last_updated: "2026-08-11T11:24:45.243Z"
+last_activity: 2026-08-11 -- Phase 35 planning complete
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 6
+  total_plans: 11
   completed_plans: 6
   percent: 20
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 35
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-11
+Status: Ready to execute
+Last activity: 2026-08-11 -- Phase 35 planning complete
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
 Progress: [██████████] 100%
