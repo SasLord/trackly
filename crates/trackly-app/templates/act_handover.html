@@ -172,19 +172,21 @@
   {%- endif %}
 
   <div class="signatures">
-    <div class="signature">
-      <div class="line"></div>
-      <div class="sublabel">Выдал</div>
-      <div class="sublabel">Подпись</div>
-      <div class="line"></div>
-      <div class="sublabel">ФИО</div>
+    <div class="signature-row">
+      <span class="signature-label">Выдал:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ act.giver_name }}</span>
     </div>
-    <div class="signature">
-      <div class="line"></div>
-      <div class="sublabel">Получил</div>
-      <div class="sublabel">Подпись</div>
-      <div class="line"></div>
-      <div class="sublabel">ФИО</div>
+    <div class="signature-row">
+      <span class="signature-label">Получил:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ act.receiver_name }}</span>
     </div>
   </div>
 
