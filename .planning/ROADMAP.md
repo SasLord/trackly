@@ -85,7 +85,7 @@
 | 32. Авто-админ по логинам + релиз SSO в main | v1.3 | 5/5 | Complete | 2026-08-04 |
 | 33. Полировка предпросмотра печати | v1.3 | 4/4 | Complete | 2026-08-04 |
 | 34. Единая шапка документов | v1.3.3 | 6/6 | Complete    | 2026-08-11 |
-| 35. Тело акта приёма-передачи | v1.3.3 | 3/5 | In Progress|  |
+| 35. Тело акта приёма-передачи | v1.3.3 | 4/5 | In Progress|  |
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 0/TBD | Not started | - |
 | 37. Приватность данных | v1.3.3 | 0/TBD | Not started | - |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/TBD | Not started | - |
@@ -164,7 +164,7 @@
 
 **Wave 3** *(depends on Wave 2)*
 
-- [ ] 35-04-PLAN.md — тестовый дрейф: pdf_render_act.rs, html_act_render.rs, acts_e2e_smoke.rs + структурный гейт DOC-07 (C-03)
+- [x] 35-04-PLAN.md — тестовый дрейф: pdf_render_act.rs, html_act_render.rs, acts_e2e_smoke.rs + структурный гейт DOC-07 (C-03)
 
 **Wave 4** *(depends on Wave 3)*
 

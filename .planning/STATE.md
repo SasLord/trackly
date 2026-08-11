@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-11T12:44:11.704Z"
+last_updated: "2026-08-11T14:03:49.892Z"
 last_activity: 2026-08-11
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 20
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 35 (act-handover-body) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-11
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 91%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -293,6 +293,7 @@ Progress: [████████░░] 82%
 | Phase 35 P01 | ~15min | 2 tasks | 4 files |
 | Phase 35 P02 | 13min | 3 tasks | 1 files |
 | Phase 35 P03 | 10min | 2 tasks | 1 files |
+| Phase 35 P04 | 40min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -725,6 +726,7 @@ Recent decisions affecting current work:
 - [Phase 34]: Task 1 Step 7 scripted scratch-directory upgrade procedure superseded by a stronger real-install observation (act_handover.html finding), not run as scripted
 - [Phase 34]: Report print-form .subtitle rendered raw English PeriodDto.mode discriminator ('year 2026') — fixed via ReportService::format_period_label covering both transports, found during UAT and scoped into phase 34 at user's direction
 - [Phase 35]: act_acceptance.html signature block reworked to horizontal one-line-per-signer layout, byte-identical CSS/markup pattern to act_handover.html (D-09/D-06/D-07/D-08); duplicate Кто передал/Кто принял table rows removed
+- [Phase ?]: Full-suite cargo test -p trackly-app hangs on pre-existing login_remember_persistent_cookie test (lives inside trackly-app package, not just --workspace); use -- --skip login_remember_persistent_cookie for full-package verification
 
 ### Pending Todos
 
@@ -894,8 +896,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-11T12:43:00.034Z
-Stopped at: Phase 35 context gathered
+Last session: 2026-08-11T14:03:49.883Z
+Stopped at: Completed 35-04-PLAN.md
 Resume file: 
 
 None
