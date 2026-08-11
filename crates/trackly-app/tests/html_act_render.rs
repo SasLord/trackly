@@ -185,14 +185,21 @@ async fn html_handover_contains_required_blocks_and_logo() {
 
     let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
-    for expected in ["Акт приема-передачи", "Выдал", "Получил", "Подпись", "ФИО"]
-    {
+    for expected in ["Акт приема-передачи", "Выдал", "Получил", "Подпись"] {
         assert!(
             html.contains(expected),
             "expected block/label {expected:?} missing from handover HTML. Head: {:?}",
             html.chars().take(500).collect::<String>()
         );
     }
+    // Phase 35 D-06: giver_name is now printed in the signature block (the
+    // separate "ФИО" sublabel was removed, D-07 — the printed name replaces
+    // it).
+    assert!(
+        html.contains("Выдалов В.В."),
+        "expected printed giver_name in signature block. Head: {:?}",
+        html.chars().take(500).collect::<String>()
+    );
     // Act number present.
     assert!(
         html.contains(&act.number_raw.to_string()),
@@ -236,6 +243,13 @@ async fn html_acceptance_contains_required_blocks() {
     assert!(
         html.contains("Принялов П.П."),
         "receiver name missing from rendered HTML"
+    );
+    // Phase 35 D-09: the duplicate "Кто передал"/"Кто принял" table rows
+    // were removed — giver/receiver names now appear only in the signature
+    // block.
+    assert!(
+        !html.contains("Кто передал"),
+        "duplicate 'Кто передал' table row should have been removed"
     );
 }
 
