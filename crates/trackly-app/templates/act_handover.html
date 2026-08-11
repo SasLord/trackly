@@ -1,21 +1,25 @@
 <!DOCTYPE html>
-{#- Default HTML template for Акт приёма-передачи (Phase 16, D-01/D-02/D-03).
+{#- Default HTML template for Акт приёма-передачи (Phase 16, D-01/D-02/D-03;
+  body reworked Phase 35, D-01..D-12).
 
   Self-contained HTML5 document (inline <style>, no external CSS/CDN, D-11
   data: URI logo) reproducing the Word-sample block order fixed in Phase 15's
   act_handover.minijinja: shared header partial (logo + org requisites,
   Phase 34, see _header.html) -> centered title -> number/date -> intro
-  field_row -> per-item field_rows (label | underlined value, no "Устройство
-  №N") -> "Сроком до" -> optional parent-act paragraph -> two-line signatures
-  "Выдал/Получил".
+  field_row -> per-item field_rows (label + value as one run of plain text,
+  no underline, no "Устройство №N") -> "Сроком до" (always rendered, blank
+  underline when the value is empty, Phase 35 D-03) -> optional parent-act
+  paragraph -> horizontal one-line-per-signer signature block "Выдал: ⟨line⟩
+  ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35 D-06/D-07/D-08).
 
   Context variables (same shape as act_service::render_pdf's ctx, D-04, plus
   org.logo_data_uri replacing org.logo_path per D-11, plus org.full_name for
-  the shared header partial per Phase 34):
+  the shared header partial per Phase 34, plus act.giver_name for the
+  signature block per Phase 35 D-06):
     org.name, org.full_name, org.inn, org.kpp, org.address, org.address_line2,
     org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
-    act.receiver_name, act.deadline, act.deadline_human,
+    act.receiver_name, act.giver_name, act.deadline, act.deadline_human,
     act.location_name, act.items[], act.parent
     act.items[].name, act.items[].inventory_no, act.items[].serial_no,
     act.items[].model, act.items[].specs, act.items[].kit,
@@ -62,19 +66,13 @@
     margin: 4pt 0 12pt 0;
   }
   .field-row {
-    display: flex;
-    align-items: baseline;
-    gap: 6pt;
     margin: 4pt 0;
   }
-  .field-row .label {
-    white-space: nowrap;
-  }
-  .field-row .value {
-    flex: 1;
+  .value-blank {
+    display: inline-block;
+    min-width: 140pt;
     border-bottom: 1px solid #000;
-    min-height: 1.2em;
-    padding: 0 2pt;
+    min-height: 1.1em;
   }
   .intro {
     margin: 4pt 0 10pt 0;
@@ -87,21 +85,36 @@
     margin: 8pt 0;
   }
   .signatures {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24pt;
     margin-top: 30pt;
     page-break-inside: avoid;
   }
-  .signature .line {
-    border-bottom: 1px solid #000;
-    min-height: 1.4em;
-    margin-top: 4pt;
+  .signature-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10pt;
+    margin: 16pt 0 0 0;
   }
-  .signature .sublabel {
-    font-size: 9pt;
-    text-align: center;
+  .signature-row .signature-label {
+    white-space: nowrap;
+  }
+  .signature-field {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 160pt;
+  }
+  .signature-field .signature-line {
+    display: block;
+    width: 100%;
+    border-bottom: 1px solid #000;
+    min-height: 1.2em;
+  }
+  .signature-field .signature-sublabel {
+    font-size: 8pt;
     margin-top: 2pt;
+  }
+  .signature-row .signature-name {
+    white-space: nowrap;
   }
 </style>
 </head>
