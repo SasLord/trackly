@@ -7,10 +7,11 @@
   act_handover.minijinja: shared header partial (logo + org requisites,
   Phase 34, see _header.html) -> centered title -> number/date -> intro
   field_row -> per-item field_rows (label + value as one run of plain text,
-  no underline, no "Устройство №N") -> "Сроком до" (always rendered, blank
-  underline when the value is empty, Phase 35 D-03) -> optional parent-act
-  paragraph -> horizontal one-line-per-signer signature block "Выдал: ⟨line⟩
-  ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35 D-06/D-07/D-08).
+  no underline, no "Устройство №N") -> deadline field_row (always rendered,
+  blank underline when the value is empty, Phase 35 D-03) -> optional
+  parent-act paragraph -> horizontal one-line-per-signer signature block
+  "Выдал: ⟨line⟩ ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35
+  D-06/D-07/D-08).
 
   Context variables (same shape as act_service::render_pdf's ctx, D-04, plus
   org.logo_data_uri replacing org.logo_path per D-11, plus org.full_name for
@@ -125,70 +126,44 @@
   <div class="title">Акт приема-передачи</div>
   <div class="subtitle">№{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
 
-  <div class="intro field-row">
-    <span class="label">Настоящим актом утверждаю, что мною:</span>
-    <span class="value">{{ act.receiver_name }}</span>
-  </div>
-  <div class="field-row">
-    <span class="value">&nbsp;</span>
-  </div>
+  <div class="intro field-row">Настоящим актом утверждаю, что мною: {{ act.receiver_name }}</div>
+
+  {%- if act.items | length > 1 %}
+  <div class="field-row">были получены устройства:</div>
+  <ul>
+    {%- for item in act.items %}
+    <li>{{ item.name }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
 
   {%- for item in act.items %}
   <div class="device-block">
-    <div class="field-row">
-      <span class="label">было получено устройство:</span>
-      <span class="value">{{ item.name }}</span>
-    </div>
+    {%- if act.items | length == 1 %}
+    <div class="field-row">было получено устройство: {{ item.name }}</div>
+    {%- endif %}
     {%- if item.inventory_no %}
-    <div class="field-row">
-      <span class="label">Инвентарный номер:</span>
-      <span class="value">{{ item.inventory_no }}</span>
-    </div>
+    <div class="field-row">Инвентарный номер: {{ item.inventory_no }}</div>
     {%- endif %}
     {%- if item.serial_no %}
-    <div class="field-row">
-      <span class="label">Серийный номер:</span>
-      <span class="value">{{ item.serial_no }}</span>
-    </div>
+    <div class="field-row">Серийный номер: {{ item.serial_no }}</div>
     {%- endif %}
     {%- if item.model %}
-    <div class="field-row">
-      <span class="label">Модель:</span>
-      <span class="value">{{ item.model }}</span>
-    </div>
+    <div class="field-row">Модель: {{ item.model }}</div>
     {%- endif %}
     {%- if item.kit %}
-    <div class="field-row">
-      <span class="label">Комплектация:</span>
-      <span class="value">{{ item.kit }}</span>
-    </div>
+    <div class="field-row">Комплектация: {{ item.kit }}</div>
     {%- endif %}
     {%- if item.specs %}
-    <div class="field-row">
-      <span class="label">Технические характеристики:</span>
-      <span class="value">{{ item.specs }}</span>
-    </div>
+    <div class="field-row">Технические характеристики: {{ item.specs }}</div>
     {%- endif %}
     {%- if item.condition %}
-    <div class="field-row">
-      <span class="label">Состояние:</span>
-      <span class="value">{{ item.condition }}</span>
-    </div>
+    <div class="field-row">Состояние: {{ item.condition }}</div>
     {%- endif %}
   </div>
   {%- endfor %}
 
-  {%- if act.deadline_human %}
-  <div class="field-row">
-    <span class="label">Сроком до:</span>
-    <span class="value">{{ act.deadline_human }}</span>
-  </div>
-  {%- elif act.deadline %}
-  <div class="field-row">
-    <span class="label">Сроком до:</span>
-    <span class="value">{{ act.deadline }}</span>
-  </div>
-  {%- endif %}
+  <div class="field-row">Сроком до: {% if act.deadline_human %}{{ act.deadline_human }}{% elif act.deadline %}{{ act.deadline }}{% else %}<span class="value-blank"></span>{% endif %}</div>
 
   {%- if act.parent %}
   <div class="parent-note">
