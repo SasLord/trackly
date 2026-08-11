@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 {#- Default HTML template for «Документ приёма товара на склад»
-  (Phase 16, D-01/D-02/D-03).
+  (Phase 16, D-01/D-02/D-03; signature block brought to parity with
+  act_handover.html Phase 35, D-09/D-06/D-07).
 
   Self-contained HTML5 document (inline <style>, no external CSS/CDN, D-11
   data: URI logo) reproducing the block order fixed in act_acceptance.minijinja:
   shared header partial (logo + org requisites, Phase 34, see _header.html)
-  -> heading -> date/giver/receiver key-value rows -> device key-value rows
-  -> single signature block.
+  -> heading -> date key-value row -> device key-value rows -> horizontal
+  one-line-per-signer signature block "Выдал: ⟨line⟩ ⟨printed name⟩ /
+  Получил: ⟨line⟩ ⟨printed name⟩" (document.giver_name/document.receiver_name
+  no longer duplicated in the table, Phase 35 D-09).
 
   Context (full org header, brought to parity with act_handover.html per
   PRN-01/D-01/D-02/D-03 — Phase 20, plus org.full_name per Phase 34):
@@ -85,8 +88,6 @@
 
   <table class="kv">
     <tr><td class="key">Дата</td><td>{{ document.date_human }}</td></tr>
-    <tr><td class="key">Кто передал</td><td>{{ document.giver_name }}</td></tr>
-    <tr><td class="key">Кто принял</td><td>{{ document.receiver_name }}</td></tr>
   </table>
 
   <h2>Устройство</h2>
