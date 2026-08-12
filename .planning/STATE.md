@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-12T05:01:42.464Z"
-last_activity: 2026-08-12 -- Phase 35 planning complete
+last_updated: "2026-08-12T08:35:31.053Z"
+last_activity: 2026-08-12
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 13
-  completed_plans: 12
-  percent: 20
+  completed_plans: 13
+  percent: 40
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 35 (act-handover-body) — EXECUTING
-Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-08-12 -- Phase 35 planning complete
+Plan: 7 of 7 — все планы выполнены
+Status: Awaiting phase verification
+Last activity: 2026-08-12 -- Plan 35-07 complete (long-ФИО signature wrap fix, DOC-08/SC#4)
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
 Progress: [██████████] 100%
