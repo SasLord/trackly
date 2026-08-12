@@ -128,3 +128,14 @@ None — no external service configuration required.
 ---
 *Phase: 36-act-pagination*
 *Completed: 2026-08-12*
+
+## Self-Check: PASSED
+
+- FOUND: `crates/trackly-app/tests/html_act_render.rs`
+- FOUND: `crates/trackly-app/tests/pdf_render_act.rs`
+- FOUND: `crates/trackly-app/tests/acts_e2e_smoke.rs`
+- FOUND: `crates/trackly-app/tests/html_field_row_underline_gate.rs`
+- FOUND: commit `fd1f01c` (Task 1)
+- FOUND: commit `66ef269` (Task 2)
+- FOUND: commit `2b8662a` (Task 3)
+- FOUND: commit `9b3a215` (SUMMARY.md)
