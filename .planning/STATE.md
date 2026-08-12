@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-12T15:55:05.551Z"
+last_updated: "2026-08-12T16:11:56.696Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 14
+  completed_plans: 15
   percent: 40
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 36 (Пагинация акта по количеству устройств) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-12
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 83%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -298,6 +298,7 @@ Progress: [████████░░] 78%
 | Phase 35 P05 | 20min | 2 tasks | 0 files |
 | Phase 35 P07 | ~2h | 3 tasks | 7 files |
 | Phase 36 P01 | 8min | 2 tasks | 2 files |
+| Phase 36 P02 | 22min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -737,6 +738,7 @@ Recent decisions affecting current work:
 - [Phase 35]: 35-07: v23-снимок снят строго ДО CSS-правки (min-width:0/white-space:normal/overflow-wrap:break-word в .signature-row .signature-name), иначе assert_ne! precondition guard нового теста прошёл бы тривиально
 - [Phase 35]: 35-07 Task 3 (human-verify, gate=blocking): approved — пользователь подтвердил перенос длинного вымышленного ФИО в пределах печатной ширины на десктопе и в LAN-браузере для обоих актов, без обрезания и без ухода за край листа
 - [Phase 36]: 36-01: v24 snapshot taken from current HEAD before any pagination edit (Pitfall 7/C-01), byte-identical confirmed via diff; new upgrade_replaces_v24_... regression test is expected RED until 36-02 lands the pagination rewrite (structural, self-resolving)
+- [Phase 36]: act_handover.html N=1/N>1 pagination: appendix table uses tbody-per-device (not bare tr) for break-inside: avoid, per Paged.js's TBODY/THEAD-only fragmentation support
 
 ### Pending Todos
 
@@ -906,8 +908,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-12T15:55:05.542Z
-Stopped at: Completed 36-01-PLAN.md
+Last session: 2026-08-12T16:11:56.688Z
+Stopped at: Completed 36-02-PLAN.md
 Resume file: 
 
 None
