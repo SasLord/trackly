@@ -1,36 +1,42 @@
 ---
 phase: 35-act-handover-body
-verified: 2026-08-11T00:00:00Z
+verified: 2026-08-12T00:59:17Z
 status: gaps_found
-score: 4/5 must-haves verified (roadmap SC), 1 additional derived truth FAILED
+score: 4/5 roadmap Success Criteria verified
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/5
+  gaps_closed:
+    - "Success Criterion #2 — per-device attribution in multi-device act_handover.html (CR-01): the {%- if act.items | length == 1 %} gate around the device-name line is removed; every .device-block now prints its own name unconditionally, honoring the user's amended decision D-02a (CONTEXT.md). New regression test render_handover_multi_device_fields_attributable_to_own_device (pdf_render_act.rs) splits rendered HTML by the device-block marker and asserts co-location of each device's name with its own optional-field values (and absence of other devices' values) for N=3, including the zero-optional-fields case — this test is not vacuous: it would fail against the previously gated template."
+  gaps_remaining: []
+  regressions:
+    - "New finding, not a regression of a previously-passed item: WR-02 from the post-closure code review (35-REVIEW.md) — `.signature-name { white-space: nowrap; }` in both act_handover.html and act_acceptance.html has no `min-width: 0` on the flex item, so a signer's printed ФИО (Success Criterion #4 / DOC-08) cannot shrink below its full text width and will overflow the printable page width for realistic long Cyrillic names (reviewer's line-budget math: ~294pt available at 12pt Times ≈ 47-52 characters; the project's own long-name fixture 'Сидоров-Петроградский Иван Александрович' is 39 characters and already at ~80% of that budget). This is newly-printed content in this exact phase (ФИО was not printed in the signature block before Phase 35) and matches a defect class ('ФИО clipping') already recorded as having occurred in a prior live UAT for this project. The Task 4 human-UAT approval in 35-06-SUMMARY.md is weak evidence here because it is not documented to have used a signer name near the length threshold."
 gaps:
-  - truth: "Success Criterion #2 — согласованный текст сверен с каноном вёрстки Word-образца, изменения не ломают то, ради чего делались Фазы 15/16 (per-item description must remain attributable to its device)"
-    status: failed
+  - truth: "Success Criterion #4 — блок подписей горизонтальный, отдельная строка на каждого подписанта, ФИО подставляются автоматически из act.giver_name/act.receiver_name без изменений бэкенда"
+    status: partial
     reason: >
-      For multi-device acts (act.items | length > 1), act_handover.html suppresses the
-      per-device "было получено устройство: {{ item.name }}" line inside every
-      .device-block (the {%- if act.items | length == 1 %} gate at line 142). Only a
-      single top-level <ul> of names renders once, followed by a sequence of unlabeled
-      .device-block divs containing Инвентарный номер/Серийный номер/Модель/
-      Комплектация/Технические характеристики/Состояние rows with no name, heading, or
-      divider identifying which device each block describes (separated only by
-      margin-bottom: 8pt). The pre-Phase-35 body
-      (_legacy_defaults/v22/act_handover.html) always printed the device name inside
-      every block regardless of item count, so this is a fidelity regression against
-      the canon Phase 15/16 established (self-identifying device blocks), independently
-      confirmed by code review CR-01 and by manual reading of the current template.
-      CONTEXT.md D-02 only decided to avoid repeating the LABEL text ("было получено
-      устройство:") for N>1 — it never discusses or approves removing the device name
-      from each per-item technical-field block. No test in the suite catches this
-      (render_handover_multi_device_wraps_long_fields only asserts device-name presence
-      and relative ordering, never co-location with its own field block).
+      Structure and data-flow are correct (horizontal one-line-per-signer block, correct
+      context keys, no backend change — all independently confirmed). However, the printed
+      ФИО span (`.signature-name`) is `white-space: nowrap` inside a flex row without
+      `min-width: 0`, so it cannot shrink below its own content width. For a long Cyrillic
+      ФИО (double-barrel surname, patronymic) the row's total required width exceeds the
+      ~294pt budget left after the fixed-width signature-line field and label, causing the
+      printed name to overflow the page's printable area on both act_handover.html and
+      act_acceptance.html. Confirmed present in current HEAD by reading the CSS (no
+      `min-width: 0`/`overflow-wrap` anywhere in either template) — this is not a hypothetical,
+      it is the documented WR-02 finding from the post-closure code review, independently
+      re-derived here. Text-extraction/`html.contains(...)` tests structurally cannot see this
+      class of defect (already a recorded lesson in this project's memory), and no test in the
+      suite renders/measures a long-name case.
     artifacts:
       - path: "crates/trackly-app/templates/act_handover.html"
-        issue: "Lines 140-164: device-block loop only prints the item name (line 142-144) when act.items | length == 1; for N>1 every device-block is anonymous."
+        issue: "Lines 117-119: `.signature-row .signature-name { white-space: nowrap; }` has no `min-width: 0` / wrap-permission, so a long ФИО overflows the fixed-width signature row instead of wrapping or shrinking."
+      - path: "crates/trackly-app/templates/act_acceptance.html"
+        issue: "Lines 103-105: identical duplicated CSS rule, same defect (this file duplicates the signature-block markup/CSS from act_handover.html rather than sharing a partial, per REVIEW.md WR-08 — both copies need the fix)."
     missing:
-      - "Print the device name inside every per-item .device-block, not only when there is exactly one item (drop or restructure the length==1 gate per CR-01's suggested fix), while keeping the D-02 decision to avoid repeating the full sentence label on every block if desired (e.g. a lightweight per-block heading instead of the full 'было получено устройство:' phrase)."
-      - "A regression test asserting each device's technical fields are co-located with (or otherwise attributable to) that device's own name for N>1 acts, not just that names appear somewhere in the document."
+      - "Add `min-width: 0; white-space: normal; overflow-wrap: break-word;` (or equivalent) to `.signature-row .signature-name` in both act_handover.html and act_acceptance.html so long ФИО wrap within the available row width instead of overflowing off the printable page."
+      - "A verification step for a long name (>= 50-55 Cyrillic characters, e.g. reusing the project's own 'Сидоров-Петроградский Иван Александрович'-class fixture) that actually renders the HTML/PDF and confirms the name is fully visible within the page's printable width — text-extraction assertions do not suffice here per this project's own established testing lesson (act-pdf-word-fidelity); a real render/print check (desktop and/or LAN-browser) is required, consistent with how Success Criterion #5 was itself verified in this phase."
 deferred: []
 human_verification: []
 ---
@@ -43,9 +49,9 @@ human_verification: []
 подставляемым текстом, с горизонтальным блоком подписей — по строке на каждого подписанта
 с автоподставленными ФИО.
 
-**Verified:** 2026-08-11
+**Verified:** 2026-08-12
 **Status:** gaps_found
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap closure (Plan 35-06)
 
 ## Goal Achievement
 
@@ -53,145 +59,131 @@ human_verification: []
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Финальный текст акта явно согласован с пользователем ДО вёрстки тела, зафиксировано как первый шаг фазы | ✓ VERIFIED | `.planning/phases/35-act-handover-body/35-CONTEXT.md` D-01 + `35-DISCUSSION-LOG.md` ("Текст акта — форма изложения" table) record the user's choice ("B — оставить текст образца") as part of context-gathering (2026-08-11), which precedes all 5 plans (35-01..35-05, all also dated 2026-08-11, plan-01 timestamped ~12:12 vs context gathered earlier same session). Text was not rewritten in any plan — `render_handover_act_contains_d09_intro_phrase` was explicitly left untouched (35-04-SUMMARY.md: "confirmed byte-for-byte unchanged"). |
-| 2 | Согласованный текст сверен с каноном вёрстки Word-образца; изменения не ломают Фазы 15/16 | ✗ FAILED | Signature-block layout (horizontal, per-signer line) correctly restores the Word-sample canon per CONTEXT.md's own analysis ("Word-образец уже горизонтальный по подписям"). **However**, for multi-device acts (N>1), the per-item technical-field blocks in `act_handover.html` lost their device-name association — a regression against the pre-Phase-35 canon-compliant body, independently confirmed by code review (`35-REVIEW.md` CR-01) and my own reading of `crates/trackly-app/templates/act_handover.html:140-164`. See Gaps section. |
-| 3 | Нет полосок-подчёркиваний под автоподставляемыми полями; полоски остаются только там, где расписываются от руки | ✓ VERIFIED | `grep -n "border-bottom" crates/trackly-app/templates/act_handover.html` → exactly 2 matches (line 75 `.value-blank`, line 110 `.signature-field .signature-line`); `grep -n "border-bottom" act_acceptance.html` → exactly 1 match (`.signature-field .signature-line`, no blank-underline case needed there). Structural regression gate `crates/trackly-app/tests/html_field_row_underline_gate.rs::field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain` asserts this by CSS selector at compile-time (`include_str!`), not by markup range — durable against silent reintroduction. |
-| 4 | Блок подписей горизонтальный, отдельная строка на каждого подписанта, ФИО автоподставляются из `act.giver_name`/`act.receiver_name` без изменений бэкенда | ✓ VERIFIED | Both `act_handover.html` (lines 174-191) and `act_acceptance.html` (lines 129-146) contain two `div.signature-row` blocks ("Выдал:"/"Получил:"), each with one `.signature-line` (empty underline for handwritten signature), a "Подпись" sublabel, and the printed name (`{{ act.giver_name }}`/`{{ act.receiver_name }}` or `{{ document.giver_name }}`/`{{ document.receiver_name }}`). Data-flow traced: `act_service.rs:2639-2640` populates `act.giver_name`/`act.receiver_name` from the real `act` DB row (not hardcoded) into the render context — no backend change (confirmed `git diff --stat e0d2dca~1..HEAD` shows zero changes to `act_service.rs`). |
-| 5 | Рендер настоящего PDF/превью подтверждает вёрстку на обоих транспортах (десктоп и LAN-браузер) | ✓ VERIFIED (human) | Per task instructions, this criterion was performed and approved by the human user (`35-05-SUMMARY.md` Task 2, checkpoint:human-verify, gate=blocking, response: approved). Treated as satisfied by human confirmation per already-established facts — not re-verified by automation in this report. Note: the user's UAT explicitly covered "plural device-list summary for N>1 devices" at a glance, but the CR-01 defect (missing per-block name for N>1) is a subtle content-attribution issue not obviously visible without deliberately cross-checking field values against device identity — the human approval does not contradict CR-01's finding. |
+| 1 | Финальный текст акта явно согласован с пользователем ДО вёрстки тела, зафиксировано как первый шаг фазы | ✓ VERIFIED (regression-checked) | Unchanged since prior verification — `35-CONTEXT.md` D-01, text preserved verbatim in `act_handover.html:129` ("Настоящим актом утверждаю, что мною: {{ act.receiver_name }}"). No plan in Wave 5 touched the intro text. |
+| 2 | Согласованный текст сверен с каноном вёрстки Word-образца; изменения не ломают Фазы 15/16 | ✓ VERIFIED | The prior gap (CR-01 — anonymous `.device-block` for N>1) is closed: `act_handover.html:140-162` prints `{{ item.name }}` unconditionally inside every device-block (the `length == 1` gate is gone — `grep -c "act.items | length == 1"` → 0). Confirmed by direct read of the template and by re-running the new regression test `render_handover_multi_device_fields_attributable_to_own_device` (`pdf_render_act.rs`), which passed and is structurally non-vacuous (splits HTML by the `<div class="device-block">` marker, asserts each block contains its own name/field values and NOT another device's, for N=3 including a device with zero optional fields). D-02a (CONTEXT.md amendment) explicitly authorizes keeping BOTH the top-level N>1 summary list AND the per-block name — the resulting duplication (code review WR-03) is a deliberate, user-approved trade-off, not a defect. |
+| 3 | Нет полосок-подчёркиваний под автоподставляемыми полями; полоски остаются только там, где расписываются от руки | ✓ VERIFIED (regression-checked) | `grep -c border-bottom act_handover.html` → 2 (`.value-blank` line 75, `.signature-field .signature-line` line 110); `act_acceptance.html` → 1 (`.signature-field .signature-line` line 96). Structural gates `field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain` AND the new `acceptance_signature_line_css_has_exactly_one_legitimate_border_bottom` (added in Plan 35-06 to close IN-01) both pass — `act_acceptance.html` is now covered by an equivalent structural gate, closing the asymmetry the previous review flagged. |
+| 4 | Блок подписей горизонтальный, отдельная строка на каждого подписанта, ФИО автоподставляются из `act.giver_name`/`act.receiver_name` без изменений бэкенда | ✗ FAILED | Structure and data-flow are correct (see Key Link Verification), but `.signature-name { white-space: nowrap; }` without `min-width: 0` on the flex item means a long printed ФИО overflows the page's printable width instead of wrapping — a legibility regression matching a defect class this project has hit before ("ФИО clipping" in a prior live UAT). Present in both `act_handover.html:117-119` and `act_acceptance.html:103-105`. See Gaps. |
+| 5 | Рендер настоящего PDF/превью подтверждает вёрстку на обоих транспортах (десктоп и LAN-браузер) | ✓ VERIFIED (human) | Per already-established facts, Plan 35-06 Task 4's `checkpoint:human-verify` (gate=blocking) was approved by the user for the closed CR-01 attribution behavior on both desktop and LAN-browser transports (3-device act, mixed optional fields). Treated as satisfied for what it tested. Note: this approval is NOT strong evidence for Criterion #4's WR-02 finding above — the UAT is not documented to have used a signer name near the ~50-character overflow threshold, so it does not contradict the new gap. |
 
-**Score:** 4/5 roadmap Success Criteria verified; Criterion #2 fails specifically for the
-multi-device (N>1) path.
+**Score:** 4/5 roadmap Success Criteria verified. Criterion #2 (the previous gap) is now closed; a new, independent issue (WR-02) causes Criterion #4 to fail on re-review.
 
-### CR-01 Assessment: Genuine Phase 35 Gap, Not Deferred Scope to Phase 36
+### Assessment of Fresh Code-Review Findings Requiring Explicit Judgement
 
-Per the task's explicit instruction to assess whether CR-01 is (a) a genuine gap or (b)
-legitimately deferred to Phase 36, my reasoning:
+Per the task's instruction, two findings from `35-REVIEW.md` needed an explicit call:
 
-- **CONTEXT.md D-02** (the only decision touching multi-device text) explicitly scopes
-  itself to the *label line* only: "без повтора метки на каждое устройство" (no repeat
-  of the label "было получено устройство:" on each device). It does not discuss, and the
-  discussion log does not record any option about, removing the device name from each
-  per-item technical-field block entirely.
-- **Phase 36's roadmap scope** (`.planning/ROADMAP.md` lines 173-189, DOC-10/DOC-11) is
-  specifically about *pagination*: single-page-vs-"Приложение №1" branching and page
-  breaks. Its success criteria describe page-1 showing only a name list (no full
-  description) and page-2+ showing a table of full descriptions — this does not
-  retroactively excuse the *current*, already-shipped Phase 35 body (which is not
-  paginated at all yet) from being unambiguous on its own.
-  Whether Phase 36's eventual table format naturally reintroduces per-row name
-  association is not yet designed or planned — deferring on that assumption would be
-  exactly the kind of "vague or tangential match" the verification process instructs to
-  reject (`references/gates.md` Step 9b: "Be conservative... when in doubt, keep it as a
-  real gap").
-- **35-05-SUMMARY.md**'s own recorded user scope clarification is specifically about
-  *pagination* ("'Приложение №1' on page 2+, full-description table only from page 2"),
-  not about per-block device-name association on the (currently unpaginated) body this
-  phase delivers.
-- **Practical impact today**: any multi-device handover act generated with the
-  Phase-35-complete codebase (no Phase 36 yet) produces a document where technical
-  fields cannot be reliably attributed to a specific device — a real, present-tense
-  defect, not a future one Phase 36 will "get around to."
+- **WR-02 (`white-space: nowrap` on `.signature-name`):** Judged a **genuine Phase 35 gap**
+  against DOC-08 / Success Criterion #4 (see gap entry above). Rationale: this is newly
+  printed content introduced by this exact phase (ФИО was not printed in the signature block
+  before Phase 35 — CONTEXT.md's own domain note confirms D-06 "частично откатывает" the
+  Phase 15 decision to remove it), the defect is objectively present in the current CSS (no
+  `min-width: 0` anywhere in either template, confirmed by direct read), the failure mode
+  (silent overflow/clipping of a legal document's signer name) is not a cosmetic nit but
+  matches a defect class this project has specifically been burned by before, and the fix is
+  well-understood and small — this is not an ambiguous judgment call requiring a human
+  decision, it is an actionable code defect.
+- **WR-05 (`none` literal in the template-editor preview):** Judged **out of this phase's
+  scope, not a Phase 35 gap**. `git blame`/`git show 1249e5e` confirms `"suffix": null` in
+  `demo_context_for_kind`'s `_` (act_handover) branch predates Phase 35 entirely — Plan 35-01's
+  only change to that context block was adding the unrelated `"giver_name"` key next to the
+  pre-existing `"suffix": null`. This is a pre-existing template-editor-preview cosmetic defect
+  that Phase 35 did not introduce and did not touch the relevant line for; it is correctly
+  scoped as a REVIEW.md warning for future work, not a gap against DOC-07/08/09.
 
-Conclusion: **CR-01 is a genuine Phase 35 gap**, not legitimately deferred to Phase 36. It
-directly breaks roadmap Success Criterion #2 ("не ломают то, ради чего делались Фазы
-15/16") for the multi-device path, and touches DOC-09's "предмет" (subject/item)
-component of the canonical form.
+WR-03 (device name printed twice for N>1) and WR-04 («Сроком до» printed on return acts) are
+direct, deliberate consequences of user decisions D-02a and D-03 respectively (both recorded in
+`35-CONTEXT.md`) — not counted as gaps, per the task's explicit instruction.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `crates/trackly-app/templates/_legacy_defaults/v22/act_handover.html` | Byte-identical pre-Phase-35 snapshot | ✓ VERIFIED | Present; diff against current `act_handover.html` is non-trivial (body reworked), confirming snapshot predates the rework. |
-| `crates/trackly-app/templates/_legacy_defaults/v22/act_acceptance.html` | Byte-identical pre-Phase-35 snapshot | ✓ VERIFIED | Present alongside handover snapshot. |
-| `crates/trackly-app/src/pdf/html_templates.rs` | `KNOWN_LEGACY_DEFAULTS` v22 entries for both templates | ✓ VERIFIED | `grep -n "v22"` shows both `include_str!` entries wired at lines 81/89. |
-| `crates/trackly-app/src/services/template_service.rs` | `demo_context_for_kind` `_` branch carries `act.giver_name` | ✓ VERIFIED | `"giver_name": "Иванов И.И."` present at line 477 (fictional placeholder, privacy-compliant). |
-| `crates/trackly-app/templates/act_handover.html` | Reworked body per D-01..D-12 | ⚠️ PARTIAL | Underline removal (D-10), plain-text field rows (D-11), unconditional deadline (D-03), horizontal signatures (D-06/D-07/D-08), stub removal (D-12) all verified present. Multi-device per-block name association regressed (CR-01) — see gap above. |
-| `crates/trackly-app/templates/act_acceptance.html` | Signature-block parity + table dedup (D-09) | ✓ VERIFIED | "Кто передал"/"Кто принял" rows removed from `table.kv` (only "Дата" row remains); signature block matches `act_handover.html`'s markup/CSS class-for-class. |
-| `crates/trackly-app/tests/html_field_row_underline_gate.rs` | New structural DOC-07 regression gate | ✓ VERIFIED | Present, asserts CSS-by-selector, passed in 35-04-SUMMARY.md's verification run. |
-| `crates/trackly-app/tests/pdf_render_act.rs`, `html_act_render.rs`, `acts_e2e_smoke.rs` | Test drift closed (C-03) | ✓ VERIFIED | All three files modified per 35-04-SUMMARY.md; `render_handover_act_contains_d09_intro_phrase` confirmed untouched (D-01 not reopened). |
+| `crates/trackly-app/templates/act_handover.html` | Per-device attribution restored (D-02a), signature block intact | ⚠️ PARTIAL | Per-device attribution: ✓ VERIFIED. Signature block ФИО overflow risk: ✗ see gap. |
+| `crates/trackly-app/templates/act_acceptance.html` | Signature parity + own DOC-07-equivalent gate | ⚠️ PARTIAL | Signature parity structure and dedup (D-09): ✓ VERIFIED. Shares the same ФИО-overflow defect as act_handover.html (duplicated markup/CSS, REVIEW.md WR-08). |
+| `crates/trackly-app/tests/pdf_render_act.rs::render_handover_multi_device_fields_attributable_to_own_device` | New non-vacuous co-location regression test | ✓ VERIFIED | Present, passes, would fail against the pre-Plan-06 gated template (confirmed by reading the assertion logic against the removed gate). |
+| `crates/trackly-app/src/pdf/html_templates.rs::upgrade_replaces_v22_legacy_default_with_current_bundled_body` | v22 legacy-slice regression test (WR-01 closure) | ✓ VERIFIED | Present, passes, pulls `bodies.get(2)`, has an anti-vacuous `assert_ne!(v22_body, current)` guard. |
+| `crates/trackly-app/tests/html_act_render.rs` (label assertions, WR-02-prior-review closure) | Colon-suffixed label assertions that can't collide with fixture ФИО prefix | ✓ VERIFIED | `"Выдал:"`/`"Получил:"` assertions present at line 188; not vacuous against the "Выдалов В.В."/"Получилов П.П." fixture. |
+| `crates/trackly-app/tests/html_field_row_underline_gate.rs::acceptance_signature_line_css_has_exactly_one_legitimate_border_bottom` | act_acceptance.html structural underline gate (IN-01 closure) | ✓ VERIFIED | Present, passes. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `act_handover.html` `{{ act.giver_name }}` | `act_service.rs::render_pdf` ctx | MiniJinja interpolation reading pre-existing context key | ✓ WIRED | `act_service.rs:2639-2640` populates `act.giver_name`/`act.receiver_name` from the real `act` row (`act.giver_name`, not a literal); confirmed no backend file changed in this phase's diff. |
-| `act_acceptance.html` `{{ document.giver_name }}` | `act_service.rs::render_acceptance_pdf` ctx | Pre-existing context key (Phase 20) | ✓ WIRED | Context key already existed before Phase 35; template now reads it in the reworked signature block only (table duplication removed). |
-| `html_templates.rs::KNOWN_LEGACY_DEFAULTS` | `_legacy_defaults/v22/*.html` | `include_str!` | ✓ WIRED | Confirmed via grep; both filename slices extended with the v22 element, matching the Phase 34 precedent pattern that fixes the "installed copies don't see new default" class of bug. |
-| `demo_context_for_kind` | `act_handover.html` template preview | `UndefinedBehavior::Strict` context parity | ✓ WIRED | `act.giver_name` present in both the real render context and the preview demo context — no crash risk from the newly-referenced key confirmed by code review. |
+| `act_handover.html` `{{ act.giver_name }}`/`{{ item.name }}` (per-block) | `act_service.rs::render_pdf` ctx | MiniJinja interpolation, `.device-block` loop | ✓ WIRED | Confirmed by rendering N=3 devices with distinct optional fields and asserting each block's own values via the new regression test; `git diff` over `crates/trackly-app/src/services/` for the whole phase is empty — no backend change. |
+| `act_acceptance.html` `{{ document.giver_name }}` | `act_service.rs::render_acceptance_pdf` ctx | Pre-existing context key | ✓ WIRED | Unchanged since prior verification; not touched by Plan 35-06. |
+| `html_templates.rs::KNOWN_LEGACY_DEFAULTS` | `_legacy_defaults/v22/*.html` | `include_str!` | ✓ WIRED | v22 slice confirmed present and now covered by its own regression test (`bodies.get(2)`), closing the prior review's WR-01. |
+| `.signature-name` (printed ФИО) | Page printable width | CSS flexbox layout (`display:flex` row, fixed-width sibling, `white-space:nowrap` on the name span) | ✗ NOT SAFELY WIRED | No `min-width: 0` on the flex item means the name cannot shrink below its own content width when that content is forced `nowrap` — overflow risk for long names. See gap. |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|---------------|--------|---------------------|--------|
-| `act_handover.html` signature block | `act.giver_name` | `act_service.rs:2639` reads `act.giver_name` from the `acts` table row (`ActCreateDto.giver_name` is a required form field) | Yes — DB-backed, non-static | ✓ FLOWING |
-| `act_acceptance.html` signature block | `document.giver_name` | Pre-existing `render_acceptance_pdf` context (Phase 20), unchanged by Phase 35 | Yes — DB-backed | ✓ FLOWING |
-| `act_handover.html` per-device technical fields (N>1 case) | `item.name` (device identity) | `act_service.rs` items_json (`it.device_name`) — present in context for every item | Data present in context, but template does not render it per-block for N>1 (see CR-01) | ⚠️ DISCONNECTED (rendering gap, not a data-source gap — the name is available in `act.items[].name` but the N>1 template branch discards it per-block) |
+| `act_handover.html` per-device technical fields (N>1 case) | `item.name` (device identity) | `act_service.rs` items context, joined per `act_items` row | Yes — DB-backed, now rendered unconditionally per block | ✓ FLOWING (gap closed) |
+| `act_handover.html` / `act_acceptance.html` signature block | `act.giver_name` / `document.giver_name` | `act_service.rs`, DB-backed, required form field | Yes — DB-backed, non-static | ✓ FLOWING (data correct; CSS presentation of that data is the gap, not the data itself) |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Exactly 2 legitimate `border-bottom` sources remain in `act_handover.html` | `grep -c border-bottom act_handover.html` | 2 | ✓ PASS |
-| `act_acceptance.html` has no duplicate ФИО rows in table | manual read of `table.kv` (lines 114-127) | Only "Дата" row present | ✓ PASS |
-| Backend (`act_service.rs`) untouched by this phase | `git diff --stat e0d2dca~1..HEAD -- crates/trackly-app/src/services/act_service.rs` | empty diff | ✓ PASS |
-| N>1 device-block anonymization | manual read of `act_handover.html:140-164` | `{%- if act.items | length == 1 %}` gates the name line; N>1 blocks have no name | ✗ FAIL (see CR-01 gap) |
+| `length == 1` gate fully removed from `act_handover.html` | `grep -c "act.items | length == 1" act_handover.html` | 0 | ✓ PASS |
+| Exactly 2 `border-bottom` in `act_handover.html`, 1 in `act_acceptance.html` | `grep -c border-bottom` on each | 2, 1 | ✓ PASS |
+| Backend untouched across the whole phase | `git diff --stat -- crates/trackly-app/src/services/` (full phase range) | empty | ✓ PASS |
+| Per-device attribution regression test | `cargo test -p trackly-app --test pdf_render_act` | 13 passed, 0 failed | ✓ PASS |
+| v22 legacy-slice regression test | `cargo test -p trackly-app --lib pdf::html_templates` | 13 passed, 0 failed | ✓ PASS |
+| act_acceptance.html underline gate + label assertions | `cargo test -p trackly-app --test html_field_row_underline_gate --test html_act_render` | 2 passed / 11 passed, 0 failed | ✓ PASS |
+| Privacy gate on requisite literals | `./scripts/check-privacy-requisites.sh` | "Privacy gate OK" | ✓ PASS |
+| No debt markers (TBD/FIXME/XXX/TODO/HACK/PLACEHOLDER) in phase-touched files | `grep -n -E "TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER"` across templates/tests/html_templates.rs/template_service.rs | no matches | ✓ PASS |
+| `.signature-name` CSS overflow risk for long ФИО | manual CSS read: `.signature-row{display:flex}` + `.signature-field{flex:0 0 160pt}` + `.signature-name{white-space:nowrap}`, no `min-width:0` on `.signature-name` | reviewer's line-budget math (~294pt / ~47-52 chars) independently re-derived from the same CSS values | ✗ FAIL (see gap) |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|-------------|--------|----------|
-| DOC-07 | 35-02, 35-04, 35-05 | Нет полосок-подчёркиваний под автоподставляемым текстом | ✓ SATISFIED | Structural gate + grep confirm exactly the 2 legitimate exceptions remain. |
-| DOC-08 | 35-01, 35-02, 35-03, 35-04, 35-05 | Горизонтальный блок подписей, автоподстановка ФИО, без изменений бэкенда | ✓ SATISFIED | Both templates verified; backend diff empty. |
-| DOC-09 | 35-02, 35-04, 35-05 | Текст акта в каноничной форме (две стороны, предмет, состояние, срок, подписи), согласован до вёрстки | ⚠️ PARTIALLY SATISFIED | Text agreement (D-01, timing) and single-device "предмет" description verified. Multi-device "предмет" description (CR-01) is not reliably attributable per device — undermines this requirement's "предмет" clause for N>1 acts. |
+| DOC-07 | 35-02, 35-04, 35-05, 35-06 | Нет полосок-подчёркиваний под автоподставляемым текстом | ✓ SATISFIED | Structural gates now cover both `act_handover.html` and `act_acceptance.html`; exactly the 2 and 1 legitimate exceptions respectively. |
+| DOC-08 | 35-01, 35-02, 35-03, 35-04, 35-05, 35-06 | Горизонтальный блок подписей, автоподстановка ФИО, без изменений бэкенда | ⚠️ PARTIALLY SATISFIED | Structure/wiring/backend-untouched: ✓. Long-ФИО print legibility (WR-02): ✗ — see gap. |
+| DOC-09 | 35-02, 35-04, 35-05, 35-06 | Текст акта в каноничной форме (две стороны, предмет, состояние, срок, подписи), согласован до вёрстки | ✓ SATISFIED | Text agreement (D-01) unchanged; multi-device "предмет" attribution (CR-01) now closed by Plan 35-06 — every device is self-identifying regardless of N. |
 
-No orphaned requirements: REQUIREMENTS.md maps only DOC-07/DOC-08/DOC-09 to Phase 35, and
-all three appear in at least one plan's `requirements:` frontmatter.
+No orphaned requirements: REQUIREMENTS.md maps only DOC-07/DOC-08/DOC-09 to Phase 35, and all
+three appear in the `requirements:` frontmatter of at least one plan (35-01 through 35-06).
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `crates/trackly-app/templates/act_handover.html` | 142-144 | Conditional gate (`length == 1`) silently drops device-identifying content for the N>1 branch | 🛑 Blocker | This is the CR-01 regression — not a TBD/FIXME marker, but an observable functional defect with the same real-world consequence (ambiguous printed legal document). |
+No BLOCKER-level anti-patterns (no unresolved TBD/FIXME/XXX debt markers in any file touched by
+this phase). The following are code-review WARNING/INFO items from `35-REVIEW.md` that do not
+block this phase's roadmap Success Criteria but are worth carrying forward:
 
-No TBD/FIXME/XXX/HACK/PLACEHOLDER debt markers found in any file modified by this phase
-(checked `act_handover.html`, `act_acceptance.html`, `html_templates.rs`,
-`template_service.rs`, all four test files, both v22 snapshots).
+| File | Pattern | Severity | Impact |
+|------|---------|----------|--------|
+| `crates/trackly-app/src/pdf/html_templates.rs` | Missing `_legacy_defaults/v23/` snapshot for the intermediate (gated) `act_handover.html` body that existed between Plans 35-02/35-03 and 35-06 | ⚠️ Warning (already tracked as a separate follow-up per 35-06-SUMMARY.md and 35-REVIEW.md WR-01; not gapped here per task instruction) | Installs that materialized the app between commits `3904da9`..`bbfed54` would not receive the CR-01 auto-upgrade; no release tag carries that body (latest tag `v1.3` predates all of Phase 35) |
+| `act_handover.html` / `act_acceptance.html` | Signature-block markup/CSS (~48 lines) duplicated verbatim across two user-editable templates instead of a shared `_header.html`-style partial (REVIEW.md WR-08) | ℹ️ Info/code-quality | The WR-02 fix above must be applied in both files; any future signature-block change has the same double-maintenance risk |
+| `crates/trackly-app/tests/pdf_render_act.rs:198-202`, `html_act_render.rs:204-207` | Vacuous act-number assertions (`contains("1")` always-true given `<style>` literals like `1px`) (REVIEW.md WR-07) | ℹ️ Info/test-quality | Pre-existing test-quality gap, not newly introduced by Phase 35's requirements |
+| `template_service.rs:508` | `"suffix": null` renders as literal `none` string in the template-editor preview (REVIEW.md WR-05) | ℹ️ Info | Confirmed pre-existing (predates Phase 35, git-blamed to before commit `1249e5e`) — out of this phase's scope |
 
 ### Human Verification Required
 
-None outstanding. Criterion #5's mandatory human UAT (desktop + LAN-browser transports)
-was already performed and approved by the user as part of Plan 05's blocking checkpoint
-(`35-05-SUMMARY.md`, Task 2). No further human verification items were identified beyond
-what has already been resolved.
+None required to close this phase's own re-verification decision — the remaining gap (WR-02) is
+a concrete, mechanically fixable CSS defect, not an item needing subjective human judgment. Once
+fixed, re-verification of the fix itself should include a real render/print check with a long
+ФИО (per this project's established "real render, not text-extraction" testing discipline), but
+that is a verification step for the fix's own closure, not an open question today.
 
 ### Gaps Summary
 
-Phase 35 substantially achieves its goal for the DOC-07 (underline removal) and DOC-08
-(horizontal signature block, backend-free ФИО autofill) requirements — both are
-structurally verified with durable regression gates, not just text-extraction tests. The
-text-agreement timing requirement (Success Criterion #1) is also satisfied: the CONTEXT.md
-record shows the text-form decision (D-01) was made and recorded before any plan began
-editing template bodies.
+The previously reported gap (Success Criterion #2 / CR-01 — anonymous multi-device blocks) is
+**closed**: `act_handover.html` now prints every device's name inside its own `.device-block`
+unconditionally, matching the user's amended decision D-02a, backed by a non-vacuous regression
+test that was independently confirmed to fail against the old gated template's logic.
 
-The one real gap is narrow but functionally significant: **for multi-device handover acts
-(N>1 items), the reworked `act_handover.html` body loses the per-device name label inside
-each device's technical-field block**, making it impossible to reliably tell which printed
-Инвентарный номер/Серийный номер/Модель/Комплектация/Технические характеристики/Состояние
-values belong to which listed device. This is a regression against the pre-Phase-35 body
-(which always self-identified each block) and against roadmap Success Criterion #2 ("не
-ломают то, ради чего делались Фазы 15/16"). It was independently found by code review
-(CR-01) and confirmed here by direct reading of the current template. It was not discussed
-or approved by the user in CONTEXT.md/DISCUSSION-LOG (D-02 only covers the summary-label
-text, not per-block name suppression), and is not clearly covered by Phase 36's pagination
-scope (which addresses page breaks, not per-block content attribution on the current,
-unpaginated body).
-
-**Recommendation:** A small closure plan restoring the device name inside every
-`.device-block` for N>1 (per CR-01's suggested fix — printing the name in every block
-regardless of item count, optionally keeping the top-level `<ul>` summary as well) would
-close this gap without reopening any of the already-approved D-01..D-12 decisions.
+A **new gap** surfaced on this re-review, found by the post-closure code review and independently
+re-derived here by reading the CSS directly: the printed ФИО in the horizontal signature block
+(`.signature-name`) is `white-space: nowrap` without `min-width: 0` in a fixed-width flex row, in
+both `act_handover.html` and `act_acceptance.html`. For realistic long Cyrillic ФИО this overflows
+the page's printable width — a legibility defect for content this exact phase newly introduced
+into the printed document, and a defect class this project has specifically encountered before in
+live UAT. This blocks full closure of Success Criterion #4 / DOC-08. The fix is small and
+well-scoped (see the `missing` list in the gaps YAML above); it does not require re-opening any
+text or attribution decision from this phase.
 
 ---
 
-_Verified: 2026-08-11_
-_Verifier: Claude (gsd-verifier)_
+*Verified: 2026-08-12T00:59:17Z*
+*Verifier: Claude (gsd-verifier)*
