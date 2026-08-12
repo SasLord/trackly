@@ -274,6 +274,14 @@ async fn signature_renders_giver_name_horizontal_block() {
 /// present, no ellipsis truncation marker appears (proves the FieldRow/HTML
 /// wrap path was used, not a truncate path), and a substring from the MIDDLE
 /// of the long value survived (proves it wasn't cut off).
+///
+/// Phase 36 (D-01/D-08): at N=5 (> 1), the long `kit` value no longer renders
+/// inside a first-sheet `.device-block` — it renders in the appendix table's
+/// `device-subrow` (`<td colspan="7">`, D-01's "second row" for
+/// Комплектация/Тех. характеристики). The assertions below don't change:
+/// they check `html.contains(...)` over the whole document, not a
+/// `.device-block`-scoped split, so they hold regardless of which markup
+/// region the long value ends up in.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_multi_device_wraps_long_fields() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -340,16 +348,21 @@ async fn render_handover_multi_device_wraps_long_fields() {
     .expect("timeout");
 }
 
-/// Phase 35 Plan 06 (G-01/CR-01 closure, D-02a): each `.device-block` must
-/// self-identify with its own device name AND its own optional-field values,
-/// independent of item count. Seeds 3 devices, gives device 0 an
-/// `inventory_no`, device 1 a `complectation` (kit) value, and leaves device 2
-/// with NO optional fields at all — the exact "empty block" case CR-01
-/// flagged as losing all identifiable content. Splitting the rendered HTML on
-/// the literal `<div class="device-block">` marker and asserting per-index
+/// Phase 35 Plan 06 (G-01/CR-01 closure, D-02a) — rewritten Phase 36 (D-08):
+/// each device's fields must self-identify with its own device name AND its
+/// own optional-field values, independent of item count. Seeds 3 devices,
+/// gives device 0 an `inventory_no`, device 1 a `complectation` (kit) value,
+/// and leaves device 2 with NO optional fields at all — the exact "empty
+/// block" case CR-01 flagged as losing all identifiable content.
+///
+/// At N > 1, D-08 removed `.device-block` from the first sheet entirely — the
+/// per-device attribution CR-01 asked for is now carried by the appendix
+/// table's `<tbody class="device-group">` row-group instead. Splitting the
+/// rendered HTML on the literal `<tbody class="device-group` marker (partial
+/// prefix match — the full opening tag also carries a zebra-striping class,
+/// e.g. `<tbody class="device-group row-even">`) and asserting per-index
 /// co-location (name + own field, absence of the other two devices' fields)
-/// would FAIL against the pre-Plan-06 `length == 1`-gated template, since
-/// none of the three blocks would contain a device name at all for N=3.
+/// reproduces the exact same attribution guarantee against the new markup.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_multi_device_fields_attributable_to_own_device() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -397,28 +410,29 @@ async fn render_handover_multi_device_fields_attributable_to_own_device() {
 
         let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
-        let parts: Vec<&str> = html.split("<div class=\"device-block\">").collect();
+        let parts: Vec<&str> = html.split("<tbody class=\"device-group").collect();
         assert_eq!(
             parts.len(),
             4,
-            "expected 1 preamble part + 3 device-block parts (N=3 items). Head: {:?}",
+            "expected 1 preamble part + 3 tbody.device-group parts (N=3 items). Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
 
         let names = ["Ноутбук-0", "Ноутбук-1", "Ноутбук-2"];
         for i in 0..3 {
-            let block = parts[i + 1];
+            let group = parts[i + 1];
             assert!(
-                block.contains(names[i]),
-                "device-block {i} must contain its own name {:?}. Head: {:?}",
+                group.contains(names[i]),
+                "tbody.device-group {i} must contain its own name {:?}. Head: {:?}",
                 names[i],
                 html.chars().take(800).collect::<String>()
             );
             for (j, other_name) in names.iter().enumerate() {
                 if j != i {
                     assert!(
-                        !block.contains(other_name),
-                        "device-block {i} must NOT contain other device's name {:?}. Head: {:?}",
+                        !group.contains(other_name),
+                        "tbody.device-group {i} must NOT contain other device's name {:?}. \
+                         Head: {:?}",
                         other_name,
                         html.chars().take(800).collect::<String>()
                     );
@@ -428,31 +442,32 @@ async fn render_handover_multi_device_fields_attributable_to_own_device() {
 
         assert!(
             parts[1].contains("ИНВ-АТРИБУЦИЯ-0"),
-            "device-block 0 must contain its own inventory_no. Head: {:?}",
+            "tbody.device-group 0 must contain its own inventory_no. Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
         assert!(
             !parts[2].contains("ИНВ-АТРИБУЦИЯ-0") && !parts[3].contains("ИНВ-АТРИБУЦИЯ-0"),
-            "device-blocks 1/2 must NOT contain device 0's inventory_no. Head: {:?}",
+            "tbody.device-groups 1/2 must NOT contain device 0's inventory_no. Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
 
         assert!(
             parts[2].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
-            "device-block 1 must contain its own complectation value. Head: {:?}",
+            "tbody.device-group 1 must contain its own complectation value. Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
         assert!(
             !parts[1].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1") && !parts[3].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
-            "device-blocks 0/2 must NOT contain device 1's complectation value. Head: {:?}",
+            "tbody.device-groups 0/2 must NOT contain device 1's complectation value. Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
 
-        // Device 2 has zero optional fields, but its block must still
+        // Device 2 has zero optional fields, but its row-group must still
         // self-identify via the device name (CR-01's "empty block" defect).
         assert!(
             parts[3].contains("Ноутбук-2"),
-            "device-block 2 (no optional fields) must still contain its own name. Head: {:?}",
+            "tbody.device-group 2 (no optional fields) must still contain its own name. \
+             Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
     })
@@ -464,36 +479,40 @@ async fn render_handover_multi_device_fields_attributable_to_own_device() {
 /// `act_handover.html` must emit `field-row`-style blocks (full-length
 /// labels), never a «Устройство №N» heading/counter nor the abbreviated
 /// legacy labels. Sets `inventory_number`/`serial_number`/`model` directly on
-/// the seeded `devices` rows (these fields live on `devices`, not
+/// the seeded `devices` row (these fields live on `devices`, not
 /// `act_items` — `ActItemDto.inventory_no`/`serial_no`/`model` are joined
 /// live from `devices` at render time, unlike
 /// `complectation_at_time`/`condition_at_time` which are `act_items` snapshot
 /// columns).
+///
+/// Phase 36 (D-01/D-08): narrowed from N=2 to N=1. At N > 1, `.device-block`
+/// (with its full-length `field-row` labels) no longer renders on the first
+/// sheet at all — the description moves to the appendix table, whose `<th>`
+/// headers legitimately use the SAME abbreviated forms
+/// (`Инв.№`/`Серийный №`) this test forbids. That abbreviated-header shape is
+/// intentional appendix design (D-01), not a device-card regression, and is
+/// covered separately by `html_act_render.rs`'s appendix-structural tests.
+/// This test's remaining, still-valid scope is exclusively the N=1 branch,
+/// which D-08 explicitly left byte-identical to Phase 35.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn render_handover_default_template_uses_field_rows_not_device_card() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let p = make_full_pipeline().await;
-        let device_ids = seed_devices(&p.writer, 2).await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let device_id = device_ids[0];
 
-        for (i, &device_id) in device_ids.iter().enumerate() {
-            p.writer
-                .execute(move |conn| {
-                    conn.execute(
-                        "UPDATE devices SET inventory_number = ?1, serial_number = ?2, model = ?3 \
-                         WHERE id = ?4",
-                        params![
-                            format!("ИНВ-{i:03}"),
-                            format!("SN-{i:04}"),
-                            format!("Модель-{i}"),
-                            device_id
-                        ],
-                    )
-                    .map(|_| ())
-                    .map_err(map_rusqlite)
-                })
-                .await
-                .expect("set device inventory/serial/model");
-        }
+        p.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET inventory_number = ?1, serial_number = ?2, model = ?3 \
+                     WHERE id = ?4",
+                    params!["ИНВ-000", "SN-0000", "Модель-0", device_id],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("set device inventory/serial/model");
 
         let act = create_handover_with_giver(&p.acts, &device_ids, "Волков В.В.").await;
         let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
@@ -515,19 +534,20 @@ async fn render_handover_default_template_uses_field_rows_not_device_card() {
             html.chars().take(800).collect::<String>()
         );
 
-        // No abbreviated legacy labels.
+        // No abbreviated legacy labels — legitimate to forbid globally at
+        // N=1 only, since no appendix table (whose <th> headers legitimately
+        // use these abbreviated forms) renders in this branch (D-08).
         assert!(
             !html.contains("Инв.№") && !html.contains("Серийный №"),
-            "abbreviated legacy labels must not appear. Head: {:?}",
+            "abbreviated legacy labels must not appear at N=1 (no appendix table renders in \
+             this branch). Head: {:?}",
             html.chars().take(800).collect::<String>()
         );
 
-        // Both device names present, in item order (first before second).
-        let first_idx = html.find("Ноутбук-0").expect("first device name missing");
-        let second_idx = html.find("Ноутбук-1").expect("second device name missing");
         assert!(
-            first_idx < second_idx,
-            "device names must render in item order: {html:?}"
+            html.contains("Ноутбук-0"),
+            "device name missing from rendered HTML. Head: {:?}",
+            html.chars().take(800).collect::<String>()
         );
     })
     .await
