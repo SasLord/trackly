@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: ready_to_plan
-last_updated: 2026-08-12T09:15:27.409Z
-last_activity: "2026-08-12 -- Plan 35-07 complete (long-ФИО signature wrap fix, DOC-08/SC#4)"
+status: planning
+last_updated: "2026-08-12T15:04:03.132Z"
+last_activity: 2026-08-12
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 13
-  completed_plans: 253
+  completed_plans: 13
   percent: 40
-stopped_at: Phase 35 complete (7/7) — ready to discuss Phase 36
 ---
 
 # Project State
@@ -905,11 +904,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-12T08:38:27.231Z
-Stopped at: Completed 35-07-PLAN.md
+Last session: 2026-08-12T15:04:03.124Z
+Stopped at: Phase 36 context gathered
 Resume file: 
 
-None
+.planning/phases/36-act-pagination/36-CONTEXT.md
 
 - Plan Phase 34 with /gsd-plan-phase 34
 
