@@ -630,11 +630,17 @@ new `upgrade_replaces_v24_...` test exists to prove the new entry actually drive
 | A2 | `print-color-adjust: exact` scoped to `td` selectors is sufficient in WebView2 (Chromium-based) without additional vendor handling beyond `-webkit-` prefix | Common Pitfalls, Pitfall 3 | Low — this is well-established, widely-supported CSS (Chromium ≥92 unprefixed, all versions with `-webkit-` prefix); WebView2's Chromium version on the target Windows fleet was not independently confirmed ≥92 this session but is extremely likely given current Windows WebView2 auto-update policy |
 | A3 | `loop.cycle('row-even', 'row-odd')` (or equivalent per-device zebra keying) is available in MiniJinja's `builtins` feature the same way it is in Jinja2 | Architecture Patterns, Pattern 2 | Low — MiniJinja documents itself as Jinja2-compatible for loop helpers and this project already uses `| length`/other loop-adjacent filters; not independently unit-tested against `loop.cycle` specifically this session |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Is the sketched custom Paged.js Handler (Pitfall 1) actually the best implementation shape,
-   or should the planner treat "faithful thead-repeat" as a spike-first task with an explicit
-   go/no-go checkpoint?**
+**RESOLVED 2026-08-12.** Q1 — the user decided against a spike: the handler is implemented
+directly as ordinary work (see CONTEXT.md **D-15a**; plan `36-04-PLAN.md` carries it, and no
+spike task exists anywhere in the plan set). Q2 — hand-duplication with cross-referencing
+comments, delegated to Claude's Discretion in `36-04-PLAN.md`'s `<interfaces>` block.
+The analysis below is retained for context only; it no longer gates planning.
+
+1. **[RESOLVED — no spike, implement directly per D-15a]** Is the sketched custom Paged.js
+   Handler (Pitfall 1) actually the best implementation shape, or should the planner treat
+   "faithful thead-repeat" as a spike-first task with an explicit go/no-go checkpoint?
    - What we know: no native support exists in 0.4.3; the mechanism (Handler + `afterPageLayout`)
      is technically available and matches a documented (if historically fragile across pagedjs
      versions) community pattern.
