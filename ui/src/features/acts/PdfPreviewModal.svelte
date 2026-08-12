@@ -462,7 +462,36 @@
     };
     window.addEventListener('afterprint', cleanup);
 
-    const { Previewer } = await import('pagedjs');
+    // D-15/D-15a (Phase 36): mirror of the RepeatTableHeadHandler registered
+    // in ui/src/lib/pdfPreview/bootstrapScript.js — keep the two in sync.
+    // This LAN print path does NOT go through bootstrapScript.js's UMD
+    // bootstrap at all (separate dynamic `import('pagedjs')` ESM path, see
+    // this function's own doc-comment above), so the thead-repeat handler
+    // must be registered here too, or LAN print silently diverges from
+    // desktop/preview (bundled pagedjs 0.4.3 has no native thead-repeat —
+    // see 36-RESEARCH.md Pitfall 1). Scoped strictly to table.appendix-table
+    // (T-36-03) — never touches any other table/DOM on the page.
+    const { Previewer, Handler, registerHandlers } = await import('pagedjs');
+    class RepeatTableHeadHandler extends Handler {
+      savedThead: Node | null = null;
+
+      constructor(chunker: unknown, polisher: unknown, caller: unknown) {
+        super(chunker, polisher, caller);
+        const sourceTable = document.querySelector('table.appendix-table');
+        const sourceThead = sourceTable?.querySelector('thead') ?? null;
+        this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
+      }
+
+      afterPageLayout(pageElement: HTMLElement) {
+        if (!this.savedThead) return;
+        pageElement.querySelectorAll('table.appendix-table').forEach((table) => {
+          if (table.querySelector('thead')) return; // already has one — first fragment
+          table.insertBefore(this.savedThead!.cloneNode(true), table.firstChild);
+        });
+      }
+    }
+    registerHandlers(RepeatTableHeadHandler);
+
     const previewer = new Previewer();
     await previewer.preview(bodyHtml, [{ 'act-preview.css': cssText }], printRoot);
     injectedPolisher = previewer.polisher;

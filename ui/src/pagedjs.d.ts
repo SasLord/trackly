@@ -24,6 +24,15 @@
  * `Polisher.insert()` appends to `document.head` on every `preview()` call.
  * Typed to the minimal surface `printViaTopLevel` actually calls, not the
  * full (untyped, upstream) `Polisher` class.
+ *
+ * Phase 36-04 (D-15a): added `Handler` and `registerHandlers` — the ESM
+ * exports `printViaTopLevel`'s mirror of the RepeatTableHeadHandler
+ * (bootstrapScript.js's UMD twin) needs to register a custom thead-repeat
+ * handler on the `afterPageLayout` hook. Verified against
+ * `ui/node_modules/pagedjs/src/modules/handler.js` (constructor signature)
+ * and `ui/node_modules/pagedjs/src/utils/handlers.js` (`registerHandlers`
+ * pushes each argument onto the module-level `registeredHandlers` array,
+ * consumed by every subsequent `new Previewer()`/`Chunker` construction).
  */
 declare module 'pagedjs' {
   export class Previewer {
@@ -35,4 +44,10 @@ declare module 'pagedjs' {
     ): Promise<{ total: number }>;
     polisher: { destroy: () => void };
   }
+
+  export class Handler {
+    constructor(chunker: unknown, polisher: unknown, caller: unknown);
+  }
+
+  export function registerHandlers(...handlers: (typeof Handler)[]): void;
 }
