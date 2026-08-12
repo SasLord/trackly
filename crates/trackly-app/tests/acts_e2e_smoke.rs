@@ -8,7 +8,11 @@
 //!      все devices снова «На складе», счётчики сброшены до нуля.
 //!
 //!   2. `handover_pdf_render_within_e2e` — на середине сценария рендерим
-//!      handover-PDF (Cyrillic must work, >1000 bytes).
+//!      handover-PDF (Cyrillic must work, >1000 bytes). С Фазы 36 (D-01..D-16)
+//!      этот сценарий (2 seeded devices, N=2 > 1) проходит через
+//!      appendix-ветку (нумерованный `<ol>` + таблица-приложение с
+//!      forced-break), а не через прежний двойной `.device-block`-поток —
+//!      ассерции ниже инвариантны к ветвлению, поэтому не менялись.
 //!
 //!   3. `acceptance_pdf_render_smoke` — DEV-14/DEV-15 backend: рендер
 //!      документа приёма содержит giver+receiver.
@@ -255,6 +259,16 @@ async fn full_lifecycle_then_undo() {
     .expect("budget");
 }
 
+/// Phase 36 (D-01..D-16): 2 seeded devices means N=2 > 1, so this act now
+/// renders through the appendix branch — first sheet gets only the numbered
+/// `<ol class="device-summary">` + referral line, and the full per-device
+/// description moves to the forced-break `table.appendix-table` after
+/// `.signatures` — rather than the old N>1 flow, which repeated the full
+/// `.device-block` twice on one sheet. The three assertions below (byte
+/// length, `<html` marker, Cyrillic `receiver_name` presence) are inert to
+/// which branch renders — `receiver_name` is always in the D-01 intro
+/// paragraph, and the appendix table can only make `html.len()` larger — so
+/// they were left unchanged; only this doc-comment records the new branch.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn handover_pdf_render_within_e2e() {
     tokio::time::timeout(Duration::from_secs(60), async {

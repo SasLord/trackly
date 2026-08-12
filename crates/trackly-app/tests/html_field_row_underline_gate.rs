@@ -1,10 +1,21 @@
-//! DOC-07 structural regression guard (Phase 35, Plan 04): auto-filled
-//! `.field-row` values in `act_handover.html` must not carry an underline
-//! (`border-bottom`). Underlines are reserved for exactly two places: the
-//! blank "Сроком до" fallback (`.value-blank`, D-03/D-10) and the signature
-//! line (`.signature-field .signature-line`, D-06). Anywhere else, a
-//! resurrected `border-bottom` on `.field-row` (or a sibling rule) would
-//! silently reintroduce the underlines D-10 removed.
+//! DOC-07 structural regression guard (Phase 35, Plan 04; extended Phase 36
+//! Plan 02): auto-filled `.field-row` values in `act_handover.html` must not
+//! carry an underline (`border-bottom`). Handwriting-fill-in underlines are
+//! reserved for exactly two places: the blank "Сроком до" fallback
+//! (`.value-blank`, D-03/D-10) and the signature line
+//! (`.signature-field .signature-line`, D-06). Anywhere else on a `.field-row`
+//! value, a resurrected `border-bottom` would silently reintroduce the
+//! underlines D-10 removed.
+//!
+//! Phase 36 (D-05) added a THIRD `border-bottom` declaration to the
+//! `<style>` block: `.appendix-table thead tr` — a light-gray hairline under
+//! the appendix table's header row, the print-color fallback for when the
+//! zebra-striping background (D-04) doesn't survive printing. This is a
+//! structural table separator, not a handwriting-fill-in underline, and does
+//! not touch `.field-row` at all — it is a legitimate third exception, not a
+//! regression, and is asserted for explicitly below so a future stray
+//! `border-bottom` still trips this gate (count stays a closed set of 3, not
+//! an open-ended "anything goes").
 //!
 //! This gate checks CSS **by selector**, not by markup range. A naive
 //! "text between `{% include "_header.html" %}` and `<div class="signatures">`"
@@ -53,7 +64,7 @@ fn extract_rule_body(css: &str, selector: &str) -> String {
 }
 
 #[test]
-fn field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain() {
+fn field_row_css_has_no_border_bottom_and_only_legit_exceptions_remain() {
     let style = extract_style_block(ACT_HANDOVER_HTML);
 
     // 1. The `.field-row` rule itself must not declare an underline (D-10).
@@ -63,13 +74,15 @@ fn field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain() {
         "`.field-row` must not declare border-bottom (D-10). Rule body: {field_row_body}"
     );
 
-    // 2. Exactly two `border-bottom` declarations may exist in the whole
-    //    <style> block: the blank-deadline fallback and the signature line.
+    // 2. Exactly three `border-bottom` declarations may exist in the whole
+    //    <style> block: the blank-deadline fallback, the signature line, and
+    //    (Phase 36, D-05) the appendix table's thead hairline — a table
+    //    separator, not a handwriting-fill-in underline.
     let count = style.matches("border-bottom").count();
     assert_eq!(
-        count, 2,
-        "found {count} border-bottom occurrences in <style>, expected exactly 2 \
-         (.value-blank and .signature-field .signature-line)"
+        count, 3,
+        "found {count} border-bottom occurrences in <style>, expected exactly 3 \
+         (.value-blank, .signature-field .signature-line, .appendix-table thead tr)"
     );
 
     // 3. The first legitimate source: the blank "Сроком до" fallback
@@ -86,6 +99,16 @@ fn field_row_css_has_no_border_bottom_and_only_two_legit_exceptions_remain() {
         signature_line_body.contains("border-bottom"),
         "`.signature-field .signature-line` must declare border-bottom (D-06). \
          Rule body: {signature_line_body}"
+    );
+
+    // 5. The third legitimate source (Phase 36, D-05): the appendix table's
+    //    thead hairline — a print-color fallback separator, not a
+    //    handwriting-fill-in underline, and unrelated to `.field-row`.
+    let appendix_thead_body = extract_rule_body(&style, ".appendix-table thead tr");
+    assert!(
+        appendix_thead_body.contains("border-bottom"),
+        "`.appendix-table thead tr` must declare border-bottom (D-05). \
+         Rule body: {appendix_thead_body}"
     );
 }
 
