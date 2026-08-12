@@ -158,6 +158,230 @@ async fn create_handover_with_handover_date(
     svc.create(payload).await.expect("create handover")
 }
 
+async fn create_handover_with_deadline(
+    svc: &ActService,
+    device_ids: &[i64],
+    giver: &str,
+    receiver: &str,
+    deadline_utc: Option<i64>,
+) -> trackly_app::dto::act::ActDto {
+    let payload = ActCreateDto {
+        number_override: None,
+        giver_name: giver.to_string(),
+        receiver_name: receiver.to_string(),
+        location_id: None,
+        location_name: None,
+        notes: None,
+        deadline_utc,
+        handover_date_utc: None,
+        items: device_ids
+            .iter()
+            .map(|&id| ActItemNewDto {
+                device_id: id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            })
+            .collect(),
+    };
+    svc.create(payload).await.expect("create handover")
+}
+
+/// Returns the substring of `html` strictly between the first `<ul>` and the
+/// following `</ul>`, panicking if either marker is missing.
+fn extract_first_ul(html: &str) -> &str {
+    let start = html
+        .find("<ul>")
+        .expect("rendered HTML must contain a <ul>")
+        + "<ul>".len();
+    let end = html[start..]
+        .find("</ul>")
+        .map(|i| start + i)
+        .expect("the <ul> must be closed");
+    &html[start..end]
+}
+
+/// DOC-09 / D-02 (N = 1 branch): a single-device handover must render the
+/// Word-sample's singular wording «было получено устройство: ⟨name⟩» and must
+/// NOT emit the plural summary line/list, which only applies to N > 1. Asserts
+/// the exact `.field-row` markup (not a loose substring) so a regression that
+/// moves the phrase out of its field-row — or renders the plural branch
+/// alongside it — fails here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_single_device_renders_singular_intro_not_plural_summary() {
+    let p = make_full_pipeline().await;
+    let device_id = seed_device(&p.writer, "HTML-Единственный-Ноутбук").await;
+    let act = create_handover(&p.acts, &[device_id], "Иванов И.И.", "Получилов П.П.").await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    assert!(
+        html.contains(
+            "<div class=\"field-row\">было получено устройство: HTML-Единственный-Ноутбук</div>"
+        ),
+        "N=1 must render the singular field-row «было получено устройство: ⟨name⟩» (D-01/D-02). \
+         Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert_eq!(
+        html.matches("было получено устройство:").count(),
+        1,
+        "N=1 must render the singular label exactly once"
+    );
+    assert!(
+        !html.contains("были получены устройства"),
+        "N=1 must NOT render the plural summary line (D-02 — that branch is for N > 1 only). \
+         Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert!(
+        !html.contains("<ul>"),
+        "N=1 must NOT render the plural device-name <ul> summary list (D-02). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+}
+
+/// DOC-09 / D-02 + D-02a (N > 1 branch): a multi-device handover must render
+/// the plural summary line «были получены устройства:» followed by a `<ul>`
+/// naming EVERY device — and, per D-02a (CR-01 closure, Plan 35-06), each
+/// `.device-block` must still carry its own singular «было получено
+/// устройство: ⟨name⟩` label so printed fields stay attributable to a device.
+/// The singular label must not leak into the summary list itself.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_multi_device_renders_plural_summary_listing_every_name() {
+    let p = make_full_pipeline().await;
+    let device_ids = seed_devices(&p.writer, 3).await;
+    let act = create_handover(&p.acts, &device_ids, "Многоустройствов М.М.", "Петров П.П.").await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    assert!(
+        html.contains("<div class=\"field-row\">были получены устройства:</div>"),
+        "N>1 must render the plural summary field-row (D-02). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+
+    // The summary <ul> must name every device exactly once — the plural line
+    // must not swallow the per-device names.
+    let ul = extract_first_ul(&html);
+    for i in 0..3 {
+        let expected = format!("<li>HTML-Ноутбук-{i}</li>");
+        assert!(
+            ul.contains(&expected),
+            "plural summary list must contain {expected:?}. List: {ul:?}"
+        );
+    }
+    assert_eq!(
+        ul.matches("<li>").count(),
+        3,
+        "plural summary list must have exactly one <li> per device. List: {ul:?}"
+    );
+    assert!(
+        !ul.contains("было получено устройство"),
+        "the singular label must not be repeated inside the plural summary list (D-02). \
+         List: {ul:?}"
+    );
+
+    // D-02a: the singular per-device label is NOT suppressed at N > 1 — it is
+    // what makes each .device-block attributable (CR-01).
+    assert_eq!(
+        html.matches("было получено устройство:").count(),
+        3,
+        "each of the 3 .device-block sections must keep its own singular label (D-02a/CR-01). \
+         Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    for i in 0..3 {
+        let expected =
+            format!("<div class=\"field-row\">было получено устройство: HTML-Ноутбук-{i}</div>");
+        assert!(
+            html.contains(&expected),
+            "device {i} must keep its own singular field-row {expected:?} (D-02a). Body: {:?}",
+            html.chars().take(2000).collect::<String>()
+        );
+    }
+}
+
+/// DOC-07 / D-03 + D-12 (empty branch): with no `deadline_utc`, the «Сроком
+/// до:» row must STILL be rendered (D-12 — unconditional, the pre-Phase-35
+/// template hid the whole row) and must carry the `.value-blank` span, i.e.
+/// the handwriting underline. Asserts the exact rendered row markup, so
+/// re-wrapping the row in an `{% if %}` — or dropping the blank span — fails.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_without_deadline_renders_row_with_blank_underline() {
+    let p = make_full_pipeline().await;
+    let device_id = seed_device(&p.writer, "HTML-БезСрока-Ноутбук").await;
+    let act =
+        create_handover_with_deadline(&p.acts, &[device_id], "Иванов И.И.", "Получилов П.П.", None)
+            .await;
+    assert!(
+        act.deadline_utc.is_none(),
+        "fixture invariant: this act must have no deadline"
+    );
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    assert!(
+        html.contains(
+            "<div class=\"field-row\">Сроком до: <span class=\"value-blank\"></span></div>"
+        ),
+        "an empty deadline must still render the «Сроком до:» row with a blank underline span \
+         (D-03/D-12). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+}
+
+/// DOC-07 / D-03 + D-12 (filled branch): with a `deadline_utc`, the same
+/// unconditional row must show the Russian-formatted date produced by
+/// `act_service`'s `deadline_human` (`format_ru_date`) and must NOT emit the
+/// `.value-blank` handwriting underline — the underline is reserved for the
+/// empty case (D-10: exactly two legitimate underlines remain).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_with_deadline_renders_ru_date_without_blank_underline() {
+    let p = make_full_pipeline().await;
+    let device_id = seed_device(&p.writer, "HTML-СоСроком-Ноутбук").await;
+
+    // 2023-11-14 UTC — deliberately far from "now" (the act's own date, which
+    // SystemClock sets at create time), so the assertion cannot pass by
+    // accidentally matching the act date in the subtitle.
+    let deadline_utc: i64 = 1_700_000_000;
+    let act = create_handover_with_deadline(
+        &p.acts,
+        &[device_id],
+        "Иванов И.И.",
+        "Получилов П.П.",
+        Some(deadline_utc),
+    )
+    .await;
+    assert_eq!(
+        act.deadline_utc,
+        Some(deadline_utc),
+        "fixture invariant: the deadline must have been persisted"
+    );
+    assert_ne!(
+        format_ru_date(deadline_utc),
+        format_ru_date(act.handover_date_utc),
+        "fixture invariant: the deadline date must differ from the act date"
+    );
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    let expected_row = format!(
+        "<div class=\"field-row\">Сроком до: {}</div>",
+        format_ru_date(deadline_utc)
+    );
+    assert!(
+        html.contains(&expected_row),
+        "a filled deadline must render as the RU-formatted `deadline_human` on the «Сроком до:» \
+         row — expected {expected_row:?}. Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert!(
+        !html.contains("<span class=\"value-blank\"></span>"),
+        "a filled deadline must NOT emit the blank handwriting underline (D-03/D-10). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+}
+
 /// D-14 item 1: both acts' HTML output contains all required
 /// blocks/fields, plus the logo `data:` URI.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
