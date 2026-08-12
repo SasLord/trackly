@@ -25,6 +25,39 @@
   // undefined at runtime and this line was previously the first thing to
   // throw (before any postMessage could fire), which always forced the
   // 8s D-02 degrade timeout.
+  // D-15/D-15a (Phase 36): pagedjs 0.4.3 does not natively repeat <thead>
+  // when a table.appendix-table (act_handover.html's multi-device appendix)
+  // is split across pages — verified by reading
+  // ui/node_modules/pagedjs/src/chunker/{chunker,layout}.js: no thead-cloning
+  // logic exists there, and the upstream PR (#160) that would add it is
+  // unmerged. This Handler clones the ORIGINAL <thead> (captured before
+  // pagination starts, in the constructor, from the still-intact source DOM)
+  // into every page fragment of table.appendix-table that doesn't already
+  // have one (i.e. every continuation fragment after the first). Scoped
+  // strictly to table.appendix-table — never touches any other table or DOM
+  // on the page (T-36-03 threat register). MUST be kept logically identical
+  // to the mirror copy in ui/src/features/acts/PdfPreviewModal.svelte's
+  // printViaTopLevel() (D-15a) — that separate ESM `import('pagedjs')` code
+  // path does not go through this UMD bootstrap at all, so a one-sided edit
+  // here silently breaks only LAN print while desktop/preview keep working.
+  function RepeatTableHeadHandler(chunker, polisher, caller) {
+    window.PagedModule.Handler.call(this, chunker, polisher, caller);
+    var sourceTable = document.querySelector('table.appendix-table');
+    var sourceThead = sourceTable ? sourceTable.querySelector('thead') : null;
+    this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
+  }
+  RepeatTableHeadHandler.prototype = Object.create(window.PagedModule.Handler.prototype);
+  RepeatTableHeadHandler.prototype.constructor = RepeatTableHeadHandler;
+  RepeatTableHeadHandler.prototype.afterPageLayout = function (pageElement) {
+    if (!this.savedThead) return;
+    var savedThead = this.savedThead;
+    pageElement.querySelectorAll('table.appendix-table').forEach(function (table) {
+      if (table.querySelector('thead')) return; // already has one — first fragment
+      table.insertBefore(savedThead.cloneNode(true), table.firstChild);
+    });
+  };
+  window.PagedModule.registerHandlers(RepeatTableHeadHandler);
+
   var previewer = new window.PagedModule.Previewer();
   var pages = 0;
 
