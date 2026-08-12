@@ -117,3 +117,11 @@ None — no external service configuration required.
 ---
 *Phase: 36-act-pagination*
 *Completed: 2026-08-12*
+
+## Self-Check: PASSED
+
+- FOUND: `crates/trackly-app/templates/act_handover.html`
+- FOUND: `.planning/phases/36-act-pagination/36-02-SUMMARY.md`
+- FOUND: commit `cb7c53f` (Task 1)
+- FOUND: commit `fcb6297` (Task 2)
+- FOUND: commit `d60813d` (SUMMARY.md)
