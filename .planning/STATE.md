@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: executing
-last_updated: "2026-08-12T08:35:31.053Z"
-last_activity: 2026-08-12
+status: verifying
+last_updated: "2026-08-12T08:38:27.240Z"
+last_activity: "2026-08-12 -- Plan 35-07 complete (long-ФИО signature wrap fix, DOC-08/SC#4)"
 progress:
   total_phases: 5
   completed_phases: 2
@@ -295,6 +295,7 @@ Progress: [██████████] 100%
 | Phase 35 P03 | 10min | 2 tasks | 1 files |
 | Phase 35 P04 | 40min | 3 tasks | 4 files |
 | Phase 35 P05 | 20min | 2 tasks | 0 files |
+| Phase 35 P07 | ~2h | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -731,6 +732,8 @@ Recent decisions affecting current work:
 - [Phase 35]: Phase 35 UAT approved: body/signature-block rework confirmed on both transports; multi-device pagination (Приложение №1) explicitly deferred to Phase 36 (DOC-10/DOC-11)
 - [Phase 35]: 35-06: G-01/CR-01 закрыт — гейт length==1 снят, .device-block самоидентифицируется именем устройства при любом N (D-02a); human-UAT на обоих транспортах approved
 - [Phase 35]: 35-06: известный follow-up (не исправлен в этом плане) — для act_handover.html не снят срез _legacy_defaults/v23/ под правку Task 1; практических последствий нет (тег не выпускался, материализованных копий с промежуточным телом на машине не осталось)
+- [Phase 35]: 35-07: v23-снимок снят строго ДО CSS-правки (min-width:0/white-space:normal/overflow-wrap:break-word в .signature-row .signature-name), иначе assert_ne! precondition guard нового теста прошёл бы тривиально
+- [Phase 35]: 35-07 Task 3 (human-verify, gate=blocking): approved — пользователь подтвердил перенос длинного вымышленного ФИО в пределах печатной ширины на десктопе и в LAN-браузере для обоих актов, без обрезания и без ухода за край листа
 
 ### Pending Todos
 
@@ -900,8 +903,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-11T23:54:36.683Z
-Stopped at: Completed 35-06-PLAN.md (Phase 35 complete — G-01..G-04 closed, Task 4 human-UAT approved); ready for /gsd-verify-work
+Last session: 2026-08-12T08:38:27.231Z
+Stopped at: Completed 35-07-PLAN.md
 Resume file: 
 
 None
