@@ -86,7 +86,7 @@
 | 33. Полировка предпросмотра печати | v1.3 | 4/4 | Complete | 2026-08-04 |
 | 34. Единая шапка документов | v1.3.3 | 6/6 | Complete    | 2026-08-11 |
 | 35. Тело акта приёма-передачи | v1.3.3 | 7/7 | Complete    | 2026-08-12 |
-| 36. Пагинация акта по количеству устройств | v1.3.3 | 0/5 | Not started | - |
+| 36. Пагинация акта по количеству устройств | v1.3.3 | 1/5 | In Progress|  |
 | 37. Приватность данных | v1.3.3 | 0/TBD | Not started | - |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/TBD | Not started | - |
 
@@ -198,7 +198,7 @@
 
 **Wave 1**
 
-- [ ] 36-01-PLAN.md — срез _legacy_defaults/v24/act_handover.html + регистрация в KNOWN_LEGACY_DEFAULTS + регрессионный тест (C-01/Pitfall 7)
+- [x] 36-01-PLAN.md — срез _legacy_defaults/v24/act_handover.html + регистрация в KNOWN_LEGACY_DEFAULTS + регрессионный тест (C-01/Pitfall 7)
 
 **Wave 2** *(depends on Wave 1)*
 

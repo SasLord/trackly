@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-12T15:43:34.869Z"
-last_activity: 2026-08-12 -- Phase 36 planning complete
+last_updated: "2026-08-12T15:55:05.551Z"
+last_activity: 2026-08-12
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 13
+  completed_plans: 14
   percent: 40
 ---
 
@@ -20,17 +20,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 36 — пагинация акта по количеству устройств
+**Current focus:** Phase 36 — Пагинация акта по количеству устройств
 
 ## Current Position
 
-Phase: 36
-Plan: Not started
+Phase: 36 (Пагинация акта по количеству устройств) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-12 -- Phase 36 planning complete
+Last activity: 2026-08-12
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 78%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -297,6 +297,7 @@ Progress: [██████████] 100%
 | Phase 35 P04 | 40min | 3 tasks | 4 files |
 | Phase 35 P05 | 20min | 2 tasks | 0 files |
 | Phase 35 P07 | ~2h | 3 tasks | 7 files |
+| Phase 36 P01 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -735,6 +736,7 @@ Recent decisions affecting current work:
 - [Phase 35]: 35-06: известный follow-up (не исправлен в этом плане) — для act_handover.html не снят срез _legacy_defaults/v23/ под правку Task 1; практических последствий нет (тег не выпускался, материализованных копий с промежуточным телом на машине не осталось)
 - [Phase 35]: 35-07: v23-снимок снят строго ДО CSS-правки (min-width:0/white-space:normal/overflow-wrap:break-word в .signature-row .signature-name), иначе assert_ne! precondition guard нового теста прошёл бы тривиально
 - [Phase 35]: 35-07 Task 3 (human-verify, gate=blocking): approved — пользователь подтвердил перенос длинного вымышленного ФИО в пределах печатной ширины на десктопе и в LAN-браузере для обоих актов, без обрезания и без ухода за край листа
+- [Phase 36]: 36-01: v24 snapshot taken from current HEAD before any pagination edit (Pitfall 7/C-01), byte-identical confirmed via diff; new upgrade_replaces_v24_... regression test is expected RED until 36-02 lands the pagination rewrite (structural, self-resolving)
 
 ### Pending Todos
 
@@ -904,11 +906,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-12T15:04:03.124Z
-Stopped at: Phase 36 context gathered
+Last session: 2026-08-12T15:55:05.542Z
+Stopped at: Completed 36-01-PLAN.md
 Resume file: 
 
-.planning/phases/36-act-pagination/36-CONTEXT.md
+None
 
 - Plan Phase 34 with /gsd-plan-phase 34
 
