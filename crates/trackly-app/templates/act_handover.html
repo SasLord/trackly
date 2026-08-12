@@ -148,6 +148,43 @@
     white-space: normal;
     overflow-wrap: break-word;
   }
+  .appendix {
+    break-before: page;
+  }
+  .appendix-mark {
+    text-align: right;
+    font-size: 10pt;
+    margin-bottom: 4pt;
+  }
+  .appendix-title {
+    text-align: center;
+    font-size: 13pt;
+    font-weight: bold;
+    margin: 4pt 0 10pt 0;
+  }
+  .appendix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+  .appendix-table th,
+  .appendix-table td {
+    padding: 3pt 4pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  .appendix-table thead tr {
+    border-bottom: 0.5pt solid #999;
+  }
+  .appendix-table tbody.device-group {
+    break-inside: avoid;
+    border-top: 0.5pt solid #ccc;
+  }
+  .appendix-table tbody.row-even td {
+    background: #f2f2f2;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 </style>
 </head>
 <body>
@@ -219,6 +256,44 @@
       <span class="signature-name">{{ act.receiver_name }}</span>
     </div>
   </div>
+
+  {%- if act.items | length > 1 %}
+  <div class="appendix">
+    <div class="appendix-mark">Приложение №1<br>к акту приема-передачи №{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+    <div class="appendix-title">Опись передаваемых устройств</div>
+    <table class="appendix-table">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Наименование</th>
+          <th>Кол-во</th>
+          <th>Инв.№</th>
+          <th>Серийный №</th>
+          <th>Модель</th>
+          <th>Состояние</th>
+        </tr>
+      </thead>
+      {%- for item in act.items %}
+      <tbody class="device-group {{ loop.cycle('row-even', 'row-odd') }}">
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.name }}</td>
+          <td>{% if item.quantity > 1 %}{{ item.quantity }}{% else %}—{% endif %}</td>
+          <td>{{ item.inventory_no | default("—", true) }}</td>
+          <td>{{ item.serial_no | default("—", true) }}</td>
+          <td>{{ item.model | default("—", true) }}</td>
+          <td>{{ item.condition | default("—", true) }}</td>
+        </tr>
+        {%- if item.kit or item.specs %}
+        <tr class="device-subrow">
+          <td colspan="7">{% if item.kit %}Комплектация: {{ item.kit }}{% endif %}{% if item.kit and item.specs %} {% endif %}{% if item.specs %}Тех. характеристики: {{ item.specs }}{% endif %}</td>
+        </tr>
+        {%- endif %}
+      </tbody>
+      {%- endfor %}
+    </table>
+  </div>
+  {%- endif %}
 
 </body>
 </html>
