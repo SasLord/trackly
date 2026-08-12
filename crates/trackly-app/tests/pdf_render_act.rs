@@ -154,6 +154,14 @@ async fn create_handover_with_giver(
     svc.create(payload).await.expect("create handover")
 }
 
+/// Fictional (NOT a real employee's ФИО, CLAUDE.md privacy constant) long
+/// double-surname + patronymic fixture, extending this file's existing
+/// fictional "Сидоров-Петроградский" surname with an additional hyphenated
+/// component — 53 characters, used to prove the signature-block CSS wrap fix
+/// (DOC-08/SC#4, VERIFICATION.md gap) preserves the full name end-to-end
+/// through the render pipeline.
+const LONG_GIVER_NAME_FICTIONAL: &str = "Сидоров-Петроградский-Константинов Иван Александрович";
+
 /// N=1 regression anchor. Phase 35 D-06 restored `act.giver_name` to the
 /// rendered body — it is now printed in the horizontal signature block
 /// alongside `receiver_name`. This test asserts `receiver_name`, which the
@@ -638,6 +646,95 @@ async fn render_acceptance_pdf_for_device_works() {
             html.contains("Сидоров") || html.contains("Иванов"),
             "expected names in rendered HTML. Head: {:?}",
             html.chars().take(300).collect::<String>()
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Proves data integrity through the full pipeline (DB -> ActService ->
+/// MiniJinja) for a long fictional ФИО (DOC-08/SC#4, VERIFICATION.md gap):
+/// the name reaches `<span class="signature-name">` in full, without
+/// truncation. This does NOT prove absence of visual print-width overflow —
+/// that check is structurally impossible from a Rust test for this
+/// HTML+Paged.js template (RESEARCH.md Pitfall 5) and is performed by a
+/// human in Task 3 (checkpoint:human-verify, gate=blocking).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_handover_with_long_giver_name_preserves_full_name_in_signature_block() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let act = create_handover_with_giver(&p.acts, &device_ids, LONG_GIVER_NAME_FICTIONAL).await;
+        let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+        assert!(
+            html.contains(LONG_GIVER_NAME_FICTIONAL),
+            "long giver name must reach the rendered HTML intact, without truncation"
+        );
+
+        let marker = "<span class=\"signature-name\">";
+        let giver_pos = html
+            .find(LONG_GIVER_NAME_FICTIONAL)
+            .expect("giver name present in html");
+        let span_start = html[..giver_pos]
+            .rfind(marker)
+            .expect("signature-name span opens before the giver name occurrence")
+            + marker.len();
+        let span_end = html[span_start..]
+            .find("</span>")
+            .map(|i| span_start + i)
+            .expect("signature-name span closes");
+        assert_eq!(
+            &html[span_start..span_end],
+            LONG_GIVER_NAME_FICTIONAL,
+            "signature-name span content must be exactly the long giver name, unmodified"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Acceptance-act sibling of the handover test above — same fixture, same
+/// two-level proof (full-string containment + exact `.signature-name` span
+/// content), same evidentiary limits (RESEARCH.md Pitfall 5, Task 3 carries
+/// the real visual proof).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn render_acceptance_with_long_giver_name_preserves_full_name_in_signature_block() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 1).await;
+        let html = p
+            .acts
+            .render_acceptance_pdf(
+                device_ids[0],
+                LONG_GIVER_NAME_FICTIONAL.to_string(),
+                "Получилов П.П.".to_string(),
+                1_700_000_000,
+            )
+            .await
+            .expect("render acceptance");
+
+        assert!(
+            html.contains(LONG_GIVER_NAME_FICTIONAL),
+            "long giver name must reach the rendered HTML intact, without truncation"
+        );
+
+        let marker = "<span class=\"signature-name\">";
+        let giver_pos = html
+            .find(LONG_GIVER_NAME_FICTIONAL)
+            .expect("giver name present in html");
+        let span_start = html[..giver_pos]
+            .rfind(marker)
+            .expect("signature-name span opens before the giver name occurrence")
+            + marker.len();
+        let span_end = html[span_start..]
+            .find("</span>")
+            .map(|i| span_start + i)
+            .expect("signature-name span closes");
+        assert_eq!(
+            &html[span_start..span_end],
+            LONG_GIVER_NAME_FICTIONAL,
+            "signature-name span content must be exactly the long giver name, unmodified"
         );
     })
     .await

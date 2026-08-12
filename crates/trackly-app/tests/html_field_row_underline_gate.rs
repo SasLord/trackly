@@ -112,3 +112,45 @@ fn acceptance_signature_line_css_has_exactly_one_legitimate_border_bottom() {
          Rule body: {signature_line_body}"
     );
 }
+
+/// Closes VERIFICATION.md missing item 1 (2026-08-12 re-verification,
+/// DOC-08/SC#4, WR-02) with a structural CSS gate rather than a textual
+/// `html.contains` check: `.signature-row .signature-name` in BOTH
+/// `act_handover.html` and `act_acceptance.html` must permit wrapping
+/// (`min-width: 0`, `white-space: normal`, `overflow-wrap: break-word`) and
+/// must never fall back to a bare `nowrap` — otherwise a long Cyrillic ФИО
+/// (double surname + patronymic) cannot shrink/wrap and overflows the print
+/// width.
+#[test]
+fn signature_name_css_permits_wrap_for_long_names() {
+    for (filename, html) in [
+        ("act_handover.html", ACT_HANDOVER_HTML),
+        ("act_acceptance.html", ACT_ACCEPTANCE_HTML),
+    ] {
+        let style = extract_style_block(html);
+        let body = extract_rule_body(&style, ".signature-row .signature-name");
+
+        assert!(
+            body.contains("min-width: 0"),
+            "{filename}: `.signature-row .signature-name` must declare min-width: 0 \
+             so a long ФИО can shrink below its unbroken text width. Rule body: {body}"
+        );
+        assert!(
+            body.contains("white-space: normal"),
+            "{filename}: `.signature-row .signature-name` must declare white-space: normal \
+             to permit wrapping. Rule body: {body}"
+        );
+        assert!(
+            body.contains("overflow-wrap: break-word"),
+            "{filename}: `.signature-row .signature-name` must declare \
+             overflow-wrap: break-word so an unbreakable long word still wraps. \
+             Rule body: {body}"
+        );
+        assert!(
+            !body.contains("nowrap"),
+            "{filename}: `.signature-row .signature-name` must not force nowrap — \
+             long Cyrillic ФИО (DOC-08/SC#4, VERIFICATION.md gap) needs to wrap, \
+             not overflow. Rule body: {body}"
+        );
+    }
+}
