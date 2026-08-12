@@ -1,13 +1,15 @@
 ---
 phase: 35-act-handover-body
-reviewed: 2026-08-12T00:35:00Z
+reviewed: 2026-08-12T09:10:00Z
 depth: standard
-files_reviewed: 10
+files_reviewed: 12
 files_reviewed_list:
   - crates/trackly-app/src/pdf/html_templates.rs
   - crates/trackly-app/src/services/template_service.rs
   - crates/trackly-app/templates/_legacy_defaults/v22/act_acceptance.html
   - crates/trackly-app/templates/_legacy_defaults/v22/act_handover.html
+  - crates/trackly-app/templates/_legacy_defaults/v23/act_acceptance.html
+  - crates/trackly-app/templates/_legacy_defaults/v23/act_handover.html
   - crates/trackly-app/templates/act_acceptance.html
   - crates/trackly-app/templates/act_handover.html
   - crates/trackly-app/tests/acts_e2e_smoke.rs
@@ -16,62 +18,87 @@ files_reviewed_list:
   - crates/trackly-app/tests/pdf_render_act.rs
 findings:
   critical: 0
-  warning: 9
-  info: 5
-  total: 14
+  warning: 8
+  info: 7
+  total: 15
 status: issues_found
 ---
 
-# Phase 35: Code Review Report (re-review после gap closure)
+# Phase 35: Code Review Report (ревью после плана 35-07)
 
-**Reviewed:** 2026-08-12T00:35:00Z
+**Reviewed:** 2026-08-12T09:10:00Z
 **Depth:** standard
-**Files Reviewed:** 10
+**Files Reviewed:** 12
 **Status:** issues_found
 
 ## Summary
 
-Повторный ревью Фазы 35 после плана 35-06. Проверено фактическое состояние кода
-(не заявления плана): **все четыре предыдущие находки закрыты по-настоящему** —
-см. раздел «Проверка закрытия предыдущих находок».
+Третий проход по Фазе 35 — после gap-closure плана 35-07 (`f162c79`: срез
+`_legacy_defaults/v23` + CSS-фикс переноса ФИО в блоке подписей). Проверялось
+фактическое состояние файлов и git-история тел шаблонов, а не заявления
+SUMMARY.
 
-Дополнительно прогнаны все затронутые тест-бинарники — зелёные:
-`--lib pdf::html_templates` (13), `--lib services::template_service` (15),
-`--test pdf_render_act` (13), `--test html_field_row_underline_gate` (2),
-`--test html_act_render` (8), `--test acts_e2e_smoke` (4),
-`--test templates_seed` (4), `--test templates_status` (11),
-`--test html_report_render` (3), `--test html_header_parity` (5),
-`--test html_page_parity` (1). Компиляция/тесты — не доказательство
-корректности печатного документа, поэтому основная часть находок ниже получена
-чтением шаблонов и фактическим рендером через MiniJinja.
+**Что реально закрыто (проверено независимо):** срез `v23` байт-в-байт равен
+телам обоих актов на коммите `d274e6b` (то есть снят ДО фикса, не после) —
+`git hash-object` подтверждает `5f5fdee…`/`f2f35fb…`; `white-space: nowrap` на
+`.signature-name` заменён на `min-width: 0 / white-space: normal /
+overflow-wrap: break-word` в обоих шаблонах; появились структурный CSS-гейт
+`signature_name_css_permits_wrap_for_long_names` и два end-to-end теста на
+53-символьное вымышленное ФИО.
 
-**Приватность:** нарушений нет. Все реквизиты в фикстурах и demo-контексте —
-синтетические (последовательные цифры, `ООО Ромашка`/`ООО Паритет`/
-`ООО Демо Организация`, номера вида `+7 495 000-00-00`), ФИО — вымышленные
-(«Иванов И.И.», «Морозов М.М.», «Выдалов В.В.»). Реального названия
-организации, реквизитов и реальных ФИО в проверенных файлах нет.
+**Главная остающаяся проблема (WR-01):** план 35-07 зарегистрировал ОДНО из
+четырёх промежуточных тел фазы. Внутри Фазы 35 `act_handover.html` побывал в
+четырёх различных состояниях (`ef08ced`, `af3f4a6`, `5cc4ecf`, `5f5fdee`), а
+`act_acceptance.html` — в двух (`0c566fe`, `f2f35fb`); в
+`KNOWN_LEGACY_DEFAULTS` попали только `5f5fdee`/`f2f35fb`. Установка, чей файл
+на диске равен `5cc4ecf` (тело, на котором CR-01 и был обнаружен — анонимные
+`.device-block`), классифицируется как «user-customized» и НИКОГДА не получит
+ни фикс CR-01, ни фикс переноса ФИО. Продакшн-риска нет (см. ниже), но это ровно
+та машина, на которой стоит блокирующий human-verify гейт фазы.
 
-**Критических находок нет.** Ключевые остающиеся риски: (1) пропущенный снимок
-промежуточного тела в `_legacy_defaults` (уже трекается, подтверждаю механизм и
-приложил результат независимой проверки релизных тегов и локальных
-материализованных копий); (2) `white-space: nowrap` на новом печатном ФИО —
-класс дефекта «ФИО обрезалось», который в этом проекте уже случался;
-(3) дублирование имени устройства и безусловное «Сроком до» — качество
-печатного юридического документа; (4) preview редактора печатает литеральное
-`none` вместо суффикса (подтверждено фактическим рендером).
+**Смягчающий факт, проверенный по всем релизным тегам:** `v1.1.x`, `v1.2`,
+`v1.2.0`, `v1.3`, `v1.3.0`, `v1.3.1`, `v1.3.2` несут тело `c479c56…` /
+`6f82db9…` = снимок `v21`, который зарегистрирован. То есть ни одна выпущенная
+установка не залипнет; риск ограничен dev/UAT-машинами. Локальная
+материализованная копия на этой машине (`target/debug/templates/act_handover.html`,
+`e411cd2…`, mtime 12 Aug 14:23) уже равна текущему bundled-телу — mac-бокс чист,
+Windows-бокс не проверяем отсюда.
 
-## Проверка закрытия предыдущих находок
+**Приватность (жёсткое условие CLAUDE.md): нарушений нет.** В шаблонах —
+только placeholder'ы (`{{ act.giver_name }}`, `org.*`), реального названия
+организации, ИНН/КПП/ОГРН/адресов/телефонов нет; в тестах и demo-контексте —
+вымышленные ФИО («Иванов И.И.», «Выдалов В.В.», «Получилов П.П.»,
+«Сидоров-Петроградский-Константинов Иван Александрович») и синтетические
+реквизиты («ООО Демо Организация», `7700000000`, `+7 495 000-00-00`). Срезы
+`_legacy_defaults/v22|v23` — копии тех же обезличенных шаблонов.
+
+**Критических находок нет.** Проверено адресно: в обоих актах не осталось ни
+одного `| safe` (единственные санкционированные — в `_header.html`, для
+серверно-собранных `logo_data_uri`/`org.full_name`); autoescape включён
+(`build_safe_html_env`, `AutoEscape::Html`); новых ключей контекста фаза не
+вводит, а `act.giver_name` есть и в `act_service::render_pdf`, и в
+`demo_context_for_kind`, так что `UndefinedBehavior::Strict` не даёт краша;
+`update_body`/`reset_to_default` по-прежнему проверяют `kind` по фиксированному
+allowlist ДО любого `join`, так что path traversal закрыт.
+
+## Проверка закрытия предыдущих находок (ревью 2026-08-12T00:35)
 
 | Находка | Статус | Доказательство |
 |---|---|---|
-| CR-01 (multi-device `.device-block` без имени устройства) | **закрыта** | `d274e6b` снял гейт `{%- if act.items \| length == 1 %}`; строка «было получено устройство: {{ item.name }}» теперь безусловна (`act_handover.html:142`). Проверено фактическим рендером на N=3: каждый блок содержит своё имя, включая блок без опциональных полей. Регресс-тест `render_handover_multi_device_fields_attributable_to_own_device` (`pdf_render_act.rs:345-453`) не вакуозен: он разбивает HTML по `<div class="device-block">`, проверяет co-location и отсутствие чужих значений; на прежнем гейтированном шаблоне упал бы на первом же `block.contains(names[i])`. |
-| WR-01 (нет теста на `bodies.get(2)`/v22) | **закрыта** | `upgrade_replaces_v22_legacy_default_with_current_bundled_body` (`html_templates.rs:476-525`) тянет индекс `2`, имеет анти-вакуозный guard `assert_ne!(v22_body, current)`, проходит. Независимо проверено: `_legacy_defaults/v22/act_{handover,acceptance}.html` байт-в-байт равны телам на `e0d2dca^` (pre-Phase-35), т.е. снимок взят ДО правок. |
-| WR-02 (вакуозные `"Выдал"`/`"Получил"` на фоне фикстурных ФИО) | **закрыта** | `html_act_render.rs:188` теперь ассертит метки с двоеточием (`"Выдал:"`, `"Получил:"`), которые не могут совпасть с «Выдалов В.В.», плюс отдельный явный ассерт на печатное ФИО (`html_act_render.rs:198-202`). |
-| IN-01 (гейт подчёркиваний только для `act_handover.html`) | **закрыта** | `html_field_row_underline_gate.rs:97-114` добавляет эквивалентный гейт для `act_acceptance.html` (ровно один легитимный `border-bottom`), тест проходит. |
+| WR-01 (нет среза `v23`) | **закрыта частично** | Срез `v23` добавлен и зарегистрирован (`html_templates.rs:82,91`), тест `upgrade_replaces_v23_legacy_default_with_current_bundled_body` (`html_templates.rs:536-585`) тянет индекс `3` и имеет анти-вакуозный guard. Но зарегистрировано только тело `d274e6b`; тела `ef08ced`, `af3f4a6`, `5cc4ecf` (handover) и `0c566fe` (acceptance) остались вне реестра → см. новую WR-01. |
+| WR-02 (`nowrap` на печатном ФИО) | **закрыта** | `act_handover.html:117-121` и `act_acceptance.html:103-107` содержат `min-width: 0; white-space: normal; overflow-wrap: break-word`. Гейт `signature_name_css_permits_wrap_for_long_names` (`html_field_row_underline_gate.rs:124-156`) не вакуозен: `extract_rule_body` паникует при отсутствии правила, а `!body.contains("nowrap")` падает при откате. |
+| WR-03 (дубль имени устройства + число) | **принято продуктом** | 35-CONTEXT.md D-02a прямо фиксирует «избыточность принята осознанно» решением пользователя. Понижено до IN-06, дефектом не считаю. |
+| WR-04 («Сроком до» на возвратах) | **не закрыта** | `act_handover.html:166` по-прежнему безусловна → см. WR-02 ниже. |
+| WR-05 (`None` в preview) | **не закрыта** | `template_service.rs:508` — `"suffix": null` → см. WR-03 ниже (перепроверено фактическим рендером на minijinja 2.20). |
+| WR-06 (demo-контекст с одной позицией) | **не закрыта** | `template_service.rs:516-529` — один элемент `items` → см. WR-04 ниже. |
+| WR-07 (вакуозные ассерты номера) | **не закрыта** | `pdf_render_act.rs:206-210` и `html_act_render.rs:204-207` без изменений → см. WR-05 ниже. |
+| WR-08 (дубль блока подписей) | **не закрыта, подтверждена практикой** | Фикс 35-07 пришлось вносить в два файла, гейт — писать циклом по двум файлам → см. WR-07 ниже. |
+| WR-09 (копипаста тестов снимков) | **не закрыта, усугублена** | Добавлена четвёртая копия того же 50-строчного скелета (`html_templates.rs:536-585`) → см. WR-06 ниже. |
+| IN-01…IN-05 | **не закрыты** | Все пять воспроизводятся в текущем HEAD, перенесены ниже без изменений. |
 
 ## Structural Findings (fallow)
 
-Структурный пре-проход не передан (`<structural_findings>` в задании
+Структурный пре-проход в задании не передан (`<structural_findings>`
 отсутствует) — раздел оставлен пустым намеренно, чтобы narrative-находки ниже
 не выдавались за структурный субстрат.
 
@@ -79,250 +106,222 @@ status: issues_found
 
 ## Critical Issues
 
-Не найдено. Ни один из проверенных путей не даёт некорректного поведения,
-утечки данных или уязвимости: в обоих актах не осталось ни одного `| safe`
-(единственные санкционированные `| safe` живут в `_header.html` и относятся к
-серверно-собранным `logo_data_uri`/`org.full_name`), autoescape включён
-(`build_safe_html_env`), новых ключей контекста, кроме `act.giver_name`, не
-добавлено, а `act.giver_name` присутствует во всех путях рендера
-(`act_service::render_pdf` — единственный путь для `act_handover.html`) и в
-preview-контексте (`demo_context_for_kind`, добавлен в 35-01), так что
-`UndefinedBehavior::Strict` не даёт краша.
+Не найдено.
 
 ## Warnings
 
-### WR-01: Промежуточное тело `act_handover.html` (35-02/35-03) не снято в `_legacy_defaults/v23` — установки на нём навсегда теряют авто-апгрейд
+### WR-01: Из четырёх промежуточных тел Фазы 35 зарегистрировано одно — установка на теле `5cc4ecf` навсегда теряет и фикс CR-01, и фикс переноса ФИО
 
-**Severity:** WARNING (уже трекается; подтверждаю независимо)
-**File:** `crates/trackly-app/src/pdf/html_templates.rs:57-63, 75-105`, `crates/trackly-app/templates/act_handover.html:140-142`
+**Severity:** WARNING (риск для блокирующего human-verify гейта фазы; продакшн не затронут)
+**File:** `crates/trackly-app/src/pdf/html_templates.rs:57-63` (инвариант), `:75-107` (реестр)
 
-**Issue:** Doc-comment самого модуля объявляет снимок PRE-CHANGE тела
-обязательным при *каждом* изменении `DEFAULT_HTML_TEMPLATES`. План 35-06
-(`d274e6b`) изменил тело `act_handover.html` во второй раз внутри фазы
-(снят гейт `length == 1`), но `_legacy_defaults/` по-прежнему содержит только
-`v20 v21 v22`. Для установки, чей on-disk файл равен промежуточному телу
-(коммиты `3904da9`…`bbfed54`), `upgrade_untouched_defaults_on_startup`
-(`html_templates.rs:229-236`) уйдёт в ветку «user-customized» и **никогда** не
-доставит исправление CR-01; `build_templates_status`
-(`tauri_cmds/settings_org.rs:316-330`) при этом покажет файл как `Customized`,
-т.е. диагностика будет вводить в заблуждение. Ни один из трёх структурных
-тестов апгрейда этого не поймает — они итерируются по зарегистрированным
-снимкам, а не по истории.
+**Issue:** Doc-comment модуля объявляет обязательным снимок PRE-CHANGE тела при
+*каждом* изменении `DEFAULT_HTML_TEMPLATES`. Внутри Фазы 35 тела менялись так
+(`git rev-parse <commit>:crates/trackly-app/templates/…`):
 
-**Независимо проверенные смягчающие факты:**
-- ни один релизный тег не несёт промежуточное тело: `v1.2, v1.3, v1.3.0,
-  v1.3.1, v1.3.2` — все три шаблона байт-в-байт равны снимку `v21`
-  (т.е. даже тело Phase 34, зарегистрированное как `v22`, ещё не выпускалось);
-- локальные материализованные копии на этой машине
-  (`target/debug/templates/*.html`, mtime 2026-08-12 06:07) байт-в-байт равны
-  **текущим** bundled-телам, т.е. здесь ничего не залипло. (Замечу: тезис
-  «материализованных копий на машине не осталось» неточен — каталог
-  существует; просто его содержимое актуально.)
+| Коммит | `act_handover.html` | `act_acceptance.html` | В реестре? |
+|---|---|---|---|
+| `e0d2dca` (pre-35) | `a6e9323` | `7be7a95` | да — `v22` |
+| `c74a579` | `ef08ced` | `7be7a95` | **нет** |
+| `3904da9` | `af3f4a6` | `7be7a95` | **нет** |
+| `d337c7d` | `5cc4ecf` | `7be7a95` | **нет** |
+| `81b3d39` | `5cc4ecf` | `0c566fe` | **нет** |
+| `bbfed54` | `5cc4ecf` | `f2f35fb` | частично (только acceptance) |
+| `d274e6b` | `5f5fdee` | `f2f35fb` | да — `v23` |
+| `f162c79` (HEAD) | `e411cd2` | `12a2d0f` | current |
 
-**Остаточный риск:** любая машина (в частности Windows-бокс для UAT), где
-приложение запускалось со сборки между `3904da9` и `d274e6b`, залипнет на теле
-без имён устройств — то есть UAT «фикса CR-01» там покажет старое поведение и
-это будет выглядеть как неработающий фикс.
+Тело `5cc4ecf` прожило три коммита подряд (планы 35-03…35-05) — это то самое
+тело, на котором VERIFICATION SC#2 упал (анонимные `.device-block`, CR-01).
+Любая машина, где приложение запускалось в этом окне, имеет `5cc4ecf` на диске;
+`upgrade_untouched_defaults_on_startup` (`html_templates.rs:214-238`) уйдёт в
+ветку `else` («user-customized»), `build_templates_status`
+(`tauri_cmds/settings_org.rs:316-330`) покажет `Customized`, и человек на
+UAT-гейте увидит СТАРЫЙ документ — то есть закономерно решит, что фиксы CR-01 и
+DOC-08/SC#4 не работают. Ни один из четырёх структурных тестов апгрейда этого не
+ловит: они итерируются по зарегистрированным снимкам, а не по истории.
 
-**Fix:**
+**Fix (любой из двух, но осознанно):**
 ```rust
-// 1) templates/_legacy_defaults/v23/act_handover.html  <- тело на коммите bbfed54
-// 2) html_templates.rs
-(
-    "act_handover.html",
-    &[
-        include_str!("../../templates/_legacy_defaults/v20/act_handover.html"),
-        include_str!("../../templates/_legacy_defaults/v21/act_handover.html"),
-        include_str!("../../templates/_legacy_defaults/v22/act_handover.html"),
-        include_str!("../../templates/_legacy_defaults/v23/act_handover.html"),
-    ],
-),
+// A. Дорегистрировать реально существовавшие промежуточные тела:
+//    _legacy_defaults/v22a/act_handover.html  <- git show d337c7d:…/act_handover.html (5cc4ecf)
+//    _legacy_defaults/v22b/act_acceptance.html <- git show 81b3d39:…/act_acceptance.html (0c566fe)
+//    + добавить их в соответствующие слайсы KNOWN_LEGACY_DEFAULTS.
 ```
-Либо — если решено снимок не делать — зафиксировать в doc-comment явное
-исключение с обоснованием («тело не выпускалось»), чтобы инвариант не выглядел
-молча нарушенным, и удалить устаревшие `templates/act_handover.html` на UAT-машинах.
+```text
+B. Либо зафиксировать в doc-comment (html_templates.rs:57-63) явное правило
+   «снимок делается только для тел, вошедших в релизный тег; внутрифазовые
+   промежуточные тела не регистрируются» + добавить в 35-VERIFICATION.md
+   предусловие UAT: «удалить templates/act_*.html (или проверить, что в логе
+   нет "Skipped auto-upgrade") перед проверкой печати».
+```
+Вариант B дешевле и честнее (проверено: ни один релизный тег не несёт
+промежуточных тел), но тогда текущие срезы `v22`/`v23` тоже не нужны — они
+описывают невыпущенные состояния.
 
 ---
 
-### WR-02: `white-space: nowrap` на печатном ФИО в блоке подписей — длинное ФИО не переносится и обрезается на печати
+### WR-02: «Сроком до: ______» печатается безусловно, в том числе на актах возврата
 
-**Severity:** WARNING
-**File:** `crates/trackly-app/templates/act_handover.html:117-119` (+ разметка `172-189`), `crates/trackly-app/templates/act_acceptance.html:103-105` (+ разметка `129-146`)
+**Severity:** WARNING (корректность печатного документа)
+**File:** `crates/trackly-app/templates/act_handover.html:166`
 
-**Issue:** Фаза 35 впервые печатает ФИО в строке подписи (D-06/D-07) и делает
-это внутри flex-строки: `.signature-row { display:flex }` + `.signature-label
-{ nowrap }` + `.signature-field { flex: 0 0 160pt }` + `.signature-name
-{ white-space: nowrap }`. При `nowrap` min-content ширина элемента равна полной
-ширине строки, а `flex-shrink` не может сжать элемент ниже min-content без
-`min-width: 0` — значит содержимое выходит за пределы полосы набора
-(`@page` A4 с margin 15mm → ~180 mm ≈ 510 pt контента). Бюджет строки:
-метка (~36 pt) + 2 gap (20 pt) + поле подписи (160 pt) = ~216 pt, остаётся
-~294 pt на ФИО, что при Times 12 pt исчерпывается примерно на 48-52 символах.
-Русское ФИО с двойной фамилией легко перекрывает этот лимит (собственная
-фикстура проекта — «Сидоров-Петроградский Иван Александрович», 39 символов —
-уже в 80 % бюджета). До Фазы 35 риска не было: ФИО не печаталось вовсе.
-Текстовые ассерты `html.contains(...)` этот класс дефекта не видят по построению
-(в проекте это уже зафиксированный урок).
-
-**Fix:**
-```css
-  .signature-row .signature-name {
-    min-width: 0;            /* разрешить flex-сжатие */
-    white-space: normal;     /* разрешить перенос */
-    overflow-wrap: break-word;
-  }
-```
-(то же в `act_acceptance.html`). Проверять не текстовым тестом, а реальным
-рендером/печатью с ФИО ≥ 55 символов.
-
----
-
-### WR-03: При N > 1 имя каждого устройства печатается дважды, а множественный вводный оборот противоречит повторяющемуся единственному числу
-
-**Severity:** WARNING (печатная корректность юридического документа)
-**File:** `crates/trackly-app/templates/act_handover.html:131-162`
-
-**Issue:** Закрытие CR-01 сделало строку «было получено устройство: {{ item.name }}»
-безусловной, но верхний перечень при `act.items | length > 1` остался. Фактический
-рендер (проверено прогоном шаблона через MiniJinja с N=3):
-
-```
-были получены устройства:
-  • Ноутбук-0
-  • Ноутбук-1
-  • Ноутбук-2
-было получено устройство: Ноутбук-0
-  Инвентарный номер: ИНВ-0
-было получено устройство: Ноутбук-1
-  Комплектация: Сумка
-было получено устройство: Ноутбук-2
-```
-
-То есть каждое имя дублируется, а после множественного «были получены
-устройства» N раз идёт «было получено устройство» в единственном числе. Для акта
-приёма-передачи это читается как перечисление разных фактов передачи и создаёт
-почву для спора о комплекте.
-
-**Fix:** выбрать один носитель идентификации (продуктовое решение, но избыточность
-надо снять). Минимальный вариант — убрать верхний `<ul>` (per-block имя теперь
-покрывает атрибуцию, и регресс-тест CR-01 продолжит проходить):
-```jinja
-{#- убрать блок 131-138 целиком -#}
-```
-Альтернатива — оставить перечень, а per-block подпись сделать нейтральной:
-`<div class="field-row">Устройство: {{ item.name }}</div>`.
-
----
-
-### WR-04: «Сроком до: ____» теперь печатается безусловно, в том числе на актах возврата, где срок бессмысленен
-
-**Severity:** WARNING
-**File:** `crates/trackly-app/templates/act_handover.html:164`
-
-**Issue:** D-03 сделал строку безусловной с пустым подчёркиванием при отсутствии
-значения. Но тот же шаблон рендерит и акты возврата (`render_pdf` вызывается для
-return-акта — см. `pdf_render_act.rs:699-779`, где рендерится return с блоком
-`act.parent`), а у возврата `deadline_utc` пуст практически всегда. В результате
-на документе возврата появляется пустая строка «Сроком до: ______», приглашающая
-дописать от руки срок, которого у возврата быть не может.
+**Issue:** D-03 сделал строку безусловной с пустой полоской. Но этот же шаблон
+рендерит и акты возврата: `act_service::render_pdf` вызывается для return-акта
+(регресс-тест `html_act_render.rs:699-779` рендерит возврат с блоком
+`act.parent`), а `deadline_utc` у возврата пуст практически всегда. В итоге на
+документе возврата печатается приглашение вписать от руки срок, которого у
+возврата быть не может, — и полоска попадает в подписываемый документ.
 
 **Fix:**
 ```jinja
-  {%- if act.parent %}
-  {#- возврат: срок не применим — строку не печатаем -#}
-  {%- else %}
-  <div class="field-row">Сроком до: {% if act.deadline_human %}...{% endif %}</div>
+  {%- if not act.parent %}
+  <div class="field-row">Сроком до: {% if act.deadline_human %}{{ act.deadline_human }}{% elif act.deadline %}{{ act.deadline }}{% else %}<span class="value-blank"></span>{% endif %}</div>
   {%- endif %}
 ```
+(и добавить в `pdf_render_act.rs` ассерт `!html.contains("Сроком до")` для
+return-акта — иначе регрессия снова пройдёт незамеченной).
 
 ---
 
-### WR-05: Preview редактора печатает литеральное `none` вместо суффикса номера акта
+### WR-03: Preview редактора печатает литеральное `None` вместо суффикса номера акта
 
-**Severity:** WARNING (дефект существовал до фазы, но живёт в проверяемом файле, изменённом в 35-01)
-**File:** `crates/trackly-app/src/services/template_service.rs:508` (`"suffix": null`), используется `act_handover.html:45` и `:127`
+**Severity:** WARNING
+**File:** `crates/trackly-app/src/services/template_service.rs:508` (`"suffix": null`); потребители — `act_handover.html:45` и `:129`
 
 **Issue:** MiniJinja `default` подменяет только `undefined`, а не `none`
-(`filters.rs: if value.is_undefined() || (lax && !value.is_true())`), а `none`
-печатается как строка `none` (`value/mod.rs:481`). Проверено фактическим
-рендером с тем же env (`Strict` + `AutoEscape::Html`):
+(`minijinja-2.20.0/src/filters.rs:540` — `if value.is_undefined() || (lax &&
+!value.is_true())`), а `none` печатается литералом. Перепроверено фактическим
+рендером на minijinja 2.20 с тем же env (`UndefinedBehavior::Strict` +
+`AutoEscape::Html`) и тем же demo-контекстом:
 
 ```
-RENDERED: [№42none от 17 июня 2026]
+OUT=[№42None от 17 июня 2026]
 ```
 
-Реальный рендер не затронут (`compute_suffix_from_display` возвращает `String`),
-но админ в редакторе шаблонов видит «№42none» и в `<title>`, и в подзаголовке —
-и может «починить» шаблон под сломанный demo-контекст.
+Реальный рендер не затронут (`compute_suffix_from_display` возвращает `String`,
+`act_service.rs:2610`), но админ в редакторе шаблонов видит «№42None» и в
+`<title>`, и в подзаголовке — и рискует «починить» шаблон под сломанный
+demo-контекст. Побочно это значит, что demo-контекст не воспроизводит типы
+реального контекста, а именно ради этого он и существует.
 
 **Fix:**
 ```rust
-"suffix": "",           // вместо null
+"suffix": "",   // template_service.rs:508 — String, как в реальном ctx
 ```
-и/или в шаблоне `{{ act.suffix | default('', true) }}` (lax-форма гасит и `none`,
-и пустую строку).
+опционально плюс lax-форма в шаблоне: `{{ act.suffix | default('', true) }}`.
 
 ---
 
-### WR-06: Demo-контекст preview содержит ровно одну позицию — ветка N > 1 (та самая, где жил CR-01) в редакторе непроверяема
+### WR-04: Demo-контекст preview содержит ровно одну позицию — ветка N > 1 (та, где жил CR-01) в редакторе непроверяема
 
 **Severity:** WARNING
 **File:** `crates/trackly-app/src/services/template_service.rs:516-529`
 
-**Issue:** `demo_context_for_kind("act_handover")` даёт один `items[0]`, поэтому
-`{% if act.items | length > 1 %}` и множественные `.device-block` никогда не
-попадают в preview. Именно multi-device ветка была дефектной (CR-01) и именно её
-админ не может увидеть перед сохранением своего шаблона; тесты
-`validate_preview_*` тоже покрывают только N=1. Добавление второй позиции — одна
-строка и закрывает целый класс невидимых регрессий.
+**Issue:** `demo_context_for_kind("act_handover")` отдаёт единственный
+`items[0]`, поэтому ни `{% if act.items | length > 1 %}` (сводный `<ul>`,
+`act_handover.html:133-140`), ни повторяющиеся `.device-block` в preview никогда
+не попадают. Именно multi-device ветка была дефектной (CR-01) и именно её админ
+не видит перед сохранением своей правки; тесты `validate_preview_*`
+(`template_service.rs:601-684`) тоже покрывают только N=1. После D-02a в этой
+ветке живёт вся логика атрибуции полей к устройству — она обязана быть в
+preview.
 
-**Fix:** добавить второй элемент в `items` (второе устройство без части
-опциональных полей, чтобы preview показывал и «пустой» блок), например
-`{"name":"Монитор 27\"","inventory_no":"ИНВ-002","serial_no":null,"model":null,
-"quantity":1,"specs":null,"kit":null,"condition":"Б/У"}`.
+**Fix:** добавить вторую позицию (намеренно без части опциональных полей, чтобы
+preview показывал и «бедный» блок):
+```rust
+{"name":"Монитор 27\"","inventory_no":"ИНВ-002","serial_no":null,
+ "model":null,"quantity":1,"specs":null,"kit":null,"condition":"Б/У"}
+```
 
 ---
 
-### WR-07: Вакуозные ассерты на номер акта (`contains("1")`)
+### WR-05: Вакуозные ассерты на номер акта — пройдут, даже если номер исчезнет из документа
 
-**Severity:** WARNING (test quality; в проверяемых файлах, доработанных в этой фазе)
-**File:** `crates/trackly-app/tests/pdf_render_act.rs:198-202`, `crates/trackly-app/tests/html_act_render.rs:204-207`
+**Severity:** WARNING (test quality)
+**File:** `crates/trackly-app/tests/pdf_render_act.rs:206-210`, `crates/trackly-app/tests/html_act_render.rs:204-207`
 
-**Issue:** Это ровно класс WR-02 из предыдущего ревью, оставшийся незакрытым в
-соседних ассертах:
+**Issue:** Это тот же класс, что фаза уже закрывала для меток подписи:
 - `assert!(html.contains("№1") || html.contains('1'))` — правая часть истинна
-  всегда: в `<style>` есть `1px`, `1.1em`, `1.2em`, `11pt`;
+  всегда: в `<style>` есть `1px`, `1.1em`, `1.2em`, `11pt`, `10pt`;
 - `assert!(html.contains(&act.number_raw.to_string()))` при `number_raw == 1`
-  сводится к `contains("1")` — тоже всегда истинно.
-
-Оба ассерта пройдут, даже если номер акта вообще исчезнет из документа.
+  вырождается в `contains("1")` — тоже всегда истинно.
 
 **Fix:**
 ```rust
-let expected = format!("№{}{}", act.number_raw, /* suffix */ "");
-assert!(html.contains(&expected), "act number missing: {expected}");
+let subtitle = format!("<div class=\"subtitle\">№{}", act.number_raw);
+assert!(html.contains(&subtitle), "номер акта отсутствует в подзаголовке");
 ```
-(или проверять подстроку подзаголовка `<div class="subtitle">№1 от `).
 
 ---
 
-### WR-08: Блок подписей продублирован в двух пользовательских шаблонах вместо партиала — вопреки паттерну `_header.html`, введённому в Фазе 34
+### WR-06: Четвёртая копия теста снимков; нет гейта «тело изменилось → снимок обязателен» и нет проверки попарной различности снимков
 
-**Severity:** WARNING
-**File:** `crates/trackly-app/templates/act_handover.html:88-119, 172-189` и `crates/trackly-app/templates/act_acceptance.html:74-105, 129-146`
+**Severity:** WARNING (maintainability + покрытие)
+**File:** `crates/trackly-app/src/pdf/html_templates.rs:347-385` (`.first()`), `:418-467` (`get(1)`), `:479-527` (`get(2)`), `:536-585` (`get(3)`)
 
-**Issue:** ~30 строк CSS и ~18 строк разметки блока подписей скопированы байт-в-байт
-в оба шаблона. Фаза 34 специально вынесла шапку в `_header.html` именно потому,
-что дубль в user-editable файлах немедленно расходится по установкам. Прямое
-следствие дубля уже видно в самом наборе изменений: гейт подчёркиваний пришлось
-дублировать (`html_field_row_underline_gate.rs:56-90` и `97-114`), а исправление
-WR-02 из этого отчёта придётся вносить дважды и в обоих файлах на каждой установке.
+**Issue:** Четыре теста отличаются ровно одним числом — индексом элемента
+слайса. Прогноз прошлого ревью («каждый новый снимок требует ручного копирования
+следующего теста») сбылся в этой же фазе. Три следствия:
+1. механизм не самозащитный — новый снимок без своей копии теста молча не
+   покрывается, а `bodies.get(N)` вернёт `None` и тест `continue`'нет;
+2. ни один тест не проверяет, что элементы слайса **различны между собой** —
+   если снимок `vNN` окажется копией `vNN-1` (реальный риск при «снимке после
+   правки»), оба теста останутся зелёными: guard сравнивает снимок только с
+   `current`;
+3. ничто не проверяет обратное направление инварианта — «bundled-тело
+   изменилось, а нового снимка нет» (это и есть WR-01).
 
-**Fix:** вынести `_signatures.html` и подключать как `_header.html`
-(регистрация в `DEFAULT_HTML_TEMPLATES` + `extra_templates` в обоих
-`render_*_pdf` + пре-флайт в `validate_preview`; `is_editable_template_filename`
-уже корректно исключит `_`-префикс). Асимметрию имён контекста
-(`act.giver_name` vs `document.giver_name`) снять в родителе перед include:
+**Fix:** один параметризованный тест вместо четырёх + отдельный CI-гейт на
+пункт 3:
+```rust
+#[test]
+fn every_registered_legacy_snapshot_drives_a_real_upgrade() {
+    for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+        let bodies = KNOWN_LEGACY_DEFAULTS.iter()
+            .find(|(n, _)| n == filename).map(|(_, b)| *b).unwrap_or(&[]);
+        for (i, legacy) in bodies.iter().enumerate() {
+            assert_ne!(legacy, current, "{filename}[{i}] == current");
+            for (j, other) in bodies.iter().enumerate().skip(i + 1) {
+                assert_ne!(legacy, other, "{filename}: снимки {i} и {j} идентичны");
+            }
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join(filename), legacy).unwrap();
+            upgrade_untouched_defaults_on_startup(dir.path()).unwrap();
+            assert_eq!(&std::fs::read_to_string(dir.path().join(filename)).unwrap(), current);
+        }
+    }
+}
+```
+```bash
+# CI-гейт для п.3: изменение тела обязано сопровождаться новым срезом
+git diff --name-only "$BASE"..HEAD -- crates/trackly-app/templates/*.html \
+  | grep -q . && git diff --name-only "$BASE"..HEAD -- \
+      crates/trackly-app/templates/_legacy_defaults/ | grep -q . \
+  || { echo "template body changed without a _legacy_defaults snapshot"; exit 1; }
+```
+
+---
+
+### WR-07: Блок подписей продублирован в двух user-editable шаблонах вместо партиала — цена дубля уже материализовалась
+
+**Severity:** WARNING (известная находка прошлого ревью, подтверждена практикой)
+**File:** `crates/trackly-app/templates/act_handover.html:88-121, 174-191` и `crates/trackly-app/templates/act_acceptance.html:74-107, 131-148`
+
+**Issue:** ~34 строки CSS и ~18 строк разметки скопированы байт-в-байт. Фаза 34
+специально вынесла шапку в `_header.html` именно потому, что дубль в
+user-editable файлах немедленно расходится по установкам. За один только план
+35-07 дубль стоил: правку в двух файлах, два новых среза `_legacy_defaults/v23`
+(вместо одного), цикл по двум файлам в гейте
+(`html_field_row_underline_gate.rs:126-129`) и второй почти идентичный
+end-to-end тест (`pdf_render_act.rs:701-742`). Следующая правка подписей будет
+стоить столько же — и разъедется у пользователей, которые правили только один из
+двух файлов.
+
+**Fix:** вынести `_signatures.html` по образцу `_header.html` (регистрация в
+`DEFAULT_HTML_TEMPLATES` + `extra_templates` в обоих `render_*_pdf` + пре-флайт в
+`validate_preview`; `is_editable_template_filename` уже корректно исключит
+`_`-префикс). Асимметрию имён (`act.giver_name` vs `document.giver_name`) снять в
+родителе перед include:
 ```jinja
 {% with giver = act.giver_name, receiver = act.receiver_name %}
   {% include "_signatures.html" %}
@@ -331,49 +330,47 @@ WR-02 из этого отчёта придётся вносить дважды 
 
 ---
 
-### WR-09: Тесты legacy-снимков размножаются копипастой по индексу и не проверяют, что снимки попарно различны
+### WR-08: `update_body` сохраняет пустое тело шаблона — печать после этого молча даёт пустой документ
 
-**Severity:** WARNING
-**File:** `crates/trackly-app/src/pdf/html_templates.rs:345-383` (`.first()`), `416-465` (`get(1)`), `476-525` (`get(2)`)
+**Severity:** WARNING (защита от самоповреждения; требует роли `ManageSettings`)
+**File:** `crates/trackly-app/src/services/template_service.rs:260-301`
 
-**Issue:** Три почти идентичных теста отличаются только индексом элемента. Из
-этого следуют два дефекта покрытия:
-1. каждый новый снимок требует ручного копирования четвёртого теста — именно так
-   и возникла WR-01 предыдущего ревью (новый элемент без теста); механизм не
-   самозащитный;
-2. ни один тест не проверяет, что элементы слайса **различны между собой** —
-   если снимок `vNN` случайно окажется копией `vNN-1` (реальный риск при
-   «снимке после правки»), оба теста останутся зелёными: guard сравнивает снимок
-   только с `current`, а апгрейд с дубликата тоже сработает.
+**Issue:** Единственная валидация тела — `validate_preview`, то есть успешный
+рендер. Пустая строка (или, скажем, случайно вставленный одиночный пробел)
+рендерится успешно, `tokio::fs::write` записывает файл, `load_template`
+(`html_templates.rs:252-267`) возвращает on-disk содержимое (пустая строка — это
+`Ok`, не `NotFound`), и все последующие печатные формы этого вида отдают пустой
+HTML. Диагностики нет: `build_templates_status` покажет `Customized`, что
+формально верно и бесполезно. Тот же путь используется для `report.html`.
+Побочно: запись не атомарна — обрыв процесса/диска посреди `write` оставляет
+усечённый шаблон с тем же эффектом.
 
-**Fix:** один параметризованный тест вместо трёх:
+**Fix:**
 ```rust
-#[test]
-fn every_registered_legacy_snapshot_drives_a_real_upgrade() {
-    for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
-        let bodies = /* slice for filename */;
-        for (i, legacy) in bodies.iter().enumerate() {
-            assert_ne!(legacy, current, "{filename}[{i}] == current");
-            for (j, other) in bodies.iter().enumerate().skip(i + 1) {
-                assert_ne!(legacy, other, "{filename}: snapshots {i} и {j} идентичны");
-            }
-            // tempdir: write legacy -> upgrade -> assert == current
-        }
-    }
+if body.trim().is_empty() {
+    return Err(AppError::Validation {
+        field: "body".into(),
+        message: "Шаблон не может быть пустым".into(),
+    });
 }
+// и/или потребовать, чтобы отрендеренный preview был непустым:
+let preview = self.validate_preview(kind, &body).await.map_err(…)?;
+if preview.trim().is_empty() { /* та же Validation */ }
 ```
+Атомарность — запись во временный файл рядом + `rename`.
 
 ## Info
 
-### IN-01: Doc-comment оба акта утверждают наличие `org.logo_data_uri | safe` «at its use site», которого в этих файлах больше нет
+### IN-01: Doc-comment обоих актов утверждает наличие `org.logo_data_uri | safe` «at its use site», которого в этих файлах больше нет
 
 **Severity:** INFO
 **File:** `crates/trackly-app/templates/act_handover.html:29-40`, `crates/trackly-app/templates/act_acceptance.html:20-30`
 
 **Issue:** С Фазы 34 единственный `| safe` живёт в `_header.html`; в обоих актах
-`| safe` отсутствует. Комментарий (переписанный в этой фазе, `c74a579`) всё ещё
-описывает «исключение в этом файле» — для user-editable файла это ложный
-ориентир, который легитимизирует добавление `| safe` в пользовательскую правку.
+`| safe` отсутствует (проверено grep'ом). Комментарий, переписанный в этой фазе
+(`c74a579`), всё ещё описывает «единственное исключение в этом файле» — для
+user-editable файла это ложный ориентир, легитимизирующий добавление `| safe` в
+пользовательскую правку. Тот же текст теперь размножен в срезы `v22`/`v23`.
 
 **Fix:** заменить абзац на «в этом файле `| safe` не используется вовсе;
 единственные санкционированные `| safe` — в `_header.html`».
@@ -381,51 +378,85 @@ fn every_registered_legacy_snapshot_drives_a_real_upgrade() {
 ### IN-02: В контрактном списке контекста перечислены ключи, которые шаблон не рендерит
 
 **Severity:** INFO
-**File:** `crates/trackly-app/templates/act_handover.html:24, 27` (`act.location_name`, `act.items[].quantity`)
+**File:** `crates/trackly-app/templates/act_handover.html:24, 27`
 
-**Issue:** Ни расположение, ни количество не печатаются (проверено: совпадений в
-разметке нет ни в текущем теле, ни в `v20/v21/v22`). Список читается как
-обещание, а для акта с `quantity > 1` в документе действительно нет количества —
-стоит осознанно решить: рендерить или убрать из контракта.
+**Issue:** `act.location_name` и `act.items[].quantity` перечислены как
+контракт, но не печатаются (совпадений нет ни в текущем теле, ни в
+`v20`/`v21`/`v22`/`v23`). Для `location_name` это осознанное D-04 — стоит так и
+написать; `quantity` при клонировании разворачивается в отдельные `act_items`
+(`act_service.rs:362-409`), так что отсутствие количества в документе корректно,
+но из списка это не следует.
 
-### IN-03: Гейт подчёркиваний ловит только литерал `border-bottom`
+**Fix:** пометить оба ключа как «в контексте есть, намеренно не печатаются
+(D-04)».
 
-**Severity:** INFO
-**File:** `crates/trackly-app/tests/html_field_row_underline_gate.rs:44-53, 68`
-
-**Issue:** Регрессия через `border-block-end`, шорткат `border: 0 0 1px`,
-`text-decoration: underline` или инлайновый `style="..."` в разметке гейт
-обойдёт. Плюс `extract_rule_body`'s `([^}]*)` перестанет работать, если правила
-когда-нибудь завернут в `@media print { ... }`.
-
-**Fix:** расширить набор запрещённых токенов (`border-bottom|border-block-end|
-text-decoration`) и проверять также отсутствие `style="` в разметке `.field-row`.
-
-### IN-04: В фикстурах используются реально регистрируемые домены вместо резервированных
+### IN-03: Структурные CSS-гейты завязаны на литералы
 
 **Severity:** INFO
-**File:** `crates/trackly-app/tests/pdf_render_act.rs:755, 816`, `crates/trackly-app/src/services/template_service.rs:461`
+**File:** `crates/trackly-app/tests/html_field_row_underline_gate.rs:44-53, 68, 133-148`
+
+**Issue:** (а) гейт подчёркиваний ищет литерал `border-bottom` — регрессия через
+`border-block-end`, шорткат `border: 0 0 1px`, `text-decoration: underline` или
+инлайновый `style="…"` в разметке пройдёт мимо; (б) новый wrap-гейт требует
+точных подстрок `min-width: 0`, `white-space: normal`, `overflow-wrap:
+break-word` — семантически эквивалентные `min-width:0` (без пробела),
+`min-width: 0px` или переход на `overflow-wrap: anywhere` дадут ложное падение;
+(в) `extract_rule_body`'s `([^}]*)` сломается, если правила когда-нибудь завернут
+в `@media print { … }`.
+
+**Fix:** нормализовать пробелы перед сравнением (`css.replace(char::is_whitespace, "")`)
+и расширить набор запрещённых токенов подчёркивания.
+
+### IN-04: В фикстурах используются реально регистрируемые домены вместо зарезервированных
+
+**Severity:** INFO
+**File:** `crates/trackly-app/tests/pdf_render_act.rs:852, 913`, `crates/trackly-app/src/services/template_service.rs:461`
 
 **Issue:** `info@romashka.ru`, `info@test-org.ru`, `info@test.ru` — домены в
-реальных TLD. Приватность организации не затронута (значения синтетические), но в
-публичном репо чище использовать зарезервированные RFC 2606 `example.com`/`.test`
-целиком (`info@example.test`).
+реальных TLD. Приватность организации не затронута (значения синтетические), но
+в публичном репо чище использовать RFC 2606 (`info@example.test`).
 
 ### IN-05: Ассерты меток подписи не унифицированы между двумя тестами
 
 **Severity:** INFO
-**File:** `crates/trackly-app/tests/pdf_render_act.rs:245`
+**File:** `crates/trackly-app/tests/pdf_render_act.rs:253`
 
-**Issue:** Здесь метки проверяются без двоеточия (`["Выдал", "Получил", "Подпись"]`),
-тогда как закрытие WR-02 в `html_act_render.rs:188` перешло на `"Выдал:"`/`"Получил:"`.
-Сейчас не вакуозно (фикстуры — «Иванов И.И.»/«Петров П.П.»), но одно изменение
-фикстуры на «Выдалов В.В.» возвращает ровно ту вакуозность, которую фаза только
-что закрыла.
+**Issue:** Здесь метки проверяются без двоеточия (`["Выдал", "Получил",
+"Подпись"]`), тогда как закрытие прошлой WR-02 в `html_act_render.rs:188`
+перешло на `"Выдал:"`/`"Получил:"`. Сейчас не вакуозно (фикстуры — «Иванов
+И.И.»), но замена фикстуры на «Выдалов В.В.» вернёт ровно ту вакуозность,
+которую фаза уже закрывала.
 
-**Fix:** привести к форме с двоеточием, как в `html_act_render.rs`.
+**Fix:** привести к форме с двоеточием.
+
+### IN-06: Дубль имени устройства при N > 1 и «были получены устройства» перед N-кратным «было получено устройство» — принято продуктом
+
+**Severity:** INFO (не дефект; фиксируется, чтобы не переоткрывали)
+**File:** `crates/trackly-app/templates/act_handover.html:133-164`
+
+**Issue:** Сводный `<ul>` при `length > 1` и безусловная строка «было получено
+устройство: {{ item.name }}» в каждом блоке дают двойное перечисление имён и
+рассогласование числа. 35-CONTEXT.md D-02a прямо фиксирует, что пользователь
+выбрал вариант с обоими блоками и «избыточность принята осознанно», а D-01
+запрещает переписывать текст. Прошлое ревью классифицировало это как WARNING —
+понижаю до INFO как принятое продуктовое решение.
+
+### IN-07: Для human-verify гейта: проверить не только длину ФИО, но и вертикальное выравнивание перенесённой строки
+
+**Severity:** INFO
+**File:** `crates/trackly-app/templates/act_handover.html:92-97, 117-121`, `crates/trackly-app/templates/act_acceptance.html:78-83, 103-107`
+
+**Issue:** `.signature-row { align-items: flex-end }` выравнивает ФИО по нижнему
+краю `.signature-field`, то есть по подписи «Подпись» (8pt), а не по полоске.
+Пока ФИО в одну строку это незаметно; после фикса переноса длинное ФИО займёт
+две строки, и по низу выровняется ВТОРАЯ строка — первая уедет выше полоски.
+Rust-тесты этого класса не видят по построению (документированное ограничение,
+RESEARCH.md Pitfall 5), поэтому это пункт для человека на блокирующем гейте
+вместе с проверкой самого переноса. Если выглядит плохо — `align-items:
+baseline` либо `.signature-name { align-self: flex-end; line-height: 1.1 }`.
 
 ---
 
-_Reviewed: 2026-08-12T00:35:00Z_
+_Reviewed: 2026-08-12T09:10:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
