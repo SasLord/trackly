@@ -80,6 +80,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v21/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v22/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v23/act_handover.html"),
+            include_str!("../../templates/_legacy_defaults/v24/act_handover.html"),
         ],
     ),
     (
