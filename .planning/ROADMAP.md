@@ -86,7 +86,7 @@
 | 33. Полировка предпросмотра печати | v1.3 | 4/4 | Complete | 2026-08-04 |
 | 34. Единая шапка документов | v1.3.3 | 6/6 | Complete    | 2026-08-11 |
 | 35. Тело акта приёма-передачи | v1.3.3 | 7/7 | Complete    | 2026-08-12 |
-| 36. Пагинация акта по количеству устройств | v1.3.3 | 2/5 | In Progress|  |
+| 36. Пагинация акта по количеству устройств | v1.3.3 | 3/5 | In Progress|  |
 | 37. Приватность данных | v1.3.3 | 0/TBD | Not started | - |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/TBD | Not started | - |
 
@@ -206,7 +206,7 @@
 
 **Wave 3** *(depends on Wave 2)*
 
-- [ ] 36-03-PLAN.md — тестовый дрейф: html_act_render.rs/pdf_render_act.rs/acts_e2e_smoke.rs + новые appendix-структурные тесты
+- [x] 36-03-PLAN.md — тестовый дрейф: html_act_render.rs/pdf_render_act.rs/acts_e2e_smoke.rs + новые appendix-структурные тесты
 - [ ] 36-04-PLAN.md — Paged.js thead-repeat Handler (bootstrapScript.js + PdfPreviewModal.svelte) + пересчёт CSP-хэша + живая проверка (D-15/D-15a)
 
 **Wave 4** *(depends on Wave 3)*

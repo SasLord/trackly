@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-12T16:11:56.696Z"
+last_updated: "2026-08-12T17:34:00.043Z"
 last_activity: 2026-08-12
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 16
   percent: 40
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 36 (Пагинация акта по количеству устройств) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-08-12
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 89%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -299,6 +299,7 @@ Progress: [████████░░] 83%
 | Phase 35 P07 | ~2h | 3 tasks | 7 files |
 | Phase 36 P01 | 8min | 2 tasks | 2 files |
 | Phase 36 P02 | 22min | 2 tasks | 1 files |
+| Phase 36 P03 | 75min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -739,6 +740,9 @@ Recent decisions affecting current work:
 - [Phase 35]: 35-07 Task 3 (human-verify, gate=blocking): approved — пользователь подтвердил перенос длинного вымышленного ФИО в пределах печатной ширины на десктопе и в LAN-браузере для обоих актов, без обрезания и без ухода за край листа
 - [Phase 36]: 36-01: v24 snapshot taken from current HEAD before any pagination edit (Pitfall 7/C-01), byte-identical confirmed via diff; new upgrade_replaces_v24_... regression test is expected RED until 36-02 lands the pagination rewrite (structural, self-resolving)
 - [Phase 36]: act_handover.html N=1/N>1 pagination: appendix table uses tbody-per-device (not bare tr) for break-inside: avoid, per Paged.js's TBODY/THEAD-only fragmentation support
+- [Phase 36]: 36-03: render_handover_default_template_uses_field_rows_not_device_card narrowed from N=2 to N=1 — abbreviated appendix <th> headers are legitimate design at N>1 (D-01), not a device-card regression
+- [Phase 36]: 36-03: act_items.quantity>1 only exercised via direct DB UPDATE in tests — ActService::create's legacy clone-on-handover path always inserts quantity=1 per row
+- [Phase 36]: 36-03: html_field_row_underline_gate.rs widened from 2 to 3 legitimate border-bottom sources — new .appendix-table thead tr hairline (D-05) is a discovered drift fix, not a scope loosening
 
 ### Pending Todos
 
@@ -908,8 +912,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-12T16:11:56.688Z
-Stopped at: Completed 36-02-PLAN.md
+Last session: 2026-08-12T17:34:00.034Z
+Stopped at: Completed 36-03-PLAN.md
 Resume file: 
 
 None
