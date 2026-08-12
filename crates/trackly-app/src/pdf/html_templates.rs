@@ -585,6 +585,64 @@ mod tests {
         }
     }
 
+    /// Closes the delivery half of Phase 36 (DOC-10/11, D-13-D-16): the
+    /// pagination rewrite this phase makes to `act_handover.html` needs to
+    /// reach installs currently on the pre-pagination body (post-35-07, i.e.
+    /// the v24 legacy snapshot), the same regression class the v21/v22/v23
+    /// tests above prevent for their own versions. Mirrors
+    /// `upgrade_replaces_v23_legacy_default_with_current_bundled_body`'s
+    /// skeleton exactly, pulling index `4` (the v24 element) instead of `3`.
+    #[test]
+    fn upgrade_replaces_v24_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let Some(bodies) = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| *bodies)
+            else {
+                continue; // e.g. _header.html — no legacy slice registered
+            };
+            let Some(v24_body) = bodies.get(4) else {
+                continue; // filename has no v24 element (e.g. report.html)
+            };
+
+            // Precondition guard (Pitfall 5/7, mirrors the v21/v22/v23 tests
+            // above): if the v24 snapshot had been taken AFTER this phase's
+            // pagination rewrite instead of before, it would already equal
+            // the current bundled body and the upgrade assertion below would
+            // pass trivially without ever exercising a real upgrade.
+            assert_ne!(
+                v24_body, current,
+                "{filename}: v24 legacy snapshot must NOT equal the current bundled \
+                 default — otherwise the snapshot was taken after the rewrite and this \
+                 test cannot prove a real upgrade happened"
+            );
+
+            std::fs::write(dir.path().join(filename), v24_body).expect("write v24 body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let has_v24 = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| bodies.len() > 4)
+                .unwrap_or(false);
+            if !has_v24 {
+                continue;
+            }
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded from its v24 legacy body to the current bundled body"
+            );
+        }
+    }
+
     /// D-12 Test 2: a user-customized file (matches neither the current default
     /// nor any known legacy default) is NEVER overwritten — the fail-closed
     /// safety guarantee (T-20-06-01 mitigation).
