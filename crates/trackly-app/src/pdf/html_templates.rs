@@ -79,6 +79,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v20/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v21/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v22/act_handover.html"),
+            include_str!("../../templates/_legacy_defaults/v23/act_handover.html"),
         ],
     ),
     (
@@ -87,6 +88,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v20/act_acceptance.html"),
             include_str!("../../templates/_legacy_defaults/v21/act_acceptance.html"),
             include_str!("../../templates/_legacy_defaults/v22/act_acceptance.html"),
+            include_str!("../../templates/_legacy_defaults/v23/act_acceptance.html"),
         ],
     ),
     (
@@ -520,6 +522,64 @@ mod tests {
             assert_eq!(
                 &contents, current,
                 "{filename} must be upgraded from its v22 legacy body to the current bundled body"
+            );
+        }
+    }
+
+    /// Closes the delivery half of Phase 35 Plan 07 (DOC-08/SC#4, WR-02): the
+    /// `.signature-row .signature-name` `white-space: nowrap` overflow defect
+    /// fixed by this plan needs to reach installs currently on the pre-fix
+    /// body (post-35-06, i.e. the v23 legacy snapshot), the same regression
+    /// class the v21/v22 tests above prevent for their own versions. Mirrors
+    /// `upgrade_replaces_v22_legacy_default_with_current_bundled_body`'s
+    /// skeleton exactly, pulling index `3` (the v23 element) instead of `2`.
+    #[test]
+    fn upgrade_replaces_v23_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let Some(bodies) = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| *bodies)
+            else {
+                continue; // e.g. _header.html — no legacy slice registered
+            };
+            let Some(v23_body) = bodies.get(3) else {
+                continue; // filename has no v23 element (e.g. report.html)
+            };
+
+            // Precondition guard (Pitfall 5, mirrors the v21/v22 tests above):
+            // if the v23 snapshot had been taken AFTER this plan's CSS fix
+            // instead of before, it would already equal the current bundled
+            // body and the upgrade assertion below would pass trivially
+            // without ever exercising a real upgrade.
+            assert_ne!(
+                v23_body, current,
+                "{filename}: v23 legacy snapshot must NOT equal the current bundled \
+                 default — otherwise the snapshot was taken after the rewrite and this \
+                 test cannot prove a real upgrade happened"
+            );
+
+            std::fs::write(dir.path().join(filename), v23_body).expect("write v23 body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let has_v23 = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| bodies.len() > 3)
+                .unwrap_or(false);
+            if !has_v23 {
+                continue;
+            }
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded from its v23 legacy body to the current bundled body"
             );
         }
     }
