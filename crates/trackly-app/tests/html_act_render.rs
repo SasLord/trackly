@@ -23,6 +23,13 @@ use trackly_infra::Paths;
 const LOGO_PNG: &[u8] = include_bytes!("fixtures/logo_test.png");
 const LOGO_SVG_WITH_SCRIPT: &[u8] = include_bytes!("fixtures/logo_test_with_script.svg");
 
+/// Phase 36 Plan 03: compile-time read of the shipped template, used only by
+/// the CSS-structural gate below (`html_handover_appendix_css_declares_forced_break_and_keep_together`).
+/// Per D-01/D-03 in this plan (frozen-template constraint), this file never
+/// modifies `act_handover.html` — it only reads it, exactly like
+/// `html_page_parity.rs`'s existing `include_str!` pattern.
+const ACT_HANDOVER_HTML: &str = include_str!("../templates/act_handover.html");
+
 struct Pipeline {
     acts: ActService,
     writer: Arc<WriterHandle>,
@@ -186,18 +193,44 @@ async fn create_handover_with_deadline(
     svc.create(payload).await.expect("create handover")
 }
 
-/// Returns the substring of `html` strictly between the first `<ul>` and the
-/// following `</ul>`, panicking if either marker is missing.
-fn extract_first_ul(html: &str) -> &str {
-    let start = html
-        .find("<ul>")
-        .expect("rendered HTML must contain a <ul>")
-        + "<ul>".len();
+/// Returns the substring of `html` strictly between the first
+/// `<ol class="...">` opening tag and the following `</ol>`, panicking if
+/// either marker is missing. Phase 36 (D-07) replaced the plain `<ul>`
+/// plural summary with a numbered `<ol class="device-summary">` whose
+/// numbers align 1:1 with the appendix table's № column.
+fn extract_first_ol(html: &str) -> &str {
+    let tag_start = html
+        .find("<ol class=")
+        .expect("rendered HTML must contain an <ol class=\"...\"> tag");
+    let start = html[tag_start..]
+        .find('>')
+        .map(|i| tag_start + i + 1)
+        .expect("the <ol> opening tag must be closed with '>'");
     let end = html[start..]
-        .find("</ul>")
+        .find("</ol>")
         .map(|i| start + i)
-        .expect("the <ul> must be closed");
+        .expect("the <ol> must be closed");
     &html[start..end]
+}
+
+/// Returns the substring of `css` strictly between the first `{` and the
+/// following `}` after `selector` — i.e. the declaration body of the first
+/// CSS rule whose selector text is `selector`. Panics with an informative
+/// message if either the selector or its braces are missing. Used only by
+/// the read-only CSS-structural gate below.
+fn extract_css_rule_body<'a>(css: &'a str, selector: &str) -> &'a str {
+    let sel_start = css
+        .find(selector)
+        .unwrap_or_else(|| panic!("selector {selector:?} not found in template"));
+    let brace_start = css[sel_start..]
+        .find('{')
+        .map(|i| sel_start + i + 1)
+        .unwrap_or_else(|| panic!("selector {selector:?} has no opening brace"));
+    let brace_end = css[brace_start..]
+        .find('}')
+        .map(|i| brace_start + i)
+        .unwrap_or_else(|| panic!("selector {selector:?} has no closing brace"));
+    &css[brace_start..brace_end]
 }
 
 /// DOC-09 / D-02 (N = 1 branch): a single-device handover must render the
@@ -234,18 +267,33 @@ async fn html_handover_single_device_renders_singular_intro_not_plural_summary()
         html.chars().take(2000).collect::<String>()
     );
     assert!(
-        !html.contains("<ul>"),
-        "N=1 must NOT render the plural device-name <ul> summary list (D-02). Body: {:?}",
+        !html.contains("<ol class="),
+        "N=1 must NOT render the plural device-name <ol> summary list (D-02/D-07). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert!(
+        !html.contains("<div class=\"appendix\">"),
+        "N=1 must NOT render the appendix section at all (DOC-10 SC#1, D-08). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert!(
+        !html.contains("<table class=\"appendix-table\">"),
+        "N=1 must NOT render the appendix table element (the CSS class definition is static \
+         and always present in <style>, but the element itself must not appear — DOC-10 SC#1, \
+         D-08). Body: {:?}",
         html.chars().take(2000).collect::<String>()
     );
 }
 
-/// DOC-09 / D-02 + D-02a (N > 1 branch): a multi-device handover must render
-/// the plural summary line «были получены устройства:» followed by a `<ul>`
-/// naming EVERY device — and, per D-02a (CR-01 closure, Plan 35-06), each
-/// `.device-block` must still carry its own singular «было получено
-/// устройство: ⟨name⟩` label so printed fields stay attributable to a device.
-/// The singular label must not leak into the summary list itself.
+/// DOC-09 / D-02 + D-07/D-08 (N > 1 branch, rewritten Phase 36): a
+/// multi-device handover must render the plural summary line «были получены
+/// устройства:» followed by a numbered `<ol class="device-summary">` naming
+/// EVERY device — numbers align 1:1 with the appendix table's № column
+/// (D-07). Per D-08 (supersedes Phase 35's D-02a at N > 1), `.device-block`
+/// no longer renders AT ALL when N > 1 — the per-device attribution D-02a
+/// used to provide via the singular label is now carried entirely by the
+/// appendix table's row-per-device shape, verified by the dedicated
+/// appendix-structural tests below.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn html_handover_multi_device_renders_plural_summary_listing_every_name() {
     let p = make_full_pipeline().await;
@@ -260,45 +308,206 @@ async fn html_handover_multi_device_renders_plural_summary_listing_every_name() 
         html.chars().take(2000).collect::<String>()
     );
 
-    // The summary <ul> must name every device exactly once — the plural line
-    // must not swallow the per-device names.
-    let ul = extract_first_ul(&html);
+    // The summary <ol> must name every device exactly once, in order — the
+    // plural line must not swallow the per-device names.
+    let ol = extract_first_ol(&html);
     for i in 0..3 {
         let expected = format!("<li>HTML-Ноутбук-{i}</li>");
         assert!(
-            ul.contains(&expected),
-            "plural summary list must contain {expected:?}. List: {ul:?}"
+            ol.contains(&expected),
+            "plural summary list must contain {expected:?}. List: {ol:?}"
         );
     }
     assert_eq!(
-        ul.matches("<li>").count(),
+        ol.matches("<li>").count(),
         3,
-        "plural summary list must have exactly one <li> per device. List: {ul:?}"
-    );
-    assert!(
-        !ul.contains("было получено устройство"),
-        "the singular label must not be repeated inside the plural summary list (D-02). \
-         List: {ul:?}"
+        "plural summary list must have exactly one <li> per device. List: {ol:?}"
     );
 
-    // D-02a: the singular per-device label is NOT suppressed at N > 1 — it is
-    // what makes each .device-block attributable (CR-01).
-    assert_eq!(
-        html.matches("было получено устройство:").count(),
-        3,
-        "each of the 3 .device-block sections must keep its own singular label (D-02a/CR-01). \
-         Body: {:?}",
+    // D-08: .device-block is GONE ENTIRELY at N > 1 — there is no
+    // per-device block on the first sheet at all anymore.
+    assert!(
+        !html.contains("<div class=\"device-block\">"),
+        ".device-block must NOT render at all when act.items | length > 1 (D-08). Body: {:?}",
         html.chars().take(2000).collect::<String>()
     );
+    assert!(
+        !html.contains("было получено устройство:"),
+        "the singular per-device label must not leak onto the first sheet at N>1 (D-08 \
+         supersedes Phase 35 D-02a for N>1). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+}
+
+/// DOC-11 (appendix structure, D-01): the appendix table must have exactly
+/// one `<tbody class="device-group ...">` per device — the row-group that
+/// now carries the per-device attribution D-08 removed from the first
+/// sheet's `.device-block`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_appendix_table_has_one_row_group_per_device() {
+    let p = make_full_pipeline().await;
+    let device_ids = seed_devices(&p.writer, 3).await;
+    let act = create_handover(&p.acts, &device_ids, "Групповов Г.Г.", "Петров П.П.").await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    assert_eq!(
+        html.matches("<tbody class=\"device-group").count(),
+        3,
+        "expected exactly one tbody.device-group per device (N=3, DOC-11). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+}
+
+/// DOC-11 / D-07: the numbered summary `<ol>` on the first sheet and the
+/// appendix table's № column must agree — both in order (item i's name
+/// appears as the (i+1)-th `<li>`) and in the printed number (the (i+1)-th
+/// `tbody.device-group`'s first `<td>` equals i+1). This is the exact
+/// cross-check D-07 was chosen for: a torn-off appendix sheet can still be
+/// matched to the right device via its number.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_appendix_ol_numbering_matches_table_number_column() {
+    let p = make_full_pipeline().await;
+    let device_ids = seed_devices(&p.writer, 3).await;
+    let act = create_handover(&p.acts, &device_ids, "Нумератов Н.Н.", "Петров П.П.").await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    let ol = extract_first_ol(&html);
+    let lis: Vec<&str> = ol
+        .split("<li>")
+        .skip(1)
+        .map(|s| {
+            s.split("</li>")
+                .next()
+                .expect("each <li> segment must close with </li>")
+        })
+        .collect();
+    assert_eq!(lis.len(), 3, "expected 3 <li> entries. List: {ol:?}");
+
+    let groups: Vec<&str> = html.split("<tbody class=\"device-group").skip(1).collect();
+    assert_eq!(
+        groups.len(),
+        3,
+        "expected 3 tbody.device-group entries. Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+
     for i in 0..3 {
-        let expected =
-            format!("<div class=\"field-row\">было получено устройство: HTML-Ноутбук-{i}</div>");
-        assert!(
-            html.contains(&expected),
-            "device {i} must keep its own singular field-row {expected:?} (D-02a). Body: {:?}",
-            html.chars().take(2000).collect::<String>()
+        let expected_name = format!("HTML-Ноутбук-{i}");
+        assert_eq!(
+            lis[i], expected_name,
+            "li #{} must match act.items order (D-07). List: {:?}",
+            i + 1,
+            ol
+        );
+
+        // First <td> in this device group is the № column; it must equal
+        // i+1, matching the <li>'s ordinal position (D-07).
+        let group = groups[i];
+        let td_start = group
+            .find("<td>")
+            .map(|p| p + "<td>".len())
+            .unwrap_or_else(|| panic!("group {i} missing № <td> open tag. Group: {group:?}"));
+        let td_end = group[td_start..]
+            .find("</td>")
+            .map(|p| td_start + p)
+            .unwrap_or_else(|| panic!("group {i} missing № <td> close tag. Group: {group:?}"));
+        let number_cell = &group[td_start..td_end];
+        assert_eq!(
+            number_cell,
+            (i + 1).to_string(),
+            "tbody.device-group #{} № column must equal {} (D-07). Group head: {:?}",
+            i + 1,
+            i + 1,
+            group.chars().take(200).collect::<String>()
         );
     }
+}
+
+/// DOC-11 / D-03: the appendix table's Кол-во column prints a dash for the
+/// (default) quantity=1 case and the numeric value once quantity > 1.
+/// `ActService::create`'s legacy clone-on-handover path always inserts
+/// `act_items.quantity = 1` per row (act_service.rs:411) — exercising the
+/// `> 1` branch requires a direct DB UPDATE, the same pattern already used
+/// elsewhere in this file/suite for `complectation_at_time`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_appendix_quantity_column_dash_at_one_value_at_more() {
+    let p = make_full_pipeline().await;
+    let device_ids = seed_devices(&p.writer, 2).await;
+    let act = create_handover(&p.acts, &device_ids, "Количествов К.К.", "Петров П.П.").await;
+
+    {
+        let act_id = act.id;
+        let device_id = act.items[1].device_id;
+        p.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE act_items SET quantity = 3 WHERE act_id = ?1 AND device_id = ?2",
+                    params![act_id, device_id],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("set quantity=3 on second item");
+    }
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    let extract_quantity_cell = |device_name: &str| -> String {
+        let name_marker = format!("<td>{device_name}</td>");
+        let after_name = html
+            .find(&name_marker)
+            .map(|i| i + name_marker.len())
+            .unwrap_or_else(|| panic!("appendix table row for {device_name:?} not found"));
+        let rest = &html[after_name..];
+        let td_start = rest
+            .find("<td>")
+            .map(|i| i + "<td>".len())
+            .expect("Кол-во <td> open tag");
+        let td_end = rest[td_start..]
+            .find("</td>")
+            .map(|i| td_start + i)
+            .expect("Кол-во <td> close tag");
+        rest[td_start..td_end].to_string()
+    };
+
+    assert_eq!(
+        extract_quantity_cell("HTML-Ноутбук-0"),
+        "—",
+        "quantity=1 (default) must print a dash in the Кол-во column (D-03)"
+    );
+    assert_eq!(
+        extract_quantity_cell("HTML-Ноутбук-1"),
+        "3",
+        "quantity=3 must print the numeric value in the Кол-во column (D-03)"
+    );
+}
+
+/// DOC-11 / D-15 + D-16 (regression gate for Nyquist audit, cheap replacement
+/// for a geometric print-layout check per the plan's `<interfaces>` note):
+/// the shipped template must declare `break-before: page` on `.appendix`
+/// (D-16 — the appendix always starts on a fresh sheet) and
+/// `break-inside: avoid` on `.appendix-table tbody.device-group` (D-15 — a
+/// device's two rows never split across a page). Read-only (`include_str!`),
+/// mirrors `html_page_parity.rs`'s pattern exactly — never modifies the
+/// template.
+#[test]
+fn html_handover_appendix_css_declares_forced_break_and_keep_together() {
+    let appendix_rule = extract_css_rule_body(ACT_HANDOVER_HTML, ".appendix {");
+    assert!(
+        appendix_rule.contains("break-before: page"),
+        ".appendix rule must declare break-before: page (D-16). Rule: {appendix_rule:?}"
+    );
+
+    let device_group_rule =
+        extract_css_rule_body(ACT_HANDOVER_HTML, ".appendix-table tbody.device-group {");
+    assert!(
+        device_group_rule.contains("break-inside: avoid"),
+        ".appendix-table tbody.device-group rule must declare break-inside: avoid (D-15). \
+         Rule: {device_group_rule:?}"
+    );
 }
 
 /// DOC-07 / D-03 + D-12 (empty branch): with no `deadline_utc`, the «Сроком
