@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: verifying
-last_updated: "2026-08-13T13:56:36.698Z"
+status: executing
+last_updated: "2026-08-13T14:02:10.937Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 19
   completed_plans: 19
-  percent: 60
+  percent: 40
 ---
 
 # Project State
@@ -24,13 +24,13 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 ## Current Position
 
-Phase: 36 (Пагинация акта по количеству устройств) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
+Phase: 36 (Пагинация акта по количеству устройств) — PARTIAL UAT, NOT closed
+Plan: 5 of 5 (plus gap-closure plan 36-06, merged)
+Status: All 6 plans' automated work done (90/90 cargo tests green, privacy gate clean, lint green); D-17 quantity-duplication defect found live and fixed via 36-06 (user-verified). Real-print output, LAN-browser transport end-to-end, print-DOM isolation on a live print, and N=1-one-sheet (Success Criteria #1 and #4) were explicitly deferred by the user on 2026-08-13 — NOT verified, NOT passed. Phase remains open pending that follow-up UAT session before /gsd-verify-work can close it.
 Last activity: 2026-08-13
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [██████████] 95%
+Progress: [█████████░] 94%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -302,6 +302,7 @@ Progress: [██████████] 95%
 | Phase 36 P03 | 75min | 3 tasks | 4 files |
 | Phase 36 P04 | 50min | 3 tasks | 4 files |
 | Phase 36 P06 | 40min | 3 tasks | 5 files |
+| Phase 36 P05 | 240min | 2 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -747,6 +748,8 @@ Recent decisions affecting current work:
 - [Phase 36]: 36-03: html_field_row_underline_gate.rs widened from 2 to 3 legitimate border-bottom sources — new .appendix-table thead tr hairline (D-05) is a discovered drift fix, not a scope loosening
 - [Phase 36]: Plan 36-04: RepeatTableHeadHandler in bootstrapScript.js must be a native ES6 class, not ES5 pseudo-inheritance — window.PagedModule.Handler is a native ES6 class in the bundled paged.min.js UMD build; invoking it via .call() throws TypeError at runtime, which the D-02 degrade path silently masks as an unpaginated fallback (found via desktop UAT checkpoint rejection, commit c11b0d9)
 - [Phase 36]: D-17 supersedes D-03: act.items_grouped[] aggregates print-identical positions in Rust (mirrors devices_sqlite::list_grouped, extended with all printed fields) — act_items.quantity is hardcoded to 1 and never carried a real multiplicity signal
+- [Phase 36]: D-17 (заменяет D-03, 2026-08-13): одинаковые позиции акта склеиваются в печати через group_items_for_print() — исправлено в gap-closure плане 36-06, живо подтверждено пользователем.
+- [Phase 36]: Пользователь 2026-08-13 явно отложил проверку реальной печати/LAN-транспорта/изоляции печатного DOM на следующую сессию, приняв риск — зафиксировано как НЕ пройдено, не как пройдено.
 
 ### Pending Todos
 
@@ -766,6 +769,7 @@ Spike-зоны, требующие внимания во время планир
 - **Phase 3:** krilla vs Typst-as-lib spike на реальном Cyrillic-фикстуре (1–2 дня)
 - **Phase 6:** host-side механизм для Pantum hang detection — local agent vs remote WMI/RPC (требует реального BM5100ADN, ~неделя)
 - **Phase 8:** валидация LDAP-bind против реального Windows Server 2022 с channel binding enforced (½ дня с реальным DC)
+- Phase 36: real-print, LAN-транспорт end-to-end, print-DOM isolation (SC#4), N=1 один лист (SC#1) — явно отложено пользователем 2026-08-13, НЕ пройдено. Нужна отдельная UAT-сессия перед закрытием фазы.
 
 ### Явные решения по приватности
 
@@ -916,8 +920,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-13T13:56:36.689Z
-Stopped at: Completed 36-06-PLAN.md
+Last session: 2026-08-13T14:02:10.928Z
+Stopped at: Completed 36-05-PLAN.md (PARTIAL UAT — see 36-05-SUMMARY.md)
 Resume file: 
 
 None

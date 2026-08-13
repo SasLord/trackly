@@ -108,9 +108,12 @@ None beyond an expected long wall-clock wait for the full single-threaded `cargo
 None — no external service configuration required.
 
 ## Next Phase Readiness
-- Phase 36 (Пагинация акта по количеству устройств) is now fully closed: all five plans (36-01 through 36-05) plus this gap-closure plan (36-06) are complete, and DOC-11 is fully satisfied — the «Кол-во» column and device listing now reflect the real quantity, not the physical `act_items` row structure.
+
+**Correction (added 2026-08-13, during 36-05's checkpoint resolution):** the line originally here claimed Phase 36 was "now fully closed." That was inaccurate and has been corrected — this plan's own checkpoint (Task 4) only covered the D-17 quantity-duplication fix, which the user did verify and approve live. It did **not** cover the broader Phase 36 manual UAT block (real-print output under default print-dialog settings, live LAN-browser transport, print-DOM isolation on a live print, N=1-one-sheet). Per the user's explicit decision during 36-05's own checkpoint on 2026-08-13, that broader block was deferred to a later session, not performed — see `36-05-SUMMARY.md`'s "Manual Verification Status" section for the authoritative record. Phase 36 Success Criteria #1 and #4 are **not** met yet.
+
+- This gap-closure plan (36-06) itself is complete: `group_items_for_print()` aggregation is implemented, live-verified, and DOC-11's «Кол-во»/device-listing behavior now reflects the real quantity instead of the raw `act_items` row structure.
+- Phase 36 as a whole remains open — see `36-05-SUMMARY.md` "Next Phase Readiness" for the full list of outstanding pre-close UAT items (real print, LAN transport, print-DOM isolation, N=1 one-sheet, Windows/WebView2).
 - The pre-existing, out-of-scope duplication in `ui/src/features/acts/ActItemsTable.svelte` (the act-view screen) remains deferred per `36-CONTEXT.md`'s explicit note — not touched by this plan, tracked separately.
-- No further follow-up items were surfaced by this plan.
 
 ---
 *Phase: 36-act-pagination*
