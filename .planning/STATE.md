@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: executing
-last_updated: "2026-08-13T00:20:00.917Z"
+status: verifying
+last_updated: "2026-08-13T13:56:36.698Z"
 last_activity: 2026-08-13
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 18
-  completed_plans: 17
-  percent: 40
+  completed_phases: 3
+  total_plans: 19
+  completed_plans: 19
+  percent: 60
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 36 (Пагинация акта по количеству устройств) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-13
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -301,6 +301,7 @@ Progress: [█████████░] 94%
 | Phase 36 P02 | 22min | 2 tasks | 1 files |
 | Phase 36 P03 | 75min | 3 tasks | 4 files |
 | Phase 36 P04 | 50min | 3 tasks | 4 files |
+| Phase 36 P06 | 40min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -745,6 +746,7 @@ Recent decisions affecting current work:
 - [Phase 36]: 36-03: act_items.quantity>1 only exercised via direct DB UPDATE in tests — ActService::create's legacy clone-on-handover path always inserts quantity=1 per row
 - [Phase 36]: 36-03: html_field_row_underline_gate.rs widened from 2 to 3 legitimate border-bottom sources — new .appendix-table thead tr hairline (D-05) is a discovered drift fix, not a scope loosening
 - [Phase 36]: Plan 36-04: RepeatTableHeadHandler in bootstrapScript.js must be a native ES6 class, not ES5 pseudo-inheritance — window.PagedModule.Handler is a native ES6 class in the bundled paged.min.js UMD build; invoking it via .call() throws TypeError at runtime, which the D-02 degrade path silently masks as an unpaginated fallback (found via desktop UAT checkpoint rejection, commit c11b0d9)
+- [Phase 36]: D-17 supersedes D-03: act.items_grouped[] aggregates print-identical positions in Rust (mirrors devices_sqlite::list_grouped, extended with all printed fields) — act_items.quantity is hardcoded to 1 and never carried a real multiplicity signal
 
 ### Pending Todos
 
@@ -914,11 +916,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-13T00:20:00.908Z
-Stopped at: Completed 36-04-PLAN.md
+Last session: 2026-08-13T13:56:36.689Z
+Stopped at: Completed 36-06-PLAN.md
 Resume file: 
 
-- Plan Phase 34 with /gsd-plan-phase 34
+None
 
 ## Deferred Items
 
