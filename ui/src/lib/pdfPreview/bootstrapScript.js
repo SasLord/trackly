@@ -40,22 +40,40 @@
   // printViaTopLevel() (D-15a) — that separate ESM `import('pagedjs')` code
   // path does not go through this UMD bootstrap at all, so a one-sided edit
   // here silently breaks only LAN print while desktop/preview keep working.
-  function RepeatTableHeadHandler(chunker, polisher, caller) {
-    window.PagedModule.Handler.call(this, chunker, polisher, caller);
-    var sourceTable = document.querySelector('table.appendix-table');
-    var sourceThead = sourceTable ? sourceTable.querySelector('thead') : null;
-    this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
+  //
+  // MUST be a native ES6 `class ... extends`, NOT ES5 pseudo-inheritance
+  // (borrowing the parent constructor via the Function.prototype invocation
+  // helper, then wiring the prototype chain by hand) even though the rest of
+  // this file is deliberately ES5 (var/function). Paged.js ships `Handler` as
+  // a native ES6 class in its UMD bundle (dist/paged.min.js) — a native class
+  // constructor CANNOT be invoked that ES5 way, it throws `TypeError: Cannot
+  // call a class constructor <name> without |new|` at Previewer construction
+  // time, which the D-02 degrade path then swallows into a silent "no
+  // pagination, no page chrome" fallback (regressed once already — fixed
+  // after live desktop UAT during Plan 36-04; see
+  // scripts/check-pagedjs-csp-hash.mjs's checkHandlerIsNativeClass for the
+  // structural regression guard). Native class syntax is safe here despite
+  // the "no ES module syntax" note at the top of this file: this text is
+  // imported with `?raw` and never passed through Vite/esbuild transpilation,
+  // so it reaches the WKWebView/WebView2 runtime verbatim, and both support
+  // ES2015 classes natively.
+  class RepeatTableHeadHandler extends window.PagedModule.Handler {
+    constructor(chunker, polisher, caller) {
+      super(chunker, polisher, caller);
+      var sourceTable = document.querySelector('table.appendix-table');
+      var sourceThead = sourceTable ? sourceTable.querySelector('thead') : null;
+      this.savedThead = sourceThead ? sourceThead.cloneNode(true) : null;
+    }
+
+    afterPageLayout(pageElement) {
+      if (!this.savedThead) return;
+      var savedThead = this.savedThead;
+      pageElement.querySelectorAll('table.appendix-table').forEach(function (table) {
+        if (table.querySelector('thead')) return; // already has one — first fragment
+        table.insertBefore(savedThead.cloneNode(true), table.firstChild);
+      });
+    }
   }
-  RepeatTableHeadHandler.prototype = Object.create(window.PagedModule.Handler.prototype);
-  RepeatTableHeadHandler.prototype.constructor = RepeatTableHeadHandler;
-  RepeatTableHeadHandler.prototype.afterPageLayout = function (pageElement) {
-    if (!this.savedThead) return;
-    var savedThead = this.savedThead;
-    pageElement.querySelectorAll('table.appendix-table').forEach(function (table) {
-      if (table.querySelector('thead')) return; // already has one — first fragment
-      table.insertBefore(savedThead.cloneNode(true), table.firstChild);
-    });
-  };
   window.PagedModule.registerHandlers(RepeatTableHeadHandler);
 
   var previewer = new window.PagedModule.Previewer();

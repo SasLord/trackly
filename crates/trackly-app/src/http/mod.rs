@@ -216,7 +216,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
             // attacker-supplied inline script (e.g. via a maliciously edited act/report
             // HTML template) produces a different hash and stays blocked.
             HeaderValue::from_static(
-                "default-src 'self'; script-src 'self' 'sha256-veXthjuyKKl4jhqJSho5XvUM6R2itj2r+3IFYzTuUU0='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
+                "default-src 'self'; script-src 'self' 'sha256-6wkoSifejjaWrl5F3KgLYcILveSKjI6XHk3LiJ+I7No='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob:; object-src 'self' blob:",
             ),
         ));
 

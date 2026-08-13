@@ -43,6 +43,46 @@ function computeHash() {
   return `sha256-${digest}`;
 }
 
+// [Plan 36-04 gap-closure] Structural guard against ES5-pseudo-inheritance
+// regressing the RepeatTableHeadHandler back in. `window.PagedModule.Handler`
+// is a native ES6 class in the bundled paged.min.js UMD build; invoking it via
+// `Handler.call(this, ...)` throws `TypeError: Cannot call a class
+// constructor ... without |new|` at Previewer-construction time, which the
+// D-02 degrade path silently swallows into an unpaginated fallback (no page
+// chrome at all — this exact regression shipped once already and was only
+// caught by live desktop UAT, not by the hash check above, which only proves
+// the bytes are IN SYNC, not that they're CORRECT). Cheap structural check,
+// reuses the bootstrapText already read for the hash above — deliberately
+// not a separate script/lint-step to avoid duplicating the file-read wiring.
+function checkHandlerIsNativeClass(bootstrapText) {
+  const violations = [];
+  if (/Handler\s*\.\s*call\s*\(/.test(bootstrapText)) {
+    violations.push(
+      'found `Handler.call(...)` — a native ES6 class constructor cannot be invoked via ' +
+        '.call(), that throws at runtime (see comment above RepeatTableHeadHandler in ' +
+        'bootstrapScript.js for the full incident writeup)',
+    );
+  }
+  if (
+    /Object\s*\.\s*create\s*\(\s*window\.PagedModule\.Handler\.prototype\s*\)/.test(bootstrapText)
+  ) {
+    violations.push(
+      'found `Object.create(window.PagedModule.Handler.prototype)` — ES5 pseudo-inheritance ' +
+        'cannot extend a native ES6 class',
+    );
+  }
+  if (
+    !/class\s+RepeatTableHeadHandler\s+extends\s+window\.PagedModule\.Handler\b/.test(bootstrapText)
+  ) {
+    violations.push(
+      'did not find `class RepeatTableHeadHandler extends window.PagedModule.Handler` — the ' +
+        'handler must be a native ES6 class (native class syntax is safe in this file: it is ' +
+        'imported with ?raw and never transpiled, see pagedPreviewBootstrap.ts)',
+    );
+  }
+  return violations;
+}
+
 function main() {
   const printOnly = process.argv.includes('--print');
   const hash = computeHash();
@@ -50,6 +90,18 @@ function main() {
   if (printOnly) {
     console.log(hash);
     process.exit(0);
+  }
+
+  const bootstrapText = fs.readFileSync(BOOTSTRAP_SCRIPT_PATH, 'utf8');
+  const classViolations = checkHandlerIsNativeClass(bootstrapText);
+  if (classViolations.length > 0) {
+    console.error(
+      '[check-pagedjs-csp-hash] FAIL — RepeatTableHeadHandler is not a native ES6 class:',
+    );
+    for (const v of classViolations) {
+      console.error(`[check-pagedjs-csp-hash]   - ${v}`);
+    }
+    process.exit(1);
   }
 
   const httpModRsContent = fs.readFileSync(HTTP_MOD_RS_PATH, 'utf8');
