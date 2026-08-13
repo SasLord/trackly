@@ -81,6 +81,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v22/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v23/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v24/act_handover.html"),
+            include_str!("../../templates/_legacy_defaults/v25/act_handover.html"),
         ],
     ),
     (
@@ -639,6 +640,70 @@ mod tests {
             assert_eq!(
                 &contents, current,
                 "{filename} must be upgraded from its v24 legacy body to the current bundled body"
+            );
+        }
+    }
+
+    /// Closes the delivery half of Plan 36-06 (D-17, gap closure for D-03):
+    /// the `act.items_grouped[]` aggregation rewrite this plan makes to
+    /// `act_handover.html` needs to reach installs currently on the
+    /// pre-aggregation body (post-36-04, i.e. the v25 legacy snapshot), the
+    /// same regression class the v21..v24 tests above prevent for their own
+    /// versions. Mirrors `upgrade_replaces_v24_legacy_default_with_current_bundled_body`'s
+    /// skeleton exactly, pulling index `5` (the v25 element) instead of `4`.
+    ///
+    /// EXPECTED RED at the end of Task 1 (36-06): the v25 snapshot is taken
+    /// BEFORE this plan's Task 2 template edit, so at this point in the plan
+    /// it is still byte-identical to the current bundled body — Task 2 flips
+    /// this test GREEN once the template is rewritten to consume
+    /// `act.items_grouped`.
+    #[test]
+    fn upgrade_replaces_v25_legacy_default_with_current_bundled_body() {
+        let _guard = ENV_GUARD.lock().unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let Some(bodies) = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| *bodies)
+            else {
+                continue; // e.g. _header.html — no legacy slice registered
+            };
+            let Some(v25_body) = bodies.get(5) else {
+                continue; // filename has no v25 element (e.g. report.html)
+            };
+
+            // Precondition guard (Pitfall 5/7, mirrors the v21..v24 tests
+            // above): if the v25 snapshot had been taken AFTER this plan's
+            // items_grouped rewrite instead of before, it would already
+            // equal the current bundled body and the upgrade assertion below
+            // would pass trivially without ever exercising a real upgrade.
+            assert_ne!(
+                v25_body, current,
+                "{filename}: v25 legacy snapshot must NOT equal the current bundled \
+                 default — otherwise the snapshot was taken after the rewrite and this \
+                 test cannot prove a real upgrade happened"
+            );
+
+            std::fs::write(dir.path().join(filename), v25_body).expect("write v25 body");
+        }
+
+        upgrade_untouched_defaults_on_startup(dir.path()).expect("upgrade ok");
+
+        for (filename, current) in DEFAULT_HTML_TEMPLATES.iter() {
+            let has_v25 = KNOWN_LEGACY_DEFAULTS
+                .iter()
+                .find(|(name, _)| name == filename)
+                .map(|(_, bodies)| bodies.len() > 5)
+                .unwrap_or(false);
+            if !has_v25 {
+                continue;
+            }
+            let contents = std::fs::read_to_string(dir.path().join(filename)).expect("file exists");
+            assert_eq!(
+                &contents, current,
+                "{filename} must be upgraded from its v25 legacy body to the current bundled body"
             );
         }
     }

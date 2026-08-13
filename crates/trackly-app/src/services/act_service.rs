@@ -2626,6 +2626,14 @@ impl ActService {
             })
             .collect();
 
+        // D-17 (36-06): Rust-side aggregation of print-identical positions
+        // for the render context. `items_json` above (raw, one entry per
+        // act_items row) is left untouched — `act.items | length > 1` (D-13)
+        // and the N=1 `.device-block` loop keep reading it as-is; only the
+        // N>1 first-sheet <ol> and appendix table switch to the grouped list
+        // (Task 2 of 36-06-PLAN.md).
+        let items_grouped_json = group_items_for_print(&act.items);
+
         let ctx = serde_json::json!({
             "org": {
                 "name": org_dto.org_name,
@@ -2652,6 +2660,7 @@ impl ActService {
                 "deadline_human": act.deadline_utc.map(format_ru_date),
                 "location_name": act.location,
                 "items": items_json,
+                "items_grouped": items_grouped_json,
                 "parent": parent_block,
             },
             "return": {
@@ -3072,6 +3081,98 @@ fn load_items_for_act(
     Ok(out)
 }
 
+/// D-17 (36-06, replaces D-03): groups print-identical `ActItemDto` rows for
+/// the render context so the printed «Кол-во» column reflects real
+/// multiplicity instead of the always-`1` `act_items.quantity` DB column
+/// (hardcoded at INSERT time, see `ActService::create` above — it carries no
+/// multiplicity signal and must NOT be read here).
+///
+/// Grouping key mirrors `devices_sqlite::list_grouped`'s
+/// `GROUP BY d.type_id, d.name, d.model` concept (documentation
+/// cross-reference only — this function does not call that SQL, it operates
+/// purely on already-loaded `ActItemDto` rows), extended per D-17 with every
+/// remaining PRINTED field this render path has available: `inventory_no`,
+/// `serial_no`, `condition_at_time`, `complectation_at_time`, `specs`.
+/// `type_id` is deliberately NOT part of the key — `ActItemDto` /
+/// `load_items_for_act`'s joined SELECT does not carry `d.type_id`, and
+/// widening `ActItemDto` (shared with the return/update flows) purely for
+/// this render-only concern would be out of proportion; `device_name`
+/// already disambiguates device kinds in this catalog in practice.
+///
+/// Two units differing in even one printed field (e.g. a distinct
+/// `inventory_no`) never collapse into one group — this is the T-36-06-01
+/// mitigation: printed inventory numbers must never be lost to a "×N"
+/// merge.
+///
+/// Output order follows first-occurrence of each key in `items` (not
+/// alphabetical, not by count) — uses a `HashMap` for the per-key count plus
+/// a separate `Vec` to preserve first-occurrence order (no `indexmap`
+/// dependency).
+fn group_items_for_print(items: &[ActItemDto]) -> Vec<serde_json::Value> {
+    #[derive(Clone, PartialEq, Eq, Hash)]
+    struct PrintKey {
+        name: String,
+        model: Option<String>,
+        inventory_no: Option<String>,
+        serial_no: Option<String>,
+        condition: Option<String>,
+        kit: Option<String>,
+        specs: Option<String>,
+    }
+
+    struct GroupEntry<'a> {
+        key: PrintKey,
+        first: &'a ActItemDto,
+        count: i64,
+    }
+
+    let mut order: Vec<GroupEntry> = Vec::new();
+    let mut index_by_key: std::collections::HashMap<PrintKey, usize> =
+        std::collections::HashMap::new();
+
+    for item in items {
+        let key = PrintKey {
+            name: item.device_name.clone(),
+            model: item.model.clone(),
+            inventory_no: item.inventory_no.clone(),
+            serial_no: item.serial_no.clone(),
+            condition: item.condition_at_time.clone(),
+            kit: item.complectation_at_time.clone(),
+            specs: item.specs.clone(),
+        };
+
+        match index_by_key.get(&key) {
+            Some(&idx) => {
+                order[idx].count += 1;
+            }
+            None => {
+                index_by_key.insert(key.clone(), order.len());
+                order.push(GroupEntry {
+                    key,
+                    first: item,
+                    count: 1,
+                });
+            }
+        }
+    }
+
+    order
+        .into_iter()
+        .map(|entry| {
+            serde_json::json!({
+                "name": entry.first.device_name,
+                "inventory_no": entry.key.inventory_no,
+                "serial_no": entry.key.serial_no,
+                "model": entry.key.model,
+                "specs": entry.key.specs,
+                "kit": entry.key.kit,
+                "condition": entry.key.condition,
+                "quantity": entry.count,
+            })
+        })
+        .collect()
+}
+
 /// D-07 (Phase 22) — «Дата архивации», compute-on-read: `MAX(handover_date_utc)`
 /// among `parent_act_id`'s non-deleted `act_type='return'` children, populated
 /// ONLY when `archived == true`. No stored column, no migration.
@@ -3201,4 +3302,144 @@ pub(crate) fn build_fts_query(user_input: &str) -> String {
         .map(|t| format!("\"{t}\"*"))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+// ---------------------------------------------------------------------------
+// D-17 (36-06) — group_items_for_print unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod group_items_for_print_tests {
+    use super::{group_items_for_print, ActItemDto};
+
+    /// Constructs a minimal `ActItemDto` with fictional placeholder values
+    /// only (CLAUDE.md privacy rule) — every test fixture uses generic
+    /// "Устройство"/"Инв-…" labels, never real inventory data.
+    fn item(
+        id: i64,
+        device_id: i64,
+        name: &str,
+        model: Option<&str>,
+        inventory_no: Option<&str>,
+        serial_no: Option<&str>,
+        condition: Option<&str>,
+        kit: Option<&str>,
+        specs: Option<&str>,
+    ) -> ActItemDto {
+        ActItemDto {
+            id,
+            device_id,
+            // D-17: the DB `quantity` column is always 1 at INSERT time and
+            // carries no multiplicity signal — deliberately hardcoded here so
+            // these tests cannot accidentally pass by reading it back out.
+            quantity: 1,
+            device_name: name.to_string(),
+            inventory_no: inventory_no.map(str::to_string),
+            serial_no: serial_no.map(str::to_string),
+            model: model.map(str::to_string),
+            specs: specs.map(str::to_string),
+            condition_at_time: condition.map(str::to_string),
+            complectation_at_time: kit.map(str::to_string),
+            outstanding_device_ids: Vec::new(),
+            device_location_id: None,
+            device_location: None,
+        }
+    }
+
+    /// (1) Three units with identical printed fields merge into one group
+    /// with quantity=3 — the legacy clone-on-handover shape (original + 2
+    /// anonymous clones, all NULL inventory/serial).
+    #[test]
+    fn identical_printed_fields_merge_into_one_group_with_summed_quantity() {
+        let items = vec![
+            item(1, 10, "Ноутбук", None, None, None, None, None, None),
+            item(2, 11, "Ноутбук", None, None, None, None, None, None),
+            item(3, 12, "Ноутбук", None, None, None, None, None, None),
+        ];
+
+        let grouped = group_items_for_print(&items);
+
+        assert_eq!(grouped.len(), 1, "expected exactly 1 merged group");
+        assert_eq!(grouped[0]["name"], "Ноутбук");
+        assert_eq!(grouped[0]["quantity"], 3);
+    }
+
+    /// (2) Two units share name/model but differ on `inventory_no` — they
+    /// must stay 2 distinct groups, each quantity=1 (T-36-06-01: inventory
+    /// numbers are never lost to a merge).
+    #[test]
+    fn differing_inventory_no_prevents_merge_and_preserves_both_numbers() {
+        let items = vec![
+            item(
+                1,
+                10,
+                "Принтер",
+                Some("LaserJet"),
+                Some("Инв-001"),
+                None,
+                None,
+                None,
+                None,
+            ),
+            item(
+                2,
+                11,
+                "Принтер",
+                Some("LaserJet"),
+                Some("Инв-002"),
+                None,
+                None,
+                None,
+                None,
+            ),
+        ];
+
+        let grouped = group_items_for_print(&items);
+
+        assert_eq!(
+            grouped.len(),
+            2,
+            "differing inventory_no must produce 2 distinct groups, not 1"
+        );
+        assert_eq!(grouped[0]["quantity"], 1);
+        assert_eq!(grouped[1]["quantity"], 1);
+        assert_eq!(grouped[0]["inventory_no"], "Инв-001");
+        assert_eq!(grouped[1]["inventory_no"], "Инв-002");
+    }
+
+    /// (3) A single input item produces a single group with quantity=1
+    /// (passthrough — the common N=1 case).
+    #[test]
+    fn single_item_passthrough_yields_quantity_one() {
+        let items = vec![item(1, 10, "Монитор", None, None, None, None, None, None)];
+
+        let grouped = group_items_for_print(&items);
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0]["name"], "Монитор");
+        assert_eq!(grouped[0]["quantity"], 1);
+    }
+
+    /// (4) Output order follows first-occurrence of each key in the input
+    /// slice, not alphabetical order of `name`.
+    #[test]
+    fn output_order_follows_first_occurrence_not_alphabetical() {
+        let items = vec![
+            item(1, 10, "Я-Устройство", None, None, None, None, None, None),
+            item(2, 11, "А-Устройство", None, None, None, None, None, None),
+            item(3, 12, "Я-Устройство", None, None, None, None, None, None),
+        ];
+
+        let grouped = group_items_for_print(&items);
+
+        assert_eq!(grouped.len(), 2, "expected 2 distinct groups");
+        assert_eq!(
+            grouped[0]["name"], "Я-Устройство",
+            "first group must be the first-encountered key (Я-Устройство), \
+             not the alphabetically-first one"
+        );
+        assert_eq!(grouped[0]["quantity"], 2);
+        assert_eq!(grouped[1]["name"], "А-Устройство");
+        assert_eq!(grouped[1]["quantity"], 1);
+    }
 }
