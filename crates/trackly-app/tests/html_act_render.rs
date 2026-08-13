@@ -425,63 +425,221 @@ async fn html_handover_appendix_ol_numbering_matches_table_number_column() {
     }
 }
 
-/// DOC-11 / D-03: the appendix table's Кол-во column prints a dash for the
-/// (default) quantity=1 case and the numeric value once quantity > 1.
-/// `ActService::create`'s legacy clone-on-handover path always inserts
-/// `act_items.quantity = 1` per row (act_service.rs:411) — exercising the
-/// `> 1` branch requires a direct DB UPDATE, the same pattern already used
-/// elsewhere in this file/suite for `complectation_at_time`.
+/// Creates a handover act directly through `ActCreateDto`/`ActItemNewDto`
+/// exercising the legacy clone-on-handover path (`device_ids: Vec::new()`,
+/// `quantity: N`) — mirrors `acts_clone_handover.rs`'s
+/// `clone_3_devices_on_handover_qty_3` fixture pattern. Used by the D-17
+/// (Plan 36-06) tests below, which need real multi-row act_items groups
+/// instead of a direct `UPDATE act_items SET quantity`.
+async fn create_handover_with_items(
+    svc: &ActService,
+    items: Vec<ActItemNewDto>,
+    giver: &str,
+    receiver: &str,
+) -> trackly_app::dto::act::ActDto {
+    let payload = ActCreateDto {
+        number_override: None,
+        giver_name: giver.to_string(),
+        receiver_name: receiver.to_string(),
+        location_id: None,
+        location_name: None,
+        notes: None,
+        deadline_utc: None,
+        handover_date_utc: None,
+        items,
+    };
+    svc.create(payload).await.expect("create handover")
+}
+
+/// Extracts the text of the Кол-во `<td>` (the cell immediately following
+/// the Наименование `<td>{device_name}</td>` cell) in the appendix table.
+fn extract_quantity_cell(html: &str, device_name: &str) -> String {
+    let name_marker = format!("<td>{device_name}</td>");
+    let after_name = html
+        .find(&name_marker)
+        .map(|i| i + name_marker.len())
+        .unwrap_or_else(|| panic!("appendix table row for {device_name:?} not found"));
+    let rest = &html[after_name..];
+    let td_start = rest
+        .find("<td>")
+        .map(|i| i + "<td>".len())
+        .expect("Кол-во <td> open tag");
+    let td_end = rest[td_start..]
+        .find("</td>")
+        .map(|i| td_start + i)
+        .expect("Кол-во <td> close tag");
+    rest[td_start..td_end].to_string()
+}
+
+/// DOC-11 / D-17 (rewritten Plan 36-06, replaces the D-03 version of this
+/// test): the appendix table's Кол-во column must reflect a REAL merged
+/// position count, not `act_items.quantity` (hardcoded to 1 at INSERT time,
+/// see act_service.rs — that DB column carries no multiplicity signal and
+/// a direct `UPDATE act_items SET quantity` no longer proves anything about
+/// what the template prints). Instead this test exercises the legacy
+/// clone-on-handover path for real: `dev_a` gets `quantity: 3` (device_ids
+/// empty → source + 2 anonymous clones, all print-identical — no
+/// inventory_number/serial_number/model/condition set on either seed
+/// device), `dev_b` gets `quantity: 1`. `group_items_for_print` must merge
+/// dev_a's 3 rows into one group with quantity=3, and leave dev_b's single
+/// row at quantity=1.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn html_handover_appendix_quantity_column_dash_at_one_value_at_more() {
     let p = make_full_pipeline().await;
-    let device_ids = seed_devices(&p.writer, 2).await;
-    let act = create_handover(&p.acts, &device_ids, "Количествов К.К.", "Петров П.П.").await;
+    let dev_a = seed_device(&p.writer, "HTML-Количество-А").await;
+    let dev_b = seed_device(&p.writer, "HTML-Количество-Б").await;
 
-    {
-        let act_id = act.id;
-        let device_id = act.items[1].device_id;
-        p.writer
-            .execute(move |conn| {
-                conn.execute(
-                    "UPDATE act_items SET quantity = 3 WHERE act_id = ?1 AND device_id = ?2",
-                    params![act_id, device_id],
-                )
-                .map(|_| ())
-                .map_err(map_rusqlite)
-            })
-            .await
-            .expect("set quantity=3 on second item");
-    }
+    let act = create_handover_with_items(
+        &p.acts,
+        vec![
+            ActItemNewDto {
+                device_id: dev_a,
+                device_ids: Vec::new(),
+                quantity: 3,
+            },
+            ActItemNewDto {
+                device_id: dev_b,
+                device_ids: Vec::new(),
+                quantity: 1,
+            },
+        ],
+        "Количествов К.К.",
+        "Петров П.П.",
+    )
+    .await;
+    assert_eq!(
+        act.items.len(),
+        4,
+        "fixture invariant: dev_a (3 clone-on-handover rows) + dev_b (1 row) = 4 raw act_items"
+    );
 
     let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
-    let extract_quantity_cell = |device_name: &str| -> String {
-        let name_marker = format!("<td>{device_name}</td>");
-        let after_name = html
-            .find(&name_marker)
-            .map(|i| i + name_marker.len())
-            .unwrap_or_else(|| panic!("appendix table row for {device_name:?} not found"));
-        let rest = &html[after_name..];
-        let td_start = rest
-            .find("<td>")
-            .map(|i| i + "<td>".len())
-            .expect("Кол-во <td> open tag");
-        let td_end = rest[td_start..]
-            .find("</td>")
-            .map(|i| td_start + i)
-            .expect("Кол-во <td> close tag");
-        rest[td_start..td_end].to_string()
-    };
-
     assert_eq!(
-        extract_quantity_cell("HTML-Ноутбук-0"),
-        "—",
-        "quantity=1 (default) must print a dash in the Кол-во column (D-03)"
+        extract_quantity_cell(&html, "HTML-Количество-А"),
+        "3",
+        "3 merged print-identical rows must print the real count in the Кол-во column (D-17)"
     );
     assert_eq!(
-        extract_quantity_cell("HTML-Ноутбук-1"),
-        "3",
-        "quantity=3 must print the numeric value in the Кол-во column (D-03)"
+        extract_quantity_cell(&html, "HTML-Количество-Б"),
+        "—",
+        "a single-row (quantity=1 after merge) position must print a dash in the Кол-во column (D-02/D-17)"
+    );
+}
+
+/// DOC-11 / D-17 (Plan 36-06, new): the first-sheet `<ol class="device-summary">`
+/// must show exactly ONE `<li>` per merged position — NOT one per raw
+/// act_items row (previously 4 <li> for the fixture below; now exactly 2) —
+/// and the merged position's <li> must carry the « × N» multiplication
+/// suffix (D-17), while the non-merged position renders unchanged (no
+/// suffix).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_duplicate_position_ol_shows_multiplication_suffix() {
+    let p = make_full_pipeline().await;
+    let dev_a = seed_device(&p.writer, "HTML-Суффикс-А").await;
+    let dev_b = seed_device(&p.writer, "HTML-Суффикс-Б").await;
+
+    let act = create_handover_with_items(
+        &p.acts,
+        vec![
+            ActItemNewDto {
+                device_id: dev_a,
+                device_ids: Vec::new(),
+                quantity: 3,
+            },
+            ActItemNewDto {
+                device_id: dev_b,
+                device_ids: Vec::new(),
+                quantity: 1,
+            },
+        ],
+        "Суффиксов С.С.",
+        "Петров П.П.",
+    )
+    .await;
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    let ol = extract_first_ol(&html);
+    assert_eq!(
+        ol.matches("<li>").count(),
+        2,
+        "expected exactly 2 <li> entries (2 merged positions, not 4 raw rows). List: {ol:?}"
+    );
+    assert!(
+        ol.contains("<li>HTML-Суффикс-А × 3</li>"),
+        "the merged 3-unit position must show the « × 3» suffix. List: {ol:?}"
+    );
+    assert!(
+        ol.contains("<li>HTML-Суффикс-Б</li>"),
+        "the single-unit position must render without any suffix. List: {ol:?}"
+    );
+}
+
+/// DOC-11 / D-13 + D-17 (Plan 36-06, new): a single grouped position whose
+/// raw act_items count is 5 (one device, `quantity: 5`, all 5 rows
+/// print-identical) must still use the N>1/appendix branch — the D-13
+/// threshold reads the RAW act.items length (5), not the grouped count (1),
+/// so it must NOT fall back to the N=1 single-sheet `.device-block` flow.
+/// This settles the plan's explicit open design point.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_handover_single_position_quantity_five_still_uses_appendix_branch() {
+    let p = make_full_pipeline().await;
+    let dev = seed_device(&p.writer, "HTML-ПятьЕдиниц").await;
+
+    let act = create_handover_with_items(
+        &p.acts,
+        vec![ActItemNewDto {
+            device_id: dev,
+            device_ids: Vec::new(),
+            quantity: 5,
+        }],
+        "Пятеров П.П.",
+        "Получилов Г.Г.",
+    )
+    .await;
+    assert_eq!(
+        act.items.len(),
+        5,
+        "fixture invariant: raw act_items must be 5 (clone-on-handover, not yet merged)"
+    );
+
+    let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
+
+    assert!(
+        !html.contains("<div class=\"device-block\">"),
+        "raw N=5 must NOT fall back to the N=1 .device-block flow just because the merged \
+         group count is 1 (D-13 threshold reads raw act.items, not act.items_grouped). \
+         Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert!(
+        html.contains("<div class=\"appendix\">"),
+        "raw N=5 must render the appendix section. Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+
+    let ol = extract_first_ol(&html);
+    assert_eq!(
+        ol.matches("<li>").count(),
+        1,
+        "expected exactly 1 <li> (1 merged position). List: {ol:?}"
+    );
+    assert!(
+        ol.contains("<li>HTML-ПятьЕдиниц × 5</li>"),
+        "the single merged 5-unit position must show the « × 5» suffix. List: {ol:?}"
+    );
+
+    assert_eq!(
+        html.matches("<tbody class=\"device-group").count(),
+        1,
+        "expected exactly 1 tbody.device-group (1 merged position, not 5 raw rows). Body: {:?}",
+        html.chars().take(2000).collect::<String>()
+    );
+    assert_eq!(
+        extract_quantity_cell(&html, "HTML-ПятьЕдиниц"),
+        "5",
+        "the single merged tbody.device-group's Кол-во cell must show 5"
     );
 }
 
