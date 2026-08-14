@@ -628,7 +628,7 @@ runGate({ hashes: 'tests/fixtures/empty.sha256', target: 'tests/fixtures/without
 | A2 | `.planning/reference/design-system-v2/` (11 файлов, 2 из них не проверялись предметно на классы A/B/C) не содержит утечек классов A/B/C | Pitfall 2 | Если содержит — не блокирует untrack (D-04 требует untrack независимо от содержимого), но означает, что после untrack эти значения остаются в истории git ЕЩЁ и через этот путь; стоит один быстрый `git grep`/просмотр автором чистки |
 | A3 | `.githooks/pre-commit` должен быть исполняемым shell/node-скриптом с shebang, а не обёрткой Husky/lint-staged | D-10 | Низкий — проект уже решил «zero-dependency», добавление Husky противоречило бы D-09 напрямую |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Точные значения счётчиков R1 acceptance для файлов `30-09-SUMMARY.md` и `34-REVIEW.md`
    после уточнённой разведки.**
@@ -645,6 +645,11 @@ runGate({ hashes: 'tests/fixtures/empty.sha256', target: 'tests/fixtures/without
      локально (вне репозитория, по D-03) и заносит соответствующий n-грамм в файл хэшей —
      это не блокирует планирование, но должно быть явным шагом плана, а не предположением, что
      один-единственный токен покрывает обе формы (кавычную и путевую).
+   - **RESOLVED:** план 37-01, Task 1 (сбор маркеров и построение scratch-скрипта)
+     обрабатывает `30-09-SUMMARY.md` как обычный файл разведки — реальная форма
+     фиксируется в scratch-mapping вне репозитория, а Task 2 переносит её структурную
+     форму (не значение) в marker-shape checklist SUMMARY для повторного использования
+     планом 37-04 (см. RESEARCH §Open Questions #1 в самом плане 37-01/37-02/37-04).
 
 2. **`crates/trackly-app/src/dto/auth.rs:257` и `.planning/research/PITFALLS.md:112` содержат
    домен-подобные токены формы `x.y.local`, отличные и от `example.local`/`dc.example.local`,
@@ -660,6 +665,9 @@ runGate({ hashes: 'tests/fixtures/empty.sha256', target: 'tests/fixtures/without
    - Recommendation: не включать в объём чистки R1–R3 (не являются реальными данными по
      содержанию); НЕ заносить их n-граммы в файл хэшей (R6) — они не идентифицируют
      организацию. Достаточно того, что этот файл документирует находку.
+   - **RESOLVED:** ни один план фазы 37 не включает `crates/trackly-app/src/dto/auth.rs:257`
+     или `.planning/research/PITFALLS.md:112` в свои `files_modified` — оба файла остаются
+     непричастны к чистке R1–R3 и к списку хэшей R6, как и рекомендовано.
 
 3. **CONTEXT D-01 перечисляет для `PHASE-BRIEF-act-pdf-word-fidelity` список из 8 файлов,
    смешивающий (по факту) файлы, ссылающиеся на `act-word-source`, и файлы, ссылающиеся на имя
@@ -679,6 +687,9 @@ runGate({ hashes: 'tests/fixtures/empty.sha256', target: 'tests/fixtures/without
    - Recommendation: планировщик использует объединённый список ниже (раздел Validation
      Architecture → R1–R10 map также ссылается на него) как источник истины для R4 задач по
      висячим ссылкам.
+   - **RESOLVED:** план 37-02 (Task 2 и Task 3) строит список из 14 файлов дословно по
+     таблице «Сводный список файлов с висячими ссылками» ниже, а не по прозе D-01 в
+     37-CONTEXT.md — см. 37-02-PLAN.md's `read_first` для обеих задач.
 
 **Сводный список файлов с висячими ссылками на удаляемые артефакты (для R4), проверено
 программно на HEAD 2026-08-14:**

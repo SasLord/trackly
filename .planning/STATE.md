@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: verifying
-last_updated: "2026-08-14T00:15:55.818Z"
-last_activity: 2026-08-13
+status: executing
+last_updated: "2026-08-14T12:13:45.365Z"
+last_activity: 2026-08-14 -- Phase 37 planning complete
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 19
+  total_plans: 23
   completed_plans: 19
   percent: 60
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 Phase: 36 (Пагинация акта по количеству устройств) — PARTIAL UAT, NOT closed
 Plan: 5 of 5 (plus gap-closure plan 36-06, merged)
-Status: All 6 plans' automated work done (90/90 cargo tests green, privacy gate clean, lint green); D-17 quantity-duplication defect found live and fixed via 36-06 (user-verified). Real-print output, LAN-browser transport end-to-end, print-DOM isolation on a live print, and N=1-one-sheet (Success Criteria #1 and #4) were explicitly deferred by the user on 2026-08-13 — NOT verified, NOT passed. Phase remains open pending that follow-up UAT session before /gsd-verify-work can close it.
-Last activity: 2026-08-13
+Status: Ready to execute
+Last activity: 2026-08-14 -- Phase 37 planning complete
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
 Progress: [█████████░] 94%
