@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-16T16:27:21.001Z"
-last_activity: 2026-08-16 -- Phase 37 execution started
+last_updated: "2026-08-16T16:40:41.807Z"
+last_activity: 2026-08-16
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
   percent: 60
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 37 (data-privacy) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 37
-Last activity: 2026-08-16 -- Phase 37 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-08-16
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 87%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -303,6 +303,7 @@ Progress: [█████████░] 94%
 | Phase 36 P04 | 50min | 3 tasks | 4 files |
 | Phase 36 P06 | 40min | 3 tasks | 5 files |
 | Phase 36 P05 | 240min | 2 tasks | 0 files |
+| Phase 37 P01 | 45min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -750,6 +751,8 @@ Recent decisions affecting current work:
 - [Phase 36]: D-17 supersedes D-03: act.items_grouped[] aggregates print-identical positions in Rust (mirrors devices_sqlite::list_grouped, extended with all printed fields) — act_items.quantity is hardcoded to 1 and never carried a real multiplicity signal
 - [Phase 36]: D-17 (заменяет D-03, 2026-08-13): одинаковые позиции акта склеиваются в печати через group_items_for_print() — исправлено в gap-closure плане 36-06, живо подтверждено пользователем.
 - [Phase 36]: Пользователь 2026-08-13 явно отложил проверку реальной печати/LAN-транспорта/изоляции печатного DOM на следующую сессию, приняв риск — зафиксировано как НЕ пройдено, не как пройдено.
+- [Phase ?]: 37-01: scratch-only substitution script (never committed) applied 22 class A/B/C replacements across 14 HEAD files, verified via git diff + git grep before deleting the scratch mapping (D-03)
+- [Phase ?]: 37-01: grouped 5 commits by which class(es) each file actually carries (2 combined A+C / B+C commits for mixed files) rather than forcing a strict 3-commit A/B/C split
 
 ### Pending Todos
 
@@ -920,11 +923,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-14T00:15:55.809Z
+Last session: 2026-08-16T16:40:41.795Z
 Stopped at: Phase 37 context gathered
 Resume file: 
 
-.planning/phases/37-data-privacy/37-CONTEXT.md
+Completed 37-01-PLAN.md
 
 ## Deferred Items
 

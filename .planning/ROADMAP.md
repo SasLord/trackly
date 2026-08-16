@@ -94,7 +94,7 @@
 | 34. Единая шапка документов | v1.3.3 | 6/6 | Complete    | 2026-08-11 |
 | 35. Тело акта приёма-передачи | v1.3.3 | 7/7 | Complete    | 2026-08-12 |
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete   | 2026-08-13 |
-| 37. Приватность данных | v1.3.3 | 0/TBD | Not started | - |
+| 37. Приватность данных | v1.3.3 | 1/4 | In Progress|  |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/TBD | Not started | - |
 
 ## Phase Details
@@ -270,7 +270,7 @@
 Plans:
 **Wave 1**
 
-- [ ] 37-01-PLAN.md — Чистка класса A/B/C в 14 файлах (STATE.md, quick/*, 30-09/34-REVIEW/03-UAT, renderer.rs) — scripted substitution
+- [x] 37-01-PLAN.md — Чистка класса A/B/C в 14 файлах (STATE.md, quick/*, 30-09/34-REVIEW/03-UAT, renderer.rs) — scripted substitution
 - [ ] 37-02-PLAN.md — Удаление act-word-source/ + PHASE-BRIEF, .gitignore (D-04), переписывание 14 висячих ссылок + доскрёб 3 файлов класса A
 - [ ] 37-03-PLAN.md — scripts/check-privacy.mjs (allowlist + n-грамм-хэши + бинарный контроль) + фикстуры + selftest
 
