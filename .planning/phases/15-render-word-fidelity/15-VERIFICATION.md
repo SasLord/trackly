@@ -36,7 +36,7 @@ gaps:
 deferred: []
 human_verification:
   - test: "Visual pixel-level fidelity to the Word sample (spacing, weights, overall layout) for a typical 1-3 device act"
-    expected: "Generated PDF looks structurally and stylistically consistent with .planning/reference/act-word-source/act-sample.docx (shapka, title, intro, device block, deadline, signatures)"
+    expected: "Generated PDF looks structurally and stylistically consistent with the original Word sample (исходный образец не хранится в репозитории; shapka, title, intro, device block, deadline, signatures)"
     why_human: "Aesthetic/layout match is subjective and out of reach for grep/text-extraction assertions — VALIDATION.md itself scopes this as the one Manual-Only Verification for the phase."
   - test: "Render a handover act with 4+ devices each carrying populated Комплектация/Технические характеристики/Состояние text, open the resulting PDF in a viewer, and visually confirm every device card is visible on a page (not clipped past the bottom margin)"
     expected: "Either all device cards fit on a single visible page, or the document paginates so every card is visible on some page — no card should be drawn past the printable page area"
@@ -126,7 +126,7 @@ The 6 WARNING findings in `15-REVIEW.md` (WR-01 logo/text overlap in header, WR-
 ### Human Verification Required
 
 1. **Visual pixel-level fidelity to Word sample**
-   **Test:** Generate an act PDF (1-3 devices, typical requisites) and visually compare against `.planning/reference/act-word-source/act-sample.docx`.
+   **Test:** Generate an act PDF (1-3 devices, typical requisites) and visually compare against the original Word sample (исходный образец не хранится в репозитории).
    **Expected:** Structural/stylistic match (spacing, weights, block order) per VALIDATION.md's own Manual-Only Verification scope.
    **Why human:** Subjective aesthetic comparison, out of reach of grep/text-extraction.
 

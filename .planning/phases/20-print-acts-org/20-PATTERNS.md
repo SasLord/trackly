@@ -34,7 +34,7 @@
 --
 -- Adds phone/fax/email/okpo/ogrn columns to org_settings so the act header
 -- can display the full set of requisites required by the Word-fidelity
--- sample (see .planning/PHASE-BRIEF-act-pdf-word-fidelity.md).
+-- sample (исходный образец не хранится в репозитории).
 --
 -- Design decision (14-CONTEXT D-02): DEFAULT '' (empty string), NOT the
 -- placeholder strings V026 used for name/inn/kpp — missing requisites on

@@ -104,10 +104,9 @@ Requirements этой фазы: **PDFA-03, PDFA-04, PDFA-06** (см. `.planning/
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Образец и бриф (главный источник «что»)
-- `.planning/PHASE-BRIEF-act-pdf-word-fidelity.md` — самодостаточный бриф: точный разбор
-  образца Word, гэп-анализ, скоуп-решения пользователя. **Читать первым.**
-- `.planning/reference/act-word-source/act-sample.docx` — исходный образец акта
-- `.planning/reference/act-word-source/image1.png` — логотип; `image2.png` — линия-разделитель
+- Бриф с точным разбором образца Word, гэп-анализом и скоуп-решениями пользователя — исходный
+  образец не хранится в репозитории; бриф-файл удалён из репозитория фазой 37 (PRIV-01).
+- Исходный образец акта (Word) и его логотип/линия-разделитель — не хранятся в репозитории.
 - `.planning/ROADMAP.md` §«Phase 14» — цель, success criteria, requirements
 - `.planning/REQUIREMENTS.md` — PDFA-03 (расширенная шапка), PDFA-04 (комплектация/
   тех.характеристики/срок), PDFA-06 (дефолтный шаблон редактируем через `document_templates`)

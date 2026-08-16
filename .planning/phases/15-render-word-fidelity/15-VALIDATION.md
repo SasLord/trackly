@@ -67,7 +67,7 @@ created: 2026-07-04
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Visual fidelity to Word sample (spacing/weights/overall look) | PDFA-01 | Pixel-level "looks like the sample" is subjective; automated tests assert content/structure, not aesthetic match | Generate an act PDF, compare side-by-side with `.planning/reference/act-word-source/act-sample.docx` |
+| Visual fidelity to Word sample (spacing/weights/overall look) | PDFA-01 | Pixel-level "looks like the sample" is subjective; automated tests assert content/structure, not aesthetic match | Generate an act PDF, compare side-by-side with the original Word sample (исходный образец не хранится в репозитории) |
 
 *All structural/content behaviors have automated verification; only aesthetic match is manual.*
 

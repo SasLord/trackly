@@ -249,8 +249,9 @@
      placeholder-значения.
 
   2. В `.planning/`-артефактах (PLAN/SUMMARY/STATE/CONTEXT/брифы) на HEAD нет настоящих ФИО
-     сотрудников — включая известные точки утечки: `.planning/PHASE-BRIEF-act-pdf-word-fidelity.md`,
-     `.planning/STATE.md`, `.planning/quick/260805-lrs-.../PLAN.md` и `SUMMARY.md`.
+     сотрудников — включая известные точки утечки: удалённый бриф-файл фазы 15 (act-word-fidelity,
+     не хранится в репозитории), `.planning/STATE.md`, `.planning/quick/260805-lrs-.../PLAN.md` и
+     `SUMMARY.md`.
 
   3. История git НЕ переписана (осознанное решение пользователя от 2026-08-08) — очистка
      затрагивает только HEAD; репозиторий остаётся публичным, остаточный риск в старых
@@ -271,7 +272,7 @@ Plans:
 **Wave 1**
 
 - [x] 37-01-PLAN.md — Чистка класса A/B/C в 14 файлах (STATE.md, quick/*, 30-09/34-REVIEW/03-UAT, renderer.rs) — scripted substitution
-- [ ] 37-02-PLAN.md — Удаление act-word-source/ + PHASE-BRIEF, .gitignore (D-04), переписывание 14 висячих ссылок + доскрёб 3 файлов класса A
+- [ ] 37-02-PLAN.md — Удаление бинарных reference-артефактов Word-образца + бриф-файла, .gitignore (D-04), переписывание 14 висячих ссылок + доскрёб 3 файлов класса A
 - [ ] 37-03-PLAN.md — scripts/check-privacy.mjs (allowlist + n-грамм-хэши + бинарный контроль) + фикстуры + selftest
 
 **Wave 2** *(blocked on Wave 1 completion)*

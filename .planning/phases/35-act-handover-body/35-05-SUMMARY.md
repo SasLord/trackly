@@ -53,7 +53,7 @@ completed: 2026-08-11
 
 ## Accomplishments
 
-- Manual privacy-грep of the entire Phase 35 diff (`git diff e0d2dca~1..HEAD`, 17 files, +1087/-131): only approved fictional names present (Иванов И.И., Выдалов В.В., Принялов П.П., Петров П.П.); no real ФИО or organization requisites; `.planning/reference/act-word-source/act-sample.docx` not quoted verbatim anywhere
+- Manual privacy-грep of the entire Phase 35 diff (`git diff e0d2dca~1..HEAD`, 17 files, +1087/-131): only approved fictional names present (Иванов И.И., Выдалов В.В., Принялов П.П., Петров П.П.); no real ФИО or organization requisites; the original Word sample (исходный образец не хранится в репозитории) not quoted verbatim anywhere
 - `./scripts/check-privacy-requisites.sh` — exit 0
 - Removed the stale `target/debug/templates/` directory (materialized from Phase 34, contained pre-Phase-35 template bodies — RESEARCH.md Pitfall 2), so `cargo tauri dev` re-materializes the embedded default from the edited templates
 - `pnpm --dir ui build` — rebuilt `ui/dist` so the LAN-browser transport serves the current build, not a stale placeholder

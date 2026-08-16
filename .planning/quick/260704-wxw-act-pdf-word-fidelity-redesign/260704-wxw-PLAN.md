@@ -46,7 +46,7 @@ must_haves:
 ---
 
 <objective>
-Rewrite the default act_handover PDF template and add a Section::FieldRow DocSpec/renderer variant so the rendered Акт приёма-передачи PDF matches the structure of the Word reference sample (.planning/reference/act-word-source/act-sample.docx): body content as "метка | значение" rows on a thin underline (not device_card boxes), full-length field labels, no "Устройство №N" headings between devices, and pagination preserved.
+Rewrite the default act_handover PDF template and add a Section::FieldRow DocSpec/renderer variant so the rendered Акт приёма-передачи PDF matches the structure of the Word reference sample (исходный образец не хранится в репозитории): body content as "метка | значение" rows on a thin underline (not device_card boxes), full-length field labels, no "Устройство №N" headings between devices, and pagination preserved.
 
 Purpose: The current default template renders each device as a device_card block with a "Устройство №N: {name}" heading and abbreviated labels (Инв.№/Серийный №). This does not match the Word original the organization actually uses, which lists label/underlined-value rows with full labels and no per-device heading/counter.
 
