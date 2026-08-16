@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-16T16:53:32.047Z"
+last_updated: "2026-08-16T17:09:51.145Z"
 last_activity: 2026-08-16
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 23
-  completed_plans: 21
+  completed_plans: 22
   percent: 60
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 37 (data-privacy) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-08-16
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [█████████░] 91%
+Progress: [██████████] 96%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -305,6 +305,7 @@ Progress: [█████████░] 91%
 | Phase 36 P05 | 240min | 2 tasks | 0 files |
 | Phase 37 P01 | 45min | 2 tasks | 14 files |
 | Phase 37 P02 | ~15min | 3 tasks | 15 files |
+| Phase 37 P03 | 40min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -756,6 +757,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 37-01: grouped 5 commits by which class(es) each file actually carries (2 combined A+C / B+C commits for mixed files) rather than forcing a strict 3-commit A/B/C split
 - [Phase 37]: ROADMAP.md dangling-reference rewrite applied inside Phase 37's own section (Success Criteria + Wave 1 bullet) to satisfy Task 2's automated zero-match gate, checkbox state left untouched
 - [Phase 37]: Reused template_service.rs demo_context_for_kind's established placeholder requisites (phone/fax/okpo/ogrn/email) when scrubbing 15-02-PLAN.md's demo-context prose instead of inventing new placeholder values
+- [Phase 37]: Widened check-privacy.mjs mode-1 file filter to \.(rs|html)(\.|$) to recognize .rs.txt/.html.txt extension chains — needed so the C-02 allowlist-regression fixture stays out of cargo build while still being scanned
+- [Phase 37]: check-privacy.mjs supports explicit positional file-argument scanning (bypassing git plumbing) so the fixture-driven self-test can target specific files deterministically
+- [Phase 37]: Binary-extension violations (R8) labeled class D in check-privacy.mjs output, matching 37-RESEARCH.md's A/B/C/D class taxonomy
 
 ### Pending Todos
 
@@ -926,8 +930,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-16T16:53:32.037Z
-Stopped at: Completed 37-02-PLAN.md
+Last session: 2026-08-16T17:09:51.135Z
+Stopped at: Completed 37-03-PLAN.md
 Resume file: 
 
 None
