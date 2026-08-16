@@ -91,7 +91,7 @@ None.
 - `git diff` confirms zero lines touching `printViaSystemBrowser`'s body.
 
 **NOT verified (requires a real LAN browser against the axum server, per `synthetic_harness_not_verification` — no frontend test framework exists and none of the above commands exercise runtime print behaviour):**
-- Whether the print dialog now opens on a real LAN-browser client (e.g. `https://web.cmy.local:8443`).
+- Whether the print dialog now opens on a real LAN-browser client (e.g. `https://web.example.local:8443`).
 - Whether the new `console.error` actually surfaces a useful exception if the failure persists.
 - Whether paginated output renders correctly (no off-page content) when actually printed/saved-as-PDF.
 

@@ -13,7 +13,7 @@ mode: quick
 `RealAdDirectory::resolve()` (`crates/trackly-infra/src/ad/directory.rs:142`) and
 `RealAdClient::authenticate`/`test_connection` (`crates/trackly-infra/src/ad/real.rs:76,143`)
 all hardcode `format!("ldaps://{host}:{port}")`. The user's live DC
-(`srvdc1.cmy.local`) serves ONLY plaintext LDAP on :389 — port 636 is
+(`dc.example.local`) serves ONLY plaintext LDAP on :389 — port 636 is
 TCP-open but the TLS handshake is forcibly closed, so there is no working
 LDAPS path. `no_tls_verify = true` does not help because the URL scheme
 itself is still `ldaps://`. Result: `directory.resolve()` returns

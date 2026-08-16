@@ -256,7 +256,7 @@ on first principles, not a confirmed fix for the specific LAN print-dialog failu
 2. `pnpm --dir ui lint` — passes, including the CSP hash-drift gate (bootstrapScript.js untouched).
 3. `pnpm --dir ui build` — production build succeeds.
 4. Manual/human-check (NOT automatable — requires a real LAN browser hitting the axum server, per
-   `synthetic_harness_not_verification`): from a real browser at `https://web.cmy.local:8443` (or
+   `synthetic_harness_not_verification`): from a real browser at `https://web.example.local:8443` (or
    equivalent LAN URL), open a document preview, press «Печать».
    - If it STILL fails: open devtools console BEFORE pressing «Печать» this time — the new
      `console.error` must now show the real exception with a `printViaTopLevel` (or

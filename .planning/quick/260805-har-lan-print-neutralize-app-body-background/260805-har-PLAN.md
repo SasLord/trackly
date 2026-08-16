@@ -184,7 +184,7 @@ inside the existing `@media print { ... }` block. The pre-existing `body > :not(
    colour cannot be asserted by any of the above commands; this needs a real browser on another
    machine printing against the axum server, same class of check as the LAN print fixes in
    260805-edd/260805-gdz): from a Windows LAN client, open the act preview via
-   `web.cmy.local:8443` (or equivalent LAN URL), click Печать, and in the print preview/dialog
+   `web.example.local:8443` (or equivalent LAN URL), click Печать, and in the print preview/dialog
    confirm the sheet background is white — both in the app's light theme and dark theme. Record
    the result in the SUMMARY; if this plan is executed without LAN/Windows access, flag step 4
    as a pending follow-up UAT, matching the precedent set by the prior two print-fix quick tasks

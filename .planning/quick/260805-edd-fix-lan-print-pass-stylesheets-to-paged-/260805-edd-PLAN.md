@@ -35,7 +35,7 @@ Fix LAN-browser print failure: `printViaTopLevel` in the preview modal passes Pa
 `typeof arguments[i]`: an `object` argument's values are used directly as CSS text; anything
 else is pushed into `urls` and fetched over the network via `request(arguments[i])`. A string
 is therefore treated as a URL — confirmed by the reported DevTools Network entry
-(`https://web.cmy.local:8443/%3Cstyle%3E%20%20@page%20...`), which is the CSS text itself,
+(`https://web.example.local:8443/%3Cstyle%3E%20%20@page%20...`), which is the CSS text itself,
 URL-encoded, hitting the LAN server as a bogus path and failing. The existing `catch`
 fallback retries with `[styleHtml.replace(/<\/?style[^>]*>/gi, '')]` — still a plain string
 (only the tag-wrapping changed, not the type), so it fails identically and never actually
@@ -190,7 +190,7 @@ file.
 3. `pnpm --dir ui build` — production build succeeds.
 4. Manual/human-check (NOT automatable — requires a real LAN browser hitting the axum server,
    per `synthetic_harness_not_verification`): from a real browser at
-   `https://web.cmy.local:8443` (or equivalent LAN URL), open a document preview, press
+   `https://web.example.local:8443` (or equivalent LAN URL), open a document preview, press
    «Печать», confirm (a) DevTools Network shows no request whose URL is CSS text
    (`/%3Cstyle%3E...`), (b) the native print dialog opens, (c) the printed/PDF output has the
    expected `@page` margins and fonts applied (proves the CSS actually reached Paged.js's
