@@ -415,7 +415,7 @@ remediation. HEAD is now clean, but `CLAUDE.md` states the constraint
 explicitly: *«Всё закоммиченное остаётся в истории git даже после удаления из HEAD»*, and the
 repository is public. The scrub is correct but incomplete as a remediation.
 
-Confirmed clean at HEAD: `grep -rnoE "[0-9]{8,13}|\(3919\)|…@…" crates/trackly-app/templates/`
+Confirmed clean at HEAD: `grep -rnoE "[0-9]{8,13}|\(4000\)|…@…" crates/trackly-app/templates/`
 returns nothing, and every literal in the new tests/templates is fictional
 ("ООО Тест", "Иванов И.И.", `+7 495 000-00-01`, `info@test-org.ru`).
 

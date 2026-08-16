@@ -248,7 +248,7 @@ fn render_header_centered(
     let mut cursor_y = y;
 
     // Logo — centered horizontally near the top (the Word letterhead centers
-    // the СМУ ГХК / РОСАТОМ mark). Wide logos hit the LOGO_WIDTH_PT cap, so
+    // the organization's mark). Wide logos hit the LOGO_WIDTH_PT cap, so
     // centering on LOGO_WIDTH_PT is accurate for them; narrower logos are
     // left-biased by at most a few points, which is visually negligible.
     let logo_x = (MARGIN_PT + (usable_width - LOGO_WIDTH_PT) * 0.5).max(MARGIN_PT);

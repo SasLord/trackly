@@ -313,7 +313,7 @@ blocked: 1
     - "Возможно отдельная Phase 3.5 или ингредиент Phase 4 (картриджи — там quantity-aware будет критичен)"
 
 - id: G-9
-  truth: "draw_logo_top_right (renderer.rs:325) должен сохранять aspect-ratio оригинального изображения при scale-fit в bbox 80×40pt — сейчас наблюдается заметное сжатие по ширине логотипа СМУ ГХК vs. оригинал"
+  truth: "draw_logo_top_right (renderer.rs:325) должен сохранять aspect-ratio оригинального изображения при scale-fit в bbox 80×40pt — сейчас наблюдается заметное сжатие по ширине логотипа организации vs. оригинал"
   status: failed
   reason: "User reported: yes, но логотип немного сжат по ширине."
   severity: minor
