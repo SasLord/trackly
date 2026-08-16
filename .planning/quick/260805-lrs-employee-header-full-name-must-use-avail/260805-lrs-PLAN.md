@@ -12,7 +12,7 @@ autonomous: true
 requirements: [LRS-01]
 must_haves:
   truths:
-    - "On a wide LAN-browser viewport, the employee header shows the FULL name (e.g. «Красноперов Анастасия Дмитриевна») with no ellipsis, because `.user-name` no longer carries a fixed `max-width: 200px` ceiling"
+    - "On a wide LAN-browser viewport, the employee header shows the FULL name (e.g. «Иванов Александр Дмитриевич») with no ellipsis, because `.user-name` no longer carries a fixed `max-width: 200px` ceiling"
     - "On a narrow viewport, the NAME is the element that shrinks and shows an ellipsis — `.user-role` ('Сотрудник'), the theme switcher, and the 'Выйти' button keep their intrinsic size and never wrap or get squeezed"
     - "The shrink capability propagates from the flex header row down to `.user-name` — `.employee-header-actions` and `.user-name` both have `min-width: 0` so the browser's flex default (`min-width: auto`, i.e. 'never shrink below content size') does not block the ellipsis from ever engaging"
   artifacts:
@@ -31,8 +31,7 @@ Fix the employee header so the full name (`.user-name`, `EmployeeLayout.svelte`)
 available width on a wide screen, and only shrinks with an ellipsis when the viewport is actually
 narrow. Today `.user-name` has a hardcoded `max-width: 200px` PLUS `flex-shrink: 0` — the pair
 means the name is always clipped at exactly 200px regardless of how much empty space sits to its
-right in the header row, which is the reported defect (user report + screenshot: "Красноперов
-Анастасия Дмит…" truncated on a wide screen with most of the header empty). Confirmed in the file
+right in the header row, which is the reported defect (user report + screenshot: "Иванов Александр Дмитриевич" truncated on a wide screen with most of the header empty). Confirmed in the file
 at `.user-name` (~line 166-175); not a regression — originated in commit 0667f1c (2026-06-21, plan
 10-04) when `EmployeeLayout.svelte` was first created.
 
@@ -177,7 +176,7 @@ CSP-hash gates), and `pnpm build` all pass clean.
    behaviour): open the employee view (`#/login` as an employee, or any LAN browser session) at
    BOTH viewport widths:
    a. Wide viewport (e.g. desktop browser window, ~1200px+): confirm the full name renders with no
-      ellipsis, e.g. "Красноперов Анастасия Дмитриевна" in full.
+      ellipsis, e.g. "Иванов Александр Дмитриевич" in full.
    b. Narrow viewport (resize the browser window down to ~500-600px, or use responsive/mobile
       device emulation): confirm the NAME shrinks and shows an ellipsis, while "Сотрудник", the
       theme switcher icon, and the "Выйти" button all keep their normal size and do not wrap onto

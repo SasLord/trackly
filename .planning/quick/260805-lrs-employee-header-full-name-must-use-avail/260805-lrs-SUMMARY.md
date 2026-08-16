@@ -82,7 +82,7 @@ None.
 5. `pnpm --dir ui build` — succeeded.
 
 **NOT verified (requires a live browser, per plan's `<verification_reality>` — flagging as pending follow-up UAT):**
-- Wide viewport (~1200px+): visual confirmation that the full name (e.g. "Красноперов Анастасия Дмитриевна") renders with no ellipsis.
+- Wide viewport (~1200px+): visual confirmation that the full name (e.g. "Иванов Александр Дмитриевич") renders with no ellipsis.
 - Narrow viewport (~500-600px): visual confirmation that only `.user-name` shrinks/ellipsizes while `.user-role` ("Сотрудник"), the theme switcher, and "Выйти" keep their size and do not wrap.
 - These two checks require opening the employee view in an actual browser (Tauri webview or LAN browser session) at both widths and cannot be proven by any of the automated commands above. The CSS is now structurally correct per the plan's flexbox model (min-width: 0 propagation + flex-shrink: 1 on `.user-name` only), but rendered behavior should get a manual look before considering this fully closed.
 
