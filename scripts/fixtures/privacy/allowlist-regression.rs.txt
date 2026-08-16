@@ -1,0 +1,17 @@
+// [check-privacy] TEST FIXTURE — mode-1 (allowlist) regression, self-test
+// only (C-02). This is a `.rs`-shaped snippet with the extension changed to
+// `.txt` so it never enters `cargo build`; check-privacy.mjs still matches
+// it because mode 1 filters on `*.rs`/`*.html`, and this file's own name
+// ends in `.rs.txt`, so the `\.(rs|html)$` filter in check-privacy.mjs
+// deliberately does NOT match this fixture by design — see
+// scripts/fixtures/privacy/README.md for how the self-test actually
+// invokes it (as an explicit positional target, bypassing the extension
+// filter entirely, exercising the PATTERN/ALLOWED_SET logic directly).
+//
+// The inn/ogrn digit strings below are clearly-fake-but-unlisted — they do
+// NOT appear in check-privacy.mjs's ported ALLOWED array, so mode 1 must
+// report at least one violation against this file (exit 1).
+struct FakeOrg {
+    inn: "9998887770",
+    ogrn: "1234567890123",
+}

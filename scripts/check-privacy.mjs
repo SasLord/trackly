@@ -90,7 +90,13 @@ const ALLOWED_SET = new Set(ALLOWED);
 const REQUISITE_PATTERN =
   /(^|[^A-Za-z0-9_"])"?(inn|kpp|okpo|ogrn|phone|fax)"?\s*:\s*"([^"]*)"/g;
 
-const REQUISITE_FILE_RE = /\.(rs|html)$/;
+// Matches a real `*.rs`/`*.html` file (extension at the very end), AND a
+// `*.rs.txt`/`*.html.txt`-shaped fixture (extension chain, not just the
+// final one) — the latter shape is used by
+// scripts/fixtures/privacy/allowlist-regression.rs.txt (C-02 self-test): it
+// needs a trailing `.txt` so `cargo build` never picks it up as real Rust
+// source, while still being recognized here as "Rust-shaped" content.
+const REQUISITE_FILE_RE = /\.(rs|html)(\.|$)/;
 
 // ---------------------------------------------------------------------------
 // Режим 2 (n-грамм хэши) — токенизатор D-05/D-06.
@@ -348,16 +354,120 @@ function loadHashes(hashesPath) {
 }
 
 // ---------------------------------------------------------------------------
-// --add: интерактивное добавление токена (стаб — полная реализация в
-// Task 2 этого плана: raw-mode stdin, isTTY-проверка, нормализация,
-// сортировка файла).
+// --add: интерактивное добавление токена (D-15).
 // ---------------------------------------------------------------------------
 
-function runAdd() {
-  console.error(
-    `${TAG} FAIL — --add ещё не реализован в этой задаче (Task 1 плана 37-03); полная реализация — Task 2.`,
-  );
-  process.exit(1);
+/** Приглашение с подавленным эхом на raw-mode stdin — значение никогда не
+ * отображается на экране и не попадает в ~/.zsh_history (читается через
+ * process.stdin, не как аргумент командной строки). */
+function promptHidden(question) {
+  return new Promise((resolve) => {
+    process.stdout.write(question);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    let input = '';
+    const cleanup = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener('data', onData);
+    };
+    // Сравниваем по коду символа (не по литералу управляющего байта), чтобы
+    // в исходнике не было буквальных непечатаемых байтов CR/LF/EOF/backspace.
+    function onData(chunk) {
+      const char = chunk.toString();
+      const code = char.charCodeAt(0);
+      if (code === 13 || code === 10 || code === 4) {
+        // Enter (CR/LF) или Ctrl+D (EOF)
+        cleanup();
+        process.stdout.write('\n');
+        resolve(input);
+      } else if (code === 3) {
+        // Ctrl+C
+        cleanup();
+        process.stdout.write('\n');
+        process.exit(1);
+      } else if (code === 127 || code === 8) {
+        // Backspace / Delete
+        input = input.slice(0, -1);
+      } else {
+        input += char;
+      }
+    }
+    stdin.on('data', onData);
+  });
+}
+
+function readExistingHashLines(hashesPath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(hashesPath, 'utf8');
+  } catch {
+    return { headerLines: [], dataLines: new Set() };
+  }
+  const headerLines = [];
+  const dataLines = new Set();
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) {
+      headerLines.push(rawLine);
+    } else if (/^[0-9a-f]{64}\s+[ABC]$/.test(line)) {
+      dataLines.add(line);
+    }
+  }
+  return { headerLines, dataLines };
+}
+
+async function runAdd(args) {
+  // Pitfall 4: process.stdin.setRawMode is undefined off a real TTY (CI,
+  // pipes, non-interactive wrappers) — check BEFORE ever touching raw mode,
+  // so the failure is an explicit message, never an uncaught TypeError.
+  if (!process.stdin.isTTY) {
+    console.error(
+      `${TAG} FAIL — --add требует интерактивного терминала (stdin не TTY). Запусти "node scripts/check-privacy.mjs --add --hashes <path>" напрямую в терминале, не из пайпа/CI.`,
+    );
+    process.exit(1);
+  }
+
+  if (!args.hashesPath) {
+    console.error(
+      `${TAG} FAIL — --add требует --hashes <path> — файл, в который добавляется токен.`,
+    );
+    process.exit(1);
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const clsAnswer = await new Promise((resolve) => {
+    rl.question('Класс (A/B/C): ', (answer) => resolve(answer.trim().toUpperCase()));
+  });
+  rl.close();
+
+  if (!['A', 'B', 'C'].includes(clsAnswer)) {
+    console.error(`${TAG} FAIL — класс должен быть одним из A/B/C, получено: "${clsAnswer}"`);
+    process.exit(1);
+  }
+
+  const value = await promptHidden('Значение (ввод не отображается на экране): ');
+  if (!value) {
+    console.error(`${TAG} FAIL — пустое значение, нечего добавлять.`);
+    process.exit(1);
+  }
+
+  const normalized = normalize(value);
+  const hash = sha256Hex(normalized);
+  const newLine = `${hash} ${clsAnswer}`;
+
+  const { headerLines, dataLines } = readExistingHashLines(args.hashesPath);
+  dataLines.add(newLine);
+  const sortedData = [...dataLines].sort();
+
+  const output = `${[...headerLines, ...sortedData].join('\n')}\n`;
+  fs.writeFileSync(args.hashesPath, output, 'utf8');
+
+  console.error(`${TAG} PASS — токен класса ${clsAnswer} добавлен в ${args.hashesPath}`);
+  process.exit(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -386,11 +496,11 @@ function formatViolation(v) {
   return `${TAG} ${v.path} — маркер класса ${v.cls}`;
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.add) {
-    runAdd(args);
+    await runAdd(args);
     return;
   }
 
@@ -432,4 +542,4 @@ function main() {
   process.exit(0);
 }
 
-main();
+await main();

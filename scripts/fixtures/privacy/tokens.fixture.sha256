@@ -1,0 +1,23 @@
+# [check-privacy] TEST FIXTURE — scripts/check-privacy.selftest.mjs only.
+#
+# Every entry below is the SHA-256 of a NORMALIZED FICTIONAL token
+# (lowercase + ё→е + Unicode NFC — see normalize() in check-privacy.mjs).
+# None of these hashes correspond to a real organization requisite, a real
+# employee's ФИО, or a real infrastructure identifier — the source phrase
+# is invented for this test fixture (C-01) and appears in plaintext in
+# scripts/fixtures/privacy/with-marker.md, itself also fictional.
+#
+# This file is NEVER used by the production gate — the production hash
+# list lives at scripts/privacy-tokens.sha256, populated by plan 37-04 once
+# the real marker shapes are known. Do not point --hashes at this file for
+# anything other than the self-test.
+#
+# Residual risk (D-08, accepted): SHA-256 of a short, low-entropy phrase is
+# dictionary-attackable — this file (like the production one) is a
+# stop-word list against accidental re-introduction, not cryptographic
+# protection. If this file were ever populated with real values (it must
+# never be), that risk assessment would still apply; it is documented here
+# purely to mirror the production file's header shape (D-08).
+#
+# Format: one `<sha256-hex> <class A|B|C>` per line, sorted by hash.
+8df0ed1739862da0f599a5090d378a029576fcd8dfec3eade08057c87969fc8d B
