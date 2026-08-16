@@ -656,8 +656,8 @@ assert!(
 | `cargo` / Rust toolchain | Сборка/тесты `trackly-app` | ✓ | см. `rust-toolchain`/CI (MSRV ≥1.85 проектный) | — |
 | `ttf-parser` (crates.io) | Word-wrap измерение | ✓ (уже в `Cargo.lock` транзитивно) | 0.25.1 | Fallback на текущее приближение `0.5*font_size`, если `cargo add` заблокирован по какой-то причине (маловероятно — MSRV `ttf-parser` 1.63.0 << проектный 1.85) |
 | `pip`/`slopcheck` | Аудит легитимности пакетов | ✗ | — | Деградация до `[ASSUMED]` + `checkpoint:human-verify` (см. Package Legitimacy Audit) |
-| `.planning/reference/act-word-source/act-sample.docx` | Визуальный эталон | ✓ | — | — |
-| `.planning/reference/act-word-source/image1.png` | Референс лого для UAT-сверки | ✓ (166×88px, СМУ ГХК/РОСАТОМ) | — | — |
+| Исходный образец Word (не хранится в репозитории) | Визуальный эталон | ✓ | — | — |
+| Референс-логотип образца (не хранится в репозитории) | Референс лого для UAT-сверки | ✓ (166×88px) | — | — |
 
 **Missing dependencies with no fallback:** нет (все критичные зависимости доступны либо имеют fallback).
 
