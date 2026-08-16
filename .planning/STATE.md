@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: executing
-last_updated: "2026-08-16T16:40:41.807Z"
+last_updated: "2026-08-16T16:53:32.047Z"
 last_activity: 2026-08-16
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 23
-  completed_plans: 20
+  completed_plans: 21
   percent: 60
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 ## Current Position
 
 Phase: 37 (data-privacy) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-16
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 91%
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -304,6 +304,7 @@ Progress: [█████████░] 87%
 | Phase 36 P06 | 40min | 3 tasks | 5 files |
 | Phase 36 P05 | 240min | 2 tasks | 0 files |
 | Phase 37 P01 | 45min | 2 tasks | 14 files |
+| Phase 37 P02 | ~15min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -753,6 +754,8 @@ Recent decisions affecting current work:
 - [Phase 36]: Пользователь 2026-08-13 явно отложил проверку реальной печати/LAN-транспорта/изоляции печатного DOM на следующую сессию, приняв риск — зафиксировано как НЕ пройдено, не как пройдено.
 - [Phase ?]: 37-01: scratch-only substitution script (never committed) applied 22 class A/B/C replacements across 14 HEAD files, verified via git diff + git grep before deleting the scratch mapping (D-03)
 - [Phase ?]: 37-01: grouped 5 commits by which class(es) each file actually carries (2 combined A+C / B+C commits for mixed files) rather than forcing a strict 3-commit A/B/C split
+- [Phase 37]: ROADMAP.md dangling-reference rewrite applied inside Phase 37's own section (Success Criteria + Wave 1 bullet) to satisfy Task 2's automated zero-match gate, checkbox state left untouched
+- [Phase 37]: Reused template_service.rs demo_context_for_kind's established placeholder requisites (phone/fax/okpo/ogrn/email) when scrubbing 15-02-PLAN.md's demo-context prose instead of inventing new placeholder values
 
 ### Pending Todos
 
@@ -923,11 +926,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-16T16:40:41.795Z
-Stopped at: Phase 37 context gathered
+Last session: 2026-08-16T16:53:32.037Z
+Stopped at: Completed 37-02-PLAN.md
 Resume file: 
 
-Completed 37-01-PLAN.md
+None
 
 ## Deferred Items
 
