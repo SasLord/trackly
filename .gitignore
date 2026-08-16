@@ -47,3 +47,9 @@ logs/
 # Optional user configs (portable installs may include trackly.config.toml beside .exe,
 # but dev-machine local configs should not leak into git).
 trackly.config.toml
+
+# Planning reference artifacts may carry real organization samples (PRIV-01/D-04) — ignore
+# by default. design-system-v2/ predates this rule (milestone v1.2 mockups) and stays tracked
+# intentionally.
+.planning/reference/*
+!.planning/reference/design-system-v2/
