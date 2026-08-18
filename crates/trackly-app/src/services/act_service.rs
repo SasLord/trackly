@@ -3315,6 +3315,11 @@ mod group_items_for_print_tests {
     /// Constructs a minimal `ActItemDto` with fictional placeholder values
     /// only (CLAUDE.md privacy rule) — every test fixture uses generic
     /// "Устройство"/"Инв-…" labels, never real inventory data.
+    ///
+    /// One positional argument per printed field is deliberate: the tests read
+    /// as tables of print-identical vs print-differing rows, which is the whole
+    /// point of `group_items_for_print`.
+    #[allow(clippy::too_many_arguments)]
     fn item(
         id: i64,
         device_id: i64,
