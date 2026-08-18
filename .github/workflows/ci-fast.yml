@@ -19,6 +19,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # PRIV-01/PRIV-02 (WR-11): the repository is PUBLIC and anything committed stays
+      # in git history even after deletion from HEAD, so the durable control is
+      # keeping real organization requisites / employee ФИО / infrastructure
+      # identifiers from entering at all. Runs immediately after Checkout — it is a
+      # backstop, not a duplication of the local .githooks/pre-commit hook (that
+      # hook is opt-in and always locally bypassable via --no-verify; this step is
+      # the check that cannot be skipped), and a privacy violation should not wait
+      # on a 20-minute build to be reported.
+      - name: Privacy gate (organization requisites / ФИО / infra identifiers)
+        run: node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256
+
       - name: Install Rust toolchain (1.88)
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -76,14 +87,6 @@ jobs:
       - name: Build Svelte SPA (ui/dist)
         working-directory: ui
         run: pnpm build
-
-      # PRIV-01 (WR-11): the repository is PUBLIC and anything committed stays
-      # in git history even after deletion from HEAD, so the durable control is
-      # keeping real organization requisites from entering at all. Runs early —
-      # it is instant and a privacy violation should not wait on a 20-minute
-      # build to be reported.
-      - name: Privacy gate (organization requisites)
-        run: ./scripts/check-privacy-requisites.sh
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check

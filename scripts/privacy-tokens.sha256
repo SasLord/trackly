@@ -1,0 +1,52 @@
+# [check-privacy] Production token hash list (PRIV-02, R6/D-08).
+#
+# Every entry below is the SHA-256 of a NORMALIZED real class A/B/C marker
+# (lowercase + ё→е + Unicode NFC — see normalize() in check-privacy.mjs).
+# This file intentionally stores hashes, never the plaintext values that
+# produced them — the values were entered via
+# "node scripts/check-privacy.mjs --add --hashes scripts/privacy-tokens.sha256"
+# (or the equivalent scratch-only extraction script used to populate this
+# list from pre-cleanup git history, per plan 37-04), which reads the value
+# from a no-echo stdin prompt and never writes it to a file, commit message,
+# or shell history.
+#
+# Recovery (R7 — fail-closed): the gate refuses to run if this file is
+# missing or empty rather than silently skipping the check. If this file is
+# ever lost, rebuild it via --add using the marker-shape checklists in
+# .planning/phases/37-data-privacy/37-01-SUMMARY.md and 37-02-SUMMARY.md as
+# the re-derivation source (never unaided recall).
+#
+# To add a new real value: run
+#   node scripts/check-privacy.mjs --add --hashes scripts/privacy-tokens.sha256
+# in an interactive terminal (never piped/CI), answer the class prompt
+# (A/B/C), then type the real value at the no-echo prompt. The value is
+# hashed and appended; it is never displayed or written anywhere in
+# plaintext.
+#
+# Residual risk (D-08, accepted): SHA-256 of a short, low-entropy phrase is
+# dictionary-attackable — this list is a stop-word list against accidental
+# re-introduction, not cryptographic protection. The same values already
+# exist unredacted in this repository's git history (PRIV-03, restoring a
+# clean history, is deferred) — this file does not increase that exposure,
+# it only prevents the same values from re-entering HEAD going forward.
+#
+# Format: one `<sha256-hex> <class A|B|C>` per line, sorted by hash.
+04f54abcbc626a88435e3fc027f17091ee720aac8a8d05502c8f25e469fa3465 A
+239bd0e7cd83eb6dc195abd1c8c96e783306243109eb1ffff404e13a345c9f92 C
+3f52f7c668ade41bedbc5229898c5d4ab48b072a36d3b15c69d740503d07b7db C
+6282aea71d8f8f942f6b983a46bf57c544dc427795b939096408ed381744caec C
+840f3b97868f9a0df5ac0c35a7b495421dc10cea54980b9f5b8c563bc133c43b B
+946198aa8f43d49f053b786a602137764b0de714dd8cbed377958b11d000d47d A
+94adfa0ab10b6464169faf14577445828ecb27080622f43ac3e99e608d475147 C
+a66dd9b63842994f45ea0c2e6988bb5aa7897ed6dfe2c1686e4c95668d7b12e4 B
+ba83b03c2d22ab309dab26647471a984b7fc1ea9ea9874b96be24b645e247c45 A
+c377ff63cad2a84fb4cc895faf8cf0572437290f76b2a4dfbc2fe34a3d4eb264 A
+cac782d9515658e543127224ebe7e5369eddf9920f174ed785b18c12a091bbb7 B
+d7c7af96fb36a0c8eab811e42ba20e79bc19cc27adc1c939b3b9ec5d230f9b8e A
+ddaf004159e1504a87b1447eeacae733e75c0a8fd35c5ab3468d0f7f49f17d9d B
+defaef0cc4def073f69784dbadfaebe9249ff7c8a7e2c704e2017ea80a0ccd8e A
+dfc7c52d1aa17d92fc71ce30d13e7fe8f7a17484c4a6d46b957f070aae4fb259 A
+e048caa92c9d5a02facf629edd28d8ed8d08f1aeddcf326869b2a082c11b5ee1 A
+eb76a31d7c30ba102bbe27d919df68822cb7248c8462bb9771be82519daefcfe A
+f7b03a0d1133492ff9503877f0bada8a9002ac41ac6712ad542cf8ce1e8af114 B
+ff739205d24e4357158dec5ad3aa8396013d458cfd93a9a64efc68dd0a334b0a A

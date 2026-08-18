@@ -169,6 +169,26 @@ function isExcludedPath(relPath, hashesRelPath) {
   return EXCLUDED_PATH_PREFIXES.some((prefix) => relPath.startsWith(prefix));
 }
 
+// Self-test fixtures (scripts/fixtures/privacy/) are DELIBERATELY-violating
+// synthetic data — allowlist-regression.rs.txt carries an intentionally
+// unrecognized inn/ogrn literal (C-02 regression) and binary-regression.docx
+// sits outside BINARY_ALLOWLIST on purpose (R8 regression). Both must still
+// trip when check-privacy.selftest.mjs names them explicitly (positional
+// file-argument mode, unaffected by this constant), or the self-test's own
+// regression assertions go blind. But once committed to HEAD, an
+// auto-discovery scan (--staged / full HEAD — exactly the modes the
+// pre-commit hook and ci-fast.yml use) would otherwise trip on this test
+// furniture forever, which is not a real privacy violation. This is a
+// SEPARATE, narrowly-scoped, mode-aware constant — not an addition to
+// EXCLUDED_PATH_PREFIXES/EXCLUDED_PATH_EXACT (R9 keeps those exactly as
+// plan 37-03 left them) — and it never disables token-hash checking for any
+// real repository path.
+const AUTO_SCAN_EXCLUDED_PREFIXES = ['scripts/fixtures/privacy/'];
+
+function isAutoScanExcludedFixture(relPath) {
+  return AUTO_SCAN_EXCLUDED_PREFIXES.some((prefix) => relPath.startsWith(prefix));
+}
+
 // ---------------------------------------------------------------------------
 // Сбор целей сканирования (git-плампинг, NUL-delimited — в репозитории есть
 // имена файлов с пробелами/кириллицей).
@@ -525,6 +545,14 @@ async function main() {
   const hashesAbs = path.resolve(process.cwd(), args.hashesPath);
   const hashesRel = toPosix(path.relative(REPO_ROOT, hashesAbs));
   targets = targets.filter((t) => !isExcludedPath(t.path, hashesRel));
+
+  // Auto-discovery scans (--staged / full HEAD) skip the gate's own
+  // self-test fixtures; explicit-file invocations (args.files.length > 0 —
+  // check-privacy.selftest.mjs) do NOT go through this filter, so the
+  // fixtures still trip exactly as designed when named directly.
+  if (args.files.length === 0) {
+    targets = targets.filter((t) => !isAutoScanExcludedFixture(t.path));
+  }
 
   const violations = [
     ...scanAllowlist(targets),

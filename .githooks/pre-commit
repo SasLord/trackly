@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#
+# Privacy gate — local pre-commit entry point (PRIV-02, R10, D-11).
+#
+# The repository is PUBLIC. This hook runs scripts/check-privacy.mjs against
+# STAGED blobs (git show :path, not the working tree — D-11) before every
+# local commit, so a real organization requisite / employee ФИО /
+# infrastructure identifier is caught before it ever reaches history, not
+# after.
+#
+# This is a LOCAL, opt-in, bypassable control (git hooks always are —
+# `git commit --no-verify` skips it). It is not the only enforcement point:
+# .github/workflows/ci-fast.yml runs the same gate over the full HEAD on
+# every push as a backstop that cannot be skipped by a local flag. See
+# scripts/setup-hooks.sh for how to enable this hook.
+#
+# Fail-closed on a missing `node` (D-11): if node is not on PATH, this hook
+# refuses the commit rather than silently skipping the check.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found — cannot run the privacy gate (fail-closed, D-11)." >&2
+  echo "  Install Node.js, or bypass with 'git commit --no-verify' (not recommended —" >&2
+  echo "  the repository is public; ci-fast.yml is the only remaining backstop)." >&2
+  exit 1
+fi
+
+exec node "${REPO_ROOT}/scripts/check-privacy.mjs" --staged --hashes "${REPO_ROOT}/scripts/privacy-tokens.sha256"
