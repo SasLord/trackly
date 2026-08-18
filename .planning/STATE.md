@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: milestone_complete
-last_updated: 2026-08-18T11:30:33Z
+last_updated: 2026-08-18T11:50:00Z
 last_activity: 2026-08-18
 progress:
   total_phases: 5
@@ -11,7 +11,7 @@ progress:
   total_plans: 23
   completed_plans: 263
   percent: 100
-stopped_at: Milestone v1.3.3 complete (Phase 38 was final phase) — ready for /gsd-audit-milestone
+stopped_at: Milestone v1.3.3 audited 2026-08-18 — status gaps_found (см. v1.3.3-MILESTONE-AUDIT.md): CI-блокер INT-01 (fmt-дрейф), DOC-10 без подтверждения, QA-04 partial
 ---
 
 # Project State
@@ -21,13 +21,13 @@ stopped_at: Milestone v1.3.3 complete (Phase 38 was final phase) — ready for /
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Веха v1.3.3 завершена (5/5 фаз) — следующий шаг: /gsd-audit-milestone
+**Current focus:** Веха v1.3.3 завершена по фазам (5/5), аудит пройден со статусом gaps_found — закрыть INT-01 (cargo fmt) до /gsd-complete-milestone
 
 ## Current Position
 
 Phase: 38 (final phase of v1.3.3, complete)
 Plan: 0 plans needed — goal met by retroactive Nyquist audit (32-VALIDATION.md)
-Status: Milestone v1.3.3 complete — ready for /gsd-audit-milestone
+Status: Milestone v1.3.3 audited — gaps_found, см. .planning/v1.3.3-MILESTONE-AUDIT.md
 Last activity: 2026-08-18
 DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
 
@@ -981,6 +981,8 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- Веха v1.3.3 закрыта по фазам (34–38, 5/5). Следующий шаг: /gsd-audit-milestone для v1.3.3,
-  затем /gsd-complete-milestone. Учитывать при аудите: отложенная живая UAT Фазы 36
-  (36-VERIFICATION.md: human_needed, 36-UAT.md: partial) — риск принят пользователем 2026-08-13.
+- Аудит вехи v1.3.3 выполнен 2026-08-18: `gaps_found` (.planning/v1.3.3-MILESTONE-AUDIT.md).
+  Порядок закрытия: (1) INT-01 — `cargo fmt --all` + коммит, CI красный с 2026-08-11 и не
+  исполняет clippy/test/svelte-check/pnpm lint; (2) DOC-10 — живая проверка печати N=1 на обоих
+  транспортах (отложена пользователем 2026-08-13); (3) опционально /gsd-validate-phase 36
+  (nyquist_compliant: false) и решение по трассируемости QA-04. Затем /gsd-complete-milestone.
