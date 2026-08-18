@@ -457,7 +457,8 @@ async fn render_handover_multi_device_fields_attributable_to_own_device() {
             html.chars().take(800).collect::<String>()
         );
         assert!(
-            !parts[1].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1") && !parts[3].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
+            !parts[1].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1")
+                && !parts[3].contains("КОМПЛЕКТ-АТРИБУЦИЯ-1"),
             "tbody.device-groups 0/2 must NOT contain device 1's complectation value. Head: {:?}",
             html.chars().take(800).collect::<String>()
         );

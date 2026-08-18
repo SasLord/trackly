@@ -254,14 +254,8 @@ mod tests {
     #[tokio::test]
     async fn env_rejects_parse_error() {
         let env = build_safe_env();
-        let result = render_with_timeout(
-            &env,
-            "broken",
-            "{% if unclosed",
-            serde_json::json!({}),
-            &[],
-        )
-        .await;
+        let result =
+            render_with_timeout(&env, "broken", "{% if unclosed", serde_json::json!({}), &[]).await;
         match result {
             Err(AppError::Validation { field, .. }) => assert_eq!(field, "template"),
             other => panic!("expected Validation, got {other:?}"),
@@ -321,7 +315,10 @@ mod tests {
             out.contains("&lt;script&gt;"),
             "expected escaped script tag, got: {out}"
         );
-        assert!(out.contains("<br />"), "expected literal <br />, got: {out}");
+        assert!(
+            out.contains("<br />"),
+            "expected literal <br />, got: {out}"
+        );
         assert!(
             !out.contains("<script>"),
             "literal <script> must never survive, got: {out}"
@@ -388,6 +385,9 @@ mod tests {
     #[test]
     fn org_full_name_html_escapes_ampersand() {
         let out = org_full_name_html("A & B");
-        assert!(out.contains("&amp;"), "expected escaped ampersand, got: {out}");
+        assert!(
+            out.contains("&amp;"),
+            "expected escaped ampersand, got: {out}"
+        );
     }
 }

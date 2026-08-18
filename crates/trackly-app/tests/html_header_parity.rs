@@ -20,7 +20,9 @@ use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::dto::reports::{OrgPatch, ReportResponse, ReportRow};
 use trackly_app::pdf::PdfRenderer;
-use trackly_app::services::{ActService, OrgDbService, OrganizationService, ReportService, TemplateService};
+use trackly_app::services::{
+    ActService, OrgDbService, OrganizationService, ReportService, TemplateService,
+};
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -63,7 +65,9 @@ fn header_partial_org_name_node_has_no_hardcoded_literal() {
         .expect("valid orgName extraction regex");
     let org_name_block = org_name_re
         .find(HEADER_HTML)
-        .unwrap_or_else(|| panic!("no <div class=\"orgName\">...</div> block found in _header.html"))
+        .unwrap_or_else(|| {
+            panic!("no <div class=\"orgName\">...</div> block found in _header.html")
+        })
         .as_str();
 
     let jinja_expr_re = regex::Regex::new(r"(?s)\{\{.*?\}\}").expect("valid Jinja expr regex");
@@ -123,7 +127,10 @@ fn extract_org_name_node(header_fragment: &str) -> String {
         .to_string()
 }
 
-async fn seed_device(writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>, name: &str) -> i64 {
+async fn seed_device(
+    writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
+    name: &str,
+) -> i64 {
     let name = name.to_string();
     writer
         .execute(move |conn| {

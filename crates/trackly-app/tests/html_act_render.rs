@@ -396,7 +396,8 @@ async fn html_handover_appendix_ol_numbering_matches_table_number_column() {
     for i in 0..3 {
         let expected_name = format!("HTML-Ноутбук-{i}");
         assert_eq!(
-            lis[i], expected_name,
+            lis[i],
+            expected_name,
             "li #{} must match act.items order (D-07). List: {:?}",
             i + 1,
             ol
@@ -776,7 +777,8 @@ async fn html_handover_contains_required_blocks_and_logo() {
 
     let html = p.acts.render_pdf(act.id).await.expect("render_pdf");
 
-    for expected in ["Акт приема-передачи", "Выдал:", "Получил:", "Подпись"] {
+    for expected in ["Акт приема-передачи", "Выдал:", "Получил:", "Подпись"]
+    {
         assert!(
             html.contains(expected),
             "expected block/label {expected:?} missing from handover HTML. Head: {:?}",

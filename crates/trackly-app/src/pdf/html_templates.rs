@@ -37,10 +37,7 @@ pub const DEFAULT_HTML_TEMPLATES: &[(&str, &str)] = &[
         include_str!("../../templates/act_acceptance.html"),
     ),
     ("report.html", include_str!("../../templates/report.html")),
-    (
-        "_header.html",
-        include_str!("../../templates/_header.html"),
-    ),
+    ("_header.html", include_str!("../../templates/_header.html")),
 ];
 
 /// Registry of previously-shipped default bodies, keyed by filename (D-12).
