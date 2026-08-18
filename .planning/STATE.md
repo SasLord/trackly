@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: milestone_complete
-last_updated: 2026-08-18T11:50:00Z
+last_updated: 2026-08-18T12:40:00Z
 last_activity: 2026-08-18
 progress:
   total_phases: 5
@@ -11,7 +11,7 @@ progress:
   total_plans: 23
   completed_plans: 263
   percent: 100
-stopped_at: Milestone v1.3.3 audited 2026-08-18 — status gaps_found (см. v1.3.3-MILESTONE-AUDIT.md): CI-блокер INT-01 (fmt-дрейф), DOC-10 без подтверждения, QA-04 partial
+stopped_at: Milestone v1.3.3 audited 2026-08-18 — status gaps_found (см. v1.3.3-MILESTONE-AUDIT.md): INT-01 закрыт (CI зелёный на b4a7dc52), остаётся DOC-10 без живого подтверждения + QA-04 partial
 ---
 
 # Project State
@@ -21,7 +21,7 @@ stopped_at: Milestone v1.3.3 audited 2026-08-18 — status gaps_found (см. v1.
 See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Веха v1.3.3 завершена по фазам (5/5), аудит пройден со статусом gaps_found — закрыть INT-01 (cargo fmt) до /gsd-complete-milestone
+**Current focus:** Веха v1.3.3 завершена по фазам (5/5), аудит gaps_found; INT-01 закрыт, CI снова зелёный — остаётся живая проверка печати N=1 (DOC-10)
 
 ## Current Position
 
@@ -982,7 +982,9 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 ## Operator Next Steps
 
 - Аудит вехи v1.3.3 выполнен 2026-08-18: `gaps_found` (.planning/v1.3.3-MILESTONE-AUDIT.md).
-  Порядок закрытия: (1) INT-01 — `cargo fmt --all` + коммит, CI красный с 2026-08-11 и не
-  исполняет clippy/test/svelte-check/pnpm lint; (2) DOC-10 — живая проверка печати N=1 на обоих
-  транспортах (отложена пользователем 2026-08-13); (3) опционально /gsd-validate-phase 36
-  (nyquist_compliant: false) и решение по трассируемости QA-04. Затем /gsd-complete-milestone.
+  INT-01 ЗАКРЫТ 2026-08-18 (b26f6173 fmt + b4a7dc52 clippy-allow): CI на b4a7dc52 зелёный
+  целиком, включая cargo test --workspace — первый зелёный прогон с 2026-08-08.
+  Остаётся: (1) DOC-10 — живая проверка печати N=1 на обоих транспортах (отложена
+  пользователем 2026-08-13, тестами не закрывается принципиально); (2) опционально
+  /gsd-validate-phase 36 (nyquist_compliant: false) и решение по трассируемости QA-04
+  (у фазы 38 нет своего VERIFICATION.md). Затем /gsd-complete-milestone.
