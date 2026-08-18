@@ -1,12 +1,14 @@
 // [check-privacy] TEST FIXTURE — mode-1 (allowlist) regression, self-test
 // only (C-02). This is a `.rs`-shaped snippet with the extension changed to
-// `.txt` so it never enters `cargo build`; check-privacy.mjs still matches
-// it because mode 1 filters on `*.rs`/`*.html`, and this file's own name
-// ends in `.rs.txt`, so the `\.(rs|html)$` filter in check-privacy.mjs
-// deliberately does NOT match this fixture by design — see
-// scripts/fixtures/privacy/README.md for how the self-test actually
-// invokes it (as an explicit positional target, bypassing the extension
-// filter entirely, exercising the PATTERN/ALLOWED_SET logic directly).
+// `.txt` so it never enters `cargo build`. check-privacy.mjs's
+// REQUISITE_FILE_RE DOES match this path (the filter accepts an extension
+// chain, `.rs.txt`, not only a final extension), so mode 1 inspects it as
+// Rust-shaped content — that is exactly what this fixture is for. What
+// requires the self-test to name it as an explicit positional target is a
+// different constant: AUTO_SCAN_EXCLUDED_PREFIXES excludes
+// scripts/fixtures/privacy/ from --staged / full-HEAD auto-discovery, so
+// this deliberately-violating file cannot fail the hook and CI forever.
+// See scripts/fixtures/privacy/README.md.
 //
 // The inn/ogrn digit strings below are clearly-fake-but-unlisted — they do
 // NOT appear in check-privacy.mjs's ported ALLOWED array, so mode 1 must

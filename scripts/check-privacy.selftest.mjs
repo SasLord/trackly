@@ -13,17 +13,27 @@
 //
 // Покрывает: R6 (n-грамм хэши), R7 (fail-closed --hashes), R8 (контроль
 // бинарных расширений), C-01 (никогда не production-файл), C-02 (регрессия
-// режима 1), D-16 (нет утечки значения при срабатывании).
+// режима 1), D-16 (нет утечки значения при срабатывании), а также
+// регрессии код-ревью фазы 37: CR-01 (--add и сканер обязаны считать один
+// и тот же хэш), CR-02 (нечитаемая цель — отказ, а не молчаливый пропуск),
+// WR-01/WR-02/WR-03 (режим 1 видит структурированные конфиги, регистр
+// ключа и значение без кавычек), WR-04 (состав fixture-каталога, который
+// авто-сканирование не проверяет, зафиксирован явным списком).
 //
-// Zero-dependency: только node:fs/path/url/child_process.
+// Zero-dependency: только node:fs/os/path/url/child_process.
 //
 // Usage:
 //   node scripts/check-privacy.selftest.mjs
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+// Импорт из самого гейта: файл выполняет main() только при прямом вызове,
+// поэтому импорт безопасен. Нужен, чтобы проверить CR-01 сквозным
+// round-trip'ом — --add требует TTY и напрямую из теста не вызывается.
+import { canonicalizeAddValue, normalize, sha256Hex } from './check-privacy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -63,6 +73,26 @@ function assertExitCode(name, args, expectedCode) {
   }
   console.error(`${TAG} ok — ${name}`);
   return code;
+}
+
+function assertTrue(name, condition) {
+  if (!condition) {
+    console.error(`${TAG} FAIL — ${name}`);
+    failures++;
+    return;
+  }
+  console.error(`${TAG} ok — ${name}`);
+}
+
+/** Одноразовый каталог вне репозитория: файлы-регрессии CR-01/CR-02/WR-*
+ * намеренно «грязные», их нельзя оставлять в дереве проекта. */
+function withTempDir(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-privacy-selftest-'));
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function assertNoLeak(name, args, secret) {
@@ -137,6 +167,170 @@ function assertNoLeak(name, args, secret) {
   const logoFixture = path.join(REPO_ROOT, 'crates/trackly-app/tests/fixtures/logo_test.png');
   const args = ['--hashes', TOKENS_HASHES, ...iconFiles, logoFixture];
   assertExitCode('icons/ + logo_test.png в BINARY_ALLOWLIST проходят (R8)', args, 0);
+}
+
+// ---------------------------------------------------------------------------
+// 7. CR-01 — --add обязан хэшировать ту же каноническую форму, что строит
+//    сканер. Значения только вымышленные (C-01).
+// ---------------------------------------------------------------------------
+{
+  // Дефис внутри значения: токенизатор сканера его отбрасывает, поэтому
+  // канонической формой становится «Иванов Петров» — и именно её хэш
+  // обязан записывать --add. До исправления хэшировался сырой ввод, и
+  // запись не срабатывала никогда (мёртвая строка в доверенном списке).
+  const raw = 'Иванов-Петров';
+  const canon = canonicalizeAddValue(raw);
+  assertTrue('CR-01: значение с дефисом принимается и канонизируется', canon.ok);
+  assertTrue(
+    'CR-01: каноническая форма — слова через один пробел ASCII',
+    canon.ok && canon.canonical === 'Иванов Петров',
+  );
+  assertTrue(
+    'CR-01: хэш считается от канонической формы, а не от сырого ввода',
+    canon.ok && canon.hash !== sha256Hex(normalize(raw)),
+  );
+
+  withTempDir((dir) => {
+    const doc = path.join(dir, 'cr01-doc.md');
+    fs.writeFileSync(doc, `Акт подписан представителем ${raw} по доверенности.\n`, 'utf8');
+
+    const fixedHashes = path.join(dir, 'cr01-canonical.sha256');
+    fs.writeFileSync(fixedHashes, `# scratch\n${canon.hash} B\n`, 'utf8');
+    assertExitCode(
+      'CR-01: хэш из --add срабатывает на дефисной форме в тексте',
+      ['--hashes', fixedHashes, doc],
+      1,
+    );
+    assertNoLeak('CR-01: значение не утекает в вывод', ['--hashes', fixedHashes, doc], raw);
+
+    // Контроль «до исправления»: хэш сырого ввода не воспроизводим сканером.
+    const buggyHashes = path.join(dir, 'cr01-raw.sha256');
+    fs.writeFileSync(buggyHashes, `# scratch\n${sha256Hex(normalize(raw))} B\n`, 'utf8');
+    assertExitCode(
+      'CR-01: хэш сырого ввода (старое поведение) не срабатывает — потому он и запрещён',
+      ['--hashes', buggyHashes, doc],
+      0,
+    );
+  });
+
+  // Непредставимые значения обязаны отклоняться, а не записываться молча.
+  const tooLong = canonicalizeAddValue('улица Вымышленная дом двенадцать строение три');
+  assertTrue(
+    'CR-01: значение длиннее окна n-грамм отклоняется',
+    tooLong.ok === false && tooLong.reason === 'too_many_words',
+  );
+  const noWords = canonicalizeAddValue('--- ...');
+  assertTrue(
+    'CR-01: значение без буквенно-цифровых слов отклоняется',
+    noWords.ok === false && noWords.reason === 'no_words',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 8. CR-02 — нечитаемая цель обязана давать exit 1, а не «PASS — 0 нарушений».
+// ---------------------------------------------------------------------------
+{
+  withTempDir((dir) => {
+    const missing = path.join(dir, 'this-target-does-not-exist.md');
+    assertExitCode(
+      'CR-02: нечитаемая цель падает закрыто, а не пропускается молча',
+      ['--hashes', TOKENS_HASHES, missing],
+      1,
+    );
+
+    const clean = path.join(dir, 'clean.md');
+    fs.writeFileSync(clean, 'Совершенно обычный текст без маркеров.\n', 'utf8');
+    assertExitCode(
+      'CR-02: чистая цель рядом с нечитаемой всё равно роняет прогон',
+      ['--hashes', TOKENS_HASHES, clean, missing],
+      1,
+    );
+    assertExitCode(
+      'CR-02: одна чистая цель по-прежнему проходит (нет ложного отказа)',
+      ['--hashes', TOKENS_HASHES, clean],
+      0,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 9. WR-01/WR-02/WR-03 — режим 1 видит структурированные конфиги, регистр
+//    ключа и значение без кавычек. Цифры ниже вымышлены и отсутствуют в
+//    ALLOWED (C-01).
+// ---------------------------------------------------------------------------
+{
+  withTempDir((dir) => {
+    const json = path.join(dir, 'org.json');
+    fs.writeFileSync(json, '{ "inn": "9998887774", "kpp": "999888777" }\n', 'utf8');
+    assertExitCode(
+      'WR-01: неразрешённый литерал в .json ловится режимом 1',
+      ['--hashes', TOKENS_HASHES, json],
+      1,
+    );
+
+    const upper = path.join(dir, 'upper.rs');
+    fs.writeFileSync(upper, 'struct FakeOrg {\n    INN: "9998887773",\n}\n', 'utf8');
+    assertExitCode(
+      'WR-02: ключ в верхнем регистре ловится режимом 1',
+      ['--hashes', TOKENS_HASHES, upper],
+      1,
+    );
+
+    const bare = path.join(dir, 'bare.rs');
+    fs.writeFileSync(bare, 'struct FakeOrg {\n    inn: 9998887772,\n}\n', 'utf8');
+    assertExitCode(
+      'WR-03: значение без кавычек ловится режимом 1',
+      ['--hashes', TOKENS_HASHES, bare],
+      1,
+    );
+
+    // Разрешённое значение не должно ловиться ни в одной из новых форм —
+    // расширялось только обнаружение, ALLOWED не менялся.
+    const allowedShapes = path.join(dir, 'allowed.rs');
+    fs.writeFileSync(
+      allowedShapes,
+      'struct Demo {\n    INN: "7700000000",\n    inn: 7700000000,\n    kpp: 7_700_000_00,\n}\n',
+      'utf8',
+    );
+    assertExitCode(
+      'WR-01/02/03: разрешённые значения в новых формах не дают ложных срабатываний',
+      ['--hashes', TOKENS_HASHES, allowedShapes],
+      0,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 10. WR-04 — scripts/fixtures/privacy/ исключён из авто-сканирования
+//     (AUTO_SCAN_EXCLUDED_PREFIXES), поэтому реальные данные, попавшие сюда,
+//     не поймал бы ни хук, ни CI. Состав каталога зафиксирован явным
+//     списком: любое добавление файла обязано пройти через правку этого
+//     теста, то есть через code review.
+// ---------------------------------------------------------------------------
+{
+  const EXPECTED_FIXTURES = [
+    'README.md',
+    'allowlist-regression.rs.txt',
+    'binary-regression.docx',
+    'empty.sha256',
+    'tokens.fixture.sha256',
+    'with-marker.md',
+    'without-marker.md',
+  ];
+  const actual = fs.readdirSync(FIXTURES).sort();
+  const expected = [...EXPECTED_FIXTURES].sort();
+  const same =
+    actual.length === expected.length && actual.every((f, i) => f === expected[i]);
+  if (!same) {
+    const added = actual.filter((f) => !expected.includes(f));
+    const removed = expected.filter((f) => !actual.includes(f));
+    console.error(
+      `${TAG} FAIL — состав scripts/fixtures/privacy/ изменился (добавлено: ${added.join(', ') || '—'}; удалено: ${removed.join(', ') || '—'}). Этот каталог исключён из авто-сканирования гейта: убедись, что новый файл полностью вымышлен (C-01), и обнови EXPECTED_FIXTURES.`,
+    );
+    failures++;
+  } else {
+    console.error(`${TAG} ok — состав scripts/fixtures/privacy/ совпадает с ожидаемым (WR-04)`);
+  }
 }
 
 // ---------------------------------------------------------------------------
