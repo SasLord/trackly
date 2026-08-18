@@ -13,8 +13,10 @@
 //
 // Режимы:
 //   - Режим 1 (allowlist) — литералы requisite-ключей (inn/kpp/okpo/ogrn/
-//     phone/fax) в *.rs/*.html должны входить в явный список ALLOWED —
-//     миграция scripts/check-privacy-requisites.sh без регрессии (C-02).
+//     phone/fax, регистронезависимо, в кавычках и без) в исходниках и
+//     структурированных конфигах (см. REQUISITE_FILE_RE) должны входить в
+//     явный список ALLOWED — миграция scripts/check-privacy-requisites.sh
+//     без регрессии (C-02).
 //   - Режим 2 (n-грамм хэши) — весь текстовый HEAD/staged токенизируется
 //     1–3-словными n-граммами, нормализуется (lowercase + ё→е + NFC) и
 //     сверяется по SHA-256 со списком из файла --hashes (D-05/D-06/D-07).
@@ -23,6 +25,10 @@
 //
 // На срабатывании гейт печатает ТОЛЬКО «путь:строка — маркер класса X»
 // (D-16) — никогда не значение и не исходную строку.
+//
+// Fail-closed сквозной (R7): не только отсутствующий/пустой файл --hashes,
+// но и любая цель, содержимое которой не удалось прочитать, приводит к
+// exit 1 — молчаливый пропуск цели означал бы «PASS», не проверив её.
 //
 // --hashes <path> обязателен (нет дефолтного пути к продовому файлу в этом
 // плане — scripts/privacy-tokens.sha256 ещё не существует, это план 37-04).
@@ -84,25 +90,58 @@ const ALLOWED = [
 ];
 const ALLOWED_SET = new Set(ALLOWED);
 
-// Word-boundary anchored; matches JSON-ish ("phone": "…") and Rust
-// struct-init (phone: "…") assignment shapes. Ported verbatim (translated
-// [[:space:]] -> \s) from check-privacy-requisites.sh's PATTERN.
-const REQUISITE_PATTERN =
-  /(^|[^A-Za-z0-9_"])"?(inn|kpp|okpo|ogrn|phone|fax)"?\s*:\s*"([^"]*)"/g;
+// Word-boundary anchored; matches JSON-ish (quoted-key: quoted-value) and
+// Rust struct-init (bare-key: quoted-value) assignment shapes. Ported from
+// check-privacy-requisites.sh's PATTERN (translated [[:space:]] -> \s),
+// then widened twice, both times verified to add zero matches across the
+// whole repository (only detection can widen — ALLOWED is unchanged):
+//   - WR-02: the /i flag, so INN:/Inn:-cased keys (plausible in generated
+//     or copy-pasted JSON) no longer bypass mode 1 entirely;
+//   - WR-03: a second, bare-numeric branch, so an unquoted literal
+//     (`inn: 7700000000,` — a Rust field typed i64/u64 rather than String)
+//     is checked against ALLOWED too, instead of not matching at all.
+const REQUISITE_PATTERN_QUOTED =
+  /(^|[^A-Za-z0-9_"])"?(inn|kpp|okpo|ogrn|phone|fax)"?\s*:\s*"([^"]*)"/gi;
+const REQUISITE_PATTERN_BARE =
+  /(^|[^A-Za-z0-9_"])"?(inn|kpp|okpo|ogrn|phone|fax)"?\s*:\s*(\d[\d_]*)/gi;
 
-// Matches a real `*.rs`/`*.html` file (extension at the very end), AND a
+// `bare: true` — значение записано без кавычек; перед сверкой с ALLOWED из
+// него убираются разделители разрядов Rust (7_700_000_000 → 7700000000),
+// иначе разрешённое значение читалось бы как нарушение.
+const REQUISITE_PATTERNS = [
+  { re: REQUISITE_PATTERN_QUOTED, bare: false },
+  { re: REQUISITE_PATTERN_BARE, bare: true },
+];
+
+// Matches a real source/config file (extension at the very end), AND an
 // `*.rs.txt`/`*.html.txt`-shaped fixture (extension chain, not just the
 // final one) — the latter shape is used by
 // scripts/fixtures/privacy/allowlist-regression.rs.txt (C-02 self-test): it
 // needs a trailing `.txt` so `cargo build` never picks it up as real Rust
 // source, while still being recognized here as "Rust-shaped" content.
-const REQUISITE_FILE_RE = /\.(rs|html)(\.|$)/;
+//
+// WR-01: originally `.rs`/`.html` only, which left a real requisite literal
+// in a JSON/TOML/YAML/Svelte/TS config or fixture visible to mode 2 alone —
+// and mode 2 can only catch a value someone already hashed via --add, a
+// chicken-and-egg gap for genuinely new data. Widened to the structured-data
+// and source types this project actually uses. Deliberately EXCLUDES `.md`
+// and `.mjs`/`.js`: planning docs and this script's own comments carry
+// template placeholders and prose in the exact `inn: "…"` shape, and mode 2
+// already covers those files' content.
+const REQUISITE_FILE_RE =
+  /\.(rs|html|json|toml|ya?ml|svelte|ts|tsx|jsx|css|scss|minijinja|sql|txt|csv)(\.|$)/;
 
 // ---------------------------------------------------------------------------
 // Режим 2 (n-грамм хэши) — токенизатор D-05/D-06.
 // ---------------------------------------------------------------------------
 
 const WORD_RE = /[\p{L}\p{N}]+/gu;
+
+// Верхняя граница скользящего окна n-грамм. Используется И сканером, И
+// --add (canonicalizeAddValue) — они обязаны видеть одно и то же число,
+// иначе --add снова начнёт принимать значения, которые сканер никогда не
+// сможет воспроизвести (CR-01).
+const NGRAM_MAX_WORDS = 3;
 
 /** lowercase + ё→е + Unicode NFC. Пунктуация уже отсечена самим WORD_RE
  * (он извлекает только буквенно-цифровые последовательности), отдельного
@@ -115,7 +154,7 @@ function normalize(s) {
 function extractNgrams(line) {
   const words = [...line.matchAll(WORD_RE)].map((m) => m[0]);
   const ngrams = [];
-  for (let n = 1; n <= 3; n++) {
+  for (let n = 1; n <= NGRAM_MAX_WORDS; n++) {
     for (let i = 0; i + n <= words.length; i++) {
       ngrams.push(words.slice(i, i + n).join(' '));
     }
@@ -125,6 +164,37 @@ function extractNgrams(line) {
 
 function sha256Hex(s) {
   return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+/** Приводит введённое в --add значение К ТОЙ ЖЕ форме, которую построит
+ * сканер (CR-01).
+ *
+ * Сканер никогда не хэширует сырую строку: он режет её по WORD_RE и
+ * склеивает 1..NGRAM_MAX_WORDS слов ОДНИМ пробелом ASCII (extractNgrams).
+ * Поэтому хэш от сырого ввода совпадает с хэшем сканера только если ввод
+ * уже был именно такой формы. Значение с дефисом, точкой, неразрывным
+ * пробелом (частая форма русских двойных фамилий) или длиннее
+ * NGRAM_MAX_WORDS слов давало мёртвую запись: файл хэшей растёт, оператор
+ * видит «PASS — токен добавлен», а гейт по этому значению не сработает
+ * никогда.
+ *
+ * Возвращает {ok:false, reason} для значений, которые сканер не способен
+ * воспроизвести — вызывающий обязан отказать, а не записать их молча. */
+function canonicalizeAddValue(value) {
+  const words = [...value.matchAll(WORD_RE)].map((m) => m[0]);
+  if (words.length === 0) {
+    return { ok: false, reason: 'no_words', words: 0 };
+  }
+  if (words.length > NGRAM_MAX_WORDS) {
+    return { ok: false, reason: 'too_many_words', words: words.length };
+  }
+  const canonical = words.join(' ');
+  return {
+    ok: true,
+    canonical,
+    words: words.length,
+    hash: sha256Hex(normalize(canonical)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +268,15 @@ function toPosix(relPath) {
   return relPath.split(path.sep).join('/');
 }
 
+// Сборщики целей возвращают {targets, unreadable}. Файл, содержимое
+// которого прочитать не удалось, НИКОГДА не выбрасывается молча (CR-02):
+// раньше bare `catch { continue; }` убирал такой файл из набора
+// сканирования, и прогон всё равно заканчивался «PASS — 0 нарушений» с
+// кодом 0 — fail-open в гейте, весь контракт которого fail-closed (R7).
+// Причины реальны: нет прав на чтение, staged-блоб больше maxBuffer у
+// `git show` (64 МБ — ровно тот случайный дамп/выгрузка, ради которых гейт
+// и существует), битый симлинк, сбой git. Вызывающий (main) обязан
+// превратить непустой unreadable в exit 1.
 function collectStagedTargets() {
   let raw;
   try {
@@ -212,6 +291,7 @@ function collectStagedTargets() {
   }
   const records = raw.split('\0').filter((r) => r.length > 0);
   const targets = [];
+  const unreadable = [];
   let i = 0;
   while (i < records.length) {
     const status = records[i];
@@ -234,12 +314,13 @@ function collectStagedTargets() {
         encoding: 'utf8',
         maxBuffer: 64 * 1024 * 1024,
       });
-    } catch {
+    } catch (err) {
+      unreadable.push({ path: relPath, reason: err.code || err.message });
       continue;
     }
     targets.push({ path: relPath, content });
   }
-  return targets;
+  return { targets, unreadable };
 }
 
 function collectHeadTargets() {
@@ -252,35 +333,42 @@ function collectHeadTargets() {
   }
   const paths = raw.split('\0').filter((p) => p.length > 0);
   const targets = [];
+  const unreadable = [];
   for (const relPath of paths) {
     const abs = path.join(REPO_ROOT, relPath);
     let content;
     try {
       content = fs.readFileSync(abs, 'utf8');
-    } catch {
+    } catch (err) {
+      unreadable.push({ path: relPath, reason: err.code || err.message });
       continue;
     }
     targets.push({ path: relPath, content });
   }
-  return targets;
+  return { targets, unreadable };
 }
 
 /** Явно перечисленные файлы (fixtures/self-test): читаются напрямую через
  * fs, без git-плампинга, чтобы работать даже с некоммиченными файлами. */
 function collectExplicitTargets(files) {
   const targets = [];
+  const unreadable = [];
   for (const file of files) {
     const abs = path.resolve(process.cwd(), file);
     const relPath = toPosix(path.relative(REPO_ROOT, abs));
-    let content = '';
+    let content;
     try {
       content = fs.readFileSync(abs, 'utf8');
-    } catch {
-      content = '';
+    } catch (err) {
+      // Тот же fail-closed контракт, что и у авто-режимов (CR-02): раньше
+      // здесь подставлялась пустая строка, из-за чего явно названный, но
+      // нечитаемый файл давал «PASS — 0 нарушений».
+      unreadable.push({ path: relPath, reason: err.code || err.message });
+      continue;
     }
     targets.push({ path: relPath, content });
   }
-  return targets;
+  return { targets, unreadable };
 }
 
 // ---------------------------------------------------------------------------
@@ -293,14 +381,16 @@ function scanAllowlist(targets) {
     if (!REQUISITE_FILE_RE.test(p)) continue;
     const lines = content.split('\n');
     lines.forEach((line, idx) => {
-      REQUISITE_PATTERN.lastIndex = 0;
-      let m;
-      while ((m = REQUISITE_PATTERN.exec(line)) !== null) {
-        const value = m[3];
-        if (!ALLOWED_SET.has(value)) {
-          violations.push({ path: p, line: idx + 1, cls: 'requisite' });
+      for (const { re, bare } of REQUISITE_PATTERNS) {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(line)) !== null) {
+          const value = bare ? m[3].replace(/_/g, '') : m[3];
+          if (!ALLOWED_SET.has(value)) {
+            violations.push({ path: p, line: idx + 1, cls: 'requisite' });
+          }
+          if (m.index === re.lastIndex) re.lastIndex++;
         }
-        if (m.index === REQUISITE_PATTERN.lastIndex) REQUISITE_PATTERN.lastIndex++;
       }
     });
   }
@@ -395,24 +485,36 @@ function promptHidden(question) {
     };
     // Сравниваем по коду символа (не по литералу управляющего байта), чтобы
     // в исходнике не было буквальных непечатаемых байтов CR/LF/EOF/backspace.
+    //
+    // WR-05: один `data`-эвент может нести НЕСКОЛЬКО символов (вставка из
+    // буфера, серия быстрых нажатий). Раньше управляющий символ искали
+    // только в позиции 0, а в обычной ветке дописывали чанк целиком —
+    // хвост чанка после Enter/Backspace терялся или применялся неверно, а
+    // управляющий байт внутри вставки попадал в хэшируемое значение. Идём
+    // посимвольно и не пропускаем управляющие символы в значение.
     function onData(chunk) {
-      const char = chunk.toString();
-      const code = char.charCodeAt(0);
-      if (code === 13 || code === 10 || code === 4) {
-        // Enter (CR/LF) или Ctrl+D (EOF)
-        cleanup();
-        process.stdout.write('\n');
-        resolve(input);
-      } else if (code === 3) {
-        // Ctrl+C
-        cleanup();
-        process.stdout.write('\n');
-        process.exit(1);
-      } else if (code === 127 || code === 8) {
-        // Backspace / Delete
-        input = input.slice(0, -1);
-      } else {
-        input += char;
+      for (const char of chunk.toString()) {
+        const code = char.charCodeAt(0);
+        if (code === 13 || code === 10 || code === 4) {
+          // Enter (CR/LF) или Ctrl+D (EOF)
+          cleanup();
+          process.stdout.write('\n');
+          resolve(input);
+          return;
+        }
+        if (code === 3) {
+          // Ctrl+C
+          cleanup();
+          process.stdout.write('\n');
+          process.exit(1);
+        } else if (code === 127 || code === 8) {
+          // Backspace / Delete
+          input = input.slice(0, -1);
+        } else if (code >= 32) {
+          input += char;
+        }
+        // прочие управляющие символы (Tab, Esc-последовательности и т.п.)
+        // сознательно игнорируются, а не попадают в значение
       }
     }
     stdin.on('data', onData);
@@ -475,11 +577,54 @@ async function runAdd(args) {
     process.exit(1);
   }
 
-  const normalized = normalize(value);
-  const hash = sha256Hex(normalized);
+  // CR-01: хэшируем НЕ сырой ввод, а каноническую форму сканера. Значение,
+  // которое сканер воспроизвести не может, отклоняется — молча записывать
+  // мёртвую запись в доверенный список нельзя.
+  const canon = canonicalizeAddValue(value);
+  if (!canon.ok) {
+    if (canon.reason === 'no_words') {
+      console.error(
+        `${TAG} FAIL — значение не содержит ни одной буквенно-цифровой последовательности. Сканер токенизирует строки по /[\\p{L}\\p{N}]+/u, поэтому такое значение не совпало бы никогда.`,
+      );
+    } else {
+      console.error(
+        `${TAG} FAIL — значение токенизируется в ${canon.words} слов(а), максимум ${NGRAM_MAX_WORDS}. Окно n-грамм сканера не превышает ${NGRAM_MAX_WORDS} слов, поэтому такой хэш при сканировании не был бы получен НИКОГДА — запись была бы мёртвой и не защищала бы ничего.`,
+      );
+      console.error(
+        `${TAG} Что делать: добавь по отдельности каждую значимую подфразу длиной ≤${NGRAM_MAX_WORDS} слов(а) — ровно такие n-граммы строит сканер. Значение не записано.`,
+      );
+    }
+    process.exit(1);
+  }
+  if (canon.canonical !== value) {
+    // Значение НЕ печатается (D-16) — только факт нормализации и число слов.
+    console.error(
+      `${TAG} ПРИМЕЧАНИЕ — значение приведено к канонической форме сканера (${canon.words} слов(а); пунктуация и разделители отброшены, как их отбрасывает токенизатор). Хэш считается именно от неё.`,
+    );
+  }
+  const hash = canon.hash;
   const newLine = `${hash} ${clsAnswer}`;
 
   const { headerLines, dataLines } = readExistingHashLines(args.hashesPath);
+
+  // IN-02: одно и то же значение под двумя классами оставило бы в файле две
+  // строки, а loadHashes() разрешил бы конфликт молча — по порядку строк.
+  const existingClasses = new Set(
+    [...dataLines].filter((l) => l.split(/\s+/)[0] === hash).map((l) => l.split(/\s+/)[1]),
+  );
+  if (existingClasses.has(clsAnswer)) {
+    console.error(
+      `${TAG} PASS — токен уже присутствует в ${args.hashesPath} с классом ${clsAnswer}; файл не изменён.`,
+    );
+    process.exit(0);
+  }
+  if (existingClasses.size > 0) {
+    console.error(
+      `${TAG} FAIL — этот же хэш уже записан с другим классом (${[...existingClasses].sort().join(', ')}). Две строки с разными классами для одного значения разрешались бы молча по порядку сортировки. Исправь класс существующей строки ${hash} вручную и повтори.`,
+    );
+    process.exit(1);
+  }
+
   dataLines.add(newLine);
   const sortedData = [...dataLines].sort();
 
@@ -533,26 +678,30 @@ async function main() {
 
   const hashMap = loadHashes(args.hashesPath);
 
-  let targets;
+  let collected;
   if (args.files.length > 0) {
-    targets = collectExplicitTargets(args.files);
+    collected = collectExplicitTargets(args.files);
   } else if (args.staged) {
-    targets = collectStagedTargets();
+    collected = collectStagedTargets();
   } else {
-    targets = collectHeadTargets();
+    collected = collectHeadTargets();
   }
 
   const hashesAbs = path.resolve(process.cwd(), args.hashesPath);
   const hashesRel = toPosix(path.relative(REPO_ROOT, hashesAbs));
-  targets = targets.filter((t) => !isExcludedPath(t.path, hashesRel));
 
   // Auto-discovery scans (--staged / full HEAD) skip the gate's own
   // self-test fixtures; explicit-file invocations (args.files.length > 0 —
   // check-privacy.selftest.mjs) do NOT go through this filter, so the
   // fixtures still trip exactly as designed when named directly.
-  if (args.files.length === 0) {
-    targets = targets.filter((t) => !isAutoScanExcludedFixture(t.path));
-  }
+  const isInScope = (relPath) =>
+    !isExcludedPath(relPath, hashesRel) &&
+    (args.files.length > 0 || !isAutoScanExcludedFixture(relPath));
+
+  const targets = collected.targets.filter((t) => isInScope(t.path));
+  // Нечитаемые цели фильтруются ТЕМ ЖЕ предикатом: файл, который и так вне
+  // области сканирования, не должен ронять гейт.
+  const unreadable = collected.unreadable.filter((u) => isInScope(u.path));
 
   const violations = [
     ...scanAllowlist(targets),
@@ -561,13 +710,41 @@ async function main() {
   ];
 
   for (const v of violations) console.error(formatViolation(v));
+  for (const u of unreadable) {
+    console.error(`${TAG} ${u.path} — не прочитан (${u.reason})`);
+  }
 
   if (violations.length > 0) {
     console.error(`${TAG} FAIL — ${violations.length} нарушений`);
+  }
+  if (unreadable.length > 0) {
+    // CR-02: пропустить нечитаемую цель молча значит завершиться «PASS»,
+    // не проверив её, — единственный fail-open путь в fail-closed гейте.
+    console.error(
+      `${TAG} FAIL — ${unreadable.length} целей не удалось прочитать: гейт не может подтвердить их чистоту, а молчаливый пропуск был бы fail-open (R7).`,
+    );
+    console.error(
+      `${TAG} Восстановление: проверь права доступа и наличие файла (в режиме полного HEAD — \`git checkout -- <path>\` для удалённого из рабочего дерева), либо размер staged-блоба (лимит \`git show\` здесь — 64 МБ; файл такого размера в репозитории почти наверняка сам по себе проблема).`,
+    );
+  }
+  if (violations.length > 0 || unreadable.length > 0) {
     process.exit(1);
   }
   console.error(`${TAG} PASS — 0 нарушений`);
   process.exit(0);
 }
 
-await main();
+// Запускаем main() только при прямом вызове файла: check-privacy.selftest.mjs
+// импортирует отсюда canonicalizeAddValue/normalize/sha256Hex, чтобы
+// регрессия CR-01 проверялась сквозным round-trip'ом (--add требует TTY и
+// напрямую из теста не вызывается). Хук и CI вызывают файл напрямую —
+// поведение для них не меняется.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  await main();
+}
+
+export { canonicalizeAddValue, extractNgrams, normalize, sha256Hex, NGRAM_MAX_WORDS };
