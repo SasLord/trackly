@@ -19,6 +19,8 @@
 
   const { model, instanceCount, onEdit, onDelete }: Props = $props();
 
+  const kindLabel = $derived(model.kind_id === 1 ? 'Картридж' : 'Фотобарабан');
+
   let menuOpen = $state(false);
 
   function toggleMenu(e: MouseEvent) {
@@ -53,15 +55,16 @@
 <TableRow class="model-row">
   <td class="cell cell-name" title="{model.brand} {model.model}">
     <span class="cell-name-inner">
+      <span
+        class="kind-indicator"
+        class:kind-indicator--drum={model.kind_id !== 1}
+        title={kindLabel}
+        aria-label={kindLabel}
+      ></span>
       <span class="name">{model.brand} {model.model}</span>
-      <span class="badges">
-        <Badge variant={model.kind_id === 1 ? 'accent' : 'default'} size="sm">
-          {model.kind_id === 1 ? 'Картридж' : 'Фотобарабан'}
-        </Badge>
-        {#if model.kind_id === 1 && model.color}
-          <Badge variant="default" size="sm">{model.color}</Badge>
-        {/if}
-      </span>
+      {#if model.kind_id === 1 && model.color}
+        <Badge variant="default" size="sm">{model.color}</Badge>
+      {/if}
     </span>
   </td>
   <td class="cell cell-count">{instanceCount} шт.</td>
@@ -103,16 +106,15 @@
     color: var(--tr-text-primary);
   }
 
-  // FIX F4 (Phase 27 batch F): name is the PRIMARY, prominent element — a
-  // flex-row layout let the (flex-shrink:0) badges squeeze the name span down
-  // to near-nothing on narrow columns, making rows indistinguishable. Stacking
-  // name (top, larger) above badges (bottom, small/secondary) guarantees full
-  // width for the name regardless of badge count/width.
+  // Plan 260819-ubv: single-line cell — vertical kind-indicator bar (replaces
+  // the old separate «Картридж»/«Фотобарабан» badge) + name (grows/shrinks,
+  // ellipsis) + optional color badge, all in one row.
   //
-  // FIX B3: display:flex on the <td> ITSELF overrides display:table-cell,
-  // pulling the cell out of the table's column model — every column collapses/
-  // overlaps. The <td> stays a normal table cell (ellipsis/max-width only);
-  // the flex layout lives on the inner span below.
+  // FIX B3 (Phase 27 batch B, still in force): display:flex on the <td>
+  // ITSELF overrides display:table-cell, pulling the cell out of the table's
+  // column model — every column collapses/overlaps. The <td> stays a normal
+  // table cell (ellipsis/max-width only); the flex layout lives on the inner
+  // span below.
   .cell-name {
     overflow: hidden;
     max-width: 0; // makes text-overflow work in table cells
@@ -120,13 +122,28 @@
 
   .cell-name-inner {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
+    align-items: center;
+    gap: var(--tr-space-2xs);
     min-width: 0;
   }
 
+  // Полоска-индикатор типа расходника (замена отдельного Badge «Картридж»/
+  // «Фотобарабан»). Тип доступен не только по цвету — см. title/aria-label
+  // в разметке.
+  .kind-indicator {
+    flex-shrink: 0;
+    width: 3px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--tr-accent);
+
+    &--drum {
+      background: var(--tr-border-strong);
+    }
+  }
+
   .name {
+    flex: 1 1 auto;
     font-size: var(--tr-font-size-body);
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
@@ -136,10 +153,7 @@
     min-width: 0;
   }
 
-  .badges {
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-2xs);
+  .cell-name-inner :global(.badge) {
     flex-shrink: 0;
   }
 
