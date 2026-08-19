@@ -13,9 +13,19 @@
     counts: CartridgeCountsDto;
     onSearchChange: (_q: string) => void;
     onTabChange: (_tab: TabKey) => void;
+    modelSearchQuery: string;
+    onModelSearchChange: (_q: string) => void;
   }
 
-  const { searchQuery, activeTab, counts, onSearchChange, onTabChange }: Props = $props();
+  const {
+    searchQuery,
+    activeTab,
+    counts,
+    onSearchChange,
+    onTabChange,
+    modelSearchQuery,
+    onModelSearchChange,
+  }: Props = $props();
 
   let localQuery = $state(searchQuery);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -32,6 +42,27 @@
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       onSearchChange(v);
+    }, 250);
+  }
+
+  let localModelQuery = $state(modelSearchQuery);
+  let modelDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    // Внешний сброс фильтра моделей.
+    if (
+      modelSearchQuery !== localModelQuery &&
+      document.activeElement?.id !== 'models-search'
+    ) {
+      localModelQuery = modelSearchQuery;
+    }
+  });
+
+  function handleModelInput(v: string) {
+    localModelQuery = v;
+    if (modelDebounceTimer !== null) clearTimeout(modelDebounceTimer);
+    modelDebounceTimer = setTimeout(() => {
+      onModelSearchChange(v);
     }, 250);
   }
 
@@ -64,7 +95,15 @@
       />
     </div>
   {:else}
-    <div class="search-spacer"></div>
+    <div class="search-wrap">
+      <Input
+        id="models-search"
+        type="search"
+        value={localModelQuery}
+        placeholder="Поиск по бренду, модели, примечанию"
+        oninput={handleModelInput}
+      />
+    </div>
   {/if}
   <Tabs
     variant="underline"
@@ -79,7 +118,8 @@
   .search-and-tabs {
     // Поиск (слева) + свитч-бар (справа) всегда в одну строку. Свитч-бар
     // визуально остаётся на месте при переключении на «Модели» благодаря
-    // .search-spacer, занимающему ту же долю строки, что и поиск.
+    // .search-wrap, занимающему ту же долю строки в обеих ветках (поиск по
+    // картриджам / поиск по моделям).
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -91,11 +131,5 @@
   .search-wrap {
     flex: 1;
     max-width: 480px;
-  }
-
-  .search-spacer {
-    flex: 1;
-    max-width: 480px;
-    height: 36px; // Reserve height to avoid layout shift when switching tabs
   }
 </style>

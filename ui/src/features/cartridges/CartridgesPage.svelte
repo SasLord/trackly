@@ -52,6 +52,7 @@
   let lowStockItems = $state<LowStockItemDto[]>([]);
 
   let searchQuery = $state('');
+  let modelSearchQuery = $state('');
   let statusId = $state<number | null>(null);
   let kindId = $state<number | null>(null);
   let modelId = $state<number | null>(null);
@@ -70,6 +71,17 @@
   const hasFilter = $derived(
     statusId !== null || kindId !== null || modelId !== null || searchQuery.trim().length > 0,
   );
+
+  // Клиентский фильтр вкладки «Модели» — над уже загруженным целиком списком
+  // (models пагинации не имеет), без сетевого запроса.
+  const filteredModels = $derived.by(() => {
+    const q = modelSearchQuery.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => {
+      const haystack = `${m.brand} ${m.model} ${m.notes ?? ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  });
 
   async function refresh() {
     listLoading = true;
@@ -361,6 +373,8 @@
       {counts}
       onSearchChange={(q) => (searchQuery = q)}
       onTabChange={(t) => (activeTab = t)}
+      {modelSearchQuery}
+      onModelSearchChange={(q) => (modelSearchQuery = q)}
     />
 
     {#if activeTab === 'cartridges'}
@@ -414,7 +428,7 @@
     {:else}
       <!-- Вкладка «Модели» (04-06) -->
       <ModelsList
-        {models}
+        models={filteredModels}
         loading={modelsLoading}
         onCreateModel={handleCreateModel}
         onEditModel={handleEditModel}
