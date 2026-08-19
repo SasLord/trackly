@@ -27,10 +27,8 @@
       <!-- Организация (SET-01, SET-02) -->
       <OrgSettings />
     {:else if activeSection === 'storage'}
-      <!-- Хранилище данных (SET-03) -->
+      <!-- Хранилище данных (SET-03) + Бэкапы (SET-05, SET-06, SET-07) — объединены в один раздел «Хранилище» -->
       <StorageSettings />
-    {:else if activeSection === 'backup'}
-      <!-- Бэкапы (SET-05, SET-06, SET-07) -->
       <BackupSettings />
     {:else if activeSection === 'threshold'}
       <!-- Порог низкого остатка (SET-04) -->
