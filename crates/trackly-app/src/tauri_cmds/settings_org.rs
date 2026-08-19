@@ -20,6 +20,7 @@ use crate::pdf::html_templates::{
 use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};
+use trackly_core::domain::cartridges::LowStockBasis;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 
@@ -223,6 +224,66 @@ pub async fn build_settings_set_low_stock_threshold(
                  VALUES ('low_stock_threshold', ?1, ?2, ?2) \
                  ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
                 rusqlite::params![threshold.to_string(), now],
+            )
+            .map(|_| ())
+            .map_err(map_rusqlite)
+        })
+        .await
+}
+
+// ---------------------------------------------------------------------------
+// build_* helpers — Low stock basis (quick task 260819-wq5)
+// ---------------------------------------------------------------------------
+
+/// GET never errors on a missing/malformed stored value — falls back to
+/// `LowStockBasis::DEFAULT`, mirroring `build_settings_get_low_stock_threshold`'s
+/// numeric-fallback UX.
+pub async fn build_settings_get_low_stock_basis(ctx: &AppCtx) -> Result<String, AppError> {
+    let readers = ctx.readers.clone();
+    tokio::task::spawn_blocking(move || -> Result<String, AppError> {
+        let conn = readers.acquire();
+        let result: rusqlite::Result<Option<String>> = conn.query_row(
+            "SELECT value FROM app_settings WHERE key = 'low_stock_basis'",
+            [],
+            |r| r.get(0),
+        );
+        let basis = match result {
+            Ok(Some(s)) => LowStockBasis::parse(s.trim()).unwrap_or(LowStockBasis::DEFAULT),
+            Ok(None) => LowStockBasis::DEFAULT,
+            Err(rusqlite::Error::QueryReturnedNoRows) => LowStockBasis::DEFAULT,
+            Err(e) => return Err(map_rusqlite(e)),
+        };
+        Ok(basis.as_str().to_string())
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking get_low_stock_basis: {e}"),
+    })?
+}
+
+/// SET rejects unknown `basis` strings with `AppError::Validation` rather
+/// than silently defaulting — see CONTEXT "Валидация значения на сервере".
+pub async fn build_settings_set_low_stock_basis(
+    ctx: &AppCtx,
+    caller_identity: &trackly_core::auth::Identity,
+    basis: String,
+) -> Result<(), AppError> {
+    authorize(caller_identity, &Action::ManageSettings)?;
+
+    let parsed = LowStockBasis::parse(&basis).ok_or_else(|| AppError::Validation {
+        field: "basis".to_string(),
+        message: format!("Недопустимое значение базы подсчёта: {basis}"),
+    })?;
+
+    let now = ctx.clock.unix_seconds();
+    let value = parsed.as_str().to_string();
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                 VALUES ('low_stock_basis', ?1, ?2, ?2) \
+                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                rusqlite::params![value, now],
             )
             .map(|_| ())
             .map_err(map_rusqlite)
@@ -467,6 +528,24 @@ pub async fn settings_set_low_stock_threshold(
 ) -> Result<(), AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_settings_set_low_stock_threshold(state.inner(), &caller, threshold as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get_low_stock_basis(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<String, AppError> {
+    build_settings_get_low_stock_basis(state.inner()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_set_low_stock_basis(
+    state: tauri::State<'_, AppCtx>,
+    basis: String,
+) -> Result<(), AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_set_low_stock_basis(state.inner(), &caller, basis).await
 }
 
 #[tauri::command]

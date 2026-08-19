@@ -445,13 +445,18 @@ impl From<CartridgeCounts> for CartridgeCountsDto {
     }
 }
 
-/// A model below the low-stock threshold.
+/// A model (or printer name — quick task 260819-wq5) below the low-stock
+/// threshold. `basis` is `"cartridge_model"` or `"printer_model"`;
+/// `model_id`/`brand`/`model` are only populated for `"cartridge_model"`
+/// rows — use `label` for display in both cases.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct LowStockItemDto {
-    #[specta(type = i32)]
-    pub model_id: i64,
-    pub brand: String,
-    pub model: String,
+    pub basis: String,
+    #[specta(type = Option<i32>)]
+    pub model_id: Option<i64>,
+    pub brand: Option<String>,
+    pub model: Option<String>,
+    pub label: String,
     #[specta(type = i32)]
     pub count: i64,
     #[specta(type = i32)]
@@ -461,9 +466,11 @@ pub struct LowStockItemDto {
 impl From<LowStockItem> for LowStockItemDto {
     fn from(i: LowStockItem) -> Self {
         Self {
+            basis: i.basis.as_str().to_string(),
             model_id: i.model_id,
             brand: i.brand,
             model: i.model,
+            label: i.label,
             count: i.count,
             threshold: i.threshold,
         }
