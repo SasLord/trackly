@@ -3,15 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: Awaiting next milestone
-last_updated: "2026-08-19T12:00:50.276Z"
-last_activity: 2026-08-19 — Milestone v1.3.3 completed and archived
+last_updated: "2026-08-19T15:28:43.157Z"
+last_activity: "2026-08-19 — Quick task 260819-ubv: фильтр во вкладке «Модели» + однострочная ячейка «Модель» с индикатором типа расходника"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 23
-  completed_plans: 23
-  percent: 100
-deferred_at_close: 53
+  total_phases: 42
+  completed_phases: 40
+  total_plans: 263
+  completed_plans: 263
+  percent: 95
 ---
 
 # Project State
@@ -305,6 +304,7 @@ Last activity: 2026-08-19 — Quick task 260819-ubv: фильтр во вкла�
 | Phase 37 P01 | 45min | 2 tasks | 14 files |
 | Phase 37 P02 | ~15min | 3 tasks | 15 files |
 | Phase 37 P03 | 40min | 2 tasks | 9 files |
+| Phase 260819-vfg P01 | 5min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -759,6 +759,7 @@ Recent decisions affecting current work:
 - [Phase 37]: Widened check-privacy.mjs mode-1 file filter to \.(rs|html)(\.|$) to recognize .rs.txt/.html.txt extension chains — needed so the C-02 allowlist-regression fixture stays out of cargo build while still being scanned
 - [Phase 37]: check-privacy.mjs supports explicit positional file-argument scanning (bypassing git plumbing) so the fixture-driven self-test can target specific files deterministically
 - [Phase 37]: Binary-extension violations (R8) labeled class D in check-privacy.mjs output, matching 37-RESEARCH.md's A/B/C/D class taxonomy
+- [Phase 260819-vfg]: 260819-vfg: alias/редирект со старого ключа вкладки 'backup' не нужен — activeSection чисто локальный state, без URL/localStorage адресации
 
 ### Pending Todos
 
@@ -932,7 +933,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-16T17:09:51.135Z
+Last session: 2026-08-19T15:26:58.913Z
 Stopped at: Completed 37-03-PLAN.md
 Resume file: 
 
