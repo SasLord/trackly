@@ -143,7 +143,10 @@
   }
 
   .name {
-    flex: 1 1 auto;
+    // 0 1 auto (не 1 1 auto): название занимает только свою ширину, чтобы чип
+    // цвета шёл сразу за ним, а не улетал к правому краю колонки. shrink=1 +
+    // min-width:0 ниже сохраняют обрезку многоточием на длинных названиях.
+    flex: 0 1 auto;
     font-size: var(--tr-font-size-body);
     font-weight: var(--tr-font-weight-semibold);
     color: var(--tr-text-primary);
