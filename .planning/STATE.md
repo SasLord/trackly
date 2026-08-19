@@ -2,36 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
-status: milestone_complete
-last_updated: 2026-08-19T09:15:00Z
-last_activity: 2026-08-19
+status: Awaiting next milestone
+last_updated: "2026-08-19T12:00:50.276Z"
+last_activity: 2026-08-19 — Milestone v1.3.3 completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 23
-  completed_plans: 263
+  completed_plans: 23
   percent: 100
-stopped_at: Milestone v1.3.3 — оба блокера закрыты (INT-01 2026-08-18, DOC-10 2026-08-19 живой печатью на Windows); аудит tech_debt, готово к /gsd-complete-milestone
+deferred_at_close: 53
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-07-15 after v1.1.2 milestone)
+See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Веха v1.3.3 готова к закрытию — блокеров нет, аудит tech_debt; следующий шаг /gsd-complete-milestone v1.3.3
+**Current focus:** Активной вехи нет. v1.3.3 закрыта и заархивирована 2026-08-19 (11/11 требований, tech_debt). Следующий шаг — /gsd-new-milestone.
 
 ## Current Position
 
-Phase: 38 (final phase of v1.3.3, complete)
-Plan: 0 plans needed — goal met by retroactive Nyquist audit (32-VALIDATION.md)
-Status: Milestone v1.3.3 audited — tech_debt (блокеров нет), см. .planning/v1.3.3-MILESTONE-AUDIT.md
-Last activity: 2026-08-18
-DOC-04..DOC-11/PRIV-01/PRIV-02/QA-04 покрыты, без сирот)
-
-Progress: [██████████] 96%
+Phase: Milestone v1.3.3 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-19 — Milestone v1.3.3 completed and archived
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -979,16 +976,74 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 | verification_gap | ? | human_needed |
 | verification_gap | ? | gaps_found |
 
+## Deferred Items (v1.3.3 close, 2026-08-19)
+
+Подтверждено и отложено при закрытии вехи v1.3.3 (53 позиции). **Ни одна не относится к фазам
+34–38 этой вехи** — все 11/11 требований satisfied, оба блокера аудита (INT-01, DOC-10) закрыты.
+Состав: 29 quick-тасок без поля `status` во frontmatter (артефакт сканера, а не незакрытая работа),
+8 VERIFICATION со статусом `human_needed`/`gaps_found` из фаз 03–24 (вехи v1.0/v1.2),
+14 UAT-маркеров фаз 03.1–34, 1 debug-сессия, 1 todo. Часть уже фигурирует в секциях выше
+(закрытия v1.1 и v1.2) — список приводится целиком, как его видит `gsd-sdk query audit-open`.
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | knowledge-base | unknown |
+| quick_task | 260618-vtm-backup-date-schedule-template-fixes | missing |
+| quick_task | 260621-r8x-fix-fk-constraint-on-request-accept-assi | missing |
+| quick_task | 260630-v4m-fix-tls-cert-san-for-wildcard-bind-host | missing |
+| quick_task | 260702-vtf-y-tooltip | missing |
+| quick_task | 260704-uw3-template-seed-upgrade | missing |
+| quick_task | 260704-wxw-act-pdf-word-fidelity-redesign | missing |
+| quick_task | 260715-gt2-act-edit-device-quantity | missing |
+| quick_task | 260718-x8t-tabs-segmented-width | unknown |
+| quick_task | 260719-ocq-close-bl-01-unify-dropdown-drill-in-rese | missing |
+| quick_task | 260723-syw-wr01-user-edit-password | missing |
+| quick_task | 260724-pxf-fix-wr-01-ws-refcount-leak-and-wr-02-emp | missing |
+| quick_task | 260804-ire-ad-ldap-transport-mode | missing |
+| quick_task | 260804-l22-ad-register-counts | missing |
+| quick_task | 260804-lk0-config-ux-fail-soft-on-broken-trackly-co | missing |
+| quick_task | 260805-edd-fix-lan-print-pass-stylesheets-to-paged- | missing |
+| quick_task | 260805-gdz-lan-print-surface-swallowed-error-and-st | missing |
+| quick_task | 260805-har-lan-print-neutralize-app-body-background | missing |
+| quick_task | 260805-ifj-lan-print-neutralize-app-line-height-lea | missing |
+| quick_task | 260805-ifj-lan-print-neutralize-app-line-height-lea", | missing |
+| quick_task | 260805-jwf-lan-print-stop-injecting-template-css-in | missing |
+| quick_task | 260805-jwf-lan-print-stop-injecting-template-css-in", | missing |
+| quick_task | 260805-lrs-employee-header-full-name-must-use-avail | missing |
+| quick_task | 260805-lrs-employee-header-full-name-must-use-avail", | missing |
+| quick_task | 260805-nae-employee-dashboard-widget-must-exclude-a | missing |
+| quick_task | 260805-nae-employee-dashboard-widget-must-exclude-a", | missing |
+| quick_task | 260805-wik-ad | missing |
+| quick_task | 260806-wk1-admin-logins | missing |
+| quick_task | 260808-np4-unify-ad-register-visibility-predicate | missing |
+| quick_task | 260818-pij-phase-38-roadmap-state-32-validation-pha | missing |
+| todo | 2026-08-08-rework-act-templates-shared-header-handover-body-redesign.md | area: docs |
+| uat_gap | Фаза 03.1 — 03.1-DEFERRED-UAT-ITEMS.md | open (0 открытых сценариев) |
+| uat_gap | Фаза 03.1 — 03.1-HUMAN-UAT.md | partial (13 открытых сценариев) |
+| uat_gap | Фаза 03.3 — 03.3-UAT-ITEMS.md | unknown (0 открытых сценариев) |
+| uat_gap | Фаза 04 — 04-HUMAN-UAT.md | passed (0 открытых сценариев) |
+| uat_gap | Фаза 05 — 05-UAT.md | testing (0 открытых сценариев) |
+| uat_gap | Фаза 07 — 07-HUMAN-UAT.md | passed (13 открытых сценариев) |
+| uat_gap | Фаза 08 — 08-HUMAN-UAT.md | passed (0 открытых сценариев) |
+| uat_gap | Фаза 10 — 10-HUMAN-UAT.md | partial (2 открытых сценариев) |
+| uat_gap | Фаза 11 — 11-HUMAN-UAT.md | partial (7 открытых сценариев) |
+| uat_gap | Фаза 16 — 16-HUMAN-UAT.md | passed (0 открытых сценариев) |
+| uat_gap | Фаза 17 — 17-HUMAN-UAT.md | resolved (0 открытых сценариев) |
+| uat_gap | Фаза 23 — 23-HUMAN-UAT.md | passed (0 открытых сценариев) |
+| uat_gap | Фаза 30 — 30-UAT.md | diagnosed (0 открытых сценариев) |
+| uat_gap | Фаза 34 — 34-HUMAN-UAT.md | resolved (0 открытых сценариев) |
+| verification_gap | Фаза 03 — 03-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 03.1 — 03.1-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 03.2 — 03.2-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 04 — 04-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 10 — 10-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 11 — 11-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 16 — 16-VERIFICATION.md | human_needed |
+| verification_gap | Фаза 24 — 24-VERIFICATION.md | gaps_found |
+
 ## Operator Next Steps
 
-- Аудит вехи v1.3.3 выполнен 2026-08-18: `gaps_found` (.planning/v1.3.3-MILESTONE-AUDIT.md).
-  INT-01 ЗАКРЫТ 2026-08-18 (b26f6173 fmt + b4a7dc52 clippy-allow): CI на b4a7dc52 зелёный
-  целиком, включая cargo test --workspace — первый зелёный прогон с 2026-08-08.
-  DOC-10 ЗАКРЫТ 2026-08-19: живая печать на Windows/WebView2 из релизной сборки v1.3.3 —
-  N=1 на одном листе, печать при дефолтных настройках диалога, LAN-транспорт end-to-end,
-  изоляция печатного DOM. Дефектов не выявлено. 36-VERIFICATION passed 4/4, 36-UAT complete,
-  DOC-10 `[x]`. Блокеров не осталось, аудит tech_debt.
-  Открыто (не блокеры): решение по трассируемости QA-04 (у фазы 38 нет своего VERIFICATION.md,
-  REQUIREMENTS.md держит `[ ]`); /gsd-validate-phase 36 (nyquist_compliant: false);
-  INT-02 (дублированный Paged.js-хендлер без гейта синхронности); PRIV-03 (история git).
-  Следующий шаг: /gsd-complete-milestone v1.3.3.
+- Веха v1.3.3 закрыта и заархивирована 2026-08-19 — `milestones/v1.3.3-*`.
+- Следующий шаг: `/gsd-new-milestone` (questioning → research → requirements → roadmap).
+- Кандидаты в объём: `/gsd-validate-phase 36` (Nyquist), INT-02 (общий источник для
+  Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.
