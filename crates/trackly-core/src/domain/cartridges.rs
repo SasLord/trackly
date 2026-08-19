@@ -248,12 +248,63 @@ pub struct CartridgeCounts {
     pub written_off: i64,
 }
 
-/// A model below the low-stock threshold (D-LowStock-02).
+/// The basis (grouping key) used to compute low-stock warnings — read from
+/// `app_settings.low_stock_basis` (quick task 260819-wq5).
+///
+/// - `CartridgeModel`: legacy behavior — group in-stock+full cartridges by
+///   `cartridge_models.id`. Unchanged since D-LowStock-02.
+/// - `PrinterModel`: group by printer name sourced strictly from
+///   `cartridge_model_compatibility.printer_name` (never `devices.name`) —
+///   different cartridge-model brands compatible with the same printer are
+///   summed together. This is the DEFAULT for missing/invalid values,
+///   intentionally changing behavior on existing databases per the CONTEXT
+///   decision ("Хранение настройки").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LowStockBasis {
+    CartridgeModel,
+    PrinterModel,
+}
+
+impl LowStockBasis {
+    /// Default basis when `app_settings.low_stock_basis` is missing or holds
+    /// an unrecognized value (GET-only fallback; SET rejects unknown values).
+    pub const DEFAULT: LowStockBasis = LowStockBasis::PrinterModel;
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LowStockBasis::CartridgeModel => "cartridge_model",
+            LowStockBasis::PrinterModel => "printer_model",
+        }
+    }
+
+    /// Exact match only — the caller decides whether to fall back to
+    /// `DEFAULT` (GET) or reject (SET).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "cartridge_model" => Some(LowStockBasis::CartridgeModel),
+            "printer_model" => Some(LowStockBasis::PrinterModel),
+            _ => None,
+        }
+    }
+}
+
+/// A model (or printer name) below the low-stock threshold (D-LowStock-02),
+/// grouped by `basis` (quick task 260819-wq5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LowStockItem {
-    pub model_id: i64,
-    pub brand: String,
-    pub model: String,
+    /// Which grouping produced this row — see [`LowStockBasis`].
+    pub basis: LowStockBasis,
+    /// Some for `CartridgeModel` rows (cartridge_models.id); None for
+    /// `PrinterModel` rows (no single model backs a printer-name group).
+    pub model_id: Option<i64>,
+    /// Some for `CartridgeModel` rows (cartridge_models.brand).
+    pub brand: Option<String>,
+    /// Some for `CartridgeModel` rows (cartridge_models.model).
+    pub model: Option<String>,
+    /// Display label: "{brand} {model}" for `CartridgeModel` rows; the
+    /// printer's display name (one of the written variants within its
+    /// normalized group) for `PrinterModel` rows.
+    pub label: String,
     /// Count of in-stock + full cartridges (status=1 AND state=1).
     pub count: i64,
     /// The configured threshold (from app_settings.low_stock_threshold).

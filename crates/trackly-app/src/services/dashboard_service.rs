@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_core::auth::Identity;
+use trackly_core::domain::cartridges::LowStockBasis;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -146,32 +147,92 @@ impl DashboardService {
                 .filter(|&t| t > 0)
                 .unwrap_or(2);
 
-            // Models with fewer than threshold full/in-stock cartridges.
-            let low_stock_result: Vec<(String, i64)> = {
-                let mut stmt = conn
-                    .prepare(
-                        "SELECT m.brand || ' ' || m.model AS label, COUNT(c.id) AS cnt \
-                         FROM cartridge_models m \
-                         LEFT JOIN cartridges c ON c.model_id = m.id \
-                           AND c.status_id = 1 \
-                           AND c.state_id = 1 \
-                           AND c.deleted_at_utc IS NULL \
-                         WHERE m.deleted_at_utc IS NULL \
-                         GROUP BY m.id \
-                         HAVING cnt < ?1 \
-                         ORDER BY cnt ASC, label ASC",
-                    )
-                    .map_err(map_rusqlite)?;
-                let rows = stmt
-                    .query_map(params![threshold], |r| {
-                        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-                    })
-                    .map_err(map_rusqlite)?;
-                let mut out = Vec::new();
-                for row in rows {
-                    out.push(row.map_err(map_rusqlite)?);
+            // Basis (grouping key) for low-stock — quick task 260819-wq5.
+            // Mirrors cartridges_sqlite.rs::low_stock() byte-for-byte (this
+            // is the second independent SQL copy the CONTEXT flags as a
+            // divergence risk — must branch identically).
+            let low_stock_basis: LowStockBasis = conn
+                .query_row(
+                    "SELECT value FROM app_settings WHERE key = 'low_stock_basis'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|s| LowStockBasis::parse(s.trim()))
+                .unwrap_or(LowStockBasis::DEFAULT);
+
+            // Models (or printer names) with fewer than threshold full/in-stock cartridges.
+            let low_stock_result: Vec<(String, i64)> = match low_stock_basis {
+                LowStockBasis::CartridgeModel => {
+                    let mut stmt = conn
+                        .prepare(
+                            "SELECT m.brand || ' ' || m.model AS label, COUNT(c.id) AS cnt \
+                             FROM cartridge_models m \
+                             LEFT JOIN cartridges c ON c.model_id = m.id \
+                               AND c.status_id = 1 \
+                               AND c.state_id = 1 \
+                               AND c.deleted_at_utc IS NULL \
+                             WHERE m.deleted_at_utc IS NULL \
+                             GROUP BY m.id \
+                             HAVING cnt < ?1 \
+                             ORDER BY cnt ASC, label ASC",
+                        )
+                        .map_err(map_rusqlite)?;
+                    let rows = stmt
+                        .query_map(params![threshold], |r| {
+                            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                        })
+                        .map_err(map_rusqlite)?;
+                    let mut out = Vec::new();
+                    for row in rows {
+                        out.push(row.map_err(map_rusqlite)?);
+                    }
+                    out
                 }
-                out
+                LowStockBasis::PrinterModel => {
+                    // Anti-fan-out via correlated EXISTS subquery — same
+                    // shape as cartridges_sqlite.rs::low_stock()'s
+                    // PrinterModel branch.
+                    let mut stmt = conn
+                        .prepare(
+                            "
+                            SELECT display_name, cnt
+                              FROM (
+                                SELECT pg.display_name AS display_name,
+                                       (
+                                         SELECT COUNT(*)
+                                           FROM cartridges c
+                                           JOIN cartridge_models m ON m.id = c.model_id AND m.deleted_at_utc IS NULL
+                                          WHERE c.status_id = 1 AND c.state_id = 1 AND c.deleted_at_utc IS NULL
+                                            AND EXISTS (
+                                                  SELECT 1 FROM cartridge_model_compatibility cmc2
+                                                   WHERE cmc2.cartridge_model_id = m.id
+                                                     AND LOWER(TRIM(cmc2.printer_name)) = pg.norm_name
+                                                )
+                                       ) AS cnt
+                                  FROM (
+                                        SELECT LOWER(TRIM(printer_name)) AS norm_name,
+                                               MIN(printer_name) AS display_name
+                                          FROM cartridge_model_compatibility
+                                         GROUP BY LOWER(TRIM(printer_name))
+                                       ) pg
+                              )
+                             WHERE cnt < ?1
+                             ORDER BY cnt ASC, display_name ASC
+                            ",
+                        )
+                        .map_err(map_rusqlite)?;
+                    let rows = stmt
+                        .query_map(params![threshold], |r| {
+                            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                        })
+                        .map_err(map_rusqlite)?;
+                    let mut out = Vec::new();
+                    for row in rows {
+                        out.push(row.map_err(map_rusqlite)?);
+                    }
+                    out
+                }
             };
             let low_stock_count = low_stock_result.len() as i64;
             let low_stock_models: Vec<String> = low_stock_result

@@ -13,7 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::json;
 use trackly_core::domain::cartridges::{
     CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeRow,
-    CartridgeTransitionOp, CompatibleModelAggregate, LowStockItem, Pagination,
+    CartridgeTransitionOp, CompatibleModelAggregate, LowStockBasis, LowStockItem, Pagination,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -883,15 +883,28 @@ impl SqliteCartridgeRepository {
         Ok(out)
     }
 
-    /// Low-stock query (CART-12, D-LowStock-02).
+    /// Low-stock query (CART-12, D-LowStock-02, quick task 260819-wq5).
     ///
-    /// Returns models where `count(in_stock AND full) < threshold`.
     /// Threshold is read from `app_settings.low_stock_threshold` (default 2).
+    /// Basis (grouping key) is read from `app_settings.low_stock_basis`
+    /// (default `LowStockBasis::PrinterModel` — see [`LowStockBasis`]):
+    ///
+    /// - `CartridgeModel`: legacy behavior — group by `cartridge_models.id`,
+    ///   `count(in_stock AND full) < threshold`.
+    /// - `PrinterModel`: group by printer name sourced strictly from
+    ///   `cartridge_model_compatibility.printer_name` (normalized via
+    ///   `LOWER(TRIM(...))`), summing in-stock+full cartridges across every
+    ///   cartridge model compatible with that printer name. Models with no
+    ///   compatibility rows never appear in any group (no D-05 pass-through
+    ///   here — pass-through is scoped strictly to `list()`'s cartridge-
+    ///   selection filter). A printer name with zero matching stock is still
+    ///   included (0 < threshold is a real supply gap).
     ///
     /// WR-06: `CAST(value AS INTEGER)` in SQLite silently converts non-numeric
     /// strings to 0, bypassing the `unwrap_or(2)` fallback. Instead, read the
     /// raw string value and parse it in Rust with an explicit > 0 guard so a
-    /// malformed setting always falls back to the intended default of 2.
+    /// malformed setting always falls back to the intended default of 2. The
+    /// same guarded-read shape is mirrored for `basis` below.
     pub fn low_stock(&self, conn: &Connection) -> Result<Vec<LowStockItem>, AppError> {
         let threshold: i64 = conn
             .query_row(
@@ -904,41 +917,113 @@ impl SqliteCartridgeRepository {
             .filter(|&t| t > 0)
             .unwrap_or(2);
 
-        let sql = "SELECT m.id, m.brand, m.model, COUNT(c.id) AS cnt \
-                   FROM cartridge_models m \
-                   LEFT JOIN cartridges c ON c.model_id = m.id \
-                     AND c.status_id = 1 \
-                     AND c.state_id = 1 \
-                     AND c.deleted_at_utc IS NULL \
-                   WHERE m.deleted_at_utc IS NULL \
-                   GROUP BY m.id \
-                   HAVING cnt < ?1 \
-                   ORDER BY cnt ASC, m.brand ASC, m.model ASC";
+        let basis: LowStockBasis = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'low_stock_basis'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|s| LowStockBasis::parse(s.trim()))
+            .unwrap_or(LowStockBasis::DEFAULT);
 
-        let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
-        let rows = stmt
-            .query_map(params![threshold], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, i64>(3)?,
-                ))
-            })
-            .map_err(map_rusqlite)?;
+        match basis {
+            LowStockBasis::CartridgeModel => {
+                let sql = "SELECT m.id, m.brand, m.model, COUNT(c.id) AS cnt \
+                           FROM cartridge_models m \
+                           LEFT JOIN cartridges c ON c.model_id = m.id \
+                             AND c.status_id = 1 \
+                             AND c.state_id = 1 \
+                             AND c.deleted_at_utc IS NULL \
+                           WHERE m.deleted_at_utc IS NULL \
+                           GROUP BY m.id \
+                           HAVING cnt < ?1 \
+                           ORDER BY cnt ASC, m.brand ASC, m.model ASC";
 
-        let mut out = Vec::new();
-        for row in rows {
-            let (model_id, brand, model, count) = row.map_err(map_rusqlite)?;
-            out.push(LowStockItem {
-                model_id,
-                brand,
-                model,
-                count,
-                threshold,
-            });
+                let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
+                let rows = stmt
+                    .query_map(params![threshold], |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                            r.get::<_, i64>(3)?,
+                        ))
+                    })
+                    .map_err(map_rusqlite)?;
+
+                let mut out = Vec::new();
+                for row in rows {
+                    let (model_id, brand, model, count) = row.map_err(map_rusqlite)?;
+                    out.push(LowStockItem {
+                        basis: LowStockBasis::CartridgeModel,
+                        model_id: Some(model_id),
+                        brand: Some(brand.clone()),
+                        model: Some(model.clone()),
+                        label: format!("{brand} {model}"),
+                        count,
+                        threshold,
+                    });
+                }
+                Ok(out)
+            }
+            LowStockBasis::PrinterModel => {
+                // Anti-fan-out via correlated EXISTS subquery — mirrors the
+                // pattern in `compatible_model_aggregates` above: a direct
+                // JOIN through `cartridge_model_compatibility` would multiply-
+                // count cartridges whenever multiple compatibility rows
+                // reference the same (model, printer_name) pair. This counts
+                // each cartridge exactly once regardless of how many
+                // compatibility rows exist.
+                let sql = "
+                    SELECT display_name, cnt
+                      FROM (
+                        SELECT pg.display_name AS display_name,
+                               (
+                                 SELECT COUNT(*)
+                                   FROM cartridges c
+                                   JOIN cartridge_models m ON m.id = c.model_id AND m.deleted_at_utc IS NULL
+                                  WHERE c.status_id = 1 AND c.state_id = 1 AND c.deleted_at_utc IS NULL
+                                    AND EXISTS (
+                                          SELECT 1 FROM cartridge_model_compatibility cmc2
+                                           WHERE cmc2.cartridge_model_id = m.id
+                                             AND LOWER(TRIM(cmc2.printer_name)) = pg.norm_name
+                                        )
+                               ) AS cnt
+                          FROM (
+                                SELECT LOWER(TRIM(printer_name)) AS norm_name,
+                                       MIN(printer_name) AS display_name
+                                  FROM cartridge_model_compatibility
+                                 GROUP BY LOWER(TRIM(printer_name))
+                               ) pg
+                      )
+                     WHERE cnt < ?1
+                     ORDER BY cnt ASC, display_name ASC
+                ";
+
+                let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
+                let rows = stmt
+                    .query_map(params![threshold], |r| {
+                        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                    })
+                    .map_err(map_rusqlite)?;
+
+                let mut out = Vec::new();
+                for row in rows {
+                    let (display_name, count) = row.map_err(map_rusqlite)?;
+                    out.push(LowStockItem {
+                        basis: LowStockBasis::PrinterModel,
+                        model_id: None,
+                        brand: None,
+                        model: None,
+                        label: display_name,
+                        count,
+                        threshold,
+                    });
+                }
+                Ok(out)
+            }
         }
-        Ok(out)
     }
 
     /// Cartridge history from audit_log (D-History-01, CART-10).
@@ -2021,6 +2106,16 @@ mod tests {
         let repo = SqliteCartridgeRepository;
         let now = 1_700_000_000_i64;
 
+        // Default basis is now PrinterModel — explicitly select the legacy
+        // cartridge_model basis to keep this test's per-model assertions
+        // meaningful (quick task 260819-wq5).
+        conn.execute(
+            "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+             VALUES ('low_stock_basis', 'cartridge_model', 0, 0)",
+            [],
+        )
+        .expect("seed basis");
+
         // Insert 1 in-stock + full cartridge (threshold default is 2, so 1 < 2)
         {
             let tx = conn.transaction().expect("tx");
@@ -2033,9 +2128,183 @@ mod tests {
 
         let items = repo.low_stock(&conn).expect("low_stock");
         assert_eq!(items.len(), 1, "one model below threshold");
-        assert_eq!(items[0].model_id, model_id);
+        assert_eq!(items[0].basis, LowStockBasis::CartridgeModel);
+        assert_eq!(items[0].model_id, Some(model_id));
         assert_eq!(items[0].count, 1);
         assert_eq!(items[0].threshold, 2);
+    }
+
+    #[test]
+    fn low_stock_basis_parse_rejects_unknown_and_empty() {
+        assert_eq!(
+            LowStockBasis::parse("cartridge_model"),
+            Some(LowStockBasis::CartridgeModel)
+        );
+        assert_eq!(
+            LowStockBasis::parse("printer_model"),
+            Some(LowStockBasis::PrinterModel)
+        );
+        assert_eq!(LowStockBasis::parse(""), None);
+        assert_eq!(LowStockBasis::parse("bogus"), None);
+    }
+
+    #[test]
+    fn low_stock_printer_model_groups_by_compatible_printer_name() {
+        let (mut conn, _g) = fresh_conn();
+        let model_a = seed_model(&mut conn, "Contoso", "T-100");
+        let model_b = seed_model(&mut conn, "Fabrikam", "F-200");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.upsert_compatibility_in_tx(&tx, model_a, &["Contoso LaserJet 400".to_string()])
+                .expect("compat a");
+            repo.upsert_compatibility_in_tx(&tx, model_b, &[" contoso laserjet 400 ".to_string()])
+                .expect("compat b");
+            tx.commit().expect("commit");
+        }
+
+        // No app_settings.low_stock_basis row written — proving the default
+        // is PrinterModel. Raise the threshold to 3 so the summed count of 2
+        // (one full-stock cartridge per model) is still below threshold —
+        // the default threshold of 2 would otherwise exclude a cnt=2 group
+        // (HAVING cnt < threshold), which is unrelated to what this test
+        // exercises (summing across models normalizing to the same printer
+        // name).
+        conn.execute(
+            "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+             VALUES ('low_stock_threshold', '3', 0, 0) \
+             ON CONFLICT(key) DO UPDATE SET value = '3'",
+            [],
+        )
+        .expect("seed threshold");
+
+        {
+            let tx = conn.transaction().expect("tx");
+            let (code_a, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code a");
+            repo.insert_cartridge_in_tx(&tx, &code_a, model_a, 1, Some(1), None, None, None, now)
+                .expect("insert a");
+            let (code_b, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code b");
+            repo.insert_cartridge_in_tx(&tx, &code_b, model_b, 1, Some(1), None, None, None, now)
+                .expect("insert b");
+            tx.commit().expect("commit");
+        }
+
+        let items = repo.low_stock(&conn).expect("low_stock");
+        assert_eq!(
+            items.len(),
+            1,
+            "both models normalize to a single printer-name group"
+        );
+        assert_eq!(items[0].basis, LowStockBasis::PrinterModel);
+        assert_eq!(items[0].model_id, None);
+        assert!(
+            items[0]
+                .label
+                .to_lowercase()
+                .contains("contoso laserjet 400"),
+            "label should reflect the compatible printer name, got {:?}",
+            items[0].label
+        );
+        assert_eq!(items[0].count, 2, "counts from both compatible models sum");
+    }
+
+    #[test]
+    fn low_stock_printer_model_zero_stock_printer_included() {
+        let (mut conn, _g) = fresh_conn();
+        let model_a = seed_model(&mut conn, "Northwind", "N-300");
+        let repo = SqliteCartridgeRepository;
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.upsert_compatibility_in_tx(&tx, model_a, &["Fabrikam Mono 12".to_string()])
+                .expect("compat");
+            tx.commit().expect("commit");
+        }
+
+        // No cartridges seeded — printer name still has 0 < default threshold 2.
+        let items = repo.low_stock(&conn).expect("low_stock");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].basis, LowStockBasis::PrinterModel);
+        assert!(items[0].label.to_lowercase().contains("fabrikam mono 12"));
+        assert_eq!(items[0].count, 0);
+    }
+
+    #[test]
+    fn low_stock_falls_back_to_printer_model_default_on_garbage_basis_value() {
+        // Plan-checker note: app_settings.low_stock_basis holding a garbage
+        // string (not just a missing key) must also fall back to the
+        // PrinterModel default (WR-06-style guarded parse), not error out
+        // or silently coerce to CartridgeModel.
+        let (mut conn, _g) = fresh_conn();
+        let model_a = seed_model(&mut conn, "Adatum", "A-500");
+        let repo = SqliteCartridgeRepository;
+
+        conn.execute(
+            "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+             VALUES ('low_stock_basis', 'bogus', 0, 0)",
+            [],
+        )
+        .expect("seed garbage basis");
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.upsert_compatibility_in_tx(&tx, model_a, &["Tailspin Color 700".to_string()])
+                .expect("compat");
+            tx.commit().expect("commit");
+        }
+
+        let items = repo.low_stock(&conn).expect("low_stock");
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].basis,
+            LowStockBasis::PrinterModel,
+            "garbage low_stock_basis value must fall back to the PrinterModel default"
+        );
+        assert!(items[0].label.to_lowercase().contains("tailspin color 700"));
+    }
+
+    #[test]
+    fn low_stock_printer_model_excludes_model_without_compatibility() {
+        let (mut conn, _g) = fresh_conn();
+        let model_no_compat = seed_model(&mut conn, "Wingtip", "W-999");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        // Several full-stock cartridges under a model with NO compatibility
+        // rows — must never leak into any printer group in printer_model mode.
+        {
+            let tx = conn.transaction().expect("tx");
+            for _ in 0..3 {
+                let (code, _) =
+                    SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                repo.insert_cartridge_in_tx(
+                    &tx,
+                    &code,
+                    model_no_compat,
+                    1,
+                    Some(1),
+                    None,
+                    None,
+                    None,
+                    now,
+                )
+                .expect("insert");
+            }
+            tx.commit().expect("commit");
+        }
+
+        let items = repo.low_stock(&conn).expect("low_stock");
+        assert!(
+            !items
+                .iter()
+                .any(|i| i.label.to_lowercase().contains("wingtip")),
+            "model without compatibility rows must not appear under any printer group, got {:?}",
+            items
+        );
     }
 
     #[test]
