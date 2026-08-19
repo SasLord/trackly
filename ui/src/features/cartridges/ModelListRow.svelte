@@ -52,14 +52,16 @@
 
 <TableRow class="model-row">
   <td class="cell cell-name" title="{model.brand} {model.model}">
-    <span class="name">{model.brand} {model.model}</span>
-    <span class="badges">
-      <Badge variant={model.kind_id === 1 ? 'accent' : 'default'} size="sm">
-        {model.kind_id === 1 ? 'Картридж' : 'Фотобарабан'}
-      </Badge>
-      {#if model.kind_id === 1 && model.color}
-        <Badge variant="default" size="sm">{model.color}</Badge>
-      {/if}
+    <span class="cell-name-inner">
+      <span class="name">{model.brand} {model.model}</span>
+      <span class="badges">
+        <Badge variant={model.kind_id === 1 ? 'accent' : 'default'} size="sm">
+          {model.kind_id === 1 ? 'Картридж' : 'Фотобарабан'}
+        </Badge>
+        {#if model.kind_id === 1 && model.color}
+          <Badge variant="default" size="sm">{model.color}</Badge>
+        {/if}
+      </span>
     </span>
   </td>
   <td class="cell cell-count">{instanceCount} шт.</td>
@@ -106,12 +108,22 @@
   // to near-nothing on narrow columns, making rows indistinguishable. Stacking
   // name (top, larger) above badges (bottom, small/secondary) guarantees full
   // width for the name regardless of badge count/width.
+  //
+  // FIX B3: display:flex on the <td> ITSELF overrides display:table-cell,
+  // pulling the cell out of the table's column model — every column collapses/
+  // overlaps. The <td> stays a normal table cell (ellipsis/max-width only);
+  // the flex layout lives on the inner span below.
   .cell-name {
+    overflow: hidden;
+    max-width: 0; // makes text-overflow work in table cells
+  }
+
+  .cell-name-inner {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    max-width: 0; // makes text-overflow work in table cells
+    min-width: 0;
   }
 
   .name {
