@@ -35,10 +35,14 @@
     <div class="low-stock-content">
       <h4 class="low-stock-title">Низкий остаток картриджей</h4>
       <ul class="low-stock-list">
-        {#each items as item (item.model_id)}
+        {#each items as item (`${item.basis}:${item.model_id ?? item.label}`)}
           <li>
-            {item.brand}
-            {item.model} — {item.count} шт. на складе (порог: {item.threshold})
+            {#if item.basis === 'cartridge_model'}
+              {item.brand}
+              {item.model} — {item.count} шт. на складе (порог: {item.threshold})
+            {:else}
+              {item.label} — {item.count} шт. совместимых картриджей на складе (порог: {item.threshold})
+            {/if}
           </li>
         {/each}
       </ul>

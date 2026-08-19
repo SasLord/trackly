@@ -87,6 +87,11 @@
 //!     403 Forbidden (Action::ReadData, Admin|Manager only — same gate as
 //!     printers_get/printers_get_by_device_id).
 //!
+//! Quick task 260819-wq5 adds Case 44: new mutation command, same
+//! ManageSettings gate as settings_set_low_stock_threshold.
+//! 44. Employee session → POST /api/v1/settings_set_low_stock_basis → 403
+//!     Forbidden (Action::ManageSettings).
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -1471,6 +1476,26 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 43: Employee → acts_update_return → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 44 (quick 260819-wq5): Employee session →
+        // POST /api/v1/settings_set_low_stock_basis → 403 Forbidden. Same
+        // authorize(&Action::ManageSettings) gate as settings_set_low_stock_threshold.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/settings_set_low_stock_basis",
+                json!({"basis": "printer_model"}),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 44: Employee → settings_set_low_stock_basis → expected 403, got {status}"
             );
         }
 

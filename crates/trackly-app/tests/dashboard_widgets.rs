@@ -238,3 +238,141 @@ async fn dashboard_employee_widget_excludes_ad_register() {
     .await
     .expect("dashboard_employee_widget_excludes_ad_register budget")
 }
+
+/// Seed one cartridge model, one compatibility row, and one full-stock
+/// cartridge via raw SQL — mirrors `seed_employee_with_request`'s
+/// `writer.execute(move |conn| { let tx = ...; })` shape. Returns model_id.
+/// Fictional brand/model/printer names only (privacy constraint).
+async fn seed_model_with_compat_and_stock(
+    writer: &WriterHandle,
+    brand: &str,
+    model: &str,
+    printer_name: &str,
+    full_stock_count: i64,
+) -> i64 {
+    let now = SystemClock.unix_seconds();
+    let brand = brand.to_string();
+    let model = model.to_string();
+    let printer_name = printer_name.to_string();
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO cartridge_models \
+                 (brand, model, kind_id, created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, 1, ?3, ?3, 1)",
+                params![brand, model, now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let model_id = tx.last_insert_rowid();
+            tx.execute(
+                "INSERT INTO cartridge_model_compatibility (cartridge_model_id, printer_name) \
+                 VALUES (?1, ?2)",
+                params![model_id, printer_name],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            for i in 0..full_stock_count {
+                tx.execute(
+                    "INSERT INTO cartridges \
+                     (code, model_id, status_id, state_id, created_at_utc, updated_at_utc, version) \
+                     VALUES (?1, ?2, 1, 1, ?3, ?3, 1)",
+                    params![format!("C-{model_id}-{i}"), model_id, now],
+                )
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
+            }
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(model_id)
+        })
+        .await
+        .expect("seed model with compat and stock")
+}
+
+/// Default basis (no app_settings.low_stock_basis row) must group by
+/// `cartridge_model_compatibility.printer_name` in the dashboard widget too
+/// — this is the direct proof that the repo's `low_stock()` and this
+/// service's independent SQL copy do not diverge (quick task 260819-wq5).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dashboard_low_stock_printer_model_default_matches_repo_grouping() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let config = Arc::new(AppConfig::default());
+
+        seed_model_with_compat_and_stock(&writer, "Fabrikam", "F-777", "Fabrikam LaserJet 200", 1)
+            .await;
+
+        let svc = DashboardService::new(writer, readers, clock, config);
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .expect("get_all_widgets");
+
+        assert_eq!(dto.low_stock_count, 1);
+        assert!(
+            dto.low_stock_models
+                .iter()
+                .any(|m| m.to_lowercase().contains("fabrikam laserjet 200")),
+            "default basis must group by printer name, got {:?}",
+            dto.low_stock_models
+        );
+    })
+    .await
+    .expect("dashboard_low_stock_printer_model_default_matches_repo_grouping budget")
+}
+
+/// Explicit `cartridge_model` basis regression-locks the legacy per-model
+/// grouping in the dashboard's independent SQL copy (quick task 260819-wq5).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dashboard_low_stock_cartridge_model_basis_matches_legacy_grouping() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (writer, readers) = build_test_db();
+        let clock =
+            Arc::new(SystemClock) as Arc<dyn trackly_core::primitives::clock::Clock + Send + Sync>;
+        let config = Arc::new(AppConfig::default());
+
+        seed_model_with_compat_and_stock(&writer, "Fabrikam", "F-777", "Fabrikam LaserJet 200", 1)
+            .await;
+        writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES ('low_stock_basis', 'cartridge_model', 0, 0)",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("{e}"),
+                })
+            })
+            .await
+            .expect("seed cartridge_model basis");
+
+        let svc = DashboardService::new(writer, readers, clock, config);
+        let dto = svc
+            .get_all_widgets(&Identity::trusted_admin(), None)
+            .await
+            .expect("get_all_widgets");
+
+        assert_eq!(dto.low_stock_count, 1);
+        assert!(
+            dto.low_stock_models
+                .iter()
+                .any(|m| m.to_lowercase().contains("fabrikam f-777")),
+            "cartridge_model basis must group by '{{brand}} {{model}}' label, got {:?}",
+            dto.low_stock_models
+        );
+    })
+    .await
+    .expect("dashboard_low_stock_cartridge_model_basis_matches_legacy_grouping budget")
+}
