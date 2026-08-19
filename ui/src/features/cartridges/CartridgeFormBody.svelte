@@ -205,6 +205,7 @@
           value={kindLabel}
           placeholder="Выберите вид"
           searchPlaceholder="Поиск"
+          searchable={false}
           loading={false}
           groups={KIND_OPTIONS}
           getGroupId={(o) => o.id}
