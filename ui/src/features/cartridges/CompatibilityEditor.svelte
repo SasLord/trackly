@@ -4,6 +4,8 @@
   // текстового поля «Имя принтера» — V032/Phase 13 single-column contract
   // (CartridgeModelCreateDto.compatibility: string[]).
   import Button from '$lib/components/Button.svelte';
+  import { portal } from '$lib/utils/portal';
+  import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 
   interface Props {
     compatibility: string[];
@@ -46,6 +48,8 @@
   let suggestions = $state<string[]>([]);
   let activeIndex = $state(-1);
   let loadingKey = $state<string | null>(null);
+  let anchorEl = $state<HTMLInputElement | null>(null);
+  let dropdownEl = $state<HTMLDivElement | null>(null);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -75,7 +79,8 @@
     }
   }
 
-  function handleFocus(index: number) {
+  function handleFocus(index: number, e: FocusEvent) {
+    anchorEl = e.currentTarget as HTMLInputElement;
     const key = getKey(index);
     openKey = key;
     suggestions = [];
@@ -135,6 +140,7 @@
     // bind:this в нереактивный объект (svelte binding_property_non_reactive).
     const el = e.target as HTMLElement | null;
     if (el && el.closest('.compat-field')) return;
+    if (dropdownEl?.contains(e.target as Node)) return;
     closeSuggestions();
   }
 
@@ -163,11 +169,17 @@
               ? `compat-name-item-${i}-${activeIndex}`
               : undefined}
             oninput={(e) => handleInput(i, (e.currentTarget as HTMLInputElement).value)}
-            onfocus={() => handleFocus(i)}
+            onfocus={(e) => handleFocus(i, e)}
             onkeydown={(e) => handleKeydown(e, i)}
           />
           {#if openKey === getKey(i)}
-            <div class="dropdown" role="listbox">
+            <div
+              class="dropdown--compat"
+              role="listbox"
+              use:portal
+              use:dropdownAnchor={{ anchorEl, maxHeight: 200 }}
+              bind:this={dropdownEl}
+            >
               {#if loadingKey === getKey(i)}
                 <div class="dropdown-loading">Загружаем…</div>
               {:else if suggestions.length === 0}
@@ -273,14 +285,15 @@
     }
   }
 
-  .dropdown {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    z-index: 50;
-    // Plan 27-G2: unified panel surface — matches LocationAutocomplete.svelte/
-    // PersonAutocomplete.svelte's global dropdown panel (--tr-surface-raised).
+  // Plan 260819-thx (Task 3): портирован в <body> через portal-utility +
+  // dropdownAnchor-utility (см. PersonAutocomplete.svelte/DeviceAutocompleteField.svelte/
+  // LocationAutocomplete.svelte) — панель больше не живёт внутри
+  // .autocomplete-wrapper, поэтому стили здесь :global и namespaced
+  // (WR-03: без namespace-класса глобальные правила .dropdown/.dropdown-item
+  // коллизируют между несколькими портированными компонентами).
+  :global(.dropdown--compat) {
+    position: fixed;
+    z-index: 1000;
     background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);
     border-radius: var(--tr-radius-xs);
@@ -289,14 +302,14 @@
     overflow-y: auto;
   }
 
-  .dropdown-loading,
-  .dropdown-empty {
+  :global(.dropdown--compat .dropdown-loading),
+  :global(.dropdown--compat .dropdown-empty) {
     padding: var(--tr-space-xs) var(--tr-space-md);
     color: var(--tr-text-tertiary);
     font-size: var(--tr-font-size-label);
   }
 
-  .dropdown-item {
+  :global(.dropdown--compat .dropdown-item) {
     display: block;
     width: 100%;
     padding: var(--tr-space-xs) var(--tr-space-md);
@@ -307,11 +320,11 @@
     font-family: inherit;
     font-size: var(--tr-font-size-body);
     cursor: pointer;
+  }
 
-    &:hover,
-    &.active {
-      background: var(--tr-row-hover);
-    }
+  :global(.dropdown--compat .dropdown-item:hover),
+  :global(.dropdown--compat .dropdown-item.active) {
+    background: var(--tr-row-hover);
   }
 
   .remove-btn {
