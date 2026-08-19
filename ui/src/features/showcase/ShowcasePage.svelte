@@ -47,6 +47,9 @@
 
 <style lang="scss">
   .showcase-page {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
     padding: var(--tr-space-xl);
     display: flex;
     flex-direction: column;
