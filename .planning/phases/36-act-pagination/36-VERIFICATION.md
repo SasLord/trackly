@@ -1,9 +1,19 @@
 ---
 phase: 36-act-pagination
 verified: 2026-08-13T16:30:08Z
-status: human_needed
-score: 2/4 roadmap success criteria verified (2 explicitly deferred by user decision, not failed)
+status: passed
+score: 4/4 roadmap success criteria verified (2 закрыты живой проверкой 2026-08-19)
 overrides_applied: 0
+resolved: 2026-08-19
+resolution: >
+  Все пять пунктов human_verification ниже закрыты пользователем 2026-08-19 живой проверкой
+  на Windows/WebView2 из релизной сборки v1.3.3 (portable-zip) — на обоих транспортах,
+  включая печать при настройках диалога по умолчанию и LAN-браузер. Дефектов не выявлено,
+  правок кода не потребовалось. Success Criteria #1 и #4 переходят из отложенных в
+  VERIFIED, score 2/4 → 4/4, status human_needed → passed. Детали по пунктам —
+  36-UAT.md (status: complete, 8 pass / 1 skipped / 0 blocked).
+  Пункты ниже сохранены как исторический перечень того, что именно проверялось.
+human_verification_resolved: true
 human_verification:
   - test: "N=1 акт с полным набором полей (инв.№, серийный №, модель, комплектация, тех. характеристики, состояние) — рендер настоящего PDF/«Сохранить как PDF» на обоих транспортах (десктоп + LAN-браузер)"
     expected: "Весь акт помещается на одном листе вместе с полным описанием устройства (DOC-10, Success Criterion #1)"
