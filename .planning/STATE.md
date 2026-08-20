@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.3.3
 milestone_name: Печатные формы и приватность данных
 status: Awaiting next milestone
-last_updated: "2026-08-19T15:28:43.157Z"
-last_activity: "2026-08-19 — Quick task 260819-vfg: объединение разделов Настроек «Хранилище» и «Бэкапы» в один раздел «Хранилище»"
+last_updated: "2026-08-20T15:19:34.308Z"
+last_activity: "2026-08-20 — Quick task 260820-rdj: выбор типа устройства (Устройство/Принтер) в попапе с полной конверсией записи"
 progress:
   total_phases: 42
   completed_phases: 40
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 Phase: Milestone v1.3.3 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-08-20 — Quick task 260820-rdj: выбор типа устройства (Устройство/Принтер) в попапе с полной конверсией записи
+Last activity: 2026-08-20 — Quick task 260820-uo4: автокомплит «Состояния» в модале возврата (Акты) + стандартные варианты во всех полях состояния
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -305,6 +305,7 @@ Last activity: 2026-08-20 — Quick task 260820-rdj: выбор типа уст�
 | Phase 37 P02 | ~15min | 3 tasks | 15 files |
 | Phase 37 P03 | 40min | 2 tasks | 9 files |
 | Phase 260819-vfg P01 | 5min | 1 tasks | 2 files |
+| Phase 260820-uo4 P01 | 12min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -760,6 +761,8 @@ Recent decisions affecting current work:
 - [Phase 37]: check-privacy.mjs supports explicit positional file-argument scanning (bypassing git plumbing) so the fixture-driven self-test can target specific files deterministically
 - [Phase 37]: Binary-extension violations (R8) labeled class D in check-privacy.mjs output, matching 37-RESEARCH.md's A/B/C/D class taxonomy
 - [Phase 260819-vfg]: 260819-vfg: alias/редирект со старого ключа вкладки 'backup' не нужен — activeSection чисто локальный state, без URL/localStorage адресации
+- [Phase 260820-uo4]: Стандартные варианты «Состояния» (Новое, Б/У, Хорошее, Среднее, Плохое, На списание) — статичный фронтенд-only список в DeviceAutocompleteField.svelte, backend не тронут
+- [Phase 260820-uo4]: Open-гейтинг дропдауна унифицирован на allItems.length > 0 (было suggestions.length > 0 || allLocationSuggestions.length > 0)
 
 ### Pending Todos
 
@@ -934,11 +937,12 @@ Nyquist-покрытия; тройное дублирование предика
 | 2026-08-19 | 260819-vit-showcase-page | Страница «Витрина компонентов» не скроллилась: контент, не влезающий в экран, был недоступен мышью — доскроллить можно было только табуляцией (фокус тянул контейнер за собой). Причина — `.showcase-page` в `ui/src/features/showcase/ShowcasePage.svelte` не следовала контракту прокрутки оболочки приложения: `.content` в `Layout.svelte` по дизайну `overflow: hidden`, поэтому каждая `*-page` обязана скроллить собственную внутреннюю область. При добавлении витрины этот шаг пропустили — у правила были только `padding`/`display:flex`/`flex-direction:column`/`gap`. Добавлены `height: 100%; min-height: 0; overflow-y: auto` — тот же контракт, что у `DashboardPage`/`RequestsPage`/`ReportsPage`/`SettingsPage`, но в одноконтейнерном варианте: у витрины нет разделения на шапку и контент, поэтому прокрутка навешана прямо на существующий контейнер, без новой обёртки. Разметка, `.intro`, `.showcase-block` и `Layout.svelte` не тронуты, второго скроллбара не появляется. Только CSS, одна правка в одном файле. Гейты: `svelte-check` 0 ошибок, `pnpm --dir ui build` зелёный, `ui/dist` пересобран. Визуальная проверка колесом мыши — за пользователем в запущенном приложении (WKWebView; синтетический Chromium-харнесс за верификацию не считается). | complete ✓ |
 | 2026-08-20 | 260819-wq5-low-stock-basis | В Настройках → «Порог низкого остатка» добавлен Radio-выбор базы подсчёта: «По модели принтера» (новый дефолт) или «По модели картриджа» (прежнее поведение). Ключ `app_settings.low_stock_basis`, без миграции схемы; дефолт `printer_model` применяется и к существующим БД. В режиме принтера остаток суммируется по всем моделям картриджей, совместимым с одним именем принтера из `cartridge_model_compatibility.printer_name` (`LOWER(TRIM(...))`, анти-fan-out через `EXISTS`); модели без строк совместимости не учитываются, имена с нулевым остатком показываются. Ветвление продублировано в обеих независимых копиях low-stock SQL (`cartridges_sqlite.rs::low_stock()` и `dashboard_service.rs`) + кросс-тесты на их согласованность. Новые команды `settings_get/set_low_stock_basis` (Tauri + HTTP, запись под `ManageSettings`, неизвестные значения отклоняются). | needs review (UAT) |
 | 2026-08-20 | 260820-rdj-device-type-switch | В попапе создания/редактирования устройства появился выбор типа: ghost-sm кебаб-кнопка в строке заголовка, меню «Устройство»/«Принтер» с галочкой (`--tr-accent`) на выбранном, реактивный заголовок в 4 вариантах (Новое устройство / Новый принтер / Редактирование устройства / Редактирование принтера). Смена типа делает полную конверсию записи атомарно в одной транзакции: Устройство→Принтер создаёт строку `printers` с пустыми IP/SNMP, Принтер→Устройство удаляет её (`printer_readings`/`printer_alerts` уходят каскадом) после подтверждения во вложенном модале. Без миграции схемы — `DevicePatch.type_id` уже существовал. Попутно: `Modal.svelte` получил module-level стек открытых модалов (Escape/Tab-trap/backdrop только у верхнего, `z-index` от глубины), `ActionMenu` — вариант `ghost-sm`, исправлен заголовок «Редактирование устройства» при правке принтера в `PrinterDetail`, и разведены SNMP-опрос (`onRefresh`) и перезагрузка списка (`onDeviceSaved`) в `PrintersPage` — раньше после конверсии список не обновлялся и показывался ложный тост «Принтер не отвечает на SNMP». UAT в 2 раунда: раунд 1 выявил inline-подтверждение вместо отдельного попапа и незакрытое обновление списка; раунд 2 — рантайм-регрессию `effect_update_depth_exceeded` в стеке модалов (`$effect` читал и писал один `$state`), устранена через `untrack`. | complete ✓ |
+| 2026-08-20 | 260820-uo4-condition-autocomplete-return | В модале «Возврат» (Акты) поля «Состояние» — и bulk, и per-row override — переведены с голого `Input` на общий `DeviceAutocompleteField` (`field="state"`), так что теперь у них есть dropdown с ранее использованными состояниями. Туда же добавлен статичный фронтенд-список стандартных вариантов (Новое, Б/У, Хорошее, Среднее, Плохое, На списание), мержится по образцу существующего `allLocationSuggestions` для `field="location"`: префикс-фильтр без учёта регистра + де-дуп по `trim().toLowerCase()`, чтобы уже встречавшееся значение не задваивалось; отдельная секция «Стандартные варианты:» в dropdown, индексы клавиатурной навигации продолжают `suggestions`. Правка в одном общем компоненте, поэтому стандартные варианты автоматически появились и в попапах добавления/редактирования устройства и принтера (принтеры переиспользуют `DeviceFormModal` → `DeviceFormBody`). Бэкенд/БД не затронуты. Компонент получил проп `disabled` (нужен bulk-полю при `applyToAll=false`); симметричный disable-паттерн `condition`/`location` и валидация непустого состояния сохранены. Гейты: `svelte-check` 0 ошибок, `lint` чисто, `pnpm --dir ui build` собран (`ui/dist` обновлён для server mode). Рантайм-поведение dropdown НЕ проверено — нужен живой UAT. | complete ✓ |
 
 ## Session Continuity
 
-Last session: 2026-08-19T15:26:58.913Z
-Stopped at: Completed 37-03-PLAN.md
+Last session: 2026-08-20T15:19:34.298Z
+Stopped at: Completed 260820-uo4-01-PLAN.md
 Resume file: 
 
 None
