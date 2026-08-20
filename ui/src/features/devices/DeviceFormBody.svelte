@@ -14,6 +14,7 @@
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
+  import Button from '$lib/components/Button.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
@@ -29,6 +30,9 @@
   interface Props {
     target: DeviceDto | null;
     stateHints: string[];
+    /** Выбранный тип устройства (1=Устройство, 2=Принтер) — управляется
+     *  ActionMenu в заголовке DeviceFormModal, не этим компонентом. */
+    typeId: number;
     onSaved: () => void;
     /** Expose submit-button state to parent's footer snippet. */
     onLoading: (_loading: boolean) => void;
@@ -42,8 +46,18 @@
     onRegisterSubmit: (_fn: () => void) => void;
   }
 
-  const { target, stateHints, onSaved, onLoading, onCanSubmitChange, onRegisterSubmit }: Props =
-    $props();
+  const {
+    target,
+    stateHints,
+    typeId,
+    onSaved,
+    onLoading,
+    onCanSubmitChange,
+    onRegisterSubmit,
+  }: Props = $props();
+
+  const DEVICE_TYPE_ID = 1;
+  const PRINTER_TYPE_ID = 2;
 
   // ---------------------------------------------------------------------------
   // Form state — all initialised from target (edit) or empty (create).
@@ -71,10 +85,24 @@
 
   const quantityDisabled = $derived(isEdit || inventoryNo.trim() !== '' || serialNo.trim() !== '');
 
+  let confirmDowngrade = $state(false);
+
+  // Сбросить inline-подтверждение при любой смене типа (пользователь мог снова
+  // переключить меню в заголовке, пока подтверждение было открыто) — иначе
+  // подтверждение может «зависнуть» для уже неактуального перехода типа.
+  $effect(() => {
+    typeId;
+    confirmDowngrade = false;
+  });
+
   // canSubmit: all required fields filled AND no in-flight request.
   // submitting guards against double-submit even before loading propagates.
   const canSubmit = $derived(
-    name.trim() !== '' && location.trim() !== '' && statusId !== '' && !submitting,
+    name.trim() !== '' &&
+      location.trim() !== '' &&
+      statusId !== '' &&
+      !submitting &&
+      !confirmDowngrade,
   );
 
   // Reset quantity to 1 when inv/serial become non-empty.
@@ -109,6 +137,23 @@
     if (!canSubmit) return;
     // In-flight guard: prevent double-submit from rapid clicks.
     if (submitting) return;
+
+    // RDJ-05: перед сохранением конверсии Принтер→Устройство — подтверждение
+    // потери данных мониторинга (показания тонера, активные оповещения).
+    // confirmDowngrade сам исключён из canSubmit выше, так что повторный клик
+    // по «Сохранить» сюда уже не попадёт — реальное сохранение запускает
+    // отдельная кнопка «Да, сохранить» в inline-предупреждении (onclick={performSave}).
+    const isDowngrade =
+      isEdit && target?.type_id === PRINTER_TYPE_ID && typeId === DEVICE_TYPE_ID;
+    if (isDowngrade && !confirmDowngrade) {
+      confirmDowngrade = true;
+      return;
+    }
+
+    await performSave();
+  }
+
+  async function performSave() {
     submitting = true;
     loading = true;
     fieldErrors = {};
@@ -116,7 +161,7 @@
     try {
       if (isEdit && target) {
         const patch: DevicePatch = {
-          type_id: null,
+          type_id: typeId,
           name: name.trim() || null,
           inventory_no: inventoryNo.trim() || null,
           serial_no: serialNo.trim() || null,
@@ -135,7 +180,7 @@
         pushToast('success', 'Устройство сохранено');
       } else {
         const newDevice: DeviceNew = {
-          type_id: 1,
+          type_id: typeId,
           name: name.trim(),
           inventory_no: inventoryNo.trim() || null,
           serial_no: serialNo.trim() || null,
@@ -152,7 +197,7 @@
         await devices.bulkCreate(newDevice, qty);
 
         if (qty === 1) {
-          pushToast('success', 'Устройство создано');
+          pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
         } else {
           pushToast('success', `Создано ${qty} устройств`);
         }
@@ -178,10 +223,25 @@
     } finally {
       loading = false;
       submitting = false;
+      confirmDowngrade = false;
     }
   }
 </script>
 
+{#if confirmDowngrade}
+  <div class="downgrade-confirm" role="alertdialog" aria-live="polite">
+    <p>
+      Тип устройства меняется с «Принтер» на «Устройство». История показаний тонера и активные
+      оповещения по этому принтеру будут удалены безвозвратно.
+    </p>
+    <div class="downgrade-confirm-actions">
+      <Button variant="secondary" onclick={() => (confirmDowngrade = false)}>Отмена</Button>
+      <Button variant="destructive" loading={submitting} onclick={performSave}>
+        Да, сохранить
+      </Button>
+    </div>
+  </div>
+{:else}
 <form
   class="device-form"
   onsubmit={(e) => {
@@ -364,6 +424,7 @@
     {/if}
   </div>
 </form>
+{/if}
 
 <style lang="scss">
   .device-form {
@@ -483,5 +544,17 @@
       outline: none;
       box-shadow: 0 0 0 3px var(--tr-focus-ring);
     }
+  }
+
+  .downgrade-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-md);
+  }
+
+  .downgrade-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--tr-space-xs);
   }
 </style>

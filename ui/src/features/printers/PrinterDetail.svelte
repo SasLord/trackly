@@ -387,6 +387,7 @@
         onClose={() => (deviceEditOpen = false)}
         onSaved={() => {
           deviceEditOpen = false;
+          onRefresh();
           if (printer) {
             devices.get(printer.deviceId).then((d) => (deviceData = d));
           }

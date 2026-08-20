@@ -8,9 +8,10 @@
     onClose: () => void;
     children?: Snippet;
     footer?: Snippet;
+    titleExtra?: Snippet;
   }
 
-  const { open, title, size = 'md', onClose, children, footer }: Props = $props();
+  const { open, title, size = 'md', onClose, children, footer, titleExtra }: Props = $props();
 
   const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
 
@@ -141,7 +142,12 @@
   >
     <div class="modal-container modal-{size}" bind:this={dialogEl} tabindex="-1">
       <header class="modal-header">
-        <h2 id={titleId} class="modal-title">{title}</h2>
+        <div class="modal-title-group">
+          <h2 id={titleId} class="modal-title">{title}</h2>
+          {#if titleExtra}
+            {@render titleExtra()}
+          {/if}
+        </div>
         <button type="button" class="modal-close" onclick={onClose} aria-label="Закрыть">×</button>
       </header>
       <div class="modal-body">
@@ -213,6 +219,14 @@
     padding: var(--tr-space-md) var(--tr-space-xl);
     border-bottom: 1px solid var(--tr-border);
     flex-shrink: 0;
+  }
+
+  .modal-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .modal-title {

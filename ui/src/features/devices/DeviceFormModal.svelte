@@ -12,6 +12,7 @@
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
   import DeviceFormBody from './DeviceFormBody.svelte';
   import { devices } from './api';
   import type { DeviceDto } from '../../bindings';
@@ -25,8 +26,16 @@
 
   const { open, target, onClose, onSaved }: Props = $props();
 
+  const DEVICE_TYPE_ID = 1;
+  const PRINTER_TYPE_ID = 2;
+
   const isEdit = $derived(target !== null);
-  const modalTitle = $derived(isEdit ? 'Редактирование устройства' : 'Новое устройство');
+  let typeId = $state(DEVICE_TYPE_ID);
+  const modalTitle = $derived.by(() => {
+    const isPrinter = typeId === PRINTER_TYPE_ID;
+    if (isEdit) return isPrinter ? 'Редактирование принтера' : 'Редактирование устройства';
+    return isPrinter ? 'Новый принтер' : 'Новое устройство';
+  });
   const submitLabel = $derived(isEdit ? 'Сохранить' : 'Создать');
 
   // ---------------------------------------------------------------------------
@@ -41,6 +50,7 @@
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
+      typeId = target?.type_id ?? DEVICE_TYPE_ID;
     }
     _wasOpen = isOpen;
   });
@@ -71,12 +81,34 @@
     <DeviceFormBody
       {target}
       {stateHints}
+      {typeId}
       {onSaved}
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(can) => (formCanSubmit = can)}
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
     />
   {/key}
+
+  {#snippet titleExtra()}
+    <ActionMenu label="Тип устройства" variant="ghost-sm">
+      <button type="button" role="menuitem" onclick={() => (typeId = DEVICE_TYPE_ID)}>
+        <span class="type-menu-row">
+          <span>Устройство</span>
+          {#if typeId === DEVICE_TYPE_ID}
+            <span class="type-menu-check" aria-hidden="true">✓</span>
+          {/if}
+        </span>
+      </button>
+      <button type="button" role="menuitem" onclick={() => (typeId = PRINTER_TYPE_ID)}>
+        <span class="type-menu-row">
+          <span>Принтер</span>
+          {#if typeId === PRINTER_TYPE_ID}
+            <span class="type-menu-check" aria-hidden="true">✓</span>
+          {/if}
+        </span>
+      </button>
+    </ActionMenu>
+  {/snippet}
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onClose}>Отмена</Button>
@@ -90,3 +122,17 @@
     </Button>
   {/snippet}
 </Modal>
+
+<style lang="scss">
+  .type-menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: var(--tr-space-xs);
+  }
+  .type-menu-check {
+    color: var(--tr-accent);
+    font-weight: var(--tr-font-weight-semibold);
+  }
+</style>

@@ -3,10 +3,14 @@
 
   interface Props {
     label?: string;
+    /** 'default' — текущий бордер-триггер (36×36, используется в DevicesPage
+     *  «Импорт и экспорт» — НЕ трогать). 'ghost-sm' — без бордера, 28px,
+     *  ghost-стиль как Button variant="ghost" size="sm" (quick 260820-rdj). */
+    variant?: 'default' | 'ghost-sm';
     children: Snippet;
   }
 
-  const { label = 'Действия', children }: Props = $props();
+  const { label = 'Действия', variant = 'default', children }: Props = $props();
 
   let open = $state(false);
   let rootEl = $state<HTMLElement | null>(null);
@@ -78,6 +82,7 @@
   <button
     type="button"
     class="action-menu-trigger"
+    class:action-menu-trigger--ghost-sm={variant === 'ghost-sm'}
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label}
@@ -129,6 +134,18 @@
     &:focus-visible {
       outline: none;
       box-shadow: 0 0 0 3px var(--tr-focus-ring);
+    }
+  }
+
+  .action-menu-trigger--ghost-sm {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--tr-text-primary);
+
+    &:hover {
+      background: var(--tr-surface-sunken);
     }
   }
 
