@@ -178,6 +178,33 @@
                 });
             }
           }}
+          onDeviceSaved={(result) => {
+            // Quick 260820-rdj (UAT gap-closure round 1, defect 2): separate
+            // from onRefresh above — this path never triggers an SNMP poll,
+            // it just reconciles the list/detail after a «Данные устройства»
+            // save (which may have converted the record's type).
+            const PRINTER_TYPE_ID = 2;
+            if (result && result.typeId !== PRINTER_TYPE_ID) {
+              // No longer a printer — drop the selection (detail panel
+              // clears via the existing $effect) and reload the list so the
+              // now-stale row disappears.
+              selectedId = null;
+              void refresh();
+              return;
+            }
+            // Type unchanged (still a printer) — reload the detail + list.
+            if (selectedId !== null) {
+              printers
+                .get(selectedId)
+                .then((dto) => {
+                  selectedPrinter = dto;
+                })
+                .catch(() => {
+                  // Non-fatal — list refresh below still runs.
+                });
+            }
+            void refresh();
+          }}
         />
       {/snippet}
     </PrintersMasterDetail>

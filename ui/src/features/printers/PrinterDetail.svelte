@@ -29,10 +29,22 @@
   interface Props {
     printer: PrinterDto | null;
     loading: boolean;
+    /** SNMP «Обновить сейчас» — re-polls the printer over SNMP. NOT the same
+     *  as reloading the printer LIST — see onDeviceSaved for that. */
     onRefresh: () => void;
+    /**
+     * Called after the «Данные устройства» edit popup saves successfully.
+     * Quick 260820-rdj (UAT gap-closure round 1, defect 2): this must stay
+     * separate from `onRefresh` — `onRefresh` triggers an SNMP poll
+     * (`printers.refresh`), which throws (and shows a misleading "принтер не
+     * отвечает на SNMP" toast) once the record has just been downgraded to a
+     * plain device and its `printers` row no longer exists. The parent
+     * (PrintersPage) decides what to do based on `result.typeId`.
+     */
+    onDeviceSaved?: (result?: { typeId: number }) => void;
   }
 
-  const { printer, loading, onRefresh }: Props = $props();
+  const { printer, loading, onRefresh, onDeviceSaved }: Props = $props();
 
   let refreshing = $state(false);
   let readings = $state<PrinterReadingDto[]>([]);
@@ -385,9 +397,9 @@
         open={deviceEditOpen}
         target={deviceData}
         onClose={() => (deviceEditOpen = false)}
-        onSaved={() => {
+        onSaved={(result) => {
           deviceEditOpen = false;
-          onRefresh();
+          onDeviceSaved?.(result);
           if (printer) {
             devices.get(printer.deviceId).then((d) => (deviceData = d));
           }
