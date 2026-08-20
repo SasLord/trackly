@@ -13,7 +13,7 @@
   import ReportTable from './ReportTable.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
 
-  type DomainKey = 'devices' | 'cartridges';
+  type DomainKey = 'devices' | 'cartridges' | 'requests';
 
   interface PeriodDto {
     mode: string;
@@ -51,6 +51,7 @@
     code?: string | null;
     model_label?: string | null;
     status_name?: string | null;
+    request_type_label?: string | null;
     [key: string]: unknown;
   }
 
@@ -100,6 +101,33 @@
       cmd: 'reports_list_cartridge_in_stock',
     },
   ] as const;
+
+  const REQUEST_REPORTS = [
+    { key: 'all', label: 'Все', temporal: true, cmd: 'reports_list_requests_all' },
+    { key: 'open', label: 'Открытые', temporal: true, cmd: 'reports_list_requests_open' },
+    {
+      key: 'in_progress',
+      label: 'В работе',
+      temporal: true,
+      cmd: 'reports_list_requests_in_progress',
+    },
+    {
+      key: 'completed',
+      label: 'Выполненные',
+      temporal: true,
+      cmd: 'reports_list_requests_completed',
+    },
+  ] as const;
+
+  // VAD-02: одинаковый набор колонок для всех 4 вкладок домена «Заявки».
+  const REQUEST_COLUMNS: Column[] = [
+    { key: 'number', label: '№' },
+    { key: 'handover_date_utc', label: 'Дата' },
+    { key: 'request_type_label', label: 'Тип' },
+    { key: 'status_name', label: 'Статус' },
+    { key: 'giver_name', label: 'Заявитель' },
+    { key: 'location_name', label: 'Принтер / Локация' },
+  ];
 
   // Column definitions per report type
   const COLUMNS_MAP: Record<string, Column[]> = {
@@ -153,6 +181,10 @@
       { key: 'location_name', label: 'Расположение' },
       { key: 'status_name', label: 'Статус' },
     ],
+    all: REQUEST_COLUMNS,
+    open: REQUEST_COLUMNS,
+    in_progress: REQUEST_COLUMNS,
+    completed: REQUEST_COLUMNS,
   };
 
   // ---------------------------------------------------------------------------
@@ -223,12 +255,16 @@
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+  // VAD-01: домен «Заявки» — все 4 вкладки period-based (created_at_utc),
+  // снимков (snapshot) в этом домене нет. activeReport ∈ {all, open,
+  // in_progress, completed} — ни один ключ не совпадает с in_use/in_stock,
+  // поэтому isSnapshot() уже корректно возвращает false здесь без изменений.
   function isSnapshot(): boolean {
     return ['in_use', 'in_stock'].includes(activeReport);
   }
 
   function currentCmd(): string {
-    const allReports = [...DEVICE_REPORTS, ...CARTRIDGE_REPORTS];
+    const allReports = [...DEVICE_REPORTS, ...CARTRIDGE_REPORTS, ...REQUEST_REPORTS];
     const found = allReports.find((r) => r.key === activeReport);
     // For cartridge domain in_use/in_stock, we need to find correct cmd
     if (activeDomain === 'cartridges') {
@@ -238,6 +274,10 @@
     if (activeDomain === 'devices') {
       const deviceFound = DEVICE_REPORTS.find((r) => r.key === activeReport);
       if (deviceFound) return deviceFound.cmd;
+    }
+    if (activeDomain === 'requests') {
+      const requestFound = REQUEST_REPORTS.find((r) => r.key === activeReport);
+      if (requestFound) return requestFound.cmd;
     }
     return found?.cmd ?? 'reports_list_device_acts';
   }
@@ -256,7 +296,7 @@
         case 'in_stock':
           return 'device_in_stock';
       }
-    } else {
+    } else if (activeDomain === 'cartridges') {
       switch (activeReport) {
         case 'consumption':
           return 'cartridge_consumption';
@@ -266,6 +306,17 @@
           return 'cartridge_in_use';
         case 'in_stock':
           return 'cartridge_in_stock';
+      }
+    } else if (activeDomain === 'requests') {
+      switch (activeReport) {
+        case 'all':
+          return 'requests_all';
+        case 'open':
+          return 'requests_open';
+        case 'in_progress':
+          return 'requests_in_progress';
+        case 'completed':
+          return 'requests_completed';
       }
     }
     return 'device_acts'; // fallback
@@ -431,7 +482,7 @@
       {statusCounts}
       onDomainChange={(d) => {
         activeDomain = d;
-        activeReport = d === 'devices' ? 'acts' : 'consumption';
+        activeReport = d === 'devices' ? 'acts' : d === 'cartridges' ? 'consumption' : 'all';
         filter = {};
       }}
       onReportChange={(r) => {

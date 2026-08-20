@@ -14,7 +14,7 @@
   }
 
   interface Props {
-    reportDomain: 'devices' | 'cartridges';
+    reportDomain: 'devices' | 'cartridges' | 'requests';
     reportType: string;
     // Props below are retained for parent compatibility but no longer rendered.
     // The parent (ReportsPage.svelte) still passes them; removing would require

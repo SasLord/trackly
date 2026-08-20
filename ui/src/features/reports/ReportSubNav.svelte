@@ -7,7 +7,7 @@
   // (segmented for domain, underline+count for report type) — no bespoke tab markup.
   import Tabs from '$lib/components/Tabs.svelte';
 
-  type DomainKey = 'devices' | 'cartridges';
+  type DomainKey = 'devices' | 'cartridges' | 'requests';
 
   interface ReportConfig {
     key: string;
@@ -50,9 +50,27 @@
     },
   ];
 
+  const REQUEST_REPORTS: ReportConfig[] = [
+    { key: 'all', label: 'Все', temporal: true, cmd: 'reports_list_requests_all' },
+    { key: 'open', label: 'Открытые', temporal: true, cmd: 'reports_list_requests_open' },
+    {
+      key: 'in_progress',
+      label: 'В работе',
+      temporal: true,
+      cmd: 'reports_list_requests_in_progress',
+    },
+    {
+      key: 'completed',
+      label: 'Выполненные',
+      temporal: true,
+      cmd: 'reports_list_requests_completed',
+    },
+  ];
+
   const DOMAINS = [
     { key: 'devices' as DomainKey, label: 'Устройства' },
     { key: 'cartridges' as DomainKey, label: 'Картриджи' },
+    { key: 'requests' as DomainKey, label: 'Заявки' },
   ];
 
   interface Props {
@@ -77,7 +95,13 @@
     onReportChange,
   }: Props = $props();
 
-  const activeReports = $derived(activeDomain === 'devices' ? DEVICE_REPORTS : CARTRIDGE_REPORTS);
+  const activeReports = $derived(
+    activeDomain === 'devices'
+      ? DEVICE_REPORTS
+      : activeDomain === 'cartridges'
+        ? CARTRIDGE_REPORTS
+        : REQUEST_REPORTS,
+  );
 </script>
 
 <!-- GAP-R2: domain-nav (left) and report-nav (right) on the same flex row on desktop -->
