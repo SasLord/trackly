@@ -24,7 +24,9 @@ use crate::tauri_cmds::reports::{
     build_reports_list_cartridge_in_stock, build_reports_list_cartridge_in_use,
     build_reports_list_cartridge_refills, build_reports_list_device_acts,
     build_reports_list_device_in_stock, build_reports_list_device_in_use,
-    build_reports_list_device_returns,
+    build_reports_list_device_returns, build_reports_list_requests_all,
+    build_reports_list_requests_completed, build_reports_list_requests_in_progress,
+    build_reports_list_requests_open,
 };
 
 // ---------------------------------------------------------------------------
@@ -176,6 +178,66 @@ pub async fn handler_list_cartridge_in_stock(
     ))
 }
 
+pub async fn handler_list_requests_all(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListWithPeriodPayload>,
+) -> Result<Json<ReportResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_list_requests_all(&ctx, &identity, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_requests_open(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListWithPeriodPayload>,
+) -> Result<Json<ReportResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_list_requests_open(&ctx, &identity, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_requests_in_progress(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListWithPeriodPayload>,
+) -> Result<Json<ReportResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_list_requests_in_progress(&ctx, &identity, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_list_requests_completed(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<ListWithPeriodPayload>,
+) -> Result<Json<ReportResponse>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_reports_list_requests_completed(&ctx, &identity, p.filter, p.period)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 /// Export report as CSV. Returns text/csv with UTF-8 BOM.
 pub async fn handler_export_csv(
     State(ctx): State<AppCtx>,
@@ -253,6 +315,22 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/reports_list_cartridge_in_stock",
             post(handler_list_cartridge_in_stock),
+        )
+        .route(
+            "/api/v1/reports_list_requests_all",
+            post(handler_list_requests_all),
+        )
+        .route(
+            "/api/v1/reports_list_requests_open",
+            post(handler_list_requests_open),
+        )
+        .route(
+            "/api/v1/reports_list_requests_in_progress",
+            post(handler_list_requests_in_progress),
+        )
+        .route(
+            "/api/v1/reports_list_requests_completed",
+            post(handler_list_requests_completed),
         )
         .route("/api/v1/reports_export_csv", post(handler_export_csv))
         .route("/api/v1/reports_export_pdf", post(handler_export_pdf))

@@ -152,6 +152,10 @@ async fn period_based_exports_reject_missing_period() {
         "device_returns",
         "cartridge_consumption",
         "cartridge_refills",
+        "requests_all",
+        "requests_open",
+        "requests_in_progress",
+        "requests_completed",
     ] {
         let pdf = build_reports_export_pdf(
             &ctx,

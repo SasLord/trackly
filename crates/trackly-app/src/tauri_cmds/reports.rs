@@ -37,6 +37,16 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
         "cartridge_in_use" | "cartridge_in_stock" => {
             vec!["code", "model_label", "status_name", "location_name"]
         }
+        "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
+            vec![
+                "number",
+                "handover_date_utc",
+                "request_type_label",
+                "status_name",
+                "giver_name",
+                "location_name",
+            ]
+        }
         _ => vec!["id"],
     }
 }
@@ -64,6 +74,9 @@ fn column_labels_for(report_type: &str) -> Vec<&'static str> {
         "cartridge_in_use" | "cartridge_in_stock" => {
             vec!["Код", "Модель", "Статус", "Расположение"]
         }
+        "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
+            vec!["№", "Дата", "Тип", "Статус", "Заявитель", "Принтер / Локация"]
+        }
         _ => vec!["ID"],
     }
 }
@@ -79,6 +92,10 @@ fn report_display_name(report_type: &str) -> &'static str {
         "cartridge_refills" => "Заправки картриджей",
         "cartridge_in_use" => "Картриджи в работе",
         "cartridge_in_stock" => "Картриджи на складе",
+        "requests_all" => "Заявки",
+        "requests_open" => "Открытые заявки",
+        "requests_in_progress" => "Заявки в работе",
+        "requests_completed" => "Выполненные заявки",
         _ => "Отчёт",
     }
 }
@@ -163,6 +180,58 @@ pub async fn build_reports_list_cartridge_in_stock(
     ctx.reports.list_cartridge_in_stock(filter).await
 }
 
+pub async fn build_reports_list_requests_all(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
+    ctx.reports
+        .list_requests_all(filter, period, exclude_ad_register)
+        .await
+}
+
+pub async fn build_reports_list_requests_open(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
+    ctx.reports
+        .list_requests_open(filter, period, exclude_ad_register)
+        .await
+}
+
+pub async fn build_reports_list_requests_in_progress(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
+    ctx.reports
+        .list_requests_in_progress(filter, period, exclude_ad_register)
+        .await
+}
+
+pub async fn build_reports_list_requests_completed(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
+    ctx.reports
+        .list_requests_completed(filter, period, exclude_ad_register)
+        .await
+}
+
 /// Export report rows as UTF-8 BOM CSV bytes.
 pub async fn build_reports_export_csv(
     ctx: &AppCtx,
@@ -172,7 +241,7 @@ pub async fn build_reports_export_csv(
     period: Option<PeriodDto>,
 ) -> Result<Vec<u8>, AppError> {
     authorize(caller, &Action::ReadData)?;
-    let rows = fetch_report(ctx, &report_type, filter, period).await?;
+    let rows = fetch_report(ctx, caller, &report_type, filter, period).await?;
     let cols = columns_for(&report_type);
     ctx.reports.export_csv(&rows, &cols).await
 }
@@ -186,7 +255,7 @@ pub async fn build_reports_export_pdf(
     period: Option<PeriodDto>,
 ) -> Result<String, AppError> {
     authorize(caller, &Action::ReadData)?;
-    let rows = fetch_report(ctx, &report_type, filter, period.clone()).await?;
+    let rows = fetch_report(ctx, caller, &report_type, filter, period.clone()).await?;
     let org = ctx.org_db.get().await?;
     let logo_bytes = ctx.org_db.get_logo_bytes().await?;
     let logo_mime = if logo_bytes.is_some() {
@@ -226,11 +295,15 @@ pub async fn build_reports_export_pdf(
 
 /// Report types whose query is period-scoped. For these, `period` is
 /// mandatory — see `require_period`.
-pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 4] = [
+pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 8] = [
     "device_acts",
     "device_returns",
     "cartridge_consumption",
     "cartridge_refills",
+    "requests_all",
+    "requests_open",
+    "requests_in_progress",
+    "requests_completed",
 ];
 
 /// WR-07: reject an absent `period` for a period-scoped report instead of
@@ -259,10 +332,12 @@ fn require_period(report_type: &str, period: Option<PeriodDto>) -> Result<Period
 /// Dispatch to the right list method based on report_type string.
 async fn fetch_report(
     ctx: &AppCtx,
+    caller: &Identity,
     report_type: &str,
     filter: ReportFilter,
     period: Option<PeriodDto>,
 ) -> Result<ReportResponse, AppError> {
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
     match report_type {
         "device_acts" => {
             ctx.reports
@@ -288,6 +363,42 @@ async fn fetch_report(
         }
         "cartridge_in_use" => ctx.reports.list_cartridge_in_use(filter).await,
         "cartridge_in_stock" => ctx.reports.list_cartridge_in_stock(filter).await,
+        "requests_all" => {
+            ctx.reports
+                .list_requests_all(
+                    filter,
+                    require_period(report_type, period)?,
+                    exclude_ad_register,
+                )
+                .await
+        }
+        "requests_open" => {
+            ctx.reports
+                .list_requests_open(
+                    filter,
+                    require_period(report_type, period)?,
+                    exclude_ad_register,
+                )
+                .await
+        }
+        "requests_in_progress" => {
+            ctx.reports
+                .list_requests_in_progress(
+                    filter,
+                    require_period(report_type, period)?,
+                    exclude_ad_register,
+                )
+                .await
+        }
+        "requests_completed" => {
+            ctx.reports
+                .list_requests_completed(
+                    filter,
+                    require_period(report_type, period)?,
+                    exclude_ad_register,
+                )
+                .await
+        }
         other => Err(AppError::Validation {
             field: "report_type".to_string(),
             message: format!("Unknown report type: {other}"),
@@ -385,6 +496,50 @@ pub async fn reports_list_cartridge_in_stock(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn reports_list_requests_all(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_requests_all(state.inner(), &caller, filter, period).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_list_requests_open(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_requests_open(state.inner(), &caller, filter, period).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_list_requests_in_progress(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_requests_in_progress(state.inner(), &caller, filter, period).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_list_requests_completed(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_requests_completed(state.inner(), &caller, filter, period).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn reports_export_csv(
     state: tauri::State<'_, AppCtx>,
     report_type: String,
@@ -420,7 +575,10 @@ pub async fn build_reports_get_report_counts(
     period: PeriodDto,
 ) -> Result<ReportCountsDto, AppError> {
     authorize(caller, &Action::ReadData)?;
-    ctx.reports.get_report_counts(&domain, filter, period).await
+    let exclude_ad_register = trackly_core::auth::excludes_ad_register(&caller.role);
+    ctx.reports
+        .get_report_counts(&domain, filter, period, exclude_ad_register)
+        .await
 }
 
 /// Return per-tab row counts for ALL report-type tabs in the active domain.
@@ -458,6 +616,10 @@ mod tests {
             "cartridge_refills",
             "cartridge_in_use",
             "cartridge_in_stock",
+            "requests_all",
+            "requests_open",
+            "requests_in_progress",
+            "requests_completed",
         ] {
             let cols = columns_for(report_type);
             let labels = column_labels_for(report_type);
