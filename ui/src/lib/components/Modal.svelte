@@ -13,7 +13,7 @@
 </script>
 
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
 
   interface Props {
     open: boolean;
@@ -41,11 +41,21 @@
   // it covers.
   const backdropZIndex = $derived(500 + Math.max(stackDepth, 0) * 10);
 
+  // The push/remove below MUST read `openStack` inside `untrack` — this effect
+  // writes to the same `$state` it reads, and every write produces a fresh
+  // array reference. Without `untrack` the write re-invalidates the effect that
+  // just ran, and Svelte aborts the whole component tree with
+  // `effect_update_depth_exceeded` on the very first modal open (caught in
+  // runtime UAT of quick 260820-rdj — compile-time gates cannot see it).
   $effect(() => {
     if (!open) return;
-    openStack = [...openStack, instanceId];
+    untrack(() => {
+      openStack = [...openStack, instanceId];
+    });
     return () => {
-      openStack = openStack.filter((id) => id !== instanceId);
+      untrack(() => {
+        openStack = openStack.filter((id) => id !== instanceId);
+      });
     };
   });
 
