@@ -12,6 +12,7 @@
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
 
   export interface ReturnRowState {
     actItemId: number;
@@ -70,7 +71,6 @@
     {@const effectiveLocPlaceholder = applyToAll && bulkLocationName ? bulkLocationName : ''}
     {@const condOverridden = row.conditionOverride !== null}
     {@const locOverridden = row.locationOverrideName.trim().length > 0}
-    {@const perRowDisabled = !row.checked || applyToAll}
     <div class="tr" class:tr-unchecked={!row.checked} role="row">
       <div class="td col-check">
         <Checkbox checked={row.checked} onchange={() => toggleChecked(idx)}>
@@ -88,15 +88,21 @@
         </span>
       </div>
       <div class="td col-condition">
-        <Input
-          type="text"
-          value={row.conditionOverride ?? ''}
-          placeholder={applyToAll && row.checked
-            ? '(по умолчанию)'
-            : effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
-          disabled={perRowDisabled}
-          oninput={(v) => setCondOverride(idx, v)}
-        />
+        {#if row.checked && !applyToAll}
+          <DeviceAutocompleteField
+            field="state"
+            value={row.conditionOverride ?? ''}
+            placeholder={effectiveCondPlaceholder || 'Хорошее / Б/У / Среднее'}
+            onChange={(v) => setCondOverride(idx, v)}
+          />
+        {:else}
+          <Input
+            type="text"
+            value={row.conditionOverride ?? ''}
+            placeholder={applyToAll && row.checked ? '(по умолчанию)' : ''}
+            disabled
+          />
+        {/if}
         {#if row.checked && applyToAll && !condOverridden}
           <span class="hint hint-default">(по умолчанию)</span>
         {:else if row.checked && condOverridden && !applyToAll}

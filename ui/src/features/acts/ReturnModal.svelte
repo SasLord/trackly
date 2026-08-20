@@ -26,11 +26,11 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
-  import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
   import ReturnItemsTable, { type ReturnRowState } from './ReturnItemsTable.svelte';
   import { buildReturnItems } from './returnPayload';
   import { acts } from './api';
@@ -370,12 +370,12 @@
         <div class="bulk-grid">
           <div class="bulk-field">
             <span class="label">Состояние</span>
-            <Input
-              type="text"
+            <DeviceAutocompleteField
+              field="state"
               value={bulkCondition}
               placeholder="Хорошее / Б/У / Среднее / Новое"
               disabled={!applyToAll}
-              oninput={(v) => (bulkCondition = v)}
+              onChange={(v) => (bulkCondition = v)}
             />
           </div>
           <div class="bulk-field">
