@@ -9,6 +9,18 @@
   // Round 8 refactor: submitTrigger side-channel eliminated.
   // The footer button now calls bodySubmitFn() directly — a function bound from
   // DeviceFormBody via `bind:submit`. No reactive trigger, no race condition.
+  //
+  // Quick 260820-rdj (UAT gap-closure round 1, defect 1): the Принтер→Устройство
+  // downgrade confirmation used to render INLINE inside DeviceFormBody's form body
+  // — that left the kebab menu, the outer footer (Отмена/Сохранить) AND the inline
+  // confirm's own buttons all interactive at once, which is confusing and lets the
+  // user re-toggle the type mid-confirmation. It is now a real NESTED <Modal> owned
+  // by THIS component (which already knows `typeId` + `target`), rendered as a
+  // top-level sibling after the edit Modal — NOT inside DeviceFormBody, whose
+  // `.modal-body` ancestor has `backdrop-filter: blur(2px)` (a containing-block
+  // trap for `position: fixed`) that would pin a nested backdrop to the wrong box.
+  // DeviceFormBody goes back to being a "dumb" form with no knowledge of the
+  // confirmation step.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -21,7 +33,14 @@
     open: boolean;
     target: DeviceDto | null;
     onClose: () => void;
-    onSaved: () => void;
+    /**
+     * Called after a successful save. `result.typeId` is the FINAL type_id the
+     * record was saved with — callers that need to react to a type conversion
+     * (e.g. PrinterDetail/PrintersPage deciding whether the record is still a
+     * printer) can read it; existing callers that ignore the argument (e.g.
+     * DevicesPage's `onSaved={() => {...}}`) keep working unchanged.
+     */
+    onSaved: (result?: { typeId: number }) => void;
   }
 
   const { open, target, onClose, onSaved }: Props = $props();
@@ -38,6 +57,13 @@
   });
   const submitLabel = $derived(isEdit ? 'Сохранить' : 'Создать');
 
+  // RDJ-05: Принтер→Устройство requires an explicit confirmation (loses
+  // toner-reading history + active alerts) before the save actually happens.
+  let confirmOpen = $state(false);
+  const isDowngrade = $derived(
+    isEdit && target?.type_id === PRINTER_TYPE_ID && typeId === DEVICE_TYPE_ID,
+  );
+
   // ---------------------------------------------------------------------------
   // Form instance counter — incremented each time the modal opens (false → true).
   // The {#key} block below remounts DeviceFormBody on every increment, ensuring
@@ -51,6 +77,7 @@
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
       typeId = target?.type_id ?? DEVICE_TYPE_ID;
+      confirmOpen = false;
     }
     _wasOpen = isOpen;
   });
@@ -74,6 +101,30 @@
       // Non-fatal — state chips won't appear but form still works.
     }
   });
+
+  // Footer «Сохранить» click: downgrade conversions open the nested confirm
+  // modal instead of saving directly; every other save goes straight through.
+  function handleSaveClick() {
+    if (isDowngrade) {
+      confirmOpen = true;
+      return;
+    }
+    bodySubmitFn?.();
+  }
+
+  // Confirm modal «Да, сохранить»: close the confirm popup and trigger the
+  // real save. «Отмена» just closes the confirm popup — the edit popup stays
+  // open with the form state (and the already-selected type) untouched.
+  function handleConfirmDowngrade() {
+    confirmOpen = false;
+    bodySubmitFn?.();
+  }
+
+  // Forwarded to DeviceFormBody instead of the raw `onSaved` prop so the final
+  // type_id (owned here, not by the dumb form body) reaches the caller.
+  function handleBodySaved() {
+    onSaved({ typeId });
+  }
 </script>
 
 <Modal {open} title={modalTitle} size="md" {onClose}>
@@ -82,7 +133,7 @@
       {target}
       {stateHints}
       {typeId}
-      {onSaved}
+      onSaved={handleBodySaved}
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(can) => (formCanSubmit = can)}
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
@@ -116,9 +167,27 @@
       variant="primary"
       loading={formLoading}
       disabled={!formCanSubmit}
-      onclick={() => bodySubmitFn?.()}
+      onclick={handleSaveClick}
     >
       {#if formLoading}Сохранение…{:else}{submitLabel}{/if}
+    </Button>
+  {/snippet}
+</Modal>
+
+<Modal
+  open={confirmOpen}
+  title="Сменить тип на «Устройство»?"
+  size="md"
+  onClose={() => (confirmOpen = false)}
+>
+  <p>
+    Тип устройства меняется с «Принтер» на «Устройство». История показаний тонера и активные
+    оповещения по этому принтеру будут удалены безвозвратно.
+  </p>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={() => (confirmOpen = false)}>Отмена</Button>
+    <Button variant="destructive" loading={formLoading} onclick={handleConfirmDowngrade}>
+      Да, сохранить
     </Button>
   {/snippet}
 </Modal>

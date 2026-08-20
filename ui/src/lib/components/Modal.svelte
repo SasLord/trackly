@@ -1,3 +1,17 @@
+<script module lang="ts">
+  // Shared modal stack (quick 260820-rdj, defect 1): nested modals (e.g. a
+  // downgrade-confirm popup atop an edit popup) each get their own Modal
+  // instance. Without a stack, BOTH instances' `<svelte:window onkeydown>`
+  // and backdrop-dismiss handlers would fire for the same Escape/click —
+  // Escape on the top modal would also bubble logic to the one underneath,
+  // and the bottom modal's backdrop could still be dismissed while a modal is
+  // stacked on top of it. `openStack` tracks instance identity (in open
+  // order); only the topmost entry responds to Escape/Tab-trap/backdrop
+  // click, and each instance's backdrop z-index is derived from its depth so
+  // a nested modal is guaranteed to render above the one it covers.
+  let openStack = $state<symbol[]>([]);
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
@@ -14,6 +28,26 @@
   const { open, title, size = 'md', onClose, children, footer, titleExtra }: Props = $props();
 
   const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
+
+  // Identity for this Modal instance in the shared stack — stable for the
+  // component's lifetime (not tied to `open`, so re-toggling open/closed
+  // reuses the same identity).
+  const instanceId = Symbol('modal');
+
+  const stackDepth = $derived(openStack.indexOf(instanceId));
+  const isTop = $derived(stackDepth >= 0 && stackDepth === openStack.length - 1);
+  // Base 500 (unchanged default for the common single-modal case) + 10 per
+  // nesting depth so a stacked modal's backdrop always renders above the one
+  // it covers.
+  const backdropZIndex = $derived(500 + Math.max(stackDepth, 0) * 10);
+
+  $effect(() => {
+    if (!open) return;
+    openStack = [...openStack, instanceId];
+    return () => {
+      openStack = openStack.filter((id) => id !== instanceId);
+    };
+  });
 
   // G-1 fix (Phase 3.1 Plan 06): backdrop dismiss срабатывает ТОЛЬКО когда
   // mousedown AND mouseup произошли на backdrop element. Это защищает
@@ -109,6 +143,11 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    // quick 260820-rdj (defect 1): only the topmost modal in the stack reacts
+    // to Escape/Tab-trap — a nested confirm popup must fully own keyboard
+    // input while it's open, and closing it must not also close the modal
+    // underneath.
+    if (!isTop) return;
     if (e.key === 'Escape') {
       onClose();
       return;
@@ -117,10 +156,12 @@
   }
 
   function handleBackdropMousedown(e: MouseEvent) {
+    if (!isTop) return;
     mouseDownOnBackdrop = e.target === e.currentTarget;
   }
 
   function handleBackdropMouseup(e: MouseEvent) {
+    if (!isTop) return;
     if (mouseDownOnBackdrop && e.target === e.currentTarget) {
       onClose();
     }
@@ -133,6 +174,7 @@
 {#if open}
   <div
     class="modal-backdrop"
+    style:z-index={backdropZIndex}
     onmousedown={handleBackdropMousedown}
     onmouseup={handleBackdropMouseup}
     aria-modal="true"
@@ -181,7 +223,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 500;
+    // z-index set inline via style:z-index — depth-based (see instance script)
+    // so a nested modal always renders above the one it covers.
   }
 
   .modal-container {
