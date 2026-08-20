@@ -58,6 +58,7 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             code: None,
             model_label: None,
             status_name: None,
+            request_type_label: None,
         }],
     };
     let columns = &[
@@ -130,6 +131,7 @@ async fn csv_export_guards_formula_injection() {
             code: None,
             model_label: Some("+payload".to_string()),
             status_name: None,
+            request_type_label: None,
         }],
     };
     let columns = &["device_name", "model_label"];

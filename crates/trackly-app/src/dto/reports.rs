@@ -83,6 +83,11 @@ pub struct ReportRow {
     pub model_label: Option<String>,
     /// Status name (for device / cartridge status reports).
     pub status_name: Option<String>,
+    /// Russian-translated `requests.request_type` (VAD-03). Populated only for
+    /// the «Заявки» report domain (`requests_all`/`open`/`in_progress`/`completed`);
+    /// rendered in the «Тип» column on screen, in CSV, and in print — computed
+    /// once on the backend so all three outputs stay in sync.
+    pub request_type_label: Option<String>,
 }
 
 /// Paged response wrapper for report queries.

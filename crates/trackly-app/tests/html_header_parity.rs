@@ -257,6 +257,7 @@ async fn render_header_fragments_for_org(
             code: None,
             model_label: None,
             status_name: None,
+            request_type_label: None,
         }],
         total: 1,
     };

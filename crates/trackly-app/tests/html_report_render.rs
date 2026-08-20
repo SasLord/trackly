@@ -58,6 +58,7 @@ fn make_row(
         code: None,
         model_label: None,
         status_name: None,
+        request_type_label: None,
     }
 }
 

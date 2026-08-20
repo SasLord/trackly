@@ -17,6 +17,7 @@ use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::requests_sqlite::ad_register_predicate;
 use trackly_infra::AppConfig;
 
 use crate::dto::reports::{
@@ -241,6 +242,52 @@ fn csv_safe(value: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Request domain — translation helpers (VAD-03)
+// ---------------------------------------------------------------------------
+
+/// Translate `requests.request_type` raw key into Russian for the «Заявки»
+/// report domain. Unknown (not in the current CHECK-constrained schema)
+/// values fall back to the raw key rather than an empty cell (VAD-03).
+fn translate_request_type(raw: &str) -> String {
+    match raw {
+        "cartridge_replace" => "Замена картриджа".to_string(),
+        "free_form" => "Произвольная".to_string(),
+        "ad_register" => "Учётная запись AD".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Translate `requests.status` raw key into Russian for the «Заявки» report
+/// domain. Includes `cancelled` (V031, self-cancel) — already labelled
+/// «Отменена» in `RequestListRow.svelte`/`RequestDetail.svelte`, the report
+/// must match. Unknown values fall back to the raw key (VAD-03).
+fn translate_request_status(raw: &str) -> String {
+    match raw {
+        "open" => "Открыта".to_string(),
+        "in_progress" => "В работе".to_string(),
+        "completed" => "Выполнена".to_string(),
+        "rejected" => "Отклонена".to_string(),
+        "cancelled" => "Отменена".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Combine printer name + printer location into the «Принтер / Локация»
+/// column value. `None` when the request has no printer selected — an empty
+/// cell, not a "—" placeholder (the frontend draws the dash for a null
+/// value on screen; CSV/print show a genuinely empty cell).
+fn combine_printer_and_location(
+    printer_name: Option<String>,
+    printer_location: Option<String>,
+) -> Option<String> {
+    let name = printer_name?;
+    match printer_location {
+        Some(loc) if !loc.is_empty() => Some(format!("{name}, {loc}")),
+        _ => Some(name),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ReportService
 // ---------------------------------------------------------------------------
 
@@ -454,6 +501,100 @@ impl ReportService {
     }
 
     // -----------------------------------------------------------------------
+    // Request reports (VAD-01..04)
+    // -----------------------------------------------------------------------
+
+    /// VAD-01: all requests in the period (no status filter — includes `rejected`).
+    ///
+    /// `_filter` is accepted only to keep the signature uniform with
+    /// `fetch_report()`'s dispatch — the «Заявки» domain has no filter fields
+    /// of its own yet (filtering is by status-tab and period only, per D-CONTEXT).
+    pub async fn list_requests_all(
+        &self,
+        _filter: ReportFilter,
+        period: PeriodDto,
+        exclude_ad_register: bool,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_requests_inner(&conn, ts_from, ts_to, None, exclude_ad_register)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_requests_all: {e}"),
+        })?
+    }
+
+    /// VAD-01: requests with `status = 'open'` in the period.
+    pub async fn list_requests_open(
+        &self,
+        _filter: ReportFilter,
+        period: PeriodDto,
+        exclude_ad_register: bool,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_requests_inner(&conn, ts_from, ts_to, Some("open"), exclude_ad_register)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_requests_open: {e}"),
+        })?
+    }
+
+    /// VAD-01: requests with `status = 'in_progress'` in the period.
+    pub async fn list_requests_in_progress(
+        &self,
+        _filter: ReportFilter,
+        period: PeriodDto,
+        exclude_ad_register: bool,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_requests_inner(
+                &conn,
+                ts_from,
+                ts_to,
+                Some("in_progress"),
+                exclude_ad_register,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_requests_in_progress: {e}"),
+        })?
+    }
+
+    /// VAD-01: requests with `status = 'completed'` in the period.
+    pub async fn list_requests_completed(
+        &self,
+        _filter: ReportFilter,
+        period: PeriodDto,
+        exclude_ad_register: bool,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_requests_inner(&conn, ts_from, ts_to, Some("completed"), exclude_ad_register)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_requests_completed: {e}"),
+        })?
+    }
+
+    // -----------------------------------------------------------------------
     // Per-tab count query (G2-5b)
     // -----------------------------------------------------------------------
 
@@ -467,6 +608,7 @@ impl ReportService {
         domain: &str,
         filter: ReportFilter,
         period: PeriodDto,
+        exclude_ad_register: bool,
     ) -> Result<ReportCountsDto, AppError> {
         let tz = self.get_tz_offset();
         let (ts_from, ts_to) = compute_period_utc(&period, tz);
@@ -528,6 +670,47 @@ impl ReportService {
                         key: "in_stock".into(),
                         count: count_cartridge_snapshot_inner(&conn, &filter, "На складе")
                             .unwrap_or(0),
+                    },
+                ]
+            } else if domain == "requests" {
+                vec![
+                    ReportCountEntry {
+                        key: "all".into(),
+                        count: count_requests_inner(&conn, ts_from, ts_to, None, exclude_ad_register)
+                            .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "open".into(),
+                        count: count_requests_inner(
+                            &conn,
+                            ts_from,
+                            ts_to,
+                            Some("open"),
+                            exclude_ad_register,
+                        )
+                        .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "in_progress".into(),
+                        count: count_requests_inner(
+                            &conn,
+                            ts_from,
+                            ts_to,
+                            Some("in_progress"),
+                            exclude_ad_register,
+                        )
+                        .unwrap_or(0),
+                    },
+                    ReportCountEntry {
+                        key: "completed".into(),
+                        count: count_requests_inner(
+                            &conn,
+                            ts_from,
+                            ts_to,
+                            Some("completed"),
+                            exclude_ad_register,
+                        )
+                        .unwrap_or(0),
                     },
                 ]
             } else {
@@ -744,6 +927,7 @@ fn row_field(row: &ReportRow, col: &str) -> String {
         "model_label" => row.model_label.as_deref().unwrap_or("").to_string(),
         "status_name" => row.status_name.as_deref().unwrap_or("").to_string(),
         "month_key" => row.month_key.as_deref().unwrap_or("").to_string(),
+        "request_type_label" => row.request_type_label.as_deref().unwrap_or("").to_string(),
         _ => String::new(),
     }
 }
@@ -840,6 +1024,7 @@ fn query_acts_inner(
                 code: None,
                 model_label: None,
                 status_name: None,
+                request_type_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -913,6 +1098,7 @@ fn query_device_snapshot(
                 code: r.get(3)?, // serial_no in code field
                 model_label: None,
                 status_name: r.get(5)?,
+                request_type_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1007,6 +1193,7 @@ fn query_cartridge_audit(
                 code: r.get(5)?,
                 model_label: r.get(4)?,
                 status_name: None,
+                request_type_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1081,6 +1268,7 @@ fn query_cartridge_snapshot(
                 code: r.get(1)?,
                 model_label: r.get(2)?,
                 status_name: r.get(4)?,
+                request_type_label: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1091,6 +1279,124 @@ fn query_cartridge_snapshot(
     }
     let total = rows.len() as i64;
     Ok(ReportResponse { rows, total })
+}
+
+/// Query `requests` rows filtered by period, optional status, and RBAC
+/// exclusion of `ad_register` (REQ-06/T-09-11). Shared by all four
+/// `requests_*` report tabs — the tab distinguishes itself only by
+/// `status_filter` (VAD-01).
+fn query_requests_inner(
+    conn: &rusqlite::Connection,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+    status_filter: Option<&str>,
+    exclude_ad_register: bool,
+) -> Result<ReportResponse, AppError> {
+    let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    if let Some(status) = status_filter {
+        clauses.push(format!("r.status = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(status.to_string()));
+    }
+    if exclude_ad_register {
+        clauses.push(ad_register_predicate("r."));
+    }
+    if let Some(from) = ts_from {
+        clauses.push(format!("r.created_at_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("r.created_at_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!(
+        "SELECT r.id, \
+               strftime('%Y-%m', datetime(r.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
+               r.created_at_utc, r.request_type, r.status, u.full_name AS requester_name, \
+               d.name AS printer_name, dl.name AS printer_location \
+         FROM requests r \
+         LEFT JOIN users u ON u.id = r.requested_by_user_id \
+         LEFT JOIN devices d ON d.id = r.printer_device_id \
+         LEFT JOIN locations dl ON dl.id = d.location_id \
+         WHERE {where_clause} \
+         ORDER BY r.created_at_utc ASC, r.id ASC \
+         LIMIT 1000"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let row_iter = stmt
+        .query_map(param_refs.as_slice(), |r| {
+            let id: i64 = r.get(0)?;
+            let request_type: String = r.get(3)?;
+            let status: String = r.get(4)?;
+            let printer_name: Option<String> = r.get(6)?;
+            let printer_location: Option<String> = r.get(7)?;
+            Ok(ReportRow {
+                id,
+                month_key: r.get(1)?,
+                number: Some(id.to_string()),
+                sub_number: None,
+                giver_name: r.get(5)?,
+                receiver_name: None,
+                handover_date_utc: r.get(2)?,
+                location_name: combine_printer_and_location(printer_name, printer_location),
+                act_type: None,
+                device_name: None,
+                quantity: None,
+                code: None,
+                model_label: None,
+                status_name: Some(translate_request_status(&status)),
+                request_type_label: Some(translate_request_type(&request_type)),
+            })
+        })
+        .map_err(map_rusqlite)?;
+
+    let mut rows = Vec::new();
+    for row in row_iter {
+        rows.push(row.map_err(map_rusqlite)?);
+    }
+    let total = rows.len() as i64;
+    Ok(ReportResponse { rows, total })
+}
+
+/// COUNT(*) variant of `query_requests_inner` — same WHERE clauses, no joins
+/// or row collection needed for the COUNT.
+fn count_requests_inner(
+    conn: &rusqlite::Connection,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+    status_filter: Option<&str>,
+    exclude_ad_register: bool,
+) -> Result<i64, AppError> {
+    let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    if let Some(status) = status_filter {
+        clauses.push(format!("r.status = ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(status.to_string()));
+    }
+    if exclude_ad_register {
+        clauses.push(ad_register_predicate("r."));
+    }
+    if let Some(from) = ts_from {
+        clauses.push(format!("r.created_at_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("r.created_at_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+
+    let where_clause = clauses.join(" AND ");
+    let sql = format!("SELECT COUNT(*) FROM requests r WHERE {where_clause}");
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
+        .map_err(map_rusqlite)
 }
 
 // ---------------------------------------------------------------------------
@@ -1415,6 +1721,57 @@ mod tests {
         assert_eq!(csv_safe(""), "");
     }
 
+    // -----------------------------------------------------------------------
+    // Request domain translators (VAD-03)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn translate_request_type_known_values() {
+        assert_eq!(translate_request_type("cartridge_replace"), "Замена картриджа");
+        assert_eq!(translate_request_type("free_form"), "Произвольная");
+        assert_eq!(translate_request_type("ad_register"), "Учётная запись AD");
+    }
+
+    #[test]
+    fn translate_request_type_unknown_falls_back_to_raw_key() {
+        assert_eq!(translate_request_type("future_type"), "future_type");
+    }
+
+    #[test]
+    fn translate_request_status_known_values() {
+        assert_eq!(translate_request_status("open"), "Открыта");
+        assert_eq!(translate_request_status("in_progress"), "В работе");
+        assert_eq!(translate_request_status("completed"), "Выполнена");
+        assert_eq!(translate_request_status("rejected"), "Отклонена");
+        assert_eq!(translate_request_status("cancelled"), "Отменена");
+    }
+
+    #[test]
+    fn translate_request_status_unknown_falls_back_to_raw_key() {
+        assert_eq!(translate_request_status("future_status"), "future_status");
+    }
+
+    #[test]
+    fn combine_printer_and_location_none_without_printer() {
+        assert_eq!(combine_printer_and_location(None, None), None);
+    }
+
+    #[test]
+    fn combine_printer_and_location_appends_location() {
+        assert_eq!(
+            combine_printer_and_location(Some("Принтер А".to_string()), Some("Каб. 305".to_string())),
+            Some("Принтер А, Каб. 305".to_string())
+        );
+    }
+
+    #[test]
+    fn combine_printer_and_location_printer_only_when_location_missing() {
+        assert_eq!(
+            combine_printer_and_location(Some("Принтер А".to_string()), None),
+            Some("Принтер А".to_string())
+        );
+    }
+
     #[test]
     fn month_key_to_russian_converts_correctly() {
         assert_eq!(month_key_to_russian("2026-09"), "Сентябрь 2026");
@@ -1618,6 +1975,7 @@ mod tests {
             code: None,
             model_label: None,
             status_name: None,
+            request_type_label: None,
         }
     }
 
