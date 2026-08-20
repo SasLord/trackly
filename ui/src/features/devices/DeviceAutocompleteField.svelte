@@ -42,6 +42,7 @@
     placeholder?: string;
     id?: string;
     invalid?: boolean;
+    disabled?: boolean;
     /** When true, renders a <textarea> instead of <input>.
      *  Autocomplete dropdown still works identically. */
     multiline?: boolean;
@@ -57,6 +58,7 @@
     placeholder,
     id,
     invalid = false,
+    disabled = false,
     multiline = false,
     onChange,
   }: Props = $props();
@@ -67,9 +69,39 @@
   let open = $state(false);
   let activeIndex = $state(-1);
 
-  // ITEM-4: combined list for keyboard navigation
+  const STANDARD_STATES = ['Новое', 'Б/У', 'Хорошее', 'Среднее', 'Плохое', 'На списание'];
+
+  function normalizeForCompare(s: string): string {
+    return s.trim().toLowerCase();
+  }
+
+  // D-260820-uo4: стандартные варианты «Состояния» — статичный фронтенд-список,
+  // мержится ТОЛЬКО для field="state" по тому же принципу, что allLocationSuggestions
+  // для field="location". Префикс-фильтр (регистронезависимо, startsWith) держит
+  // поведение консистентным с backend-подсказками; де-дуп по normalizeForCompare()
+  // не даёт стандартному значению, которое УЖЕ встречалось в suggestions, показаться
+  // дважды.
+  const standardSuggestions = $derived(
+    field === 'state'
+      ? STANDARD_STATES.filter((std) => {
+          const matchesPrefix =
+            value.length === 0 || normalizeForCompare(std).startsWith(normalizeForCompare(value));
+          const alreadyPresent = suggestions.some(
+            (s) => normalizeForCompare(s) === normalizeForCompare(std),
+          );
+          return matchesPrefix && !alreadyPresent;
+        })
+      : [],
+  );
+
+  // ITEM-4 (location) + D-260820-uo4 (state): combined list for keyboard nav AND
+  // for the open-gating check below (single source of truth).
   const allItems = $derived(
-    field === 'location' ? [...suggestions, ...allLocationSuggestions] : suggestions,
+    field === 'location'
+      ? [...suggestions, ...allLocationSuggestions]
+      : field === 'state'
+        ? [...suggestions, ...standardSuggestions]
+        : suggestions,
   );
 
   let wrapperEl = $state<HTMLDivElement | null>(null);
@@ -140,7 +172,7 @@
         // This prevents the dropdown from re-opening on programmatic value changes
         // (e.g. parent re-rendering, edit-mode pre-fill, prop change from outside).
         if (!suppressDropdown) {
-          open = suggestions.length > 0 || allLocationSuggestions.length > 0;
+          open = allItems.length > 0;
         }
         activeIndex = -1;
       } catch {
@@ -208,7 +240,7 @@
           allLocationSuggestions = [];
         }
         if (!suppressDropdown) {
-          open = suggestions.length > 0 || allLocationSuggestions.length > 0;
+          open = allItems.length > 0;
         }
         activeIndex = -1;
       } catch {
@@ -290,6 +322,7 @@
       bind:this={inputEl}
       {id}
       {placeholder}
+      {disabled}
       rows={3}
       class="autocomplete-input autocomplete-textarea"
       class:invalid
@@ -307,6 +340,7 @@
       bind:this={inputEl}
       {id}
       {placeholder}
+      {disabled}
       class="autocomplete-input"
       class:invalid
       {value}
@@ -378,6 +412,25 @@
             </button>
           {/each}
         {/if}
+        {#if field === 'state' && standardSuggestions.length > 0}
+          <header class="dropdown-header">Стандартные варианты:</header>
+          {#each standardSuggestions as s, i ('std_' + s)}
+            <button
+              type="button"
+              id="autocomplete-item-{suggestions.length + i}"
+              role="option"
+              class="dropdown-item"
+              class:active={suggestions.length + i === activeIndex}
+              aria-selected={suggestions.length + i === activeIndex}
+              onmousedown={(e) => {
+                e.preventDefault();
+                select(s);
+              }}
+            >
+              {s}
+            </button>
+          {/each}
+        {/if}
       {/if}
     </div>
   {/if}
@@ -414,6 +467,12 @@
     &.invalid {
       border-color: var(--tr-danger);
       box-shadow: 0 0 0 3px var(--tr-danger-ring);
+    }
+
+    &:disabled {
+      background: var(--tr-surface-sunken);
+      color: var(--tr-text-tertiary);
+      cursor: not-allowed;
     }
   }
 
