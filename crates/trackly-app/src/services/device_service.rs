@@ -24,11 +24,12 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
+use trackly_core::domain::printers::PrinterNew;
 use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::SqliteDeviceRepository;
+use trackly_infra::repos::{SqliteDeviceRepository, SqlitePrinterRepository};
 
 use std::collections::HashMap;
 
@@ -48,6 +49,7 @@ pub struct DeviceService {
     pub readers: Arc<ReaderPool>,
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) repo: Arc<SqliteDeviceRepository>,
+    pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
 }
@@ -66,6 +68,7 @@ impl DeviceService {
             readers,
             clock,
             repo: Arc::new(SqliteDeviceRepository),
+            printer_repo: Arc::new(SqlitePrinterRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
         }
     }
@@ -96,6 +99,48 @@ impl DeviceService {
         Ok(())
     }
 
+    /// device_types seed ids (V001): устройство=1, принтер=2.
+    const DEVICE_TYPE_ID: i64 = 1;
+    const PRINTER_TYPE_ID: i64 = 2;
+
+    /// Синхронизировать строку `printers` с `type_id` (quick 260820-rdj: полная
+    /// конверсия Устройство ⇄ Принтер). Идемпотентна — безопасно вызывать при
+    /// каждом create/update/bulk_create независимо от того, менялся ли type_id
+    /// в этом конкретном вызове; выполняется ВНУТРИ той же транзакции, что и
+    /// INSERT/UPDATE устройства, поэтому конверсия атомарна (никогда не оставляет
+    /// devices.type_id=2 без строки printers, и наоборот).
+    fn sync_printer_row_in_tx(
+        printer_repo: &SqlitePrinterRepository,
+        tx: &rusqlite::Transaction<'_>,
+        device_id: i64,
+        type_id: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        match type_id {
+            Self::PRINTER_TYPE_ID => {
+                if !printer_repo.exists_for_device_in_tx(tx, device_id)? {
+                    printer_repo.create_in_tx(
+                        tx,
+                        &PrinterNew {
+                            device_id,
+                            ip_address: None,
+                            community_raw: "public".to_string(),
+                            snmp_version: "v2c".to_string(),
+                            oid_profile_id: None,
+                            usb_host_device_id: None,
+                        },
+                        now_utc,
+                    )?;
+                }
+            }
+            Self::DEVICE_TYPE_ID => {
+                printer_repo.delete_by_device_id_in_tx(tx, device_id)?;
+            }
+            _ => {} // неизвестный/будущий тип — printers не трогаем (вне области decision)
+        }
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // CRUD
     // -----------------------------------------------------------------------
@@ -111,6 +156,7 @@ impl DeviceService {
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
+        let printer_repo = self.printer_repo.clone();
         let location_str = new.location.clone();
         let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
@@ -128,6 +174,7 @@ impl DeviceService {
                 }
 
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
+                Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
                 let after = repo.get_in_tx(&tx, id)?;
                 let after_dto = DeviceDto::from(after);
                 let after_json =
@@ -221,6 +268,7 @@ impl DeviceService {
     ) -> Result<DeviceDto, AppError> {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
+        let printer_repo = self.printer_repo.clone();
         let location_patch = patch.location.clone();
         let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         let user_id_opt: Option<i64> = None;
@@ -252,6 +300,7 @@ impl DeviceService {
                     })?;
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
+                Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now)?;
                 let after_json =
                     serde_json::to_string(&DeviceDto::from(after.clone())).map_err(|e| {
                         AppError::Internal {
@@ -999,6 +1048,7 @@ impl DeviceService {
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
+        let printer_repo = self.printer_repo.clone();
         let location_str = new.location.clone();
         let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
@@ -1018,6 +1068,7 @@ impl DeviceService {
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     let id = repo.create_in_tx(&tx, &domain_new, now)?;
+                    Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
 
                     // audit_log row for each inserted device.
                     let after = repo.get_in_tx(&tx, id)?;

@@ -218,6 +218,38 @@ impl SqlitePrinterRepository {
         })
     }
 
+    /// Проверить, существует ли строка `printers` для данного device_id.
+    /// Гейт идемпотентности для конверсии типа устройства (quick 260820-rdj).
+    pub fn exists_for_device_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+    ) -> Result<bool, AppError> {
+        tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM printers WHERE device_id = ?1)",
+            params![device_id],
+            |r| r.get(0),
+        )
+        .map_err(map_rusqlite)
+    }
+
+    /// Удалить строку `printers` для device_id, если она есть. Идемпотентно —
+    /// 0 затронутых строк не считается ошибкой. Каскадно удаляет
+    /// `printer_readings`/`printer_alerts` через `ON DELETE CASCADE` (V022/V023).
+    /// Quick 260820-rdj (конверсия Принтер → Устройство).
+    pub fn delete_by_device_id_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        device_id: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "DELETE FROM printers WHERE device_id = ?1",
+            params![device_id],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
@@ -993,5 +1025,133 @@ mod tests {
             rows.iter().any(|r| r.id == max_id),
             "printer with the highest seeded id must be present (no ORDER BY ... LIMIT 200 cutoff)"
         );
+    }
+
+    /// Quick 260820-rdj: `exists_for_device_in_tx` reflects whether a
+    /// `printers` row is present for a given `device_id`.
+    #[test]
+    fn exists_for_device_in_tx_reflects_printer_presence() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+
+        let device_with_printer = seed_device(&mut conn);
+        let device_without_printer = seed_device(&mut conn);
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.create_in_tx(
+                &tx,
+                &PrinterNew {
+                    device_id: device_with_printer,
+                    ip_address: None,
+                    community_raw: "public".to_string(),
+                    snmp_version: "v2c".to_string(),
+                    oid_profile_id: None,
+                    usb_host_device_id: None,
+                },
+                now,
+            )
+            .expect("create printer");
+            tx.commit().expect("commit");
+        }
+
+        let tx = conn.transaction().expect("tx");
+        assert!(
+            repo.exists_for_device_in_tx(&tx, device_with_printer)
+                .expect("exists check"),
+            "printer row should be reported as existing"
+        );
+        assert!(
+            !repo
+                .exists_for_device_in_tx(&tx, device_without_printer)
+                .expect("exists check"),
+            "device without a printer row must report false"
+        );
+        tx.commit().expect("commit");
+    }
+
+    /// Quick 260820-rdj: `delete_by_device_id_in_tx` cascades to
+    /// `printer_readings`/`printer_alerts` (ON DELETE CASCADE, V022/V023) and
+    /// is idempotent — calling it a second time for the same device_id must
+    /// not error or panic.
+    #[test]
+    fn delete_by_device_id_in_tx_is_idempotent_and_cascades() {
+        let (mut conn, _g) = fresh_conn();
+        let repo = SqlitePrinterRepository;
+        let now = 1_700_000_000_i64;
+
+        let device_id = seed_device(&mut conn);
+
+        let printer_id = {
+            let tx = conn.transaction().expect("tx");
+            let id = repo
+                .create_in_tx(
+                    &tx,
+                    &PrinterNew {
+                        device_id,
+                        ip_address: Some("192.168.1.50".to_string()),
+                        community_raw: "public".to_string(),
+                        snmp_version: "v2c".to_string(),
+                        oid_profile_id: None,
+                        usb_host_device_id: None,
+                    },
+                    now,
+                )
+                .expect("create printer");
+            repo.upsert_reading_in_tx(&tx, id, now, "{\"black\":{\"level\":10}}", Some(100), "ok")
+                .expect("seed reading");
+            repo.upsert_alert_in_tx(&tx, id, "offline", now)
+                .expect("seed alert");
+            tx.commit().expect("commit");
+            id
+        };
+
+        let readings_count = |conn: &Connection| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM printer_readings WHERE printer_id = ?1",
+                params![printer_id],
+                |r| r.get(0),
+            )
+            .expect("count readings")
+        };
+        let alerts_count = |conn: &Connection| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM printer_alerts WHERE printer_id = ?1",
+                params![printer_id],
+                |r| r.get(0),
+            )
+            .expect("count alerts")
+        };
+        assert_eq!(readings_count(&conn), 1, "reading should be seeded");
+        assert_eq!(alerts_count(&conn), 1, "alert should be seeded");
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.delete_by_device_id_in_tx(&tx, device_id)
+                .expect("first delete");
+            tx.commit().expect("commit");
+        }
+        assert_eq!(
+            readings_count(&conn),
+            0,
+            "printer_readings must cascade-delete"
+        );
+        assert_eq!(alerts_count(&conn), 0, "printer_alerts must cascade-delete");
+        assert!(
+            !repo
+                .exists_for_device_in_tx(&conn.transaction().expect("tx"), device_id)
+                .expect("exists check after delete"),
+            "printers row must be gone"
+        );
+
+        // Second call for the same device_id (already deleted) must be a no-op,
+        // not an error — idempotency gate for the create/update sync path.
+        {
+            let tx = conn.transaction().expect("tx");
+            let result = repo.delete_by_device_id_in_tx(&tx, device_id);
+            assert!(result.is_ok(), "repeated delete must not error");
+            tx.commit().expect("commit");
+        }
     }
 }
