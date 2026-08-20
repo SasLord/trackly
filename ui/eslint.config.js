@@ -28,6 +28,7 @@ const browserGlobals = {
   matchMedia: 'readonly',
   Event: 'readonly',
   KeyboardEvent: 'readonly',
+  FocusEvent: 'readonly',
   MouseEvent: 'readonly',
   HTMLElement: 'readonly',
   HTMLDivElement: 'readonly',

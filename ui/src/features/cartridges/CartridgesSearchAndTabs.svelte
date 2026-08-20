@@ -50,10 +50,7 @@
 
   $effect(() => {
     // Внешний сброс фильтра моделей.
-    if (
-      modelSearchQuery !== localModelQuery &&
-      document.activeElement?.id !== 'models-search'
-    ) {
+    if (modelSearchQuery !== localModelQuery && document.activeElement?.id !== 'models-search') {
       localModelQuery = modelSearchQuery;
     }
   });

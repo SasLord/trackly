@@ -87,8 +87,7 @@
         <Radio bind:group={basis} value="cartridge_model">
           <span class="radio-text">
             <span class="radio-title">По модели картриджа</span>
-            <span class="helper-text">Считать нехватку отдельно для каждой модели картриджа.</span
-            >
+            <span class="helper-text">Считать нехватку отдельно для каждой модели картриджа.</span>
           </span>
         </Radio>
       </div>
