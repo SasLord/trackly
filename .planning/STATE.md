@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: planning
-last_updated: "2026-08-22T00:00:00.000Z"
-last_activity: 2026-08-22
+last_updated: "2026-08-21T21:13:39.200Z"
+last_activity: 2026-08-22 — Roadmap для вехи v1.4 создан (7 фаз, 32/32 требования замаплены,
 progress:
   total_phases: 7
   completed_phases: 0
@@ -945,11 +945,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-20T15:19:34.298Z
-Stopped at: Completed 260820-uo4-01-PLAN.md
+Last session: 2026-08-21T21:13:39.191Z
+Stopped at: Phase 39 context gathered
 Resume file: 
 
-None
+.planning/phases/39-place-tree/39-CONTEXT.md
 
 ## Deferred Items
 
@@ -1062,5 +1062,6 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 - Следующий шаг: `/gsd-plan-phase 39` (Дерево мест — фундамент вехи, ничего не блокирует).
 - Порядок фаз: 39 Дерево мест → 40 История перемещений → 41 АРМ → 42 Умный подбор принтера →
   43 Карта (просмотр) → 44 Карта (редактор) → 45 Живые статусы.
+
 - Долг v1.3.3, не входящий в v1.4 (остаётся кандидатами): `/gsd-validate-phase 36` (Nyquist),
   INT-02 (общий источник Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.
