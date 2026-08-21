@@ -77,7 +77,7 @@
 
 <div class="request-category-filter" bind:this={rootEl}>
   <div class="trigger-wrap" bind:this={triggerEl}>
-    <Button variant="secondary" size="md" onclick={() => (open = !open)}>
+    <Button variant="ghost" size="sm" onclick={() => (open = !open)}>
       <svg
         width="16"
         height="16"
