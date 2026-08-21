@@ -1,7 +1,7 @@
 ---
 phase: 39
 slug: place-tree
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-22
@@ -233,6 +233,9 @@ padding-left: calc(var(--tr-space-xs) + var(--depth) * var(--tr-space-md));
   `*-page { height: 100%; min-height: 0 }`).
 - **Узкие окна:** ниже 1099px — `grid-template-columns: 380px 1fr; min-width: 900px`
   (унаследовано; адаптив под мобильные не требуется — раздел админский).
+- **Фокальная точка:** первичный визуальный якорь экрана — **выделенный узел дерева**
+  (`--tr-row-selected` + 2px accent-полоса слева, §8.2); вторичный — primary-кнопка
+  «Создать место» в шапке. Больше ничто на экране не претендует на первый взгляд.
 - **Deep link:** выбранный узел отражается в hash (`#/places?id=…`), чтобы кнопка «Показать
   содержимое» из ошибки удаления (D-14) и переходы из карточек вели в конкретный узел.
 
@@ -244,7 +247,10 @@ padding-left: calc(var(--tr-space-xs) + var(--depth) * var(--tr-space-md));
 
 Строка высотой 36px + `padding: var(--tr-space-sm) var(--tr-space-md)`, `border-bottom: 1px solid var(--tr-border)`:
 - `Input` поиска, `placeholder="Поиск места"`, ширина 100%;
-- `Checkbox` «Показывать архивные» — **по умолчанию выключен** (D-15).
+- `Checkbox` «Показывать архивные» — **по умолчанию выключен** (D-15);
+- `Button variant="ghost"` «Обновить» (icon+text, `size="sm"`) — перезагрузка дерева; единственный
+  путь повтора после ошибки загрузки (§13), поскольку `Toast` в проекте не имеет слота действия
+  (`Toast.svelte` — только `kind` / `message` / `onClose`).
 
 При непустом поиске дерево переключается в **плоский список совпадений по полному пути** (та же
 логика, что в `PlacePicker`, §10.3) — два разных представления одного дерева, не два контрола.
@@ -259,11 +265,11 @@ padding-left: calc(var(--tr-space-xs) + var(--depth) * var(--tr-space-md));
 |---------|----------|
 | Высота строки | 32px (`--row-height-dense`) |
 | Отступ | `padding-left: calc(var(--tr-space-xs) + var(--depth) * var(--tr-space-md))`; `padding-right: var(--tr-space-md)` |
-| Chevron | inline SVG 16×16 на `currentColor`, цвет `--tr-text-tertiary`; повёрнут на 90° у раскрытого узла. **У листа слот сохраняется пустым** (16px), чтобы имена выравнивались по одной вертикали |
+| Chevron | inline SVG 16×16 на `currentColor`, `aria-hidden="true"` (состояние уже несёт `aria-expanded` на `treeitem` — иначе читается как отдельный безымянный контрол), цвет `--tr-text-tertiary`; повёрнут на 90° у раскрытого узла. **У листа слот сохраняется пустым** (16px), чтобы имена выравнивались по одной вертикали |
 | Имя | `--tr-text-body`; у выделенного — `--tr-text-body-strong`; у архивного — цвет `--tr-text-tertiary` |
 | Бейджи | `gap: var(--tr-space-2xs)`; «Склад» — `Badge variant="accent" appearance="soft" size="sm"`; «Архив» — `Badge variant="default" appearance="soft" size="sm"` |
 | Счётчик (D-25) | справа, `.tr-mono`, цвет `--tr-text-tertiary`; **сумма с учётом вложенных**; `title="Всего с вложенными: 47"`. **Нулевой счётчик не рендерится вовсе** — пустота читается как пусто и не создаёт пары «disabled-текст на фоне», не покрытой контрастным гейтом |
-| Меню действий | `ActionMenu variant="ghost-sm"`, только Admin; появляется на `:hover`/`:focus-within` строки и **постоянно виден у выделенной строки** (иначе клавиатурный пользователь его не найдёт) |
+| Меню действий | `ActionMenu variant="ghost-sm"`, только Admin; появляется на `:hover`/`:focus-within` строки и **постоянно виден у выделенной строки** (иначе клавиатурный пользователь его не найдёт). **Обязателен per-row `label={`Действия: ${node.name}`}`** — дефолтный `aria-label="Действия"` (`ActionMenu.svelte:13`) дал бы ~150 одинаковых кнопок для скринридера |
 | Тип узла | в строке **не показывается** (шум при ~150 узлах); виден в `title` строки («Здание А / 2 этаж — этаж») и в шапке правой панели |
 | Hover | `background: var(--tr-row-hover)` |
 | Выделение | `background: var(--tr-row-selected)` + левая полоса `box-shadow: inset 2px 0 0 0 var(--tr-accent)` |
@@ -475,7 +481,7 @@ font: var(--tr-text-body);
 ### 11.5 Удаление (D-14)
 
 Титул «Удалить место?». Тело: «Место «214» будет удалено безвозвратно.»
-Кнопки: «Удалить» (`Button variant="danger"`) / «Отмена».
+Кнопки: «Удалить» (`Button variant="destructive"`) / «Отмена».
 
 **Если сервер отказал** (узел не пуст) — тело модалки заменяется error-callout (та же геометрия,
 что у warning, но `--tr-danger-soft` / `--tr-danger` / `--tr-danger-text`):
@@ -541,6 +547,7 @@ font: var(--tr-text-body);
 | Кнопка в строке узла (меню) | Переименовать · Создать вложенное место · Переместить в… · Архивировать · Вернуть из архива · Удалить |
 | Поиск в дереве | Поиск места *(placeholder)* |
 | Тумблер архивных | Показывать архивные |
+| Кнопка перезагрузки дерева | Обновить |
 | Тумблер глубины (D-24) | Только здесь |
 | Вкладки содержимого | Все · Устройства · Принтеры · Картриджи |
 | Поле выбора места | Лейбл: **Место**; placeholder: **Выберите место** |
@@ -657,14 +664,22 @@ font: var(--tr-text-body);
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG — фокальная точка не была объявлена, `ActionMenu` без per-row имени; **обе правки внесены** (§7, §8.2)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: FLAG (accepted) — 3 веса (400/500/600) при лимите 2 и близкая пара 12/13. Унаследовано из закрытой шкалы Фазы 23 (`check-tokens.mjs`); фаза не вводит ни одного нового размера или веса, переоткрытие токенов вне её объёма. Кандидат на схлопывание при будущем пересмотре шкалы — `--tr-text-label` (13/500) и `--tr-text-caption` (12/500)
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 2026-08-22)
+
+**Правки после проверки:**
+1. §11.5 — `Button variant="danger"` → `variant="destructive"` (варианта `danger` в `Button.svelte` нет)
+2. §8.1 / §14.1 — добавлена кнопка «Обновить» в тулбар дерева: §13 ссылалась на несуществующий контрол, а `Toast` в проекте не имеет слота действия
+3. §7 — объявлена фокальная точка экрана
+4. §8.2 — per-row `label` у `ActionMenu` и `aria-hidden` у chevron
+
+**Проверка приватности:** нарушений нет — все примеры вымышленные («Здание А», «214», «Иванов И.И.»).
 
 ---
 
