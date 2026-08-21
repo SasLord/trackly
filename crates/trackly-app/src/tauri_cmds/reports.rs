@@ -75,7 +75,14 @@ fn column_labels_for(report_type: &str) -> Vec<&'static str> {
             vec!["Код", "Модель", "Статус", "Расположение"]
         }
         "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
-            vec!["№", "Дата", "Тип", "Статус", "Заявитель", "Принтер / Локация"]
+            vec![
+                "№",
+                "Дата",
+                "Тип",
+                "Статус",
+                "Заявитель",
+                "Принтер / Локация",
+            ]
         }
         _ => vec!["ID"],
     }

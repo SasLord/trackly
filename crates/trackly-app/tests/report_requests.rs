@@ -284,8 +284,7 @@ async fn seed_fixture() -> (AppCtx, TempDir, i64) {
     let (ctx, dir) = minimal_ctx();
     let requester_id = seed_user(&ctx.writer, "us501", "Иванов И.И.").await;
     let location_id = seed_location(&ctx.writer, "Склад тест").await;
-    let printer_id =
-        seed_printer_device(&ctx.writer, "Принтер HP LaserJet", location_id).await;
+    let printer_id = seed_printer_device(&ctx.writer, "Принтер HP LaserJet", location_id).await;
 
     seed_request(
         &ctx.writer,
@@ -351,10 +350,11 @@ async fn report_requests_all_includes_every_status_translated_including_rejected
         .iter()
         .map(|r| r.status_name.clone().expect("status_name"))
         .collect();
-    let expected: std::collections::HashSet<String> = ["Открыта", "В работе", "Выполнена", "Отклонена"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let expected: std::collections::HashSet<String> =
+        ["Открыта", "В работе", "Выполнена", "Отклонена"]
+            .into_iter()
+            .map(String::from)
+            .collect();
     assert_eq!(statuses, expected);
 }
 

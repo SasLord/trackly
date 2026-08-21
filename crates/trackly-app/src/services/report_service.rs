@@ -586,7 +586,13 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_requests_inner(&conn, ts_from, ts_to, Some("completed"), exclude_ad_register)
+            query_requests_inner(
+                &conn,
+                ts_from,
+                ts_to,
+                Some("completed"),
+                exclude_ad_register,
+            )
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -676,8 +682,14 @@ impl ReportService {
                 vec![
                     ReportCountEntry {
                         key: "all".into(),
-                        count: count_requests_inner(&conn, ts_from, ts_to, None, exclude_ad_register)
-                            .unwrap_or(0),
+                        count: count_requests_inner(
+                            &conn,
+                            ts_from,
+                            ts_to,
+                            None,
+                            exclude_ad_register,
+                        )
+                        .unwrap_or(0),
                     },
                     ReportCountEntry {
                         key: "open".into(),
@@ -1727,7 +1739,10 @@ mod tests {
 
     #[test]
     fn translate_request_type_known_values() {
-        assert_eq!(translate_request_type("cartridge_replace"), "Замена картриджа");
+        assert_eq!(
+            translate_request_type("cartridge_replace"),
+            "Замена картриджа"
+        );
         assert_eq!(translate_request_type("free_form"), "Произвольная");
         assert_eq!(translate_request_type("ad_register"), "Учётная запись AD");
     }
@@ -1759,7 +1774,10 @@ mod tests {
     #[test]
     fn combine_printer_and_location_appends_location() {
         assert_eq!(
-            combine_printer_and_location(Some("Принтер А".to_string()), Some("Каб. 305".to_string())),
+            combine_printer_and_location(
+                Some("Принтер А".to_string()),
+                Some("Каб. 305".to_string())
+            ),
             Some("Принтер А, Каб. 305".to_string())
         );
     }
