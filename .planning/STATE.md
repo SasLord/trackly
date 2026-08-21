@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: planning
-last_updated: "2026-08-21T19:40:41.066Z"
-last_activity: 2026-08-21
+last_updated: "2026-08-22T00:00:00.000Z"
+last_activity: 2026-08-22
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,10 +24,11 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-21 — Milestone v1.4 started
+Phase: 39 — Дерево мест (v1.4, Фазы 39–45)
+Plan: — (not yet planned; run `/gsd-plan-phase 39`)
+Status: Roadmap created — ready to plan
+Last activity: 2026-08-22 — Roadmap для вехи v1.4 создан (7 фаз, 32/32 требования замаплены,
+покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
@@ -1057,7 +1058,9 @@ Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt 
 
 ## Operator Next Steps
 
-- Веха v1.3.3 закрыта и заархивирована 2026-08-19 — `milestones/v1.3.3-*`.
-- Следующий шаг: `/gsd-new-milestone` (questioning → research → requirements → roadmap).
-- Кандидаты в объём: `/gsd-validate-phase 36` (Nyquist), INT-02 (общий источник для
-  Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.
+- Веха v1.4 «Карта и осмысленное размещение» — roadmap создан 2026-08-22, статус planning.
+- Следующий шаг: `/gsd-plan-phase 39` (Дерево мест — фундамент вехи, ничего не блокирует).
+- Порядок фаз: 39 Дерево мест → 40 История перемещений → 41 АРМ → 42 Умный подбор принтера →
+  43 Карта (просмотр) → 44 Карта (редактор) → 45 Живые статусы.
+- Долг v1.3.3, не входящий в v1.4 (остаётся кандидатами): `/gsd-validate-phase 36` (Nyquist),
+  INT-02 (общий источник Paged.js `RepeatTableHeadHandler`), DOC-12/DOC-13, PRIV-03, 999.1.

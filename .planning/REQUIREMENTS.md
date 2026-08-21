@@ -130,17 +130,49 @@
 
 ## Traceability
 
-Заполняется при создании роадмапа.
+Роадмап создан 2026-08-22 (`/gsd-new-milestone` → roadmapper). Фазы продолжают сквозную нумерацию
+проекта (последняя завершённая — 38), первая фаза вехи v1.4 — Phase 39.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | Pending |
+| PLC-01 | Phase 39 | Pending |
+| PLC-02 | Phase 39 | Pending |
+| PLC-03 | Phase 39 | Pending |
+| PLC-04 | Phase 39 | Pending |
+| PLC-05 | Phase 39 | Pending |
+| PLC-06 | Phase 39 | Pending |
+| HST-01 | Phase 40 | Pending |
+| HST-02 | Phase 40 | Pending |
+| HST-03 | Phase 40 | Pending |
+| HST-04 | Phase 40 | Pending |
+| WKS-01 | Phase 41 | Pending |
+| WKS-02 | Phase 41 | Pending |
+| WKS-03 | Phase 41 | Pending |
+| WKS-04 | Phase 41 | Pending |
+| WKS-05 | Phase 41 | Pending |
+| WKS-06 | Phase 41 | Pending |
+| WKS-07 | Phase 41 | Pending |
+| REQ-07 | Phase 42 | Pending |
+| REQ-08 | Phase 42 | Pending |
+| MAP-01 | Phase 43 | Pending |
+| MAP-02 | Phase 43 | Pending |
+| MAP-03 | Phase 43 | Pending |
+| MAP-04 | Phase 43 | Pending |
+| MAP-05 | Phase 43 | Pending |
+| EDT-01 | Phase 44 | Pending |
+| EDT-02 | Phase 44 | Pending |
+| EDT-03 | Phase 44 | Pending |
+| EDT-04 | Phase 44 | Pending |
+| EDT-05 | Phase 44 | Pending |
+| EDT-06 | Phase 44 | Pending |
+| LIV-01 | Phase 45 | Pending |
+| LIV-02 | Phase 45 | Pending |
 
 **Coverage:**
 - v1 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32 ⚠️
+- Mapped to phases: 32
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-22*
-*Last updated: 2026-08-22 after milestone v1.4 kickoff (research skipped by user choice)*
+*Last updated: 2026-08-22 after roadmap creation — all 32 v1.4 requirements mapped to Phases 39–45, 100% coverage, no orphans.*
