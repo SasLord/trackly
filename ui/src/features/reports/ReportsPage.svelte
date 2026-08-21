@@ -10,6 +10,7 @@
   import ReportSubNav from './ReportSubNav.svelte';
   import PeriodSelector from './PeriodSelector.svelte';
   import ReportFilters from './ReportFilters.svelte';
+  import RequestCategoryFilter from './RequestCategoryFilter.svelte';
   import ReportTable from './ReportTable.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
 
@@ -34,6 +35,7 @@
     date_to_utc?: number | null;
     location_id?: number | null;
     act_type?: string | null;
+    request_category_filter?: string[] | null;
   }
 
   interface ReportRow {
@@ -492,13 +494,23 @@
 
     <!-- GAP-R4: controls row — PeriodSelector left, export buttons right -->
     <div class="controls-row">
-      <PeriodSelector
-        {period}
-        isSnapshot={isSnapshot()}
-        onPeriodChange={(p) => {
-          period = p;
-        }}
-      />
+      <div class="controls-left">
+        <PeriodSelector
+          {period}
+          isSnapshot={isSnapshot()}
+          onPeriodChange={(p) => {
+            period = p;
+          }}
+        />
+        {#if activeDomain === 'requests'}
+          <RequestCategoryFilter
+            selectedKeys={filter.request_category_filter ?? null}
+            onChange={(keys) => {
+              filter = { ...filter, request_category_filter: keys };
+            }}
+          />
+        {/if}
+      </div>
       <ReportFilters
         reportDomain={activeDomain}
         reportType={activeReport}
@@ -583,5 +595,14 @@
     gap: var(--tr-space-md);
     flex-wrap: wrap;
     padding: var(--tr-space-2xs) 0;
+  }
+
+  // CATF-01 (260821-w18): keeps RequestCategoryFilter directly adjacent to
+  // PeriodSelector on the left, so .controls-row's space-between still puts
+  // ReportFilters (export block) flush-right regardless of domain.
+  .controls-left {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-sm);
   }
 </style>
