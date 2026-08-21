@@ -287,6 +287,59 @@ fn combine_printer_and_location(
     }
 }
 
+/// Build the WHERE-fragment for `ReportFilter.request_category_filter`
+/// (CATF-01/02). `keys == None` -> `None` (no restriction, "Все" — future
+/// request types/categories are never silently dropped while "Все" is
+/// active). `keys == Some(&[])` -> explicit empty selection, `Some("1 = 0")`
+/// (0 rows, NOT a fallback to "Все"). Otherwise builds an OR of per-key
+/// predicates; unknown keys are silently skipped (T-260821-w18-01 — allow-list
+/// via Rust `match`, no user string is ever concatenated into SQL text; only
+/// fixed RU category names are bound via `?N` params). If every supplied key
+/// is unrecognised, falls back to `Some("1 = 0")` too.
+fn category_filter_clause(
+    keys: Option<&[String]>,
+    owned_params: &mut Vec<Box<dyn ToSql>>,
+) -> Option<String> {
+    let keys = keys?;
+    if keys.is_empty() {
+        return Some("1 = 0".to_string());
+    }
+
+    let mut ors: Vec<String> = Vec::new();
+    for key in keys {
+        match key.as_str() {
+            "ad_register" => ors.push("r.request_type = 'ad_register'".to_string()),
+            "cartridge_replace" => ors.push("r.request_type = 'cartridge_replace'".to_string()),
+            "no_category" => {
+                ors.push("(r.request_type = 'free_form' AND r.category_id IS NULL)".to_string())
+            }
+            "repair" | "consumables" | "software" | "other" => {
+                let category_name = match key.as_str() {
+                    "repair" => "Ремонт техники",
+                    "consumables" => "Расходные материалы",
+                    "software" => "Программное обеспечение",
+                    "other" => "Прочее",
+                    _ => unreachable!(),
+                };
+                let idx = next_idx(owned_params);
+                owned_params.push(Box::new(category_name.to_string()));
+                ors.push(format!(
+                    "(r.request_type = 'free_form' AND r.category_id = \
+                     (SELECT id FROM request_categories WHERE name = ?{idx}))"
+                ));
+            }
+            _ => {
+                // Unknown/future key — silently skipped, not an error.
+            }
+        }
+    }
+
+    if ors.is_empty() {
+        return Some("1 = 0".to_string());
+    }
+    Some(format!("({})", ors.join(" OR ")))
+}
+
 // ---------------------------------------------------------------------------
 // ReportService
 // ---------------------------------------------------------------------------
@@ -506,12 +559,11 @@ impl ReportService {
 
     /// VAD-01: all requests in the period (no status filter — includes `rejected`).
     ///
-    /// `_filter` is accepted only to keep the signature uniform with
-    /// `fetch_report()`'s dispatch — the «Заявки» domain has no filter fields
-    /// of its own yet (filtering is by status-tab and period only, per D-CONTEXT).
+    /// CATF-01/02: `filter.request_category_filter` narrows the «Заявки»
+    /// domain by request type/category (funnel filter). `None` = «Все».
     pub async fn list_requests_all(
         &self,
-        _filter: ReportFilter,
+        filter: ReportFilter,
         period: PeriodDto,
         exclude_ad_register: bool,
     ) -> Result<ReportResponse, AppError> {
@@ -520,7 +572,14 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_requests_inner(&conn, ts_from, ts_to, None, exclude_ad_register)
+            query_requests_inner(
+                &conn,
+                ts_from,
+                ts_to,
+                None,
+                exclude_ad_register,
+                filter.request_category_filter.as_deref(),
+            )
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -531,7 +590,7 @@ impl ReportService {
     /// VAD-01: requests with `status = 'open'` in the period.
     pub async fn list_requests_open(
         &self,
-        _filter: ReportFilter,
+        filter: ReportFilter,
         period: PeriodDto,
         exclude_ad_register: bool,
     ) -> Result<ReportResponse, AppError> {
@@ -540,7 +599,14 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_requests_inner(&conn, ts_from, ts_to, Some("open"), exclude_ad_register)
+            query_requests_inner(
+                &conn,
+                ts_from,
+                ts_to,
+                Some("open"),
+                exclude_ad_register,
+                filter.request_category_filter.as_deref(),
+            )
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -551,7 +617,7 @@ impl ReportService {
     /// VAD-01: requests with `status = 'in_progress'` in the period.
     pub async fn list_requests_in_progress(
         &self,
-        _filter: ReportFilter,
+        filter: ReportFilter,
         period: PeriodDto,
         exclude_ad_register: bool,
     ) -> Result<ReportResponse, AppError> {
@@ -566,6 +632,7 @@ impl ReportService {
                 ts_to,
                 Some("in_progress"),
                 exclude_ad_register,
+                filter.request_category_filter.as_deref(),
             )
         })
         .await
@@ -577,7 +644,7 @@ impl ReportService {
     /// VAD-01: requests with `status = 'completed'` in the period.
     pub async fn list_requests_completed(
         &self,
-        _filter: ReportFilter,
+        filter: ReportFilter,
         period: PeriodDto,
         exclude_ad_register: bool,
     ) -> Result<ReportResponse, AppError> {
@@ -592,6 +659,7 @@ impl ReportService {
                 ts_to,
                 Some("completed"),
                 exclude_ad_register,
+                filter.request_category_filter.as_deref(),
             )
         })
         .await
@@ -679,6 +747,7 @@ impl ReportService {
                     },
                 ]
             } else if domain == "requests" {
+                let category_filter = filter.request_category_filter.as_deref();
                 vec![
                     ReportCountEntry {
                         key: "all".into(),
@@ -688,6 +757,7 @@ impl ReportService {
                             ts_to,
                             None,
                             exclude_ad_register,
+                            category_filter,
                         )
                         .unwrap_or(0),
                     },
@@ -699,6 +769,7 @@ impl ReportService {
                             ts_to,
                             Some("open"),
                             exclude_ad_register,
+                            category_filter,
                         )
                         .unwrap_or(0),
                     },
@@ -710,6 +781,7 @@ impl ReportService {
                             ts_to,
                             Some("in_progress"),
                             exclude_ad_register,
+                            category_filter,
                         )
                         .unwrap_or(0),
                     },
@@ -721,6 +793,7 @@ impl ReportService {
                             ts_to,
                             Some("completed"),
                             exclude_ad_register,
+                            category_filter,
                         )
                         .unwrap_or(0),
                     },
@@ -1303,6 +1376,7 @@ fn query_requests_inner(
     ts_to: Option<i64>,
     status_filter: Option<&str>,
     exclude_ad_register: bool,
+    category_filter: Option<&[String]>,
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -1313,6 +1387,9 @@ fn query_requests_inner(
     }
     if exclude_ad_register {
         clauses.push(ad_register_predicate("r."));
+    }
+    if let Some(clause) = category_filter_clause(category_filter, &mut owned_params) {
+        clauses.push(clause);
     }
     if let Some(from) = ts_from {
         clauses.push(format!("r.created_at_utc >= ?{}", next_idx(&owned_params)));
@@ -1383,6 +1460,7 @@ fn count_requests_inner(
     ts_to: Option<i64>,
     status_filter: Option<&str>,
     exclude_ad_register: bool,
+    category_filter: Option<&[String]>,
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -1393,6 +1471,9 @@ fn count_requests_inner(
     }
     if exclude_ad_register {
         clauses.push(ad_register_predicate("r."));
+    }
+    if let Some(clause) = category_filter_clause(category_filter, &mut owned_params) {
+        clauses.push(clause);
     }
     if let Some(from) = ts_from {
         clauses.push(format!("r.created_at_utc >= ?{}", next_idx(&owned_params)));
@@ -1764,6 +1845,76 @@ mod tests {
     #[test]
     fn translate_request_status_unknown_falls_back_to_raw_key() {
         assert_eq!(translate_request_status("future_status"), "future_status");
+    }
+
+    // -----------------------------------------------------------------------
+    // category_filter_clause (CATF-01/02)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn category_filter_clause_none_means_all_no_restriction() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        assert_eq!(category_filter_clause(None, &mut params), None);
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn category_filter_clause_empty_selection_yields_zero_rows() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys: Vec<String> = Vec::new();
+        assert_eq!(
+            category_filter_clause(Some(&keys), &mut params),
+            Some("1 = 0".to_string())
+        );
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn category_filter_clause_known_type_key_no_new_bind_param() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys = vec!["ad_register".to_string()];
+        let clause = category_filter_clause(Some(&keys), &mut params).unwrap();
+        assert!(
+            clause.contains("r.request_type = 'ad_register'"),
+            "clause: {clause}"
+        );
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn category_filter_clause_category_key_binds_ru_name_param() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys = vec!["repair".to_string()];
+        let clause = category_filter_clause(Some(&keys), &mut params).unwrap();
+        assert!(
+            clause.contains("SELECT id FROM request_categories WHERE name = ?"),
+            "clause: {clause}"
+        );
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn category_filter_clause_unknown_key_yields_zero_rows() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys = vec!["unknown_future_key".to_string()];
+        assert_eq!(
+            category_filter_clause(Some(&keys), &mut params),
+            Some("1 = 0".to_string())
+        );
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn category_filter_clause_known_plus_unknown_ignores_unknown() {
+        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+        let keys = vec!["ad_register".to_string(), "unknown".to_string()];
+        let clause = category_filter_clause(Some(&keys), &mut params).unwrap();
+        assert!(
+            clause.contains("r.request_type = 'ad_register'"),
+            "clause: {clause}"
+        );
+        assert!(!clause.contains("unknown"), "clause: {clause}");
+        assert!(params.is_empty());
     }
 
     #[test]

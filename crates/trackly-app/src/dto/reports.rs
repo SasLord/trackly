@@ -44,6 +44,14 @@ pub struct ReportFilter {
     pub color: Option<String>,
     /// Free-text search (applied to act number, device name, personnel names).
     pub search: Option<String>,
+    /// VAD-05/CATF-02 — funnel-фильтр домена «Заявки» по типу/категории.
+    /// `None` = «Все» (без ограничения). `Some(vec![])` = все чекбоксы сняты,
+    /// явный пустой результат. `Some(keys)` = allow-list ключей
+    /// ('ad_register'|'cartridge_replace'|'repair'|'consumables'|'software'|
+    /// 'no_category'|'other'), см. `category_filter_clause` в
+    /// `report_service.rs`. Игнорируется остальными доменами (devices/
+    /// cartridges).
+    pub request_category_filter: Option<Vec<String>>,
 }
 
 /// A single row in a tabular report.
