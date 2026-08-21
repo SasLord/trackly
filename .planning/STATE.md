@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3.3
-milestone_name: Печатные формы и приватность данных
-status: Awaiting next milestone
-last_updated: "2026-08-20T15:19:34.308Z"
-last_activity: "2026-08-20 — Quick task 260820-rdj: выбор типа устройства (Устройство/Принтер) в попапе с полной конверсией записи"
+milestone: v1.4
+milestone_name: Карта и осмысленное размещение
+status: planning
+last_updated: "2026-08-21T19:40:41.066Z"
+last_activity: 2026-08-21
 progress:
-  total_phases: 42
-  completed_phases: 40
-  total_plans: 263
-  completed_plans: 263
-  percent: 95
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Активной вехи нет. v1.3.3 закрыта и заархивирована 2026-08-19 (11/11 требований, tech_debt). Следующий шаг — /gsd-new-milestone.
+**Current focus:** Веха v1.4 «Карта и осмысленное размещение» — дерево мест вместо свободнотекстового «Размещения», история перемещений, АРМ, ранжирование принтеров в заявке, просмотр и редактор схематичных планов, живые статусы. Фазы продолжают нумерацию с 39.
 
 ## Current Position
 
-Phase: Milestone v1.3.3 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-22 — Fast task: кнопка фильтра категорий в отчёте «Заявки» переведена на variant ghost / size sm; фильтр 260821-w18 по-прежнему ожидает живой UAT
+Status: Defining requirements
+Last activity: 2026-08-21 — Milestone v1.4 started
 
 ### Phase 6 gap-closure decisions (2026-06-15)
 
