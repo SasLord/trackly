@@ -48,9 +48,9 @@ pub struct DeviceDto {
     /// Состояние (condition в БД).
     pub state: Option<String>,
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
-    /// Resolved location name (from `locations` table via LEFT JOIN).
-    pub location: Option<String>,
+    pub place_id: Option<i64>,
+    /// Resolved full path (from `place_full_paths` view via LEFT JOIN).
+    pub full_path: Option<String>,
     #[specta(type = i32)]
     pub status_id: i64,
     #[specta(type = i32)]
@@ -72,8 +72,8 @@ impl From<DeviceRow> for DeviceDto {
             specs: row.specs,
             kit: row.kit,
             state: row.state,
-            location_id: row.location_id,
-            location: row.location,
+            place_id: row.place_id,
+            full_path: row.full_path,
             status_id: row.status_id,
             created_at_utc: row.created_at_utc,
             updated_at_utc: row.updated_at_utc,
@@ -83,9 +83,9 @@ impl From<DeviceRow> for DeviceDto {
 
 /// DTO для создания нового устройства.
 ///
-/// `location` — строковое название расположения. Сервис автоматически создаёт
-/// запись в таблице `locations` (INSERT OR IGNORE) и записывает `location_id`.
-/// Поле `location_id` оставлено для совместимости, но игнорируется если задан `location`.
+/// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+/// PlacePicker; создание нового места по имени больше не поддерживается на
+/// этом пути (D-18).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DeviceNew {
     #[specta(type = i32)]
@@ -97,10 +97,8 @@ pub struct DeviceNew {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
-    /// Строковое название расположения (автоматически разрешается в location_id).
-    pub location: Option<String>,
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     #[specta(type = i32)]
     pub status_id: i64,
 }
@@ -116,7 +114,7 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
             specs: dto.specs,
             kit: dto.kit,
             state: dto.state,
-            location_id: dto.location_id,
+            place_id: dto.place_id,
             status_id: dto.status_id,
         }
     }
@@ -126,8 +124,8 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
 /// `Option<Option<T>>` — None означает «не менять», Some(None) — «установить NULL»,
 /// Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
 ///
-/// `location` — строковое название расположения. Если задано Some(Some(name)),
-/// сервис разрешает в `location_id`; Some(None) — очищает расположение.
+/// `place_id` — уже разрешённый caller'ом ID места (PlacePicker); создание
+/// нового места по имени на этом пути не поддерживается (D-18).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct DevicePatch {
     #[specta(type = Option<i32>)]
@@ -139,10 +137,8 @@ pub struct DevicePatch {
     pub specs: Option<Option<String>>,
     pub kit: Option<Option<String>>,
     pub state: Option<Option<String>>,
-    /// Строковое название расположения (автоматически разрешается в location_id).
-    pub location: Option<Option<String>>,
     #[specta(type = Option<Option<i32>>)]
-    pub location_id: Option<Option<i64>>,
+    pub place_id: Option<Option<i64>>,
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
 }
@@ -177,8 +173,8 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
         if let Some(inner) = dto.state {
             p.state = inner;
         }
-        if let Some(inner) = dto.location_id {
-            p.location_id = inner;
+        if let Some(inner) = dto.place_id {
+            p.place_id = inner;
         }
         if let Some(v) = dto.status_id {
             p.status_id = Some(v);
@@ -193,7 +189,7 @@ pub struct DeviceFilter {
     #[specta(type = Option<i32>)]
     pub type_id: Option<i64>,
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
     pub state: Option<String>,
@@ -337,8 +333,8 @@ mod tests {
             specs: None,
             kit: None,
             state: Some("Хорошее".to_string()),
-            location_id: Some(5),
-            location: Some("Склад A".to_string()),
+            place_id: Some(5),
+            full_path: Some("Здание А / Склад".to_string()),
             status_id: 2,
             created_at_utc: 1_700_000_000,
             updated_at_utc: 1_700_001_000,
@@ -359,8 +355,7 @@ mod tests {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         };
         let json = serde_json::to_string(&new).expect("serialize");
@@ -381,8 +376,8 @@ mod tests {
             specs: None,
             kit: None,
             state: None,
-            location_id: None,
-            location: None,
+            place_id: None,
+            full_path: None,
             status_id: 1,
             created_at_utc: 0,
             updated_at_utc: 0,
