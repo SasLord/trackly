@@ -23,7 +23,7 @@ pub struct DeviceNew {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     pub status_id: i64,
 }
 
@@ -38,7 +38,7 @@ pub struct DevicePatch {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     pub status_id: Option<i64>,
 }
 
@@ -46,7 +46,7 @@ pub struct DevicePatch {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeviceFilter {
     pub type_id: Option<i64>,
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     pub status_id: Option<i64>,
     pub state: Option<String>,
     /// Многополевой FTS5-текстовый фильтр (Phase 18/AUTO-03).
@@ -94,9 +94,9 @@ pub struct DeviceRow {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
-    pub location_id: Option<i64>,
-    /// Resolved location name from the `locations` table (via LEFT JOIN on read paths).
-    pub location: Option<String>,
+    pub place_id: Option<i64>,
+    /// Resolved full path from `place_full_paths` (via LEFT JOIN on read paths).
+    pub full_path: Option<String>,
     pub status_id: i64,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
@@ -141,9 +141,6 @@ pub enum AutocompleteField {
     Kit,
     /// `condition` column (state in DTO)
     State,
-    /// Autocomplete returns distinct `locations.name` values via JOIN.
-    /// Filtered by ctx_status_id / ctx_name when provided.
-    Location,
 }
 
 impl AutocompleteField {
@@ -156,12 +153,11 @@ impl AutocompleteField {
             "specs" => Ok(Self::Specs),
             "kit" => Ok(Self::Kit),
             "state" => Ok(Self::State),
-            "location" => Ok(Self::Location),
             other => Err(AppError::Validation {
                 field: "field".to_string(),
                 message: format!(
                     "Неподдерживаемое поле автодополнения: «{other}». \
-                     Поддерживаемые поля: name, model, specs, kit, state, location."
+                     Поддерживаемые поля: name, model, specs, kit, state."
                 ),
             }),
         }
@@ -170,8 +166,6 @@ impl AutocompleteField {
     /// Returns the SQL column name corresponding to this field.
     ///
     /// Column names come **only** from this match — user input is never interpolated.
-    /// `Location` is handled separately in the adapter (JOIN query) — callers must
-    /// check `AutocompleteField::is_location()` before using this method for that variant.
     pub fn sql_column(self) -> &'static str {
         match self {
             Self::Name => "name",
@@ -179,14 +173,6 @@ impl AutocompleteField {
             Self::Specs => "notes",
             Self::Kit => "complectation",
             Self::State => "condition",
-            // Location is resolved via locations JOIN — this fallback is unused but
-            // needs a value to satisfy the match.
-            Self::Location => "location_id",
         }
-    }
-
-    /// Returns `true` for the `Location` variant, which requires special JOIN handling.
-    pub fn is_location(self) -> bool {
-        matches!(self, Self::Location)
     }
 }

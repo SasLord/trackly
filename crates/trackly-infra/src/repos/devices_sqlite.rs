@@ -26,14 +26,14 @@ use crate::error_conversions::map_rusqlite;
 pub struct SqliteDeviceRepository;
 
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
-/// LEFT JOIN locations добавляет `l.name` как последний столбец (индекс 15).
+/// LEFT JOIN place_full_paths добавляет `pfp.full_path` как последний столбец (индекс 15).
 const SELECT_DEVICES: &str = "
     SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, d.model,
-           d.condition, d.complectation, d.location_id, d.status_id, d.notes,
+           d.condition, d.complectation, d.place_id, d.status_id, d.notes,
            d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
-           l.name AS location_name
+           pfp.full_path AS place_path
     FROM devices d
-    LEFT JOIN locations l ON d.location_id = l.id
+    LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
 ";
 
 /// Маппинг строки результата → `DeviceRow`.
@@ -48,14 +48,14 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         model: row.get(5)?,
         state: row.get(6)?, // condition → state
         kit: row.get(7)?,   // complectation → kit
-        location_id: row.get(8)?,
+        place_id: row.get(8)?,
         status_id: row.get(9)?,
         specs: row.get(10)?, // notes → specs
         version: row.get(11)?,
         created_at_utc: row.get(12)?,
         updated_at_utc: row.get(13)?,
         deleted_at_utc: row.get(14)?,
-        location: row.get(15)?, // l.name from LEFT JOIN
+        full_path: row.get(15)?, // pfp.full_path from LEFT JOIN
     })
 }
 
@@ -135,42 +135,6 @@ fn build_fts_query(user_input: &str) -> String {
 /// Вспомогательные методы для использования внутри rusqlite-транзакций.
 /// `DeviceService` использует эти методы внутри `writer.execute` closures.
 impl SqliteDeviceRepository {
-    /// Разрешает строковое название расположения в `location_id`.
-    ///
-    /// Если строка непустая:
-    ///   - Создаёт запись в `locations` если не существует (INSERT OR IGNORE).
-    ///   - Возвращает id существующей или только что созданной записи.
-    ///
-    /// Если строка пустая / None — возвращает None.
-    pub fn resolve_location_id_in_tx(
-        &self,
-        tx: &rusqlite::Transaction<'_>,
-        location: Option<&str>,
-        now_utc: i64,
-    ) -> Result<Option<i64>, AppError> {
-        let name = match normalize_str(location) {
-            Some(n) => n,
-            None => return Ok(None),
-        };
-
-        tx.execute(
-            "INSERT OR IGNORE INTO locations (name, created_at_utc, updated_at_utc) \
-             VALUES (?1, ?2, ?2)",
-            rusqlite::params![name, now_utc],
-        )
-        .map_err(map_rusqlite)?;
-
-        let id: i64 = tx
-            .query_row(
-                "SELECT id FROM locations WHERE name = ?1",
-                rusqlite::params![name],
-                |r| r.get(0),
-            )
-            .map_err(map_rusqlite)?;
-
-        Ok(Some(id))
-    }
-
     /// INSERT в пределах транзакции. Возвращает новый `id`.
     pub fn create_in_tx(
         &self,
@@ -184,7 +148,7 @@ impl SqliteDeviceRepository {
         tx.execute(
             "INSERT INTO devices \
              (type_id, name, inventory_number, serial_number, model, \
-              condition, complectation, location_id, status_id, notes, \
+              condition, complectation, place_id, status_id, notes, \
               version, created_at_utc, updated_at_utc) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)",
             rusqlite::params![
@@ -195,7 +159,7 @@ impl SqliteDeviceRepository {
                 new.model,
                 new.state,
                 new.kit,
-                new.location_id,
+                new.place_id,
                 new.status_id,
                 new.specs,
                 now_utc,
@@ -245,7 +209,7 @@ impl SqliteDeviceRepository {
                    model            = COALESCE(?5, model),
                    condition        = COALESCE(?6, condition),
                    complectation    = COALESCE(?7, complectation),
-                   location_id      = COALESCE(?8, location_id),
+                   place_id         = COALESCE(?8, place_id),
                    status_id        = COALESCE(?9, status_id),
                    notes            = COALESCE(?10, notes),
                    version          = version + 1,
@@ -259,7 +223,7 @@ impl SqliteDeviceRepository {
                     patch.model.as_deref(),
                     patch.state.as_deref(),
                     patch.kit.as_deref(),
-                    patch.location_id,
+                    patch.place_id,
                     patch.status_id,
                     patch.specs.as_deref(),
                     now_utc,
@@ -554,7 +518,7 @@ impl DeviceRepository for SqliteDeviceRepository {
         conn.execute(
             "INSERT INTO devices \
              (type_id, name, inventory_number, serial_number, model, \
-              condition, complectation, location_id, status_id, notes, \
+              condition, complectation, place_id, status_id, notes, \
               version, created_at_utc, updated_at_utc) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)",
             rusqlite::params![
@@ -565,7 +529,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 new.model,
                 new.state,
                 new.kit,
-                new.location_id,
+                new.place_id,
                 new.status_id,
                 new.specs,
                 now_utc,
@@ -659,7 +623,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    model            = COALESCE(?5, model),
                    condition        = COALESCE(?6, condition),
                    complectation    = COALESCE(?7, complectation),
-                   location_id      = COALESCE(?8, location_id),
+                   place_id         = COALESCE(?8, place_id),
                    status_id        = COALESCE(?9, status_id),
                    notes            = COALESCE(?10, notes),
                    version          = version + 1,
@@ -673,7 +637,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                     patch.model.as_deref(),
                     patch.state.as_deref(),
                     patch.kit.as_deref(),
-                    patch.location_id,
+                    patch.place_id,
                     patch.status_id,
                     patch.specs.as_deref(),
                     now_utc,
@@ -784,11 +748,11 @@ impl DeviceRepository for SqliteDeviceRepository {
         let mut stmt = conn
             .prepare(&format!(
                 "SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number,
-                        d.model, d.condition, d.complectation, d.location_id, d.status_id,
+                        d.model, d.condition, d.complectation, d.place_id, d.status_id,
                         d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
-                        l.name AS location_name
+                        pfp.full_path AS place_path
                  FROM devices d
-                 LEFT JOIN locations l ON d.location_id = l.id
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
                  JOIN devices_fts ON d.id = devices_fts.rowid
                  WHERE devices_fts MATCH ?1
                    AND d.deleted_at_utc IS NULL
@@ -824,8 +788,7 @@ impl DeviceRepository for SqliteDeviceRepository {
         // Build optional status-IN fragment + params. When `status_in` is set,
         // we inline a parameterised `status_id IN (?, ?, ...)` clause. The
         // parameter indices are appended AFTER the explicit ones used by the
-        // base SQL — for `Location` queries we re-use `d.status_id`, for
-        // direct device-field queries we use `status_id`.
+        // base SQL.
         let status_in_filter_devices: Option<String> = status_in.and_then(|ids| {
             if ids.is_empty() {
                 None
@@ -834,69 +797,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 Some(format!("status_id IN ({})", placeholders.join(",")))
             }
         });
-        let status_in_filter_location: Option<String> = status_in.and_then(|ids| {
-            if ids.is_empty() {
-                None
-            } else {
-                let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
-                Some(format!("d.status_id IN ({})", placeholders.join(",")))
-            }
-        });
 
-        // Location is special: queries `locations` table via JOIN with context filtering.
-        if field.is_location() {
-            let mut clauses = vec![
-                "l.deleted_at_utc IS NULL".to_string(),
-                "l.name LIKE ?1".to_string(),
-                "d.deleted_at_utc IS NULL".to_string(),
-            ];
-            if ctx_name.is_some() {
-                clauses.push("d.name = ?2".to_string());
-            }
-            if ctx_status_id.is_some() {
-                let idx = if ctx_name.is_some() { 3 } else { 2 };
-                clauses.push(format!("d.status_id = ?{idx}"));
-            }
-            if let Some(ref f) = status_in_filter_location {
-                clauses.push(f.clone());
-            }
-            let sql = format!(
-                "SELECT DISTINCT l.name
-                 FROM locations l
-                 JOIN devices d ON d.location_id = l.id
-                 WHERE {conds}
-                 ORDER BY l.name
-                 LIMIT 30",
-                conds = clauses.join("\n                 AND "),
-            );
-
-            use rusqlite::types::ToSql;
-            let like_box: Box<dyn ToSql> = Box::new(like_pattern.clone());
-            let mut owned_params: Vec<Box<dyn ToSql>> = vec![like_box];
-            if let Some(name) = ctx_name {
-                owned_params.push(Box::new(name.to_string()));
-            }
-            if let Some(sid) = ctx_status_id {
-                owned_params.push(Box::new(sid));
-            }
-            if let Some(ids) = status_in {
-                for id in ids {
-                    owned_params.push(Box::new(*id));
-                }
-            }
-
-            let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
-            let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
-            let rows = stmt
-                .query_map(param_refs.as_slice(), |r| r.get::<_, String>(0))
-                .map_err(map_rusqlite)?;
-            for row in rows {
-                results.push(row.map_err(map_rusqlite)?);
-            }
-            return Ok(results);
-        }
-
-        // All other fields: query `devices` table directly.
+        // Query `devices` table directly.
         // Column name comes ONLY from the whitelisted enum — never from user input (T-02-04-02).
         let col = field.sql_column();
 
@@ -1187,8 +1089,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 specs,
                 kit,
                 state,
-                location_id,
-                location: location_name,
+                place_id: location_id,
+                full_path: location_name,
                 status_id,
                 version,
                 created_at_utc,
