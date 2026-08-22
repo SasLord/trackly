@@ -153,8 +153,12 @@ pub struct PlaceContentRow {
 /// else `level` (floors, including 0 and negatives — PLC-02) wins if both have it set,
 /// else fall back to natural name comparison.
 pub fn sibling_cmp(a: &PlaceRow, b: &PlaceRow) -> std::cmp::Ordering {
-    // RED stub (TDD Task 1) — deliberately wrong: ignores sort_order/level entirely.
-    // Fixed to the real Pattern-4 comparator in the GREEN commit.
+    if let (Some(sa), Some(sb)) = (a.sort_order, b.sort_order) {
+        return sa.cmp(&sb);
+    }
+    if let (Some(la), Some(lb)) = (a.level, b.level) {
+        return la.cmp(&lb);
+    }
     natural_name_cmp(&a.name, &b.name)
 }
 
@@ -162,9 +166,61 @@ pub fn sibling_cmp(a: &PlaceRow, b: &PlaceRow) -> std::cmp::Ordering {
 /// ASCII-digit/non-digit runs, compares digit runs as `u64` (so "2" < "10"), and
 /// compares non-digit runs as plain string slices.
 pub fn natural_name_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    // RED stub (TDD Task 1) — deliberately wrong: plain lexicographic comparison,
-    // so "10" < "2" (fails the numeric-run test). Fixed in the GREEN commit.
-    a.cmp(b)
+    let mut ai = a.chars().peekable();
+    let mut bi = b.chars().peekable();
+
+    loop {
+        match (ai.peek().copied(), bi.peek().copied()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(ca), Some(cb)) => {
+                if ca.is_ascii_digit() && cb.is_ascii_digit() {
+                    let na = take_digit_run(&mut ai);
+                    let nb = take_digit_run(&mut bi);
+                    match na.cmp(&nb) {
+                        std::cmp::Ordering::Equal => continue,
+                        other => return other,
+                    }
+                } else {
+                    let sa = take_non_digit_run(&mut ai);
+                    let sb = take_non_digit_run(&mut bi);
+                    match sa.cmp(&sb) {
+                        std::cmp::Ordering::Equal => continue,
+                        other => return other,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Consumes a run of ASCII digits from `it` and parses it as `u64`.
+fn take_digit_run(it: &mut std::iter::Peekable<std::str::Chars>) -> u64 {
+    let mut s = String::new();
+    while let Some(&c) = it.peek() {
+        if c.is_ascii_digit() {
+            s.push(c);
+            it.next();
+        } else {
+            break;
+        }
+    }
+    s.parse().unwrap_or(0)
+}
+
+/// Consumes a run of non-digit characters from `it`.
+fn take_non_digit_run(it: &mut std::iter::Peekable<std::str::Chars>) -> String {
+    let mut s = String::new();
+    while let Some(&c) = it.peek() {
+        if !c.is_ascii_digit() {
+            s.push(c);
+            it.next();
+        } else {
+            break;
+        }
+    }
+    s
 }
 
 #[cfg(test)]
