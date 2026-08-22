@@ -79,12 +79,12 @@ type GroupRowTuple = (
     Option<String>, // kit (complectation)
     Option<String>, // state (condition)
     i64,            // condition_distinct_count
-    Option<i64>,    // location_id
+    Option<i64>,    // place_id
     i64,            // status_id
     i64,            // version
     i64,            // created_at_utc
     i64,            // updated_at_utc
-    Option<String>, // location_name
+    Option<String>, // place_path
     Option<String>, // inv_no
     Option<String>, // serial_no
 );
@@ -278,7 +278,7 @@ impl SqliteDeviceRepository {
     ) -> Result<DeviceRow, AppError> {
         let affected = tx
             .execute(
-                "UPDATE devices SET status_id = ?1, location_id = ?2, \
+                "UPDATE devices SET status_id = ?1, place_id = ?2, \
                  version = version + 1, updated_at_utc = ?3 \
                  WHERE id = ?4 AND deleted_at_utc IS NULL",
                 rusqlite::params![status_id, location_id, now_utc, device_id],
@@ -313,7 +313,7 @@ impl SqliteDeviceRepository {
             .execute(
                 "UPDATE devices SET \
                    status_id      = ?1, \
-                   location_id    = ?2, \
+                   place_id       = ?2, \
                    condition      = COALESCE(?3, condition), \
                    version        = version + 1, \
                    updated_at_utc = ?4 \
@@ -360,7 +360,7 @@ impl SqliteDeviceRepository {
             .ok_or_else(|| AppError::Internal {
                 source_chain: format!("undo: snapshot for device {device_id} lacks status_id"),
             })?;
-        let location_id: Option<i64> = snapshot.get("location_id").and_then(|v| v.as_i64());
+        let location_id: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
         let state: Option<&str> = snapshot.get("state").and_then(|v| v.as_str());
         let kit: Option<&str> = snapshot.get("kit").and_then(|v| v.as_str());
         // Optional «full» fields (когда snapshot писался полностью).
@@ -383,7 +383,7 @@ impl SqliteDeviceRepository {
                    complectation    = COALESCE(?7, complectation), \
                    notes            = COALESCE(?8, notes), \
                    status_id        = ?9, \
-                   location_id      = ?10, \
+                   place_id         = ?10, \
                    version          = version + 1, \
                    updated_at_utc   = ?11 \
                  WHERE id = ?12 AND deleted_at_utc IS NULL",
@@ -436,13 +436,13 @@ impl SqliteDeviceRepository {
                 "INSERT INTO devices ( \
                    type_id, name, inventory_number, serial_number, model, \
                    condition, complectation, notes, \
-                   location_id, status_id, \
+                   place_id, status_id, \
                    version, created_at_utc, updated_at_utc, deleted_at_utc \
                  ) \
                  SELECT \
                    d.type_id, d.name, NULL, NULL, d.model, \
                    d.condition, d.complectation, d.notes, \
-                   d.location_id, d.status_id, \
+                   d.place_id, d.status_id, \
                    1, ?1, ?1, NULL \
                  FROM devices d \
                  WHERE d.id = ?2 AND d.deleted_at_utc IS NULL",
@@ -914,17 +914,17 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
-                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
                    MAX(d.created_at_utc)                AS created_at_utc,
                    MAX(d.updated_at_utc)                AS updated_at_utc,
-                   l.name                               AS location_name,
+                   pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
                    MAX(d.serial_number)                 AS serial_no
                  FROM devices d
-                 LEFT JOIN locations l ON l.id = (
-                   SELECT MAX(d2.location_id)
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
                      AND d2.name = d.name
@@ -948,18 +948,18 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
-                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
                    MAX(d.created_at_utc)                AS created_at_utc,
                    MAX(d.updated_at_utc)                AS updated_at_utc,
-                   l.name                               AS location_name,
+                   pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
                    MAX(d.serial_number)                 AS serial_no
                  FROM devices d
                  JOIN devices_fts ON d.id = devices_fts.rowid
-                 LEFT JOIN locations l ON l.id = (
-                   SELECT MAX(d2.location_id)
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
                      AND d2.name = d.name
@@ -984,17 +984,17 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
-                   MAX(d.location_id)                   AS location_id,
+                   MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
                    MAX(d.created_at_utc)                AS created_at_utc,
                    MAX(d.updated_at_utc)                AS updated_at_utc,
-                   l.name                               AS location_name,
+                   pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
                    MAX(d.serial_number)                 AS serial_no
                  FROM devices d
-                 LEFT JOIN locations l ON l.id = (
-                   SELECT MAX(d2.location_id)
+                 LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
                      AND d2.name = d.name
