@@ -32,8 +32,11 @@ pub struct CartridgeRow {
     pub state_id: Option<i64>,
     /// Joined: cartridge_states.name
     pub state_name: Option<String>,
-    /// Freeform location text (round-tripped through locations table).
-    pub location: Option<String>,
+    /// Live-resolved place_id (D-12: cartridge has its own place, not derived
+    /// from the printer at read time).
+    pub place_id: Option<i64>,
+    /// Live-resolved display path via `place_full_paths`.
+    pub full_path: Option<String>,
     /// Denormalised current holder (кому выдано).
     pub holder_name: Option<String>,
     pub notes: Option<String>,
@@ -71,7 +74,7 @@ pub struct CartridgeNew {
     pub code_override: Option<String>,
     /// Initial charge state (1=Полный, 2=Частичный, 3=Пустой); None = unset.
     pub state_id: Option<i64>,
-    pub location: Option<String>,
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
 }
 
@@ -107,7 +110,7 @@ pub enum CartridgeTransitionOp {
         date_utc: i64,
         given_by_name: String,
         given_to_name: String,
-        location: String,
+        place_id: Option<i64>,
         /// Принтер, в который устанавливается картридж (device_id, FK на devices).
         /// None допустим для обратной совместимости со старым cartridge-centric
         /// входом (D-08), где принтер не указывается явно — авто-возврат
@@ -118,16 +121,16 @@ pub enum CartridgeTransitionOp {
         /// (`cartridges_sqlite.rs`): 3 (Пустой) для картриджей (kind_id=1),
         /// 5 (Изношенный) для барабанов (kind_id=2) — см. R7, Phase 13.
         previous_cartridge_state_id: Option<i64>,
-        /// Override для D-16: расположение предыдущего картриджа при
-        /// авто-возврате; None = дефолт пустая строка.
-        previous_cartridge_location: Option<String>,
+        /// Override для D-16: place_id предыдущего картриджа при
+        /// авто-возврате; None = дефолт (нет места).
+        previous_cartridge_place_id: Option<i64>,
     },
     /// Вернуть на склад: В работе → На складе.
     /// holder_name cleared; state_id set to payload value (default: 3=Пустой).
     ReturnToStock {
         /// New charge state (default 3=Пустой, editable by user).
         state_id: i64,
-        location: String,
+        place_id: Option<i64>,
         notes: Option<String>,
     },
     /// Отправить на заправку: На складе → На заправке.
@@ -135,14 +138,14 @@ pub enum CartridgeTransitionOp {
         date_utc: i64,
         given_by_name: String,
         given_to_name: String,
-        location: String,
+        place_id: Option<i64>,
     },
     /// Забрать с заправки: На заправке → На складе.
     /// state_id set to payload value (default: 1=Полный).
     FromRefill {
         /// New charge state (default 1=Полный, editable by user).
         state_id: i64,
-        location: String,
+        place_id: Option<i64>,
         notes: Option<String>,
     },
     /// Списать: любой статус != 4 → 4 (Списано).
@@ -374,10 +377,10 @@ mod tests {
             date_utc: 0,
             given_by_name: "A".into(),
             given_to_name: "B".into(),
-            location: "Каб. 1".into(),
+            place_id: Some(1),
             printer_device_id: None,
             previous_cartridge_state_id: None,
-            previous_cartridge_location: None,
+            previous_cartridge_place_id: None,
         };
         assert!(op.validate_from_status(1).is_ok());
         assert!(op.validate_from_status(2).is_err()); // wrong status
@@ -388,7 +391,7 @@ mod tests {
     fn transition_op_validate_return_to_stock() {
         let op = CartridgeTransitionOp::ReturnToStock {
             state_id: 3,
-            location: "Склад".into(),
+            place_id: Some(2),
             notes: None,
         };
         assert!(op.validate_from_status(2).is_ok());
@@ -416,10 +419,10 @@ mod tests {
                 date_utc: 0,
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
-                location: "X".into(),
+                place_id: Some(1),
                 printer_device_id: None,
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             }
             .audit_action(),
             "custom:install"
@@ -441,10 +444,10 @@ mod tests {
                 date_utc: 0,
                 given_by_name: String::new(),
                 given_to_name: String::new(),
-                location: String::new(),
+                place_id: None,
                 printer_device_id: None,
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             }
             .target_status_id(),
             2
