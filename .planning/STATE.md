@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-22T19:49:09.987Z"
+last_updated: "2026-08-22T20:11:55.484Z"
 last_activity: 2026-08-22
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 4 of 22
+Plan: 5 of 22
 Status: Ready to execute
 Last activity: 2026-08-22
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -310,6 +310,7 @@ Last activity: 2026-08-22
 | Phase 39 P01 | 80min | 3 tasks | 3 files |
 | Phase 39 P02 | 25min | 3 tasks | 5 files |
 | Phase 39 P03 | 12min | 3 tasks | 4 files |
+| Phase 39 P04 | 70min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -774,6 +775,7 @@ Recent decisions affecting current work:
 - [Phase 39]: ActRow carries both full_path (live) and place_path_snapshot (frozen at write time, D-16) as two distinct fields
 - [Phase 39]: CartridgeTransitionOp.place_id widened from required String to Option<i64> to let cartridge_service.rs apply a kind-aware default (D-13)
 - [Phase 39]: PrinterRow gained device_place_id as a net-new field for PlacePicker id-bound selection
+- [Phase 39-04]: CAS-failure error mapping uses OptimisticLockMismatch/NotFound split (established codebase pattern), not the plan text's literal Conflict — devices_sqlite.rs/acts_sqlite.rs already established this split; a blanket Conflict would make places_sqlite.rs the only inconsistent adapter
 
 ### Pending Todos
 
@@ -955,8 +957,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-22T19:49:09.978Z
-Stopped at: Completed 39-03-PLAN.md
+Last session: 2026-08-22T20:11:55.475Z
+Stopped at: Completed 39-04-PLAN.md
 Resume file: 
 
 None
