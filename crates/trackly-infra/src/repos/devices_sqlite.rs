@@ -722,47 +722,151 @@ impl DeviceRepository for SqliteDeviceRepository {
         fts_query: &str,
         page: &Pagination,
     ) -> Result<(Vec<DeviceRow>, u64), AppError> {
+        use rusqlite::types::ToSql;
+
         // Build sanitized FTS5 MATCH query (T-02-04-01).
         let match_expr = build_fts_query(fts_query);
 
-        // Empty query after sanitization → return empty result set.
-        if match_expr.is_empty() {
+        // D-29/PLC-05: a place-path substring match is computed in Rust — split
+        // into root-to-leaf paths via `place_full_paths` and compared with
+        // `.to_lowercase()` (RESEARCH Common Pitfall 2: Cyrillic substring
+        // matching must never go through SQL LIKE/GLOB). Uses the RAW,
+        // un-sanitized `fts_query` — not the FTS5-tokenized `match_expr` —
+        // since place names may contain characters the FTS5 tokenizer treats
+        // specially. Read live on every call: renaming or moving a place is
+        // reflected on the very next `search_fts` call, no reindex step.
+        let query_lower = fts_query.trim().to_lowercase();
+        let place_ids: Vec<i64> = if query_lower.is_empty() {
+            Vec::new()
+        } else {
+            let mut stmt = conn
+                .prepare("SELECT place_id, full_path FROM place_full_paths")
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let path: String = r.get(1)?;
+                    Ok((id, path))
+                })
+                .map_err(map_rusqlite)?;
+            let mut ids = Vec::new();
+            for row in rows {
+                let (id, path) = row.map_err(map_rusqlite)?;
+                if path.to_lowercase().contains(&query_lower) {
+                    ids.push(id);
+                }
+            }
+            ids
+        };
+
+        let has_fts = !match_expr.is_empty();
+        let has_place = !place_ids.is_empty();
+
+        // Only bail out early when NEITHER the FTS match nor the place-path
+        // match has any content — a place-only match must still succeed even
+        // when `match_expr` sanitizes to empty (e.g. punctuation-only input),
+        // which is exactly why this check moved below the place-path lookup
+        // instead of short-circuiting before it ever ran.
+        if !has_fts && !has_place {
             return Ok((Vec::new(), 0));
         }
 
         let limit = page.limit.min(200) as i64;
         let offset = page.offset as i64;
 
-        // Total count for pagination UI.
-        let total: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM devices d
-                 JOIN devices_fts ON d.id = devices_fts.rowid
-                 WHERE devices_fts MATCH ?1
-                   AND d.deleted_at_utc IS NULL",
-                rusqlite::params![match_expr],
-                |r| r.get(0),
-            )
-            .map_err(map_rusqlite)?;
+        // Build whichever CTE member(s) are present — a member with zero
+        // placeholders is skipped entirely rather than emitted as an
+        // always-empty query fragment.
+        let mut ctes: Vec<String> = Vec::new();
+        if has_fts {
+            ctes.push(
+                "fts_hits AS (\
+                     SELECT d.id AS id, devices_fts.rank AS rank \
+                     FROM devices d \
+                     JOIN devices_fts ON d.id = devices_fts.rowid \
+                     WHERE devices_fts MATCH ? AND d.deleted_at_utc IS NULL\
+                 )"
+                .to_string(),
+            );
+        }
+        if has_place {
+            let placeholders: Vec<&str> = place_ids.iter().map(|_| "?").collect();
+            ctes.push(format!(
+                "place_hits AS (SELECT id FROM devices WHERE place_id IN ({}) AND deleted_at_utc IS NULL)",
+                placeholders.join(",")
+            ));
+        }
+        let cte_sql = ctes.join(",\n");
 
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number,
-                        d.model, d.condition, d.complectation, d.place_id, d.status_id,
-                        d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
-                        pfp.full_path AS place_path
-                 FROM devices d
-                 LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
-                 JOIN devices_fts ON d.id = devices_fts.rowid
-                 WHERE devices_fts MATCH ?1
-                   AND d.deleted_at_utc IS NULL
-                 ORDER BY rank
-                 LIMIT {limit} OFFSET {offset}"
-            ))
-            .map_err(map_rusqlite)?;
+        let where_clause = match (has_fts, has_place) {
+            (true, true) => {
+                "(d.id IN (SELECT id FROM fts_hits) OR d.id IN (SELECT id FROM place_hits))"
+            }
+            (true, false) => "d.id IN (SELECT id FROM fts_hits)",
+            (false, true) => "d.id IN (SELECT id FROM place_hits)",
+            (false, false) => unreachable!("early-returned above when neither has content"),
+        };
 
+        // Params, in the exact order the CTE placeholders appear (fts_hits'
+        // `?` first if present, then place_hits' `?, ?, ...`).
+        let mut cte_params: Vec<Box<dyn ToSql>> = Vec::new();
+        if has_fts {
+            cte_params.push(Box::new(match_expr));
+        }
+        if has_place {
+            for id in &place_ids {
+                cte_params.push(Box::new(*id));
+            }
+        }
+
+        // --- Total count (own prepared statement — CTEs are not shared
+        //     across statements in SQLite, so the WITH clause is repeated). ---
+        let count_sql = format!("WITH {cte_sql} SELECT COUNT(*) FROM devices d WHERE {where_clause}");
+        let total: i64 = {
+            let mut stmt = conn.prepare(&count_sql).map_err(map_rusqlite)?;
+            let param_refs: Vec<&dyn ToSql> = cte_params.iter().map(|b| b.as_ref()).collect();
+            stmt.query_row(param_refs.as_slice(), |r| r.get(0))
+                .map_err(map_rusqlite)?
+        };
+
+        // --- Row query ---
+        // `place_full_paths` LEFT JOIN (Task 1) supplies each row's own
+        // `full_path` column — unrelated to and unaffected by the `place_hits`
+        // matching CTE above, which only decides which device IDs are in the
+        // result set.
+        let fh_join = if has_fts {
+            "LEFT JOIN fts_hits fh ON fh.id = d.id "
+        } else {
+            ""
+        };
+        // Rank ordering only applies meaningfully to fts_hits; a device found
+        // solely via place_hits has no FTS rank — `fh.rank IS NULL` sorts
+        // those rows after ranked ones instead of erroring on a NULL rank
+        // comparison, with `d.id` as the final deterministic tiebreak.
+        let order_clause = if has_fts {
+            "fh.rank IS NULL, fh.rank, d.id"
+        } else {
+            "d.id"
+        };
+
+        let row_sql = format!(
+            "WITH {cte_sql} \
+             SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, \
+                    d.model, d.condition, d.complectation, d.place_id, d.status_id, \
+                    d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc, \
+                    pfp.full_path AS place_path \
+             FROM devices d \
+             LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
+             {fh_join}\
+             WHERE {where_clause} \
+             ORDER BY {order_clause} \
+             LIMIT {limit} OFFSET {offset}"
+        );
+
+        let mut stmt = conn.prepare(&row_sql).map_err(map_rusqlite)?;
+        let param_refs: Vec<&dyn ToSql> = cte_params.iter().map(|b| b.as_ref()).collect();
         let rows = stmt
-            .query_map(rusqlite::params![match_expr], from_row)
+            .query_map(param_refs.as_slice(), from_row)
             .map_err(map_rusqlite)?;
 
         let mut devices = Vec::new();
