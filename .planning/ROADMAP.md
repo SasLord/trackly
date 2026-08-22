@@ -136,7 +136,30 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans**: TBD
+**Plans:** 21 plans (10 waves)
+
+Plans:
+- [ ] 39-01-PLAN.md — places schema (V037/V038), no-data-migration, migration_idempotency coverage
+- [ ] 39-02-PLAN.md — domain::places contracts + PlaceRepository trait + auth.rs D-20 split
+- [ ] 39-03-PLAN.md — acts/cartridges/printers/requests domain field renames onto place_id
+- [ ] 39-04-PLAN.md — SqlitePlaceRepository (CRUD, cycle-check move, delete-conflict, subtree/storage queries) + places_crud.rs
+- [ ] 39-05-PLAN.md — PlaceService mutations (create/rename/move/archive/delete) + places_move_cycle.rs/places_delete_blocked.rs
+- [ ] 39-06-PLAN.md — device_service/devices_sqlite/domain::devices onto place_id, drop resolve_location_id_in_tx
+- [ ] 39-07-PLAN.md — act_service create/update onto place_id + place_path_snapshot capture
+- [ ] 39-08-PLAN.md — PlaceService reads incl. Cyrillic-safe search (places_search.rs/places_contents.rs)
+- [ ] 39-09-PLAN.md — cartridge_service/cartridges_sqlite onto place_id, drop upsert_location_in_tx
+- [ ] 39-10-PLAN.md — report_service/request_service/requests_sqlite/printers_sqlite onto place_full_paths (D-28 subtree filter)
+- [ ] 39-11-PLAN.md — act_service return-flow onto place_id + act_handover.minijinja place_path rename + acts_place_snapshot.rs
+- [ ] 39-12-PLAN.md — tauri_cmds/places.rs + http/places.rs + specta_export + role_endpoint_matrix D-20 coverage
+- [ ] 39-13-PLAN.md — PlacePicker.svelte (tree + search modes, D-18 create-row) + showcase
+- [ ] 39-14-PLAN.md — /places route + sidebar + PlacesMasterDetail/PlaceTree/PlaceTreeNode
+- [ ] 39-15-PLAN.md — device-family PlacePicker wiring (form, autocomplete, printer create, CSV import)
+- [ ] 39-16-PLAN.md — cartridge-family PlacePicker wiring (form, 5 transition ops, D-11.3 checkbox)
+- [ ] 39-17-PLAN.md — act-family PlacePicker wiring (form, bulk return, per-row override)
+- [ ] 39-18-PLAN.md — reports PlacePicker wiring (D-26 short-path columns, D-28 subtree filter)
+- [ ] 39-19-PLAN.md — PlaceFormModal + PlaceMoveModal
+- [ ] 39-20-PLAN.md — PlaceContents.svelte (PLC-06 content screen) + end-to-end checkpoint
+- [ ] 39-21-PLAN.md — delete LocationAutocomplete.svelte, full-repo sweep, CI gate, DB-upgrade checkpoint
 
 **UI hint**: yes
 
