@@ -1004,7 +1004,7 @@ fn row_field(row: &ReportRow, col: &str) -> String {
             .handover_date_utc
             .map(|ts| ts.to_string())
             .unwrap_or_default(),
-        "location_name" => row.location_name.as_deref().unwrap_or("").to_string(),
+        "place_path" => row.place_path.as_deref().unwrap_or("").to_string(),
         "act_type" => row.act_type.as_deref().unwrap_or("").to_string(),
         "device_name" => row.device_name.as_deref().unwrap_or("").to_string(),
         "quantity" => row.quantity.map(|q| q.to_string()).unwrap_or_default(),
@@ -1031,6 +1031,7 @@ fn query_acts_inner(
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push(format!("a.act_type = ?{}", next_idx(&owned_params)));
     owned_params.push(Box::new(act_type.to_string()));
@@ -1051,9 +1052,20 @@ fn query_acts_inner(
         ));
         owned_params.push(Box::new(to));
     }
-    if let Some(loc) = filter.location_id {
-        clauses.push(format!("a.location_id = ?{}", next_idx(&owned_params)));
-        owned_params.push(Box::new(loc));
+    // D-28: subtree-inclusive place filter — choosing a place captures it
+    // and every place nested under it, not just an exact place_id match.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        with_prefix.push_str(&format!(
+            "WITH RECURSIVE subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        ));
+        clauses.push("a.place_id IN (SELECT id FROM subtree)".to_string());
     }
     if let Some(type_id) = filter.type_id {
         clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
@@ -1067,21 +1079,45 @@ fn query_acts_inner(
         ));
         owned_params.push(Box::new(like_val));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
+    // storage-place membership (self or any ancestor is_storage), a
+    // dimension separate from item status (D-11.5) — status_id is untouched.
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
+        if want_storage {
+            clauses.push("a.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(a.place_id IS NULL OR a.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT a.id, \
+        "{with_prefix}SELECT a.id, \
                strftime('%Y-%m', datetime(a.handover_date_utc, 'unixepoch', '+3 hours')) AS month_key, \
                CAST(a.number AS TEXT) as number, \
                CAST(a.sub_number AS TEXT) as sub_number, \
                a.giver_name, a.receiver_name, \
                a.handover_date_utc, \
-               l.name AS location_name, \
+               pfp.full_path AS place_path, \
                a.act_type, \
                GROUP_CONCAT(d.name, ', ') AS device_name, \
                SUM(ai.quantity) AS quantity \
          FROM acts a \
-         LEFT JOIN locations l ON a.location_id = l.id \
+         LEFT JOIN place_full_paths pfp ON pfp.place_id = a.place_id \
          LEFT JOIN act_items ai ON ai.act_id = a.id \
          LEFT JOIN devices d ON d.id = ai.device_id \
          WHERE {where_clause} \
@@ -1102,7 +1138,7 @@ fn query_acts_inner(
                 giver_name: r.get(4)?,
                 receiver_name: r.get(5)?,
                 handover_date_utc: r.get(6)?,
-                location_name: r.get(7)?,
+                place_path: r.get(7)?,
                 act_type: r.get(8)?,
                 device_name: r.get(9)?,
                 quantity: r.get(10)?,
@@ -1130,6 +1166,7 @@ fn query_device_snapshot(
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("d.deleted_at_utc IS NULL".to_string());
 
@@ -1143,21 +1180,56 @@ fn query_device_snapshot(
         ));
         owned_params.push(Box::new(default_status_name.to_string()));
     }
-    if let Some(loc) = filter.location_id {
-        clauses.push(format!("d.location_id = ?{}", next_idx(&owned_params)));
-        owned_params.push(Box::new(loc));
+    // D-28: subtree-inclusive place filter — choosing a place captures it
+    // and every place nested under it, not just an exact place_id match.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        with_prefix.push_str(&format!(
+            "WITH RECURSIVE subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        ));
+        clauses.push("d.place_id IN (SELECT id FROM subtree)".to_string());
     }
     if let Some(type_id) = filter.type_id {
         clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(type_id));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
+    // storage-place membership (self or any ancestor is_storage), a
+    // dimension separate from item status (D-11.5) — status_id is untouched.
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
+        if want_storage {
+            clauses.push("d.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(d.place_id IS NULL OR d.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT d.id, NULL as month_key, d.name as device_name, d.serial_number, \
-               l.name as location_name, s.name as status_name \
+        "{with_prefix}SELECT d.id, NULL as month_key, d.name as device_name, d.serial_number, \
+               pfp.full_path as place_path, s.name as status_name \
          FROM devices d \
-         LEFT JOIN locations l ON d.location_id = l.id \
+         LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
          LEFT JOIN device_statuses s ON d.status_id = s.id \
          WHERE {where_clause} \
          ORDER BY d.name ASC, d.id ASC \
@@ -1176,7 +1248,7 @@ fn query_device_snapshot(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: None,
-                location_name: r.get::<_, Option<String>>(4)?,
+                place_path: r.get::<_, Option<String>>(4)?,
                 act_type: None,
                 device_name: r.get(2)?,
                 quantity: None,
@@ -1506,6 +1578,7 @@ fn count_acts_inner(
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push(format!("a.act_type = ?{}", next_idx(&owned_params)));
     owned_params.push(Box::new(act_type.to_string()));
@@ -1526,9 +1599,19 @@ fn count_acts_inner(
         ));
         owned_params.push(Box::new(to));
     }
-    if let Some(loc) = filter.location_id {
-        clauses.push(format!("a.location_id = ?{}", next_idx(&owned_params)));
-        owned_params.push(Box::new(loc));
+    // D-28: subtree-inclusive place filter — mirrors query_acts_inner.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        with_prefix.push_str(&format!(
+            "WITH RECURSIVE subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        ));
+        clauses.push("a.place_id IN (SELECT id FROM subtree)".to_string());
     }
     if let Some(type_id) = filter.type_id {
         clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
@@ -1542,12 +1625,34 @@ fn count_acts_inner(
         ));
         owned_params.push(Box::new(like_val));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — mirrors
+    // query_acts_inner; independent of item status (D-11.5).
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
+        if want_storage {
+            clauses.push("a.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(a.place_id IS NULL OR a.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT COUNT(DISTINCT a.id) \
+        "{with_prefix}SELECT COUNT(DISTINCT a.id) \
          FROM acts a \
-         LEFT JOIN locations l ON a.location_id = l.id \
          LEFT JOIN act_items ai ON ai.act_id = a.id \
          LEFT JOIN devices d ON d.id = ai.device_id \
          WHERE {where_clause}"
@@ -1566,6 +1671,7 @@ fn count_device_snapshot(
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("d.deleted_at_utc IS NULL".to_string());
 
@@ -1579,19 +1685,51 @@ fn count_device_snapshot(
         ));
         owned_params.push(Box::new(default_status_name.to_string()));
     }
-    if let Some(loc) = filter.location_id {
-        clauses.push(format!("d.location_id = ?{}", next_idx(&owned_params)));
-        owned_params.push(Box::new(loc));
+    // D-28: subtree-inclusive place filter — mirrors query_device_snapshot.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        with_prefix.push_str(&format!(
+            "WITH RECURSIVE subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        ));
+        clauses.push("d.place_id IN (SELECT id FROM subtree)".to_string());
     }
     if let Some(type_id) = filter.type_id {
         clauses.push(format!("d.type_id = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(type_id));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — mirrors
+    // query_device_snapshot; independent of item status (D-11.5).
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
+        if want_storage {
+            clauses.push("d.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(d.place_id IS NULL OR d.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT COUNT(*) FROM devices d \
-         LEFT JOIN locations l ON d.location_id = l.id \
+        "{with_prefix}SELECT COUNT(*) FROM devices d \
          LEFT JOIN device_statuses s ON d.status_id = s.id \
          WHERE {where_clause}"
     );
