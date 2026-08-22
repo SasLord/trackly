@@ -765,7 +765,7 @@ a fast-moving library API.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `place_id_override` on `act_items` (return-time per-item place override) also carry
    its own snapshot text, or does the act-level `place_path_snapshot` suffice for D-16?**
@@ -778,6 +778,9 @@ a fast-moving library API.
      contract, matches current `condition_at_time`/`complectation_at_time` being the ONLY
      per-item snapshot fields already in `act_items`); this doesn't block adding a per-item
      snapshot column later since it's purely additive.
+   - **RESOLVED:** act-level snapshot only, per the recommendation above (user decision,
+     2026-08-22, now `39-CONTEXT.md` D-16 clarification — `place_path_snapshot` lives on `acts`,
+     one field per act, NOT on `act_items`; see `migrations/V038`, Plan 01).
 
 2. **Does `is_storage` need a partial index for the D-11.2 "быстрый фильтр «на складе»"
    report/filter query?**
@@ -793,6 +796,10 @@ a fast-moving library API.
      "own place_id only" (simpler, matches the literal reading of D-08's examples) and document
      the choice; an ancestor-inheriting version can be added later as `WHERE place_id IN (SELECT
      id FROM subtree_of_any_storage_ancestor)` without a schema change.
+   - **RESOLVED:** ancestor-inclusive `is_storage` (user decision, 2026-08-22, now `39-CONTEXT.md`
+     D-11.4/D-11.5) — "склад" filtering/suggestion treats a place as storage if the place itself
+     OR any ancestor has `is_storage=1`, resolved via the recursive-CTE `list_storage_place_ids`
+     query (Plan 02/04), not "own `place_id` only."
 
 ## Environment Availability
 

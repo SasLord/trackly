@@ -1,10 +1,11 @@
 ---
 phase: 39
 slug: place-tree
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-22
+approved: 2026-08-22
 ---
 
 # Phase 39 — Validation Strategy
@@ -99,18 +100,23 @@ created: 2026-08-22
 |----------|-------------|------------|-------------------|
 | `PlaceTree` / `PlacePicker` keyboard navigation + ARIA treeview contract (UI-SPEC §8.5 / §10.5) | PLC-01, PLC-03 | a11y interaction in the real webview; the project has an explicit rule that a synthetic Playwright/Chromium harness is NOT verification — the app runs in WKWebView/WebView2 | Run the app (`cargo tauri dev`), open `/places`; verify arrow-key expand/collapse, Home/End, type-ahead, and focus ring. Then `pnpm --dir ui build` and repeat in a LAN browser. |
 | Place shown correctly in printed act (frozen snapshot path) | D-16 | Print layout / page-break fidelity is not visible to text-extraction assertions (documented project lesson) | Render a real act to PDF/print preview in both desktop and LAN-browser mode; confirm the place path prints and does not overflow. |
-| Migration on an **existing** portable DB (not a fresh one) | PLC-04 | Documented project trap: fresh-DB tests masked a DB-backed upgrade bug for two phases | Copy a pre-phase-39 DB file, launch the built app against it, confirm existing device placements survived into the tree and no data was silently dropped. |
+| Migration on an **existing** portable DB (not a fresh one) | PLC-04 | Documented project trap: fresh-DB tests masked a DB-backed upgrade bug for two phases | Copy a pre-phase-39 DB file, launch the built app against it, confirm it opens without crashing and existing device/cartridge placement values are zeroed out (not preserved — no data migration is performed, confirmed twice in CONTEXT.md), while every other table's data survives untouched. |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or a Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all ❌ MISSING references above
-- [ ] No watch-mode flags in any command
-- [ ] Full-suite commands carry `--skip login_remember_persistent_cookie` and the mock env vars
-- [ ] Feedback latency < 30s per task
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or a Wave 0 dependency (every auto/tdd task across the
+      21-plan set carries a scoped `<automated>` command; checkpoint tasks carry `<how-to-verify>`
+      instead, per convention)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all ❌ MISSING references above (every file listed under "Wave 0 Requirements"
+      is created by a task in Plans 01/02/04/05/08/09/12 — see the per-plan `files_modified`)
+- [x] No watch-mode flags in any command
+- [x] Full-suite commands carry `--skip login_remember_persistent_cookie` and the mock env vars
+- [x] Feedback latency < 30s per task (post-revision: per-task frontend verify now uses
+      `pnpm --dir ui run svelte-check` instead of a full `pnpm --dir ui build` where a full build
+      isn't strictly required — full build retained at wave/plan level and in Plan 21's final gate)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-22
