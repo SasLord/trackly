@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-22T19:27:34.672Z"
+last_updated: "2026-08-22T19:42:31.013Z"
 last_activity: 2026-08-22
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 2 of 22
+Plan: 3 of 22
 Status: Ready to execute
 Last activity: 2026-08-22
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -308,6 +308,7 @@ Last activity: 2026-08-22
 | Phase 260819-vfg P01 | 5min | 1 tasks | 2 files |
 | Phase 260820-uo4 P01 | 12min | 2 tasks | 3 files |
 | Phase 39 P01 | 80min | 3 tasks | 3 files |
+| Phase 39 P02 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -767,6 +768,8 @@ Recent decisions affecting current work:
 - [Phase 260820-uo4]: Open-гейтинг дропдауна унифицирован на allItems.length > 0 (было suggestions.length > 0 || allLocationSuggestions.length > 0)
 - [Phase ?]: cartridges_fts dropped+recreated without location column (V038) — FTS5 external-content rebuild reads content table by column name; leaving location declared breaks rebuild once cartridges.location is gone
 - [Phase ?]: V038: drop dependents (indexes, triggers) before ALTER TABLE ... DROP COLUMN — DROP COLUMN + trigger dependency checks vary across SQLite point releases, verified empirically
+- [Phase 39]: PlacePatch mirrors PlaceNew 1:1 as all-Option<T> (incl. parent_id), matching DevicePatch's all-optional shape convention
+- [Phase 39]: D-20 auth split: MutatePlaces is Admin-only (joins ManageUsers/ManageSettings bucket), ReadPlaces is Admin|Manager — proven by TDD RED targeting the exact copy-paste regression
 
 ### Pending Todos
 
@@ -948,8 +951,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-22T19:25:10.558Z
-Stopped at: Phase 39 UI-SPEC approved
+Last session: 2026-08-22T19:42:31.004Z
+Stopped at: Completed 39-02-PLAN.md
 Resume file: 
 
 None

@@ -111,3 +111,7 @@ Reminder inherited from 39-01: `crates/trackly-core/src/domain/{devices,cartridg
 ---
 *Phase: 39-place-tree*
 *Completed: 2026-08-22*
+
+## Self-Check: PASSED
+
+All created files (`crates/trackly-core/src/domain/places.rs`, `crates/trackly-core/src/ports/places.rs`, this SUMMARY) confirmed present on disk; all five task commit hashes (`192bc281`, `aa5443a6`, `1d021191`, `ad828c3c`, `49d8c146`) plus this SUMMARY's own commit (`859950d3`) confirmed present in `git log`.
