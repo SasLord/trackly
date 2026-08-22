@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-22T19:42:31.013Z"
+last_updated: "2026-08-22T19:49:09.987Z"
 last_activity: 2026-08-22
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 3 of 22
+Plan: 4 of 22
 Status: Ready to execute
 Last activity: 2026-08-22
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -309,6 +309,7 @@ Last activity: 2026-08-22
 | Phase 260820-uo4 P01 | 12min | 2 tasks | 3 files |
 | Phase 39 P01 | 80min | 3 tasks | 3 files |
 | Phase 39 P02 | 25min | 3 tasks | 5 files |
+| Phase 39 P03 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -770,6 +771,9 @@ Recent decisions affecting current work:
 - [Phase ?]: V038: drop dependents (indexes, triggers) before ALTER TABLE ... DROP COLUMN — DROP COLUMN + trigger dependency checks vary across SQLite point releases, verified empirically
 - [Phase 39]: PlacePatch mirrors PlaceNew 1:1 as all-Option<T> (incl. parent_id), matching DevicePatch's all-optional shape convention
 - [Phase 39]: D-20 auth split: MutatePlaces is Admin-only (joins ManageUsers/ManageSettings bucket), ReadPlaces is Admin|Manager — proven by TDD RED targeting the exact copy-paste regression
+- [Phase 39]: ActRow carries both full_path (live) and place_path_snapshot (frozen at write time, D-16) as two distinct fields
+- [Phase 39]: CartridgeTransitionOp.place_id widened from required String to Option<i64> to let cartridge_service.rs apply a kind-aware default (D-13)
+- [Phase 39]: PrinterRow gained device_place_id as a net-new field for PlacePicker id-bound selection
 
 ### Pending Todos
 
@@ -951,8 +955,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-22T19:42:31.004Z
-Stopped at: Completed 39-02-PLAN.md
+Last session: 2026-08-22T19:49:09.978Z
+Stopped at: Completed 39-03-PLAN.md
 Resume file: 
 
 None
