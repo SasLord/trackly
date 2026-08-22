@@ -28,7 +28,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 2 — Devices Search/Autocomplete/Grouping (Plan 04)
         crate::tauri_cmds::devices::devices_search,
         crate::tauri_cmds::devices::devices_autocomplete,
-        crate::tauri_cmds::devices::locations_autocomplete,
         crate::tauri_cmds::devices::devices_list_grouped,
         crate::tauri_cmds::devices::devices_status_counts,
         crate::tauri_cmds::devices::devices_list_by_ids,

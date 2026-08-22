@@ -26,7 +26,6 @@ use crate::tauri_cmds::devices::{
     build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
     build_devices_list_by_ids, build_devices_list_grouped, build_devices_search,
     build_devices_state_hints, build_devices_status_counts, build_devices_update,
-    build_locations_autocomplete,
 };
 
 // ---------------------------------------------------------------------------
@@ -123,12 +122,6 @@ pub struct ImportCsvCommitPayload {
 #[serde(rename_all = "camelCase")]
 pub struct ExportCsvPayload {
     pub filter: DeviceFilter,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocationsAutocompletePayload {
-    pub prefix: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -374,25 +367,6 @@ pub async fn handler_export_csv(
 }
 
 // ---------------------------------------------------------------------------
-// Handlers (Plan 03.3) — locations autocomplete for browser mode
-// ---------------------------------------------------------------------------
-
-pub async fn handler_locations_autocomplete(
-    State(ctx): State<AppCtx>,
-    session: Session,
-    Json(payload): Json<LocationsAutocompletePayload>,
-) -> Result<Json<Vec<String>>, AppErrorResponse> {
-    let identity = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(
-        build_locations_autocomplete(&ctx, &identity, payload.prefix)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
-}
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -411,11 +385,6 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/devices_list_grouped", post(handler_list_grouped))
         .route("/api/v1/devices_status_counts", post(handler_status_counts))
         .route("/api/v1/devices_list_by_ids", post(handler_list_by_ids))
-        // Plan 03.3: locations autocomplete for browser mode (ITEM-4)
-        .route(
-            "/api/v1/locations_autocomplete",
-            post(handler_locations_autocomplete),
-        )
         // Scope extension: bulk create
         .route("/api/v1/devices_bulk_create", post(handler_bulk_create))
         // Plan 05: CSV import / export

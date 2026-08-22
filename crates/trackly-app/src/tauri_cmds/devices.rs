@@ -94,15 +94,6 @@ pub async fn build_devices_search(
     ctx.devices.search(query, pagination).await
 }
 
-pub async fn build_locations_autocomplete(
-    ctx: &AppCtx,
-    caller: &Identity,
-    prefix: String,
-) -> Result<Vec<String>, AppError> {
-    authorize(caller, &Action::ReadData)?;
-    ctx.devices.locations_autocomplete(prefix).await
-}
-
 pub async fn build_devices_autocomplete(
     ctx: &AppCtx,
     caller: &Identity,
@@ -231,16 +222,6 @@ pub async fn devices_search(
 ) -> Result<DeviceListResponse, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_search(state.inner(), &caller, query, pagination).await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn locations_autocomplete(
-    state: tauri::State<'_, AppCtx>,
-    prefix: String,
-) -> Result<Vec<String>, AppError> {
-    let caller = resolve_tauri_identity(state.inner()).await?;
-    build_locations_autocomplete(state.inner(), &caller, prefix).await
 }
 
 #[tauri::command]

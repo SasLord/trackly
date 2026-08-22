@@ -33,8 +33,7 @@ fn minimal_new(name: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: 1,
     }
 }
@@ -272,13 +271,11 @@ async fn autocomplete_location_filtered_by_status() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
-        // Device A: name="Ноутбук Lenovo", status_id=1 (На складе), location via specs (no location_id yet — we test the field filtering)
-        // Since location_id is a foreign key not yet seeded, we test with model field as proxy.
-        // Instead — we use the `state` field to emulate location-like context filtering.
-        //
-        // Actually: location_id is numeric. For autocomplete to return strings, we need
-        // to test with model (string) field filtered by status_id. This validates the
-        // status context filtering mechanism end-to-end.
+        // The freeform-place autocomplete variant no longer exists (Phase 39/
+        // D-18 — place selection is now PlacePicker + place_id, not a
+        // whitelisted autocomplete field). This test still validates the
+        // ctx_status_id context-filtering mechanism end-to-end, using `model`
+        // (a real string-typed whitelisted field) as the exercised field.
 
         // Device with model="Lenovo X1" and status_id=1.
         let mut a = minimal_new("Тест-Локация");
