@@ -115,6 +115,10 @@ pub enum Action {
     /// Отмена собственной заявки автором. Все роли — владение проверяется
     /// сервисным слоем (`RequestService::cancel()`), не здесь (GAP-12-07/A4).
     CancelOwnRequest,
+    /// Просмотр дерева мест и содержимого узла (PLC-06). Admin | Manager.
+    ReadPlaces,
+    /// Создание/переименование/перемещение/архивация/удаление места. Admin ONLY (D-20).
+    MutatePlaces,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +154,13 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         | Action::TransitionRequests
         | Action::ReadPrinters
         | Action::ReadData
-        | Action::DeleteRequests => {
+        | Action::DeleteRequests
+        // RED stub (TDD Task 3, D-20): MutatePlaces deliberately placed in the
+        // Admin|Manager bucket here — the exact copy-paste pitfall RESEARCH warns
+        // against — so `authorize_manager_mutate_places_forbidden` fails until the
+        // GREEN commit moves it into the Admin-only arm.
+        | Action::ReadPlaces
+        | Action::MutatePlaces => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
         Action::CreateRequest | Action::ReadRequests | Action::CancelOwnRequest => true,
@@ -360,5 +370,50 @@ mod tests {
     #[test]
     fn excludes_ad_register_employee_is_true() {
         assert!(excludes_ad_register(&Role::Employee));
+    }
+
+    // authorize — ReadPlaces / MutatePlaces (D-20: Manager reads but cannot mutate,
+    // the only Action in this project where Manager != Admin's mutation rights)
+
+    #[test]
+    fn authorize_admin_mutate_places_ok() {
+        let id = Identity {
+            user_id: Some(1),
+            role: Role::Admin,
+        };
+        assert!(authorize(&id, &Action::MutatePlaces).is_ok());
+    }
+
+    #[test]
+    fn authorize_manager_mutate_places_forbidden() {
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::MutatePlaces),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn authorize_manager_read_places_ok() {
+        let id = Identity {
+            user_id: Some(2),
+            role: Role::Manager,
+        };
+        assert!(authorize(&id, &Action::ReadPlaces).is_ok());
+    }
+
+    #[test]
+    fn authorize_employee_read_places_forbidden() {
+        let id = Identity {
+            user_id: Some(3),
+            role: Role::Employee,
+        };
+        assert!(matches!(
+            authorize(&id, &Action::ReadPlaces),
+            Err(AppError::Forbidden)
+        ));
     }
 }
