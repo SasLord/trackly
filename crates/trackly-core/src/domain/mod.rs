@@ -5,5 +5,6 @@
 pub mod acts;
 pub mod cartridges;
 pub mod devices;
+pub mod places;
 pub mod printers;
 pub mod requests;
