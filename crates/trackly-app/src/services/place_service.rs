@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use trackly_core::auth::{authorize, Action, Identity};
-use trackly_core::domain::places::{PlaceNew, PlaceRow};
+use trackly_core::domain::places::{PlaceNew, PlaceRow, SubtreeStats};
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
@@ -231,6 +231,58 @@ impl PlaceService {
         Ok(PlaceDto::from(row))
     }
 
+    /// Move a place to a new parent (or to root, if `new_parent_id` is `None`).
+    /// Admin-only (D-20). The cycle-rejection `AppError::Validation` raised by
+    /// `SqlitePlaceRepository::move_node` (Plan 04, Pattern 3) is propagated
+    /// unchanged — its message is already the UI-SPEC §14.3-locked copy.
+    pub async fn move_node(
+        &self,
+        caller: &Identity,
+        id: i64,
+        new_parent_id: Option<i64>,
+        version: i64,
+    ) -> Result<PlaceDto, AppError> {
+        authorize(caller, &Action::MutatePlaces)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let row: PlaceRow = self
+            .writer
+            .execute(move |conn| {
+                let before = repo.get(conn, id)?;
+                let before_json = Self::to_after_json(&PlaceDto::from(before))?;
+
+                // Cycle check + UPDATE run atomically inside SqlitePlaceRepository's
+                // own transaction (Pattern 3, Plan 04) — not re-wrapped here.
+                let row = repo.move_node(conn, id, new_parent_id, version, now)?;
+
+                let after_json = Self::to_after_json(&PlaceDto::from(row.clone()))?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "place",
+                        entity_id: id,
+                        action: "move",
+                        user_id,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+
+                Ok(row)
+            })
+            .await?;
+
+        Ok(PlaceDto::from(row))
+    }
+
     /// Archive a place (soft, reversible — D-15). Admin-only (D-20). Does NOT
     /// remove the node from the tree/cards/history — only hides it from
     /// `PlacePicker` (a read-path concern, Plan 08).
@@ -292,5 +344,197 @@ impl PlaceService {
                 Ok(())
             })
             .await
+    }
+
+    /// Hard-delete a place (irreversible). Admin-only (D-20). D-14: no cascade,
+    /// no auto-reparenting — the subtree must be empty (no direct/nested
+    /// children, no devices, no cartridges). `subtree_stats` is checked on the
+    /// READ path (reader pool, not the writer) first; if non-empty, an
+    /// `AppError::Conflict` carrying the exact UI-SPEC §11.5/§14.3 counts is
+    /// returned WITHOUT touching the writer at all.
+    pub async fn delete_hard(&self, caller: &Identity, id: i64, version: i64) -> Result<(), AppError> {
+        authorize(caller, &Action::MutatePlaces)?;
+
+        let stats: SubtreeStats = {
+            let readers = self.readers.clone();
+            let repo = self.repo.clone();
+            tokio::task::spawn_blocking(move || {
+                let conn = readers.acquire();
+                repo.subtree_stats(&conn, id)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??
+        };
+
+        let total = stats.device_count + stats.nested_places + stats.cartridge_count;
+        if total > 0 {
+            return Err(AppError::Conflict {
+                reason: build_delete_blocked_message(&stats),
+            });
+        }
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let before = repo.get(conn, id)?;
+                let before_json = Self::to_after_json(&PlaceDto::from(before))?;
+
+                repo.delete_hard(conn, id, version)?;
+
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "place",
+                        entity_id: id,
+                        action: "delete",
+                        user_id,
+                        before_json: Some(before_json),
+                        after_json: None,
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+
+                Ok(())
+            })
+            .await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// D-14 delete-blocked message — UI-SPEC §11.5/§14.3 literal Russian copy,
+// with §11.3's singular/plural agreement rule applied identically (plan Task 2).
+// ---------------------------------------------------------------------------
+
+/// Russian noun pluralization by count: `one` (1, 21, 31, …), `few` (2-4, 22-24, …),
+/// `many` (0, 5-20, 25-30, …). The 11-14 exception (which would otherwise match
+/// `few` via `n % 10 == 1..4`) always resolves to `many`.
+fn ru_plural(n: i64, one: &'static str, few: &'static str, many: &'static str) -> &'static str {
+    let n_abs = n.unsigned_abs();
+    let mod100 = n_abs % 100;
+    let mod10 = n_abs % 10;
+    if (11..=14).contains(&mod100) {
+        many
+    } else {
+        match mod10 {
+            1 => one,
+            2..=4 => few,
+            _ => many,
+        }
+    }
+}
+
+fn join_with_and(parts: &[String]) -> String {
+    match parts {
+        [] => String::new(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{} и {}", rest.join(", "), last),
+    }
+}
+
+/// Builds the exact D-14 message: «Место нельзя удалить: в нём {N} устройств и
+/// {N} вложенных места. Перенесите содержимое или архивируйте место.» —
+/// matching UI-SPEC §11.5/§14.3's literal template. Zero-count parts are
+/// omitted (§11.3's rule, applied identically here). `cartridge_count` is not
+/// part of the literal §11.5 example but is included as a third clause when
+/// non-zero (Rule 2 — without it, a place containing ONLY cartridges would
+/// otherwise produce an empty, broken message body).
+fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
+    let mut parts = Vec::new();
+    if stats.device_count > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.device_count,
+            ru_plural(stats.device_count, "устройство", "устройства", "устройств")
+        ));
+    }
+    if stats.nested_places > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.nested_places,
+            ru_plural(
+                stats.nested_places,
+                "вложенное место",
+                "вложенных места",
+                "вложенных мест"
+            )
+        ));
+    }
+    if stats.cartridge_count > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.cartridge_count,
+            ru_plural(stats.cartridge_count, "картридж", "картриджа", "картриджей")
+        ));
+    }
+    format!(
+        "Место нельзя удалить: в нём {}. Перенесите содержимое или архивируйте место.",
+        join_with_and(&parts)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ru_plural_device_word_matches_ui_spec_example() {
+        assert_eq!(ru_plural(12, "устройство", "устройства", "устройств"), "устройств");
+        assert_eq!(ru_plural(1, "устройство", "устройства", "устройств"), "устройство");
+        assert_eq!(ru_plural(2, "устройство", "устройства", "устройств"), "устройства");
+    }
+
+    #[test]
+    fn build_delete_blocked_message_matches_ui_spec_literal_example() {
+        let stats = SubtreeStats {
+            direct_children: 2,
+            nested_places: 2,
+            device_count: 12,
+            cartridge_count: 0,
+        };
+        let msg = build_delete_blocked_message(&stats);
+        assert_eq!(
+            msg,
+            "Место нельзя удалить: в нём 12 устройств и 2 вложенных места. \
+             Перенесите содержимое или архивируйте место."
+        );
+    }
+
+    #[test]
+    fn build_delete_blocked_message_omits_zero_parts() {
+        let stats = SubtreeStats {
+            direct_children: 0,
+            nested_places: 0,
+            device_count: 1,
+            cartridge_count: 0,
+        };
+        let msg = build_delete_blocked_message(&stats);
+        assert_eq!(
+            msg,
+            "Место нельзя удалить: в нём 1 устройство. Перенесите содержимое или архивируйте место."
+        );
+    }
+
+    #[test]
+    fn build_delete_blocked_message_includes_cartridges_when_only_cartridges_present() {
+        let stats = SubtreeStats {
+            direct_children: 0,
+            nested_places: 0,
+            device_count: 0,
+            cartridge_count: 3,
+        };
+        let msg = build_delete_blocked_message(&stats);
+        assert_eq!(
+            msg,
+            "Место нельзя удалить: в нём 3 картриджа. Перенесите содержимое или архивируйте место."
+        );
     }
 }
