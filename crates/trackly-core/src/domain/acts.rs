@@ -60,7 +60,7 @@ pub struct ActNew {
     pub parent_act_id: Option<i64>,
     pub giver_name: String,
     pub receiver_name: String,
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
     pub deadline_utc: Option<i64>,
     pub items: Vec<ActItemNew>,
@@ -84,8 +84,8 @@ pub struct ActReturnNew {
     /// Bulk condition («Хорошее», «Б/У» …) применяется ко всем checked-row'ам,
     /// у которых нет per-row override (когда `apply_to_all = true`).
     pub bulk_condition: Option<String>,
-    /// Bulk location_id применяется аналогично — куда вернуть на склад.
-    pub bulk_location_id: Option<i64>,
+    /// Bulk place_id применяется аналогично — куда вернуть на склад.
+    pub bulk_place_id: Option<i64>,
     /// `true` → bulk-значения заполняют пропуски в items; `false` → каждый item
     /// обязан содержать собственные override-значения.
     pub apply_to_all: bool,
@@ -102,8 +102,8 @@ pub struct ActReturnItem {
     pub quantity: i64,
     /// Per-row override condition — побеждает bulk-значение.
     pub condition_override: Option<String>,
-    /// Per-row override location_id — побеждает bulk-значение.
-    pub location_id_override: Option<i64>,
+    /// Per-row override place_id — побеждает bulk-значение.
+    pub place_id_override: Option<i64>,
 }
 
 /// Partial update for an act. First real consumer: `ActService::update`
@@ -115,7 +115,7 @@ pub struct ActReturnItem {
 pub struct ActPatch {
     pub giver_name: Option<String>,
     pub receiver_name: Option<String>,
-    pub location_id: Option<Option<i64>>,
+    pub place_id: Option<Option<i64>>,
     pub notes: Option<Option<String>>,
     pub deadline_utc: Option<Option<i64>>,
     /// Phase 19 (D-01/D-04): explicit override of the act's handover date
@@ -139,9 +139,12 @@ pub struct ActRow {
     pub act_type: ActType,
     pub giver_name: String,
     pub receiver_name: String,
-    pub location_id: Option<i64>,
-    /// Resolved location name (from `locations` table via LEFT JOIN).
-    pub location: Option<String>,
+    pub place_id: Option<i64>,
+    /// Resolved current place path (live-resolved via `place_full_paths`).
+    pub full_path: Option<String>,
+    /// Frozen place path snapshot taken at write time (D-16 print fidelity),
+    /// distinct from `full_path` which reflects the CURRENT tree state.
+    pub place_path_snapshot: Option<String>,
     pub notes: Option<String>,
     pub deadline_utc: Option<i64>,
     pub archived: bool,
