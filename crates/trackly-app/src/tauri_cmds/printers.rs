@@ -159,8 +159,10 @@ pub async fn build_printers_admit(
                 specs: None,
                 kit: None,
                 state: None,
-                location: None,
-                location_id: None,
+                // SNMP discovery/admit has no place source at this call site
+                // (no PlacePicker-selected payload — device is auto-created from
+                // an IP probe); place stays unassigned, D-07 (place optional).
+                place_id: None,
                 status_id: 1,
             })
             .await?;

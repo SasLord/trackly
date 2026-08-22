@@ -29,7 +29,7 @@ use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::{SqliteDeviceRepository, SqlitePrinterRepository};
+use trackly_infra::repos::{SqliteDeviceRepository, SqlitePlaceRepository, SqlitePrinterRepository};
 
 use std::collections::HashMap;
 
@@ -50,6 +50,7 @@ pub struct DeviceService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) repo: Arc<SqliteDeviceRepository>,
     pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
+    pub(crate) place_repo: Arc<SqlitePlaceRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
 }
@@ -69,6 +70,7 @@ impl DeviceService {
             clock,
             repo: Arc::new(SqliteDeviceRepository),
             printer_repo: Arc::new(SqlitePrinterRepository),
+            place_repo: Arc::new(SqlitePlaceRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
         }
     }
@@ -149,29 +151,21 @@ impl DeviceService {
     ///
     /// Валидирует обязательные поля, затем вставляет устройство и запись audit_log
     /// в одной транзакции (RESEARCH §Pattern 2, T-02-03-03).
-    /// Если передан `new.location` (строка), автоматически создаёт запись в `locations`
-    /// (INSERT OR IGNORE) и записывает `location_id`.
+    /// `new.place_id` — уже разрешённый caller'ом ID места (PlacePicker); ни один
+    /// путь записи устройства больше не создаёт место неявно по строке (D-18).
     pub async fn create(&self, new: DeviceNew) -> Result<DeviceDto, AppError> {
         Self::validate_new(&new)?;
 
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
-        let location_str = new.location.clone();
-        let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
+        let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
 
         let id = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
-
-                // Resolve location string → location_id (autocreate in locations table).
-                if let Some(ref loc) = location_str {
-                    if !loc.trim().is_empty() {
-                        domain_new.location_id = repo.resolve_location_id_in_tx(&tx, Some(loc), now)?;
-                    }
-                }
 
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
@@ -231,7 +225,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let domain_filter = trackly_core::domain::devices::DeviceFilter {
             type_id: filter.type_id,
-            location_id: filter.location_id,
+            place_id: filter.place_id,
             status_id: filter.status_id,
             state: filter.state,
             name_prefix: filter.name_prefix,
@@ -259,7 +253,7 @@ impl DeviceService {
     }
 
     /// Обновить устройство с optimistic-lock.
-    /// Если передан `patch.location` (строка), разрешает в `location_id` через `locations` таблицу.
+    /// `patch.place_id` — уже разрешённый caller'ом ID места (PlacePicker); D-18.
     pub async fn update(
         &self,
         id: i64,
@@ -269,25 +263,13 @@ impl DeviceService {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
-        let location_patch = patch.location.clone();
-        let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
+        let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         let user_id_opt: Option<i64> = None;
 
         let updated_row = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
-
-                // Resolve location string → location_id.
-                // location_patch: None = no change, Some(None) = no change (clear not yet supported),
-                // Some(Some(s)) = resolve to locations table id.
-                if let Some(Some(ref loc)) = location_patch {
-                    if !loc.trim().is_empty() {
-                        if let Some(lid) = repo.resolve_location_id_in_tx(&tx, Some(loc), now)? {
-                            domain_patch.location_id = Some(lid);
-                        }
-                    }
-                }
 
                 // before_json для audit_log
                 let before = repo.get_in_tx(&tx, id).ok();
@@ -406,64 +388,6 @@ impl DeviceService {
         })
     }
 
-    /// Per-field autocomplete с опциональным контекстным фильтром.
-    ///
-    /// Validates `field_str` against `AutocompleteField` whitelist (T-02-04-02).
-    /// Returns up to 30 DISTINCT values, sorted ASC.
-    /// `ctx_status_id`: optional filter restricts results to devices with given status_id.
-    /// UAT-fix: дает АВТОНОМНЫЙ список расположений из таблицы `locations`
-    /// (не device-derived) с prefix-фильтрацией. Используется UI для
-    /// поля «Расположение» во всех модалах акта.
-    pub async fn locations_autocomplete(&self, prefix: String) -> Result<Vec<String>, AppError> {
-        if prefix.chars().count() > 100 {
-            return Err(AppError::Validation {
-                field: "prefix".into(),
-                message: "prefix слишком длинный (макс. 100 символов)".into(),
-            });
-        }
-        let escaped: String = prefix
-            .chars()
-            .map(|c| {
-                if c == '%' || c == '_' || c == '\\' {
-                    format!("\\{c}")
-                } else {
-                    c.to_string()
-                }
-            })
-            .collect();
-        let pattern = format!("{escaped}%");
-        let readers = self.readers.clone();
-        tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
-            let conn = readers.acquire();
-            let mut stmt = conn
-                .prepare(
-                    "SELECT name FROM locations \
-                     WHERE deleted_at_utc IS NULL \
-                       AND name LIKE ?1 ESCAPE '\\' \
-                     ORDER BY name ASC LIMIT 20",
-                )
-                .map_err(|e| AppError::Internal {
-                    source_chain: format!("prepare locations_autocomplete: {e}"),
-                })?;
-            let rows = stmt
-                .query_map([pattern], |r| r.get::<_, String>(0))
-                .map_err(|e| AppError::Internal {
-                    source_chain: format!("query locations_autocomplete: {e}"),
-                })?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r.map_err(|e| AppError::Internal {
-                    source_chain: format!("row locations_autocomplete: {e}"),
-                })?);
-            }
-            Ok(out)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking: {e}"),
-        })?
-    }
-
     /// `status_in`: optional list of device-status codes (V014 `device_statuses.code`)
     /// — service resolves each code → status_id; unknown codes return Validation.
     pub async fn autocomplete(
@@ -558,7 +482,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let domain_filter = trackly_core::domain::devices::DeviceFilter {
             type_id: filter.type_id,
-            location_id: filter.location_id,
+            place_id: filter.place_id,
             status_id: filter.status_id,
             state: filter.state,
             name_prefix: filter.name_prefix,
@@ -699,6 +623,26 @@ impl DeviceService {
             .map(|(i, h)| (h.clone(), i))
             .collect();
 
+        // Fetch the full non-archived place candidate set ONCE (not per-row),
+        // keyed by `full_path.to_lowercase()` → `place_id` (exact match only,
+        // UI-SPEC §12 — no partial/fuzzy match, no auto-create on miss).
+        let readers = self.readers.clone();
+        let place_repo = self.place_repo.clone();
+        let place_by_path: HashMap<String, i64> =
+            tokio::task::spawn_blocking(move || -> Result<HashMap<String, i64>, AppError> {
+                use trackly_core::ports::places::PlaceRepository;
+                let conn = readers.acquire();
+                let rows = place_repo.list_all(&conn, false)?;
+                Ok(rows
+                    .into_iter()
+                    .filter_map(|r| r.full_path.map(|p| (p.to_lowercase(), r.id)))
+                    .collect())
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??;
+
         let mut report = CsvImportReport {
             inserted: 0,
             failed: Vec::new(),
@@ -710,7 +654,7 @@ impl DeviceService {
 
             // Build DeviceNew from mapping.
             let build_result = Self::build_device_new_from_row(row, &header_idx, &mapping);
-            let new_device = match build_result {
+            let (mut new_device, place_text) = match build_result {
                 Ok(d) => d,
                 Err(e) => {
                     report.failed.push(RowError {
@@ -721,6 +665,23 @@ impl DeviceService {
                     continue;
                 }
             };
+
+            // Resolve place-path text against the place tree (exact match only,
+            // UI-SPEC §12). No text → place_id stays None (D-07: place optional).
+            if let Some(text) = place_text {
+                let key = text.trim().to_lowercase();
+                match place_by_path.get(&key) {
+                    Some(&id) => new_device.place_id = Some(id),
+                    None => {
+                        report.failed.push(RowError {
+                            row_index,
+                            error_code: "Validation".to_string(),
+                            error_message: format!("Строка {row_index}: место «{text}» не найдено в дереве."),
+                        });
+                        continue;
+                    }
+                }
+            }
 
             // Validate via service validation.
             if let Err(e) = Self::validate_new(&new_device) {
@@ -736,7 +697,7 @@ impl DeviceService {
                 continue;
             }
 
-            // Insert via service.create (handles location resolution + audit_log).
+            // Insert via service.create (audit_log; place_id already resolved above).
             match self.create(new_device).await {
                 Ok(_) => {
                     report.inserted += 1;
@@ -764,11 +725,17 @@ impl DeviceService {
     }
 
     /// Build a `DeviceNew` from a CSV row using the provided column mapping.
+    ///
+    /// Returns `(DeviceNew, Option<String>)` — the `DeviceNew` always has
+    /// `place_id: None`; the second element is the raw place-path text from
+    /// the CSV cell (if the "location" column was mapped), resolved against
+    /// the place tree by the caller (`import_csv_commit`), never here — this
+    /// function has no DB access.
     fn build_device_new_from_row(
         row: &[String],
         header_idx: &HashMap<String, usize>,
         mapping: &HashMap<String, String>,
-    ) -> Result<DeviceNew, String> {
+    ) -> Result<(DeviceNew, Option<String>), String> {
         let get_field = |csv_col: &str| -> Option<String> {
             header_idx
                 .get(csv_col)
@@ -786,7 +753,7 @@ impl DeviceService {
         let mut specs: Option<String> = None;
         let mut kit: Option<String> = None;
         let mut state: Option<String> = None;
-        let mut location: Option<String> = None;
+        let mut place_text: Option<String> = None;
         let mut status_label: Option<String> = None;
 
         for (csv_col, device_field) in mapping {
@@ -800,7 +767,7 @@ impl DeviceService {
                 "specs" => specs = value.or(specs),
                 "kit" => kit = value.or(kit),
                 "state" => state = value.or(state),
-                "location" => location = value.or(location),
+                "location" => place_text = value.or(place_text),
                 "status" => status_label = value.or(status_label),
                 _ => {} // T-02-05-08: unknown keys ignored
             }
@@ -815,19 +782,21 @@ impl DeviceService {
         // name is required.
         let name = name.ok_or_else(|| "Наименование обязательно для заполнения".to_string())?;
 
-        Ok(DeviceNew {
-            type_id,
-            name,
-            inventory_no,
-            serial_no,
-            model,
-            specs,
-            kit,
-            state,
-            location,
-            location_id: None,
-            status_id,
-        })
+        Ok((
+            DeviceNew {
+                type_id,
+                name,
+                inventory_no,
+                serial_no,
+                model,
+                specs,
+                kit,
+                state,
+                place_id: None,
+                status_id,
+            },
+            place_text,
+        ))
     }
 
     /// Resolve type_id from a Russian type label.
@@ -864,7 +833,7 @@ impl DeviceService {
         let repo = self.repo.clone();
         let domain_filter = trackly_core::domain::devices::DeviceFilter {
             type_id: filter.type_id,
-            location_id: filter.location_id,
+            place_id: filter.place_id,
             status_id: filter.status_id,
             state: filter.state,
             name_prefix: filter.name_prefix,
@@ -908,7 +877,7 @@ impl DeviceService {
             "Технические характеристики",
             "Комплектация",
             "Состояние",
-            "Расположение",
+            "Место",
             "Статус",
         ])
         .map_err(|e| AppError::Internal {
@@ -930,7 +899,7 @@ impl DeviceService {
                 csv_safe(device.specs.as_deref().unwrap_or("")),
                 csv_safe(device.kit.as_deref().unwrap_or("")),
                 csv_safe(device.state.as_deref().unwrap_or("")),
-                csv_safe(device.location.as_deref().unwrap_or("")),
+                csv_safe(device.full_path.as_deref().unwrap_or("")),
                 csv_safe(status_name),
             ])
             .map_err(|e| AppError::Internal {
@@ -1049,21 +1018,13 @@ impl DeviceService {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
-        let location_str = new.location.clone();
-        let mut domain_new: trackly_core::domain::devices::DeviceNew = new.into();
+        let domain_new: trackly_core::domain::devices::DeviceNew = new.into();
         let user_id_opt: Option<i64> = None; // Phase 2 — no auth yet
 
         let ids: Vec<i64> = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
-
-                // Resolve location string → location_id once for the whole batch.
-                if let Some(ref loc) = location_str {
-                    if !loc.trim().is_empty() {
-                        domain_new.location_id = repo.resolve_location_id_in_tx(&tx, Some(loc), now)?;
-                    }
-                }
 
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {
