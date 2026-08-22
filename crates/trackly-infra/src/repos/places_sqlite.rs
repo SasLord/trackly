@@ -111,12 +111,152 @@ fn resolve_cas_failure(conn: &Connection, id: i64, expected: i64) -> AppError {
     }
 }
 
-// Task 2 (this plan's second commit) adds: `subtree_stats_impl`,
-// `list_subtree_contents_impl`, `list_storage_place_ids_impl`, `full_path_impl` —
-// the Pattern 2 (descendant-subtree) and D-11.4 (ancestor-walk) CTE queries that
-// `delete_hard`/`subtree_stats`/`list_subtree_contents`/`list_storage_place_ids`/
-// `full_path` depend on. Stubbed with `unimplemented!()` below as an intra-plan
-// checkpoint (acceptance criteria explicitly allow this before Task 2 lands).
+/// Pattern 2 (39-RESEARCH.md): subtree counts under `root_id`, inclusive of the
+/// root itself. Shared verbatim by `subtree_stats` (D-25 tree counters / D-21
+/// consequences preview) and `delete_hard`'s pre-flight conflict check (D-14) —
+/// one source of truth, not two.
+fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, AppError> {
+    conn.query_row(
+        "WITH RECURSIVE subtree(id) AS (
+            SELECT id FROM places WHERE id = ?1 AND deleted_at_utc IS NULL
+            UNION ALL
+            SELECT p.id FROM places p
+            JOIN subtree s ON p.parent_id = s.id
+            WHERE p.deleted_at_utc IS NULL
+         )
+         SELECT
+           (SELECT COUNT(*) FROM places WHERE parent_id = ?1 AND deleted_at_utc IS NULL) AS direct_children,
+           (SELECT COUNT(*) FROM places WHERE id IN (SELECT id FROM subtree) AND id != ?1 AND deleted_at_utc IS NULL) AS nested_places,
+           (SELECT COUNT(*) FROM devices WHERE place_id IN (SELECT id FROM subtree) AND deleted_at_utc IS NULL) AS device_count,
+           (SELECT COUNT(*) FROM cartridges WHERE place_id IN (SELECT id FROM subtree) AND deleted_at_utc IS NULL) AS cartridge_count",
+        rusqlite::params![root_id],
+        |row| {
+            Ok(SubtreeStats {
+                direct_children: row.get(0)?,
+                nested_places: row.get(1)?,
+                device_count: row.get(2)?,
+                cartridge_count: row.get(3)?,
+            })
+        },
+    )
+    .map_err(map_rusqlite)
+}
+
+/// Pattern 2's "content of place" leg (PLC-06 / D-23): devices, printers
+/// (devices whose `type_id` is the seeded "Принтер" type — printers have no
+/// `place_id` of their own, they resolve through `devices.place_id`, per
+/// V020__printers.sql), and cartridges — UNIONed into one `PlaceContentRow`
+/// shape. `nested: true` (default, D-24) includes the whole subtree via the
+/// Pattern 2 descendant CTE; `nested: false` restricts to `place_id = root_id`
+/// exactly ("Только здесь").
+fn list_subtree_contents_impl(
+    conn: &Connection,
+    root_id: i64,
+    nested: bool,
+) -> Result<Vec<PlaceContentRow>, AppError> {
+    let cte = if nested {
+        "WITH RECURSIVE subtree(id) AS (
+            SELECT id FROM places WHERE id = ?1 AND deleted_at_utc IS NULL
+            UNION ALL
+            SELECT p.id FROM places p
+            JOIN subtree s ON p.parent_id = s.id
+            WHERE p.deleted_at_utc IS NULL
+         )
+         "
+    } else {
+        ""
+    };
+    let place_filter = if nested {
+        "IN (SELECT id FROM subtree)"
+    } else {
+        "= ?1"
+    };
+
+    let sql = format!(
+        "{cte}SELECT 'device' AS kind, d.id, d.name, d.inventory_number,
+                pfp.full_path, ds.name AS status_name
+         FROM devices d
+         JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+         LEFT JOIN device_statuses ds ON ds.id = d.status_id
+         WHERE d.deleted_at_utc IS NULL
+           AND d.type_id != (SELECT id FROM device_types WHERE name = 'Принтер')
+           AND d.place_id {place_filter}
+         UNION ALL
+         SELECT 'printer' AS kind, d.id, d.name, d.inventory_number,
+                pfp.full_path, ds.name AS status_name
+         FROM devices d
+         JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+         LEFT JOIN device_statuses ds ON ds.id = d.status_id
+         WHERE d.deleted_at_utc IS NULL
+           AND d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
+           AND d.place_id {place_filter}
+         UNION ALL
+         SELECT 'cartridge' AS kind, c.id, (m.brand || ' ' || m.model) AS name, c.code,
+                pfp.full_path, cs.name AS status_name
+         FROM cartridges c
+         JOIN place_full_paths pfp ON pfp.place_id = c.place_id
+         JOIN cartridge_models m ON m.id = c.model_id
+         LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id
+         WHERE c.deleted_at_utc IS NULL
+           AND c.place_id {place_filter}"
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(rusqlite::params![root_id], |row| {
+            Ok(PlaceContentRow {
+                kind: row.get(0)?,
+                id: row.get(1)?,
+                name: row.get(2)?,
+                inventory_or_code: row.get(3)?,
+                full_path: row.get(4)?,
+                status_name: row.get(5)?,
+            })
+        })
+        .map_err(map_rusqlite)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(map_rusqlite)
+}
+
+/// D-11.4: a place counts as a storage place if it itself OR any ancestor has
+/// `is_storage = 1`. Distinct CTE shape from `subtree_stats_impl`/
+/// `list_subtree_contents_impl` (which walk DOWN from one root via
+/// `parent_id`) — this one walks UP from every node's own `parent_id` chain.
+/// Sole source of data for all three D-11 is_storage effects (D-10: is_storage
+/// never determines an item's own status).
+fn list_storage_place_ids_impl(conn: &Connection) -> Result<Vec<i64>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "WITH RECURSIVE anc(orig_id, id) AS (
+                SELECT id, id FROM places WHERE deleted_at_utc IS NULL
+                UNION ALL
+                SELECT a.orig_id, p.parent_id
+                FROM places p
+                JOIN anc a ON p.id = a.id
+                WHERE p.parent_id IS NOT NULL AND p.deleted_at_utc IS NULL
+             )
+             SELECT DISTINCT anc.orig_id
+             FROM anc
+             JOIN places p2 ON p2.id = anc.id
+             WHERE p2.is_storage = 1 AND p2.deleted_at_utc IS NULL",
+        )
+        .map_err(map_rusqlite)?;
+    let rows = stmt.query_map([], |row| row.get(0)).map_err(map_rusqlite)?;
+    rows.collect::<rusqlite::Result<Vec<i64>>>().map_err(map_rusqlite)
+}
+
+/// Resolve the root-to-leaf, `' / '`-joined full path via `place_full_paths`
+/// (always live, never cached — the view recomputes on every query).
+fn full_path_impl(conn: &Connection, id: i64) -> Result<String, AppError> {
+    conn.query_row(
+        "SELECT full_path FROM place_full_paths WHERE place_id = ?1",
+        rusqlite::params![id],
+        |row| row.get(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound { entity: "place", id },
+        other => map_rusqlite(other),
+    })
+}
 
 impl PlaceRepository for SqlitePlaceRepository {
     type Conn = Connection;
@@ -284,33 +424,60 @@ impl PlaceRepository for SqlitePlaceRepository {
         Ok(())
     }
 
-    fn delete_hard(&self, _conn: &mut Self::Conn, _id: i64, _version: i64) -> Result<(), AppError> {
-        // Task 2: Pattern 2 subtree-stats pre-flight conflict check (D-14).
-        unimplemented!("delete_hard: Task 2 of this plan")
+    fn delete_hard(&self, conn: &mut Self::Conn, id: i64, version: i64) -> Result<(), AppError> {
+        let tx = conn.transaction().map_err(map_rusqlite)?;
+
+        // D-14 (literal, not negotiable): no cascade, no auto-reparenting.
+        // Pattern 2 subtree-stats runs first; any non-zero count blocks the
+        // delete with exact counts (not a generic refusal). `ON DELETE
+        // RESTRICT` FKs (Plan 01) are defense-in-depth behind this check
+        // (T-39-04-02).
+        let stats = subtree_stats_impl(&tx, id)?;
+        let total = stats.direct_children + stats.nested_places + stats.device_count + stats.cartridge_count;
+        if total > 0 {
+            return Err(AppError::Conflict {
+                reason: format!(
+                    "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей.",
+                    stats.direct_children + stats.nested_places,
+                    stats.device_count,
+                    stats.cartridge_count,
+                ),
+            });
+        }
+
+        let affected = tx
+            .execute(
+                "DELETE FROM places WHERE id = ?1 AND version = ?2",
+                rusqlite::params![id, version],
+            )
+            .map_err(map_rusqlite)?;
+
+        if affected == 0 {
+            return Err(resolve_cas_failure(&tx, id, version));
+        }
+
+        tx.commit().map_err(map_rusqlite)?;
+        Ok(())
     }
 
-    fn subtree_stats(&self, _conn: &Self::Conn, _root_id: i64) -> Result<SubtreeStats, AppError> {
-        // Task 2: Pattern 2 descendant-subtree CTE (D-25/D-21/PLC-06).
-        unimplemented!("subtree_stats: Task 2 of this plan")
+    fn subtree_stats(&self, conn: &Self::Conn, root_id: i64) -> Result<SubtreeStats, AppError> {
+        subtree_stats_impl(conn, root_id)
     }
 
     fn list_subtree_contents(
         &self,
-        _conn: &Self::Conn,
-        _root_id: i64,
-        _nested: bool,
+        conn: &Self::Conn,
+        root_id: i64,
+        nested: bool,
     ) -> Result<Vec<PlaceContentRow>, AppError> {
-        // Task 2: PLC-06 content-of-place UNION query.
-        unimplemented!("list_subtree_contents: Task 2 of this plan")
+        list_subtree_contents_impl(conn, root_id, nested)
     }
 
-    fn list_storage_place_ids(&self, _conn: &Self::Conn) -> Result<Vec<i64>, AppError> {
-        // Task 2: D-11.4 ancestor-walk CTE.
-        unimplemented!("list_storage_place_ids: Task 2 of this plan")
+    fn list_storage_place_ids(&self, conn: &Self::Conn) -> Result<Vec<i64>, AppError> {
+        list_storage_place_ids_impl(conn)
     }
 
-    fn full_path(&self, _conn: &Self::Conn, _id: i64) -> Result<String, AppError> {
-        // Task 2: place_full_paths lookup.
-        unimplemented!("full_path: Task 2 of this plan")
+    fn full_path(&self, conn: &Self::Conn, id: i64) -> Result<String, AppError> {
+        full_path_impl(conn, id)
     }
 }
