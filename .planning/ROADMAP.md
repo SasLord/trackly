@@ -25,16 +25,22 @@
 
 - [ ] **Phase 39: Дерево мест** - Свободнотекстовое «Размещение» заменено деревом мест
   произвольной вложенности с поиском по полному пути.
+
 - [ ] **Phase 40: История перемещений** - Каждая смена места устройства/картриджа фиксируется в
   истории, включая автоматическую смену места актом.
+
 - [ ] **Phase 41: АРМ** - Рабочее место собирается из устройств как единица размещения и
   участвует в акте приёма-передачи целиком.
+
 - [ ] **Phase 42: Умный подбор принтера в заявке** - Принтеры в заявке на картридж ранжируются и
   автоподставляются по месту автора и его АРМ.
+
 - [ ] **Phase 43: Карта — просмотр** - Администратор/менеджер видит схематичный план этажа/зоны
   с устройствами и АРМ, кликабельный и печатаемый.
+
 - [ ] **Phase 44: Карта — редактор планов** - Администратор рисует планы помещений на SVG-сетке
   и расставляет устройства перетаскиванием, с undo/redo и слоями.
+
 - [ ] **Phase 45: Живые статусы на карте** - Маркеры принтеров окрашены по SNMP-статусу/тонеру и
   обновляются на открытой карте через WebSocket без перезагрузки.
 
@@ -122,43 +128,76 @@
 **Requirements**: PLC-01, PLC-02, PLC-03, PLC-04, PLC-05, PLC-06
 
 **Success Criteria** (what must be TRUE):
+
   1. Администратор может построить дерево мест (территория / зона / здание / этаж / помещение /
      уличный объект) произвольной вложенности, переименовать и переместить узел, не потеряв
      привязок устройств.
+
   2. Этаж имеет числовой уровень, допускающий 0 и отрицательные значения (подвал); этажи
      сортируются по уровню, а не по имени.
+
   3. Пользователь выбирает место устройства и картриджа из дерева с поиском по полному пути
      («Здание А / 2 этаж / 214»); свободнотекстовое поле «Размещение» и таблица `locations` из
      приложения удалены — формы, списки, отчёты, автокомплиты и печатные формы используют место
      из дерева.
+
   4. Переименование или перемещение узла дерева мгновенно отражается в полнотекстовом поиске и во
      всех списках без ручной переиндексации.
+
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
 **Plans:** 21 plans (10 waves)
-
 Plans:
+**Wave 1**
+
 - [ ] 39-01-PLAN.md — places schema (V037/V038), no-data-migration, migration_idempotency coverage
 - [ ] 39-02-PLAN.md — domain::places contracts + PlaceRepository trait + auth.rs D-20 split
 - [ ] 39-03-PLAN.md — acts/cartridges/printers/requests domain field renames onto place_id
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 39-04-PLAN.md — SqlitePlaceRepository (CRUD, cycle-check move, delete-conflict, subtree/storage queries) + places_crud.rs
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 39-05-PLAN.md — PlaceService mutations (create/rename/move/archive/delete) + places_move_cycle.rs/places_delete_blocked.rs
 - [ ] 39-06-PLAN.md — device_service/devices_sqlite/domain::devices onto place_id, drop resolve_location_id_in_tx
-- [ ] 39-07-PLAN.md — act_service create/update onto place_id + place_path_snapshot capture
-- [ ] 39-08-PLAN.md — PlaceService reads incl. Cyrillic-safe search (places_search.rs/places_contents.rs)
 - [ ] 39-09-PLAN.md — cartridge_service/cartridges_sqlite onto place_id, drop upsert_location_in_tx
 - [ ] 39-10-PLAN.md — report_service/request_service/requests_sqlite/printers_sqlite onto place_full_paths (D-28 subtree filter)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 39-07-PLAN.md — act_service create/update onto place_id + place_path_snapshot capture
+- [ ] 39-08-PLAN.md — PlaceService reads incl. Cyrillic-safe search (places_search.rs/places_contents.rs)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 39-11-PLAN.md — act_service return-flow onto place_id + act_handover.minijinja place_path rename + acts_place_snapshot.rs
 - [ ] 39-12-PLAN.md — tauri_cmds/places.rs + http/places.rs + specta_export + role_endpoint_matrix D-20 coverage
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 39-13-PLAN.md — PlacePicker.svelte (tree + search modes, D-18 create-row) + showcase
-- [ ] 39-14-PLAN.md — /places route + sidebar + PlacesMasterDetail/PlaceTree/PlaceTreeNode
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 39-15-PLAN.md — device-family PlacePicker wiring (form, autocomplete, printer create, CSV import)
 - [ ] 39-16-PLAN.md — cartridge-family PlacePicker wiring (form, 5 transition ops, D-11.3 checkbox)
 - [ ] 39-17-PLAN.md — act-family PlacePicker wiring (form, bulk return, per-row override)
 - [ ] 39-18-PLAN.md — reports PlacePicker wiring (D-26 short-path columns, D-28 subtree filter)
 - [ ] 39-19-PLAN.md — PlaceFormModal + PlaceMoveModal
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 39-14-PLAN.md — /places route + sidebar + PlacesMasterDetail/PlaceTree/PlaceTreeNode
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
 - [ ] 39-20-PLAN.md — PlaceContents.svelte (PLC-06 content screen) + end-to-end checkpoint
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
 - [ ] 39-21-PLAN.md — delete LocationAutocomplete.svelte, full-repo sweep, CI gate, DB-upgrade checkpoint
 
 **UI hint**: yes
@@ -173,13 +212,17 @@ Plans:
 **Requirements**: HST-01, HST-02, HST-03, HST-04
 
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь видит в карточке устройства и картриджа таймлайн перемещений: откуда, куда,
      когда, кем и по какой причине.
+
   2. Ручное изменение места фиксируется в истории с причиной «вручную»; схема причины уже
      предусматривает будущий источник «перетаскиванием на карте» — задействуется в Фазе 44, когда
      появится сам редактор.
+
   3. Акт приёма-передачи автоматически меняет место переданных устройств и создаёт запись в
      истории со ссылкой на номер акта.
+
   4. Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу
      устройства.
 
@@ -198,15 +241,19 @@ Plans:
 **Requirements**: WKS-01, WKS-02, WKS-03, WKS-04, WKS-05, WKS-06, WKS-07
 
 **Success Criteria** (what must be TRUE):
+
   1. Администратор может собрать АРМ из существующих устройств (системный блок, монитор(ы),
      периферия), указав роль каждого устройства в составе; устройство входит не более чем в один
      АРМ, вывод из состава — явным действием.
+
   2. АРМ имеет собственное место; при смене места АРМ место всех входящих устройств меняется
      вместе с ним (`devices.place_id` обновляется у каждого члена), и по каждому устройству
      появляется запись в истории.
+
   3. К АРМ привязываются один или несколько пользователей, один из них отмечен основным.
   4. В акте приёма-передачи можно выбрать АРМ целиком — он разворачивается в список входящих
      устройств; вынос устройства из состава АРМ актом требует подтверждения пользователя.
+
   5. Пользователь видит карточку АРМ: состав, место, привязанных пользователей и подключённые к
      нему принтеры.
 
@@ -226,8 +273,10 @@ Plans:
 **Requirements**: REQ-07, REQ-08
 
 **Success Criteria** (what must be TRUE):
+
   1. В форме заявки на замену картриджа принтеры отсортированы по близости к автору: USB-принтер
      его АРМ → принтеры его помещения → его этажа → его здания → остальные.
+
   2. Если у автора есть единственный очевидный кандидат (принтер его АРМ или единственный принтер
      его помещения), поле принтера в форме заявки подставляется автоматически.
 
@@ -244,15 +293,20 @@ Plans:
 **Requirements**: MAP-01, MAP-02, MAP-03, MAP-04, MAP-05
 
 **Success Criteria** (what must be TRUE):
+
   1. Администратор или менеджер выбирает план этажа/зоны и видит схему помещений с размещёнными
      на ней устройствами и АРМ; место, у которого ещё нет плана, продолжает нормально работать во
      всех остальных разделах приложения.
+
   2. К плану можно приложить готовую подложку в формате JPG (хранится в БД, а не файлом рядом с
      БД) и работать поверх неё.
+
   3. Клик по маркеру открывает карточку устройства или АРМ; клик по помещению — список
      размещённого в нём.
+
   4. План печатается на лист A4 через существующий механизм печати на обоих транспортах (десктоп
      и LAN-браузер).
+
   5. Роль «Сотрудник» не видит раздел «Карта» в интерфейсе и не может получить её данные ни через
      Tauri-команды, ни через HTTP-эндпоинты — попытка обращения отклоняется на сервере
      (`Action::ReadMap` только Admin/Manager).
@@ -271,14 +325,18 @@ Plans:
 **Requirements**: EDT-01, EDT-02, EDT-03, EDT-04, EDT-05, EDT-06
 
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь рисует контур помещений ортогональными стенами по сетке с привязкой к её узлам.
   2. Пользователь размещает двери и окна как вырезы на стене, с общепринятыми условными
      обозначениями.
+
   3. Нарисованное помещение связывается с местом из дерева — после связывания клик по нему
      показывает содержимое этого места (переиспользует поведение Фазы 43).
+
   4. Устройства и АРМ размещаются на плане перетаскиванием из палитры с поворотом значка;
      перемещение маркера обновляет место устройства/АРМ и создаёт запись в истории перемещений
      (Фаза 40) с причиной «перетаскиванием на карте».
+
   5. Действия в редакторе отменяются и повторяются (undo / redo).
   6. Слои содержимого (подложка / стены / помещения / устройства) переключаются независимо друг
      от друга.
@@ -297,8 +355,10 @@ Plans:
 **Requirements**: LIV-01, LIV-02
 
 **Success Criteria** (what must be TRUE):
+
   1. Маркер принтера на карте окрашен по состоянию: уровень тонера, недоступность по SNMP,
      наличие открытой заявки.
+
   2. При изменении состояния принтера цвет маркера на уже открытой карте обновляется через
      WebSocket без перезагрузки страницы.
 
