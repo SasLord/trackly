@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 21 plans (10 waves)
+**Plans:** 22 plans (10 waves)
 Plans:
 **Wave 1**
 
@@ -179,6 +179,7 @@ Plans:
 **Wave 6** *(blocked on Wave 5 completion)*
 
 - [ ] 39-13-PLAN.md — PlacePicker.svelte (tree + search modes, D-18 create-row) + showcase
+- [ ] 39-22-PLAN.md — test-fixup: 31 pre-existing test files onto renamed place_id/place_path vocabulary
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
@@ -198,7 +199,7 @@ Plans:
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 39-21-PLAN.md — delete LocationAutocomplete.svelte, full-repo sweep, CI gate, DB-upgrade checkpoint
+- [ ] 39-21-PLAN.md — delete LocationAutocomplete.svelte, full-repo sweep, CI gate, DB-upgrade checkpoint (depends on 39-22)
 
 **UI hint**: yes
 
