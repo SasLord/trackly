@@ -30,10 +30,9 @@ pub struct RequestRow {
     pub requester_name: Option<String>,
     /// Joined: devices.name of the printer (for cartridge_replace requests).
     pub printer_name: Option<String>,
-    /// Joined `locations.name` через `devices.location_id` принтера заявки
-    /// (D-05, Phase 12); `None` если принтер не выбран или у него нет
-    /// расположения.
-    pub printer_location: Option<String>,
+    /// Joined `place_full_paths` через `devices.place_id` принтера заявки
+    /// (D-05, Phase 12); `None` если принтер не выбран или у него нет места.
+    pub printer_place: Option<String>,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
     pub deleted_at_utc: Option<i64>,

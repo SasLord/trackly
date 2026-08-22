@@ -9,7 +9,7 @@
 use crate::error::AppError;
 
 /// Full printer row as returned from the repository read path.
-/// Joined columns (device_name, device_location) come from the devices table.
+/// Joined columns (device_name, device_place, device_place_id) come from the devices table.
 /// community is NOT included — it is kept as Secret<String> in the service layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrinterRow {
@@ -27,8 +27,13 @@ pub struct PrinterRow {
     pub usb_host_device_id: Option<i64>,
     /// Joined from devices.name.
     pub device_name: Option<String>,
-    /// Joined from devices.location.
-    pub device_location: Option<String>,
+    /// Resolved current place path, joined from `place_full_paths` via
+    /// `devices.place_id` (display text, not a raw id).
+    pub device_place: Option<String>,
+    /// Raw `devices.place_id`, joined straight with no text resolution —
+    /// needed to prefill a `PlacePicker` selection by id when a printer is
+    /// chosen for an Install operation.
+    pub device_place_id: Option<i64>,
     /// True when the printer's SNMP community differs from the default
     /// `"public"` (WR-04). Derived in the SELECT as `community <> 'public'`
     /// so the raw secret community value never leaves the repository — only
