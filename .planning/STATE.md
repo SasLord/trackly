@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-22T20:11:55.484Z"
+last_updated: "2026-08-22T21:11:05.461Z"
 last_activity: 2026-08-22
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 5 of 22
+Plan: 6 of 22
 Status: Ready to execute
 Last activity: 2026-08-22
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -311,6 +311,7 @@ Last activity: 2026-08-22
 | Phase 39 P02 | 25min | 3 tasks | 5 files |
 | Phase 39 P03 | 12min | 3 tasks | 4 files |
 | Phase 39 P04 | 70min | 3 tasks | 3 files |
+| Phase 39 P06 | 43min | 6 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -776,6 +777,9 @@ Recent decisions affecting current work:
 - [Phase 39]: CartridgeTransitionOp.place_id widened from required String to Option<i64> to let cartridge_service.rs apply a kind-aware default (D-13)
 - [Phase 39]: PrinterRow gained device_place_id as a net-new field for PlacePicker id-bound selection
 - [Phase 39-04]: CAS-failure error mapping uses OptimisticLockMismatch/NotFound split (established codebase pattern), not the plan text's literal Conflict — devices_sqlite.rs/acts_sqlite.rs already established this split; a blanket Conflict would make places_sqlite.rs the only inconsistent adapter
+- [Phase 39]: 39-06: FK-violation on place_id mapped through the existing generic map_rusqlite()->Conflict path, not a field-specific Validation case (no codebase precedent for field-specific FK special-casing)
+- [Phase 39]: 39-06: search_fts's D-29 place-path substring match computed in Rust via to_lowercase().contains() against the raw query, OR-combined with the FTS5 match via two independent CTEs (fts_hits, place_hits)
+- [Phase 39]: 39-06: CSV device import fetches the full place candidate set once per commit call, resolves each row's place text against it in Rust (exact match only, RowError per UI-SPEC S12 on miss)
 
 ### Pending Todos
 
@@ -957,8 +961,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-22T20:11:55.475Z
-Stopped at: Completed 39-04-PLAN.md
+Last session: 2026-08-22T21:11:05.452Z
+Stopped at: Completed 39-06-PLAN.md
 Resume file: 
 
 None
