@@ -166,3 +166,7 @@ Devices are the reference implementation for "caller passes a validated `place_i
 ---
 *Phase: 39-place-tree*
 *Completed: 2026-08-22*
+
+## Self-Check: PASSED
+
+All 11 created/modified source files plus this SUMMARY.md confirmed present on disk; all six task commit hashes (`fd5acbc8`, `a1663a99`, `c2000a56`, `fe93eeb2`, `cf2d67f1`, `30cf1547`) plus this SUMMARY's own commit (`4bb34346`) confirmed present in `git log`.
