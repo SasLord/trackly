@@ -12,6 +12,7 @@ pub mod cartridge;
 pub mod device;
 pub mod health;
 pub mod organization;
+pub mod place;
 pub mod printer;
 pub mod reports;
 pub mod request;
