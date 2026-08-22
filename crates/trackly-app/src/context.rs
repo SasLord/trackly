@@ -35,8 +35,8 @@ use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
-    DashboardService, DeviceService, OrgDbService, OrganizationService, PrinterService,
-    ReportService, RequestService, TemplateService,
+    DashboardService, DeviceService, OrgDbService, OrganizationService, PlaceService,
+    PrinterService, ReportService, RequestService, TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -111,6 +111,9 @@ pub struct AppCtx {
     pub dashboard: Arc<DashboardService>,
     /// Backup service — rusqlite::backup::Backup + config. Phase 7 Plan 02.
     pub backup: Arc<BackupService>,
+    /// Place service — place-tree mutations (create/rename/move/archive/unarchive/
+    /// delete_hard), Admin-gated (D-20). Added in Phase 39 Plan 05.
+    pub places: Arc<PlaceService>,
 }
 
 impl AppCtx {
@@ -285,6 +288,11 @@ impl AppCtx {
             clock.clone(),
         ));
 
+        // Phase 39 Plan 05: place-tree service. No cross-entity dependencies
+        // (unlike DeviceService's printer_repo), so no ordering constraint
+        // beyond writer/readers/clock being available.
+        let places = Arc::new(PlaceService::new(writer.clone(), readers.clone(), clock.clone()));
+
         // Runtime AD mock switch (D-Mock-01, Phase 9 Plan 02):
         // config.ad.use_mock || TRACKLY_AD_MOCK env var → MockAdClient;
         // otherwise → RealAdClient (real LDAP bind, used on Windows/AD).
@@ -403,6 +411,7 @@ impl AppCtx {
             reports,
             dashboard,
             backup,
+            places,
         })
     }
 }
