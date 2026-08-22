@@ -137,6 +137,8 @@ pub enum Action {
 /// | MutateActs         | ✓     | ✓       | ✗        |
 /// | MutateCartridges   | ✓     | ✓       | ✗        |
 /// | ReadData           | ✓     | ✓       | ✗        |
+/// | ReadPlaces         | ✓     | ✓       | ✗        |
+/// | MutatePlaces       | ✓     | ✗       | ✗        |
 /// | CreateRequest      | ✓     | ✓       | ✓        |
 ///
 /// # Errors
@@ -144,7 +146,11 @@ pub enum Action {
 /// Возвращает [`AppError::Forbidden`] если роль не имеет прав.
 pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
     let allowed = match action {
-        Action::ManageUsers | Action::ManageSettings => {
+        // D-20: MutatePlaces is Admin-only — the only Action in this project where
+        // Manager cannot mutate (every other Mutate* Action is Admin|Manager below).
+        // Do NOT move this into the Admin|Manager bucket — see RESEARCH.md Common
+        // Pitfall 3 and `authorize_manager_mutate_places_forbidden`.
+        Action::ManageUsers | Action::ManageSettings | Action::MutatePlaces => {
             matches!(identity.role, Role::Admin)
         }
         Action::MutateDevices
@@ -155,12 +161,7 @@ pub fn authorize(identity: &Identity, action: &Action) -> Result<(), AppError> {
         | Action::ReadPrinters
         | Action::ReadData
         | Action::DeleteRequests
-        // RED stub (TDD Task 3, D-20): MutatePlaces deliberately placed in the
-        // Admin|Manager bucket here — the exact copy-paste pitfall RESEARCH warns
-        // against — so `authorize_manager_mutate_places_forbidden` fails until the
-        // GREEN commit moves it into the Admin-only arm.
-        | Action::ReadPlaces
-        | Action::MutatePlaces => {
+        | Action::ReadPlaces => {
             matches!(identity.role, Role::Admin | Role::Manager)
         }
         Action::CreateRequest | Action::ReadRequests | Action::CancelOwnRequest => true,
