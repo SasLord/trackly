@@ -143,19 +143,18 @@ pub struct ActItemDto {
 /// Payload sent by the UI when оформляет возврат по handover-акту.
 ///
 /// Snapshot semantics (D-Acts-Return-01):
-/// - per-row `condition_override` / `location_id_override` всегда побеждает.
+/// - per-row `condition_override` / `place_id_override` всегда побеждает.
 /// - Если `apply_to_all = true` и override is `None` — используется bulk-значение.
 /// - Если `apply_to_all = false` — каждый item обязан содержать override
 ///   (валидация на сервисе).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActReturnDto {
     pub bulk_condition: Option<String>,
+    /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+    /// `PlacePicker`; создание нового места по имени больше не поддерживается
+    /// на этом пути (D-18).
     #[specta(type = Option<i32>)]
-    pub bulk_location_id: Option<i64>,
-    /// UX-friendly: имя расположения. Если задано — сервис резолвит в id
-    /// (INSERT OR IGNORE → SELECT) и использует его. Имеет приоритет над
-    /// `bulk_location_id` (UI обычно передаёт name, а не id).
-    pub bulk_location_name: Option<String>,
+    pub bulk_place_id: Option<i64>,
     pub apply_to_all: bool,
     pub items: Vec<ActReturnItemDto>,
     /// Phase 22 (ACT-03, Pitfall 1 fix / D-12): who actually returned the
@@ -203,11 +202,10 @@ pub struct ActReturnItemDto {
     #[specta(type = i32)]
     pub quantity: i64,
     pub condition_override: Option<String>,
+    /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+    /// `PlacePicker` (D-18).
     #[specta(type = Option<i32>)]
-    pub location_id_override: Option<i64>,
-    /// UX-friendly: per-row имя расположения; сервис резолвит. Приоритет
-    /// над `location_id_override`.
-    pub location_name_override: Option<String>,
+    pub place_id_override: Option<i64>,
 }
 
 /// Payload sent by the UI when creating a handover act.
@@ -320,11 +318,11 @@ pub struct ActUpdateItemDto {
 /// Payload sent by the UI when editing an existing **return** act (Phase 22,
 /// ACT-03). Mirrors `ActUpdateDto`'s shape 1:1 EXCEPT:
 /// - no `number_override` — return numbers never change (out of scope, D-10).
-/// - adds `bulk_condition`/`bulk_location_id`/`bulk_location_name`/
-///   `apply_to_all`, mirroring `ActReturnDto`'s own bulk-apply fields.
+/// - adds `bulk_condition`/`bulk_place_id`/`apply_to_all`, mirroring
+///   `ActReturnDto`'s own bulk-apply fields.
 /// - `items: Vec<ActReturnItemDto>` — REUSES the existing return-item type
 ///   (not a new `ActUpdateReturnItemDto`); `device_ids[]`/`condition_override`/
-///   `location_name_override` already match a full-replacement-set shape.
+///   `place_id_override` already match a full-replacement-set shape.
 /// - `handover_date_utc` is a REQUIRED (non-`Option`) field — unlike
 ///   `ActUpdateDto`'s optional "no-change-requested" semantics, D-04 requires
 ///   the edit form to always show and submit a populated «Дата возврата».
@@ -342,10 +340,11 @@ pub struct ActUpdateReturnDto {
     pub expected_version: i64,
     pub giver_name: String,
     pub receiver_name: String,
+    /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+    /// `PlacePicker`; создание нового места по имени больше не поддерживается
+    /// на этом пути (D-18).
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
-    #[serde(default)]
-    pub location_name: Option<String>,
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
@@ -353,9 +352,9 @@ pub struct ActUpdateReturnDto {
     #[specta(type = i32)]
     pub handover_date_utc: i64,
     pub bulk_condition: Option<String>,
+    /// `place_id` — уже разрешённый caller'ом ID места (D-18).
     #[specta(type = Option<i32>)]
-    pub bulk_location_id: Option<i64>,
-    pub bulk_location_name: Option<String>,
+    pub bulk_place_id: Option<i64>,
     pub apply_to_all: bool,
     /// Full replacement set of items — see struct-level doc comment.
     pub items: Vec<ActReturnItemDto>,
@@ -582,14 +581,12 @@ mod tests {
             expected_version: 3,
             giver_name: "А".into(),
             receiver_name: "Б".into(),
-            location_id: None,
-            location_name: None,
+            place_id: None,
             notes: None,
             deadline_utc: None,
             handover_date_utc: 1_700_000_000,
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: Some(9),
-            bulk_location_name: Some("Склад".into()),
+            bulk_place_id: Some(9),
             apply_to_all: true,
             items: vec![ActReturnItemDto {
                 act_item_id: 5,
@@ -597,8 +594,7 @@ mod tests {
                 device_ids: vec![10],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let s = serde_json::to_string(&dto).expect("ser");
@@ -614,16 +610,8 @@ mod tests {
         assert!(!s.contains("handoverDateUtc"), "must NOT use camelCase");
         assert!(s.contains("bulk_condition"), "snake_case 'bulk_condition'");
         assert!(!s.contains("bulkCondition"), "must NOT use camelCase");
-        assert!(
-            s.contains("bulk_location_id"),
-            "snake_case 'bulk_location_id'"
-        );
-        assert!(!s.contains("bulkLocationId"), "must NOT use camelCase");
-        assert!(
-            s.contains("bulk_location_name"),
-            "snake_case 'bulk_location_name'"
-        );
-        assert!(!s.contains("bulkLocationName"), "must NOT use camelCase");
+        assert!(s.contains("bulk_place_id"), "snake_case 'bulk_place_id'");
+        assert!(!s.contains("bulkPlaceId"), "must NOT use camelCase");
         assert!(s.contains("apply_to_all"), "snake_case 'apply_to_all'");
         assert!(!s.contains("applyToAll"), "must NOT use camelCase");
         assert!(s.contains("\"items\""), "snake_case 'items'");
@@ -636,8 +624,7 @@ mod tests {
         // #[serde(default)] back-compat contract holds (Pitfall 1 fix).
         let json = r#"{
             "bulk_condition": null,
-            "bulk_location_id": null,
-            "bulk_location_name": null,
+            "bulk_place_id": null,
             "apply_to_all": true,
             "items": []
         }"#;
