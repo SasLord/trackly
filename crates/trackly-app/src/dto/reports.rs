@@ -26,9 +26,10 @@ pub struct ReportFilter {
     /// Upper bound (Unix seconds UTC, inclusive).
     #[specta(type = Option<i32>)]
     pub date_to_utc: Option<i64>,
-    /// Filter by location ID.
+    /// Filter by place ID (D-28: subtree-inclusive — matches this place AND
+    /// everything nested under it, not just an exact `place_id` match).
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
+    pub place_id: Option<i64>,
     /// Filter by cartridge / device status ID.
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
@@ -52,6 +53,12 @@ pub struct ReportFilter {
     /// `report_service.rs`. Игнорируется остальными доменами (devices/
     /// cartridges).
     pub request_category_filter: Option<Vec<String>>,
+    /// D-11.2/D-11.4: геометрический быстрый фильтр «на складе» —
+    /// `Some(true)` = место (или любой предок) помечено `is_storage`;
+    /// `Some(false)` = «в эксплуатации» (не в складском месте); `None` = без
+    /// ограничения. Отдельное измерение от `status_id`/статуса предмета «на
+    /// складе» — см. D-11.5, никогда не смешивать.
+    pub is_storage: Option<bool>,
 }
 
 /// A single row in a tabular report.
@@ -76,8 +83,8 @@ pub struct ReportRow {
     /// Handover / return date (Unix seconds UTC).
     #[specta(type = Option<i32>)]
     pub handover_date_utc: Option<i64>,
-    /// Resolved location name.
-    pub location_name: Option<String>,
+    /// Resolved place path (`place_full_paths.full_path`).
+    pub place_path: Option<String>,
     /// Act type discriminator ("handover" | "return" | etc.).
     pub act_type: Option<String>,
     /// Device name or cartridge display name.
