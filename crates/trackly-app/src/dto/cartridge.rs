@@ -38,7 +38,9 @@ pub struct CartridgeDto {
     #[specta(type = Option<i32>)]
     pub state_id: Option<i64>,
     pub state_name: Option<String>,
-    pub location: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+    pub full_path: Option<String>,
     pub holder_name: Option<String>,
     pub notes: Option<String>,
     #[specta(type = i32)]
@@ -63,7 +65,8 @@ impl From<CartridgeRow> for CartridgeDto {
             status_name: r.status_name,
             state_id: r.state_id,
             state_name: r.state_name,
-            location: r.location,
+            place_id: r.place_id,
+            full_path: r.full_path,
             holder_name: r.holder_name,
             notes: r.notes,
             created_at_utc: r.created_at_utc,
@@ -137,7 +140,8 @@ pub struct CartridgeCreateDto {
     pub code_override: Option<String>,
     #[specta(type = Option<i32>)]
     pub state_id: Option<i64>,
-    pub location: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
 }
 
@@ -190,7 +194,11 @@ pub enum CartridgeTransitionPayload {
         date_utc: i64,
         given_by_name: String,
         given_to_name: String,
-        location: String,
+        /// D-13: caller-selected place; None → service defaults from the
+        /// printer's own place_id (Install-from-printer default, Task 3).
+        #[specta(type = Option<i32>)]
+        #[serde(default)]
+        place_id: Option<i64>,
         /// Принтер (devices.id), в который устанавливается картридж. None — старый
         /// cartridge-centric вход (D-08); авто-возврат предыдущего картриджа (D-16)
         /// не выполняется в этом случае.
@@ -202,10 +210,11 @@ pub enum CartridgeTransitionPayload {
         #[specta(type = Option<i32>)]
         #[serde(default)]
         previous_cartridge_state_id: Option<i64>,
-        /// Override для D-16: расположение предыдущего картриджа при
-        /// авто-возврате; None = дефолт пустая строка.
+        /// Override для D-16: место предыдущего картриджа при
+        /// авто-возврате; None = дефолт (нет места).
+        #[specta(type = Option<i32>)]
         #[serde(default)]
-        previous_cartridge_location: Option<String>,
+        previous_cartridge_place_id: Option<i64>,
     },
     /// Вернуть на склад: В работе (2) → На складе (1).
     #[serde(rename = "return_to_stock")]
@@ -216,7 +225,8 @@ pub enum CartridgeTransitionPayload {
         version: i64,
         #[specta(type = i32)]
         state_id: i64,
-        location: String,
+        #[specta(type = Option<i32>)]
+        place_id: Option<i64>,
         notes: Option<String>,
     },
     /// Отправить на заправку: На складе (1) → На заправке (3).
@@ -230,7 +240,8 @@ pub enum CartridgeTransitionPayload {
         date_utc: i64,
         given_by_name: String,
         given_to_name: String,
-        location: String,
+        #[specta(type = Option<i32>)]
+        place_id: Option<i64>,
     },
     /// Забрать с заправки: На заправке (3) → На складе (1).
     #[serde(rename = "from_refill")]
@@ -241,7 +252,8 @@ pub enum CartridgeTransitionPayload {
         version: i64,
         #[specta(type = i32)]
         state_id: i64,
-        location: String,
+        #[specta(type = Option<i32>)]
+        place_id: Option<i64>,
         notes: Option<String>,
     },
     /// Списать: любой статус != 4 → Списано (4).
@@ -290,50 +302,50 @@ impl From<CartridgeTransitionPayload> for trackly_core::domain::cartridges::Cart
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
                 printer_device_id,
                 previous_cartridge_state_id,
-                previous_cartridge_location,
+                previous_cartridge_place_id,
                 ..
             } => CartridgeTransitionOp::Install {
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
                 printer_device_id,
                 previous_cartridge_state_id,
-                previous_cartridge_location,
+                previous_cartridge_place_id,
             },
             CartridgeTransitionPayload::ReturnToStock {
                 state_id,
-                location,
+                place_id,
                 notes,
                 ..
             } => CartridgeTransitionOp::ReturnToStock {
                 state_id,
-                location,
+                place_id,
                 notes,
             },
             CartridgeTransitionPayload::ToRefill {
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
                 ..
             } => CartridgeTransitionOp::ToRefill {
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
             },
             CartridgeTransitionPayload::FromRefill {
                 state_id,
-                location,
+                place_id,
                 notes,
                 ..
             } => CartridgeTransitionOp::FromRefill {
                 state_id,
-                location,
+                place_id,
                 notes,
             },
             CartridgeTransitionPayload::WriteOff {
@@ -505,10 +517,10 @@ mod tests {
             date_utc: 1_700_000_000,
             given_by_name: "Иванов".into(),
             given_to_name: "Петров".into(),
-            location: "Каб. 305".into(),
+            place_id: Some(305),
             printer_device_id: Some(7),
             previous_cartridge_state_id: None,
-            previous_cartridge_location: None,
+            previous_cartridge_place_id: None,
         };
 
         let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
@@ -533,7 +545,7 @@ mod tests {
             "date_utc": 1700000000,
             "given_by_name": "Иванов",
             "given_to_name": "Петров",
-            "location": "Каб. 305"
+            "place_id": 305
         }"#;
 
         let payload: CartridgeTransitionPayload =
@@ -547,7 +559,7 @@ mod tests {
         }
     }
 
-    /// Plan 12-09 Task 1: `previous_cartridge_state_id`/`previous_cartridge_location`
+    /// Plan 12-09 Task 1: `previous_cartridge_state_id`/`previous_cartridge_place_id`
     /// round-trip through the DTO → domain `.into()` conversion unchanged.
     #[test]
     fn install_payload_into_op_forwards_previous_cartridge_overrides() {
@@ -557,10 +569,10 @@ mod tests {
             date_utc: 1_700_000_000,
             given_by_name: "Иванов".into(),
             given_to_name: "Петров".into(),
-            location: "Каб. 305".into(),
+            place_id: Some(305),
             printer_device_id: Some(7),
             previous_cartridge_state_id: Some(1),
-            previous_cartridge_location: Some("Кабинет 5".into()),
+            previous_cartridge_place_id: Some(5),
         };
 
         let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
@@ -568,17 +580,17 @@ mod tests {
         match op {
             trackly_core::domain::cartridges::CartridgeTransitionOp::Install {
                 previous_cartridge_state_id,
-                previous_cartridge_location,
+                previous_cartridge_place_id,
                 ..
             } => {
                 assert_eq!(previous_cartridge_state_id, Some(1));
-                assert_eq!(previous_cartridge_location, Some("Кабинет 5".to_string()));
+                assert_eq!(previous_cartridge_place_id, Some(5));
             }
             other => panic!("expected Install op, got {other:?}"),
         }
     }
 
-    /// Backward-compat: `previous_cartridge_state_id`/`previous_cartridge_location`
+    /// Backward-compat: `previous_cartridge_state_id`/`previous_cartridge_place_id`
     /// omitted from JSON deserialize to `None` (12-06's original payload shape
     /// keeps working unmodified).
     #[test]
@@ -590,7 +602,7 @@ mod tests {
             "date_utc": 1700000000,
             "given_by_name": "Иванов",
             "given_to_name": "Петров",
-            "location": "Каб. 305",
+            "place_id": 305,
             "printer_device_id": 7
         }"#;
 
@@ -600,11 +612,11 @@ mod tests {
         match payload {
             CartridgeTransitionPayload::Install {
                 previous_cartridge_state_id,
-                previous_cartridge_location,
+                previous_cartridge_place_id,
                 ..
             } => {
                 assert_eq!(previous_cartridge_state_id, None);
-                assert_eq!(previous_cartridge_location, None);
+                assert_eq!(previous_cartridge_place_id, None);
             }
             other => panic!("expected Install variant, got {other:?}"),
         }
