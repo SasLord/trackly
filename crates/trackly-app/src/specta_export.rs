@@ -178,5 +178,18 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::settings_org::templates_reset_to_default,
         crate::tauri_cmds::settings_org::templates_validate_preview,
         crate::tauri_cmds::settings_org::templates_status,
+        // Phase 39 — Places CRUD (Plan 12)
+        crate::tauri_cmds::places::places_create,
+        crate::tauri_cmds::places::places_rename,
+        crate::tauri_cmds::places::places_move,
+        crate::tauri_cmds::places::places_archive,
+        crate::tauri_cmds::places::places_unarchive,
+        crate::tauri_cmds::places::places_delete,
+        crate::tauri_cmds::places::places_get,
+        crate::tauri_cmds::places::places_list_children,
+        crate::tauri_cmds::places::places_list_all,
+        crate::tauri_cmds::places::places_subtree_stats,
+        crate::tauri_cmds::places::places_contents,
+        crate::tauri_cmds::places::places_search,
     ])
 }

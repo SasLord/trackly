@@ -92,6 +92,27 @@
 //! 44. Employee session → POST /api/v1/settings_set_low_stock_basis → 403
 //!     Forbidden (Action::ManageSettings).
 //!
+//! Phase 39 Plan 12 adds Cases 45-48: D-20's non-standard Admin-only-mutate /
+//! Admin+Manager-read Places split, proven on BOTH transports — this is the
+//! one entity in the whole matrix where Manager is rejected on a mutation
+//! that every other entity's equivalent endpoint would accept (T-39-12-01/02).
+//! 45. Manager session (HTTP) → POST /api/v1/places_create /
+//!     places_rename / places_move / places_archive / places_unarchive /
+//!     places_delete → 403 Forbidden for all six (Action::MutatePlaces,
+//!     Admin-only — the regression test explicitly designed to catch a
+//!     copy-paste of the MutateDevices/MutateCartridges Admin|Manager bucket).
+//! 46. Manager session (HTTP) → POST /api/v1/places_list_all /
+//!     places_get → not 401/403 (Action::ReadPlaces, Admin|Manager — proves
+//!     the split is precise, Manager is NOT blocked from everything
+//!     places-related, only from mutations).
+//! 47. Employee session (HTTP) → POST /api/v1/places_list_all /
+//!     places_get → 403 Forbidden (Action::ReadPlaces denies Employee).
+//! 48. Manager Identity (Tauri path — build_places_* helpers called
+//!     directly, the exact function every `#[tauri::command]` wrapper
+//!     delegates to) → create/rename/move/archive/unarchive/delete →
+//!     Err(AppError::Forbidden) for all six, mirroring Case 45 on the
+//!     second transport.
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -105,11 +126,17 @@ use tower_sessions::SessionStore;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::place::PlaceNewDto;
 use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::places::{
+    build_places_archive, build_places_create, build_places_delete, build_places_move,
+    build_places_rename, build_places_unarchive,
+};
 use trackly_core::auth::{Identity, Role};
+use trackly_core::error::AppError;
 
 /// Построить тестовый AppCtx.
 async fn make_test_ctx() -> anyhow::Result<(AppCtx, tempfile::TempDir)> {
@@ -1496,6 +1523,244 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 44: Employee → settings_set_low_stock_basis → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 45 (Phase 39 Plan 12, T-39-12-01): Manager session (HTTP) →
+        // all six places_* mutations → 403 Forbidden. authorize(&Action::
+        // MutatePlaces) is the FIRST line of every PlaceService mutation
+        // method AND of every build_places_* helper (belt-and-suspenders),
+        // so a nonexistent id/version is fine — the gate fires before any
+        // DB lookup, same pattern as Case 5 (cartridges_create) / Case 31
+        // (cartridges_transition).
+        // =====================================================================
+        {
+            let create_payload = json!({
+                "place": {
+                    "parent_id": null,
+                    "kind": "room",
+                    "name": "D-20 Manager probe",
+                    "level": null,
+                    "is_storage": false,
+                    "sort_order": null,
+                    "notes": null
+                }
+            });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_create",
+                create_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_create → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let rename_payload = json!({ "id": 1, "name": "Renamed", "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_rename",
+                rename_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_rename → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let move_payload = json!({ "id": 1, "newParentId": null, "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_move",
+                move_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_move → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let archive_payload = json!({ "id": 1, "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_archive",
+                archive_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_archive → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let unarchive_payload = json!({ "id": 1, "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_unarchive",
+                unarchive_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_unarchive → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let delete_payload = json!({ "id": 1, "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_delete",
+                delete_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_delete → expected 403 (D-20 Admin-only), got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 46 (Phase 39 Plan 12, T-39-12-02): Manager session (HTTP) →
+        // places_list_all / places_get → not 401/403. Proves the D-20 split
+        // is precise: Manager CAN read places, only mutation is denied
+        // (Case 45).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_list_all",
+                json!({ "includeArchived": false }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 46: Manager → places_list_all → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_get",
+                json!({ "id": 1 }),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 46: Manager → places_get → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 47 (Phase 39 Plan 12, T-39-12-02): Employee session (HTTP) →
+        // places_list_all / places_get → 403 Forbidden (Action::ReadPlaces
+        // denies Employee, Admin|Manager only).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_list_all",
+                json!({ "includeArchived": false }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 47: Employee → places_list_all → expected 403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_get",
+                json!({ "id": 1 }),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 47: Employee → places_get → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 48 (Phase 39 Plan 12, T-39-12-01): Manager Identity (Tauri
+        // path) → build_places_* helpers called directly — the exact
+        // function every #[tauri::command] wrapper delegates to after
+        // resolve_tauri_identity — → Err(AppError::Forbidden) for all six
+        // mutations, mirroring Case 45 on the second transport (mirrors the
+        // devices_http_smoke.rs precedent of exercising build_devices_*
+        // directly as "the Tauri path").
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+
+            let new_place = PlaceNewDto {
+                parent_id: None,
+                kind: "room".to_string(),
+                name: "D-20 Tauri-path Manager probe".to_string(),
+                level: None,
+                is_storage: false,
+                sort_order: None,
+                notes: None,
+            };
+            let result = build_places_create(&ctx, &manager_id, new_place).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_create → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_places_rename(&ctx, &manager_id, 1, "Renamed".to_string(), 1).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_rename → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_places_move(&ctx, &manager_id, 1, None, 1).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_move → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_places_archive(&ctx, &manager_id, 1, 1).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_archive → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_places_unarchive(&ctx, &manager_id, 1, 1).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_unarchive → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_places_delete(&ctx, &manager_id, 1, 1).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_delete → expected \
+                 Err(AppError::Forbidden), got {result:?}"
             );
         }
 
