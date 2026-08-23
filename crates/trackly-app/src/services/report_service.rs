@@ -403,7 +403,7 @@ impl ReportService {
     // Device act reports
     // -----------------------------------------------------------------------
 
-    /// RPT-01 / RPT-04 / RPT-05: acts (handover) filtered by period, type, location.
+    /// RPT-01 / RPT-04 / RPT-05: acts (handover) filtered by period, type, place.
     pub async fn list_device_acts(
         &self,
         filter: ReportFilter,
@@ -422,7 +422,7 @@ impl ReportService {
         })?
     }
 
-    /// RPT-05: returns (return acts) filtered by period and location.
+    /// RPT-05: returns (return acts) filtered by period and place.
     pub async fn list_device_returns(
         &self,
         filter: ReportFilter,
