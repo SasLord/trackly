@@ -17,7 +17,11 @@ export type PrinterDto = {
   lastSeenUtc: number | null;
   communityConfigured: boolean;
   deviceName: string | null;
-  deviceLocation: string | null;
+  devicePlace: string | null;
+  /** Raw devices.place_id (not a resolved path) — needed to prefill a
+   * PlacePicker selection by id when a printer is chosen for an Install
+   * operation (Plan 16, OperationModal.svelte). */
+  devicePlaceId: number | null;
   usbHostDeviceId: number | null;
   /** Parsed toner levels: Object { label: number|null } or null if no reading. */
   tonerLevels: Record<string, number | null> | null;
@@ -117,11 +121,11 @@ export type RequestDto = {
    */
   categoryName: string | null;
   /**
-   * D-05 (Phase 12 Plan 01): joined `locations.name` via the request's
-   * printer device (`devices.location_id`). `null` for `free_form` requests
-   * (no printer) and for printers without a location set.
+   * D-05 (Phase 12 Plan 01): joined `place_full_paths.full_path` via the
+   * request's printer device (`devices.place_id`). `null` for `free_form`
+   * requests (no printer) and for printers without a place set.
    */
-  printerLocation: string | null;
+  printerPlace: string | null;
 };
 
 /**
@@ -134,7 +138,7 @@ export type RequestCategoryDto = {
 };
 
 /**
- * A single printer option `{ id, name, location }` for the create-request
+ * A single printer option `{ id, name, place }` for the create-request
  * form's printer dropdown (D-PRN-01, Phase 11 Plan 02).
  * Synced with crates/trackly-app/src/dto/request.rs RequestPrinterOptionDto.
  *
@@ -145,7 +149,7 @@ export type RequestCategoryDto = {
 export type RequestPrinterOptionDto = {
   id: number;
   name: string;
-  location: string | null;
+  place: string | null;
 };
 
 /**
