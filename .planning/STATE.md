@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-23T01:16:12.518Z"
+last_updated: "2026-08-23T01:37:30.055Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 10 of 22
+Plan: 11 of 22
 Status: Ready to execute
 Last activity: 2026-08-23
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -316,6 +316,7 @@ Last activity: 2026-08-23
 | Phase 39 P10 | 140min | 6 tasks | 10 files |
 | Phase 39 P07 | 25min | 4 tasks | 3 files |
 | Phase 39 P09 | 19min | 5 tasks | 6 files |
+| Phase 39 P08 | 40m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -788,6 +789,8 @@ Recent decisions affecting current work:
 - [Phase 39]: 39-10: is_storage quick filter (D-11.2/D-11.4) added to acts/devices/cartridges/requests reports; D-28 subtree place_id filter kept scoped to acts/devices only, matching pre-existing cartridges/requests filter scope
 - [Phase ?]: 39-07: place_path_snapshot passed as explicit update_act_header_in_tx parameter, not folded into ActPatch (domain/acts.rs out of this plan's file scope)
 - [Phase 39]: Cartridges' third mutating-location surface: CartridgeService::update()'s own inline INSERT OR IGNORE INTO locations round-trip closed — Distinct from upsert_location_in_tx and the five named transition ops; found by direct read of update()'s body, not by the plan's grep-based inventory
+- [Phase 39]: 39-08: read методы get/list_children/list_all/subtree_stats/full_path/list_subtree_contents возвращают доменные типы напрямую (не DTO), по буквальному тексту action плана, без правок dto/place.rs
+- [Phase 39]: 39-08: search() Cyrillic-safe — repo.list_all(false), фильтрация to_lowercase().contains() в Rust, лимит 100 симв./50 строк, без SQL LIKE/GLOB
 
 ### Pending Todos
 
@@ -969,8 +972,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-23T01:16:12.508Z
-Stopped at: Completed 39-09-PLAN.md
+Last session: 2026-08-23T01:37:30.046Z
+Stopped at: Completed 39-08-PLAN.md
 Resume file: 
 
 None
