@@ -16,7 +16,7 @@ use trackly_infra::test_support::test_db;
 
 const USER_MUTABLE_TABLES: &[&str] = &[
     "users",
-    "locations",
+    "places",
     "devices",
     "acts",
     "cartridges",
