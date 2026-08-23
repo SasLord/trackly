@@ -35,8 +35,7 @@ fn minimal_new(name: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: 1,
     }
 }
@@ -441,8 +440,7 @@ async fn create_persists_serial_number() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         };
 
@@ -487,8 +485,7 @@ async fn create_persists_inventory_and_serial_together() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         };
 

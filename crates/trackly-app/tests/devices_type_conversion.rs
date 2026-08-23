@@ -41,8 +41,7 @@ fn minimal_new(name: &str, type_id: i64) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: 1,
     }
 }
@@ -58,8 +57,7 @@ fn type_patch(type_id: Option<i64>) -> DevicePatch {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: None,
     }
 }

@@ -35,8 +35,7 @@ fn non_unique_device(name: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: 1,
     }
 }
@@ -356,8 +355,7 @@ async fn bulk_create_each_row_has_independent_serial_and_inv_when_count_eq_1() {
                 specs: None,
                 kit: None,
                 state: None,
-                location: None,
-                location_id: None,
+                place_id: None,
                 status_id: 1,
             };
             let result = svc.bulk_create(new, 1).await.expect("bulk_create count=1");
@@ -402,8 +400,7 @@ async fn bulk_create_single_call_count_eq_1_persists_serial() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         };
 

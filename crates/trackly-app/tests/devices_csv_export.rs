@@ -60,8 +60,7 @@ async fn export_uses_semicolon_delimiter() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         })
         .await
@@ -137,8 +136,7 @@ async fn export_cyrillic_roundtrip() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         })
         .await
@@ -204,8 +202,7 @@ async fn export_formula_injection_prevention() {
             specs: None,
             kit: None,
             state: None,
-            location: None,
-            location_id: None,
+            place_id: None,
             status_id: 1,
         })
         .await
@@ -246,8 +243,7 @@ async fn export_list_all_created_devices() {
                 specs: None,
                 kit: None,
                 state: None,
-                location: None,
-                location_id: None,
+                place_id: None,
                 status_id: 1,
             })
             .await

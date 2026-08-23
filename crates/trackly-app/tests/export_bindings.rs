@@ -300,13 +300,14 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("handover_date_utc"),
         "bindings.ts missing ActReturnDto.handover_date_utc field"
     );
-    // ActItemDto's extended per-row location fields (Plan 22-01, Pitfall 2).
+    // ActItemDto's extended per-row place fields (Plan 22-01, Pitfall 2;
+    // renamed location_id/location -> place_id/place, Phase 39 Plan 22).
     assert!(
-        contents.contains("device_location_id"),
-        "bindings.ts missing ActItemDto.device_location_id field"
+        contents.contains("device_place_id"),
+        "bindings.ts missing ActItemDto.device_place_id field"
     );
     assert!(
-        contents.contains("device_location"),
-        "bindings.ts missing ActItemDto.device_location field"
+        contents.contains("device_place"),
+        "bindings.ts missing ActItemDto.device_place field"
     );
 }

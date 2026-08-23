@@ -11,8 +11,11 @@ use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceFilter, DeviceNew, Pagination};
 use trackly_app::services::DeviceService;
+use trackly_core::domain::places::{PlaceKind, PlaceNew};
+use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::repos::SqlitePlaceRepository;
 use trackly_infra::test_support::test_writer_and_readers;
 
 fn make_service() -> (DeviceService, tempfile::TempDir) {
@@ -20,6 +23,29 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = DeviceService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// Создаёт корневое место (kind=Room) напрямую через `SqlitePlaceRepository`
+/// на writer-соединении сервиса — фикстура-заместитель прежнего свободнотекстового
+/// `location`, невозможного больше на write-пути (D-18).
+async fn create_place(svc: &DeviceService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            let repo = SqlitePlaceRepository;
+            let new_place = PlaceNew {
+                parent_id: None,
+                kind: PlaceKind::Room,
+                name: name.clone(),
+                level: None,
+                is_storage: false,
+                sort_order: None,
+                notes: None,
+            };
+            repo.create(conn, &new_place, 1_700_000_000)
+        })
+        .await
+        .expect("create place")
 }
 
 fn non_unique_device(name: &str, status_id: i64) -> DeviceNew {
@@ -32,8 +58,7 @@ fn non_unique_device(name: &str, status_id: i64) -> DeviceNew {
         specs: None,
         kit: None,
         state: None,
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id,
     }
 }
@@ -466,14 +491,17 @@ async fn grouping_groups_devices_with_same_name_and_different_location() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
 
+        let place_a = create_place(&svc, "Кабинет 305").await;
+        let place_b = create_place(&svc, "Склад").await;
+
         let mut d1 = non_unique_device("Монитор Dell", 1);
-        d1.location = Some("Кабинет 305".to_string());
+        d1.place_id = Some(place_a);
 
         let mut d2 = non_unique_device("Монитор Dell", 1);
-        d2.location = Some("Склад".to_string());
+        d2.place_id = Some(place_b);
 
-        svc.create(d1).await.expect("create location=Кабинет 305");
-        svc.create(d2).await.expect("create location=Склад");
+        svc.create(d1).await.expect("create place=Кабинет 305");
+        svc.create(d2).await.expect("create place=Склад");
 
         let filter = DeviceFilter::default();
         let page = Pagination {
@@ -608,8 +636,7 @@ fn device_with_condition(name: &str, condition: &str) -> DeviceNew {
         specs: None,
         kit: None,
         state: Some(condition.to_string()),
-        location: None,
-        location_id: None,
+        place_id: None,
         status_id: 1,
     }
 }
