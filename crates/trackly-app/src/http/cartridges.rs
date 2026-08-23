@@ -19,12 +19,12 @@ use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::cartridges::{
     build_cartridge_models_create, build_cartridge_models_delete, build_cartridge_models_get,
-    build_cartridge_models_list, build_cartridge_models_update, build_cartridges_create,
-    build_cartridges_delete, build_cartridges_get, build_cartridges_get_history,
-    build_cartridges_list, build_cartridges_low_stock, build_cartridges_search,
-    build_cartridges_status_counts, build_cartridges_suggest_brand,
-    build_cartridges_suggest_compat_printer, build_cartridges_suggest_location,
-    build_cartridges_suggest_model, build_cartridges_transition, build_cartridges_update,
+    build_cartridge_models_list, build_cartridge_models_update, build_cartridge_storage_place_ids,
+    build_cartridges_create, build_cartridges_delete, build_cartridges_get,
+    build_cartridges_get_history, build_cartridges_list, build_cartridges_low_stock,
+    build_cartridges_search, build_cartridges_status_counts, build_cartridges_suggest_brand,
+    build_cartridges_suggest_compat_printer, build_cartridges_suggest_model,
+    build_cartridges_transition, build_cartridges_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ pub struct UpdatePayload {
     /// i32 matches #[specta(type = i32)] in CartridgeDto — transport parity with Tauri (WR-05).
     pub id: i32,
     pub version: i32,
-    pub location: Option<String>,
+    pub place_id: Option<i32>,
     pub notes: Option<String>,
 }
 
@@ -176,7 +176,7 @@ pub async fn handler_update(
             &identity,
             p.id as i64,
             p.version as i64,
-            p.location,
+            p.place_id.map(|v| v as i64),
             p.notes,
         )
         .await
@@ -389,19 +389,17 @@ pub async fn handler_suggest_compat_printer(
     ))
 }
 
-pub async fn handler_suggest_location(
+pub async fn handler_cartridge_storage_place_ids(
     State(ctx): State<AppCtx>,
     session: Session,
-    Json(p): Json<SuggestBrandPayload>,
-) -> Result<Json<Vec<String>>, AppErrorResponse> {
+) -> Result<Json<Vec<i32>>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    Ok(Json(
-        build_cartridges_suggest_location(&ctx, &identity, p.prefix)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
+    let ids = build_cartridge_storage_place_ids(&ctx, &identity)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(ids.into_iter().map(|v| v as i32).collect()))
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +448,7 @@ pub fn router() -> Router<AppCtx> {
             post(handler_suggest_compat_printer),
         )
         .route(
-            "/api/v1/cartridges_suggest_location",
-            post(handler_suggest_location),
+            "/api/v1/cartridge_storage_place_ids",
+            post(handler_cartridge_storage_place_ids),
         )
 }

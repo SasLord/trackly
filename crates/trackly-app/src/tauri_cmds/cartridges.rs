@@ -60,11 +60,11 @@ pub async fn build_cartridges_update(
     caller: &Identity,
     id: i64,
     version: i64,
-    location: Option<String>,
+    place_id: Option<i64>,
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
     authorize(caller, &Action::MutateCartridges)?;
-    ctx.cartridges.update(id, version, location, notes).await
+    ctx.cartridges.update(id, version, place_id, notes).await
 }
 
 /// Мутация: требует `caller` с правом `MutateCartridges`.
@@ -199,13 +199,16 @@ pub async fn build_cartridges_suggest_compat_printer(
     ctx.cartridges.suggest_compat_printer(prefix).await
 }
 
-pub async fn build_cartridges_suggest_location(
+/// D-11.4 storage-place ids (B4) — reachable by whatever role can already
+/// perform cartridge transitions, same as `full_path` already being visible
+/// on every cartridge read without a separate places-authorization check
+/// (Task 3's rationale — `storage_place_ids` is not `ReadPlaces`-gated).
+pub async fn build_cartridge_storage_place_ids(
     ctx: &AppCtx,
     caller: &Identity,
-    prefix: String,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<i64>, AppError> {
     authorize(caller, &Action::ReadData)?;
-    ctx.cartridges.suggest_location(prefix).await
+    ctx.cartridges.storage_place_ids().await
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +252,7 @@ pub async fn cartridges_update(
     state: tauri::State<'_, AppCtx>,
     id: i32,
     version: i32,
-    location: Option<String>,
+    place_id: Option<i32>,
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
@@ -258,7 +261,7 @@ pub async fn cartridges_update(
         &caller,
         id as i64,
         version as i64,
-        location,
+        place_id.map(|v| v as i64),
         notes,
     )
     .await
@@ -407,10 +410,10 @@ pub async fn cartridges_suggest_compat_printer(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cartridges_suggest_location(
+pub async fn cartridge_storage_place_ids(
     state: tauri::State<'_, AppCtx>,
-    prefix: String,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<i32>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_cartridges_suggest_location(state.inner(), &caller, prefix).await
+    let ids = build_cartridge_storage_place_ids(state.inner(), &caller).await?;
+    Ok(ids.into_iter().map(|v| v as i32).collect())
 }
