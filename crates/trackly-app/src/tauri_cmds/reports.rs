@@ -25,17 +25,17 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
                 "device_name",
                 "giver_name",
                 "receiver_name",
-                "location_name",
+                "place_path",
             ]
         }
         "device_in_use" | "device_in_stock" => {
-            vec!["device_name", "status_name", "location_name"]
+            vec!["device_name", "status_name", "place_path"]
         }
         "cartridge_consumption" | "cartridge_refills" => {
-            vec!["code", "model_label", "status_name", "location_name"]
+            vec!["code", "model_label", "status_name", "place_path"]
         }
         "cartridge_in_use" | "cartridge_in_stock" => {
-            vec!["code", "model_label", "status_name", "location_name"]
+            vec!["code", "model_label", "status_name", "place_path"]
         }
         "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
             vec![
@@ -44,7 +44,7 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
                 "request_type_label",
                 "status_name",
                 "giver_name",
-                "location_name",
+                "place_path",
             ]
         }
         _ => vec!["id"],
