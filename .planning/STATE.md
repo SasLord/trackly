@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-23T01:37:30.055Z"
+last_updated: "2026-08-23T02:22:35.286Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 11 of 22
+Plan: 12 of 22
 Status: Ready to execute
 Last activity: 2026-08-23
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -317,6 +317,7 @@ Last activity: 2026-08-23
 | Phase 39 P07 | 25min | 4 tasks | 3 files |
 | Phase 39 P09 | 19min | 5 tasks | 6 files |
 | Phase 39 P08 | 40m | 2 tasks | 3 files |
+| Phase 39 P11 | 39min | 5 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -791,6 +792,8 @@ Recent decisions affecting current work:
 - [Phase 39]: Cartridges' third mutating-location surface: CartridgeService::update()'s own inline INSERT OR IGNORE INTO locations round-trip closed — Distinct from upsert_location_in_tx and the five named transition ops; found by direct read of update()'s body, not by the plan's grep-based inventory
 - [Phase 39]: 39-08: read методы get/list_children/list_all/subtree_stats/full_path/list_subtree_contents возвращают доменные типы напрямую (не DTO), по буквальному тексту action плана, без правок dto/place.rs
 - [Phase 39]: 39-08: search() Cyrillic-safe — repo.list_all(false), фильтрация to_lowercase().contains() в Rust, лимит 100 симв./50 строк, без SQL LIKE/GLOB
+- [Phase ?]: 39-11: act_handover.minijinja confirmed dead code for act rendering (render_pdf reads act_handover.html exclusively since Phase 16/17 pivot); Task 4's regression test exercises the active HTML path instead
+- [Phase ?]: 39-11: added D-27 'Расположение:' print field-row to act_handover.html (Rule 2) — the template contract had claimed act.location_name/place_path was available for years but the body never rendered it; registered a new _legacy_defaults/v26 upgrade-safety snapshot for existing installs
 
 ### Pending Todos
 
@@ -811,6 +814,7 @@ Spike-зоны, требующие внимания во время планир
 - **Phase 6:** host-side механизм для Pantum hang detection — local agent vs remote WMI/RPC (требует реального BM5100ADN, ~неделя)
 - **Phase 8:** валидация LDAP-bind против реального Windows Server 2022 с channel binding enforced (½ дня с реальным DC)
 - Phase 36: real-print, LAN-транспорт end-to-end, print-DOM isolation (SC#4), N=1 один лист (SC#1) — явно отложено пользователем 2026-08-13, НЕ пройдено. Нужна отдельная UAT-сессия перед закрытием фазы.
+- 39-11: cargo test -p trackly-app --lib fails to compile (missing 'places' field in AppCtx test fixtures in http/health.rs:126 and tauri_cmds/health.rs:142, introduced by Plan 39-05, never backfilled) — blocks unit tests, unrelated to 39-22's integration-test scope
 
 ### Явные решения по приватности
 
@@ -972,7 +976,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-23T01:37:30.046Z
+Last session: 2026-08-23T02:22:35.278Z
 Stopped at: Completed 39-08-PLAN.md
 Resume file: 
 

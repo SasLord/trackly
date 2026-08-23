@@ -108,7 +108,7 @@
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete | 2026-08-13 |
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
-| 39. Дерево мест | v1.4 | 10/22 | In Progress|  |
+| 39. Дерево мест | v1.4 | 11/22 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 10/22 plans executed
+**Plans:** 11/22 plans executed
 Plans:
 **Wave 1**
 
@@ -173,7 +173,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 39-11-PLAN.md — act_service return-flow onto place_id + act_handover.minijinja place_path rename + acts_place_snapshot.rs
+- [x] 39-11-PLAN.md — act_service return-flow onto place_id + act_handover.minijinja place_path rename + acts_place_snapshot.rs
 - [ ] 39-12-PLAN.md — tauri_cmds/places.rs + http/places.rs + specta_export + role_endpoint_matrix D-20 coverage
 
 **Wave 6** *(blocked on Wave 5 completion)*
