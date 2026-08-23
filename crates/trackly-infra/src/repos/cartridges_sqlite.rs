@@ -52,12 +52,13 @@ const SELECT_CARTRIDGES: &str = "
            m.brand AS model_brand, m.model AS model_name, m.kind_id AS model_kind_id,
            c.status_id, cs.name AS status_name,
            c.state_id, cst.name AS state_name,
-           c.location, c.holder_name, c.notes,
+           c.place_id, pfp.full_path, c.holder_name, c.notes,
            c.created_at_utc, c.updated_at_utc, c.deleted_at_utc, c.version
       FROM cartridges c
       LEFT JOIN cartridge_models m ON m.id = c.model_id
       LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id
       LEFT JOIN cartridge_states cst ON cst.id = c.state_id
+      LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id
 ";
 
 /// Maps a row from `SELECT_CARTRIDGES` into `CartridgeRow`.
@@ -73,13 +74,14 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
         status_name: row.get(7)?,
         state_id: row.get(8)?,
         state_name: row.get(9)?,
-        location: row.get(10)?,
-        holder_name: row.get(11)?,
-        notes: row.get(12)?,
-        created_at_utc: row.get(13)?,
-        updated_at_utc: row.get(14)?,
-        deleted_at_utc: row.get(15)?,
-        version: row.get(16)?,
+        place_id: row.get(10)?,
+        full_path: row.get(11)?,
+        holder_name: row.get(12)?,
+        notes: row.get(13)?,
+        created_at_utc: row.get(14)?,
+        updated_at_utc: row.get(15)?,
+        deleted_at_utc: row.get(16)?,
+        version: row.get(17)?,
     })
 }
 
@@ -165,9 +167,9 @@ impl SqliteCartridgeRepository {
 
     /// INSERT a new cartridge row inside a transaction.
     ///
-    /// Performs location round-trip: if `location` is non-empty, inserts
-    /// `INSERT OR IGNORE INTO locations` to maintain the shared locations
-    /// autocomplete (D-Op-Location-01).
+    /// `place_id` is written directly — the caller (`CartridgeService`) has
+    /// already validated it against the `places` tree (D-13); no implicit
+    /// auto-create round-trip.
     #[allow(clippy::too_many_arguments)]
     pub fn insert_cartridge_in_tx(
         &self,
@@ -176,17 +178,14 @@ impl SqliteCartridgeRepository {
         model_id: i64,
         status_id: i64,
         state_id: Option<i64>,
-        location: Option<&str>,
+        place_id: Option<i64>,
         holder_name: Option<&str>,
         notes: Option<&str>,
         now_utc: i64,
     ) -> Result<i64, AppError> {
-        // Location round-trip — keep shared autocomplete in sync.
-        Self::upsert_location_in_tx(tx, location, now_utc)?;
-
         tx.execute(
             "INSERT INTO cartridges \
-             (code, model_id, status_id, state_id, location, holder_name, notes, \
+             (code, model_id, status_id, state_id, place_id, holder_name, notes, \
               created_at_utc, updated_at_utc, version) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1)",
             params![
@@ -194,7 +193,7 @@ impl SqliteCartridgeRepository {
                 model_id,
                 status_id,
                 state_id,
-                location,
+                place_id,
                 holder_name,
                 notes,
                 now_utc,
@@ -409,9 +408,8 @@ impl SqliteCartridgeRepository {
     /// Steps:
     ///   1. Fetch current row for optimistic lock + status validation.
     ///   2. Validate the op is allowed from the current status (domain rule).
-    ///   3. UPDATE cartridges (status_id, state_id, location, holder_name, version).
-    ///   4. Location round-trip (INSERT OR IGNORE INTO locations).
-    ///   5. Insert audit_log row with before/after snapshots + payload.
+    ///   3. UPDATE cartridges (status_id, state_id, place_id, holder_name, version).
+    ///   4. Insert audit_log row with before/after snapshots + payload.
     pub fn transition_in_tx(
         &self,
         tx: &Transaction<'_>,
@@ -460,34 +458,24 @@ impl SqliteCartridgeRepository {
 
         // 4. Calculate new field values.
         let new_status_id = op.target_status_id();
-        let (new_state_id, new_location, new_holder_name) = match op {
+        let (new_state_id, new_place_id, new_holder_name) = match op {
             CartridgeTransitionOp::Install {
-                location,
+                place_id,
                 given_to_name,
                 ..
-            } => (
-                current.state_id,
-                Some(location.as_str()),
-                Some(given_to_name.as_str()),
-            ),
+            } => (current.state_id, *place_id, Some(given_to_name.as_str())),
             CartridgeTransitionOp::ReturnToStock {
-                state_id, location, ..
-            } => (Some(*state_id), Some(location.as_str()), None),
+                state_id, place_id, ..
+            } => (Some(*state_id), *place_id, None),
             CartridgeTransitionOp::ToRefill {
-                location,
+                place_id,
                 given_to_name,
                 ..
-            } => (
-                current.state_id,
-                Some(location.as_str()),
-                Some(given_to_name.as_str()),
-            ),
+            } => (current.state_id, *place_id, Some(given_to_name.as_str())),
             CartridgeTransitionOp::FromRefill {
-                state_id, location, ..
-            } => (Some(*state_id), Some(location.as_str()), None),
-            CartridgeTransitionOp::WriteOff { .. } => {
-                (current.state_id, current.location.as_deref(), None)
-            }
+                state_id, place_id, ..
+            } => (Some(*state_id), *place_id, None),
+            CartridgeTransitionOp::WriteOff { .. } => (current.state_id, current.place_id, None),
         };
 
         // 5. UPDATE cartridges (optimistic lock on version). current_printer_device_id
@@ -505,14 +493,14 @@ impl SqliteCartridgeRepository {
 
         let affected = tx
             .execute(
-                "UPDATE cartridges SET status_id=?1, state_id=?2, location=?3, \
+                "UPDATE cartridges SET status_id=?1, state_id=?2, place_id=?3, \
                  holder_name=?4, current_printer_device_id=?5, \
                  updated_at_utc=?6, version=version+1 \
                  WHERE id=?7 AND version=?8",
                 params![
                     new_status_id,
                     new_state_id,
-                    new_location,
+                    new_place_id,
                     new_holder_name,
                     install_printer_device_id,
                     now_utc,
@@ -540,13 +528,13 @@ impl SqliteCartridgeRepository {
         if let CartridgeTransitionOp::Install {
             printer_device_id: Some(pid),
             previous_cartridge_state_id,
-            previous_cartridge_location,
+            previous_cartridge_place_id,
             given_by_name: install_given_by_name,
             given_to_name: install_given_to_name,
             ..
         } = op
         {
-            let resolved_location = previous_cartridge_location.as_deref().unwrap_or("");
+            let resolved_place_id = *previous_cartridge_place_id;
 
             let previous: Option<(i64, i64)> = tx
                 .query_row(
@@ -578,13 +566,13 @@ impl SqliteCartridgeRepository {
 
                 let prev_affected = tx
                     .execute(
-                        "UPDATE cartridges SET status_id=1, state_id=?1, location=?2, \
+                        "UPDATE cartridges SET status_id=1, state_id=?1, place_id=?2, \
                          holder_name=NULL, current_printer_device_id=NULL, \
                          updated_at_utc=?3, version=version+1 \
                          WHERE id=?4 AND version=?5",
                         params![
                             resolved_state_id,
-                            resolved_location,
+                            resolved_place_id,
                             now_utc,
                             prev_id,
                             prev_version
@@ -606,7 +594,7 @@ impl SqliteCartridgeRepository {
                     "status_name": prev_current.status_name,
                     "state_id": prev_current.state_id,
                     "state_name": prev_current.state_name,
-                    "location": prev_current.location,
+                    "place_id": prev_current.place_id,
                     "holder_name": prev_current.holder_name,
                 }))
                 .map_err(|e| AppError::Internal {
@@ -615,7 +603,7 @@ impl SqliteCartridgeRepository {
 
                 let auto_return_op = CartridgeTransitionOp::ReturnToStock {
                     state_id: resolved_state_id,
-                    location: resolved_location.to_string(),
+                    place_id: resolved_place_id,
                     notes: None,
                 };
                 // GAP-12-12: record an INVERTED actor in the auto-return's own
@@ -631,7 +619,7 @@ impl SqliteCartridgeRepository {
                 let prev_payload_json = json!({
                     "op": "return_to_stock",
                     "state_id": resolved_state_id,
-                    "location": resolved_location,
+                    "place_id": resolved_place_id,
                     "notes": null,
                     "given_by_name": install_given_to_name,
                     "given_to_name": install_given_by_name,
@@ -655,26 +643,23 @@ impl SqliteCartridgeRepository {
             }
         }
 
-        // 6. Location round-trip.
-        Self::upsert_location_in_tx(tx, new_location, now_utc)?;
-
-        // 7. Build payload_json for audit (D-History-01).
+        // 6. Build payload_json for audit (D-History-01).
         let payload_json = Self::op_payload_json(op);
 
-        // 8. Before snapshot (for history display).
+        // 7. Before snapshot (for history display).
         let before_json = serde_json::to_string(&json!({
             "status_id": current.status_id,
             "status_name": current.status_name,
             "state_id": current.state_id,
             "state_name": current.state_name,
-            "location": current.location,
+            "place_id": current.place_id,
             "holder_name": current.holder_name,
         }))
         .map_err(|e| AppError::Internal {
             source_chain: format!("before_json serialize: {e}"),
         })?;
 
-        // 9. Audit log insert.
+        // 8. Audit log insert.
         let audit_repo = SqliteAuditLogRepository;
         audit_repo.insert(
             tx,
@@ -700,45 +685,45 @@ impl SqliteCartridgeRepository {
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
                 ..
             } => json!({
                 "op": "install",
                 "date_utc": date_utc,
                 "given_by_name": given_by_name,
                 "given_to_name": given_to_name,
-                "location": location,
+                "place_id": place_id,
             }),
             CartridgeTransitionOp::ReturnToStock {
                 state_id,
-                location,
+                place_id,
                 notes,
             } => json!({
                 "op": "return_to_stock",
                 "state_id": state_id,
-                "location": location,
+                "place_id": place_id,
                 "notes": notes,
             }),
             CartridgeTransitionOp::ToRefill {
                 date_utc,
                 given_by_name,
                 given_to_name,
-                location,
+                place_id,
             } => json!({
                 "op": "to_refill",
                 "date_utc": date_utc,
                 "given_by_name": given_by_name,
                 "given_to_name": given_to_name,
-                "location": location,
+                "place_id": place_id,
             }),
             CartridgeTransitionOp::FromRefill {
                 state_id,
-                location,
+                place_id,
                 notes,
             } => json!({
                 "op": "from_refill",
                 "state_id": state_id,
-                "location": location,
+                "place_id": place_id,
                 "notes": notes,
             }),
             CartridgeTransitionOp::WriteOff { date_utc, notes } => json!({
@@ -765,27 +750,6 @@ impl SqliteCartridgeRepository {
             },
             other => map_rusqlite(other),
         })
-    }
-
-    /// Perform location round-trip: INSERT OR IGNORE INTO locations.
-    ///
-    /// Only inserts if location is Some and non-empty. This keeps the shared
-    /// `locations` autocomplete in sync with freeform text entered in
-    /// cartridge forms (D-Op-Location-01).
-    fn upsert_location_in_tx(
-        tx: &Transaction<'_>,
-        location: Option<&str>,
-        now_utc: i64,
-    ) -> Result<(), AppError> {
-        if let Some(loc) = location.filter(|s| !s.is_empty()) {
-            tx.execute(
-                "INSERT OR IGNORE INTO locations (name, created_at_utc, updated_at_utc, version) \
-                 VALUES (?1, ?2, ?2, 1)",
-                params![loc, now_utc],
-            )
-            .map_err(map_rusqlite)?;
-        }
-        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -1452,6 +1416,19 @@ mod tests {
         (conn, dir)
     }
 
+    /// Сид места (places), для FK-валидного `cartridges.place_id` в тестах,
+    /// которые действительно проверяют значение места (D-13).
+    fn seed_place(conn: &mut Connection, name: &str) -> i64 {
+        let now = 1_700_000_000_i64;
+        conn.execute(
+            "INSERT INTO places (kind, name, is_storage, created_at_utc, updated_at_utc, version) \
+             VALUES ('room', ?1, 0, ?2, ?2, 1)",
+            params![name, now],
+        )
+        .expect("insert place");
+        conn.last_insert_rowid()
+    }
+
     fn seed_model(conn: &mut Connection, brand: &str, model: &str) -> i64 {
         let tx = conn.transaction().expect("tx");
         let now = 1_700_000_000_i64;
@@ -1564,6 +1541,7 @@ mod tests {
     fn insert_and_get_cartridge() {
         let (mut conn, _g) = fresh_conn();
         let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let place_id = seed_place(&mut conn, "Склад");
         let repo = SqliteCartridgeRepository;
         let now = 1_700_000_000_i64;
 
@@ -1578,7 +1556,7 @@ mod tests {
                     model_id,
                     1,
                     Some(1),
-                    Some("Склад"),
+                    Some(place_id),
                     None,
                     None,
                     now,
@@ -1593,7 +1571,8 @@ mod tests {
         assert_eq!(row.model_name.as_deref(), Some("TL-5120X"));
         assert_eq!(row.status_id, 1);
         assert_eq!(row.state_id, Some(1));
-        assert_eq!(row.location.as_deref(), Some("Склад"));
+        assert_eq!(row.place_id, Some(place_id));
+        assert_eq!(row.full_path.as_deref(), Some("Склад"));
     }
 
     #[test]
@@ -1673,6 +1652,8 @@ mod tests {
     fn transition_install_changes_status() {
         let (mut conn, _g) = fresh_conn();
         let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let warehouse_place_id = seed_place(&mut conn, "Склад");
+        let office_place_id = seed_place(&mut conn, "Каб. 305");
         let repo = SqliteCartridgeRepository;
         let now = 1_700_000_000_i64;
 
@@ -1687,7 +1668,7 @@ mod tests {
                     model_id,
                     1,
                     Some(1),
-                    Some("Склад"),
+                    Some(warehouse_place_id),
                     None,
                     None,
                     now,
@@ -1701,10 +1682,10 @@ mod tests {
             date_utc: now,
             given_by_name: "Иванов".into(),
             given_to_name: "Петров".into(),
-            location: "Каб. 305".into(),
+            place_id: Some(office_place_id),
             printer_device_id: None,
             previous_cartridge_state_id: None,
-            previous_cartridge_location: None,
+            previous_cartridge_place_id: None,
         };
 
         {
@@ -1717,7 +1698,7 @@ mod tests {
         let row = repo.get(&conn, cart_id).expect("get after transition");
         assert_eq!(row.status_id, 2); // В работе
         assert_eq!(row.holder_name.as_deref(), Some("Петров"));
-        assert_eq!(row.location.as_deref(), Some("Каб. 305"));
+        assert_eq!(row.place_id, Some(office_place_id));
     }
 
     #[test]
@@ -1741,7 +1722,7 @@ mod tests {
         // ReturnToStock requires status_id=2 (В работе); current is 1 (На складе)
         let op = CartridgeTransitionOp::ReturnToStock {
             state_id: 3,
-            location: "Склад".into(),
+            place_id: None,
             notes: None,
         };
 
@@ -1776,7 +1757,7 @@ mod tests {
                     drum_model,
                     1,
                     Some(4),
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -1790,10 +1771,10 @@ mod tests {
                 date_utc: now,
                 given_by_name: "Иванов".into(),
                 given_to_name: "Петров".into(),
-                location: "Каб. 101".into(),
+                place_id: None,
                 printer_device_id: Some(printer_device_id),
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
             repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
@@ -1814,7 +1795,7 @@ mod tests {
                     drum_model,
                     1,
                     Some(4),
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -1828,10 +1809,10 @@ mod tests {
                 date_utc: now,
                 given_by_name: "Сидоров".into(),
                 given_to_name: "Кузнецов".into(),
-                location: "Каб. 101".into(),
+                place_id: None,
                 printer_device_id: Some(printer_device_id),
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
             repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
@@ -1867,7 +1848,7 @@ mod tests {
                     model_id,
                     1,
                     Some(1),
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -1881,10 +1862,10 @@ mod tests {
                 date_utc: now,
                 given_by_name: "Иванов".into(),
                 given_to_name: "Петров".into(),
-                location: "Каб. 202".into(),
+                place_id: None,
                 printer_device_id: Some(printer_device_id),
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
             repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
@@ -1903,7 +1884,7 @@ mod tests {
                     model_id,
                     1,
                     Some(1),
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -1917,10 +1898,10 @@ mod tests {
                 date_utc: now,
                 given_by_name: "Сидоров".into(),
                 given_to_name: "Кузнецов".into(),
-                location: "Каб. 202".into(),
+                place_id: None,
                 printer_device_id: Some(printer_device_id),
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
             repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
@@ -1994,7 +1975,7 @@ mod tests {
                     model_a,
                     *status,
                     *state,
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -2009,7 +1990,7 @@ mod tests {
                     model_a,
                     1,
                     Some(1),
-                    Some("Склад"),
+                    None,
                     None,
                     None,
                     now,
@@ -2032,7 +2013,7 @@ mod tests {
                 model_b,
                 2,
                 Some(2),
-                Some("Каб. 1"),
+                None,
                 None,
                 None,
                 now,
@@ -2050,7 +2031,7 @@ mod tests {
                 model_c,
                 1,
                 Some(1),
-                Some("Склад"),
+                None,
                 None,
                 None,
                 now,
