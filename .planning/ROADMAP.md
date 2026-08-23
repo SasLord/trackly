@@ -108,7 +108,7 @@
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete | 2026-08-13 |
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
-| 39. Дерево мест | v1.4 | 8/22 | In Progress|  |
+| 39. Дерево мест | v1.4 | 9/22 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 8/22 plans executed
+**Plans:** 9/22 plans executed
 Plans:
 **Wave 1**
 
@@ -163,7 +163,7 @@ Plans:
 
 - [x] 39-05-PLAN.md — PlaceService mutations (create/rename/move/archive/delete) + places_move_cycle.rs/places_delete_blocked.rs
 - [x] 39-06-PLAN.md — device_service/devices_sqlite/domain::devices onto place_id, drop resolve_location_id_in_tx
-- [ ] 39-09-PLAN.md — cartridge_service/cartridges_sqlite onto place_id, drop upsert_location_in_tx
+- [x] 39-09-PLAN.md — cartridge_service/cartridges_sqlite onto place_id, drop upsert_location_in_tx
 - [x] 39-10-PLAN.md — report_service/request_service/requests_sqlite/printers_sqlite onto place_full_paths (D-28 subtree filter)
 
 **Wave 4** *(blocked on Wave 3 completion)*
