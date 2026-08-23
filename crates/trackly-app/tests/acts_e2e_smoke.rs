@@ -31,6 +31,7 @@ use tempfile::TempDir;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -134,8 +135,7 @@ async fn full_lifecycle_then_undo() {
                 number_override: None,
                 giver_name: "Иванов И.И.".into(),
                 receiver_name: "Петров П.П.".into(),
-                location_id: None,
-                location_name: None,
+                place_id: None,
                 notes: None,
                 deadline_utc: None,
                 handover_date_utc: None,
@@ -178,10 +178,33 @@ async fn full_lifecycle_then_undo() {
         };
         assert_eq!(act_items.len(), 3);
 
+        // Real place row for the bulk-return destination — auto-create-by-name
+        // (payload.location_name) no longer exists (D-18); the caller must
+        // resolve a real place id via PlacePicker before submitting the return.
+        let sklad_a_id: i64 = p
+            .writer
+            .execute(|conn| {
+                let repo = trackly_infra::repos::SqlitePlaceRepository;
+                repo.create(
+                    conn,
+                    &trackly_core::domain::places::PlaceNew {
+                        parent_id: None,
+                        kind: trackly_core::domain::places::PlaceKind::Room,
+                        name: "Склад A".to_string(),
+                        level: None,
+                        is_storage: true,
+                        sort_order: None,
+                        notes: None,
+                    },
+                    1_700_000_000,
+                )
+            })
+            .await
+            .expect("create place");
+
         let partial_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: Some("Склад A".into()),
+            bulk_place_id: Some(sklad_a_id),
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -194,8 +217,7 @@ async fn full_lifecycle_then_undo() {
                     device_ids: vec![dev_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 })
                 .collect(),
         };
@@ -212,8 +234,7 @@ async fn full_lifecycle_then_undo() {
         // 3. Final return оставшегося устройства → handover должен авто-архивироваться.
         let final_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: Some("Склад A".into()),
+            bulk_place_id: Some(sklad_a_id),
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -224,8 +245,7 @@ async fn full_lifecycle_then_undo() {
                 device_ids: vec![act_items[2].1],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         p.acts
@@ -280,8 +300,7 @@ async fn handover_pdf_render_within_e2e() {
                 number_override: None,
                 giver_name: "Сидоров-Петроградский Иван Александрович".into(),
                 receiver_name: "Петров П.П.".into(),
-                location_id: None,
-                location_name: None,
+                place_id: None,
                 notes: None,
                 deadline_utc: None,
                 handover_date_utc: None,

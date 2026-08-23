@@ -59,8 +59,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
         number_override: None,
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -90,8 +89,7 @@ async fn archived_at_utc_present_for_fully_returned_parent() {
         // Return BOTH devices in a single call.
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             items: handover
                 .items
@@ -102,8 +100,7 @@ async fn archived_at_utc_present_for_fully_returned_parent() {
                     device_ids: vec![it.device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 })
                 .collect(),
             giver_name: None,
@@ -147,8 +144,7 @@ async fn archived_at_utc_absent_for_partially_returned_parent() {
         let first_item = &handover.items[0];
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             items: vec![ActReturnItemDto {
                 act_item_id: first_item.id,
@@ -156,8 +152,7 @@ async fn archived_at_utc_absent_for_partially_returned_parent() {
                 device_ids: vec![first_item.device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
             giver_name: None,
             receiver_name: None,

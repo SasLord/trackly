@@ -26,7 +26,7 @@ fn make_acts_service() -> (ActService, tempfile::TempDir) {
     (svc, dir)
 }
 
-/// Seed devices with explicit fields: status=1 (на_складе), location_id=loc_a,
+/// Seed devices with explicit fields: status=1 (на_складе), place_id=loc_a,
 /// condition='Новое'. Returns IDs.
 async fn seed_devices_with_state(
     writer: &Arc<trackly_infra::db::writer_worker::WriterHandle>,
@@ -43,7 +43,7 @@ async fn seed_devices_with_state(
             for name in &names {
                 tx.execute(
                     "INSERT INTO devices \
-                     (type_id, name, status_id, location_id, condition, version, \
+                     (type_id, name, status_id, place_id, condition, version, \
                       created_at_utc, updated_at_utc) \
                      VALUES (1, ?1, 1, ?2, ?3, 1, ?4, ?4)",
                     params![name, loc_a, condition, 1_700_000_000_i64],
@@ -67,8 +67,8 @@ async fn seed_location(
         .execute(move |conn| {
             let tx = conn.transaction().map_err(map_rusqlite)?;
             tx.execute(
-                "INSERT INTO locations (name, created_at_utc, updated_at_utc) \
-                 VALUES (?1, ?2, ?2)",
+                "INSERT INTO places (kind, name, created_at_utc, updated_at_utc) \
+                 VALUES ('room', ?1, ?2, ?2)",
                 params![name, 1_700_000_000_i64],
             )
             .map_err(map_rusqlite)?;
@@ -83,14 +83,13 @@ async fn seed_location(
 async fn create_handover_with_location(
     svc: &ActService,
     device_ids: &[i64],
-    location_id: i64,
+    place_id: i64,
 ) -> ActDto {
     svc.create(ActCreateDto {
         number_override: None,
         giver_name: "А".into(),
         receiver_name: "Б".into(),
-        location_id: Some(location_id),
-        location_name: None,
+        place_id: Some(place_id),
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -110,7 +109,7 @@ async fn create_handover_with_location(
 #[derive(Debug)]
 struct DeviceSnap {
     status_id: i64,
-    location_id: Option<i64>,
+    place_id: Option<i64>,
     condition: Option<String>,
 }
 
@@ -119,12 +118,12 @@ async fn read_device_snap(svc: &ActService, device_id: i64) -> DeviceSnap {
     tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
         conn.query_row(
-            "SELECT status_id, location_id, condition FROM devices WHERE id = ?1",
+            "SELECT status_id, place_id, condition FROM devices WHERE id = ?1",
             params![device_id],
             |r| {
                 Ok(DeviceSnap {
                     status_id: r.get(0)?,
-                    location_id: r.get(1)?,
+                    place_id: r.get(1)?,
                     condition: r.get(2)?,
                 })
             },
@@ -154,7 +153,7 @@ async fn delete_handover_restores_devices_to_pre_handover() {
         }
         for snap in &pre {
             assert_eq!(snap.status_id, 1, "pre: status=1 (на_складе)");
-            assert_eq!(snap.location_id, Some(loc_a));
+            assert_eq!(snap.place_id, Some(loc_a));
             assert_eq!(snap.condition.as_deref(), Some("Новое"));
         }
 
@@ -163,7 +162,7 @@ async fn delete_handover_restores_devices_to_pre_handover() {
         for &id in &device_ids {
             let snap = read_device_snap(&svc, id).await;
             assert_eq!(snap.status_id, 2, "after handover: 'в_работе'");
-            assert_eq!(snap.location_id, Some(loc_b));
+            assert_eq!(snap.place_id, Some(loc_b));
         }
 
         // Delete handover → undo each device.
@@ -174,7 +173,7 @@ async fn delete_handover_restores_devices_to_pre_handover() {
         for &id in &device_ids {
             let snap = read_device_snap(&svc, id).await;
             assert_eq!(snap.status_id, 1, "undo: status restored to 1 (на_складе)");
-            assert_eq!(snap.location_id, Some(loc_a), "undo: location restored");
+            assert_eq!(snap.place_id, Some(loc_a), "undo: location restored");
             assert_eq!(
                 snap.condition.as_deref(),
                 Some("Новое"),
@@ -208,8 +207,7 @@ async fn delete_handover_with_partial_return_cascades_undo() {
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Б/У".into()),
-                bulk_location_id: Some(loc_a),
-                bulk_location_name: None,
+                bulk_place_id: Some(loc_a),
                 apply_to_all: true,
                 giver_name: None,
                 receiver_name: None,
@@ -220,8 +218,7 @@ async fn delete_handover_with_partial_return_cascades_undo() {
                     device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 }],
             },
         )
@@ -240,7 +237,7 @@ async fn delete_handover_with_partial_return_cascades_undo() {
         for &id in &device_ids {
             let snap = read_device_snap(&svc, id).await;
             assert_eq!(snap.status_id, 1, "all devices on warehouse");
-            assert_eq!(snap.location_id, Some(loc_a));
+            assert_eq!(snap.place_id, Some(loc_a));
             assert_eq!(snap.condition.as_deref(), Some("Новое"));
         }
 
@@ -273,8 +270,7 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
-                    bulk_location_id: Some(loc_a),
-                    bulk_location_name: None,
+                    bulk_place_id: Some(loc_a),
                     apply_to_all: true,
                     giver_name: None,
                     receiver_name: None,
@@ -288,8 +284,7 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
                             device_ids: vec![it.device_id],
                             quantity: 1,
                             condition_override: None,
-                            location_id_override: None,
-                            location_name_override: None,
+                            place_id_override: None,
                         })
                         .collect(),
                 },
@@ -308,7 +303,7 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
         for &id in &device_ids {
             let snap = read_device_snap(&svc, id).await;
             assert_eq!(snap.status_id, 2, "back to 'в_работе' (handover state)");
-            assert_eq!(snap.location_id, Some(loc_b));
+            assert_eq!(snap.place_id, Some(loc_b));
         }
 
         let parent_after_delete = svc.get(handover.id).await.expect("get parent");

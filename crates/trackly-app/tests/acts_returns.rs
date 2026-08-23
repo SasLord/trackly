@@ -78,8 +78,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
         number_override: None,
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -112,8 +111,7 @@ async fn partial_return_keeps_handover_active() {
         let first_item = &handover.items[0];
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -124,8 +122,7 @@ async fn partial_return_keeps_handover_active() {
                 device_ids: vec![first_item.device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let ret = svc
@@ -168,8 +165,7 @@ async fn full_return_archives_handover() {
 
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -183,8 +179,7 @@ async fn full_return_archives_handover() {
                     device_ids: vec![it.device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 })
                 .collect(),
         };
@@ -223,8 +218,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
-                    bulk_location_id: None,
-                    bulk_location_name: None,
+                    bulk_place_id: None,
                     apply_to_all: true,
                     giver_name: None,
                     receiver_name: None,
@@ -235,8 +229,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                         device_ids: vec![it0.device_id],
                         quantity: 1,
                         condition_override: None,
-                        location_id_override: None,
-                        location_name_override: None,
+                        place_id_override: None,
                     }],
                 },
             )
@@ -250,8 +243,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
-                    bulk_location_id: None,
-                    bulk_location_name: None,
+                    bulk_place_id: None,
                     apply_to_all: true,
                     giver_name: None,
                     receiver_name: None,
@@ -264,8 +256,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
                             device_ids: vec![it.device_id],
                             quantity: 1,
                             condition_override: None,
-                            location_id_override: None,
-                            location_name_override: None,
+                            place_id_override: None,
                         })
                         .collect(),
                 },
@@ -308,14 +299,14 @@ async fn bulk_apply_with_per_row_override() {
         let device_ids = seed_devices(&svc.writer, 2).await;
         let handover = create_handover(&svc, &device_ids).await;
 
-        // Seed location_id = 5 («Куда вернуть»).
+        // Seed place_id = 5 («Куда вернуть»).
         let bulk_loc_id: i64 = svc
             .writer
             .execute(|conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 tx.execute(
-                    "INSERT INTO locations (name, created_at_utc, updated_at_utc) \
-                     VALUES ('Склад-А', ?1, ?1)",
+                    "INSERT INTO places (kind, name, created_at_utc, updated_at_utc) \
+                     VALUES ('room', 'Склад-А', ?1, ?1)",
                     params![1_700_000_000_i64],
                 )
                 .map_err(map_rusqlite)?;
@@ -328,8 +319,7 @@ async fn bulk_apply_with_per_row_override() {
 
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: Some(bulk_loc_id),
-            bulk_location_name: None,
+            bulk_place_id: Some(bulk_loc_id),
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -341,8 +331,7 @@ async fn bulk_apply_with_per_row_override() {
                     device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 },
                 ActReturnItemDto {
                     act_item_id: handover.items[1].id,
@@ -350,8 +339,7 @@ async fn bulk_apply_with_per_row_override() {
                     device_ids: vec![handover.items[1].device_id],
                     quantity: 1,
                     condition_override: Some("Б/У".into()),
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 },
             ],
         };
@@ -373,14 +361,14 @@ async fn bulk_apply_with_per_row_override() {
             let conn = readers.acquire();
             let (ac, al): (Option<String>, Option<i64>) = conn
                 .query_row(
-                    "SELECT condition, location_id FROM devices WHERE id = ?1",
+                    "SELECT condition, place_id FROM devices WHERE id = ?1",
                     params![device_a],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .expect("query A");
             let (bc, bl): (Option<String>, Option<i64>) = conn
                 .query_row(
-                    "SELECT condition, location_id FROM devices WHERE id = ?1",
+                    "SELECT condition, place_id FROM devices WHERE id = ?1",
                     params![device_b],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
@@ -412,8 +400,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
 
         let payload = ActReturnDto {
             bulk_condition: None,
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: false,
             giver_name: None,
             receiver_name: None,
@@ -424,8 +411,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
                 device_ids: vec![handover.items[0].device_id],
                 quantity: 1,
                 condition_override: None, // ← missing
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let err = svc
@@ -435,7 +421,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
         match err {
             AppError::Validation { field, .. } => {
                 assert!(
-                    field.contains("condition_override") || field.contains("location_id_override"),
+                    field.contains("condition_override") || field.contains("place_id_override"),
                     "field should mention per-row override, got: {field}"
                 );
             }
@@ -468,8 +454,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                 act_id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
-                    bulk_location_id: None,
-                    bulk_location_name: None,
+                    bulk_place_id: None,
                     apply_to_all: true,
                     giver_name: None,
                     receiver_name: None,
@@ -480,8 +465,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                         device_ids: vec![it0.device_id],
                         quantity: 1,
                         condition_override: None,
-                        location_id_override: None,
-                        location_name_override: None,
+                        place_id_override: None,
                     }],
                 },
             )
@@ -492,8 +476,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                 act_id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
-                    bulk_location_id: None,
-                    bulk_location_name: None,
+                    bulk_place_id: None,
                     apply_to_all: true,
                     giver_name: None,
                     receiver_name: None,
@@ -504,8 +487,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
                         device_ids: vec![it1.device_id],
                         quantity: 1,
                         condition_override: None,
-                        location_id_override: None,
-                        location_name_override: None,
+                        place_id_override: None,
                     }],
                 },
             )
@@ -551,8 +533,7 @@ async fn return_does_not_increment_act_counter() {
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
-                bulk_location_id: None,
-                bulk_location_name: None,
+                bulk_place_id: None,
                 apply_to_all: true,
                 giver_name: None,
                 receiver_name: None,
@@ -563,8 +544,7 @@ async fn return_does_not_increment_act_counter() {
                     device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 }],
             },
         )
@@ -603,14 +583,14 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
         let device_ids = seed_devices(&svc.writer, 1).await;
         let handover = create_handover(&svc, &device_ids).await;
 
-        // Seed location_id.
+        // Seed place_id.
         let loc_id: i64 = svc
             .writer
             .execute(|conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 tx.execute(
-                    "INSERT INTO locations (name, created_at_utc, updated_at_utc) \
-                     VALUES ('Склад-Б', ?1, ?1)",
+                    "INSERT INTO places (kind, name, created_at_utc, updated_at_utc) \
+                     VALUES ('room', 'Склад-Б', ?1, ?1)",
                     params![1_700_000_000_i64],
                 )
                 .map_err(map_rusqlite)?;
@@ -625,8 +605,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
             handover.id,
             ActReturnDto {
                 bulk_condition: None,
-                bulk_location_id: None,
-                bulk_location_name: None,
+                bulk_place_id: None,
                 apply_to_all: false,
                 giver_name: None,
                 receiver_name: None,
@@ -637,8 +616,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
                     device_ids: vec![handover.items[0].device_id],
                     quantity: 1,
                     condition_override: Some("Хорошее".into()),
-                    location_id_override: Some(loc_id),
-                    location_name_override: None,
+                    place_id_override: Some(loc_id),
                 }],
             },
         )
@@ -650,7 +628,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
         let (cond, loc): (Option<String>, Option<i64>) = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
             conn.query_row(
-                "SELECT condition, location_id FROM devices WHERE id = ?1",
+                "SELECT condition, place_id FROM devices WHERE id = ?1",
                 params![dev_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -683,8 +661,7 @@ async fn return_twice_same_device_rejected() {
 
         let payload = || ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -695,8 +672,7 @@ async fn return_twice_same_device_rejected() {
                 device_ids: vec![item.device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
 
@@ -750,13 +726,11 @@ async fn return_with_duplicate_act_item_id_rejected() {
             device_ids: vec![item.device_id],
             quantity: 1,
             condition_override: None,
-            location_id_override: None,
-            location_name_override: None,
+            place_id_override: None,
         };
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -803,8 +777,7 @@ async fn return_with_duplicate_device_id_rejected() {
         // any SQL existence check runs.
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -816,8 +789,7 @@ async fn return_with_duplicate_device_id_rejected() {
                     device_ids: vec![item.device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 },
                 ActReturnItemDto {
                     act_item_id: 999_999,
@@ -825,8 +797,7 @@ async fn return_with_duplicate_device_id_rejected() {
                     device_ids: vec![item.device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 },
             ],
         };
@@ -871,8 +842,7 @@ async fn return_quantity_exceeds_handover_rejected() {
         // ловится `return_twice_same_device_rejected` через status-guard.
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -883,8 +853,7 @@ async fn return_quantity_exceeds_handover_rejected() {
                 device_ids: Vec::new(),
                 quantity: 100,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let err = svc
@@ -953,8 +922,7 @@ async fn create_persists_giver_receiver_from_payload() {
 
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: Some("Сидоров С.С.".into()),
             receiver_name: Some("Кузнецов К.К.".into()),
@@ -965,8 +933,7 @@ async fn create_persists_giver_receiver_from_payload() {
                 device_ids: vec![handover.items[0].device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let ret = svc
@@ -1006,8 +973,7 @@ async fn create_falls_back_to_parent_swap_when_giver_receiver_absent() {
 
         let payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -1018,8 +984,7 @@ async fn create_falls_back_to_parent_swap_when_giver_receiver_absent() {
                 device_ids: vec![handover.items[0].device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         let ret = svc

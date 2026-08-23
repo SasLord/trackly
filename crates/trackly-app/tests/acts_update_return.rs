@@ -54,7 +54,7 @@ async fn seed_devices_with_state(
             for name in &names {
                 tx.execute(
                     "INSERT INTO devices \
-                     (type_id, name, status_id, location_id, condition, version, \
+                     (type_id, name, status_id, place_id, condition, version, \
                       created_at_utc, updated_at_utc) \
                      VALUES (1, ?1, 1, ?2, ?3, 1, ?4, ?4)",
                     params![name, loc_a, condition, 1_700_000_000_i64],
@@ -78,8 +78,8 @@ async fn seed_location(
         .execute(move |conn| {
             let tx = conn.transaction().map_err(map_rusqlite)?;
             tx.execute(
-                "INSERT INTO locations (name, created_at_utc, updated_at_utc) \
-                 VALUES (?1, ?2, ?2)",
+                "INSERT INTO places (kind, name, created_at_utc, updated_at_utc) \
+                 VALUES ('room', ?1, ?2, ?2)",
                 params![name, 1_700_000_000_i64],
             )
             .map_err(map_rusqlite)?;
@@ -94,14 +94,13 @@ async fn seed_location(
 async fn create_handover_with_location(
     svc: &ActService,
     device_ids: &[i64],
-    location_id: i64,
+    place_id: i64,
 ) -> ActDto {
     svc.create(ActCreateDto {
         number_override: None,
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
-        location_id: Some(location_id),
-        location_name: None,
+        place_id: Some(place_id),
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -121,7 +120,7 @@ async fn create_handover_with_location(
 #[derive(Debug, PartialEq)]
 struct DeviceSnap {
     status_id: i64,
-    location_id: Option<i64>,
+    place_id: Option<i64>,
     condition: Option<String>,
 }
 
@@ -130,12 +129,12 @@ async fn read_device_snap(svc: &ActService, device_id: i64) -> DeviceSnap {
     tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
         conn.query_row(
-            "SELECT status_id, location_id, condition FROM devices WHERE id = ?1",
+            "SELECT status_id, place_id, condition FROM devices WHERE id = ?1",
             params![device_id],
             |r| {
                 Ok(DeviceSnap {
                     status_id: r.get(0)?,
-                    location_id: r.get(1)?,
+                    place_id: r.get(1)?,
                     condition: r.get(2)?,
                 })
             },
@@ -154,7 +153,7 @@ async fn do_return_for(
     handover: &ActDto,
     device_ids: &[i64],
     condition: &str,
-    location_id: i64,
+    place_id: i64,
 ) -> ActDto {
     let items: Vec<ActReturnItemDto> = device_ids
         .iter()
@@ -170,8 +169,7 @@ async fn do_return_for(
                 device_ids: vec![did],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }
         })
         .collect();
@@ -179,8 +177,7 @@ async fn do_return_for(
         handover.id,
         ActReturnDto {
             bulk_condition: Some(condition.into()),
-            bulk_location_id: Some(location_id),
-            bulk_location_name: None,
+            bulk_place_id: Some(place_id),
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -199,21 +196,19 @@ fn update_return_dto_from(
     ret: &ActDto,
     device_ids: &[i64],
     condition: &str,
-    location_id: i64,
+    place_id: i64,
 ) -> ActUpdateReturnDto {
     ActUpdateReturnDto {
         id: ret.id,
         expected_version: ret.version,
         giver_name: ret.giver_name.clone(),
         receiver_name: ret.receiver_name.clone(),
-        location_id: ret.location_id,
-        location_name: None,
+        place_id: ret.place_id,
         notes: None,
         deadline_utc: None,
         handover_date_utc: ret.handover_date_utc,
         bulk_condition: Some(condition.into()),
-        bulk_location_id: Some(location_id),
-        bulk_location_name: None,
+        bulk_place_id: Some(place_id),
         apply_to_all: true,
         items: device_ids
             .iter()
@@ -223,8 +218,7 @@ fn update_return_dto_from(
                 device_ids: vec![did],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             })
             .collect(),
     }
@@ -270,7 +264,7 @@ async fn retained_edit_changes_device_condition_location() {
 
         let post = read_device_snap(&svc, device_ids[0]).await;
         assert_eq!(post.condition.as_deref(), Some("Б/У"), "condition updated");
-        assert_eq!(post.location_id, Some(loc_c), "location updated");
+        assert_eq!(post.place_id, Some(loc_c), "location updated");
 
         let readers = svc.readers.clone();
         let act_id = ret.id;
@@ -327,7 +321,7 @@ async fn un_return_restores_prior_state() {
         let post = read_device_snap(&svc, removed_id).await;
         assert_eq!(post.status_id, 2, "restored to в_работе");
         assert_eq!(
-            post.location_id,
+            post.place_id,
             Some(loc_a),
             "restored to pre-return location"
         );
@@ -380,7 +374,7 @@ async fn add_outstanding_device_to_return() {
         let post_extra = read_device_snap(&svc, extra_id).await;
         assert_eq!(post_extra.status_id, 1, "extra device now на_складе");
         assert_eq!(
-            post_extra.location_id,
+            post_extra.place_id,
             Some(loc_b),
             "extra device at bulk location"
         );
@@ -522,8 +516,7 @@ async fn reject_edit_after_manual_device_relocation() {
                     specs: None,
                     kit: None,
                     state: None,
-                    location: None,
-                    location_id: Some(Some(loc_c)),
+                    place_id: Some(Some(loc_c)),
                     status_id: None,
                 },
             )
@@ -535,7 +528,7 @@ async fn reject_edit_after_manual_device_relocation() {
             "status unchanged (на_складе)"
         );
         assert_eq!(
-            dev_after.location_id,
+            dev_after.place_id,
             Some(loc_c),
             "location manually changed"
         );
@@ -551,15 +544,14 @@ async fn reject_edit_after_manual_device_relocation() {
         let mut update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_b);
         update.apply_to_all = false;
         update.bulk_condition = None;
-        update.bulk_location_id = None;
+        update.bulk_place_id = None;
         update.items = vec![ActReturnItemDto {
             act_item_id: 0,
             device_id: dev_id,
             device_ids: vec![dev_id],
             quantity: 1,
             condition_override: Some("Б/У".into()),
-            location_id_override: Some(loc_b),
-            location_name_override: None,
+            place_id_override: Some(loc_b),
         }];
 
         let err = svc
@@ -600,7 +592,7 @@ async fn allow_edit_when_device_untouched() {
 
         let post = read_device_snap(&svc, device_ids[0]).await;
         assert_eq!(post.condition.as_deref(), Some("Хорошее"));
-        assert_eq!(post.location_id, Some(loc_b));
+        assert_eq!(post.place_id, Some(loc_b));
     })
     .await
     .expect("allow_edit_when_device_untouched budget");
@@ -775,8 +767,7 @@ async fn retained_edit_condition_only_preserves_location() {
         // exercise this because `update_return_dto_from` always supplies a
         // bulk location).
         let mut update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_b);
-        update.bulk_location_id = None;
-        update.bulk_location_name = None;
+        update.bulk_place_id = None;
 
         svc.update_return(update)
             .await
@@ -784,7 +775,7 @@ async fn retained_edit_condition_only_preserves_location() {
 
         let post = read_device_snap(&svc, device_id).await;
         assert_eq!(
-            post.location_id,
+            post.place_id,
             Some(loc_b),
             "location must be preserved (not NULLed) when only condition changes"
         );
@@ -817,8 +808,7 @@ async fn add_outstanding_device_without_bulk_location_preserves_current_location
 
         // Add device 1 to the same return with NO bulk/per-row location.
         let mut update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
-        update.bulk_location_id = None;
-        update.bulk_location_name = None;
+        update.bulk_place_id = None;
 
         svc.update_return(update)
             .await
@@ -826,7 +816,7 @@ async fn add_outstanding_device_without_bulk_location_preserves_current_location
 
         let post_extra = read_device_snap(&svc, extra_id).await;
         assert_eq!(
-            post_extra.location_id,
+            post_extra.place_id,
             Some(loc_a),
             "device 1's ORIGINAL pre-add location must be preserved, not NULLed"
         );
@@ -879,7 +869,7 @@ async fn un_return_after_retained_edit_restores_original_pre_return_state() {
             "restored to в_работе (true pre-return state)"
         );
         assert_eq!(
-            post_dev1.location_id,
+            post_dev1.place_id,
             Some(loc_a),
             "restored to original pre-return location, not loc_b or loc_c"
         );

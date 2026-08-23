@@ -64,8 +64,7 @@ async fn create_handover(
         number_override: None,
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -192,10 +191,34 @@ async fn search_filters_by_tab() {
             .await
             .expect("spawn")
         };
+        // Real place row for the bulk-return destination — auto-create-by-name
+        // (payload.location_name) no longer exists (D-18); the caller must
+        // resolve a real place id via PlacePicker before submitting the return.
+        let sklad_id: i64 = {
+            use trackly_core::ports::places::PlaceRepository;
+            svc.writer
+                .execute(|conn| {
+                    let repo = trackly_infra::repos::SqlitePlaceRepository;
+                    repo.create(
+                        conn,
+                        &trackly_core::domain::places::PlaceNew {
+                            parent_id: None,
+                            kind: trackly_core::domain::places::PlaceKind::Room,
+                            name: "Склад".to_string(),
+                            level: None,
+                            is_storage: true,
+                            sort_order: None,
+                            notes: None,
+                        },
+                        1_700_000_000,
+                    )
+                })
+                .await
+                .expect("create place")
+        };
         let return_payload = trackly_app::dto::act::ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: Some("Склад".into()),
+            bulk_place_id: Some(sklad_id),
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -206,8 +229,7 @@ async fn search_filters_by_tab() {
                 device_ids: vec![device_ids[1]],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
         svc.do_return(h2.id, return_payload).await.expect("return");

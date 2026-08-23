@@ -90,8 +90,7 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
             number_override: None,
             giver_name: "А".into(),
             receiver_name: "Б".into(),
-            location_id: None,
-            location_name: None,
+            place_id: None,
             notes: None,
             deadline_utc: None,
             handover_date_utc: None,
@@ -182,8 +181,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                 number_override: None,
                 giver_name: "А".into(),
                 receiver_name: "Б".into(),
-                location_id: None,
-                location_name: None,
+                place_id: None,
                 notes: None,
                 deadline_utc: None,
                 handover_date_utc: None,
@@ -198,8 +196,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
         // 2. POST /api/v1/acts_return for that handover.
         let return_payload = ActReturnDto {
             bulk_condition: Some("Хорошее".into()),
-            bulk_location_id: None,
-            bulk_location_name: None,
+            bulk_place_id: None,
             apply_to_all: true,
             giver_name: None,
             receiver_name: None,
@@ -210,8 +207,7 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                 device_ids: vec![device_id],
                 quantity: 1,
                 condition_override: None,
-                location_id_override: None,
-                location_name_override: None,
+                place_id_override: None,
             }],
         };
 
