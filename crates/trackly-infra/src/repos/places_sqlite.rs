@@ -433,14 +433,15 @@ impl PlaceRepository for SqlitePlaceRepository {
         // RESTRICT` FKs (Plan 01) are defense-in-depth behind this check
         // (T-39-04-02).
         let stats = subtree_stats_impl(&tx, id)?;
-        let total = stats.direct_children + stats.nested_places + stats.device_count + stats.cartridge_count;
+        // `nested_places` уже считает ВСЕХ потомков, включая прямых детей:
+        // прибавлять к нему `direct_children` — значит посчитать их дважды.
+        // Сервисный слой (D-14, `build_delete_blocked_message`) тоже берёт `nested_places`.
+        let total = stats.nested_places + stats.device_count + stats.cartridge_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: format!(
                     "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей.",
-                    stats.direct_children + stats.nested_places,
-                    stats.device_count,
-                    stats.cartridge_count,
+                    stats.nested_places, stats.device_count, stats.cartridge_count,
                 ),
             });
         }
