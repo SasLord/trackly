@@ -116,3 +116,7 @@ None — no external service configuration required.
 ---
 *Phase: 39-place-tree*
 *Completed: 2026-08-23*
+
+## Self-Check: PASSED
+
+All created/modified files confirmed present on disk (`crates/trackly-app/src/services/place_service.rs`, `crates/trackly-app/tests/places_contents.rs`, `crates/trackly-app/tests/places_search.rs`, this SUMMARY); all commit hashes (`292866b5`, `bb489c0b`, `c7d97cfd`, `c6303276`) confirmed present in `git log`.
