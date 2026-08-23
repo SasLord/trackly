@@ -1096,10 +1096,11 @@ impl ActService {
                         message: "Состояние обязательно (apply_to_all = false)".into(),
                     });
                 }
-                // Принимаем либо id, либо name.
-                if it.location_id_override.is_none() && it.location_name_override.is_none() {
+                // D-18: place_id приходит от caller'а (PlacePicker), без
+                // name-based резолва.
+                if it.place_id_override.is_none() {
                     return Err(AppError::Validation {
-                        field: format!("items[{idx}].location_id_override"),
+                        field: format!("items[{idx}].place_id_override"),
                         message: "Расположение обязательно (apply_to_all = false)".into(),
                     });
                 }
@@ -1114,6 +1115,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
+        let places_repo = self.places_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         let return_act_id = self
@@ -1207,17 +1209,20 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
-                // 3a. Resolve bulk_location_name → id (если задан). Имя
-                // имеет приоритет над `bulk_location_id` (UX-friendly).
-                let resolved_bulk_location_id: Option<i64> =
-                    if let Some(name) = payload.bulk_location_name.as_deref() {
-                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                    } else {
-                        payload.bulk_location_id
-                    };
+                // 3a. D-18: bulk_place_id приходит напрямую от caller'а
+                // (PlacePicker), без name-based резолва.
+                let resolved_bulk_place_id: Option<i64> = payload.bulk_place_id;
 
                 // 4. Next sub_number (atomic MAX+1 в той же tx).
                 let sub_number = next_sub_number_for_parent(&tx, act_id)?;
+
+                // D-16: capture the print-fidelity snapshot server-side from
+                // the validated place_id via PlaceRepository::full_path,
+                // mirroring `create`'s pattern.
+                let return_place_path_snapshot: Option<String> = match resolved_bulk_place_id {
+                    Some(pid) => Some(places_repo.full_path(&tx, pid)?),
+                    None => None,
+                };
 
                 // 5. INSERT return-act (number = parent.number, повторяем).
                 //    giver/receiver наследуются от parent (Decision: discretion-zone,
@@ -1243,8 +1248,9 @@ impl ActService {
                         .receiver_name
                         .clone()
                         .unwrap_or_else(|| parent.giver_name.clone()),
-                    location_id: resolved_bulk_location_id,
-                    location: None,
+                    place_id: resolved_bulk_place_id,
+                    full_path: None,
+                    place_path_snapshot: return_place_path_snapshot,
                     notes: None,
                     deadline_utc: None,
                     archived: false,
@@ -1291,18 +1297,15 @@ impl ActService {
                                 None
                             }
                         });
-                    let per_row_loc_id: Option<i64> =
-                        if let Some(name) = item.location_name_override.as_deref() {
-                            devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                        } else {
-                            item.location_id_override
-                        };
-                    // DEF-3: если effective_location=None, update_full_in_tx запишет
-                    // NULL в location_id. Caller обязан передать bulk_location_name или
-                    // location_name_override для восстановления расположения при возврате.
-                    let effective_location: Option<i64> = per_row_loc_id.or({
+                    // D-18: place_id_override приходит от caller'а (PlacePicker),
+                    // без name-based резолва.
+                    let per_row_place_id: Option<i64> = item.place_id_override;
+                    // DEF-3: если effective_place=None, update_full_in_tx запишет
+                    // NULL в place_id. Caller обязан передать bulk_place_id или
+                    // place_id_override для восстановления расположения при возврате.
+                    let effective_location: Option<i64> = per_row_place_id.or({
                         if payload.apply_to_all {
-                            resolved_bulk_location_id
+                            resolved_bulk_place_id
                         } else {
                             None
                         }
@@ -1517,9 +1520,9 @@ impl ActService {
                         message: "Состояние обязательно (apply_to_all = false)".into(),
                     });
                 }
-                if it.location_id_override.is_none() && it.location_name_override.is_none() {
+                if it.place_id_override.is_none() {
                     return Err(AppError::Validation {
-                        field: format!("items[{idx}].location_id_override"),
+                        field: format!("items[{idx}].place_id_override"),
                         message: "Расположение обязательно (apply_to_all = false)".into(),
                     });
                 }
@@ -1541,7 +1544,7 @@ impl ActService {
     ///
     /// D-11: any `removed` device, or any `retained` device whose payload
     /// requests an actual condition/location change, is rejected with
-    /// `AppError::Conflict` if its CURRENT `(status_id, location_id, state)`
+    /// `AppError::Conflict` if its CURRENT `(status_id, place_id, state)`
     /// diverges from what THIS return's own most-recent mutation set —
     /// covers both a later-handover reissue AND a manual device-page
     /// relocation. No force-override.
@@ -1554,6 +1557,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
+        let places_repo = self.places_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         let return_act_id = self
@@ -1634,14 +1638,9 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
-                // 5. Resolve bulk_location_name → id (имя приоритетнее id,
-                // mirrors `do_return`).
-                let resolved_bulk_location_id: Option<i64> =
-                    if let Some(name) = payload.bulk_location_name.as_deref() {
-                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                    } else {
-                        payload.bulk_location_id
-                    };
+                // 5. D-18: bulk_place_id приходит напрямую от caller'а
+                // (PlacePicker), без name-based резолва — mirrors `do_return`.
+                let resolved_bulk_place_id: Option<i64> = payload.bulk_place_id;
 
                 // 6. Build per-device effective (quantity, condition,
                 // location) map from the payload's items — mirrors
@@ -1667,15 +1666,12 @@ impl ActService {
                                 None
                             }
                         });
-                    let per_row_loc_id: Option<i64> =
-                        if let Some(name) = item.location_name_override.as_deref() {
-                            devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                        } else {
-                            item.location_id_override
-                        };
-                    let effective_location: Option<i64> = per_row_loc_id.or({
+                    // D-18: place_id_override приходит от caller'а
+                    // (PlacePicker), без name-based резолва.
+                    let per_row_place_id: Option<i64> = item.place_id_override;
+                    let effective_location: Option<i64> = per_row_place_id.or({
                         if payload.apply_to_all {
-                            resolved_bulk_location_id
+                            resolved_bulk_place_id
                         } else {
                             None
                         }
@@ -1791,7 +1787,7 @@ impl ActService {
                 // 8b. D-11 guard (Pattern 4): for every `removed` device AND
                 // every `retained` device whose payload requests an actual
                 // condition/location change, compare the device's CURRENT
-                // `(status_id, location_id, state)` against what THIS
+                // `(status_id, place_id, state)` against what THIS
                 // return's own most-recent mutation set
                 // (`select_latest_device_mutation_pair`'s `after_json`) —
                 // reject with `Conflict` on any mismatch, BEFORE any
@@ -1819,7 +1815,7 @@ impl ActService {
                     // STORED `act_items.condition_at_time` (there is no live
                     // "condition" column change source other than this
                     // snapshot), while `location_changed` compares against
-                    // the device's LIVE `location_id` (there is no per-item
+                    // the device's LIVE `place_id` (there is no per-item
                     // location column on `act_items` to compare against
                     // instead). Both treat a `None` effective value as "no
                     // change" (`unwrap_or(false)`) — this code path cannot
@@ -1832,7 +1828,7 @@ impl ActService {
                         .map(|c| Some(c) != stored_condition.as_deref())
                         .unwrap_or(false);
                     let location_changed = eff_location
-                        .map(|l| Some(l) != current.location_id)
+                        .map(|l| Some(l) != current.place_id)
                         .unwrap_or(false);
                     if condition_changed || location_changed {
                         retained_with_change.push(dev_id);
@@ -1858,8 +1854,7 @@ impl ActService {
                     let current = devices_repo.get_in_tx(&tx, dev_id)?;
                     let safe = expected.get("status_id").and_then(|v| v.as_i64())
                         == Some(current.status_id)
-                        && expected.get("location_id").and_then(|v| v.as_i64())
-                            == current.location_id
+                        && expected.get("place_id").and_then(|v| v.as_i64()) == current.place_id
                         && expected.get("state").and_then(|v| v.as_str())
                             == current.state.as_deref();
                     if !safe {
@@ -1939,7 +1934,7 @@ impl ActService {
                     // location must not wipe the device's already-established
                     // location — preserve it when no new location was
                     // supplied.
-                    let effective_location = location.or(before.location_id);
+                    let effective_location = location.or(before.place_id);
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         added_id,
@@ -2008,7 +2003,7 @@ impl ActService {
                     // CR-01: same location-preservation fix as the `added`
                     // loop above — a condition-only edit must not NULL the
                     // device's current location.
-                    let effective_location = location.or(before.location_id);
+                    let effective_location = location.or(before.place_id);
                     let after = devices_repo.update_full_in_tx(
                         &tx,
                         dev_id,
@@ -2050,18 +2045,30 @@ impl ActService {
                 // helper). `number: None` guarantees return numbers never
                 // change (out of scope, D-10). `notes`/`deadline_utc` are
                 // always cleared to `None` — return acts have no such fields
-                // in the edit form.
+                // in the edit form. D-16: place_path_snapshot recomputed
+                // unconditionally on every edit (mirrors `update`'s pattern).
+                let update_return_place_path_snapshot: Option<String> = match resolved_bulk_place_id
+                {
+                    Some(pid) => Some(places_repo.full_path(&tx, pid)?),
+                    None => None,
+                };
                 let patch = ActPatch {
                     giver_name: Some(payload.giver_name.clone()),
                     receiver_name: Some(payload.receiver_name.clone()),
-                    location_id: Some(resolved_bulk_location_id),
+                    place_id: Some(resolved_bulk_place_id),
                     notes: Some(None),
                     deadline_utc: Some(None),
                     handover_date_utc: Some(payload.handover_date_utc),
                     number: None,
                     expected_version: payload.expected_version,
                 };
-                acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
+                acts_repo.update_act_header_in_tx(
+                    &tx,
+                    payload.id,
+                    &patch,
+                    update_return_place_path_snapshot.as_deref(),
+                    now,
+                )?;
 
                 // 13. Recompute the PARENT's archived flag whenever the
                 // item-count-changing delta was non-empty (mirrors
@@ -2078,7 +2085,8 @@ impl ActService {
                 let before_json = serde_json::to_string(&serde_json::json!({
                     "giver_name": act.giver_name,
                     "receiver_name": act.receiver_name,
-                    "location_id": act.location_id,
+                    "place_id": act.place_id,
+                    "place_path_snapshot": act.place_path_snapshot,
                     "notes": act.notes,
                     "deadline_utc": act.deadline_utc,
                     "handover_date_utc": act.handover_date_utc,
@@ -2091,7 +2099,8 @@ impl ActService {
                 let after_json = serde_json::to_string(&serde_json::json!({
                     "giver_name": act_after.giver_name,
                     "receiver_name": act_after.receiver_name,
-                    "location_id": act_after.location_id,
+                    "place_id": act_after.place_id,
+                    "place_path_snapshot": act_after.place_path_snapshot,
                     "notes": act_after.notes,
                     "deadline_utc": act_after.deadline_utc,
                     "handover_date_utc": act_after.handover_date_utc,
@@ -2682,14 +2691,14 @@ impl ActService {
                 // D-16: print output uses the frozen write-time snapshot, not
                 // the live-resolved `full_path` — the printed act must not
                 // silently change if the place is later renamed/moved.
-                "location_name": act.place_path_snapshot,
+                "place_path": act.place_path_snapshot,
                 "items": items_json,
                 "items_grouped": items_grouped_json,
                 "parent": parent_block,
             },
             "return": {
                 "condition_default": serde_json::Value::Null,
-                "location_default": serde_json::Value::Null,
+                "place_default": serde_json::Value::Null,
             },
         });
 
