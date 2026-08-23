@@ -21,7 +21,10 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
-use trackly_infra::repos::{SqliteAuditLogRepository, SqliteCartridgeRepository};
+use trackly_infra::repos::{
+    SqliteAuditLogRepository, SqliteCartridgeRepository, SqliteDeviceRepository,
+    SqlitePlaceRepository,
+};
 
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
@@ -37,6 +40,11 @@ pub struct CartridgeService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) cart_repo: Arc<SqliteCartridgeRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
+    /// Install's printer-derived place default (D-13) — reads `devices.place_id`
+    /// for the target printer, never client-supplied text.
+    pub(crate) device_repo: Arc<SqliteDeviceRepository>,
+    /// D-11.4 storage-place listing for the ReturnToStock suggestion UX.
+    pub(crate) place_repo: Arc<SqlitePlaceRepository>,
 }
 
 impl CartridgeService {
@@ -51,6 +59,8 @@ impl CartridgeService {
             clock,
             cart_repo: Arc::new(SqliteCartridgeRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
+            device_repo: Arc::new(SqliteDeviceRepository),
+            place_repo: Arc::new(SqlitePlaceRepository),
         }
     }
 
@@ -131,7 +141,7 @@ impl CartridgeService {
                     payload.model_id,
                     1, // status_id: На складе
                     payload.state_id,
-                    payload.location.as_deref(),
+                    payload.place_id,
                     None, // holder_name — empty on creation
                     payload.notes.as_deref(),
                     now,
@@ -178,7 +188,7 @@ impl CartridgeService {
         &self,
         id: i64,
         version: i64,
-        location: Option<String>,
+        place_id: Option<i64>,
         notes: Option<String>,
     ) -> Result<CartridgeDto, AppError> {
         let now = self.clock.unix_seconds();
@@ -190,10 +200,10 @@ impl CartridgeService {
 
                 let affected = tx
                     .execute(
-                        "UPDATE cartridges SET location=?1, notes=?2, \
+                        "UPDATE cartridges SET place_id=?1, notes=?2, \
                          updated_at_utc=?3, version=version+1 \
                          WHERE id=?4 AND version=?5 AND deleted_at_utc IS NULL",
-                        params![location, notes, now, id, version],
+                        params![place_id, notes, now, id, version],
                     )
                     .map_err(map_rusqlite)?;
 
@@ -218,18 +228,6 @@ impl CartridgeService {
                             actual,
                         }),
                     };
-                }
-
-                // Location round-trip (keep shared autocomplete in sync).
-                if let Some(ref loc) = location {
-                    if !loc.trim().is_empty() {
-                        tx.execute(
-                            "INSERT OR IGNORE INTO locations \
-                             (name, created_at_utc, updated_at_utc, version) VALUES (?1, ?2, ?2, 1)",
-                            params![loc, now],
-                        )
-                        .map_err(map_rusqlite)?;
-                    }
                 }
 
                 audit_repo.insert(
@@ -384,8 +382,41 @@ impl CartridgeService {
 
     pub async fn transition(
         &self,
-        payload: CartridgeTransitionPayload,
+        mut payload: CartridgeTransitionPayload,
     ) -> Result<CartridgeDto, AppError> {
+        // D-13: Install with no explicit place_id defaults from the target
+        // printer's own place_id — a NEW server-computed lookup (never
+        // client-supplied text). If the device lookup misses or has no
+        // place_id, leave place_id as None (D-07 — place stays optional).
+        if let CartridgeTransitionPayload::Install {
+            place_id: None,
+            printer_device_id: Some(pid),
+            ..
+        } = &payload
+        {
+            let pid = *pid;
+            let readers = self.readers.clone();
+            let device_repo = self.device_repo.clone();
+            let resolved: Option<i64> =
+                tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
+                    use trackly_core::ports::devices::DeviceRepository;
+                    let conn = readers.acquire();
+                    match device_repo.get(&conn, pid) {
+                        Ok(row) => Ok(row.place_id),
+                        Err(AppError::NotFound { .. }) => Ok(None),
+                        Err(e) => Err(e),
+                    }
+                })
+                .await
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("spawn_blocking: {e}"),
+                })??;
+
+            if let CartridgeTransitionPayload::Install { place_id, .. } = &mut payload {
+                *place_id = resolved;
+            }
+        }
+
         let cartridge_id = payload.cartridge_id();
         let version = payload.version();
         let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
@@ -853,27 +884,16 @@ impl CartridgeService {
         })?
     }
 
-    /// Shared location autocomplete.
-    pub async fn suggest_location(&self, prefix: String) -> Result<Vec<String>, AppError> {
+    /// D-11.4: storage places (self OR any ancestor has `is_storage=1`),
+    /// exposed for the frontend's ReturnToStock place-suggestion UX (D-11.3).
+    /// The backend does not pick a default — a UI concern.
+    pub async fn storage_place_ids(&self) -> Result<Vec<i64>, AppError> {
         let readers = self.readers.clone();
-        tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+        let place_repo = self.place_repo.clone();
+        tokio::task::spawn_blocking(move || -> Result<Vec<i64>, AppError> {
+            use trackly_core::ports::places::PlaceRepository;
             let conn = readers.acquire();
-            let pattern = format!("{}%", prefix);
-            let mut stmt = conn
-                .prepare(
-                    "SELECT DISTINCT name FROM locations \
-                      WHERE name LIKE ?1 AND deleted_at_utc IS NULL \
-                      ORDER BY name ASC LIMIT 20",
-                )
-                .map_err(map_rusqlite)?;
-            let rows = stmt
-                .query_map(params![pattern], |r| r.get::<_, String>(0))
-                .map_err(map_rusqlite)?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r.map_err(map_rusqlite)?);
-            }
-            Ok(out)
+            place_repo.list_storage_place_ids(&conn)
         })
         .await
         .map_err(|e| AppError::Internal {
