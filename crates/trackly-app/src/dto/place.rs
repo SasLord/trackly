@@ -11,7 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use trackly_core::domain::places::PlaceRow;
+use trackly_core::domain::places::{PlaceContentRow, PlaceKind, PlaceRow, SubtreeStats};
+use trackly_core::error::AppError;
 
 /// Place DTO — full field set returned to the frontend. Mirrors `PlaceRow` 1:1
 /// except `deleted_at_utc` (internal soft-delete marker, never exposed on the wire).
@@ -107,6 +108,96 @@ pub struct PlacePathDto {
     pub place_id: i64,
     pub full_path: String,
     pub kind: String,
+}
+
+/// Wire-facing input for `places_create` (Plan 12). Mirrors `DeviceNew`'s
+/// dto/domain split convention: `domain::places::PlaceNew` has no serde/specta
+/// derives by design (Plan 02), so this DTO is the sole `#[tauri::command]`/HTTP
+/// input shape — converted via [`PlaceNewDto::into_domain`], which is fallible
+/// because `kind` is a caller-supplied string that must be validated against the
+/// six closed `PlaceKind` tokens (`PlaceKind::from_str`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct PlaceNewDto {
+    #[specta(type = Option<i32>)]
+    pub parent_id: Option<i64>,
+    pub kind: String,
+    pub name: String,
+    #[specta(type = Option<i32>)]
+    pub level: Option<i64>,
+    pub is_storage: bool,
+    #[specta(type = Option<i32>)]
+    pub sort_order: Option<i64>,
+    pub notes: Option<String>,
+}
+
+impl PlaceNewDto {
+    /// Fallible conversion into the domain `PlaceNew` — validates `kind` against
+    /// the six closed tokens via `PlaceKind::from_str`, returning the same
+    /// Russian-language `AppError::Validation` the domain layer already produces
+    /// for an unrecognized token.
+    pub fn into_domain(self) -> Result<trackly_core::domain::places::PlaceNew, AppError> {
+        Ok(trackly_core::domain::places::PlaceNew {
+            parent_id: self.parent_id,
+            kind: PlaceKind::from_str(&self.kind)?,
+            name: self.name,
+            level: self.level,
+            is_storage: self.is_storage,
+            sort_order: self.sort_order,
+            notes: self.notes,
+        })
+    }
+}
+
+/// Wire-facing output for `places_subtree_stats` (Plan 12). `domain::places::
+/// SubtreeStats` has no serde/specta derives (Plan 02 domain-layer convention),
+/// so this DTO is the sole transport shape for D-14/D-21/D-25/PLC-06 counters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct SubtreeStatsDto {
+    #[specta(type = i32)]
+    pub direct_children: i64,
+    #[specta(type = i32)]
+    pub nested_places: i64,
+    #[specta(type = i32)]
+    pub device_count: i64,
+    #[specta(type = i32)]
+    pub cartridge_count: i64,
+}
+
+impl From<SubtreeStats> for SubtreeStatsDto {
+    fn from(s: SubtreeStats) -> Self {
+        Self {
+            direct_children: s.direct_children,
+            nested_places: s.nested_places,
+            device_count: s.device_count,
+            cartridge_count: s.cartridge_count,
+        }
+    }
+}
+
+/// Wire-facing output row for `places_contents` (PLC-06 / D-23 — the "content of
+/// place" listing). Mirrors `domain::places::PlaceContentRow` 1:1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct PlaceContentDto {
+    pub kind: String,
+    #[specta(type = i32)]
+    pub id: i64,
+    pub name: String,
+    pub inventory_or_code: Option<String>,
+    pub full_path: String,
+    pub status_name: Option<String>,
+}
+
+impl From<PlaceContentRow> for PlaceContentDto {
+    fn from(row: PlaceContentRow) -> Self {
+        Self {
+            kind: row.kind,
+            id: row.id,
+            name: row.name,
+            inventory_or_code: row.inventory_or_code,
+            full_path: row.full_path,
+            status_name: row.status_name,
+        }
+    }
 }
 
 #[cfg(test)]
