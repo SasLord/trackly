@@ -15,6 +15,7 @@ pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
+pub mod places;
 pub mod printers;
 pub mod reports;
 pub mod requests;
@@ -154,6 +155,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(settings::router())
         .merge(health::router())
         .merge(devices::router())
+        .merge(places::router())
         .merge(acts::router())
         .merge(cartridges::router())
         .merge(organization::router())
