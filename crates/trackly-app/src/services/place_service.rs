@@ -43,7 +43,14 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::SqlitePlaceRepository;
 
-use crate::dto::place::PlaceDto;
+use crate::dto::place::{PlaceDto, PlacePathDto};
+
+/// Max caller-supplied query length for `search` (mirrors `act_service.rs`'s
+/// `suggest_person` prefix-length guard idiom — 100 chars — T-39-08-02).
+const SEARCH_QUERY_MAX_CHARS: usize = 100;
+
+/// Result cap for `search` (UI-SPEC §10.3 — PLC-03).
+const SEARCH_RESULT_LIMIT: usize = 50;
 
 /// The `CREATE UNIQUE INDEX` name for D-04's sibling-name constraint
 /// (`migrations/V037__places.sql`) — used to recognize the raw SQLite
@@ -534,6 +541,57 @@ impl PlaceService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
+    }
+
+    /// Cyrillic-safe full-path substring search (PLC-03/PLC-05). NEVER builds
+    /// a SQL `LIKE`/`GLOB` pattern (RESEARCH Common Pitfall 2 — SQLite's
+    /// `LIKE` case-folds ASCII only, silently failing on Cyrillic). Instead:
+    /// fetch the non-archived `place_full_paths` candidate set once (already
+    /// live-joined by `repo.list_all`), then filter in Rust via
+    /// `full_path.to_lowercase().contains(&query.to_lowercase())`, capped at
+    /// `SEARCH_RESULT_LIMIT` rows. Archived places are excluded (D-15).
+    pub async fn search(&self, caller: &Identity, query: String) -> Result<Vec<PlacePathDto>, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+
+        if query.chars().count() > SEARCH_QUERY_MAX_CHARS {
+            return Err(AppError::Validation {
+                field: "query".to_string(),
+                message: format!(
+                    "Запрос слишком длинный (макс. {SEARCH_QUERY_MAX_CHARS} символов)"
+                ),
+            });
+        }
+
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let candidates: Vec<PlaceRow> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.list_all(&conn, false)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
+
+        let needle = query.to_lowercase();
+        let results: Vec<PlacePathDto> = candidates
+            .into_iter()
+            .filter(|row| {
+                row.full_path
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .contains(&needle)
+            })
+            .take(SEARCH_RESULT_LIMIT)
+            .map(|row| PlacePathDto {
+                place_id: row.id,
+                full_path: row.full_path.unwrap_or_default(),
+                kind: row.kind.as_str().to_string(),
+            })
+            .collect();
+
+        Ok(results)
     }
 }
 
