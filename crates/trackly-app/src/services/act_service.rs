@@ -17,6 +17,7 @@ use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
+use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
@@ -25,7 +26,9 @@ use trackly_infra::repos::acts_sqlite::{
     recompute_parent_archived,
 };
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
-use trackly_infra::repos::{SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository};
+use trackly_infra::repos::{
+    SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqlitePlaceRepository,
+};
 
 use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
@@ -46,6 +49,11 @@ pub struct ActService {
     pub(crate) acts_repo: Arc<SqliteActRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
     pub(crate) devices_repo: Arc<SqliteDeviceRepository>,
+    /// D-16: resolves `place_id` -> full path snapshot at act write time
+    /// (create/update). Mirrors `devices_repo`'s unconditional-in-`new()`
+    /// construction (unit-struct adapter, zero config, no AppCtx wiring
+    /// needed — same pattern as `place_service.rs`'s `repo` field).
+    pub(crate) places_repo: Arc<SqlitePlaceRepository>,
     /// PDF pipeline deps — Optional чтобы Phase 2 тесты (helper-based fixtures
     /// `ActService::new`) могли работать без переписывания. AppCtx::build
     /// вызывает `with_pdf_pipeline(...)` — production runtime всегда имеет
@@ -73,6 +81,7 @@ impl ActService {
             acts_repo: Arc::new(SqliteActRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
             devices_repo: Arc::new(SqliteDeviceRepository),
+            places_repo: Arc::new(SqlitePlaceRepository),
             templates: None,
             organization: None,
             pdf: None,
@@ -203,6 +212,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
+        let places_repo = self.places_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         let act_id = self
@@ -268,14 +278,15 @@ impl ActService {
                 // payload value или fallback на now() (backward-compat для
                 // clients без поля).
                 let handover_date = payload.handover_date_utc.unwrap_or(now);
-                // UAT-fix: resolve location — name (autocomplete) → id, иначе
-                // fallback на location_id. INSERT OR IGNORE + SELECT в helper.
-                let resolved_location_id: Option<i64> =
-                    if let Some(name) = payload.location_name.as_deref() {
-                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                    } else {
-                        payload.location_id
-                    };
+                // D-18: place_id comes directly from the caller (PlacePicker) —
+                // no name-based auto-resolve/auto-create. Capture the D-16
+                // print-fidelity snapshot server-side from the validated
+                // place_id via PlaceRepository::full_path.
+                let resolved_place_id: Option<i64> = payload.place_id;
+                let place_path_snapshot: Option<String> = match resolved_place_id {
+                    Some(pid) => Some(places_repo.full_path(&tx, pid)?),
+                    None => None,
+                };
                 let new_row = ActRow {
                     id: 0,
                     number,
@@ -284,8 +295,9 @@ impl ActService {
                     act_type: ActType::Handover,
                     giver_name: payload.giver_name.clone(),
                     receiver_name: payload.receiver_name.clone(),
-                    location_id: resolved_location_id,
-                    location: None,
+                    place_id: resolved_place_id,
+                    full_path: None,
+                    place_path_snapshot,
                     notes: payload.notes.clone(),
                     deadline_utc: payload.deadline_utc,
                     archived: false,
@@ -433,16 +445,14 @@ impl ActService {
                                 source_chain: format!("before_json: {e}"),
                             })?;
 
-                        // DEF-3: передавать resolved_location_id (вычисленный из
-                        // location_name на строке ~258), а не payload.location_id.
-                        // Поскольку акты создаются через location_name (commit b2c43a5),
-                        // payload.location_id = None → без этого фикса devices.location_id
-                        // не обновлялся при handover.
+                        // DEF-3: передавать resolved_place_id (payload.place_id,
+                        // D-18 — caller-validated, no auto-resolve) — устройства
+                        // берут место с акта при handover.
                         let after = devices_repo.update_status_and_location_in_tx(
                             &tx,
                             dev_id,
                             in_work_status_id,
-                            resolved_location_id,
+                            resolved_place_id,
                             now,
                         )?;
                         let after_json =
@@ -479,7 +489,8 @@ impl ActService {
                     "act_type": act_after.act_type.to_sql(),
                     "giver_name": act_after.giver_name,
                     "receiver_name": act_after.receiver_name,
-                    "location_id": act_after.location_id,
+                    "place_id": act_after.place_id,
+                    "place_path_snapshot": act_after.place_path_snapshot,
                     "deadline_utc": act_after.deadline_utc,
                     "version": act_after.version,
                 }))
@@ -581,6 +592,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
+        let places_repo = self.places_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         let act_id = self
@@ -667,14 +679,15 @@ impl ActService {
                 let added: Vec<i64> = d_new.difference(&d_old).copied().collect();
                 let unchanged: Vec<i64> = d_old.intersection(&d_new).copied().collect();
 
-                // Resolve location once — name (autocomplete) takes priority
-                // over `location_id`, mirrors `create`'s pattern.
-                let resolved_location_id: Option<i64> =
-                    if let Some(name) = payload.location_name.as_deref() {
-                        devices_repo.resolve_location_id_in_tx(&tx, Some(name), now)?
-                    } else {
-                        payload.location_id
-                    };
+                // D-18: place_id comes directly from the caller (PlacePicker) —
+                // no name-based auto-resolve/auto-create, mirrors `create`'s
+                // pattern. Snapshot is always recomputed on update (simpler
+                // and always correct, even when place_id is unchanged).
+                let resolved_place_id: Option<i64> = payload.place_id;
+                let place_path_snapshot: Option<String> = match resolved_place_id {
+                    Some(pid) => Some(places_repo.full_path(&tx, pid)?),
+                    None => None,
+                };
 
                 // 6. Added devices: status guard (same shape as `create`'s
                 // device_ids[] path) THEN the add-loop body copied verbatim
@@ -702,7 +715,7 @@ impl ActService {
                         &tx,
                         dev_id,
                         in_work_status_id,
-                        resolved_location_id,
+                        resolved_place_id,
                         now,
                     )?;
                     let after_json =
@@ -898,14 +911,20 @@ impl ActService {
                 let patch = ActPatch {
                     giver_name: Some(payload.giver_name.clone()),
                     receiver_name: Some(payload.receiver_name.clone()),
-                    location_id: Some(resolved_location_id),
+                    place_id: Some(resolved_place_id),
                     notes: Some(payload.notes.clone()),
                     deadline_utc: Some(payload.deadline_utc),
                     handover_date_utc: payload.handover_date_utc,
                     number: payload.number_override,
                     expected_version: payload.expected_version,
                 };
-                acts_repo.update_act_header_in_tx(&tx, payload.id, &patch, now)?;
+                acts_repo.update_act_header_in_tx(
+                    &tx,
+                    payload.id,
+                    &patch,
+                    place_path_snapshot.as_deref(),
+                    now,
+                )?;
 
                 // 9a. Recompute acts.archived (CR-01 gap closure) whenever the
                 // item set actually changed. `update_act_header_in_tx` just
@@ -971,7 +990,8 @@ impl ActService {
                 let before_json = serde_json::to_string(&serde_json::json!({
                     "giver_name": act.giver_name,
                     "receiver_name": act.receiver_name,
-                    "location_id": act.location_id,
+                    "place_id": act.place_id,
+                    "place_path_snapshot": act.place_path_snapshot,
                     "notes": act.notes,
                     "deadline_utc": act.deadline_utc,
                     "handover_date_utc": act.handover_date_utc,
@@ -984,7 +1004,8 @@ impl ActService {
                 let after_json = serde_json::to_string(&serde_json::json!({
                     "giver_name": act_after.giver_name,
                     "receiver_name": act_after.receiver_name,
-                    "location_id": act_after.location_id,
+                    "place_id": act_after.place_id,
+                    "place_path_snapshot": act_after.place_path_snapshot,
                     "notes": act_after.notes,
                     "deadline_utc": act_after.deadline_utc,
                     "handover_date_utc": act_after.handover_date_utc,
@@ -2658,7 +2679,10 @@ impl ActService {
                 "receiver_name": act.receiver_name,
                 "deadline": act.deadline_utc.map(format_iso_date),
                 "deadline_human": act.deadline_utc.map(format_ru_date),
-                "location_name": act.location,
+                // D-16: print output uses the frozen write-time snapshot, not
+                // the live-resolved `full_path` — the printed act must not
+                // silently change if the place is later renamed/moved.
+                "location_name": act.place_path_snapshot,
                 "items": items_json,
                 "items_grouped": items_grouped_json,
                 "parent": parent_block,
