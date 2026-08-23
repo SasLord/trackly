@@ -51,7 +51,7 @@ fn make_row(
         giver_name: Some(giver.to_string()),
         receiver_name: Some(receiver.to_string()),
         handover_date_utc: Some(1_780_000_000),
-        location_name: Some(location.to_string()),
+        place_path: Some(location.to_string()),
         act_type: Some("handover".to_string()),
         device_name: Some(device_name.to_string()),
         quantity: Some(1),
@@ -101,7 +101,7 @@ async fn html_report_single_row_renders_columns_and_month() {
         "device_name",
         "giver_name",
         "receiver_name",
-        "location_name",
+        "place_path",
     ];
     let labels = ["Номер", "Устройства", "Сдал", "Принял", "Локация"];
 
@@ -389,7 +389,7 @@ async fn html_report_header_uses_russian_labels_not_raw_keys() {
         "device_name",
         "giver_name",
         "receiver_name",
-        "location_name",
+        "place_path",
     ];
     let labels = ["Номер", "Устройства", "Сдал", "Принял", "Локация"];
 

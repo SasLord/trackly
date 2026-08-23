@@ -51,7 +51,7 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             giver_name: Some("Иванов И.И.".to_string()),
             receiver_name: Some("Петров П.П.".to_string()),
             handover_date_utc: Some(1_748_800_000),
-            location_name: Some("Склад 1".to_string()),
+            place_path: Some("Склад 1".to_string()),
             act_type: Some("handover".to_string()),
             device_name: Some("Принтер HP".to_string()),
             quantity: Some(1),
@@ -65,7 +65,7 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
         "number",
         "giver_name",
         "receiver_name",
-        "location_name",
+        "place_path",
         "device_name",
     ];
     let bytes = svc.export_csv(&response, columns).await.unwrap();
@@ -124,7 +124,7 @@ async fn csv_export_guards_formula_injection() {
             giver_name: None,
             receiver_name: None,
             handover_date_utc: None,
-            location_name: None,
+            place_path: None,
             act_type: None,
             device_name: Some("=SUM(A1:A10)".to_string()),
             quantity: None,

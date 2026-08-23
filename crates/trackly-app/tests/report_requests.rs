@@ -117,9 +117,15 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
         clock.clone(),
         dir.path().join("trackly.db"),
     ));
+    let places = Arc::new(trackly_app::services::PlaceService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
+        places,
         paths: paths_arc,
         org_db,
         reports,
@@ -185,8 +191,8 @@ async fn seed_location(writer: &WriterHandle, name: &str) -> i64 {
                 source_chain: format!("{e}"),
             })?;
             tx.execute(
-                "INSERT INTO locations (name, created_at_utc, updated_at_utc, version) \
-                 VALUES (?1, ?2, ?2, 1)",
+                "INSERT INTO places (kind, name, created_at_utc, updated_at_utc, version) \
+                 VALUES ('room', ?1, ?2, ?2, 1)",
                 params![name, now],
             )
             .map_err(|e| AppError::Internal {
@@ -202,7 +208,7 @@ async fn seed_location(writer: &WriterHandle, name: &str) -> i64 {
         .expect("seed location")
 }
 
-async fn seed_printer_device(writer: &WriterHandle, name: &str, location_id: i64) -> i64 {
+async fn seed_printer_device(writer: &WriterHandle, name: &str, place_id: i64) -> i64 {
     let now = SystemClock.unix_seconds();
     let name = name.to_string();
     writer
@@ -211,9 +217,9 @@ async fn seed_printer_device(writer: &WriterHandle, name: &str, location_id: i64
                 source_chain: format!("{e}"),
             })?;
             tx.execute(
-                "INSERT INTO devices (type_id, name, location_id, status_id, created_at_utc, updated_at_utc, version) \
+                "INSERT INTO devices (type_id, name, place_id, status_id, created_at_utc, updated_at_utc, version) \
                  VALUES (2, ?1, ?2, 2, ?3, ?3, 1)",
-                params![name, location_id, now],
+                params![name, place_id, now],
             )
             .map_err(|e| AppError::Internal {
                 source_chain: format!("{e}"),
@@ -306,8 +312,8 @@ fn fixture_period() -> PeriodDto {
 async fn seed_fixture() -> (AppCtx, TempDir, i64) {
     let (ctx, dir) = minimal_ctx();
     let requester_id = seed_user(&ctx.writer, "us501", "Иванов И.И.").await;
-    let location_id = seed_location(&ctx.writer, "Склад тест").await;
-    let printer_id = seed_printer_device(&ctx.writer, "Принтер HP LaserJet", location_id).await;
+    let place_id = seed_location(&ctx.writer, "Склад тест").await;
+    let printer_id = seed_printer_device(&ctx.writer, "Принтер HP LaserJet", place_id).await;
 
     seed_request(
         &ctx.writer,
@@ -361,8 +367,8 @@ async fn seed_fixture() -> (AppCtx, TempDir, i64) {
 async fn seed_category_fixture() -> (AppCtx, TempDir, i64, HashMap<&'static str, i64>) {
     let (ctx, dir) = minimal_ctx();
     let requester_id = seed_user(&ctx.writer, "us502", "Петров П.П.").await;
-    let location_id = seed_location(&ctx.writer, "Склад тест 2").await;
-    let printer_id = seed_printer_device(&ctx.writer, "Принтер Kyocera", location_id).await;
+    let place_id = seed_location(&ctx.writer, "Склад тест 2").await;
+    let printer_id = seed_printer_device(&ctx.writer, "Принтер Kyocera", place_id).await;
 
     let repair_id = category_id_by_name(&ctx.readers, "Ремонт техники").await;
     let consumables_id = category_id_by_name(&ctx.readers, "Расходные материалы").await;
@@ -518,7 +524,7 @@ async fn report_requests_open_filters_by_status_and_translates_type() {
     assert_eq!(row.request_type_label, Some("Замена картриджа".to_string()));
     assert_eq!(row.giver_name, Some("Иванов И.И.".to_string()));
     assert_eq!(
-        row.location_name,
+        row.place_path,
         Some("Принтер HP LaserJet, Склад тест".to_string())
     );
 }
@@ -538,7 +544,7 @@ async fn report_requests_printer_location_blank_when_no_printer() {
     .expect("requests_in_progress");
 
     assert_eq!(response.total, 1);
-    assert!(response.rows[0].location_name.is_none());
+    assert!(response.rows[0].place_path.is_none());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

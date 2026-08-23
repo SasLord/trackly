@@ -120,8 +120,7 @@ async fn create_handover(
         number_override: None,
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -148,8 +147,7 @@ async fn create_handover_with_handover_date(
         number_override: None,
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: Some(handover_date_utc),
@@ -176,8 +174,7 @@ async fn create_handover_with_deadline(
         number_override: None,
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc,
         handover_date_utc: None,
@@ -442,8 +439,7 @@ async fn create_handover_with_items(
         number_override: None,
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
-        location_id: None,
-        location_name: None,
+        place_id: None,
         notes: None,
         deadline_utc: None,
         handover_date_utc: None,
@@ -701,8 +697,13 @@ async fn html_handover_without_deadline_renders_row_with_blank_underline() {
 /// DOC-07 / D-03 + D-12 (filled branch): with a `deadline_utc`, the same
 /// unconditional row must show the Russian-formatted date produced by
 /// `act_service`'s `deadline_human` (`format_ru_date`) and must NOT emit the
-/// `.value-blank` handwriting underline — the underline is reserved for the
-/// empty case (D-10: exactly two legitimate underlines remain).
+/// `.value-blank` handwriting underline on the «Сроком до:» row — the
+/// underline is reserved for the empty case. Since Phase 39 Plan 11 (D-27),
+/// a second, independent «Расположение:» field-row also renders its own
+/// `.value-blank` span whenever `act.place_path` is unset (which every
+/// fixture in this file leaves unset) — this is legitimate and unrelated to
+/// the deadline row, so the assertion below is scoped to the exact
+/// «Сроком до:» row text, not to a document-wide absence of any blank span.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn html_handover_with_deadline_renders_ru_date_without_blank_underline() {
     let p = make_full_pipeline().await;
@@ -744,8 +745,11 @@ async fn html_handover_with_deadline_renders_ru_date_without_blank_underline() {
         html.chars().take(2000).collect::<String>()
     );
     assert!(
-        !html.contains("<span class=\"value-blank\"></span>"),
-        "a filled deadline must NOT emit the blank handwriting underline (D-03/D-10). Body: {:?}",
+        !html.contains(
+            "<div class=\"field-row\">Сроком до: <span class=\"value-blank\"></span></div>"
+        ),
+        "a filled deadline must NOT emit the blank handwriting underline on the «Сроком до:» row \
+         (D-03/D-10). Body: {:?}",
         html.chars().take(2000).collect::<String>()
     );
 }
@@ -1327,8 +1331,7 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
-                bulk_location_id: None,
-                bulk_location_name: None,
+                bulk_place_id: None,
                 apply_to_all: true,
                 giver_name: None,
                 receiver_name: None,
@@ -1339,8 +1342,7 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
                     device_ids: vec![first_item.device_id],
                     quantity: 1,
                     condition_override: None,
-                    location_id_override: None,
-                    location_name_override: None,
+                    place_id_override: None,
                 }],
             },
         )
