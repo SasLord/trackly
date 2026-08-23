@@ -21,7 +21,11 @@ pub struct SqliteActRepository;
 /// SELECT with the column order expected by `from_row`.
 ///
 /// Joins:
-///   - `locations` for the human-readable location name.
+///   - `place_full_paths` for the live-resolved current place path
+///     (`resolved_place_path` — distinct from the stored, frozen
+///     `a.place_path_snapshot` column also selected directly below; D-16
+///     requires BOTH to exist side by side: one for navigation/lists
+///     [live], one for print [frozen]).
 ///   - `acts p` (self-join) for the parent act's `number` (used by display rule).
 ///
 /// `sibling_return_count` is a correlated subquery counting returns sharing
@@ -29,17 +33,18 @@ pub struct SqliteActRepository;
 /// see `from_row` for the rule that drops it to NULL on handover rows).
 const SELECT_ACTS: &str = "
     SELECT a.id, a.number, a.sub_number, a.parent_act_id, a.act_type,
-           a.giver_name, a.receiver_name, a.location_id, a.notes,
+           a.giver_name, a.receiver_name, a.place_id, a.notes,
            a.deadline_utc, a.archived,
            a.created_at_utc, a.updated_at_utc, a.deleted_at_utc, a.version,
-           l.name AS location_name,
+           pfp.full_path AS resolved_place_path,
            p.number AS parent_number,
            (SELECT COUNT(*) FROM acts r
               WHERE r.parent_act_id = COALESCE(a.parent_act_id, a.id)
                 AND r.deleted_at_utc IS NULL) AS sibling_return_count,
-           a.handover_date_utc
+           a.handover_date_utc,
+           a.place_path_snapshot
       FROM acts a
-      LEFT JOIN locations l ON a.location_id = l.id
+      LEFT JOIN place_full_paths pfp ON pfp.place_id = a.place_id
       LEFT JOIN acts p ON p.id = a.parent_act_id
 ";
 
@@ -67,7 +72,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
         act_type,
         giver_name: row.get(5)?,
         receiver_name: row.get(6)?,
-        location_id: row.get(7)?,
+        place_id: row.get(7)?,
         notes: row.get(8)?,
         deadline_utc: row.get(9)?,
         archived: row.get::<_, i64>(10)? == 1,
@@ -75,10 +80,11 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
         updated_at_utc: row.get(12)?,
         deleted_at_utc: row.get(13)?,
         version: row.get(14)?,
-        location: row.get(15)?,
+        full_path: row.get(15)?,
         parent_number: row.get(16)?,
         sibling_return_count: row.get(17)?,
         handover_date_utc: row.get(18)?,
+        place_path_snapshot: row.get(19)?,
     })
 }
 
@@ -93,9 +99,10 @@ impl SqliteActRepository {
         tx.execute(
             "INSERT INTO acts \
              (number, sub_number, parent_act_id, act_type, giver_name, \
-              receiver_name, location_id, notes, deadline_utc, archived, \
-              created_at_utc, updated_at_utc, version, handover_date_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, 1, ?12)",
+              receiver_name, place_id, notes, deadline_utc, archived, \
+              created_at_utc, updated_at_utc, version, handover_date_utc, \
+              place_path_snapshot) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, 1, ?12, ?13)",
             params![
                 new.number,
                 new.sub_number,
@@ -103,12 +110,13 @@ impl SqliteActRepository {
                 new.act_type.to_sql(),
                 new.giver_name,
                 new.receiver_name,
-                new.location_id,
+                new.place_id,
                 new.notes,
                 new.deadline_utc,
                 if new.archived { 1 } else { 0 },
                 new.created_at_utc,
                 new.handover_date_utc,
+                new.place_path_snapshot,
             ],
         )
         .map_err(map_rusqlite)?;
@@ -364,35 +372,40 @@ impl SqliteActRepository {
     /// CAS header UPDATE for act editing (Phase 19, ACT-02).
     ///
     /// Touches only the mutable header fields: `giver_name`, `receiver_name`,
-    /// `location_id`, `notes`, `deadline_utc`, `handover_date_utc` (D-01/D-04),
-    /// and `number` (D-04 override, `COALESCE`d — only applied if
-    /// `patch.number` is `Some`). Does NOT touch `sub_number`, `parent_act_id`,
-    /// `act_type` (immutable identity fields) or `created_at_utc` (D-02:
-    /// purely internal). Lock check is folded into the single `UPDATE`
-    /// statement itself (not a separate read-then-write), structurally
-    /// preventing a TOCTOU race — same pattern as `soft_delete_in_tx`.
+    /// `place_id`, `place_path_snapshot` (D-16 — re-captured server-side by
+    /// the caller via `PlaceRepository::full_path`, passed explicitly since
+    /// `ActPatch` itself doesn't carry it), `notes`, `deadline_utc`,
+    /// `handover_date_utc` (D-01/D-04), and `number` (D-04 override,
+    /// `COALESCE`d — only applied if `patch.number` is `Some`). Does NOT
+    /// touch `sub_number`, `parent_act_id`, `act_type` (immutable identity
+    /// fields) or `created_at_utc` (D-02: purely internal). Lock check is
+    /// folded into the single `UPDATE` statement itself (not a separate
+    /// read-then-write), structurally preventing a TOCTOU race — same
+    /// pattern as `soft_delete_in_tx`.
     ///
-    /// No caller yet — `ActService::update` (Plan 19-03) is the first and
-    /// only caller.
+    /// Caller — `ActService::update` (Plan 19-03, place-tree migration
+    /// Plan 39-07).
     pub fn update_act_header_in_tx(
         &self,
         tx: &Transaction<'_>,
         id: i64,
         patch: &ActPatch,
+        place_path_snapshot: Option<&str>,
         now_utc: i64,
     ) -> Result<(), AppError> {
         let affected = tx
             .execute(
                 "UPDATE acts SET giver_name = ?1, receiver_name = ?2, \
-                 location_id = ?3, notes = ?4, deadline_utc = ?5, \
-                 handover_date_utc = COALESCE(?6, handover_date_utc), \
-                 number = COALESCE(?7, number), \
-                 version = version + 1, updated_at_utc = ?8 \
-                 WHERE id = ?9 AND version = ?10 AND deleted_at_utc IS NULL",
+                 place_id = ?3, place_path_snapshot = ?4, notes = ?5, deadline_utc = ?6, \
+                 handover_date_utc = COALESCE(?7, handover_date_utc), \
+                 number = COALESCE(?8, number), \
+                 version = version + 1, updated_at_utc = ?9 \
+                 WHERE id = ?10 AND version = ?11 AND deleted_at_utc IS NULL",
                 params![
                     patch.giver_name,
                     patch.receiver_name,
-                    patch.location_id,
+                    patch.place_id,
+                    place_path_snapshot,
                     patch.notes,
                     patch.deadline_utc,
                     patch.handover_date_utc,
@@ -752,8 +765,9 @@ mod tests {
             act_type: ActType::Handover,
             giver_name: "Иванов".into(),
             receiver_name: "Петров".into(),
-            location_id: None,
-            location: None,
+            place_id: None,
+            full_path: None,
+            place_path_snapshot: None,
             notes: Some("test".into()),
             deadline_utc: Some(now + 86_400),
             archived: false,
