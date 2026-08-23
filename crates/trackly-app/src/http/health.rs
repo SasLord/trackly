@@ -123,9 +123,15 @@ mod tests {
             clock.clone(),
             dir.path().join("trackly.db"),
         ));
+        let places = Arc::new(crate::services::PlaceService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         let ctx = AppCtx {
             writer,
             readers,
+            places,
             paths: paths_arc,
             org_db,
             reports,
