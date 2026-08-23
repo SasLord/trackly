@@ -272,16 +272,16 @@ fn translate_request_status(raw: &str) -> String {
     }
 }
 
-/// Combine printer name + printer location into the «Принтер / Локация»
+/// Combine printer name + printer place path into the «Принтер / Место»
 /// column value. `None` when the request has no printer selected — an empty
 /// cell, not a "—" placeholder (the frontend draws the dash for a null
 /// value on screen; CSV/print show a genuinely empty cell).
-fn combine_printer_and_location(
+fn combine_printer_and_place(
     printer_name: Option<String>,
-    printer_location: Option<String>,
+    printer_place: Option<String>,
 ) -> Option<String> {
     let name = printer_name?;
-    match printer_location {
+    match printer_place {
         Some(loc) if !loc.is_empty() => Some(format!("{name}, {loc}")),
         _ => Some(name),
     }
@@ -579,6 +579,7 @@ impl ReportService {
                 None,
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
+                filter.is_storage,
             )
         })
         .await
@@ -606,6 +607,7 @@ impl ReportService {
                 Some("open"),
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
+                filter.is_storage,
             )
         })
         .await
@@ -633,6 +635,7 @@ impl ReportService {
                 Some("in_progress"),
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
+                filter.is_storage,
             )
         })
         .await
@@ -660,6 +663,7 @@ impl ReportService {
                 Some("completed"),
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
+                filter.is_storage,
             )
         })
         .await
@@ -1278,6 +1282,7 @@ fn query_cartridge_audit(
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("al.entity_type = 'cartridge'".to_string());
 
@@ -1312,20 +1317,40 @@ fn query_cartridge_audit(
         clauses.push(format!("c.status_id = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(status_id));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
+    // storage-place membership on the cartridge's own place_id (Plan 09 gave
+    // cartridges a real place_id FK); independent of item status (D-11.5).
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if want_storage {
+            clauses.push("c.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(c.place_id IS NULL OR c.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
-    // cartridges has no location_id FK — uses freeform text `location` column.
     let sql = format!(
-        "SELECT c.id, \
+        "{with_prefix}SELECT c.id, \
                strftime('%Y-%m', datetime(al.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
                al.created_at_utc as handover_date_utc, \
-               c.location as location_name, \
+               pfp.full_path as place_path, \
                m.brand || ' ' || m.model AS model_label, \
                c.code, \
                al.action \
          FROM audit_log al \
          JOIN cartridges c ON c.id = al.entity_id \
          JOIN cartridge_models m ON m.id = c.model_id \
+         LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id \
          WHERE {where_clause} \
          ORDER BY al.created_at_utc ASC \
          LIMIT 1000"
@@ -1343,7 +1368,7 @@ fn query_cartridge_audit(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: r.get(2)?,
-                location_name: r.get(3)?,
+                place_path: r.get(3)?,
                 act_type: r.get(6)?,
                 device_name: None,
                 quantity: None,
@@ -1371,6 +1396,7 @@ fn query_cartridge_snapshot(
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("c.deleted_at_utc IS NULL".to_string());
 
@@ -1392,14 +1418,34 @@ fn query_cartridge_snapshot(
         clauses.push(format!("m.color = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(color.clone()));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
+    // storage-place membership on the cartridge's own place_id; independent
+    // of item status (D-11.5).
+    if let Some(want_storage) = filter.is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if want_storage {
+            clauses.push("c.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(c.place_id IS NULL OR c.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
-    // cartridges.location is freeform text, no FK to locations table.
     let sql = format!(
-        "SELECT c.id, c.code, m.brand || ' ' || m.model AS model_label, \
-               c.location as location_name, cs.name as status_name \
+        "{with_prefix}SELECT c.id, c.code, m.brand || ' ' || m.model AS model_label, \
+               pfp.full_path as place_path, cs.name as status_name \
          FROM cartridges c \
          JOIN cartridge_models m ON m.id = c.model_id \
+         LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id \
          LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id \
          WHERE {where_clause} \
          ORDER BY c.code ASC, c.id ASC \
@@ -1418,7 +1464,7 @@ fn query_cartridge_snapshot(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: None,
-                location_name: r.get(3)?,
+                place_path: r.get(3)?,
                 act_type: None,
                 device_name: None,
                 quantity: None,
@@ -1449,9 +1495,11 @@ fn query_requests_inner(
     status_filter: Option<&str>,
     exclude_ad_register: bool,
     category_filter: Option<&[String]>,
+    is_storage: Option<bool>,
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     if let Some(status) = status_filter {
         clauses.push(format!("r.status = ?{}", next_idx(&owned_params)));
@@ -1471,17 +1519,36 @@ fn query_requests_inner(
         clauses.push(format!("r.created_at_utc <= ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(to));
     }
+    // D-11.2/D-11.4: geographic "на складе" quick filter, applied to the
+    // request's printer's own place_id; independent of item status (D-11.5).
+    if let Some(want_storage) = is_storage {
+        let storage_cte = "storage_ids(id) AS ( \
+                 SELECT id FROM places WHERE is_storage = 1 AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) ";
+        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if want_storage {
+            clauses.push("d.place_id IN (SELECT id FROM storage_ids)".to_string());
+        } else {
+            clauses.push(
+                "(d.place_id IS NULL OR d.place_id NOT IN (SELECT id FROM storage_ids))"
+                    .to_string(),
+            );
+        }
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT r.id, \
+        "{with_prefix}SELECT r.id, \
                strftime('%Y-%m', datetime(r.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
                r.created_at_utc, r.request_type, r.status, u.full_name AS requester_name, \
-               d.name AS printer_name, dl.name AS printer_location \
+               d.name AS printer_name, pfp.full_path AS printer_place \
          FROM requests r \
          LEFT JOIN users u ON u.id = r.requested_by_user_id \
          LEFT JOIN devices d ON d.id = r.printer_device_id \
-         LEFT JOIN locations dl ON dl.id = d.location_id \
+         LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
          WHERE {where_clause} \
          ORDER BY r.created_at_utc ASC, r.id ASC \
          LIMIT 1000"
@@ -1495,7 +1562,7 @@ fn query_requests_inner(
             let request_type: String = r.get(3)?;
             let status: String = r.get(4)?;
             let printer_name: Option<String> = r.get(6)?;
-            let printer_location: Option<String> = r.get(7)?;
+            let printer_place: Option<String> = r.get(7)?;
             Ok(ReportRow {
                 id,
                 month_key: r.get(1)?,
@@ -1504,7 +1571,7 @@ fn query_requests_inner(
                 giver_name: r.get(5)?,
                 receiver_name: None,
                 handover_date_utc: r.get(2)?,
-                location_name: combine_printer_and_location(printer_name, printer_location),
+                place_path: combine_printer_and_place(printer_name, printer_place),
                 act_type: None,
                 device_name: None,
                 quantity: None,
@@ -2056,14 +2123,14 @@ mod tests {
     }
 
     #[test]
-    fn combine_printer_and_location_none_without_printer() {
-        assert_eq!(combine_printer_and_location(None, None), None);
+    fn combine_printer_and_place_none_without_printer() {
+        assert_eq!(combine_printer_and_place(None, None), None);
     }
 
     #[test]
-    fn combine_printer_and_location_appends_location() {
+    fn combine_printer_and_place_appends_place() {
         assert_eq!(
-            combine_printer_and_location(
+            combine_printer_and_place(
                 Some("Принтер А".to_string()),
                 Some("Каб. 305".to_string())
             ),
@@ -2072,9 +2139,9 @@ mod tests {
     }
 
     #[test]
-    fn combine_printer_and_location_printer_only_when_location_missing() {
+    fn combine_printer_and_place_printer_only_when_place_missing() {
         assert_eq!(
-            combine_printer_and_location(Some("Принтер А".to_string()), None),
+            combine_printer_and_place(Some("Принтер А".to_string()), None),
             Some("Принтер А".to_string())
         );
     }
@@ -2275,7 +2342,7 @@ mod tests {
             giver_name: Some(giver.to_string()),
             receiver_name: Some("Иванов И.И.".to_string()),
             handover_date_utc: Some(1_780_000_000),
-            location_name: Some("Склад №1".to_string()),
+            place_path: Some("Склад №1".to_string()),
             act_type: Some("handover".to_string()),
             device_name: Some(device_name.to_string()),
             quantity: Some(1),
