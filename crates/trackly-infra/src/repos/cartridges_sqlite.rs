@@ -756,19 +756,32 @@ impl SqliteCartridgeRepository {
     // Public read-only helpers (called from service layer via ReaderPool)
     // -----------------------------------------------------------------------
 
-    /// FTS5 + LIKE search over cartridges (CART-11, D-Search-01).
+    /// FTS5 + LIKE + place-path search over cartridges (CART-11, D-Search-01,
+    /// D-29/PLC-05).
     ///
     /// UNION CTE: `fts_hits` (FTS5 MATCH on cartridges_fts) UNION `like_hits`
-    /// (LIKE on code, location, holder_name + model brand/model via JOIN).
+    /// (LIKE on code, holder_name + model brand/model via JOIN) UNION
+    /// `place_hits` (cartridges whose `place_id` is one of a Rust-computed
+    /// candidate set — see below).
+    ///
+    /// D-29/PLC-05: place-path substring matching is computed in Rust —
+    /// `place_full_paths` is fetched once and compared with `.to_lowercase()`
+    /// (RESEARCH Common Pitfall 2: Cyrillic substring matching must never go
+    /// through SQL LIKE/GLOB). Read live on every call: a place rename/move
+    /// is reflected on the very next `search` call, no reindex step.
     ///
     /// Security: FTS MATCH parameter is passed via `params![]` — not concatenated.
     /// Double-quotes in `query` are escaped before MATCH to avoid FTS syntax errors.
+    /// Resolved `place_id`s are bound as parameterized placeholders, never
+    /// interpolated as query text.
     pub fn search(
         &self,
         conn: &Connection,
         query: &str,
         filter: &CartridgeFilter,
     ) -> Result<Vec<CartridgeRow>, AppError> {
+        use rusqlite::types::ToSql;
+
         // Guard: FTS5 MATCH on a phrase with no alphanumeric tokens (e.g. "---",
         // a lone double-quote, or punctuation-only input) can return SQLITE_ERROR
         // on some unicode61 builds. When the query has no alphanumeric chars,
@@ -777,33 +790,79 @@ impl SqliteCartridgeRepository {
 
         let like_query = format!("%{}%", query);
 
+        // Compute the place-path candidate set BEFORE building either branch's
+        // SQL — empty query means no place candidates (mirrors like_query's
+        // empty-input handling).
+        let query_lower = query.trim().to_lowercase();
+        let place_ids: Vec<i64> = if query_lower.is_empty() {
+            Vec::new()
+        } else {
+            let mut stmt = conn
+                .prepare("SELECT place_id, full_path FROM place_full_paths")
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let path: String = r.get(1)?;
+                    Ok((id, path))
+                })
+                .map_err(map_rusqlite)?;
+            let mut ids = Vec::new();
+            for row in rows {
+                let (id, path) = row.map_err(map_rusqlite)?;
+                if path.to_lowercase().contains(&query_lower) {
+                    ids.push(id);
+                }
+            }
+            ids
+        };
+        let has_place = !place_ids.is_empty();
+
+        // place_hits placeholders start after the 4 fixed params (?1 like_query,
+        // ?2 status_id, ?3 kind_id, ?4 model_id).
+        let place_placeholders: Vec<String> = place_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", 5 + i))
+            .collect();
+        let place_hits_cte = if has_place {
+            format!(
+                ", place_hits AS (SELECT c.id FROM cartridges c WHERE c.place_id IN ({}))",
+                place_placeholders.join(",")
+            )
+        } else {
+            String::new()
+        };
+        let place_union = if has_place {
+            " UNION SELECT id FROM place_hits"
+        } else {
+            ""
+        };
+
         let sql = if has_token {
             // Escape double-quotes in FTS query to avoid FTS5 syntax errors (T-04-02-01).
             let fts_query_escaped = query.replace('"', "\"\"");
-            // Store in a way that outlives the if-arm.
             format!(
                 "WITH fts_hits AS ( \
                    SELECT f.rowid AS id FROM cartridges_fts f \
-                   WHERE cartridges_fts MATCH '\"{}\"*' \
+                   WHERE cartridges_fts MATCH '\"{fts_query_escaped}\"*' \
                  ), \
                  like_hits AS ( \
                    SELECT c.id FROM cartridges c \
                    LEFT JOIN cartridge_models m ON m.id = c.model_id \
                    WHERE c.code LIKE ?1 \
-                      OR c.location LIKE ?1 \
                       OR c.holder_name LIKE ?1 \
                       OR m.brand LIKE ?1 \
                       OR m.model LIKE ?1 \
-                 ) \
+                 ){place_hits_cte} \
                  {SELECT_CARTRIDGES} \
-                 WHERE c.id IN (SELECT id FROM fts_hits UNION SELECT id FROM like_hits) \
+                 WHERE c.id IN (SELECT id FROM fts_hits UNION SELECT id FROM like_hits{place_union}) \
                    AND c.deleted_at_utc IS NULL \
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
                    AND (?4 IS NULL OR c.model_id = ?4) \
                  ORDER BY c.created_at_utc DESC, c.id DESC \
-                 LIMIT 200",
-                fts_query_escaped
+                 LIMIT 200"
             )
         } else {
             format!(
@@ -811,13 +870,12 @@ impl SqliteCartridgeRepository {
                    SELECT c.id FROM cartridges c \
                    LEFT JOIN cartridge_models m ON m.id = c.model_id \
                    WHERE c.code LIKE ?1 \
-                      OR c.location LIKE ?1 \
                       OR c.holder_name LIKE ?1 \
                       OR m.brand LIKE ?1 \
                       OR m.model LIKE ?1 \
-                 ) \
+                 ){place_hits_cte} \
                  {SELECT_CARTRIDGES} \
-                 WHERE c.id IN (SELECT id FROM like_hits) \
+                 WHERE c.id IN (SELECT id FROM like_hits{place_union}) \
                    AND c.deleted_at_utc IS NULL \
                    AND (?2 IS NULL OR c.status_id = ?2) \
                    AND (?3 IS NULL OR m.kind_id = ?3) \
@@ -827,15 +885,21 @@ impl SqliteCartridgeRepository {
             )
         };
 
+        let mut bind_params: Vec<Box<dyn ToSql>> = vec![
+            Box::new(like_query),
+            Box::new(filter.status_id),
+            Box::new(filter.kind_id),
+            Box::new(filter.model_id),
+        ];
+        for id in &place_ids {
+            bind_params.push(Box::new(*id));
+        }
+        let param_refs: Vec<&dyn ToSql> = bind_params.iter().map(|b| b.as_ref()).collect();
+
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
             .query_map(
-                params![
-                    like_query,
-                    filter.status_id,
-                    filter.kind_id,
-                    filter.model_id,
-                ],
+                param_refs.as_slice(),
                 map_row,
             )
             .map_err(map_rusqlite)?;
