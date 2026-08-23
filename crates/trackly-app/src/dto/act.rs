@@ -62,8 +62,14 @@ pub struct ActDto {
     pub giver_name: String,
     pub receiver_name: String,
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
-    pub location: Option<String>,
+    pub place_id: Option<i64>,
+    /// Live-resolved current path (joined from `place_full_paths` on every
+    /// read) — distinct from `place_path_snapshot` (D-16).
+    pub full_path: Option<String>,
+    /// Frozen print-time snapshot of the place path, captured server-side at
+    /// write time via `PlaceRepository::full_path` (D-16) — never re-derived
+    /// on read, so it stays stable even after the place is renamed/moved.
+    pub place_path_snapshot: Option<String>,
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
@@ -125,13 +131,13 @@ pub struct ActItemDto {
     #[specta(type = Vec<i32>)]
     pub outstanding_device_ids: Vec<i64>,
     /// Phase 22 (ACT-03, Pitfall 2): текущее расположение устройства
-    /// (`devices.location_id`/joined `locations.name`), нужно для prefill
-    /// «Расположение» в форме редактирования возврата. Populated by
-    /// `load_items_for_act`'s `LEFT JOIN locations dl`; `None` when the
-    /// device has no location set.
+    /// (`devices.place_id`/joined `place_full_paths.full_path`), нужно для
+    /// prefill «Расположение» в форме редактирования возврата. Populated by
+    /// `load_items_for_act`'s `LEFT JOIN place_full_paths pfp`; `None` when
+    /// the device has no place set.
     #[specta(type = Option<i32>)]
-    pub device_location_id: Option<i64>,
-    pub device_location: Option<String>,
+    pub device_place_id: Option<i64>,
+    pub device_place: Option<String>,
 }
 
 /// Payload sent by the UI when оформляет возврат по handover-акту.
@@ -213,13 +219,11 @@ pub struct ActCreateDto {
     pub number_override: Option<i64>,
     pub giver_name: String,
     pub receiver_name: String,
+    /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+    /// `PlacePicker`; создание нового места по имени больше не поддерживается
+    /// на этом пути (D-18).
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
-    /// UAT-fix: name-based location (UI обычно передаёт name через autocomplete).
-    /// Если задано — backend resolves через `INSERT OR IGNORE locations → SELECT id`
-    /// и использует. Приоритет над `location_id`.
-    #[serde(default)]
-    pub location_name: Option<String>,
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
@@ -272,11 +276,11 @@ pub struct ActUpdateDto {
     pub number_override: Option<i64>,
     pub giver_name: String,
     pub receiver_name: String,
+    /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
+    /// `PlacePicker`; создание нового места по имени больше не поддерживается
+    /// на этом пути (D-18).
     #[specta(type = Option<i32>)]
-    pub location_id: Option<i64>,
-    /// UX-friendly: name-based location (mirrors `ActCreateDto.location_name`).
-    #[serde(default)]
-    pub location_name: Option<String>,
+    pub place_id: Option<i64>,
     pub notes: Option<String>,
     #[specta(type = Option<i32>)]
     pub deadline_utc: Option<i64>,
@@ -453,8 +457,9 @@ pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64
         parent_act_id: row.parent_act_id,
         giver_name: row.giver_name,
         receiver_name: row.receiver_name,
-        location_id: row.location_id,
-        location: row.location,
+        place_id: row.place_id,
+        full_path: row.full_path,
+        place_path_snapshot: row.place_path_snapshot,
         notes: row.notes,
         deadline_utc: row.deadline_utc,
         archived: row.archived,
@@ -516,8 +521,7 @@ mod tests {
             number_override: Some(7),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
-            location_id: None,
-            location_name: None,
+            place_id: None,
             notes: None,
             deadline_utc: None,
             handover_date_utc: None,
@@ -539,8 +543,7 @@ mod tests {
             number_override: Some(7),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
-            location_id: None,
-            location_name: None,
+            place_id: None,
             notes: None,
             deadline_utc: None,
             handover_date_utc: Some(1_700_000_000),
