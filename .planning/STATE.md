@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-22T21:54:31.678Z"
-last_activity: 2026-08-22
+last_updated: "2026-08-23T00:21:58.237Z"
+last_activity: 2026-08-23
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 7 of 22
+Plan: 8 of 22
 Status: Ready to execute
-Last activity: 2026-08-22
+Last activity: 2026-08-23
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -313,6 +313,7 @@ Last activity: 2026-08-22
 | Phase 39 P04 | 70min | 3 tasks | 3 files |
 | Phase 39 P06 | 43min | 6 tasks | 10 files |
 | Phase 39 P05 | 55min | 3 tasks | 8 files |
+| Phase 39 P10 | 140min | 6 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -782,6 +783,7 @@ Recent decisions affecting current work:
 - [Phase 39]: 39-06: search_fts's D-29 place-path substring match computed in Rust via to_lowercase().contains() against the raw query, OR-combined with the FTS5 match via two independent CTEs (fts_hits, place_hits)
 - [Phase 39]: 39-06: CSV device import fetches the full place candidate set once per commit call, resolves each row's place text against it in Rust (exact match only, RowError per UI-SPEC S12 on miss)
 - [Phase ?]: PlaceService mutations call PlaceRepository's create/rename/archive/unarchive directly on &mut Connection (not a wrapped transaction) — rusqlite::Transaction has no DerefMut, so &mut tx cannot satisfy &mut Self::Conn; audit_log insert gets its own short-lived conn.transaction() instead
+- [Phase 39]: 39-10: is_storage quick filter (D-11.2/D-11.4) added to acts/devices/cartridges/requests reports; D-28 subtree place_id filter kept scoped to acts/devices only, matching pre-existing cartridges/requests filter scope
 
 ### Pending Todos
 
@@ -963,8 +965,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-22T21:54:31.669Z
-Stopped at: Completed 39-05-PLAN.md
+Last session: 2026-08-23T00:21:58.228Z
+Stopped at: Completed 39-10-PLAN.md
 Resume file: 
 
 None
