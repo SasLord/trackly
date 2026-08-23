@@ -108,7 +108,7 @@
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete | 2026-08-13 |
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
-| 39. Дерево мест | v1.4 | 12/22 | In Progress|  |
+| 39. Дерево мест | v1.4 | 13/22 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 12/22 plans executed
+**Plans:** 13/22 plans executed
 Plans:
 **Wave 1**
 
@@ -179,7 +179,7 @@ Plans:
 **Wave 6** *(blocked on Wave 5 completion)*
 
 - [ ] 39-13-PLAN.md — PlacePicker.svelte (tree + search modes, D-18 create-row) + showcase
-- [ ] 39-22-PLAN.md — test-fixup: 31 pre-existing test files onto renamed place_id/place_path vocabulary
+- [x] 39-22-PLAN.md — test-fixup: 31 pre-existing test files onto renamed place_id/place_path vocabulary
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
