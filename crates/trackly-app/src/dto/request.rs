@@ -35,10 +35,10 @@ pub struct RequestDto {
     pub resolution_notes: Option<String>,
     pub requester_name: Option<String>,
     pub printer_name: Option<String>,
-    /// Joined `locations.name` через `devices.location_id` принтера заявки
-    /// (D-05, Phase 12). `None` если принтер не выбран или у него нет
-    /// расположения. Wire name: `printerLocation`.
-    pub printer_location: Option<String>,
+    /// Joined `place_full_paths.full_path` через `devices.place_id` принтера
+    /// заявки (D-05, Phase 12; мигрировано на дерево мест в Фазе 39). `None`
+    /// если принтер не выбран или у него нет места. Wire name: `printerPlace`.
+    pub printer_place: Option<String>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
     #[specta(type = i32)]
@@ -70,7 +70,7 @@ impl From<RequestRow> for RequestDto {
             resolution_notes: r.resolution_notes,
             requester_name: r.requester_name,
             printer_name: r.printer_name,
-            printer_location: r.printer_location,
+            printer_place: r.printer_place,
             created_at_utc: r.created_at_utc,
             updated_at_utc: r.updated_at_utc,
             deleted_at_utc: r.deleted_at_utc,
@@ -93,7 +93,7 @@ pub struct RequestCategoryDto {
     pub name: String,
 }
 
-/// A single printer option `{ id, name, location }` for the create-request
+/// A single printer option `{ id, name, place }` for the create-request
 /// form's printer dropdown (D-PRN-01).
 ///
 /// Gated behind `Action::CreateRequest` (employee has it) — deliberately NOT
@@ -108,8 +108,9 @@ pub struct RequestPrinterOptionDto {
     #[specta(type = i32)]
     pub id: i64,
     pub name: String,
-    /// Joined `locations.name` — `None` when the printer has no location set.
-    pub location: Option<String>,
+    /// Joined `place_full_paths.full_path` — `None` when the printer has no
+    /// place set.
+    pub place: Option<String>,
 }
 
 /// Filter parameters for request list queries.

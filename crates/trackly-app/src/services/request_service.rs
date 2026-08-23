@@ -233,9 +233,9 @@ impl RequestService {
     /// (Phase 10 closed those for Employee — this endpoint must not
     /// regress that closure by reusing either gate).
     ///
-    /// Returns only `{id, name, location}` — no SNMP/community/IP/serial
+    /// Returns only `{id, name, place}` — no SNMP/community/IP/serial
     /// fields leave the server (BOLA/BOPLA closure, T-11-02-I). Sorted by
-    /// location (printers without a location sort last), then by name.
+    /// place (printers without a place sort last), then by name.
     pub async fn printer_options(
         &self,
         caller: &Identity,
@@ -255,12 +255,12 @@ impl RequestService {
             // `row.get(1)` cannot hit a NULL-column type error.
             let mut stmt = conn
                 .prepare(
-                    "SELECT d.id, d.name, l.name AS location \
+                    "SELECT d.id, d.name, pfp.full_path AS place \
                      FROM devices d \
-                     LEFT JOIN locations l ON d.location_id = l.id \
+                     LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
                      WHERE d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер') \
                        AND d.deleted_at_utc IS NULL \
-                     ORDER BY l.name IS NULL, l.name, d.name",
+                     ORDER BY pfp.full_path IS NULL, pfp.full_path, d.name",
                 )
                 .map_err(map_rusqlite)?;
             let rows = stmt
@@ -268,7 +268,7 @@ impl RequestService {
                     Ok(RequestPrinterOptionDto {
                         id: row.get(0)?,
                         name: row.get(1)?,
-                        location: row.get(2)?,
+                        place: row.get(2)?,
                     })
                 })
                 .map_err(map_rusqlite)?

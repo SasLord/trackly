@@ -30,7 +30,12 @@ pub struct PrinterDto {
     /// community deliberately absent — never serialize to frontend (Pitfall 4).
     pub community_configured: bool,
     pub device_name: Option<String>,
-    pub device_location: Option<String>,
+    pub device_place: Option<String>,
+    /// Raw `devices.place_id` (not a resolved path) — needed to prefill a
+    /// `PlacePicker` selection by id when a printer is chosen for an Install
+    /// operation (Plan 16, `OperationModal.svelte`).
+    #[specta(type = Option<i32>)]
+    pub device_place_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub usb_host_device_id: Option<i64>,
     /// Latest reading fields (denormalized for card display).
@@ -65,7 +70,8 @@ impl From<PrinterRow> for PrinterDto {
             // community was configured.
             community_configured: r.community_configured,
             device_name: r.device_name,
-            device_location: r.device_location,
+            device_place: r.device_place,
+            device_place_id: r.device_place_id,
             usb_host_device_id: r.usb_host_device_id,
             // Reading fields populated by service (get_last_reading).
             toner_levels: None,

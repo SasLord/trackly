@@ -23,16 +23,20 @@ pub struct SqlitePrinterRepository;
 ///
 /// Joins:
 ///   - `devices d` for device_name.
-///   - `locations l` for device_location (devices uses location_id FK).
+///   - `place_full_paths pfp` for device_place (resolved display path) via
+///     `devices.place_id` — `d.place_id` itself is ALSO selected directly
+///     (as `device_place_id`), needed to prefill a `PlacePicker` by id when
+///     a printer is chosen for an Install operation (Plan 16).
 const SELECT_PRINTERS: &str = "
     SELECT p.id, p.device_id, p.ip_address, p.snmp_version, p.vendor,
            p.oid_profile_id, p.last_seen_utc, p.usb_host_device_id,
-           d.name AS device_name, l.name AS device_location,
+           d.name AS device_name, pfp.full_path AS device_place,
+           d.place_id AS device_place_id,
            p.created_at_utc, p.updated_at_utc, p.version,
            (p.community <> 'public') AS community_configured
       FROM printers p
       LEFT JOIN devices d ON d.id = p.device_id
-      LEFT JOIN locations l ON l.id = d.location_id
+      LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
 ";
 
 /// Maps a `SELECT_PRINTERS` row into `PrinterRow`.
@@ -47,12 +51,13 @@ fn map_row_printer(row: &rusqlite::Row<'_>) -> rusqlite::Result<PrinterRow> {
         last_seen_utc: row.get(6)?,
         usb_host_device_id: row.get(7)?,
         device_name: row.get(8)?,
-        device_location: row.get(9)?,
-        created_at_utc: row.get(10)?,
-        updated_at_utc: row.get(11)?,
-        version: row.get(12)?,
+        device_place: row.get(9)?,
+        device_place_id: row.get(10)?,
+        created_at_utc: row.get(11)?,
+        updated_at_utc: row.get(12)?,
+        version: row.get(13)?,
         // SQLite returns the boolean predicate as 0/1; rusqlite maps it to bool.
-        community_configured: row.get(13)?,
+        community_configured: row.get(14)?,
     })
 }
 

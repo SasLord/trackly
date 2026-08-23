@@ -5,10 +5,10 @@
 //! deliberately gated on `Action::CreateRequest` instead (every role has it,
 //! Employee included). These tests prove:
 //! 1. Employee session → 200 + a populated list.
-//! 2. The serialized JSON contains ONLY `id`/`name`/`location` — no
+//! 2. The serialized JSON contains ONLY `id`/`name`/`place` — no
 //!    snmp/community/ip/serial keys leak (BOLA/BOPLA closure, T-11-02-I).
-//! 3. Results are sorted by location, then name; printers without a
-//!    location sort last.
+//! 3. Results are sorted by place, then name; printers without a
+//!    place sort last.
 //! 4. No session → 401.
 //!
 //! Session setup mirrors `role_endpoint_matrix.rs` / `requests_ad_register_http.rs`:
@@ -90,9 +90,11 @@ async fn post_with_cookie(
 }
 
 /// Seed `n` printer devices (`type_id = 2`) directly via the writer, with the
-/// given `(name, location_name)` pairs. `location_name = None` leaves
-/// `location_id` NULL. Returns nothing — fixtures are read back by the
-/// endpoint under test.
+/// given `(name, place_name)` pairs. `place_name = None` leaves `place_id`
+/// NULL. Places are created as root-level `zone` nodes (kind is irrelevant
+/// to this test — only the resolved `full_path`, which for a root node
+/// equals its own `name`, matters). Returns nothing — fixtures are read
+/// back by the endpoint under test.
 async fn seed_printer_devices(ctx: &AppCtx, printers: &[(&str, Option<&str>)]) {
     let now = SystemClock.unix_seconds();
     let printers: Vec<(String, Option<String>)> = printers
@@ -105,19 +107,20 @@ async fn seed_printer_devices(ctx: &AppCtx, printers: &[(&str, Option<&str>)]) {
                 source_chain: format!("{e}"),
             })?;
             for (name, loc) in &printers {
-                let location_id: Option<i64> = if let Some(loc_name) = loc {
+                let place_id: Option<i64> = if let Some(place_name) = loc {
                     tx.execute(
-                        "INSERT OR IGNORE INTO locations (name, created_at_utc, updated_at_utc) \
-                         VALUES (?1, ?2, ?2)",
-                        params![loc_name, now],
+                        "INSERT OR IGNORE INTO places \
+                         (parent_id, kind, name, created_at_utc, updated_at_utc) \
+                         VALUES (NULL, 'zone', ?1, ?2, ?2)",
+                        params![place_name, now],
                     )
                     .map_err(|e| trackly_core::error::AppError::Internal {
                         source_chain: format!("{e}"),
                     })?;
                     let id: i64 = tx
                         .query_row(
-                            "SELECT id FROM locations WHERE name = ?1",
-                            params![loc_name],
+                            "SELECT id FROM places WHERE parent_id IS NULL AND name = ?1",
+                            params![place_name],
                             |r| r.get(0),
                         )
                         .map_err(|e| trackly_core::error::AppError::Internal {
@@ -129,9 +132,9 @@ async fn seed_printer_devices(ctx: &AppCtx, printers: &[(&str, Option<&str>)]) {
                 };
                 tx.execute(
                     "INSERT INTO devices \
-                     (type_id, name, location_id, status_id, created_at_utc, updated_at_utc, version) \
+                     (type_id, name, place_id, status_id, created_at_utc, updated_at_utc, version) \
                      VALUES (2, ?1, ?2, 1, ?3, ?3, 1)",
-                    params![name, location_id, now],
+                    params![name, place_id, now],
                 )
                 .map_err(|e| trackly_core::error::AppError::Internal {
                     source_chain: format!("{e}"),
@@ -168,8 +171,8 @@ async fn employee_gets_printer_options_minimal_dto() {
             .expect("create employee user");
 
         // Seed: 2 printers in "Офис Б" (alphabetically after "Офис А"), 1 in
-        // "Офис А", 1 with no location — proves sort order (location, then
-        // name; no-location last).
+        // "Офис А", 1 with no place — proves sort order (place, then
+        // name; no-place last).
         seed_printer_devices(
             &ctx,
             &[
@@ -201,7 +204,7 @@ async fn employee_gets_printer_options_minimal_dto() {
             .expect("response body must be a JSON array");
         assert_eq!(items.len(), 4, "expected 4 seeded printers, got {items:?}");
 
-        // Minimal DTO: only id/name/location keys, nothing else (BOLA/BOPLA
+        // Minimal DTO: only id/name/place keys, nothing else (BOLA/BOPLA
         // closure — no snmp/community/ip/serial fields).
         for item in items {
             let obj = item.as_object().expect("each item must be a JSON object");
@@ -209,8 +212,8 @@ async fn employee_gets_printer_options_minimal_dto() {
             keys.sort_unstable();
             assert_eq!(
                 keys,
-                vec!["id", "location", "name"],
-                "request_printer_options item must contain ONLY id/location/name, got keys: {keys:?}"
+                vec!["id", "name", "place"],
+                "request_printer_options item must contain ONLY id/name/place, got keys: {keys:?}"
             );
             for forbidden in ["snmp", "community", "ip", "ipAddress", "serial", "serialNo", "model"] {
                 assert!(
@@ -221,22 +224,22 @@ async fn employee_gets_printer_options_minimal_dto() {
         }
 
         // Sort order: "Офис А" group first, then "Офис Б" group (alphabetic
-        // within group by name), then the NULL-location printer last.
+        // within group by name), then the NULL-place printer last.
         let names: Vec<&str> = items.iter().map(|i| i["name"].as_str().unwrap()).collect();
         assert_eq!(
             names,
             vec!["Принтер А1", "Принтер Б1", "Принтер Б2", "Принтер Без Расположения"],
-            "sort order must be location then name, NULL-location last; got {names:?}"
+            "sort order must be place then name, NULL-place last; got {names:?}"
         );
 
-        let locations: Vec<Option<&str>> = items
+        let places: Vec<Option<&str>> = items
             .iter()
-            .map(|i| i["location"].as_str())
+            .map(|i| i["place"].as_str())
             .collect();
         assert_eq!(
-            locations,
+            places,
             vec![Some("Офис А"), Some("Офис Б"), Some("Офис Б"), None],
-            "location values must match seeded data in sorted order; got {locations:?}"
+            "place values must match seeded data in sorted order; got {places:?}"
         );
 
         ctx.shutdown.cancel();
