@@ -55,14 +55,20 @@ async fn search_lowercase_cyrillic_query_matches_uppercase_first_letter() {
             .create(&admin, new_place(PlaceKind::Building, "Здание А", None))
             .await
             .expect("create building");
-        svc.create(&admin, new_place(PlaceKind::Floor, "2 этаж", Some(building.id)))
-            .await
-            .expect("create nested floor");
+        svc.create(
+            &admin,
+            new_place(PlaceKind::Floor, "2 этаж", Some(building.id)),
+        )
+        .await
+        .expect("create nested floor");
 
         // Lowercase query "здание" must match "Здание А" — proves the search
         // is done in Rust via .to_lowercase(), not SQL LIKE (which case-folds
         // ASCII only and would silently miss this Cyrillic match).
-        let results = svc.search(&admin, "здание".to_string()).await.expect("search");
+        let results = svc
+            .search(&admin, "здание".to_string())
+            .await
+            .expect("search");
 
         assert!(
             results.iter().any(|r| r.full_path.contains("Здание А")),
@@ -93,7 +99,10 @@ async fn search_non_matching_query_returns_empty_vec_not_error() {
             .await
             .expect("search should not error on no match");
 
-        assert!(results.is_empty(), "ожидали пустой результат, получили: {results:?}");
+        assert!(
+            results.is_empty(),
+            "ожидали пустой результат, получили: {results:?}"
+        );
     })
     .await
     .expect("test timed out");
@@ -143,7 +152,10 @@ async fn search_caps_results_at_50_rows() {
             .unwrap_or_else(|e| panic!("create place {i}: {e:?}"));
         }
 
-        let results = svc.search(&admin, "полигон тест".to_string()).await.expect("search");
+        let results = svc
+            .search(&admin, "полигон тест".to_string())
+            .await
+            .expect("search");
 
         assert_eq!(
             results.len(),
@@ -167,7 +179,10 @@ async fn search_excludes_archived_place() {
         let admin = admin_caller();
 
         let place = svc
-            .create(&admin, new_place(PlaceKind::Territory, "Архивный полигон", None))
+            .create(
+                &admin,
+                new_place(PlaceKind::Territory, "Архивный полигон", None),
+            )
             .await
             .expect("create place");
 

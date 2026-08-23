@@ -76,7 +76,10 @@ async fn list_subtree_contents_nested_true_includes_nested_place_devices() {
             .await
             .expect("create building");
         let floor = svc
-            .create(&admin, new_place(PlaceKind::Floor, "2 этаж", Some(building.id)))
+            .create(
+                &admin,
+                new_place(PlaceKind::Floor, "2 этаж", Some(building.id)),
+            )
             .await
             .expect("create nested floor");
 
@@ -166,7 +169,10 @@ async fn subtree_stats_counts_nested_places_and_devices_inclusive() {
             .await
             .expect("create building");
         let floor = svc
-            .create(&admin, new_place(PlaceKind::Floor, "3 этаж", Some(building.id)))
+            .create(
+                &admin,
+                new_place(PlaceKind::Floor, "3 этаж", Some(building.id)),
+            )
             .await
             .expect("create nested floor");
 
