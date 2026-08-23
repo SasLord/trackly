@@ -510,7 +510,7 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 "date_human": "17 июня 2026",
                 "giver_name": "Иванов И.И.",
                 "receiver_name": "Петров П.П.",
-                "location_name": "Офис 101",
+                "place_path": "Офис 101",
                 "deadline": null,
                 "deadline_human": null,
                 "parent": null,

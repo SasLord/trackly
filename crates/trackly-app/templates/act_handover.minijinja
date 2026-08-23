@@ -7,11 +7,11 @@
     org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
     act.giver_name, act.receiver_name, act.deadline, act.deadline_human,
-    act.location_name, act.items[], act.parent
+    act.place_path, act.items[], act.parent
     act.items[].name, act.items[].inventory_no, act.items[].serial_no,
     act.items[].model, act.items[].specs, act.items[].kit,
     act.items[].condition, act.items[].quantity
-    return.condition_default, return.location_default
+    return.condition_default, return.place_default
 
   All optional fields use `{% if … %}` or `{{ … | default("—", true) }}` (Pitfall 6).
 

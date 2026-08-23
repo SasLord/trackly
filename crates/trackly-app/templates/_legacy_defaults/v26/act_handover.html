@@ -10,13 +10,10 @@
   Phase 34, see _header.html) -> centered title -> number/date -> intro
   field_row -> device listing (branches on act.items | length, see below) ->
   deadline field_row (always rendered, blank underline when the value is
-  empty, Phase 35 D-03) -> place field_row (always rendered, blank underline
-  when unset, Phase 39 Plan 11 D-27 — prints act.place_path, the FULL D-16
-  write-time snapshot path, never the live-resolved short name, so the
-  printed document stays unambiguous without DB access) -> optional
-  parent-act paragraph -> horizontal one-line-per-signer signature block
-  "Выдал: ⟨line⟩ ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35
-  D-06/D-07/D-08) -> optional appendix (Phase 36, see below).
+  empty, Phase 35 D-03) -> optional parent-act paragraph -> horizontal
+  one-line-per-signer signature block "Выдал: ⟨line⟩ ⟨printed name⟩ /
+  Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35 D-06/D-07/D-08) -> optional
+  appendix (Phase 36, see below).
 
   Device listing branches strictly on the RAW act.items count (D-13, exact
   Jinja expression preserved unchanged at both branch points below — NOT
@@ -49,7 +46,7 @@
     org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
     act.receiver_name, act.giver_name, act.deadline, act.deadline_human,
-    act.place_path, act.items[], act.items_grouped[], act.parent
+    act.location_name, act.items[], act.items_grouped[], act.parent
     act.items[].name, act.items[].inventory_no, act.items[].serial_no,
     act.items[].model, act.items[].specs, act.items[].kit,
     act.items[].condition, act.items[].quantity
@@ -253,8 +250,6 @@
   {%- endif %}
 
   <div class="field-row">Сроком до: {% if act.deadline_human %}{{ act.deadline_human }}{% elif act.deadline %}{{ act.deadline }}{% else %}<span class="value-blank"></span>{% endif %}</div>
-
-  <div class="field-row">Расположение: {% if act.place_path %}{{ act.place_path }}{% else %}<span class="value-blank"></span>{% endif %}</div>
 
   {%- if act.parent %}
   <div class="parent-note">
