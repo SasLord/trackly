@@ -96,7 +96,7 @@
       { code: 'act.date_human', desc: 'дата акта (человекочитаемая)' },
       { code: 'act.receiver_name', desc: 'кто принял' },
       { code: 'act.deadline_human', desc: 'срок до (человекочитаемый)' },
-      { code: 'act.location_name', desc: 'расположение' },
+      { code: 'act.place_path', desc: 'расположение' },
       {
         code: 'act.items[]',
         desc: 'позиции: name, inventory_no, serial_no, model, specs, kit, condition, quantity',
