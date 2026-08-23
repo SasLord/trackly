@@ -1,12 +1,17 @@
 //! `PlaceService` — application service for the Places entity (Phase 39).
 //!
-//! Mutation half (this plan, 39-05): `create`/`rename`/`move_node`/`archive`/
+//! Mutation half (39-05): `create`/`rename`/`move_node`/`archive`/
 //! `unarchive`/`delete_hard` — each `authorize()`-gated (Admin-only per D-20,
 //! `Action::MutatePlaces`), audit-logged (`entity_type = 'place'`), routed through
 //! the single-writer task (`self.writer.execute(...)`).
 //!
-//! Read half (`get`/`list_children`/`list_all`/`subtree_stats`/`search`/`contents`)
-//! is Plan 08's territory, same file, next wave — not implemented here.
+//! Read half (this plan, 39-08): `get`/`list_children`/`list_all`/`subtree_stats`/
+//! `full_path`/`list_subtree_contents`/`search` — each `authorize()`-gated
+//! `ReadPlaces` (Admin|Manager per D-20), routed through the reader pool via
+//! `tokio::task::spawn_blocking` (never touches the writer). `search` is
+//! Cyrillic-safe by construction: it never builds a SQL `LIKE`/`GLOB` pattern —
+//! it fetches the non-archived `place_full_paths` candidate set and filters in
+//! Rust with `.to_lowercase().contains(...)` (RESEARCH Common Pitfall 2).
 //!
 //! `PlaceRepository`'s mutating methods (`create`/`rename`/`archive`/`unarchive`)
 //! take `&mut Self::Conn` (`&mut rusqlite::Connection`) directly — Plan 04
@@ -27,7 +32,9 @@
 use std::sync::Arc;
 
 use trackly_core::auth::{authorize, Action, Identity};
-use trackly_core::domain::places::{PlaceNew, PlaceRow, SubtreeStats};
+use trackly_core::domain::places::{
+    sibling_cmp, PlaceContentRow, PlaceNew, PlaceRow, SubtreeStats,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
@@ -406,6 +413,127 @@ impl PlaceService {
                 Ok(())
             })
             .await
+    }
+
+    // -----------------------------------------------------------------------
+    // Reads (39-08) — each `ReadPlaces`-gated (Admin|Manager, D-20), routed
+    // through the reader pool via `spawn_blocking`, never the writer.
+    // -----------------------------------------------------------------------
+
+    /// Get a single place by ID.
+    pub async fn get(&self, caller: &Identity, id: i64) -> Result<PlaceRow, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.get(&conn, id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Direct children of `parent_id` (`None` lists root nodes), sorted per
+    /// `domain::places::sibling_cmp` (D-05) — the repo returns raw DB order,
+    /// this service applies the natural sort (RESEARCH Pattern 4: sort in
+    /// Rust, not SQL).
+    pub async fn list_children(
+        &self,
+        caller: &Identity,
+        parent_id: Option<i64>,
+    ) -> Result<Vec<PlaceRow>, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let mut rows: Vec<PlaceRow> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.list_children(&conn, parent_id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
+        rows.sort_by(sibling_cmp);
+        Ok(rows)
+    }
+
+    /// Whole tree, flattened, for initial `PlacePicker`/tree-view hydration —
+    /// sorted per `sibling_cmp` (same rationale as `list_children`).
+    pub async fn list_all(
+        &self,
+        caller: &Identity,
+        include_archived: bool,
+    ) -> Result<Vec<PlaceRow>, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let mut rows: Vec<PlaceRow> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.list_all(&conn, include_archived)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })??;
+        rows.sort_by(sibling_cmp);
+        Ok(rows)
+    }
+
+    /// Subtree counts under `root_id`, inclusive of the root itself (D-14/
+    /// D-21/D-25/PLC-06).
+    pub async fn subtree_stats(&self, caller: &Identity, root_id: i64) -> Result<SubtreeStats, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.subtree_stats(&conn, root_id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Resolve the root-to-leaf, `' / '`-joined full path of a place (live —
+    /// never cached, resolved from `place_full_paths`).
+    pub async fn full_path(&self, caller: &Identity, id: i64) -> Result<String, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.full_path(&conn, id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// PLC-06 "content of place" listing: devices/printers/cartridges under
+    /// `root_id`. `nested: true` (default, D-24) includes the whole subtree;
+    /// `nested: false` ("Только здесь") restricts to items whose `place_id`
+    /// is exactly `root_id`.
+    pub async fn list_subtree_contents(
+        &self,
+        caller: &Identity,
+        root_id: i64,
+        nested: bool,
+    ) -> Result<Vec<PlaceContentRow>, AppError> {
+        authorize(caller, &Action::ReadPlaces)?;
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            repo.list_subtree_contents(&conn, root_id, nested)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
     }
 }
 
