@@ -3021,7 +3021,7 @@ fn undo_device_mutations_for_act(
 /// Канонический snapshot device-row для записи в `audit_log.{before,after}_json`.
 ///
 /// Включает ВСЕ поля, необходимые для `restore_from_snapshot_in_tx` (D-Undo-01):
-/// `id`, `status_id`, `location_id`, `state`, `kit`, `name`, `model`,
+/// `id`, `status_id`, `place_id`, `state`, `kit`, `name`, `model`,
 /// `inventory_no`, `serial_no`, `specs`, `type_id`, `version`.
 /// G-12 canonical device_ids per ReturnItemDto с fallback на legacy
 /// `[device_id]` (для совместимости с уже существующими тестами / клиентами,
@@ -3044,8 +3044,8 @@ fn device_snapshot_json(row: &DeviceRow) -> Result<String, serde_json::Error> {
         "model": row.model,
         "state": row.state,
         "kit": row.kit,
-        "location_id": row.location_id,
-        "location": row.location,
+        "place_id": row.place_id,
+        "full_path": row.full_path,
         "status_id": row.status_id,
         "specs": row.specs,
         "version": row.version,
@@ -3064,10 +3064,10 @@ fn load_items_for_act(
         .prepare(
             "SELECT ai.id, ai.device_id, ai.quantity, ai.condition_at_time, ai.complectation_at_time, \
                     d.name, d.inventory_number, d.serial_number, d.model, d.notes, \
-                    dl.id AS device_location_id, dl.name AS device_location \
+                    d.place_id AS device_place_id, pfp.full_path AS device_place \
                FROM act_items ai \
                JOIN devices d ON d.id = ai.device_id \
-               LEFT JOIN locations dl ON d.location_id = dl.id \
+               LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
               WHERE ai.act_id = ?1 \
               ORDER BY ai.id ASC",
         )
@@ -3093,8 +3093,8 @@ fn load_items_for_act(
                 outstanding_device_ids: Vec::new(),
                 // Phase 22 (ACT-03, Pitfall 2): текущее расположение устройства,
                 // нужно для prefill «Расположение» в форме редактирования возврата.
-                device_location_id: r.get(10)?,
-                device_location: r.get(11)?,
+                device_place_id: r.get(10)?,
+                device_place: r.get(11)?,
             })
         })
         .map_err(map_rusqlite)?;
@@ -3370,8 +3370,8 @@ mod group_items_for_print_tests {
             condition_at_time: condition.map(str::to_string),
             complectation_at_time: kit.map(str::to_string),
             outstanding_device_ids: Vec::new(),
-            device_location_id: None,
-            device_location: None,
+            device_place_id: None,
+            device_place: None,
         }
     }
 
