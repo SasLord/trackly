@@ -28,3 +28,16 @@ instead of fixing it).
   `device_location_id`/`device_location` to the `place_id`/`full_path` vocabulary (or
   update the two `export_bindings.rs` assertions to match whatever the current field
   names are) so `cargo test -p trackly-app --test export_bindings` is green again.
+
+## Wave 6 (logged by orchestrator)
+
+- **`crates/trackly-app/tests/role_endpoint_matrix.rs` — stale location keys in JSON payloads.**
+  Lines ~322-362 still send `"location": null`, `"location_id": null`, `"location_name": null`
+  in the device/act RBAC payloads. The file is NOT in Plan 39-22's inventory (that plan's
+  31-file consumer sweep does not list it), and Plan 39-12 only appended Cases 45-48 to it.
+  The suite is green because these are role-REJECTION cases: RBAC refuses the request before
+  the payload is deserialized, so the stale field names are never exercised. Harmless today,
+  but misleading, and it would mask a genuine deserialization regression if any of these cases
+  ever started passing RBAC.
+  **Action for Plan 39-21** (the phase-closing vocabulary sweep): rename these keys to the
+  `place_id` vocabulary, or drop them from the payloads if the DTOs no longer carry them.
