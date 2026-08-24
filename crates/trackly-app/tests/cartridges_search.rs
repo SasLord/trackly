@@ -3,13 +3,16 @@
 //! Covers:
 //!   - search_by_code: LIKE match on C-NNNNNN code
 //!   - search_by_model_brand: FTS/LIKE on cartridge_models.brand + model
-//!   - search_by_location: LIKE on cartridges.location
+//!   - search_by_place: place-path substring match (D-29/PLC-05, place-tree
+//!     rename) — Rust-side `place_full_paths` scan, not SQL LIKE on a dropped
+//!     `cartridges.location` column
 //!   - empty_query_returns_all: empty / whitespace-only query falls back to list
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeFilter, CartridgeModelCreateDto};
@@ -36,12 +39,35 @@ async fn seed_model(svc: &CartridgeService, brand: &str, model_name: &str) -> i6
     .id
 }
 
-async fn create_with_location(svc: &CartridgeService, model_id: i64, location: &str) -> String {
+/// Seed a real `places` row — FK-valid `place_id` (`REFERENCES places(id)`,
+/// V038) — mirrors the `seed_place()` precedent from Plan 09's
+/// `cartridges_sqlite.rs` inline test module.
+async fn seed_place(svc: &CartridgeService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO places (kind, name, is_storage, created_at_utc, updated_at_utc, version) \
+                 VALUES ('room', ?1, 0, ?2, ?2, 1)",
+                rusqlite::params![name, 1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed place")
+}
+
+/// Create a cartridge whose `place_id` points at a real `places` row named
+/// `place_name` — search matches the place's `full_path` substring, not a
+/// freeform `location` string (D-29/PLC-05).
+async fn create_with_place(svc: &CartridgeService, model_id: i64, place_name: &str) -> String {
+    let place_id = seed_place(svc, place_name).await;
     svc.create(CartridgeCreateDto {
         model_id,
         code_override: None,
         state_id: None,
-        location: Some(location.into()),
+        place_id: Some(place_id),
         notes: None,
     })
     .await
@@ -61,7 +87,7 @@ async fn search_by_code() {
                 model_id,
                 code_override: None,
                 state_id: None,
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
@@ -95,7 +121,7 @@ async fn search_by_model_brand() {
                 model_id,
                 code_override: None,
                 state_id: None,
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
@@ -118,26 +144,26 @@ async fn search_by_model_brand() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn search_by_location() {
+async fn search_by_place() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_cartridge_service();
         let model_id = seed_model(&svc, "Canon", "FX-9").await;
 
-        let unique_location = "Уникальный склад 7Б";
-        let code = create_with_location(&svc, model_id, unique_location).await;
+        let unique_place_name = "Уникальный склад 7Б";
+        let code = create_with_place(&svc, model_id, unique_place_name).await;
 
         let result = svc
             .search("7Б".to_string(), CartridgeFilter::default())
             .await
-            .expect("search by location");
+            .expect("search by place");
 
         assert!(
             result.items.iter().any(|c| c.code == code),
-            "search by location substring must find the cartridge"
+            "search by place-path substring must find the cartridge"
         );
     })
     .await
-    .expect("search_by_location budget")
+    .expect("search_by_place budget")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -152,7 +178,7 @@ async fn empty_query_returns_all() {
                 model_id,
                 code_override: None,
                 state_id: None,
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await

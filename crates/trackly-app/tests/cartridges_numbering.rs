@@ -51,7 +51,7 @@ async fn concurrent_50_unique_codes() {
                     model_id,
                     code_override: None,
                     state_id: Some(1),
-                    location: None,
+                    place_id: None,
                     notes: None,
                 })
                 .await
@@ -101,7 +101,7 @@ async fn collision_retry_does_not_lose_counter() {
                     model_id,
                     code_override: None,
                     state_id: None,
-                    location: None,
+                    place_id: None,
                     notes: None,
                 })
                 .await

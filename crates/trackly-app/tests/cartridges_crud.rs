@@ -95,7 +95,7 @@ async fn create_cartridge_assigns_auto_code() {
                 model_id,
                 code_override: None,
                 state_id: Some(1),
-                location: Some("Склад".into()),
+                place_id: None,
                 notes: None,
             })
             .await
@@ -125,7 +125,7 @@ async fn create_cartridge_custom_code() {
                 model_id,
                 code_override: Some("BARCODE-42".into()),
                 state_id: None,
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
@@ -163,7 +163,7 @@ async fn soft_delete_hides_item() {
                 model_id,
                 code_override: None,
                 state_id: None,
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
@@ -195,7 +195,7 @@ async fn counts_by_status() {
                 model_id,
                 code_override: None,
                 state_id: Some(1),
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
@@ -312,7 +312,7 @@ async fn printer_compatib_list_narrows_to_linked_model() {
             model_id: model_a,
             code_override: None,
             state_id: Some(1),
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await
@@ -321,7 +321,7 @@ async fn printer_compatib_list_narrows_to_linked_model() {
             model_id: model_b,
             code_override: None,
             state_id: Some(1),
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await
@@ -379,7 +379,7 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
             model_id: model_a,
             code_override: None,
             state_id: Some(1),
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await
@@ -388,7 +388,7 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
             model_id: model_b,
             code_override: None,
             state_id: Some(1),
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await
@@ -466,7 +466,7 @@ async fn printer_compatib_case_insensitive_match() {
             model_id: model_a,
             code_override: None,
             state_id: Some(1),
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await

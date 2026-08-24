@@ -42,7 +42,7 @@ async fn seed_and_create(svc: &CartridgeService) -> trackly_app::dto::cartridge:
         model_id,
         code_override: None,
         state_id: Some(1),
-        location: Some("Склад".into()),
+        place_id: None,
         notes: None,
     })
     .await
@@ -73,10 +73,10 @@ async fn history_returns_audit_entries_for_cartridge() {
                 date_utc: 1_700_000_000,
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
-                location: "Room 1".into(),
+                place_id: None,
                 printer_device_id: None,
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             })
             .await
             .expect("install");
@@ -117,10 +117,10 @@ async fn history_is_chronological() {
                 date_utc: 1_700_000_001,
                 given_by_name: "A".into(),
                 given_to_name: "B".into(),
-                location: "Room".into(),
+                place_id: None,
                 printer_device_id: None,
                 previous_cartridge_state_id: None,
-                previous_cartridge_location: None,
+                previous_cartridge_place_id: None,
             })
             .await
             .expect("install");
@@ -131,7 +131,7 @@ async fn history_is_chronological() {
                 cartridge_id: in_use.id,
                 version: in_use.version,
                 state_id: 3,
-                location: "Склад".into(),
+                place_id: None,
                 notes: None,
             })
             .await

@@ -73,7 +73,7 @@ async fn create_full_stock(svc: &CartridgeService, model_id: i64, n: usize) {
             model_id,
             code_override: None,
             state_id: Some(1), // Полный
-            location: Some("Склад".into()),
+            place_id: None,
             notes: None,
         })
         .await
@@ -143,7 +143,7 @@ async fn threshold_read_from_app_settings() {
                 model_id,
                 code_override: None,
                 state_id: Some(1), // Полный
-                location: None,
+                place_id: None,
                 notes: None,
             })
             .await
