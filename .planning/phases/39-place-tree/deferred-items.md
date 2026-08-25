@@ -203,3 +203,54 @@ to the batched UAT pass:
    disappears; confirm the previously-applied `statusId='1'` value is NOT silently reverted
    (matches this fix's decision to only apply forward, never auto-revert on leave — flag if
    this reads as confusing in practice).
+
+## Plan 17 — Act-family PlacePicker wiring runtime verification NOT performed
+
+Only `svelte-check`/`eslint`/`node scripts/check-tokens.mjs`/`pnpm --dir ui build` ran on the
+frontend. The following have NOT been exercised in a real webview — add to the batched UAT pass:
+
+**Act create/edit form (ActFormBody.svelte):**
+1. Open "Создать акт" — Место field renders as PlacePicker (not a text input), placeholder
+   "Выберите место"; field is optional (act.place_id is nullable, submit does not require it).
+2. Pick a place, submit — created act's `full_path` shows the correct live-resolved path in
+   ActDetail; the printed act shows `place_path_snapshot` frozen at write time (D-16).
+3. Edit an existing act, change its place, save — ActDetail's "Расположение" field reflects
+   the NEW `full_path` immediately; a PREVIOUSLY printed act for the earlier place is
+   unaffected (D-16 freeze — re-render the old print preview and confirm it still shows the
+   old path, not the new one).
+
+**Bulk return (ReturnModal.svelte, apply-to-all path):**
+1. Open "Возврат по акту" — if the org's place tree has any storage places, a row of chip
+   buttons appears above the Место field, one chip per storage place, labelled with its full
+   path; the first one is preselected as the bulk place when the modal opens.
+2. Click a different chip — PlacePicker's field updates to match; click a node inside
+   PlacePicker directly — chip selection highlight (variant=primary) follows.
+3. Submit a bulk return with the default (chip-preselected) place — the created return act's
+   items carry the correct `place_id_override`/bulk place server-side.
+4. If the org's place tree has NO storage places (edge case) — no chip row renders, PlacePicker
+   alone remains fully usable, default preselection is skipped (no forced value).
+
+**Bulk return edit mode (ReturnModal.svelte, `mode="edit"`):**
+1. Edit an existing return act — modal opens in per-row mode (apply_to_all=false) with rows
+   prefilled from the return's saved `place_id_override` per item; the storage quick-pick
+   chips still populate the BULK field (which starts unused unless "Применить ко всем" is
+   re-enabled).
+
+**Per-row return override (ReturnItemsTable.svelte):**
+1. Uncheck "Применить ко всем" — each checked row's Место cell becomes an editable PlacePicker
+   pre-filled with the device's own `device_place_id` (or empty for newly-addable rows in edit
+   mode).
+2. With "Применить ко всем" checked, the disabled per-row Место cell shows the bulk place
+   (mirrored, not blank) — confirms the "effective value" preview behavior.
+3. Submit a per-row return with two rows sharing the same place + condition and one row with a
+   different condition — confirms `buildReturnItems()`'s coalesce/split behavior still holds
+   with `place_id_override` as part of the composite key (was previously
+   `locationOverrideName`).
+
+**ActDetail.svelte / ActFormItemsTable.svelte (rename-only, low risk):**
+1. Any act's detail card shows "Расположение" populated from `full_path` (was `location`) —
+   confirm no blank/undefined regression for acts with a place set.
+2. Adding a new item to an act via the "на складе" device search still returns results (search
+   payload now sends `place_id: null` instead of `location_id: null` — a no-op rename since
+   this call always passed `null` here; not expected to change search behavior, but worth one
+   smoke-test add-item pass).
