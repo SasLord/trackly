@@ -113,6 +113,30 @@
 
   const isAdmin = $derived(authStore.user?.role === 'admin');
 
+  // --- UAT gap 5 (2026-08-25): "Места" forgot expanded nodes + selection on
+  // navigating away and back. Follows the existing app-wide localStorage
+  // pattern (see $lib/stores/theme.svelte.ts: `trackly:`-prefixed key, plain
+  // localStorage.getItem/setItem, no shared store abstraction). Only expanded
+  // node ids are persisted HERE — selectedId and the "Только здесь" toggle are
+  // owned by PlacesPage (which already owns the hash sync / D-14 reset), so
+  // there is exactly one localStorage read/write site per piece of state.
+  const EXPANDED_STORAGE_KEY = 'trackly:places:expandedIds';
+
+  function readPersistedExpandedIds(): number[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(EXPANDED_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((v): v is number => typeof v === 'number' && Number.isInteger(v));
+    } catch {
+      // Malformed/inaccessible storage — start from a clean expansion state
+      // rather than throwing.
+      return [];
+    }
+  }
+
   // --- Data ---
   let allPlaces = $state<PlaceDto[] | null>(null);
   let loading = $state(false);
@@ -140,9 +164,21 @@
   const roots = $derived(childrenMap.get(null) ?? []);
 
   // --- Expansion / selection / roving tabindex ---
-  let expandedIds = $state<number[]>([]);
+  let expandedIds = $state<number[]>(readPersistedExpandedIds());
   let selectedId = $state<number | null>(null);
   let activeId = $state<number | null>(null);
+
+  // Persist on every change (toggle expand/collapse, expandPathTo, pruning
+  // below) — plain effect, same shape as theme.svelte.ts's own writes.
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(expandedIds));
+    } catch {
+      // Storage unavailable/quota exceeded — expansion state simply won't
+      // survive navigation; the tree itself still works.
+    }
+  });
 
   interface VisibleRow {
     place: PlaceDto;
@@ -198,6 +234,14 @@
       loadError = true;
     } finally {
       loading = false;
+    }
+    // UAT gap 5: prune persisted-but-now-stale ids (place deleted since last
+    // visit, or restored from a previous session) so they don't accumulate
+    // forever — harmless either way (a stale id in expandedIds simply never
+    // matches a real node), but this keeps storage tidy. Skipped on a load
+    // error, where `allPlaces` was force-set to `[]` and is not real data.
+    if (!loadError) {
+      expandedIds = expandedIds.filter((id) => placeById.has(id));
     }
     if (!firstLoadHandled) {
       firstLoadHandled = true;

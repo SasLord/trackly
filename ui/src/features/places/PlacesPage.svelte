@@ -42,10 +42,71 @@
     return Number.isInteger(n) ? n : null;
   }
 
+  // UAT gap 5 (2026-08-25): navigating away from "Места" and back used to lose
+  // the selected node and the "Только здесь" toggle (the tree's own expanded
+  // nodes are persisted separately, in PlaceTree.svelte). Follows the app's
+  // existing localStorage convention (see $lib/stores/theme.svelte.ts:
+  // `trackly:`-prefixed key, plain localStorage.getItem/setItem, no shared
+  // store abstraction) rather than inventing a second one. The URL hash
+  // (`#/places?id=…`) still WINS when present — it is a more specific,
+  // explicit deep link (breadcrumb click, D-14 "Показать содержимое", a
+  // shared/bookmarked link) than "whatever was last open".
+  const SELECTED_STORAGE_KEY = 'trackly:places:selectedId';
+  const ONLY_HERE_STORAGE_KEY = 'trackly:places:onlyHere';
+
+  function readPersistedSelectedId(): number | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(SELECTED_STORAGE_KEY);
+      if (!raw) return null;
+      const n = Number(raw);
+      return Number.isInteger(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function persistSelectedId(id: number | null): void {
+    if (typeof window === 'undefined') return;
+    try {
+      if (id === null) {
+        localStorage.removeItem(SELECTED_STORAGE_KEY);
+      } else {
+        localStorage.setItem(SELECTED_STORAGE_KEY, String(id));
+      }
+    } catch {
+      // Storage unavailable/quota exceeded — selection simply won't persist
+      // across navigation; the page itself still works.
+    }
+  }
+
+  function readPersistedOnlyHere(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(ONLY_HERE_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function persistOnlyHere(v: boolean): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(ONLY_HERE_STORAGE_KEY, v ? '1' : '0');
+    } catch {
+      // Storage unavailable/quota exceeded — the toggle simply won't persist
+      // across navigation.
+    }
+  }
+
   // Read exactly once — this component instance lives for the duration of the
   // /places route; re-reading on every re-render would fight the tree's own
-  // internal selection state.
-  const initialSelectedId = parseIdFromHash();
+  // internal selection state. A restored id that no longer resolves (place
+  // deleted, or archived while "Показывать архивные" defaults back to off)
+  // degrades gracefully further down: PlaceTree's own loadTree() only applies
+  // `initialSelectedId` when it actually finds a matching place, otherwise it
+  // falls back to no selection — never a broken/empty detail panel.
+  const initialSelectedId = parseIdFromHash() ?? readPersistedSelectedId();
 
   const isAdmin = $derived(authStore.user?.role === 'admin');
 
@@ -71,8 +132,10 @@
   // Lifted out of PlaceContents so the "Только здесь" toggle persists across
   // selection changes (which still remount PlaceContents via the {#key}
   // below for its other per-node state). Reset ONLY by
-  // `handleShowBlockedContents` (the D-14 same-node edge case).
-  let onlyHere = $state(false);
+  // `handleShowBlockedContents` (the D-14 same-node edge case) — that reset
+  // is ALSO persisted (see below), so navigating away and back never
+  // resurrects the pre-reset value (UAT gap 5).
+  let onlyHere = $state(readPersistedOnlyHere());
   // An out-of-band selection request for PlaceTree — see PlaceTree.svelte's
   // `externalSelect` prop doc-comment. A fresh object per breadcrumb click.
   let externalSelect = $state<{ id: number; token: number } | null>(null);
@@ -83,6 +146,12 @@
     if (window.location.hash !== newHash) {
       window.history.replaceState(null, '', newHash);
     }
+    // UAT gap 5: also fires on PlaceTree's own freshness-sync re-selects
+    // (rename/archive/move/reload) and on `onSelect(null)` when the selected
+    // place was just deleted — in both cases persisting the current value is
+    // correct (deleted → clear, so a future visit doesn't keep retrying a
+    // dead id).
+    persistSelectedId(place ? place.id : null);
   }
 
   function handleSelectAncestor(id: number): void {
@@ -92,6 +161,7 @@
   function handleShowBlockedContents(): void {
     contentsResetToken += 1;
     onlyHere = false;
+    persistOnlyHere(false);
   }
 </script>
 
@@ -122,7 +192,10 @@
               place={selectedPlace}
               onSelectAncestor={handleSelectAncestor}
               {onlyHere}
-              onOnlyHereChange={(v) => (onlyHere = v)}
+              onOnlyHereChange={(v) => {
+                onlyHere = v;
+                persistOnlyHere(v);
+              }}
             />
           {/key}
         {:else}
