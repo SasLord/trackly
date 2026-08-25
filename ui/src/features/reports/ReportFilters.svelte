@@ -113,7 +113,6 @@
         value={placeId}
         onChange={(id) => onFilterChange?.({ place_id: id })}
       />
-      <p class="filter-hint">Включая вложенные места</p>
     </div>
   </div>
 
@@ -186,17 +185,8 @@
   .place-filter {
     display: flex;
     flex-direction: column;
-    gap: 2px;
     width: 220px;
     max-width: 100%;
-  }
-
-  // D-28: hint confirming the place filter captures the whole subtree, not
-  // just an exact match — UI-SPEC §12.
-  .filter-hint {
-    margin: 0;
-    font: var(--tr-text-label);
-    color: var(--tr-text-secondary);
   }
 
   .filter-label {
