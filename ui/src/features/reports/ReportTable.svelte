@@ -1,6 +1,6 @@
 <script lang="ts">
   // Plan 07-06 Task 1: Universal report table with month-separator rows.
-  // Temporal reports: separators by month_key. Snapshot: separators by location_name.
+  // Temporal reports: separators by month_key. Snapshot: separators by place_path.
   // Plan 28-04 (D-07): rebuilt on shared Table/TableRow primitives — dynamic
   // Column[] rendered via head/children snippets; the month/location separator
   // stays a bare <tr> (NOT TableRow's group-collapse mode — that mode is a
@@ -18,7 +18,7 @@
     giver_name?: string | null;
     receiver_name?: string | null;
     handover_date_utc?: number | null;
-    location_name?: string | null;
+    place_path?: string | null;
     act_type?: string | null;
     device_name?: string | null;
     quantity?: number | null;
@@ -79,13 +79,38 @@
     return String(val);
   }
 
-  // Build grouped rows: insert separator when month_key (temporal) or location_name (snapshot) changes
+  // D-26: place_path cells show only the last two path segments; the full
+  // path always goes in the cell's title attribute (regardless of whether it
+  // was truncated) so the complete location is one hover away.
+  function shortPlacePath(fullPath: string): string {
+    const segments = fullPath.split(' / ');
+    return segments.length <= 2 ? fullPath : segments.slice(-2).join(' / ');
+  }
+
+  // D-26: the cell's rendered text and its title attribute diverge only for
+  // place_path — every other column keeps formatCellValue's plain title=text
+  // convention.
+  function formatCellTitle(row: ReportRow, colKey: string): string {
+    if (colKey === 'place_path' && typeof row.place_path === 'string') {
+      return row.place_path;
+    }
+    return formatCellValue(row, colKey);
+  }
+
+  function formatCellDisplay(row: ReportRow, colKey: string): string {
+    if (colKey === 'place_path' && typeof row.place_path === 'string') {
+      return shortPlacePath(row.place_path);
+    }
+    return formatCellValue(row, colKey);
+  }
+
+  // Build grouped rows: insert separator when month_key (temporal) or place_path (snapshot) changes
   const grouped = $derived.by((): GroupedItem[] => {
     const result: GroupedItem[] = [];
     let lastSeparatorKey = '';
 
     for (const row of rows) {
-      const separatorKey = isSnapshot ? (row.location_name ?? '') : (row.month_key ?? '');
+      const separatorKey = isSnapshot ? (row.place_path ?? '') : (row.month_key ?? '');
 
       if (separatorKey !== lastSeparatorKey && separatorKey !== '') {
         const label = isSnapshot
@@ -134,8 +159,7 @@
           {@const row = item as ReportRow}
           <TableRow>
             {#each columns as col}
-              {@const cellVal = formatCellValue(row, col.key)}
-              <td title={cellVal}>{cellVal}</td>
+              <td title={formatCellTitle(row, col.key)}>{formatCellDisplay(row, col.key)}</td>
             {/each}
           </TableRow>
         {/if}
