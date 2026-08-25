@@ -1,7 +1,7 @@
 <script lang="ts">
   // Plan 04-05: CartridgeFormBody — inner form state component for CartridgeFormModal.
   // Remounted on every {#key openInstanceCounter} — guarantees field reset.
-  // Поля (UI-SPEC §CartridgeFormModal): Код (авто/ручной) + Модель + Состояние заряда + Расположение + Примечания.
+  // Поля (UI-SPEC §CartridgeFormModal): Код (авто/ручной) + Модель + Состояние заряда + Место (D-12) + Примечания.
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
@@ -10,7 +10,7 @@
   // (implicit label), а не связывается через `for` (как раньше у Select).
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { cartridges } from './api';
   import type { CartridgeDto, CartridgeModelDto } from '../../bindings';
@@ -61,7 +61,8 @@
   let code = $state(target?.code ?? '');
   let modelId = $state<number | null>(target?.model_id ?? null);
   let stateId = $state<number>(target?.state_id ?? (target?.model_kind_id === 2 ? 4 : 1));
-  let location = $state(target?.location ?? '');
+  // Plan 16 (D-12): картридж — своё place_id, как у устройства.
+  let placeId = $state<number | null>(target?.place_id ?? null);
   let notes = $state(target?.notes ?? '');
 
   // Validation errors
@@ -142,11 +143,11 @@
 
     try {
       if (isEdit && target) {
-        // Update: передаём location + notes (code не меняется через update)
+        // Update: передаём place_id + notes (code не меняется через update)
         const result = await cartridges.update(
           target.id,
           target.version,
-          location.trim() || null,
+          placeId,
           notes.trim() || null,
         );
         onSuccess(result);
@@ -158,7 +159,7 @@
           model_id: modelId!,
           code_override: code.trim() || null, // пустая строка → авто-код
           state_id: stateId,
-          location: location.trim() || null,
+          place_id: placeId,
           notes: notes.trim() || null,
         });
         onSuccess(result);
@@ -310,15 +311,10 @@
     </div>
   {/if}
 
-  <!-- Расположение (optional) -->
+  <!-- Место (optional, D-07) -->
   <div class="field">
-    <label class="label" for="cart-location">Расположение</label>
-    <LocationAutocomplete
-      value={location}
-      placeholder="Расположение (необязательно)"
-      id="cart-location"
-      onChange={(v) => (location = v)}
-    />
+    <label class="label" for="cart-place">Место</label>
+    <PlacePicker value={placeId} id="cart-place" onChange={(id) => (placeId = id)} />
   </div>
 
   <!-- Примечания (optional) -->
