@@ -106,7 +106,7 @@
             <DetailField label="Дата архивации" value={archivedAtLabel} />
           {/if}
           <DetailField label="Сроком до" value={deadlineLabel} />
-          <DetailField label="Расположение" value={act.location ?? null} />
+          <DetailField label="Расположение" value={act.full_path ?? null} />
           <DetailField label="Заметки" value={act.notes ?? null} />
         </div>
       </DetailSection>

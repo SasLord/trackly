@@ -147,7 +147,7 @@
       const groups = await devices.listGrouped(
         {
           type_id: null,
-          location_id: null,
+          place_id: null,
           status_id: 1,
           state: null,
           name_prefix: query,
