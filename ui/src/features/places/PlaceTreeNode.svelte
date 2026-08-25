@@ -156,7 +156,18 @@
   {/if}
 
   {#if contentCount !== undefined && contentCount > 0}
-    <span class="counter tr-mono" title={`Всего с вложенными: ${contentCount}`}>{contentCount}</span>
+    <!-- UAT gap 6 (2026-08-25): was a bare number crowding its neighbours;
+         reuse Badge's existing "count" pill appearance (padding + rounded
+         shape from design tokens, no hardcoded colors) instead of hand-rolling
+         a new pill. `.tr-mono` and the `title` behaviour are unchanged. -->
+    <Badge
+      variant="default"
+      appearance="count"
+      size="sm"
+      title={`Всего с вложенными: ${contentCount}`}
+    >
+      <span class="tr-mono">{contentCount}</span>
+    </Badge>
   {/if}
 
   {#if isAdmin}
@@ -284,11 +295,6 @@
     &.archived {
       color: var(--tr-text-tertiary);
     }
-  }
-
-  .counter {
-    flex: none;
-    color: var(--tr-text-tertiary);
   }
 
   .row-actions {

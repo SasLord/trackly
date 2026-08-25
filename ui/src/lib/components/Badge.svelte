@@ -5,10 +5,14 @@
     variant?: 'default' | 'accent' | 'success' | 'warning' | 'destructive';
     size?: 'sm' | 'md';
     appearance?: 'soft' | 'solid' | 'dot' | 'count';
+    /** UAT gap 6: forwarded to the rendered span so callers (e.g. the tree's
+     * per-node content counter) can attach a native tooltip without the caller
+     * having to wrap the component in an extra span. */
+    title?: string;
     children?: Snippet;
   }
 
-  const { variant = 'default', size = 'md', appearance, children }: Props = $props();
+  const { variant = 'default', size = 'md', appearance, title, children }: Props = $props();
 
   const TONE_MAP = {
     default: 'neutral',
@@ -22,14 +26,14 @@
 </script>
 
 {#if appearance}
-  <span class="badge-m badge-m-{tone} badge-m-{appearance} badge-m-{size}">
+  <span class="badge-m badge-m-{tone} badge-m-{appearance} badge-m-{size}" {title}>
     {#if appearance === 'dot'}
       <span class="badge-m-dot-marker" aria-hidden="true"></span>
     {/if}
     {@render children?.()}
   </span>
 {:else}
-  <span class="badge badge-{variant} badge-{size}">
+  <span class="badge badge-{variant} badge-{size}" {title}>
     {@render children?.()}
   </span>
 {/if}
