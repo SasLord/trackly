@@ -1,19 +1,22 @@
 <script lang="ts">
   // Phase 39 Plan 14 (PLC-01/PLC-06, 39-UI-SPEC.md §7): root component of the
   // "Места" section — PageHeader + primary "Создать место" action (Admin-only,
-  // D-20) + PlacesMasterDetail(PlaceTree | placeholder detail panel).
+  // D-20) + PlacesMasterDetail(PlaceTree | PlaceContents/placeholder).
   //
   // Deep link (§7): the selected node is reflected in the hash (`#/places?id=…`)
-  // so Plan 20's "Показать содержимое" (D-14 delete-blocked callout) and future
+  // so the D-14 delete-blocked callout's "Показать содержимое" action and future
   // cross-feature links can land directly on a node. Read once on mount (this
   // component is only ever (re)created when the router navigates to /places, so
   // "on mount" and "on module init" coincide here); written via
   // history.replaceState (no hashchange fired — the SPA router does not
   // remount, and no extra back-button entry is created per navigation).
   //
-  // The right panel is a static "Место не выбрано" placeholder in THIS plan —
-  // Plan 20 (Wave 9) replaces the detail snippet with the real PlaceContents
-  // component once the tree's selection has somewhere real to render into.
+  // Plan 20: the right panel renders `PlaceContents` (breadcrumbs/tabs/table,
+  // §9) for the selected node, keyed on `${id}:${contentsResetToken}` so a
+  // fresh instance mounts both on genuine selection changes AND on the D-14
+  // "Показать содержимое" same-node edge case (see `handleShowBlockedContents`
+  // below) — falls back to the static "Место не выбрано" placeholder (§14.2)
+  // when nothing is selected.
   import { authStore } from '$lib/stores/auth.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -21,6 +24,7 @@
   import PlacesMasterDetail from './PlacesMasterDetail.svelte';
   import PlaceTree from './PlaceTree.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';
+  import PlaceContents from './PlaceContents.svelte';
   import type { PlaceDto } from '../../bindings';
 
   function parseIdFromHash(): number | null {
@@ -49,11 +53,34 @@
   // don't need this.
   let refreshToken = $state(0);
 
+  // The currently selected node's full data, now that the detail slot renders
+  // real content (Plan 20) instead of a static placeholder — PlaceTree keeps
+  // this fresh across reloads (rename/archive/move), see PlaceTree.svelte's
+  // own `loadTree()` freshness-sync comment.
+  let selectedPlace = $state<PlaceDto | null>(null);
+  // Bumped by the D-14 delete-blocked "Показать содержимое" action so
+  // PlaceContents remounts (resetting `onlyHere` to its default) even in the
+  // edge case where the blocked node is ALREADY the selected node (no id
+  // change for the {#key} below to react to on its own).
+  let contentsResetToken = $state(0);
+  // An out-of-band selection request for PlaceTree — see PlaceTree.svelte's
+  // `externalSelect` prop doc-comment. A fresh object per breadcrumb click.
+  let externalSelect = $state<{ id: number; token: number } | null>(null);
+
   function handleTreeSelect(place: PlaceDto | null): void {
+    selectedPlace = place;
     const newHash = place ? `#/places?id=${place.id}` : '#/places';
     if (window.location.hash !== newHash) {
       window.history.replaceState(null, '', newHash);
     }
+  }
+
+  function handleSelectAncestor(id: number): void {
+    externalSelect = { id, token: Date.now() };
+  }
+
+  function handleShowBlockedContents(): void {
+    contentsResetToken += 1;
   }
 </script>
 
@@ -69,14 +96,26 @@
   <div class="page-content">
     <PlacesMasterDetail>
       {#snippet master()}
-        <PlaceTree {initialSelectedId} onSelect={handleTreeSelect} {refreshToken} />
+        <PlaceTree
+          {initialSelectedId}
+          onSelect={handleTreeSelect}
+          {refreshToken}
+          {externalSelect}
+          onShowBlockedContents={handleShowBlockedContents}
+        />
       {/snippet}
       {#snippet detail()}
-        <DetailPanel
-          empty={true}
-          emptyTitle="Место не выбрано"
-          emptyBody="Выберите место в дереве слева, чтобы увидеть его содержимое."
-        />
+        {#if selectedPlace}
+          {#key `${selectedPlace.id}:${contentsResetToken}`}
+            <PlaceContents place={selectedPlace} onSelectAncestor={handleSelectAncestor} />
+          {/key}
+        {:else}
+          <DetailPanel
+            empty={true}
+            emptyTitle="Место не выбрано"
+            emptyBody="Выберите место в дереве слева, чтобы увидеть его содержимое."
+          />
+        {/if}
       {/snippet}
     </PlacesMasterDetail>
   </div>

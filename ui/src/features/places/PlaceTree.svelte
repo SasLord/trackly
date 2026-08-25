@@ -28,9 +28,34 @@
     onSelect: (_place: PlaceDto | null) => void;
     /** Bumped by the parent (header "Создать место") to force a reload. */
     refreshToken?: number;
+    /**
+     * Plan 20: an out-of-band selection request from PlacesPage (breadcrumb
+     * "выбирает предка в дереве", §9.1). A NEW object (even with the same
+     * `id` as the current selection — see the D-14 same-node edge case
+     * below) re-fires the effect that applies it, since `$effect` tracks
+     * this prop's own object identity through `$props()`, not `id` alone.
+     */
+    externalSelect?: { id: number; token: number } | null;
+    /**
+     * Plan 20 (D-14, §11.5): fired from the delete-blocked callout's
+     * "Показать содержимое" action, in ADDITION to the normal `onSelect`
+     * call `showDeleteBlockedContents` already makes. `onSelect` alone
+     * cannot signal "force nested content back on" when the blocked node is
+     * ALREADY the selected node (no id change for the parent to key a
+     * remount off of) — this callback exists specifically for that edge
+     * case, so PlacesPage can force-reset PlaceContents's `onlyHere` state
+     * even when the place id does not change.
+     */
+    onShowBlockedContents?: (_place: PlaceDto) => void;
   }
 
-  const { initialSelectedId, onSelect, refreshToken = 0 }: Props = $props();
+  const {
+    initialSelectedId,
+    onSelect,
+    refreshToken = 0,
+    externalSelect = null,
+    onShowBlockedContents,
+  }: Props = $props();
 
   // --- Sibling ordering (D-05) — ported verbatim from
   // trackly-core::domain::places::sibling_cmp / natural_name_cmp. Client-side
@@ -184,6 +209,18 @@
       } else if (activeId === null) {
         activeId = roots[0]?.id ?? null;
       }
+    } else if (selectedId !== null) {
+      // Keep the parent's copy of the selected node fresh across every
+      // reload (rename/archive/move/"Обновить"/showArchived toggle) — Plan
+      // 20's PlaceContents renders place.name/full_path/is_storage/
+      // archived_at_utc directly, so a stale reference would silently show
+      // pre-mutation data after e.g. a rename.
+      const fresh = placeById.get(selectedId) ?? null;
+      onSelect(fresh);
+      if (fresh === null) {
+        selectedId = null;
+        activeId = null;
+      }
     }
   }
 
@@ -191,6 +228,21 @@
     void showArchived;
     void refreshToken;
     void loadTree();
+  });
+
+  // Plan 20: apply an out-of-band selection request (breadcrumb ancestor
+  // click). Re-fires whenever the parent passes a NEW object (see the Props
+  // doc-comment above) — a fresh object per click, even for the same id, so
+  // re-clicking the same ancestor still re-focuses/re-selects it.
+  $effect(() => {
+    if (externalSelect && placeById.has(externalSelect.id)) {
+      const node = placeById.get(externalSelect.id);
+      if (node) {
+        expandPathTo(node.id);
+        handleSelectNode(node);
+        focusRow(node.id);
+      }
+    }
   });
 
   // --- Content counters (D-25) — lazy per VISIBLE node, cached, never
@@ -471,7 +523,9 @@
 
   function showDeleteBlockedContents(): void {
     if (!deleteState) return;
-    handleSelectNode(deleteState.place);
+    const node = deleteState.place;
+    handleSelectNode(node);
+    onShowBlockedContents?.(node);
     deleteState = null;
   }
 
@@ -492,7 +546,12 @@
   let archiveState = $state<ArchiveState | null>(null);
 
   function openArchiveToggle(node: PlaceDto): void {
-    archiveState = { place: node, toArchive: node.archived_at_utc === null, saving: false, serverErr: null };
+    archiveState = {
+      place: node,
+      toArchive: node.archived_at_utc === null,
+      saving: false,
+      serverErr: null,
+    };
   }
 
   async function confirmArchiveToggle(): Promise<void> {
@@ -586,7 +645,9 @@
 <div class="place-tree-shell">
   <div class="toolbar">
     <Input value={searchQuery} placeholder="Поиск места" oninput={handleSearchInput} />
-    <Checkbox checked={showArchived} onchange={(c) => (showArchived = c)}>Показывать архивные</Checkbox>
+    <Checkbox checked={showArchived} onchange={(c) => (showArchived = c)}
+      >Показывать архивные</Checkbox
+    >
     <Button variant="ghost" size="sm" onclick={() => void loadTree()}>Обновить</Button>
   </div>
 
@@ -710,7 +771,11 @@
         <Button variant="ghost" onclick={showDeleteBlockedContents}>Показать содержимое</Button>
         <Button variant="primary" onclick={archiveFromDeleteBlocked}>Архивировать</Button>
       {:else}
-        <Button variant="secondary" onclick={() => (deleteState = null)} disabled={deleteState?.saving}>
+        <Button
+          variant="secondary"
+          onclick={() => (deleteState = null)}
+          disabled={deleteState?.saving}
+        >
           Отмена
         </Button>
         <Button variant="destructive" loading={deleteState?.saving} onclick={confirmDelete}>
@@ -739,7 +804,11 @@
       <div class="server-error">{archiveState.serverErr}</div>
     {/if}
     {#snippet footer()}
-      <Button variant="secondary" onclick={() => (archiveState = null)} disabled={archiveState?.saving}>
+      <Button
+        variant="secondary"
+        onclick={() => (archiveState = null)}
+        disabled={archiveState?.saving}
+      >
         Отмена
       </Button>
       <Button variant="primary" loading={archiveState?.saving} onclick={confirmArchiveToggle}>

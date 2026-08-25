@@ -206,11 +206,7 @@
       onchange={(k) => (activeTab = k as typeof activeTab)}
       ariaLabel="Фильтр содержимого"
     />
-    <Checkbox
-      checked={onlyHere}
-      onchange={(c) => (onlyHere = c)}
-      id="place-contents-only-here"
-    >
+    <Checkbox checked={onlyHere} onchange={(c) => (onlyHere = c)} id="place-contents-only-here">
       <span title="Не показывать содержимое вложенных мест">Только здесь</span>
     </Checkbox>
   </div>
@@ -261,11 +257,7 @@
             <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
           </td>
           {#if !onlyHere}
-            <td
-              class="cell"
-              title={row.full_path}
-              onclick={() => navigateToEntity(row)}
-            >
+            <td class="cell" title={row.full_path} onclick={() => navigateToEntity(row)}>
               {shortPath(row.full_path)}
             </td>
           {/if}
