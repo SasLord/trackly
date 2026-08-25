@@ -41,3 +41,30 @@ instead of fixing it).
   ever started passing RBAC.
   **Action for Plan 39-21** (the phase-closing vocabulary sweep): rename these keys to the
   `place_id` vocabulary, or drop them from the payloads if the DTOs no longer carry them.
+
+## Plan 13 — PlacePicker runtime verification NOT performed (auto-approved checkpoint)
+
+Plan 39-13's checkpoint is `human-verify`. `workflow.auto_advance` is enabled, so the
+orchestrator auto-approved it per the execute-phase contract. **Nobody has run PlacePicker
+in a real webview.** The executor ran only svelte-check / eslint / token+contrast+focus
+scripts / `pnpm --dir ui build` — none of which catch Svelte 5 rune runtime errors
+(project rule: compile gates ≠ runtime verification; a Chromium harness ≠ WKWebView).
+
+Runtime behaviour UNVERIFIED, to be checked in one batch at the phase's later checkpoints
+(39-20 / 39-21) or via /gsd-verify-work:
+1. `cargo tauri dev` → showcase (`/showcase`, Admin) → PlacePicker section.
+2. Tab into field → panel opens in tree mode with demo roots.
+3. ↑/↓ navigate, → expands a branch, Enter selects a leaf → field shows full path.
+4. Type lowercase Cyrillic (e.g. "здание") → switches to search mode, highlights match.
+5. As Admin, query with no match → D-18 «Создать «…» в «…»» row appears.
+6. Second demo block «Значение — архивный узел» → "Архив" badge visible on reopen (D-15).
+7. `pnpm --dir ui build`, then repeat 2-6 from a LAN browser tab (WebView2/WKWebView vs
+   browser parity). NOTE: LAN browser serves ui/dist — stale until that build is run.
+
+Also note two deviations recorded by the executor, worth a look during that pass:
+- Task 1's commit contains the COMPLETE component (tree + search + D-18), not just tree
+  mode: the two modes share one state machine and the §10.3 two-stage Escape contract
+  spans both, so a tree-only commit would have shipped an inconsistent keyboard contract.
+- Showcase registration went to `ui/src/features/showcase/ShowcasePage.svelte` (where all
+  other sections register), not the plan's stated `ui/src/pages/ComponentShowcasePage.svelte`,
+  which is a thin wrapper with no section list.
