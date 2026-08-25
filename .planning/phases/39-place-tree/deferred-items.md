@@ -104,3 +104,42 @@ verification" caveat as Plan 13's PlacePicker. Add these to the same batched UAT
 6. «Переместить» stays disabled until a target place is picked.
 7. `pnpm --dir ui build`, repeat all of the above from a LAN browser tab.
   which is a thin wrapper with no section list.
+
+## Plan 15 — Device-family PlacePicker wiring runtime verification NOT performed
+
+Only `svelte-check`/`eslint`/`pnpm --dir ui build` ran on the frontend; the backend CSV
+place-resolution path IS verified via `cargo test -p trackly-app --test devices_csv_import`
+(11/11 passing, including a new regression test for the not-found error copy). The following
+have NOT been exercised in a real webview — add to the same batched UAT pass:
+
+**Device create/edit form (DeviceFormBody.svelte):**
+1. Open "Создать устройство" — Место field renders as PlacePicker (not a text input),
+   placeholder "Выберите место", required (submit disabled until a place is selected).
+2. Pick a place via the tree panel — field shows the full path, submit succeeds, created
+   device shows the correct `full_path` in the devices list.
+3. Edit an existing device — PlacePicker pre-fills with the device's current place
+   (verify the D-15 archived-value exception if the device's place happens to be archived).
+4. Change the place on an existing device, save — devices list reflects the new `full_path`
+   immediately without a full page reload.
+
+**Printer creation (PrinterCreateModal.svelte):**
+1. "Завести принтер" — Место field renders as PlacePicker, optional (submit succeeds with
+   no place selected, same as before).
+2. Pick a place, submit — created printer's underlying device has the correct `place_id`.
+
+**CSV import (DeviceImportCsvModal.svelte):**
+1. Step 3 (mapping): the place column's dropdown option reads "Место" (not "Расположение").
+2. Import a CSV whose place column value does NOT exist in the tree — Step 4's error list
+   shows exactly "Строка N: место «...» не найдено в дереве." (no duplicated "Строка N:"
+   prefix — this was a real bug found and fixed by Plan 15, verified at the backend-test
+   level only).
+3. Import a CSV whose place column value DOES match an existing place's full path exactly
+   (case-insensitive) — device inserts with the correct `place_id`.
+4. Auto-mapping: a CSV with a "Место" (or "место"/"Place"/"place") header column
+   auto-maps to the place field without manual re-mapping.
+
+**Devices list/table (DeviceList.svelte / DeviceListRow.svelte / DeviceGroupRow.svelte):**
+1. Devices page table header reads "Место" (not "Расположение").
+2. Ungrouped rows show each device's `full_path` in the Место column.
+3. Grouped rows (same name+model+specs+kit+state+place+status) show the group's
+   representative `full_path`; changing a device's place moves it out of its old group.

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-25T02:01:16.506Z"
+last_updated: "2026-08-25T03:11:28.538Z"
 last_activity: 2026-08-25
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 16 of 22
+Plan: 17 of 22
 Status: Ready to execute
 Last activity: 2026-08-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -322,6 +322,7 @@ Last activity: 2026-08-25
 | Phase 39 P22 | 120m | 4 tasks | 31 files |
 | Phase 39 P13 | 50min | 3 tasks | 3 files |
 | Phase 39 P19 | 35min | 2 tasks | 2 files |
+| Phase 39 P15 | 55min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -803,6 +804,9 @@ Recent decisions affecting current work:
 - [Phase 39]: PlacePicker (39-13) exposes optional fetchChildren/fetchSearchResults/fetchOne/createPlace injection props, defaulting to apiCall('places_list_children'|'places_search'|'places_get'|'places_create'); every real form consumer (Plans 15-19) omits them and gets the default wire-backed behavior, only the showcase overrides them with invented demo data
 - [Phase 39]: PlaceFormModal: rename mode shows only Название — places_rename only mutates name, other fields would be dead UI
 - [Phase 39]: PlaceMoveModal consequences text follows UI-SPEC §11.3's literal clause order (nested places before devices), opposite of the backend's own delete-blocked-message order
+- [Phase 39]: Plan 15: CSV import mapping key 'location'->'place' renamed on BOTH frontend and device_service.rs — a frontend-only rename would silently drop CSV place data (unknown mapping keys ignored)
+- [Phase 39]: Plan 15: fixed double row-prefix bug in CSV place-not-found error (device_service.rs) — backend no longer bakes 'Строка N:' into error_message, letting the frontend's existing per-row prefix compose UI-SPEC §12's exact copy
+- [Phase 39]: Plan 15: renamed DeviceList.svelte/TableSection.svelte table header 'Расположение'->'Место' for term unification, though DeviceList.svelte wasn't in the plan's declared files_modified
 
 ### Pending Todos
 
@@ -985,8 +989,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-25T02:01:16.496Z
-Stopped at: Completed 39-19-PLAN.md
+Last session: 2026-08-25T03:11:28.528Z
+Stopped at: Completed 39-15-PLAN.md
 Resume file: 
 
 None
