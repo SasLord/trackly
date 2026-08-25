@@ -25,8 +25,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_app::services::DeviceService;
+use trackly_core::domain::places::{PlaceKind, PlaceNew};
+use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::repos::SqlitePlaceRepository;
 use trackly_infra::test_support::test_writer_and_readers;
 
 fn make_service() -> (DeviceService, tempfile::TempDir) {
@@ -40,6 +43,43 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = manifest.join("tests/fixtures/devices").join(name);
     std::fs::read(&path).unwrap_or_else(|e| panic!("failed to read fixture {name}: {e}"))
+}
+
+/// Seed a root-level place (`kind=Room`) whose `full_path` equals `name` —
+/// `import_csv_commit` (Plan 39-06, D-CSV/place-tree) resolves a CSV row's
+/// "Расположение" text against an EXACT (case-insensitive) `place_full_paths`
+/// match, no auto-create-by-name (D-18 removed that entirely). The `utf8.csv`
+/// fixture's location column values ("Кабинет 305" etc.) must exist as real
+/// `places` rows or every row with a location value fails validation and
+/// silently zero rows get inserted — mirrors the `create_place` precedent in
+/// `devices_grouping.rs`.
+async fn seed_place(svc: &DeviceService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            let repo = SqlitePlaceRepository;
+            let new_place = PlaceNew {
+                parent_id: None,
+                kind: PlaceKind::Room,
+                name: name.clone(),
+                level: None,
+                is_storage: false,
+                sort_order: None,
+                notes: None,
+            };
+            repo.create(conn, &new_place, 1_700_000_000)
+        })
+        .await
+        .expect("seed place")
+}
+
+/// Seed all four places referenced by `fixtures/devices/utf8.csv`'s
+/// "Расположение" column, so `import_csv_commit`'s exact-match place
+/// resolution succeeds for every row.
+async fn seed_utf8_fixture_places(svc: &DeviceService) {
+    for name in ["Кабинет 305", "Кабинет 101", "Кабинет 102", "Кладовая"] {
+        seed_place(svc, name).await;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +224,7 @@ async fn import_file_too_large_rejected() {
 async fn import_commit_inserts_devices() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
+        seed_utf8_fixture_places(&svc).await;
         let bytes = fixture_bytes("utf8.csv");
 
         // Step 1: preview
@@ -249,6 +290,7 @@ async fn import_commit_per_row_errors() {
 async fn import_commit_double_take_fails() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
+        seed_utf8_fixture_places(&svc).await;
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
@@ -285,6 +327,7 @@ async fn import_commit_double_take_fails() {
 async fn import_cyrillic_round_trip() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
+        seed_utf8_fixture_places(&svc).await;
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
@@ -325,6 +368,7 @@ async fn import_cyrillic_round_trip() {
 async fn import_commit_records_audit_log() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
+        seed_utf8_fixture_places(&svc).await;
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
