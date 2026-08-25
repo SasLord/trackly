@@ -1,5 +1,6 @@
 import Dashboard from './pages/Dashboard.svelte';
 import MapPage from './pages/MapPage.svelte';
+import PlacesPage from './features/places/PlacesPage.svelte';
 import DevicesPage from './features/devices/DevicesPage.svelte';
 import ActsPage from './pages/ActsPage.svelte';
 import PrintersPage from './pages/PrintersPage.svelte';
@@ -17,6 +18,7 @@ export const routes = {
   '/': Dashboard,
   '/login': LoginPage,
   '/map': MapPage,
+  '/places': PlacesPage,
   '/devices': DevicesPage,
   '/acts': ActsPage,
   '/printers': PrintersPage,
