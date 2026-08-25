@@ -59,7 +59,7 @@
 {#snippet tableHead()}
   <th class="th-code">Код</th>
   <th>Модель</th>
-  <th>Расположение</th>
+  <th>Место</th>
   {#if !statusFiltered}<th class="th-status">Статус</th>{/if}
   <th class="th-actions" aria-label="Действия"></th>
 {/snippet}

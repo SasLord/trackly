@@ -97,8 +97,8 @@
     </span>
   </td>
   <td class="cell" title={modelLabel ?? ''} onclick={handleClick}>{modelLabel ?? '—'}</td>
-  <td class="cell" title={cartridge.location ?? ''} onclick={handleClick}
-    >{cartridge.location ?? '—'}</td
+  <td class="cell" title={cartridge.full_path ?? ''} onclick={handleClick}
+    >{cartridge.full_path ?? '—'}</td
   >
   {#if !statusFiltered}
     <td class="cell cell-status" onclick={handleClick}>
