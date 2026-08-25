@@ -23,15 +23,40 @@
     place: PlaceDto;
     onClose: () => void;
     onMoved: (_place: PlaceDto) => void;
+    /**
+     * Plan 39-14 addition (Rule 1 — bug fix, not in Plan 19's original contract):
+     * when the caller already knows the destination (drag-drop dropping a row onto
+     * a target, or onto the "В корень дерева" zone — D-03), pass it here to
+     * pre-fill the picker AND immediately enable "Переместить" without requiring
+     * a redundant re-pick. `undefined` (the default, and what the ActionMenu
+     * "Переместить в…" path passes implicitly by omitting the prop) preserves
+     * Plan 19's original behavior: nothing pre-selected, submit disabled until
+     * the user actively chooses a target via PlacePicker.
+     *
+     * NOTE the distinction this enables: `null` here means "root — explicitly
+     * chosen", not "nothing chosen yet". Plan 19's original disabled-check
+     * (`selectedParentId === null`) could not tell those apart, which made
+     * moving a place to the tree root via this modal structurally unreachable
+     * (D-03's move-to-root drop zone would open a modal whose submit button
+     * could never enable). `targetChosen` (derived from whether this prop was
+     * passed at all, not from the value) fixes that.
+     */
+    defaultParentId?: number | null;
   }
 
-  const { place, onClose, onMoved }: Props = $props();
+  const { place, onClose, onMoved, defaultParentId }: Props = $props();
+
+  const hasDefaultTarget = defaultParentId !== undefined;
 
   let stats = $state<SubtreeStatsDto | null>(null);
   let statsLoading = $state(true);
   let statsError = $state(false);
 
-  let selectedParentId = $state<number | null>(null);
+  let selectedParentId = $state<number | null>(hasDefaultTarget ? (defaultParentId ?? null) : null);
+  // Tracks whether a destination has been EXPLICITLY chosen (by prop or by the
+  // user), independent of the value itself — `null` is a legitimate chosen
+  // value (root, D-03), not an "unfilled" sentinel.
+  let targetChosen = $state(hasDefaultTarget);
   let moveErr = $state<string | null>(null);
   let serverErr = $state<string | null>(null);
   let saving = $state(false);
@@ -121,7 +146,7 @@
   }
 
   async function handleSubmit() {
-    if (selectedParentId === null || saving) return;
+    if (!targetChosen || saving) return;
     moveErr = null;
     serverErr = null;
     saving = true;
@@ -152,6 +177,7 @@
         disabled={saving}
         onChange={(id) => {
           selectedParentId = id;
+          targetChosen = true;
           moveErr = null;
         }}
       />
@@ -181,7 +207,7 @@
     <Button
       variant="primary"
       loading={saving}
-      disabled={selectedParentId === null}
+      disabled={!targetChosen}
       onclick={handleSubmit}
     >
       {#if saving}Перемещение…{:else}Переместить{/if}

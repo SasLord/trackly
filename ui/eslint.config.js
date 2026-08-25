@@ -30,6 +30,7 @@ const browserGlobals = {
   KeyboardEvent: 'readonly',
   FocusEvent: 'readonly',
   MouseEvent: 'readonly',
+  DragEvent: 'readonly',
   HTMLElement: 'readonly',
   HTMLDivElement: 'readonly',
   HTMLButtonElement: 'readonly',
