@@ -56,10 +56,7 @@
   const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
 </script>
 
-<TableRow
-  class={isLastInGroup ? 'group-last-child' : undefined}
-  selected={isHighlighted}
->
+<TableRow class={isLastInGroup ? 'group-last-child' : undefined} selected={isHighlighted}>
   <td id="device-row-{device.id}" class="cell cell-name" title={device.name}>{device.name}</td>
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
     ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td

@@ -80,7 +80,9 @@
   const isArchived = $derived(node.archived_at_utc !== null);
   const isFocused = $derived(focusedId === node.id);
   const isDragging = $derived(draggingId === node.id);
-  const isDragOver = $derived(dragOverId === node.id && draggingId !== null && draggingId !== node.id);
+  const isDragOver = $derived(
+    dragOverId === node.id && draggingId !== null && draggingId !== node.id,
+  );
   const isInvalidTarget = $derived(isDragOver && isInvalidDropTarget(node.id));
   const contentCount = $derived(stats[node.id]);
   const rowTitle = $derived(
@@ -140,7 +142,13 @@
         onclick={handleChevronClick}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-          <path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path
+            d="M3 1l4 4-4 4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </button>
     {/if}
@@ -173,15 +181,24 @@
   {#if isAdmin}
     <span class="row-actions">
       <ActionMenu variant="ghost-sm" label={`Действия: ${node.name}`}>
-        <button type="button" role="menuitem" onclick={() => actions.onRename(node)}>Переименовать</button>
+        <button type="button" role="menuitem" onclick={() => actions.onRename(node)}
+          >Переименовать</button
+        >
         <button type="button" role="menuitem" onclick={() => actions.onCreateChild(node)}>
           Создать вложенное место
         </button>
-        <button type="button" role="menuitem" onclick={() => actions.onMove(node)}>Переместить в…</button>
+        <button type="button" role="menuitem" onclick={() => actions.onMove(node)}
+          >Переместить в…</button
+        >
         <button type="button" role="menuitem" onclick={() => actions.onArchiveToggle(node)}>
           {isArchived ? 'Вернуть из архива' : 'Архивировать'}
         </button>
-        <button type="button" role="menuitem" class="menu-danger" onclick={() => actions.onDelete(node)}>
+        <button
+          type="button"
+          role="menuitem"
+          class="menu-danger"
+          onclick={() => actions.onDelete(node)}
+        >
           Удалить
         </button>
       </ActionMenu>

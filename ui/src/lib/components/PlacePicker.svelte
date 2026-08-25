@@ -261,7 +261,11 @@
 
   function selectTreeNode(place: PlaceDto): void {
     onChange(place.id);
-    selectedPlace = { id: place.id, full_path: place.full_path ?? '', archived_at_utc: place.archived_at_utc };
+    selectedPlace = {
+      id: place.id,
+      full_path: place.full_path ?? '',
+      archived_at_utc: place.archived_at_utc,
+    };
     mode = 'closed';
     activeId = null;
     inputEl?.blur();
@@ -526,7 +530,11 @@
     void (async () => {
       try {
         const dto = await fetchOne(v);
-        selectedPlace = { id: dto.id, full_path: dto.full_path ?? '', archived_at_utc: dto.archived_at_utc };
+        selectedPlace = {
+          id: dto.id,
+          full_path: dto.full_path ?? '',
+          archived_at_utc: dto.archived_at_utc,
+        };
       } catch {
         selectedPlace = { id: v, full_path: `#${v}`, archived_at_utc: null };
       }
@@ -555,7 +563,8 @@
     const pieces: HighlightPiece[] = [];
     if (idx > 0) pieces.push({ text: text.slice(0, idx), matched: false });
     pieces.push({ text: text.slice(idx, idx + q.length), matched: true });
-    if (idx + q.length < text.length) pieces.push({ text: text.slice(idx + q.length), matched: false });
+    if (idx + q.length < text.length)
+      pieces.push({ text: text.slice(idx + q.length), matched: false });
     return pieces;
   }
 </script>
@@ -624,7 +633,9 @@
               tabindex="-1"
               aria-level={row.depth + 1}
               aria-selected={row.place.id === selectedPlace?.id}
-              aria-expanded={isLeafKnown(row.place.id) ? undefined : expandedIds.includes(row.place.id)}
+              aria-expanded={isLeafKnown(row.place.id)
+                ? undefined
+                : expandedIds.includes(row.place.id)}
               style={`padding-left: calc(var(--tr-space-xs) + ${row.depth} * var(--tr-space-md))`}
               onmousedown={(e) => e.preventDefault()}
               onclick={() => selectTreeNode(row.place)}
@@ -697,7 +708,11 @@
           >
             <span class="picker-path">
               {#each splitPath(row.full_path) as segment, si (si)}
-                <span class="seg" class:seg-secondary={!segment.isLast} class:seg-last={segment.isLast}>
+                <span
+                  class="seg"
+                  class:seg-secondary={!segment.isLast}
+                  class:seg-last={segment.isLast}
+                >
                   {#each highlightPieces(segment.text, searchQuery) as piece, pi (pi)}
                     <span class:matched={piece.matched}>{piece.text}</span>
                   {/each}
@@ -717,8 +732,20 @@
             onmousedown={(e) => e.preventDefault()}
             onclick={() => void handleCreate()}
           >
-            <svg class="create-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <svg
+              class="create-icon"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 3v10M3 8h10"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
             </svg>
             {createLabel}
           </button>

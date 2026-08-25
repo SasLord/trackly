@@ -44,8 +44,14 @@
     onActiveTabChange: (_v: ContentTab) => void;
   }
 
-  const { place, onSelectAncestor, onlyHere, onOnlyHereChange, activeTab, onActiveTabChange }: Props =
-    $props();
+  const {
+    place,
+    onSelectAncestor,
+    onlyHere,
+    onOnlyHereChange,
+    activeTab,
+    onActiveTabChange,
+  }: Props = $props();
 
   // §17.1 (mirrors PlaceTreeNode.svelte's identical map — no shared places-utils
   // module exists yet in this codebase; small const, kept local per that file's

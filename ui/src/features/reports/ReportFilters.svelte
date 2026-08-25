@@ -93,9 +93,7 @@
   }: Props = $props();
 
   const storageValue = $derived(isStorage === null ? 'null' : String(isStorage));
-  const storageLabel = $derived(
-    STORAGE_OPTIONS.find((o) => o.id === storageValue)?.label ?? 'Все',
-  );
+  const storageLabel = $derived(STORAGE_OPTIONS.find((o) => o.id === storageValue)?.label ?? 'Все');
 
   function handleStorageChange(id: string) {
     onFilterChange?.({ is_storage: id === 'null' ? null : id === 'true' });

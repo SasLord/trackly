@@ -437,7 +437,11 @@
                 {/each}
               </div>
             {/if}
-            <PlacePicker value={bulkPlaceId} onChange={(id) => (bulkPlaceId = id)} id="ret-bulk-place" />
+            <PlacePicker
+              value={bulkPlaceId}
+              onChange={(id) => (bulkPlaceId = id)}
+              id="ret-bulk-place"
+            />
           </div>
         </div>
       </section>
@@ -458,8 +462,8 @@
         {/if}
         {#if !applyToAll && checkedRows.length > 0 && !canSubmit && !submitting}
           <p class="empty-hint">
-            Заполните «Состояние» и «Место» для каждой выбранной позиции (либо включите
-            «Применить ко всем»).
+            Заполните «Состояние» и «Место» для каждой выбранной позиции (либо включите «Применить
+            ко всем»).
           </p>
         {/if}
         {#if applyToAll && !canSubmit && checkedRows.length > 0 && !submitting}

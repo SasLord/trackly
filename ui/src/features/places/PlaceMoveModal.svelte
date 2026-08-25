@@ -118,7 +118,9 @@
       );
     }
     if (s.device_count > 0) {
-      parts.push(`${s.device_count} ${ruPlural(s.device_count, 'устройство', 'устройства', 'устройств')}`);
+      parts.push(
+        `${s.device_count} ${ruPlural(s.device_count, 'устройство', 'устройства', 'устройств')}`,
+      );
     }
     if (s.cartridge_count > 0) {
       parts.push(
@@ -204,12 +206,7 @@
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onClose} disabled={saving}>Отмена</Button>
-    <Button
-      variant="primary"
-      loading={saving}
-      disabled={!targetChosen}
-      onclick={handleSubmit}
-    >
+    <Button variant="primary" loading={saving} disabled={!targetChosen} onclick={handleSubmit}>
       {#if saving}Перемещение…{:else}Переместить{/if}
     </Button>
   {/snippet}

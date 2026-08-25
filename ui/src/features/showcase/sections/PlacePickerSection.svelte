@@ -79,12 +79,20 @@
 
   async function demoCreatePlace(newPlace: PlaceNewDto): Promise<PlaceDto> {
     await delay(120);
-    const parent = newPlace.parent_id !== null ? demoPlaces.find((p) => p.id === newPlace.parent_id) : null;
+    const parent =
+      newPlace.parent_id !== null ? demoPlaces.find((p) => p.id === newPlace.parent_id) : null;
     const fullPath = parent ? `${parent.full_path} / ${newPlace.name}` : newPlace.name;
-    const created = place(nextDemoId++, newPlace.parent_id, newPlace.kind, newPlace.name, fullPath, {
-      isStorage: newPlace.is_storage,
-      level: newPlace.level,
-    });
+    const created = place(
+      nextDemoId++,
+      newPlace.parent_id,
+      newPlace.kind,
+      newPlace.name,
+      fullPath,
+      {
+        isStorage: newPlace.is_storage,
+        level: newPlace.level,
+      },
+    );
     demoPlaces = [...demoPlaces, created];
     return created;
   }
