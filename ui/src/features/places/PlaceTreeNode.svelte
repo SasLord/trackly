@@ -5,7 +5,17 @@
   // ARIA contract exactly. All keyboard-navigation LOGIC lives in the parent
   // PlaceTree.svelte (operating on its own flattened `visibleNodes` list, not
   // on this component's DOM structure) — this component only renders and wires
-  // clicks/drag events back up through the shared `actions` object.
+  // clicks back up through the shared `actions` object.
+  //
+  // Drag-n-drop (§8.4/D-21, UAT gap 6): pointer-based drag state and hit-
+  // testing live entirely in PlaceTree.svelte's `.tree-body` container
+  // (pointerdown/pointermove/pointerup delegation + elementFromPoint), NOT
+  // here — a captured pointer keeps delivering events to the element that
+  // captured it, so per-row native-DnD-style callbacks would never fire once
+  // a drag starts. This component only renders `data-place-id` (for the
+  // container's hit-testing) and the drag-derived CSS classes
+  // (dragging/drop-valid/drop-invalid), driven by the `draggingId`/
+  // `dragOverId`/`isInvalidDropTarget` props it already receives.
   import PlaceTreeNode from './PlaceTreeNode.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import Badge from '$lib/components/Badge.svelte';
@@ -20,11 +30,6 @@
     onMove: (_node: PlaceDto) => void;
     onArchiveToggle: (_node: PlaceDto) => void;
     onDelete: (_node: PlaceDto) => void;
-    onDragStart: (_id: number) => void;
-    onDragOverNode: (_id: number) => void;
-    onDropNode: (_id: number) => void;
-    onDragLeaveNode: (_id: number) => void;
-    onDragEnd: () => void;
   }
 
   interface Props {
@@ -106,6 +111,7 @@
 
 <div
   id={`place-tree-row-${node.id}`}
+  data-place-id={node.id}
   class="place-tree-row"
   class:selected={isSelected}
   class:dragging={isDragging}
@@ -118,26 +124,9 @@
   aria-expanded={hasChildren ? expanded : undefined}
   title={rowTitle}
   style={`padding-left: calc(var(--tr-space-xs) + ${depth} * var(--tr-space-md))`}
-  draggable={isAdmin}
   onclick={handleRowClick}
   onkeydown={handleRowKeydown}
   onfocus={() => actions.onFocusRow(node.id)}
-  ondragstart={(e) => {
-    if (!isAdmin) return;
-    e.dataTransfer?.setData('text/plain', String(node.id));
-    actions.onDragStart(node.id);
-  }}
-  ondragover={(e) => {
-    if (draggingId === null) return;
-    e.preventDefault();
-    actions.onDragOverNode(node.id);
-  }}
-  ondragleave={() => actions.onDragLeaveNode(node.id)}
-  ondrop={(e) => {
-    e.preventDefault();
-    actions.onDropNode(node.id);
-  }}
-  ondragend={() => actions.onDragEnd()}
 >
   <span class="chevron-slot">
     {#if hasChildren}
@@ -219,6 +208,10 @@
     padding-right: var(--tr-space-md);
     cursor: pointer;
     transition: none;
+    // Pointer-based drag (UAT gap 6) does its own hit-testing over the row
+    // for the whole pointerdown→pointerup span; text selection during that
+    // span is pure friction, never useful.
+    user-select: none;
 
     &:hover {
       background: var(--tr-row-hover);

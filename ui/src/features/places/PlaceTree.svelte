@@ -583,14 +583,131 @@
 
   // --- Drag-n-drop (§8.4/D-21) — Admin only, "внутрь узла" only, ALWAYS opens
   // PlaceMoveModal (never a silent move — dropping just picks the pre-filled
-  // target, confirmation is the same dialog as "Переместить в…"). ---
+  // target, confirmation is the same dialog as "Переместить в…").
+  //
+  // UAT gap 6 (2026-08-25): the original implementation used native HTML5 DnD
+  // (draggable/dragstart/dragover/drop/dataTransfer) which WKWebView (macOS
+  // Tauri desktop) supports only partially — drop never fired, targets never
+  // highlighted, while the same interaction worked fine in a LAN browser tab.
+  // Rebuilt on Pointer Events (pointerdown/pointermove/pointerup +
+  // setPointerCapture), which WKWebView, WebView2 and browsers all support
+  // identically. All state and hit-testing lives HERE (the container) rather
+  // than being delegated back up per-row through TreeActions callbacks, since
+  // a captured pointer keeps delivering move/up events to the element that
+  // captured it regardless of which row the cursor is visually over — the
+  // container has to do its own elementFromPoint hit-testing to know which
+  // row (or the root dropzone) the pointer currently sits above.
   let draggingId = $state<number | null>(null);
   let dragOverId = $state<number | null>(null);
+  let overRootDropzone = $state(false);
+
+  // Movement threshold (px) before a pointerdown becomes a drag — below this,
+  // pointerup is treated as a plain click (row selection keeps working).
+  const DRAG_START_THRESHOLD_PX = 6;
+
+  let pointerDragOriginId: number | null = null;
+  let pointerDragPointerId: number | null = null;
+  let pointerDragStartX = 0;
+  let pointerDragStartY = 0;
+  let pointerDragStarted = false;
+
+  function isInvalidDropTargetFrom(originId: number, targetId: number): boolean {
+    if (targetId === originId) return true;
+    return isDescendantOf(originId, targetId);
+  }
 
   function isInvalidDropTarget(targetId: number): boolean {
     if (draggingId === null) return false;
-    if (targetId === draggingId) return true;
-    return isDescendantOf(draggingId, targetId);
+    return isInvalidDropTargetFrom(draggingId, targetId);
+  }
+
+  function resetPointerDrag(): void {
+    pointerDragOriginId = null;
+    pointerDragPointerId = null;
+    pointerDragStarted = false;
+    draggingId = null;
+    dragOverId = null;
+    overRootDropzone = false;
+  }
+
+  function updateDropHitTest(clientX: number, clientY: number): void {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const rootZone = el?.closest<HTMLElement>('.root-dropzone');
+    if (rootZone) {
+      overRootDropzone = true;
+      dragOverId = null;
+      return;
+    }
+    overRootDropzone = false;
+    const rowEl = el?.closest<HTMLElement>('.place-tree-row');
+    const rawId = rowEl?.dataset.placeId;
+    const id = rawId !== undefined ? Number(rawId) : NaN;
+    dragOverId = Number.isFinite(id) ? id : null;
+  }
+
+  function handleTreePointerDown(e: PointerEvent): void {
+    if (!isAdmin) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    // Don't start a drag from the chevron or the row's ActionMenu — those
+    // have their own click behavior and must stay reachable.
+    if (target.closest('.chevron, .row-actions')) return;
+    const rowEl = target.closest<HTMLElement>('.place-tree-row');
+    const rawId = rowEl?.dataset.placeId;
+    const id = rawId !== undefined ? Number(rawId) : NaN;
+    if (!Number.isFinite(id)) return;
+    pointerDragOriginId = id;
+    pointerDragPointerId = e.pointerId;
+    pointerDragStartX = e.clientX;
+    pointerDragStartY = e.clientY;
+    pointerDragStarted = false;
+  }
+
+  function handleTreePointerMove(e: PointerEvent): void {
+    if (pointerDragOriginId === null || e.pointerId !== pointerDragPointerId) return;
+    if (!pointerDragStarted) {
+      const dx = e.clientX - pointerDragStartX;
+      const dy = e.clientY - pointerDragStartY;
+      if (Math.hypot(dx, dy) < DRAG_START_THRESHOLD_PX) return;
+      pointerDragStarted = true;
+      draggingId = pointerDragOriginId;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
+    e.preventDefault();
+    updateDropHitTest(e.clientX, e.clientY);
+  }
+
+  function handleTreePointerUp(e: PointerEvent): void {
+    if (pointerDragOriginId === null || e.pointerId !== pointerDragPointerId) return;
+    const originId = pointerDragOriginId;
+    const started = pointerDragStarted;
+    const targetId = dragOverId;
+    const droppedOnRoot = overRootDropzone;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Capture may already have been released (e.g. pointercancel raced us).
+    }
+    resetPointerDrag();
+    if (!started) return; // plain click — row's own onclick handles selection
+    const place = placeById.get(originId);
+    if (!place) return;
+    if (droppedOnRoot) {
+      moveModal = { place, defaultParentId: null };
+      return;
+    }
+    if (targetId === null || isInvalidDropTargetFrom(originId, targetId)) return;
+    moveModal = { place, defaultParentId: targetId };
+  }
+
+  function handleTreePointerCancel(e: PointerEvent): void {
+    if (pointerDragOriginId === null || e.pointerId !== pointerDragPointerId) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Already released.
+    }
+    resetPointerDrag();
   }
 
   const treeActions = {
@@ -608,38 +725,7 @@
     onMove: openMove,
     onArchiveToggle: openArchiveToggle,
     onDelete: openDelete,
-    onDragStart(id: number) {
-      draggingId = id;
-    },
-    onDragOverNode(id: number) {
-      dragOverId = id;
-    },
-    onDropNode(id: number) {
-      const from = draggingId;
-      draggingId = null;
-      dragOverId = null;
-      if (from === null || isInvalidDropTarget(id)) return;
-      const place = placeById.get(from);
-      if (place) moveModal = { place, defaultParentId: id };
-    },
-    onDragLeaveNode(id: number) {
-      if (dragOverId === id) dragOverId = null;
-    },
-    onDragEnd() {
-      draggingId = null;
-      dragOverId = null;
-    },
   };
-
-  function handleRootDrop(e: DragEvent): void {
-    e.preventDefault();
-    const from = draggingId;
-    draggingId = null;
-    dragOverId = null;
-    if (from === null) return;
-    const place = placeById.get(from);
-    if (place) moveModal = { place, defaultParentId: null };
-  }
 </script>
 
 <div class="place-tree-shell">
@@ -657,6 +743,10 @@
     aria-label="Дерево мест"
     tabindex="-1"
     onkeydown={handleContainerKeydown}
+    onpointerdown={handleTreePointerDown}
+    onpointermove={handleTreePointerMove}
+    onpointerup={handleTreePointerUp}
+    onpointercancel={handleTreePointerCancel}
   >
     {#if loading && allPlaces === null}
       <div class="tree-status"><Spinner size="md" /></div>
@@ -722,11 +812,10 @@
       {#if draggingId !== null}
         <div
           class="root-dropzone"
+          class:drop-valid={overRootDropzone}
           role="button"
           tabindex="-1"
           aria-label="В корень дерева"
-          ondragover={(e) => e.preventDefault()}
-          ondrop={handleRootDrop}
         >
           В корень дерева
         </div>
@@ -904,6 +993,12 @@
     border: 1px dashed var(--tr-border-strong);
     border-radius: var(--tr-radius-sm);
     color: var(--tr-text-secondary);
+
+    &.drop-valid {
+      background: var(--tr-accent-soft);
+      border-color: var(--tr-accent);
+      color: var(--tr-text-primary);
+    }
   }
 
   .sr-only {
