@@ -43,7 +43,7 @@
 
   function printerLabel(p: PrinterDto): string {
     const name = p.deviceName ?? `Принтер #${p.deviceId}`;
-    return p.deviceLocation ? `${name} — ${p.deviceLocation}` : name;
+    return p.devicePlace ? `${name} — ${p.devicePlace}` : name;
   }
 
   // D-21: when no compatibility links exist for this cartridge model, render

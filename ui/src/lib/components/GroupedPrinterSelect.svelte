@@ -47,7 +47,7 @@
   const groups = $derived.by<PrinterGroup[]>(() => {
     const map = new Map<string, RequestPrinterOptionDto[]>();
     for (const opt of options) {
-      const label = opt.location ?? NO_LOCATION_LABEL;
+      const label = opt.place ?? NO_LOCATION_LABEL;
       const bucket = map.get(label);
       if (bucket) {
         bucket.push(opt);

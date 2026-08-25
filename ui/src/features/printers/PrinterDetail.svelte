@@ -354,7 +354,7 @@
           </div>
           <div class="meta-row">
             <span class="meta-label">Расположение</span>
-            <span class="meta-value">{deviceData?.location ?? '—'}</span>
+            <span class="meta-value">{deviceData?.full_path ?? '—'}</span>
           </div>
           <div class="meta-row">
             <span class="meta-label">Состояние</span>
