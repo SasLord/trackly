@@ -16,7 +16,10 @@
   // fresh instance mounts both on genuine selection changes AND on the D-14
   // "Показать содержимое" same-node edge case (see `handleShowBlockedContents`
   // below) — falls back to the static "Место не выбрано" placeholder (§14.2)
-  // when nothing is selected.
+  // when nothing is selected. `onlyHere` is lifted OUT of PlaceContents (UAT
+  // gap 4.3) so this remount does not reset it on ordinary place-to-place
+  // selection; it is reset to false explicitly only by
+  // `handleShowBlockedContents`.
   import { authStore } from '$lib/stores/auth.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -58,11 +61,18 @@
   // this fresh across reloads (rename/archive/move), see PlaceTree.svelte's
   // own `loadTree()` freshness-sync comment.
   let selectedPlace = $state<PlaceDto | null>(null);
-  // Bumped by the D-14 delete-blocked "Показать содержимое" action so
-  // PlaceContents remounts (resetting `onlyHere` to its default) even in the
-  // edge case where the blocked node is ALREADY the selected node (no id
-  // change for the {#key} below to react to on its own).
+  // Bumped by the D-14 delete-blocked "Показать содержимое" action to force a
+  // PlaceContents remount in the edge case where the blocked node is ALREADY
+  // the selected node (no id change for the {#key} below to react to on its
+  // own). `onlyHere` itself is lifted to this component (below) so it
+  // otherwise SURVIVES normal place-to-place remounts (UAT gap 4.3) — it is
+  // reset to false explicitly, only here, alongside the token bump.
   let contentsResetToken = $state(0);
+  // Lifted out of PlaceContents so the "Только здесь" toggle persists across
+  // selection changes (which still remount PlaceContents via the {#key}
+  // below for its other per-node state). Reset ONLY by
+  // `handleShowBlockedContents` (the D-14 same-node edge case).
+  let onlyHere = $state(false);
   // An out-of-band selection request for PlaceTree — see PlaceTree.svelte's
   // `externalSelect` prop doc-comment. A fresh object per breadcrumb click.
   let externalSelect = $state<{ id: number; token: number } | null>(null);
@@ -81,6 +91,7 @@
 
   function handleShowBlockedContents(): void {
     contentsResetToken += 1;
+    onlyHere = false;
   }
 </script>
 
@@ -107,7 +118,12 @@
       {#snippet detail()}
         {#if selectedPlace}
           {#key `${selectedPlace.id}:${contentsResetToken}`}
-            <PlaceContents place={selectedPlace} onSelectAncestor={handleSelectAncestor} />
+            <PlaceContents
+              place={selectedPlace}
+              onSelectAncestor={handleSelectAncestor}
+              {onlyHere}
+              onOnlyHereChange={(v) => (onlyHere = v)}
+            />
           {/key}
         {:else}
           <DetailPanel

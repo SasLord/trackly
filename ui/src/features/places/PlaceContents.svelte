@@ -2,9 +2,12 @@
   // Phase 39 Plan 20 (PLC-06, 39-UI-SPEC.md §9): the right-panel content screen —
   // breadcrumbs + node header (§9.1), Tabs+"Только здесь" control row (§9.2),
   // sticky-header content table (§9.3). Mounted by PlacesPage per selected node
-  // (see that file for the {#key place.id:token} remount contract that resets
-  // this component's internal `onlyHere` state on every genuinely new selection,
-  // including the D-14 "Показать содержимое" same-node edge case).
+  // (see that file for the {#key place.id:token} remount contract). `onlyHere`
+  // is a CONTROLLED prop owned by PlacesPage (UAT gap 4.3 fix) — it
+  // deliberately survives this component's own remounts across ordinary place
+  // selection changes, and is reset to false only by PlacesPage's
+  // `handleShowBlockedContents` (the D-14 "Показать содержимое" same-node edge
+  // case).
   //
   // `place`'s own DTO (`places_get`/`places_list_all`) carries no ancestor chain
   // (confirmed against bindings.ts: PlaceDto = {id, parent_id, kind, name, level,
@@ -24,9 +27,11 @@
   interface Props {
     place: PlaceDto;
     onSelectAncestor: (_id: number) => void;
+    onlyHere: boolean;
+    onOnlyHereChange: (_v: boolean) => void;
   }
 
-  const { place, onSelectAncestor }: Props = $props();
+  const { place, onSelectAncestor, onlyHere, onOnlyHereChange }: Props = $props();
 
   // §17.1 (mirrors PlaceTreeNode.svelte's identical map — no shared places-utils
   // module exists yet in this codebase; small const, kept local per that file's
@@ -110,7 +115,6 @@
   });
 
   // --- Content (§9.2/§9.3, D-24) ---
-  let onlyHere = $state(false);
   let rows = $state<PlaceContentDto[] | null>(null);
   let loading = $state(false);
   let loadError = $state(false);
@@ -206,7 +210,7 @@
       onchange={(k) => (activeTab = k as typeof activeTab)}
       ariaLabel="Фильтр содержимого"
     />
-    <Checkbox checked={onlyHere} onchange={(c) => (onlyHere = c)} id="place-contents-only-here">
+    <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
       <span title="Не показывать содержимое вложенных мест">Только здесь</span>
     </Checkbox>
   </div>
