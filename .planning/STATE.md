@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-25T03:11:28.538Z"
+last_updated: "2026-08-25T03:28:16.360Z"
 last_activity: 2026-08-25
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 17 of 22
+Plan: 18 of 22
 Status: Ready to execute
 Last activity: 2026-08-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -323,6 +323,7 @@ Last activity: 2026-08-25
 | Phase 39 P13 | 50min | 3 tasks | 3 files |
 | Phase 39 P19 | 35min | 2 tasks | 2 files |
 | Phase 39 P15 | 55min | 3 tasks | 11 files |
+| Phase 39 P16 | 35min | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -807,6 +808,8 @@ Recent decisions affecting current work:
 - [Phase 39]: Plan 15: CSV import mapping key 'location'->'place' renamed on BOTH frontend and device_service.rs — a frontend-only rename would silently drop CSV place data (unknown mapping keys ignored)
 - [Phase 39]: Plan 15: fixed double row-prefix bug in CSV place-not-found error (device_service.rs) — backend no longer bakes 'Строка N:' into error_message, letting the frontend's existing per-row prefix compose UI-SPEC §12's exact copy
 - [Phase 39]: Plan 15: renamed DeviceList.svelte/TableSection.svelte table header 'Расположение'->'Место' for term unification, though DeviceList.svelte wasn't in the plan's declared files_modified
+- [Phase 39]: OperationModal.svelte's prefillLocation prop removed entirely; Install place prefill for both request-centric and cartridge-centric flows now flows through one generalized printerContext effect reading printer.devicePlaceId (Plan 16)
+- [Phase 39]: D-11.3 storage-status suggestion checkbox implemented as informational-only for cartridges (Plan 16) — CartridgeTransitionPayload has no status-override field since cartridge status is operation-driven, not place-driven; Plans 17/18 should re-verify their own device/act D-11.3 wiring
 
 ### Pending Todos
 
@@ -989,8 +992,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-25T03:11:28.528Z
-Stopped at: Completed 39-15-PLAN.md
+Last session: 2026-08-25T03:28:16.351Z
+Stopped at: Completed 39-16-PLAN.md
 Resume file: 
 
 None
