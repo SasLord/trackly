@@ -9,6 +9,7 @@
   import { connectWs, onWsEvent } from '$lib/api/ws';
   import Button from '$lib/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { parseIdFromHash } from '$lib/utils/hashId';
   import PrintersMasterDetail from './PrintersMasterDetail.svelte';
   import PrintersSearchAndTabs from './PrintersSearchAndTabs.svelte';
   import PrintersList from './PrintersList.svelte';
@@ -18,6 +19,15 @@
   import { printers } from './api';
   import type { PrinterDto, PrinterFilter } from '../../bindings-phase6';
   import type { WsEvent } from '../../bindings-phase6';
+
+  // GAP-8 (39-UAT.md, Прогон 3): cross-section focus from the Places
+  // content-row «Перейти к принтеру» action — `#/devices?id=…`'s
+  // `?id=` there is a `devices.id` (places_contents/PLC-06 returns the
+  // underlying device row id for kind='printer' rows too — see
+  // PlaceEntityViewModal.svelte's file-header comment), NOT a `printers.id`.
+  // `printers.getByDeviceId` (already used elsewhere — GAP-12-13) resolves
+  // the mapping; no backend change needed.
+  const initialFocusDeviceId = parseIdFromHash();
 
   let items = $state<PrinterDto[]>([]);
   let listLoading = $state(false);
@@ -86,6 +96,20 @@
 
   onMount(() => {
     refresh();
+    if (initialFocusDeviceId !== null) {
+      // Best-effort — a stale/missing id (device deleted, no longer a
+      // printer, etc.) just leaves selectedId at its default null: the list
+      // loads normally and the detail panel shows its existing "Выберите
+      // принтер" empty state (no crash, no broken panel).
+      printers
+        .getByDeviceId(initialFocusDeviceId)
+        .then((dto) => {
+          selectedId = dto.id;
+        })
+        .catch(() => {
+          // Ignore — see comment above.
+        });
+    }
     // Connect WS for real-time notifications.
     let unlisten: (() => void) | undefined;
     connectWs()

@@ -8,6 +8,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { parseIdFromHash } from '$lib/utils/hashId';
   import CartridgesSearchAndTabs from './CartridgesSearchAndTabs.svelte';
   import CartridgesMasterDetail from './CartridgesMasterDetail.svelte';
   import CartridgeFilters from './CartridgeFilters.svelte';
@@ -31,8 +32,17 @@
 
   type TabKey = 'cartridges' | 'models';
 
+  // GAP-8 (39-UAT.md, Прогон 3): cross-section focus from the Places
+  // content-row «Перейти к картриджу» action — `#/cartridges?id=…`. Unlike
+  // printers, `places_contents`'s `id` for kind='cartridge' rows IS the
+  // cartridge's own id (`c.id`), so no id-mapping lookup is needed — it
+  // slots directly into the existing `selectedCartridgeId` master-detail
+  // selection (which already drives both the detail panel AND the list
+  // row's `selected` highlight, CartridgesList.svelte).
+  const initialFocusId = parseIdFromHash();
+
   let activeTab = $state<TabKey>('cartridges');
-  let selectedCartridgeId = $state<number | null>(null);
+  let selectedCartridgeId = $state<number | null>(initialFocusId);
   let selectedCartridge = $state<CartridgeDto | null>(null);
   let cartridgeHistory = $state<AuditEntryDto[]>([]);
   let detailLoading = $state(false);
@@ -136,8 +146,18 @@
   }
 
   // Сбрасываем выбранный картридж при смене таба.
+  // GAP-8: this $effect also fires once on initial mount (Svelte 5 runs every
+  // top-level $effect at least once right after first render) — without a
+  // guard it would immediately null out `initialFocusId`'s pre-set
+  // `selectedCartridgeId` before the user ever sees it. Skip exactly that
+  // first run; every REAL tab change after mount still resets as before.
+  let isFirstTabEffectRun = true;
   $effect(() => {
     void activeTab;
+    if (isFirstTabEffectRun) {
+      isFirstTabEffectRun = false;
+      return;
+    }
     selectedCartridgeId = null;
     selectedCartridge = null;
     cartridgeHistory = [];

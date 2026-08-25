@@ -32,6 +32,22 @@
   // already on screen keeps rendering real rows + a footer spinner.
   const skeletonLoading = $derived(loading && items.length === 0);
   const isEmpty = $derived(!loading && items.length === 0);
+
+  // GAP-8 (39-UAT.md): scroll a newly-selected row into view — covers both
+  // the cross-section focus deep link (PrintersPage resolves `?id=…` into
+  // `selectedId` before this list has data) and ordinary row clicks (no-op
+  // there since the clicked row is already visible; `block: 'nearest'`
+  // avoids an unnecessary jump).
+  let scrolledToId = $state<number | null>(null);
+  $effect(() => {
+    const id = selectedId;
+    if (id === null || id === scrolledToId || loading) return;
+    const el = document.getElementById(`printer-row-${id}`);
+    if (el) {
+      el.scrollIntoView({ block: 'nearest' });
+      scrolledToId = id;
+    }
+  });
 </script>
 
 {#snippet tableHead()}

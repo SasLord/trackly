@@ -72,6 +72,7 @@
 
 <TableRow {selected} class="printer-row">
   <td
+    id="printer-row-{printer.id}"
     class="cell cell-name"
     role="button"
     tabindex="0"

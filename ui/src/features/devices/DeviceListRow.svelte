@@ -14,6 +14,11 @@
     onPrintAcceptance?: (_d: DeviceDto) => void;
     /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
     showStatus?: boolean;
+    /** GAP-8 (39-UAT.md): cross-section focus from the Places content-row
+     *  «Перейти к устройству» action (`#/devices?id=…`) — this row renders
+     *  selected/highlighted + carries a stable DOM id for scrollIntoView
+     *  when it matches. */
+    highlightId?: number | null;
   }
 
   const {
@@ -23,7 +28,10 @@
     isLastInGroup = false,
     onPrintAcceptance,
     showStatus = true,
+    highlightId = null,
   }: Props = $props();
+
+  const isHighlighted = $derived(highlightId !== null && device.id === highlightId);
 
   // ---------------------------------------------------------------------------
   // Placeholder status mapping (Plan 04 wires seeded lookups)
@@ -48,8 +56,11 @@
   const statusVariant = $derived(STATUS_VARIANTS[device.status_id] ?? 'default');
 </script>
 
-<TableRow class={isLastInGroup ? 'group-last-child' : undefined}>
-  <td class="cell cell-name" title={device.name}>{device.name}</td>
+<TableRow
+  class={isLastInGroup ? 'group-last-child' : undefined}
+  selected={isHighlighted}
+>
+  <td id="device-row-{device.id}" class="cell cell-name" title={device.name}>{device.name}</td>
   <td class="cell cell-numeric" title={device.inventory_no ?? ''}
     ><span class="tr-mono">{device.inventory_no ?? '—'}</span></td
   >

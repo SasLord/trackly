@@ -6,6 +6,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
   import { apiCall } from '$lib/api/client';
+  import { parseIdFromHash } from '$lib/utils/hashId';
   import DeviceList from './DeviceList.svelte';
   import DeviceFilters from './DeviceFilters.svelte';
   import DeviceFormModal from './DeviceFormModal.svelte';
@@ -36,11 +37,23 @@
     deviceName: string;
   } | null>(null);
 
+  // GAP-8 (39-UAT.md, Прогон 3): cross-section focus from the Places
+  // content-row «Перейти к устройству» action — `#/devices?id=…`. Read once
+  // (this component is only ever (re)created when the router navigates to
+  // /devices, mirroring PlacesPage.svelte's own `initialSelectedId` read-once
+  // precedent). When present, grouping starts OFF — the same override
+  // `searchActive` already applies to `showGroups` below — so the targeted
+  // row is guaranteed to render as a plain, scrollable/highlightable
+  // DeviceListRow instead of being hidden inside a collapsed multi-device
+  // group.
+  const initialFocusId = parseIdFromHash();
+
   // Filters state (Plan 04).
   let searchQuery = $state('');
   let statusFilter = $state<number | null>(null);
-  let grouped = $state(true);
+  let grouped = $state(initialFocusId === null);
   let counts = $state<Map<number, number>>(new Map());
+  let highlightId = $state<number | null>(initialFocusId);
 
   // Persisted expansion state: Set of group stable-key strings.
   // DeviceGroupRow reports its key on toggle; keys survive list refreshes.
@@ -265,6 +278,7 @@
       {grouped}
       {searchActive}
       {expandedGroups}
+      {highlightId}
       onExpandToggle={(key, isExpanded) => {
         if (isExpanded) {
           expandedGroups.add(key);

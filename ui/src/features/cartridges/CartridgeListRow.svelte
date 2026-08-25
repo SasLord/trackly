@@ -79,6 +79,7 @@
 
 <TableRow {selected} class="cartridge-row">
   <td
+    id="cartridge-row-{cartridge.id}"
     class="cell cell-code"
     role="button"
     tabindex="0"

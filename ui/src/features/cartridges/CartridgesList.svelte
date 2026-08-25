@@ -54,6 +54,20 @@
   const skeletonLoading = $derived(loading && items.length === 0);
   const isEmpty = $derived(!loading && items.length === 0);
   const columnCount = $derived(statusFiltered ? 4 : 5);
+
+  // GAP-8 (39-UAT.md): scroll a newly-selected row into view — see
+  // PrintersList.svelte's identical comment for the rationale (cross-section
+  // focus deep link + harmless no-op on ordinary row clicks).
+  let scrolledToId = $state<number | null>(null);
+  $effect(() => {
+    const id = selectedId;
+    if (id === null || id === scrolledToId || loading) return;
+    const el = document.getElementById(`cartridge-row-${id}`);
+    if (el) {
+      el.scrollIntoView({ block: 'nearest' });
+      scrolledToId = id;
+    }
+  });
 </script>
 
 {#snippet tableHead()}

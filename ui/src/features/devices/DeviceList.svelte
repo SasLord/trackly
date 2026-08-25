@@ -21,6 +21,8 @@
     onPrintAcceptance?: (_d: DeviceDto) => void;
     /** ITEM-3: when true, shows the «Статус» column. Hide on filtered status tabs. */
     showStatus?: boolean;
+    /** GAP-8: cross-section focus id — see DeviceListRow.svelte's doc-comment. */
+    highlightId?: number | null;
   }
 
   const {
@@ -36,7 +38,24 @@
     onDelete,
     onPrintAcceptance,
     showStatus = true,
+    highlightId = null,
   }: Props = $props();
+
+  // GAP-8: scroll the highlighted row into view once it's actually rendered
+  // (DevicesPage forces `grouped=false` while a focus id is pending, so the
+  // row is guaranteed to be a plain DeviceListRow in `items`, never hidden
+  // inside a collapsed group). One-shot per highlightId — re-running on
+  // every list refresh would fight the user's own subsequent scrolling.
+  let scrolledToId = $state<number | null>(null);
+  $effect(() => {
+    const id = highlightId;
+    if (id === null || id === scrolledToId || loading) return;
+    const el = document.getElementById(`device-row-${id}`);
+    if (el) {
+      el.scrollIntoView({ block: 'center' });
+      scrolledToId = id;
+    }
+  });
 
   const showGroups = $derived(grouped && !searchActive && groups.length > 0);
   const isEmpty = $derived(!loading && (showGroups ? groups.length === 0 : items.length === 0));
@@ -111,12 +130,12 @@
         />
       {:else}
         <!-- Singleton group (count == 1): render as plain row, no chevron -->
-        <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
+        <DeviceListRow device={group.repr} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} {highlightId} />
       {/if}
     {/each}
   {:else}
     {#each items as device (device.id)}
-      <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} />
+      <DeviceListRow {device} {onEdit} {onDelete} {onPrintAcceptance} {showStatus} {highlightId} />
     {/each}
   {/if}
 </Table>
