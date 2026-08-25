@@ -67,4 +67,40 @@ Also note two deviations recorded by the executor, worth a look during that pass
   spans both, so a tree-only commit would have shipped an inconsistent keyboard contract.
 - Showcase registration went to `ui/src/features/showcase/ShowcasePage.svelte` (where all
   other sections register), not the plan's stated `ui/src/pages/ComponentShowcasePage.svelte`,
+
+## Plan 19 — PlaceFormModal/PlaceMoveModal runtime verification NOT performed
+
+Plan 39-19's own `<verification>` block explicitly defers manual verification to Plan 14's
+end-to-end checkpoint (Wave 8), since neither modal has an `ActionMenu` to open it from yet.
+Only `svelte-check`/`eslint`/`pnpm --dir ui build` ran — same "compile gates ≠ runtime
+verification" caveat as Plan 13's PlacePicker. Add these to the same batched UAT pass:
+
+**PlaceFormModal:**
+1. Create mode: Тип/Родительское место/Порядок/Складское место visible; Уровень hidden
+   until Тип = «Этаж».
+2. With Тип = «Этаж», type `-1` and `0` into Уровень — both accepted, no error.
+3. Type `1.5` into Уровень, submit — inline error "Уровень этажа — целое число. Подвал —
+   отрицательное значение." under Уровень, submit blocked.
+4. Pick a parent whose kind is «Здание» — Тип pre-fills to «Этаж»; manually override to
+   «Помещение» and reselect a different parent — Тип must NOT be clobbered back.
+5. Submit a duplicate sibling name — inline error under Название matches §11.2's exact copy,
+   field goes `.invalid`.
+6. Rename mode: ONLY Название renders (see Plan 19's key-decisions for why); submitting
+   renames via `places_rename`, toast "Место переименовано".
+7. Create nested storage node (D-09 pattern): create a place, then "Создать вложенное место"
+   with Складское место checked — resulting node has `is_storage=true`.
+
+**PlaceMoveModal:**
+1. Open on a node with 3 nested places + 47 devices → callout text "Вместе с местом переедет
+   3 вложенных места и 47 устройств." exactly.
+2. Open on a node with 0 nested places + 47 devices → "Вместе с местом переедет 47
+   устройств." (nested-places clause fully omitted).
+3. Open on a completely empty node → no callout renders at all.
+4. Select the node's own descendant as target, submit → inline cycle error "Нельзя
+   переместить место внутрь самого себя или своего вложенного места." renders under
+   PlacePicker, modal stays open.
+5. Successful move → toast "Место перемещено", modal closes, `onMoved` fires with the
+   updated `PlaceDto`.
+6. «Переместить» stays disabled until a target place is picked.
+7. `pnpm --dir ui build`, repeat all of the above from a LAN browser tab.
   which is a thin wrapper with no section list.

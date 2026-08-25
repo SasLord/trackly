@@ -108,7 +108,7 @@
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete | 2026-08-13 |
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
-| 39. Дерево мест | v1.4 | 14/22 | In Progress|  |
+| 39. Дерево мест | v1.4 | 15/22 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 14/22 plans executed
+**Plans:** 15/22 plans executed
 Plans:
 **Wave 1**
 
@@ -187,7 +187,7 @@ Plans:
 - [ ] 39-16-PLAN.md — cartridge-family PlacePicker wiring (form, 5 transition ops, D-11.3 checkbox)
 - [ ] 39-17-PLAN.md — act-family PlacePicker wiring (form, bulk return, per-row override)
 - [ ] 39-18-PLAN.md — reports PlacePicker wiring (D-26 short-path columns, D-28 subtree filter)
-- [ ] 39-19-PLAN.md — PlaceFormModal + PlaceMoveModal
+- [x] 39-19-PLAN.md — PlaceFormModal + PlaceMoveModal
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
