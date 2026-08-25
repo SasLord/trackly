@@ -163,3 +163,34 @@ None — no external service configuration required.
 ## Self-Check: PASSED
 
 All 31 modified files (30 in `crates/trackly-app/tests/`, 1 in `crates/trackly-infra/tests/`) confirmed present on disk. All 4 task commit hashes (`865ad72f`, `d18d62c6`, `8d8ed1b1`, `fd78b22d`) confirmed present in `git log`.
+
+---
+
+## Addendum: Inventory-Gap Closure Round (2026-08-25)
+
+**Planning defect:** the 31-file inventory this plan's `files_modified` list was scoped against was not exhaustive. `cargo check -p trackly-app --tests` was red at the start of this round with compiler-confirmed errors in 7 additional consumer test files that carry the pre-Phase-39 `location` vocabulary and were never enumerated by this plan (nor by any other Phase 39 plan): `cartridges_crud.rs`, `cartridges_history.rs`, `cartridges_lifecycle.rs`, `cartridges_low_stock.rs`, `cartridges_numbering.rs`, `cartridges_search.rs`, plus 3 files missing the `AppCtx.places` fixture field (`specta_roundtrip.rs`, `templates_status.rs`, `reports_period_required.rs` — the same class of gap this plan's own deviation log already found and fixed once, in `report_requests.rs`, but did not generalize to sweep for elsewhere). A further runtime-only (non-compile) gap in `devices_csv_import.rs` was discovered only once the *whole* `trackly-app` suite was run with `--no-fail-fast`, rather than verifying file-by-file — the same blind spot that let the original 31-file inventory go unchallenged.
+
+**Root cause of the original miss:** the inventory was built by grepping for `location`/`location_id`/`location_name` struct-literal identifiers across Plans 03/06/07/09/10/11's rename surface, but the Cartridges DTO rename (Plan 09) used the field name `location` (not `location_id`) on `CartridgeCreateDto`/`CartridgeTransitionPayload`, and the `AppCtx.places` field addition was a distinct schema change (not a rename at all) — neither pattern was captured by the original inventory's search heuristic. The `devices_csv_import.rs` gap is categorically different again: it compiles cleanly (the affected code is a `HashMap<String,String>` mapping key, not a struct field) but fails at runtime because Plan 39-06 replaced auto-create-by-name place resolution with an exact-match lookup against real `places` rows (D-18) — a behavioral regression invisible to any compile-error-based sweep.
+
+### Files fixed (7 additional consumer test files, 3 commits)
+
+**Commit `86677f2e`** — `cartridges_*.rs` place-tree vocabulary (6 files):
+- Mechanical `location` → `place_id` renames in `cartridges_crud.rs`, `cartridges_history.rs`, `cartridges_low_stock.rs`, `cartridges_numbering.rs`.
+- `cartridges_lifecycle.rs` (substantive, ~40 sites): rewrote `cartridge_snapshot()`'s SQL/return type from the dropped `location` column to `place_id`; re-scoped the D-16 auto-return assertions from a stale `location == ""` default to the actual current behavior (`place_id IS NULL` when no `previous_cartridge_place_id` override is supplied — confirmed by reading `cartridge_service.rs`/`cartridges_sqlite.rs`, not assumed); added an FK-valid `seed_place()` helper (mirrors the Plan 09 `cartridges_sqlite.rs` precedent) to give the `previous_cartridge_place_id` override test (`install_auto_return_uses_previous_cartridge_overrides_when_present`) a real `places` row instead of a fabricated id, which would have violated the `REFERENCES places(id)` FK (V038).
+- `cartridges_search.rs`: `search_by_location` renamed to `search_by_place` and rewritten — cartridge search no longer does a SQL `LIKE` on a freeform location column; it does a Rust-side substring match against `place_full_paths` (D-29/PLC-05). The test now seeds a real `places` row and asserts against the place-path match the service actually performs.
+
+**Commit `5cf607a6`** — `AppCtx.places` fixture backfill (3 files):
+- `specta_roundtrip.rs`, `templates_status.rs`, `reports_period_required.rs` each hand-roll a `minimal_ctx()` fixture predating the `pub places: Arc<PlaceService>` field on `AppCtx`. Same fix pattern already used for `report_requests.rs` in this plan's original pass, applied to the 3 files that were missed.
+
+**Commit `4bfc0fea`** — `devices_csv_import.rs` runtime-only fix (not a compile error):
+- `import_commit_inserts_devices`, `import_commit_records_audit_log`, `import_cyrillic_round_trip` were all passing `cargo check` but silently inserting 0 devices at runtime: the `utf8.csv` fixture's "Расположение" column values (`Кабинет 305`, `Кабинет 101`, `Кабинет 102`, `Кладовая`) never existed as real `places` rows in the fresh test DB, so `import_csv_commit`'s exact-match place resolution (Plan 39-06, D-18) rejected every row. Added a `seed_place()`/`seed_utf8_fixture_places()` helper (mirrors the `devices_grouping.rs` `create_place()` precedent) and called it before every `import_csv_commit` invocation against `utf8.csv`. `import_commit_double_take_fails` was also silently affected (it passed only because its assertions never checked `report.inserted`) and is now exercising the real insert path too.
+
+### Verification (whole-package, not file-by-file)
+
+- `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo check -p trackly-app --tests` — 0 errors, 0 warnings.
+- `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test -p trackly-app --no-fail-fast -- --skip login_remember_persistent_cookie --test-threads=1` — **98 test binaries, 743 tests passed, 0 failed.**
+- `cargo test -p trackly-infra` — **13 test groups, 172 tests passed, 0 failed** (unchanged/still green).
+
+### Lesson for future inventory-based sweep plans
+
+A closed-list inventory built from a struct-field-identifier grep is only as complete as the grep pattern; it will miss (a) renames that don't share the searched identifier substring (`location` vs. `location_id`), (b) pure additive schema changes with no old-name identifier to search for at all (`AppCtx.places`), and (c) runtime-only behavioral regressions that leave no compile-time trace. The reliable verification is always the compiler plus a whole-package `--no-fail-fast` test run, not a file list — this addendum's own verification step is what surfaced all 7 remaining files, exactly as the original plan's own `<verification>` section prescribed but this time actually run to completion in one pass.
