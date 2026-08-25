@@ -7,7 +7,7 @@
   import Input from '$lib/components/Input.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { acts } from './api';
   import ActNumberField from './ActNumberField.svelte';
@@ -82,7 +82,7 @@
   let numberOverride = $state<number | null>(isEditPrefill ? initialAct!.number_raw : null);
   let giverName = $state(isEditPrefill ? initialAct!.giver_name : '');
   let receiverName = $state(isEditPrefill ? initialAct!.receiver_name : '');
-  let location = $state(isEditPrefill ? (initialAct!.location ?? '') : '');
+  let placeId = $state<number | null>(isEditPrefill ? (initialAct!.place_id ?? null) : null);
   let deadlineISO = $state(isEditPrefill ? unixToIso(initialAct!.deadline_utc) : ''); // YYYY-MM-DD picker value
   let handoverDateISO = $state(
     isEditPrefill ? unixToIso(initialAct!.handover_date_utc) : todayISO(),
@@ -173,8 +173,7 @@
           number_override: numberOverride,
           giver_name: giverName.trim(),
           receiver_name: receiverName.trim(),
-          location_id: null,
-          location_name: location.trim().length > 0 ? location.trim() : null,
+          place_id: placeId,
           notes: notes.trim() || null,
           deadline_utc: isoToUnix(deadlineISO),
           handover_date_utc: isoToUnix(handoverDateISO),
@@ -204,10 +203,7 @@
           number_override: numberOverride,
           giver_name: giverName.trim(),
           receiver_name: receiverName.trim(),
-          // location_id wiring TODO: Phase 2 currently stores `location` as text;
-          // sending null means «not picked» — service is tolerant per Plan 02 spec.
-          location_id: null,
-          location_name: location.trim().length > 0 ? location.trim() : null,
+          place_id: placeId,
           notes: notes.trim() || null,
           deadline_utc: isoToUnix(deadlineISO),
           handover_date_utc: isoToUnix(handoverDateISO),
@@ -318,16 +314,11 @@
     </div>
   </div>
 
-  <!-- Row 3: Расположение, Заметки (2 колонки) -->
+  <!-- Row 3: Место, Заметки (2 колонки) -->
   <div class="grid-2">
     <div class="field">
-      <label class="label" for="act-location">Расположение</label>
-      <LocationAutocomplete
-        id="act-location"
-        value={location}
-        placeholder="Куда передаются устройства"
-        onChange={(v) => (location = v)}
-      />
+      <label class="label" for="act-place">Место</label>
+      <PlacePicker value={placeId} id="act-place" onChange={(id) => (placeId = id)} />
     </div>
 
     <div class="field">
