@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-23T07:05:43.416Z"
-last_activity: 2026-08-23
+last_updated: "2026-08-25T01:47:36.289Z"
+last_activity: 2026-08-25
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 14 of 22
+Plan: 15 of 22
 Status: Ready to execute
-Last activity: 2026-08-23
+Last activity: 2026-08-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -320,6 +320,7 @@ Last activity: 2026-08-23
 | Phase 39 P11 | 39min | 5 tasks | 9 files |
 | Phase 39 P12 | 55min | 3 tasks | 7 files |
 | Phase 39 P22 | 120m | 4 tasks | 31 files |
+| Phase 39 P13 | 50min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -798,6 +799,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 39-11: added D-27 'Расположение:' print field-row to act_handover.html (Rule 2) — the template contract had claimed act.location_name/place_path was available for years but the body never rendered it; registered a new _legacy_defaults/v26 upgrade-safety snapshot for existing installs
 - [Phase 39]: Places transport (Plan 12): PlaceService self-gates authorize() internally; build_places_* helpers add a deliberate second transport-layer gate, matching this codebase's build_* convention (redundant, not a bug).
 - [Phase 39]: 39-22: real-place-creation fixture pattern (SqlitePlaceRepository::create, no service layer) used in acts_e2e_smoke.rs/acts_search.rs/acts_clone_handover.rs DEF-3/devices_grouping.rs to replace the removed auto-create-by-name path (D-18)
+- [Phase 39]: PlacePicker (39-13) exposes optional fetchChildren/fetchSearchResults/fetchOne/createPlace injection props, defaulting to apiCall('places_list_children'|'places_search'|'places_get'|'places_create'); every real form consumer (Plans 15-19) omits them and gets the default wire-backed behavior, only the showcase overrides them with invented demo data
 
 ### Pending Todos
 
@@ -980,8 +982,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-23T07:05:43.408Z
-Stopped at: Completed 39-22-PLAN.md
+Last session: 2026-08-25T01:47:32.166Z
+Stopped at: Completed 39-13-PLAN.md
 Resume file: 
 
 None
