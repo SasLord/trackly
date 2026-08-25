@@ -108,7 +108,7 @@
 | 36. Пагинация акта по количеству устройств | v1.3.3 | 6/6 | Complete | 2026-08-13 |
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
-| 39. Дерево мест | v1.4 | 20/22 | In Progress|  |
+| 39. Дерево мест | v1.4 | 21/22 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -147,7 +147,7 @@
   5. Открыв любое место, пользователь видит одним списком всё размещённое в нём и во вложенных
      местах (устройства, АРМ, принтеры, картриджи).
 
-**Plans:** 20/22 plans executed
+**Plans:** 21/22 plans executed
 Plans:
 **Wave 1**
 
@@ -195,7 +195,7 @@ Plans:
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 39-20-PLAN.md — PlaceContents.svelte (PLC-06 content screen) + end-to-end checkpoint
+- [x] 39-20-PLAN.md — PlaceContents.svelte (PLC-06 content screen) + end-to-end checkpoint
 
 **Wave 10** *(blocked on Wave 9 completion)*
 

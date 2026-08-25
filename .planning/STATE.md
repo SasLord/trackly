@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-25T06:52:46.366Z"
+last_updated: "2026-08-25T17:38:04.256Z"
 last_activity: 2026-08-25
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 21 of 22
+Plan: 22 of 22
 Status: Ready to execute
 Last activity: 2026-08-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -327,6 +327,7 @@ Last activity: 2026-08-25
 | Phase 39 P17 | 35min | 4 tasks | 6 files |
 | Phase 39 P18 | 55min | 4 tasks | 6 files |
 | Phase 39 P14 | 65min | 2 tasks | 8 files |
+| Phase 39 P20 | 7 UAT rounds | 2 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -818,6 +819,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 39-18: ReportsPage.svelte's filter-state ReportFilter drops location_name entirely rather than renaming to place_path (semantically nonsensical on a filter-parameter type); location_id renamed to place_id as instructed
 - [Phase 39]: PlaceMoveModal defaultParentId/targetChosen fix — Rule 1 bug fix: null selectedParentId could not distinguish root-chosen from unfilled, blocking D-03 root-move; fixed with explicit targetChosen boolean, needed for Plan 14's drag-drop root dropzone
 - [Phase 39]: PlaceTree fetches whole tree once, counters lazy per visible node — T-39-14-02 confirms ~300 rows makes places_list_all trivial; D-25 content counters use places_subtree_stats lazily per visible node, cached, to avoid 300 eager round-trips
+- [Phase ?]: Native HTML5 drag-and-drop for the place tree does not work in WKWebView; reimplemented on Pointer Events with a manually-rendered drag ghost (GAP-2/GAP-11)
+- [Phase ?]: PlacesPage owns onlyHere/activeTab/tree-selection as controlled props + localStorage (trackly:places:*) because PlaceContents/PlaceTree remount on every place selection via {#key place.id:token}
+- [Phase ?]: Content-row click opens a read-only PlaceEntityViewModal (readonly mode added to existing DeviceFormBody/CartridgeFormBody) instead of navigating away; printers reuse the device form since no dedicated printer form exists
 
 ### Pending Todos
 
@@ -1000,8 +1004,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-25T06:52:46.357Z
-Stopped at: Completed 39-14-PLAN.md
+Last session: 2026-08-25T17:38:04.246Z
+Stopped at: Completed 39-20-PLAN.md
 Resume file: 
 
 None
