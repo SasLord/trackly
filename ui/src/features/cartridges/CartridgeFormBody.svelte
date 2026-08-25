@@ -2,6 +2,12 @@
   // Plan 04-05: CartridgeFormBody — inner form state component for CartridgeFormModal.
   // Remounted on every {#key openInstanceCounter} — guarantees field reset.
   // Поля (UI-SPEC §CartridgeFormModal): Код (авто/ручной) + Модель + Состояние заряда + Место (D-12) + Примечания.
+  //
+  // GAP-8 (39-UAT.md, Прогон 3): `readonly` — read-only mode for
+  // PlaceEntityViewModal.svelte's «Просмотр картриджа» popup. Mirrors
+  // DeviceFormBody.svelte's identical readonly contract: every field's own
+  // `disabled` prop threaded from one flag, `canSubmit` forced false,
+  // `handleSubmit` early-returns as a defense-in-depth guard.
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
@@ -18,6 +24,10 @@
   interface Props {
     target: CartridgeDto | null;
     models: CartridgeModelDto[];
+    /** GAP-8: renders every field disabled and blocks submit — see the
+     *  file-header comment above. Defaults to false so the existing caller
+     *  (CartridgeFormModal) is unaffected. */
+    readonly?: boolean;
     onClose: () => void;
     onSuccess: (_cart: CartridgeDto) => void;
     onLoading: (_l: boolean) => void;
@@ -28,6 +38,7 @@
   const {
     target,
     models,
+    readonly = false,
     onClose,
     onSuccess,
     onLoading,
@@ -114,7 +125,7 @@
   }
 
   // canSubmit: Модель обязательна
-  const canSubmit = $derived(!submitting && modelId !== null);
+  const canSubmit = $derived(!readonly && !submitting && modelId !== null);
 
   // Sync canSubmit upward
   $effect(() => {
@@ -135,6 +146,8 @@
   }
 
   async function handleSubmit() {
+    // GAP-8 defense-in-depth — see the readonly comment at the top of this file.
+    if (readonly) return;
     if (!validate() || submitting) return;
 
     submitting = true;
@@ -233,6 +246,7 @@
       placeholder={codePlaceholder}
       id="cart-code"
       invalid={!!codeError}
+      disabled={readonly}
       aria-describedby={codeError ? 'cart-code-error' : 'cart-code-hint'}
       oninput={(v) => {
         code = v;
@@ -259,6 +273,7 @@
         placeholder="— Выберите модель —"
         searchPlaceholder="Поиск модели"
         invalid={!!modelError}
+        disabled={readonly}
         loading={false}
         groups={modelOptions}
         getGroupId={(o) => o.id}
@@ -314,7 +329,12 @@
   <!-- Место (optional, D-07) -->
   <div class="field">
     <label class="label" for="cart-place">Место</label>
-    <PlacePicker value={placeId} id="cart-place" onChange={(id) => (placeId = id)} />
+    <PlacePicker
+      value={placeId}
+      id="cart-place"
+      onChange={(id) => (placeId = id)}
+      disabled={readonly}
+    />
   </div>
 
   <!-- Примечания (optional) -->
@@ -324,6 +344,7 @@
       value={notes}
       placeholder="Необязательно"
       id="cart-notes"
+      disabled={readonly}
       oninput={(v) => (notes = v)}
     />
   </div>

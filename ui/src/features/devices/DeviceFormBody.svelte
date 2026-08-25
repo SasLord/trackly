@@ -16,6 +16,16 @@
   // confirmation decision now lives in DeviceFormModal (a nested Modal), not
   // here. This body just saves whatever `typeId` it was given; it never
   // second-guesses the parent.
+  //
+  // GAP-8 (39-UAT.md, Прогон 3): `readonly` — read-only mode for
+  // PlaceEntityViewModal.svelte's «Просмотр устройства/принтера» popup.
+  // Every field's own `disabled` prop is threaded from this single flag
+  // (never a second, forked, non-interactive markup copy — see the gap's
+  // "reuse, don't fork" instruction). Two defense-in-depth guards on top of
+  // "no submit button is rendered by the caller": `canSubmit` is forced
+  // false and `handleSubmit` early-returns, so even a stray Enter-key path
+  // could never persist a change from a component that is supposed to be
+  // strictly a mirror of the current record.
 
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
@@ -45,6 +55,10 @@
     /** Выбранный тип устройства (1=Устройство, 2=Принтер) — управляется
      *  ActionMenu в заголовке DeviceFormModal, не этим компонентом. */
     typeId: number;
+    /** GAP-8: renders every field disabled and blocks submit — see the
+     *  file-header comment above. Defaults to false so every existing
+     *  caller (DeviceFormModal) is unaffected. */
+    readonly?: boolean;
     onSaved: () => void;
     /** Expose submit-button state to parent's footer snippet. */
     onLoading: (_loading: boolean) => void;
@@ -62,6 +76,7 @@
     target,
     stateHints,
     typeId,
+    readonly = false,
     onSaved,
     onLoading,
     onCanSubmitChange,
@@ -115,7 +130,7 @@
   // canSubmit: all required fields filled AND no in-flight request.
   // submitting guards against double-submit even before loading propagates.
   const canSubmit = $derived(
-    name.trim() !== '' && placeId !== null && statusId !== '' && !submitting,
+    !readonly && name.trim() !== '' && placeId !== null && statusId !== '' && !submitting,
   );
 
   // Reset quantity to 1 when inv/serial become non-empty.
@@ -136,8 +151,11 @@
   // status-override field; devices do, via DevicePatch.status_id/
   // DeviceNew.status_id). Unchecking stops the auto-apply; the Статус
   // dropdown above is then fully manual again — no forced change (D-10).
+  // GAP-8: skipped entirely in readonly mode — a «Просмотр» popup must
+  // mirror the record's ACTUAL saved status, never a suggestion that would
+  // never actually be applied (nothing here ever submits).
   $effect(() => {
-    if (isStoragePlace && storageStatusSuggested) {
+    if (!readonly && isStoragePlace && storageStatusSuggested) {
       statusId = String(STORAGE_STATUS_ID);
     }
   });
@@ -180,6 +198,11 @@
   // Submit
   // ---------------------------------------------------------------------------
   async function handleSubmit() {
+    // GAP-8 defense-in-depth: readonly instances render no submit button and
+    // canSubmit is already forced false above, but this guard makes the
+    // no-persist guarantee true even if handleSubmit were ever invoked some
+    // other way (e.g. a future caller wiring onRegisterSubmit by mistake).
+    if (readonly) return;
     if (!canSubmit) return;
     // In-flight guard: prevent double-submit from rapid clicks.
     if (submitting) return;
@@ -278,6 +301,7 @@
       placeholder="Ноутбук Lenovo ThinkPad X1"
       id="f-name"
       invalid={!!fieldErrors['name']}
+      disabled={readonly}
       onChange={(v) => (name = v)}
     />
     {#if fieldErrors['name']}
@@ -295,6 +319,7 @@
         id="f-inv"
         value={inventoryNo}
         placeholder="ИНВ-000001"
+        disabled={readonly}
         oninput={(v) => (inventoryNo = v)}
       />
     </div>
@@ -304,6 +329,7 @@
         id="f-serial"
         value={serialNo}
         placeholder="SN-XXXXXXXX"
+        disabled={readonly}
         oninput={(v) => (serialNo = v)}
       />
     </div>
@@ -313,13 +339,13 @@
         id="f-qty"
         type="number"
         class="input"
-        class:input-disabled={quantityDisabled}
+        class:input-disabled={quantityDisabled || readonly}
         min={1}
         max={100}
         value={quantityDisabled ? 1 : quantity}
-        disabled={quantityDisabled}
+        disabled={quantityDisabled || readonly}
         oninput={(e) => {
-          if (!quantityDisabled) {
+          if (!quantityDisabled && !readonly) {
             const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
             quantity = isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
           }
@@ -337,6 +363,7 @@
       placeholder="ThinkPad X1 Carbon Gen 12"
       id="f-model"
       contextName={name.trim() || undefined}
+      disabled={readonly}
       onChange={(v) => (model = v)}
     />
   </div>
@@ -351,6 +378,7 @@
       id="f-specs"
       multiline={true}
       contextName={name.trim() || undefined}
+      disabled={readonly}
       onChange={(v) => (specs = v)}
     />
   </div>
@@ -364,6 +392,7 @@
       placeholder="Зарядное устройство, мышь"
       id="f-kit"
       contextName={name.trim() || undefined}
+      disabled={readonly}
       onChange={(v) => (kit = v)}
     />
   </div>
@@ -377,6 +406,7 @@
       id="f-status"
       value={statusId}
       invalid={!!fieldErrors['status_id']}
+      disabled={readonly}
       onchange={(v) => (statusId = v)}
     >
       <option value="">— выберите статус —</option>
@@ -399,11 +429,12 @@
       onChange={(id) => (placeId = id)}
       id="f-place"
       invalid={!!fieldErrors['place_id']}
+      disabled={readonly}
     />
     {#if fieldErrors['place_id']}
       <p class="field-error">{fieldErrors['place_id']}</p>
     {/if}
-    {#if isStoragePlace}
+    {#if isStoragePlace && !readonly}
       <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
         Перевести устройство в статус «На складе»
       </Checkbox>
@@ -419,9 +450,10 @@
       placeholder="Хорошее"
       id="f-state"
       contextName={name.trim() || undefined}
+      disabled={readonly}
       onChange={(v) => (stateField = v)}
     />
-    {#if stateHints.length > 0}
+    {#if stateHints.length > 0 && !readonly}
       <div class="state-hints">
         <span class="state-hints-label">Быстрый выбор:</span>
         <div class="state-hints-chips">
