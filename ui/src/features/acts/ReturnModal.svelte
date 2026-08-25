@@ -29,12 +29,13 @@
   import Checkbox from '$lib/components/Checkbox.svelte';
   import DatePicker from '$lib/components/DatePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
+  import { apiCall } from '$lib/api/client';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
   import ReturnItemsTable, { type ReturnRowState } from './ReturnItemsTable.svelte';
   import { buildReturnItems } from './returnPayload';
   import { acts } from './api';
-  import type { ActDto, ActReturnDto, ActUpdateReturnDto } from '../../bindings';
+  import type { ActDto, ActReturnDto, ActUpdateReturnDto, PlaceDto } from '../../bindings';
 
   interface Props {
     open: boolean;
@@ -87,10 +88,58 @@
   let receiverName = $state('');
   let applyToAll = $state(true);
   let bulkCondition = $state('');
-  let bulkLocationName = $state('');
+  let bulkPlaceId = $state<number | null>(null);
   let returnDateISO = $state(todayISO());
   let rows = $state<ReturnRowState[]>([]);
   let submitting = $state(false);
+
+  // D-11.1: складские места поднимаются наверх списка через quick-pick-строку
+  // чипов над PlacePicker; одно из них подставляется по умолчанию, если
+  // bulkPlaceId ещё не выбран, когда список складских мест приходит.
+  // `cartridge_storage_place_ids` — тот же place-tree-derived,
+  // entity-agnostic Tauri/HTTP-командой (Action::ReadData), что и в
+  // DeviceFormBody.svelte (D-11.3 amendment); её роль здесь чисто
+  // read-only, доступ не шире прав самой ReturnModal (Action::MutateActs).
+  let storagePlaceIds = $state<number[]>([]);
+  let storagePlaceLabels = $state<Record<number, string>>({});
+
+  $effect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const ids = await apiCall<number[]>('cartridge_storage_place_ids', {});
+        if (cancelled) return;
+        storagePlaceIds = ids;
+        // Suggested default only — never clobbers a value the user already
+        // set (create-mode swap / edit-mode prefill / a manual pick made
+        // before this fetch resolved).
+        if (bulkPlaceId === null && ids.length > 0) {
+          bulkPlaceId = ids[0];
+        }
+        const labels: Record<number, string> = {};
+        await Promise.all(
+          ids.map(async (id) => {
+            try {
+              const place = await apiCall<PlaceDto>('places_get', { id });
+              labels[id] = place.full_path ?? `#${id}`;
+            } catch {
+              labels[id] = `#${id}`;
+            }
+          }),
+        );
+        if (!cancelled) storagePlaceLabels = labels;
+      } catch {
+        if (!cancelled) {
+          storagePlaceIds = [];
+          storagePlaceLabels = {};
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
 
   // Rebuild rows whenever the relevant props change (модал reopens с другим
   // actом, или переключается между create/edit).
@@ -106,7 +155,7 @@
           inventoryNo: it.inventory_no ?? null,
           checked: true,
           conditionOverride: it.condition_at_time,
-          locationOverrideName: it.device_location ?? '',
+          placeIdOverride: it.device_place_id ?? null,
         }));
         const addableRows: ReturnRowState[] = parentAct.items.flatMap((it) =>
           it.outstanding_device_ids.map((did) => ({
@@ -116,7 +165,7 @@
             inventoryNo: it.inventory_no ?? null,
             checked: false,
             conditionOverride: null,
-            locationOverrideName: '',
+            placeIdOverride: null,
           })),
         );
         rows = [...editedRows, ...addableRows];
@@ -125,12 +174,12 @@
         giverName = editTarget.giver_name;
         receiverName = editTarget.receiver_name;
         returnDateISO = unixToIso(editTarget.handover_date_utc);
-        // Rows already carry their own saved per-row condition/location —
+        // Rows already carry their own saved per-row condition/place —
         // start in per-row mode so those saved values aren't discarded by
         // a bulk value the user hasn't set yet.
         applyToAll = false;
         bulkCondition = '';
-        bulkLocationName = '';
+        bulkPlaceId = null;
       } else {
         rows = [];
         giverName = '';
@@ -150,7 +199,7 @@
           inventoryNo: it.inventory_no ?? null,
           checked: true,
           conditionOverride: null,
-          locationOverrideName: '',
+          placeIdOverride: null,
         })),
       );
       // PersonAutocomplete swap.
@@ -158,7 +207,7 @@
       receiverName = act.giver_name;
       applyToAll = true;
       bulkCondition = '';
-      bulkLocationName = '';
+      bulkPlaceId = null;
       returnDateISO = todayISO();
     } else {
       rows = [];
@@ -181,13 +230,12 @@
   const checkedRows = $derived(rows.filter((r) => r.checked));
 
   // canSubmit: ≥1 checked + appropriate validation.
-  // applyToAll=true: bulk_condition + bulk_location_name заполнены ИЛИ user
+  // applyToAll=true: bulk_condition + bulk_place_id заполнены ИЛИ user
   //                  явно ничего не передаёт (backend применит null fallback).
-  //                  Для UX строго требуем хотя бы condition (location может
-  //                  остаться на текущем расположении).
+  //                  Для UX строго требуем хотя бы condition (место может
+  //                  остаться на текущем).
   // applyToAll=false: каждая checked-row должна иметь conditionOverride И
-  //                   locationOverrideName non-empty (backend validate
-  //                   defence-in-depth).
+  //                   placeIdOverride (backend validate defence-in-depth).
   // D-10 (Phase 22): checkedRows.length === 0 guard already covers the
   // empty-composition block for BOTH create and edit modes — unchecking
   // every row in edit mode naturally drives the count to 0.
@@ -199,10 +247,9 @@
       // Минимум: bulk_condition не пустой.
       return bulkCondition.trim().length > 0;
     }
-    // per-row mode: каждая checked row должна иметь condition + location.
+    // per-row mode: каждая checked row должна иметь condition + место.
     return checkedRows.every(
-      (r) =>
-        (r.conditionOverride ?? '').trim().length > 0 && r.locationOverrideName.trim().length > 0,
+      (r) => (r.conditionOverride ?? '').trim().length > 0 && r.placeIdOverride !== null,
     );
   });
 
@@ -223,14 +270,12 @@
         expected_version: editTarget.version,
         giver_name: giverName.trim(),
         receiver_name: receiverName.trim(),
-        location_id: null,
-        location_name: null,
+        place_id: null,
         notes: null,
         deadline_utc: null,
         handover_date_utc: isoToUnix(returnDateISO)!,
         bulk_condition: bulkCondition.trim().length > 0 ? bulkCondition.trim() : null,
-        bulk_location_id: null,
-        bulk_location_name: bulkLocationName.trim().length > 0 ? bulkLocationName.trim() : null,
+        bulk_place_id: bulkPlaceId,
         apply_to_all: applyToAll,
         items,
       };
@@ -272,8 +317,7 @@
     // end-to-end).
     const payload: ActReturnDto = {
       bulk_condition: bulkCondition.trim().length > 0 ? bulkCondition.trim() : null,
-      bulk_location_id: null,
-      bulk_location_name: bulkLocationName.trim().length > 0 ? bulkLocationName.trim() : null,
+      bulk_place_id: bulkPlaceId,
       apply_to_all: applyToAll,
       items,
       giver_name: giverName.trim(),
@@ -379,12 +423,21 @@
             />
           </div>
           <div class="bulk-field">
-            <span class="label">Расположение на складе</span>
-            <LocationAutocomplete
-              value={bulkLocationName}
-              placeholder="Куда вернуть на склад"
-              onChange={(v) => (bulkLocationName = v)}
-            />
+            <span class="label">Место</span>
+            {#if storagePlaceIds.length > 0}
+              <div class="storage-chips">
+                {#each storagePlaceIds as id (id)}
+                  <Button
+                    variant={bulkPlaceId === id ? 'primary' : 'secondary'}
+                    size="sm"
+                    onclick={() => (bulkPlaceId = id)}
+                  >
+                    {storagePlaceLabels[id] ?? `#${id}`}
+                  </Button>
+                {/each}
+              </div>
+            {/if}
+            <PlacePicker value={bulkPlaceId} onChange={(id) => (bulkPlaceId = id)} id="ret-bulk-place" />
           </div>
         </div>
       </section>
@@ -397,7 +450,7 @@
           items={rows}
           {applyToAll}
           bulkCondition={bulkCondition.trim().length > 0 ? bulkCondition.trim() : null}
-          {bulkLocationName}
+          {bulkPlaceId}
           onChange={handleRowsChange}
         />
         {#if checkedRows.length === 0}
@@ -405,7 +458,7 @@
         {/if}
         {#if !applyToAll && checkedRows.length > 0 && !canSubmit && !submitting}
           <p class="empty-hint">
-            Заполните «Состояние» и «Расположение» для каждой выбранной позиции (либо включите
+            Заполните «Состояние» и «Место» для каждой выбранной позиции (либо включите
             «Применить ко всем»).
           </p>
         {/if}
@@ -468,6 +521,11 @@
   .bulk-field {
     display: flex;
     flex-direction: column;
+    gap: var(--tr-space-2xs);
+  }
+  .storage-chips {
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--tr-space-2xs);
   }
   .date-field {
