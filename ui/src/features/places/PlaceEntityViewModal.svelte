@@ -22,6 +22,7 @@
   // not a new, invented printer form. `DeviceFormModal` already renders the
   // title "Редактирование принтера" once `target.type_id === 2`, so nothing
   // extra is needed to get that right.
+  import { push } from 'svelte-spa-router';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -109,9 +110,25 @@
     loadError || (!loading && isCartridge ? cartridgeDto === null : deviceDto === null),
   );
 
-  function handleGoTo() {
+  // GAP-9 (39-UAT.md, Прогон 5): «Перейти к…» previously navigated via raw
+  // `window.location.hash = …` assignment, closing the modal (which unmounts
+  // THIS component, via the caller's `viewRow = null`) BEFORE writing the
+  // new hash. That ordering is a real hazard — closing first means the
+  // navigation write depends on this still-executing synchronous handler
+  // completing on a component that is simultaneously being torn down, and
+  // nothing here would guarantee it survives a future change to `onClose`
+  // (e.g. making it async, or adding a confirm step). svelte-spa-router's own
+  // `push()` — the library's supported programmatic-navigation API, unlike
+  // raw hash assignment which is only ever used elsewhere in this codebase
+  // for simple "go to a fixed static route" cases (login redirects, `#/`
+  // fallback) with no modal/state teardown in flight — is used here instead,
+  // and the navigation is sequenced to complete (awaited) BEFORE closing the
+  // popup, not after. That way the hash write is never at risk of being
+  // swallowed by whatever `onClose()` ends up doing.
+  async function handleGoTo() {
+    const target = `${SECTION_HASH_BY_KIND[row.kind] ?? '#/'}?id=${row.id}`;
+    await push(target);
     onClose();
-    window.location.hash = `${SECTION_HASH_BY_KIND[row.kind] ?? '#/'}?id=${row.id}`;
   }
 
   function handleEdit() {
