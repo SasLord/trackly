@@ -89,6 +89,18 @@
     window.location.hash = SECTION_HASH_BY_KIND[row.kind] ?? '#/';
   }
 
+  // UAT gap 7: the keyboard-activatable entry point (role="button"/tabindex=0,
+  // TableRow's own focus-ring convention targets `> td:first-child`) used to
+  // always be the «Тип» cell. Now that «Тип» is conditionally hidden, this
+  // handler is shared so whichever cell renders first (Тип when shown,
+  // Название otherwise) stays keyboard-reachable.
+  function handleRowActivateKeydown(e: KeyboardEvent, row: PlaceContentDto): void {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigateToEntity(row);
+    }
+  }
+
   // --- Breadcrumbs (§9.1 row 1) ---
   let breadcrumbs = $state<PlaceDto[]>([]);
 
@@ -179,7 +191,13 @@
     !loading && !loadError && (rows?.length ?? 0) > 0 && filteredRows.length === 0,
   );
 
-  const columnCount = $derived(onlyHere ? 4 : 5);
+  // UAT gap 7 (2026-08-25): «Тип» is redundant once the tab already filters to
+  // a single kind — only shown on the «Все» tab. Base columns (Название, Инв.
+  // № / Серийный №, Статус) = 3, plus «Тип» when activeTab === 'all', plus
+  // «Место» when !onlyHere. Must stay correct across all 4 tabs × 2 toggle
+  // combinations or the empty-state row's colspan is wrong.
+  const showKindColumn = $derived(activeTab === 'all');
+  const columnCount = $derived(3 + (showKindColumn ? 1 : 0) + (!onlyHere ? 1 : 0));
 </script>
 
 <div class="place-contents">
@@ -234,7 +252,7 @@
         : 'Переключите вкладку, чтобы увидеть остальное содержимое.'}
     >
       {#snippet head()}
-        <th>Тип</th>
+        {#if showKindColumn}<th>Тип</th>{/if}
         <th>Название</th>
         <th>Инв. № / Серийный №</th>
         {#if !onlyHere}<th>Место</th>{/if}
@@ -242,21 +260,29 @@
       {/snippet}
       {#each filteredRows as row (`${row.kind}-${row.id}`)}
         <TableRow class="place-content-row">
-          <td
-            class="cell cell-kind"
-            role="button"
-            tabindex="0"
-            onclick={() => navigateToEntity(row)}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                navigateToEntity(row);
-              }
-            }}
-          >
-            {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
-          </td>
-          <td class="cell" title={row.name} onclick={() => navigateToEntity(row)}>{row.name}</td>
+          {#if showKindColumn}
+            <td
+              class="cell cell-kind"
+              role="button"
+              tabindex="0"
+              onclick={() => navigateToEntity(row)}
+              onkeydown={(e) => handleRowActivateKeydown(e, row)}
+            >
+              {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
+            </td>
+            <td class="cell" title={row.name} onclick={() => navigateToEntity(row)}>{row.name}</td>
+          {:else}
+            <td
+              class="cell"
+              title={row.name}
+              role="button"
+              tabindex="0"
+              onclick={() => navigateToEntity(row)}
+              onkeydown={(e) => handleRowActivateKeydown(e, row)}
+            >
+              {row.name}
+            </td>
+          {/if}
           <td class="cell" onclick={() => navigateToEntity(row)}>
             <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
           </td>
