@@ -11,7 +11,7 @@
   // Когда row.checked=false: row opacity 0.5 + оба disabled regardless of applyToAll.
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
   import DeviceAutocompleteField from '../devices/DeviceAutocompleteField.svelte';
 
   export interface ReturnRowState {
@@ -26,19 +26,20 @@
     checked: boolean;
     /** Per-row condition override; null → fallback на bulk (если applyToAll). */
     conditionOverride: string | null;
-    /** Локально набираемое имя расположения (autocomplete возвращает строку). */
-    locationOverrideName: string;
+    /** Per-row place override, выбранный через PlacePicker; null → fallback
+     *  на bulk (если applyToAll). */
+    placeIdOverride: number | null;
   }
 
   interface Props {
     items: ReturnRowState[];
     applyToAll: boolean;
     bulkCondition: string | null;
-    bulkLocationName: string;
+    bulkPlaceId: number | null;
     onChange: (_items: ReturnRowState[]) => void;
   }
 
-  const { items, applyToAll, bulkCondition, bulkLocationName, onChange }: Props = $props();
+  const { items, applyToAll, bulkCondition, bulkPlaceId, onChange }: Props = $props();
 
   function toggleChecked(idx: number) {
     const next = items.map((r, i) => (i === idx ? { ...r, checked: !r.checked } : r));
@@ -52,8 +53,8 @@
     onChange(next);
   }
 
-  function setLocOverrideName(idx: number, v: string) {
-    const next = items.map((r, i) => (i === idx ? { ...r, locationOverrideName: v } : r));
+  function setPlaceOverride(idx: number, placeId: number | null) {
+    const next = items.map((r, i) => (i === idx ? { ...r, placeIdOverride: placeId } : r));
     onChange(next);
   }
 </script>
@@ -63,14 +64,13 @@
     <div class="th col-check" aria-label="Выбрано"></div>
     <div class="th col-device">Устройство</div>
     <div class="th col-condition">Состояние</div>
-    <div class="th col-location">Расположение</div>
+    <div class="th col-place">Место</div>
   </div>
 
   {#each items as row, idx (`${row.actItemId}-${row.deviceId}`)}
     {@const effectiveCondPlaceholder = applyToAll && bulkCondition ? bulkCondition : ''}
-    {@const effectiveLocPlaceholder = applyToAll && bulkLocationName ? bulkLocationName : ''}
     {@const condOverridden = row.conditionOverride !== null}
-    {@const locOverridden = row.locationOverrideName.trim().length > 0}
+    {@const placeOverridden = row.placeIdOverride !== null}
     <div class="tr" class:tr-unchecked={!row.checked} role="row">
       <div class="td col-check">
         <Checkbox checked={row.checked} onchange={() => toggleChecked(idx)}>
@@ -109,24 +109,24 @@
           <span class="hint hint-warning">(переопределено)</span>
         {/if}
       </div>
-      <div class="td col-location">
+      <div class="td col-place">
         {#if row.checked && !applyToAll}
-          <LocationAutocomplete
-            value={row.locationOverrideName}
-            placeholder={effectiveLocPlaceholder || 'Куда вернуть на склад'}
-            onChange={(v) => setLocOverrideName(idx, v)}
+          <PlacePicker
+            value={row.placeIdOverride}
+            onChange={(id) => setPlaceOverride(idx, id)}
+            id={`ret-row-place-${idx}`}
           />
         {:else}
-          <Input
-            type="text"
-            value={row.locationOverrideName}
-            placeholder={applyToAll && row.checked ? '(по умолчанию)' : ''}
+          <PlacePicker
+            value={applyToAll ? bulkPlaceId : row.placeIdOverride}
+            onChange={() => {}}
+            id={`ret-row-place-${idx}`}
             disabled
           />
         {/if}
-        {#if row.checked && applyToAll && !locOverridden}
+        {#if row.checked && applyToAll && !placeOverridden}
           <span class="hint hint-default">(по умолчанию)</span>
-        {:else if row.checked && locOverridden && !applyToAll}
+        {:else if row.checked && placeOverridden && !applyToAll}
           <span class="hint hint-warning">(переопределено)</span>
         {/if}
       </div>
@@ -175,7 +175,7 @@
     padding-top: 6px;
   }
   .col-condition,
-  .col-location {
+  .col-place {
     font-variant-numeric: tabular-nums;
   }
   .device-label {
