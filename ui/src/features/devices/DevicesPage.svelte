@@ -50,7 +50,7 @@
   // group_by_condition: false — DevicesPage схлопывает разные condition в одну группу (ITEM-1).
   const baseFilter = $derived<DeviceFilter>({
     type_id: 1,
-    location_id: null,
+    place_id: null,
     status_id: statusFilter,
     state: null,
     name_prefix: null,
@@ -183,7 +183,7 @@
     try {
       const csvContent = await devices.exportCsv({
         type_id: 1,
-        location_id: null,
+        place_id: null,
         status_id: statusFilter,
         state: null,
         name_prefix: null,

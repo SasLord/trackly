@@ -22,7 +22,7 @@
       g.repr.specs ?? '',
       g.repr.kit ?? '',
       g.repr.state ?? '',
-      g.repr.location ?? '',
+      g.repr.full_path ?? '',
       String(g.repr.status_id),
     ].join('\x00');
   }
@@ -152,7 +152,7 @@
   <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
        TableRow's own group-mode chevron + merged name cell replace the hand-rolled
        ones this migration removes. -->
-  <td class="cell cell-truncate" title={group.repr.location ?? ''}>{group.repr.location ?? '—'}</td>
+  <td class="cell cell-truncate" title={group.repr.full_path ?? ''}>{group.repr.full_path ?? '—'}</td>
   <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
     <td class="cell cell-status">

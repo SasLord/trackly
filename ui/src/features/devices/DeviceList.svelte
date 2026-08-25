@@ -64,7 +64,7 @@
   <th class="th-numeric">Инвентарный №</th>
   <th class="th-numeric">Серийный №</th>
   <th>Модель</th>
-  <th>Расположение</th>
+  <th>Место</th>
   <th class="th-condition">Состояние</th>
   {#if showStatus}<th class="th-status">Статус</th>{/if}
   <th class="th-actions">Действия</th>

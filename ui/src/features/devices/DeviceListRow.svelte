@@ -57,7 +57,7 @@
     ><span class="tr-mono">{device.serial_no ?? '—'}</span></td
   >
   <td class="cell" title={device.model ?? ''}>{device.model ?? '—'}</td>
-  <td class="cell" title={device.location ?? ''}>{device.location ?? '—'}</td>
+  <td class="cell" title={device.full_path ?? ''}>{device.full_path ?? '—'}</td>
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
     <td class="cell cell-status">

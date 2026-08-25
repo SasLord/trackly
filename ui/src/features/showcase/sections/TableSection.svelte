@@ -33,7 +33,7 @@
     inventoryNo: string;
     serialNo: string;
     model: string;
-    location: string;
+    full_path: string;
     state: string;
     statusId: number;
   }
@@ -45,7 +45,7 @@
       inventoryNo: 'INV-00231',
       serialNo: 'SN-88213',
       model: 'M404dn',
-      location: 'Склад №1',
+      full_path: 'Склад №1',
       state: 'Исправно',
       statusId: 1,
     },
@@ -54,7 +54,7 @@
       inventoryNo: 'INV-00458',
       serialNo: 'SN-11097',
       model: 'M2040dn',
-      location: 'Кабинет 214',
+      full_path: 'Кабинет 214',
       state: 'Исправно',
       statusId: 2,
     },
@@ -63,7 +63,7 @@
       inventoryNo: 'INV-00509',
       serialNo: 'SN-73042',
       model: 'DR-C225',
-      location: 'Кабинет 108',
+      full_path: 'Кабинет 108',
       state: 'Исправно',
       statusId: 1,
     },
@@ -78,7 +78,7 @@
       inventoryNo: 'INV-00721',
       serialNo: 'SN-40021',
       model: 'BM5100ADN',
-      location: 'Склад №2',
+      full_path: 'Склад №2',
       state: 'Исправно',
       statusId: 1,
     },
@@ -87,7 +87,7 @@
       inventoryNo: 'INV-00722',
       serialNo: 'SN-40022',
       model: 'BM5100ADN',
-      location: 'Склад №2',
+      full_path: 'Склад №2',
       state: 'Исправно',
       statusId: 1,
     },
@@ -96,7 +96,7 @@
       inventoryNo: 'INV-00723',
       serialNo: 'SN-40023',
       model: 'BM5100ADN',
-      location: 'Склад №2',
+      full_path: 'Склад №2',
       state: 'На ремонте',
       statusId: 3,
     },
@@ -109,7 +109,7 @@
       inventoryNo: 'INV-01001',
       serialNo: 'SN-90011',
       model: 'Модель A',
-      location: 'Склад №1',
+      full_path: 'Склад №1',
       state: 'Исправно',
       statusId: 1,
     },
@@ -118,7 +118,7 @@
       inventoryNo: 'INV-01002',
       serialNo: 'SN-90012',
       model: 'Модель B',
-      location: 'Кабинет 305',
+      full_path: 'Кабинет 305',
       state: 'Исправно',
       statusId: 2,
     },
@@ -127,7 +127,7 @@
       inventoryNo: 'INV-01003',
       serialNo: 'SN-90013',
       model: 'Модель C',
-      location: 'Мастерская',
+      full_path: 'Мастерская',
       state: 'Требует ремонта',
       statusId: 3,
     },
@@ -136,7 +136,7 @@
       inventoryNo: 'INV-01004',
       serialNo: 'SN-90014',
       model: 'Модель D',
-      location: 'Архив',
+      full_path: 'Архив',
       state: 'Списано',
       statusId: 4,
     },
@@ -148,7 +148,7 @@
   <th>Инвентарный №</th>
   <th>Серийный №</th>
   <th>Модель</th>
-  <th>Расположение</th>
+  <th>Место</th>
   <th>Состояние</th>
   <th>Статус</th>
   <th>Действия</th>
@@ -165,7 +165,7 @@
         <td class="tr-mono">{stateRows[0].inventoryNo}</td>
         <td class="tr-mono">{stateRows[0].serialNo}</td>
         <td>{stateRows[0].model}</td>
-        <td>{stateRows[0].location}</td>
+        <td>{stateRows[0].full_path}</td>
         <td>{stateRows[0].state}</td>
         <td
           ><Badge variant={STATUS_VARIANTS[stateRows[0].statusId]}
@@ -179,7 +179,7 @@
         <td class="tr-mono">{stateRows[1].inventoryNo}</td>
         <td class="tr-mono">{stateRows[1].serialNo}</td>
         <td>{stateRows[1].model}</td>
-        <td>{stateRows[1].location}</td>
+        <td>{stateRows[1].full_path}</td>
         <td>{stateRows[1].state}</td>
         <td
           ><Badge variant={STATUS_VARIANTS[stateRows[1].statusId]}
@@ -193,7 +193,7 @@
         <td class="tr-mono">{stateRows[2].inventoryNo}</td>
         <td class="tr-mono">{stateRows[2].serialNo}</td>
         <td>{stateRows[2].model}</td>
-        <td>{stateRows[2].location}</td>
+        <td>{stateRows[2].full_path}</td>
         <td>{stateRows[2].state}</td>
         <td
           ><Badge variant={STATUS_VARIANTS[stateRows[2].statusId]}
@@ -229,7 +229,7 @@
             <td class="tr-mono">{device.inventoryNo}</td>
             <td class="tr-mono">{device.serialNo}</td>
             <td>{device.model}</td>
-            <td>{device.location}</td>
+            <td>{device.full_path}</td>
             <td>{device.state}</td>
             <td
               ><Badge variant={STATUS_VARIANTS[device.statusId]}
@@ -251,7 +251,7 @@
         <td class="tr-mono">{badgeRows[0].inventoryNo}</td>
         <td class="tr-mono">{badgeRows[0].serialNo}</td>
         <td>{badgeRows[0].model}</td>
-        <td>{badgeRows[0].location}</td>
+        <td>{badgeRows[0].full_path}</td>
         <td>{badgeRows[0].state}</td>
         <td><Badge variant="default">{STATUS_LABELS[1]}</Badge></td>
         <td>—</td>
@@ -261,7 +261,7 @@
         <td class="tr-mono">{badgeRows[1].inventoryNo}</td>
         <td class="tr-mono">{badgeRows[1].serialNo}</td>
         <td>{badgeRows[1].model}</td>
-        <td>{badgeRows[1].location}</td>
+        <td>{badgeRows[1].full_path}</td>
         <td>{badgeRows[1].state}</td>
         <td><Badge variant="accent">{STATUS_LABELS[2]}</Badge></td>
         <td>—</td>
@@ -271,7 +271,7 @@
         <td class="tr-mono">{badgeRows[2].inventoryNo}</td>
         <td class="tr-mono">{badgeRows[2].serialNo}</td>
         <td>{badgeRows[2].model}</td>
-        <td>{badgeRows[2].location}</td>
+        <td>{badgeRows[2].full_path}</td>
         <td>{badgeRows[2].state}</td>
         <td><Badge variant="warning">{STATUS_LABELS[3]}</Badge></td>
         <td>—</td>
@@ -281,7 +281,7 @@
         <td class="tr-mono">{badgeRows[3].inventoryNo}</td>
         <td class="tr-mono">{badgeRows[3].serialNo}</td>
         <td>{badgeRows[3].model}</td>
-        <td>{badgeRows[3].location}</td>
+        <td>{badgeRows[3].full_path}</td>
         <td>{badgeRows[3].state}</td>
         <td><Badge variant="destructive">{STATUS_LABELS[4]}</Badge></td>
         <td>—</td>
