@@ -6,6 +6,7 @@
   import ModalSection from './sections/ModalSection.svelte';
   import TableSection from './sections/TableSection.svelte';
   import DropdownSection from './sections/DropdownSection.svelte';
+  import PlacePickerSection from './sections/PlacePickerSection.svelte';
 </script>
 
 <div class="showcase-page">
@@ -42,6 +43,10 @@
 
   <section class="showcase-block">
     <DropdownSection />
+  </section>
+
+  <section class="showcase-block">
+    <PlacePickerSection />
   </section>
 </div>
 
