@@ -299,3 +299,26 @@ frontend. The following have NOT been exercised in a real webview — add to the
    printers with a resolved place, bare name otherwise.
 3. Grouped printer select (create-request flow) groups printers by place correctly, "Без
    расположения" bucket for printers with no place.
+
+## Wave 7 close — PlaceFormModal mount contract (orchestrator)
+
+`ui/src/features/places/PlaceFormModal.svelte:74-76` initialises `name`/`parentId` from the
+`mode`/`place`/`defaultParentId` props at CONSTRUCTION time:
+
+    let name = $state(mode === 'rename' && place ? place.name : '');
+    let parentId = $state<number | null>(defaultParentId);
+
+svelte-check flags these as `state_referenced_locally` (4 warnings). They capture only the
+INITIAL prop values. This is correct ONLY if the modal gets a fresh component instance per
+open. If a consumer keeps it mounted and toggles an `open` prop instead, reopening it for a
+DIFFERENT place shows the PREVIOUS place's name / parent — a silent wrong-data bug that no
+compile gate catches (project rule: compile gates ≠ Svelte 5 rune runtime).
+
+There is no consumer yet — Plan 39-14 is the first, wiring the tree's `ActionMenu` to these
+modals. **Contract for Plan 39-14:** mount both `PlaceFormModal` and `PlaceMoveModal` inside
+`{#if open}` (or otherwise force a fresh instance per open, e.g. a `{#key}` block), so their
+initial-value state is always built from the current target node. If you instead keep them
+mounted, you MUST convert these to `$derived`/`$effect` and say so.
+
+Add to the batched UAT pass: open rename on node A, close, open rename on node B — the field
+must show B's name, not A's.
