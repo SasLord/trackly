@@ -22,6 +22,7 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
 
   interface Props {
@@ -51,12 +52,6 @@
     cartridge: 'Картридж',
   };
 
-  const SECTION_HASH_BY_KIND: Record<string, string> = {
-    device: '#/devices',
-    printer: '#/printers',
-    cartridge: '#/cartridges',
-  };
-
   // status_name is a free-text string (device_statuses.name / cartridge_statuses.name,
   // Plan 08/12) — no status_id crosses the wire on PlaceContentDto, so variant is
   // matched by the seeded name text itself (V001__init_pragmas_and_lookups.sql),
@@ -79,14 +74,21 @@
     return parts.length > 2 ? parts.slice(-2).join(' / ') : fullPath;
   }
 
-  function navigateToEntity(row: PlaceContentDto): void {
-    // No cross-page "select item N in section X" deep-link infrastructure exists
-    // elsewhere in this codebase yet (grepped: only #/places?id=… does this,
-    // Plan 14) — DeviceListRow has no detail page at all, CartridgeListRow's
-    // "selection" is a same-page master-detail prop, not a URL param. Best
-    // available behavior today: land on the entity's own section; a future
-    // plan that adds id-addressable routes to those sections can extend this.
-    window.location.hash = SECTION_HASH_BY_KIND[row.kind] ?? '#/';
+  // GAP-8 (39-UAT.md, Прогон 3): row click used to navigate straight to the
+  // entity's OWN section, where it was invisible among many rows and nothing
+  // was highlighted (39-20-PLAN's known limitation — no cross-section
+  // deep-link/focus infrastructure existed anywhere in this codebase at that
+  // point). Now opens a read-only «Просмотр» popup instead; that popup owns
+  // the actual "Перейти к…" cross-section navigation (with focus) and the
+  // "Редактировать" real edit modal — see PlaceEntityViewModal.svelte.
+  let viewRow = $state<PlaceContentDto | null>(null);
+  // Bumped by PlaceEntityViewModal's onChanged (after a successful edit-modal
+  // save) to force the rows $effect below to re-fetch — the edited entity's
+  // name/place/status may have just changed underneath this table.
+  let reloadToken = $state(0);
+
+  function openView(row: PlaceContentDto): void {
+    viewRow = row;
   }
 
   // UAT gap 7: the keyboard-activatable entry point (role="button"/tabindex=0,
@@ -97,7 +99,7 @@
   function handleRowActivateKeydown(e: KeyboardEvent, row: PlaceContentDto): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      navigateToEntity(row);
+      openView(row);
     }
   }
 
@@ -135,6 +137,7 @@
   $effect(() => {
     const rootId = place.id;
     const nested = !onlyHere;
+    void reloadToken; // GAP-8: forces a re-fetch after an edit-modal save.
     let cancelled = false;
     loading = true;
     loadError = false;
@@ -265,33 +268,33 @@
               class="cell cell-kind"
               role="button"
               tabindex="0"
-              onclick={() => navigateToEntity(row)}
+              onclick={() => openView(row)}
               onkeydown={(e) => handleRowActivateKeydown(e, row)}
             >
               {CONTENT_KIND_LABELS[row.kind] ?? row.kind}
             </td>
-            <td class="cell" title={row.name} onclick={() => navigateToEntity(row)}>{row.name}</td>
+            <td class="cell" title={row.name} onclick={() => openView(row)}>{row.name}</td>
           {:else}
             <td
               class="cell"
               title={row.name}
               role="button"
               tabindex="0"
-              onclick={() => navigateToEntity(row)}
+              onclick={() => openView(row)}
               onkeydown={(e) => handleRowActivateKeydown(e, row)}
             >
               {row.name}
             </td>
           {/if}
-          <td class="cell" onclick={() => navigateToEntity(row)}>
+          <td class="cell" onclick={() => openView(row)}>
             <span class="tr-mono">{row.inventory_or_code ?? '—'}</span>
           </td>
           {#if !onlyHere}
-            <td class="cell" title={row.full_path} onclick={() => navigateToEntity(row)}>
+            <td class="cell" title={row.full_path} onclick={() => openView(row)}>
               {shortPath(row.full_path)}
             </td>
           {/if}
-          <td class="cell" onclick={() => navigateToEntity(row)}>
+          <td class="cell" onclick={() => openView(row)}>
             {#if row.status_name}
               <Badge variant={statusVariant(row.status_name)}>{row.status_name}</Badge>
             {:else}
@@ -303,6 +306,14 @@
     </Table>
   </div>
 </div>
+
+{#if viewRow}
+  <PlaceEntityViewModal
+    row={viewRow}
+    onClose={() => (viewRow = null)}
+    onChanged={() => (reloadToken += 1)}
+  />
+{/if}
 
 <style lang="scss">
   .place-contents {
