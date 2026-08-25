@@ -42,7 +42,7 @@
     { value: 'specs', label: 'Технические характеристики' },
     { value: 'kit', label: 'Комплектация' },
     { value: 'state', label: 'Состояние' },
-    { value: 'location', label: 'Расположение' },
+    { value: 'place', label: 'Место' },
     { value: 'status', label: 'Статус' },
   ];
 
@@ -80,9 +80,11 @@
             return 'kit';
           case 'Состояние':
             return 'state';
-          case 'Расположение':
-          case 'Местоположение':
-            return 'location';
+          case 'Место':
+          case 'место':
+          case 'Place':
+          case 'place':
+            return 'place';
           case 'Статус':
             return 'status';
           default:
@@ -317,6 +319,14 @@
           {errorsExpanded ? 'Скрыть ошибки' : `Показать ошибки (${report.failed.length})`}
         </button>
         {#if errorsExpanded}
+          <!--
+            Row prefix + message are composed here, not baked into
+            `err.error_message` by the backend — an unresolved "Место" column
+            value renders as:
+            "Строка 12: место «Здание А / 2 этаж / 214» не найдено в дереве."
+            (UI-SPEC §12's exact copy; T-39-15-01), the same generic
+            composition used for every other row error.
+          -->
           <ul class="error-list">
             {#each report.failed as err}
               <li>

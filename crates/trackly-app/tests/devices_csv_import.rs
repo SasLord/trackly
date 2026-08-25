@@ -286,6 +286,58 @@ async fn import_commit_per_row_errors() {
     .expect("timeout");
 }
 
+/// T-39-15-01 / UI-SPEC §12: a "place" column value with no exact
+/// (case-insensitive) match in `place_full_paths` must fail that row with
+/// the exact copy "Строка N: место «...» не найдено в дереве." — never
+/// silently drop the place, never auto-create a place row (D-18).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_unresolved_place_reports_row_error_with_exact_copy() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        // Deliberately do NOT seed any places — every "Расположение" value in
+        // utf8.csv ("Кабинет 305" etc.) must fail to resolve.
+        let bytes = fixture_bytes("utf8.csv");
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should not fail entirely");
+
+        assert_eq!(
+            report.inserted, 0,
+            "no row should insert — every place value is unresolved"
+        );
+        assert!(!report.failed.is_empty(), "expected per-row place errors");
+
+        // row_index=1 is the first DATA row (session.all_rows is header-excluded) —
+        // utf8.csv's first row is "Кабинет 305".
+        let row1 = report
+            .failed
+            .iter()
+            .find(|e| e.row_index == 1)
+            .unwrap_or_else(|| panic!("expected a row-1 error, got {:?}", report.failed));
+        // Backend's `error_message` intentionally omits the "Строка N:" prefix —
+        // the UI (import modal's error-list) prepends `err.row_index` generically
+        // for every row (see device_service.rs comment at the RowError push site).
+        // Concatenating exactly as the UI does must reproduce UI-SPEC §12's exact
+        // copy, with no duplicated prefix.
+        assert_eq!(
+            row1.error_message, "место «Кабинет 305» не найдено в дереве.",
+            "raw error_message must not bake in its own row prefix"
+        );
+        let rendered = format!("Строка {}: {}", row1.row_index, row1.error_message);
+        assert_eq!(
+            rendered, "Строка 1: место «Кабинет 305» не найдено в дереве.",
+            "UI-composed string must match UI-SPEC §12's exact copy shape"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn import_commit_double_take_fails() {
     tokio::time::timeout(Duration::from_secs(30), async {
@@ -415,8 +467,8 @@ fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
             }
             "Комплектация" | "kit" => Some("kit"),
             "Состояние" | "state" => Some("state"),
-            "Расположение" | "Местоположение" | "location" => {
-                Some("location")
+            "Расположение" | "Местоположение" | "Место" | "location" | "place" => {
+                Some("place")
             }
             "Статус" | "status" => Some("status"),
             _ => None,

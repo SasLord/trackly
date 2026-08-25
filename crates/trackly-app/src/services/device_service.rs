@@ -595,7 +595,7 @@ impl DeviceService {
     ///
     /// `mapping`: CSV column header → device field name (e.g. "Наименование" → "name").
     /// Known field names: "type", "name", "inventory_no", "serial_no", "model",
-    ///   "specs", "kit", "state", "location", "status".
+    ///   "specs", "kit", "state", "place", "status".
     /// Unknown keys are ignored (T-02-05-08).
     pub async fn import_csv_commit(
         &self,
@@ -673,10 +673,17 @@ impl DeviceService {
                 match place_by_path.get(&key) {
                     Some(&id) => new_device.place_id = Some(id),
                     None => {
+                        // NB: `error_message` intentionally omits the "Строка N:" prefix —
+                        // `row_index` is a separate RowError field and the UI (import
+                        // modal's error-list) prepends it generically for every row, same
+                        // as every other error path in this function. Baking the prefix in
+                        // here too would render "Строка 12: Строка 12: место «...» не
+                        // найдено в дереве." (double prefix) instead of UI-SPEC §12's exact
+                        // copy "Строка 12: место «...» не найдено в дереве."
                         report.failed.push(RowError {
                             row_index,
                             error_code: "Validation".to_string(),
-                            error_message: format!("Строка {row_index}: место «{text}» не найдено в дереве."),
+                            error_message: format!("место «{text}» не найдено в дереве."),
                         });
                         continue;
                     }
@@ -728,7 +735,7 @@ impl DeviceService {
     ///
     /// Returns `(DeviceNew, Option<String>)` — the `DeviceNew` always has
     /// `place_id: None`; the second element is the raw place-path text from
-    /// the CSV cell (if the "location" column was mapped), resolved against
+    /// the CSV cell (if the "place" column was mapped), resolved against
     /// the place tree by the caller (`import_csv_commit`), never here — this
     /// function has no DB access.
     fn build_device_new_from_row(
@@ -767,7 +774,7 @@ impl DeviceService {
                 "specs" => specs = value.or(specs),
                 "kit" => kit = value.or(kit),
                 "state" => state = value.or(state),
-                "location" => place_text = value.or(place_text),
+                "place" => place_text = value.or(place_text),
                 "status" => status_label = value.or(status_label),
                 _ => {} // T-02-05-08: unknown keys ignored
             }
