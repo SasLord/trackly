@@ -19,7 +19,10 @@
   // when nothing is selected. `onlyHere` is lifted OUT of PlaceContents (UAT
   // gap 4.3) so this remount does not reset it on ordinary place-to-place
   // selection; it is reset to false explicitly only by
-  // `handleShowBlockedContents`.
+  // `handleShowBlockedContents`. `activeTab` (UAT gap 10) is lifted out the
+  // same way and for the same reason, but is NEVER reset by
+  // `handleShowBlockedContents` — unlike `onlyHere`, nothing about the D-14
+  // "Показать содержимое" path implies the previously active tab is wrong.
   import { authStore } from '$lib/stores/auth.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -28,6 +31,7 @@
   import PlaceTree from './PlaceTree.svelte';
   import PlaceFormModal from './PlaceFormModal.svelte';
   import PlaceContents from './PlaceContents.svelte';
+  import type { ContentTab } from './PlaceContents.svelte';
   import type { PlaceDto } from '../../bindings';
 
   function parseIdFromHash(): number | null {
@@ -53,6 +57,13 @@
   // shared/bookmarked link) than "whatever was last open".
   const SELECTED_STORAGE_KEY = 'trackly:places:selectedId';
   const ONLY_HERE_STORAGE_KEY = 'trackly:places:onlyHere';
+  // GAP-10 (39-UAT.md, Прогон 5): the content-panel tab (Все/Устройства/
+  // Принтеры/Картриджи) used to live as local state INSIDE PlaceContents,
+  // which is remounted on every node selection AND fully destroyed whenever
+  // the user leaves "Места" — same class of bug as GAP-1/GAP-5 before them.
+  // Same fix, same convention: lifted here, persisted as a plain string.
+  const ACTIVE_TAB_STORAGE_KEY = 'trackly:places:activeTab';
+  const VALID_ACTIVE_TABS: ContentTab[] = ['all', 'device', 'printer', 'cartridge'];
 
   function readPersistedSelectedId(): number | null {
     if (typeof window === 'undefined') return null;
@@ -99,6 +110,32 @@
     }
   }
 
+  // GAP-10: only ever returns one of the four known tab keys — a stray/stale
+  // localStorage value (older app version, manual edit, future tab renamed)
+  // degrades to 'all' rather than being passed straight through to
+  // PlaceContents, which would otherwise render a permanently-empty filtered
+  // table with no way for the user to tell why (§`columnCount`/`showKindColumn`
+  // in PlaceContents.svelte are only proven correct for these four values).
+  function readPersistedActiveTab(): ContentTab {
+    if (typeof window === 'undefined') return 'all';
+    try {
+      const raw = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+      return (VALID_ACTIVE_TABS as string[]).includes(raw ?? '') ? (raw as ContentTab) : 'all';
+    } catch {
+      return 'all';
+    }
+  }
+
+  function persistActiveTab(v: ContentTab): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, v);
+    } catch {
+      // Storage unavailable/quota exceeded — the tab simply won't persist
+      // across navigation.
+    }
+  }
+
   // Read exactly once — this component instance lives for the duration of the
   // /places route; re-reading on every re-render would fight the tree's own
   // internal selection state. A restored id that no longer resolves (place
@@ -136,6 +173,9 @@
   // is ALSO persisted (see below), so navigating away and back never
   // resurrects the pre-reset value (UAT gap 5).
   let onlyHere = $state(readPersistedOnlyHere());
+  // GAP-10: same lifting as `onlyHere` above — survives PlaceContents'
+  // {#key} remount on node selection AND a full route change away and back.
+  let activeTab = $state<ContentTab>(readPersistedActiveTab());
   // An out-of-band selection request for PlaceTree — see PlaceTree.svelte's
   // `externalSelect` prop doc-comment. A fresh object per breadcrumb click.
   let externalSelect = $state<{ id: number; token: number } | null>(null);
@@ -195,6 +235,11 @@
               onOnlyHereChange={(v) => {
                 onlyHere = v;
                 persistOnlyHere(v);
+              }}
+              {activeTab}
+              onActiveTabChange={(v) => {
+                activeTab = v;
+                persistActiveTab(v);
               }}
             />
           {/key}

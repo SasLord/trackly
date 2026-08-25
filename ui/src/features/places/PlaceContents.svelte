@@ -25,14 +25,27 @@
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
 
+  export type ContentTab = 'all' | 'device' | 'printer' | 'cartridge';
+
   interface Props {
     place: PlaceDto;
     onSelectAncestor: (_id: number) => void;
     onlyHere: boolean;
     onOnlyHereChange: (_v: boolean) => void;
+    // GAP-10 (39-UAT.md, Прогон 5): lifted OUT of this component, same reason
+    // and same convention as `onlyHere` above (GAP-1/GAP-5) — this component
+    // is remounted via PlacesPage's `{#key place.id:token}` on every
+    // selection change, so a local `$state` here would reset on every node
+    // switch and never survive a route change away from "Места" at all. The
+    // caller (PlacesPage) owns persistence (localStorage) and validation
+    // (falls back to 'all' for a stored value that no longer matches one of
+    // the four tabs); this component just renders whatever it's given.
+    activeTab: ContentTab;
+    onActiveTabChange: (_v: ContentTab) => void;
   }
 
-  const { place, onSelectAncestor, onlyHere, onOnlyHereChange }: Props = $props();
+  const { place, onSelectAncestor, onlyHere, onOnlyHereChange, activeTab, onActiveTabChange }: Props =
+    $props();
 
   // §17.1 (mirrors PlaceTreeNode.svelte's identical map — no shared places-utils
   // module exists yet in this codebase; small const, kept local per that file's
@@ -132,7 +145,6 @@
   let rows = $state<PlaceContentDto[] | null>(null);
   let loading = $state(false);
   let loadError = $state(false);
-  let activeTab = $state<'all' | 'device' | 'printer' | 'cartridge'>('all');
 
   $effect(() => {
     const rootId = place.id;
@@ -228,7 +240,7 @@
       variant="underline"
       {tabs}
       active={activeTab}
-      onchange={(k) => (activeTab = k as typeof activeTab)}
+      onchange={(k) => onActiveTabChange(k as ContentTab)}
       ariaLabel="Фильтр содержимого"
     />
     <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
