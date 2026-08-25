@@ -254,3 +254,48 @@ frontend. The following have NOT been exercised in a real webview — add to the
    payload now sends `place_id: null` instead of `location_id: null` — a no-op rename since
    this call always passed `null` here; not expected to change search behavior, but worth one
    smoke-test add-item pass).
+
+## Plan 18 — Reports place filter runtime verification NOT performed
+
+Only `svelte-check` (0 errors, down from the 4 pre-existing errors this plan's Task 3 territory
+accounted for), `eslint`, `node scripts/check-tokens.mjs`, and `pnpm --dir ui build` ran on the
+frontend. The following have NOT been exercised in a real webview — add to the batched UAT pass:
+
+**ReportFilters.svelte (place filter, reactivated for the first time since GAP-R4):**
+1. Open Отчёты for any domain/report tab — a "Место" field renders as PlacePicker (not a text
+   input) next to a "Складское место" dropdown (Все/На складе/В эксплуатации); the hint
+   "Включая вложенные места" is visible under the PlacePicker field.
+2. Pick a building-level place — confirm the report table narrows to rows whose place is that
+   building OR any of its floors/rooms/nested places (D-28 subtree semantics; the backend SQL
+   was verified to already implement this via `WITH RECURSIVE subtree(...)` per Plan 39-10, but
+   the wiring from PlacePicker's `onChange` through `filter.place_id` to the actual API call has
+   not been exercised end-to-end).
+3. Select "На складе" in the Складское место dropdown — table narrows to items in storage
+   places (ancestor-inclusive per D-11.4); select "В эксплуатации" — narrows to non-storage;
+   confirm this filter behaves independently of any status filter (no dropdown/label merge).
+4. Clear the place filter (PlacePicker's ghost clear button) — table returns to unfiltered.
+5. Switching domain/report tabs resets `filter = {}` (existing `onDomainChange` behavior) —
+   confirm the Место field visually clears too, not just the underlying state.
+
+**ReportsPage.svelte / ReportTable.svelte (place_path columns, D-26 short-path display):**
+1. Every report table showing a "Место" column (Акты, Возвраты, В работе, На складе,
+   consumption/refills, cartridge in_use/in_stock, all 4 Заявки tabs) renders a short
+   (last-two-segment) path in the cell and the full path on hover (`title` attribute) for
+   places nested 3+ levels deep; places with ≤2 segments show the full path in both.
+2. Snapshot reports (В работе / На складе for devices and cartridges) still group rows by
+   place under the correct separator row — this is the runtime behavior the ReportRow rename
+   fix (Task 4) targets; a broken separatorKey would have silently collapsed all rows into one
+   group with no compile-time signal, so this is worth a dedicated visual check.
+3. The Заявки "Принтер / Локация" column (`place_path` key, label unified to "Место" per this
+   plan's Task 1) — confirm it still shows the combined "Принтер, Место" text
+   (`combine_printer_and_place`, Plan 39-10), not just a bare place path; the label rename to
+   "Место" may read as slightly misleading for this specific column since its value combines
+   two things, worth a product-copy sanity check during UAT.
+
+**PrinterDetail.svelte / PrinterSelect.svelte / GroupedPrinterSelect.svelte (Task 3 renames):**
+1. Printer detail page's device meta section shows the device's place (was blank/broken before
+   this fix if `deviceData?.location` never resolved post-rename).
+2. Printer dropdown (used in cartridge Install flow) shows "<printer name> — <place>" for
+   printers with a resolved place, bare name otherwise.
+3. Grouped printer select (create-request flow) groups printers by place correctly, "Без
+   расположения" bucket for printers with no place.
