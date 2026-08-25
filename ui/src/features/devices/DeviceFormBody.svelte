@@ -21,6 +21,7 @@
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
   import type { DeviceDto, DeviceNew, DevicePatch } from '../../bindings';
@@ -69,7 +70,7 @@
   // these are always fresh: no stale closures, no missing resets.
   // ---------------------------------------------------------------------------
   let name = $state(target?.name ?? '');
-  let location = $state(target?.location ?? '');
+  let placeId = $state<number | null>(target?.place_id ?? null);
   let statusId = $state(target ? String(target.status_id) : '');
   let inventoryNo = $state(target?.inventory_no ?? '');
   let serialNo = $state(target?.serial_no ?? '');
@@ -92,7 +93,7 @@
   // canSubmit: all required fields filled AND no in-flight request.
   // submitting guards against double-submit even before loading propagates.
   const canSubmit = $derived(
-    name.trim() !== '' && location.trim() !== '' && statusId !== '' && !submitting,
+    name.trim() !== '' && placeId !== null && statusId !== '' && !submitting,
   );
 
   // Reset quantity to 1 when inv/serial become non-empty.
@@ -142,8 +143,7 @@
           specs: specs.trim() || null,
           kit: kit.trim() || null,
           state: stateField.trim() || null,
-          location: location.trim() || null,
-          location_id: null,
+          place_id: placeId,
           status_id: parseInt(statusId, 10) || null,
         };
         const updated = await devices.update(target.id, currentVersion, patch);
@@ -161,8 +161,7 @@
           specs: specs.trim() || null,
           kit: kit.trim() || null,
           state: stateField.trim() || null,
-          location: location.trim() || null,
-          location_id: null,
+          place_id: placeId,
           status_id: parseInt(statusId, 10),
         };
 
@@ -335,23 +334,19 @@
     {/if}
   </div>
 
-  <!-- 9. Required: Расположение (with autocomplete, filtered by status + name context) -->
-  <div class="field" class:has-error={!!fieldErrors['location']}>
-    <label class="label" for="f-location">
-      Расположение <span class="required" aria-hidden="true">*</span>
+  <!-- 9. Required: Место (PlacePicker — единственный контрол выбора места, D-17) -->
+  <div class="field" class:has-error={!!fieldErrors['place_id']}>
+    <label class="label" for="f-place">
+      Место <span class="required" aria-hidden="true">*</span>
     </label>
-    <DeviceAutocompleteField
-      field="location"
-      value={location}
-      placeholder="Кабинет 305"
-      id="f-location"
-      invalid={!!fieldErrors['location']}
-      contextName={name.trim() || undefined}
-      contextStatusId={parseInt(statusId, 10) || null}
-      onChange={(v) => (location = v)}
+    <PlacePicker
+      value={placeId}
+      onChange={(id) => (placeId = id)}
+      id="f-place"
+      invalid={!!fieldErrors['place_id']}
     />
-    {#if fieldErrors['location']}
-      <p class="field-error">{fieldErrors['location']}</p>
+    {#if fieldErrors['place_id']}
+      <p class="field-error">{fieldErrors['place_id']}</p>
     {/if}
   </div>
 

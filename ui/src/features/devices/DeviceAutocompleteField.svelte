@@ -25,11 +25,10 @@
 
   import { onMount, onDestroy } from 'svelte';
   import { devices } from './api';
-  import { apiCall } from '$lib/api/client';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
 
-  type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state' | 'location';
+  type FieldName = 'name' | 'model' | 'specs' | 'kit' | 'state';
 
   interface Props {
     field: FieldName;
@@ -64,7 +63,6 @@
   }: Props = $props();
 
   let suggestions = $state<string[]>([]);
-  let allLocationSuggestions = $state<string[]>([]); // ITEM-4: distinct locations from all devices
   let loading = $state(false);
   let open = $state(false);
   let activeIndex = $state(-1);
@@ -76,8 +74,7 @@
   }
 
   // D-260820-uo4: стандартные варианты «Состояния» — статичный фронтенд-список,
-  // мержится ТОЛЬКО для field="state" по тому же принципу, что allLocationSuggestions
-  // для field="location". Префикс-фильтр (регистронезависимо, startsWith) держит
+  // мержится ТОЛЬКО для field="state". Префикс-фильтр (регистронезависимо, startsWith) держит
   // поведение консистентным с backend-подсказками; де-дуп по normalizeForCompare()
   // не даёт стандартному значению, которое УЖЕ встречалось в suggestions, показаться
   // дважды.
@@ -94,14 +91,10 @@
       : [],
   );
 
-  // ITEM-4 (location) + D-260820-uo4 (state): combined list for keyboard nav AND
+  // D-260820-uo4 (state): combined list for keyboard nav AND
   // for the open-gating check below (single source of truth).
   const allItems = $derived(
-    field === 'location'
-      ? [...suggestions, ...allLocationSuggestions]
-      : field === 'state'
-        ? [...suggestions, ...standardSuggestions]
-        : suggestions,
+    field === 'state' ? [...suggestions, ...standardSuggestions] : suggestions,
   );
 
   let wrapperEl = $state<HTMLDivElement | null>(null);
@@ -161,13 +154,6 @@
       try {
         loading = true;
         suggestions = await devices.autocomplete(field, v, ctxName, ctxStatus, sIn);
-        // ITEM-4: parallel fetch of all distinct locations for field="location"
-        if (field === 'location') {
-          const allLocs = await apiCall<string[]>('locations_autocomplete', { prefix: v });
-          allLocationSuggestions = allLocs.filter((l) => !suggestions.includes(l));
-        } else {
-          allLocationSuggestions = [];
-        }
         // Only open if the user is actively typing (suppression was lifted by handleInput).
         // This prevents the dropdown from re-opening on programmatic value changes
         // (e.g. parent re-rendering, edit-mode pre-fill, prop change from outside).
@@ -177,7 +163,6 @@
         activeIndex = -1;
       } catch {
         suggestions = [];
-        allLocationSuggestions = [];
         open = false;
       } finally {
         loading = false;
@@ -232,20 +217,12 @@
           contextStatusId,
           statusIn,
         );
-        // ITEM-4: parallel fetch of all distinct locations for field="location"
-        if (field === 'location') {
-          const allLocs = await apiCall<string[]>('locations_autocomplete', { prefix: value });
-          allLocationSuggestions = allLocs.filter((l) => !suggestions.includes(l));
-        } else {
-          allLocationSuggestions = [];
-        }
         if (!suppressDropdown) {
           open = allItems.length > 0;
         }
         activeIndex = -1;
       } catch {
         suggestions = [];
-        allLocationSuggestions = [];
         open = false;
       } finally {
         loading = false;
@@ -393,25 +370,6 @@
             {s}
           </button>
         {/each}
-        {#if field === 'location' && allLocationSuggestions.length > 0}
-          <header class="dropdown-header">Все расположения:</header>
-          {#each allLocationSuggestions as s, i ('all_' + s)}
-            <button
-              type="button"
-              id="autocomplete-item-{suggestions.length + i}"
-              role="option"
-              class="dropdown-item"
-              class:active={suggestions.length + i === activeIndex}
-              aria-selected={suggestions.length + i === activeIndex}
-              onmousedown={(e) => {
-                e.preventDefault();
-                select(s);
-              }}
-            >
-              {s}
-            </button>
-          {/each}
-        {/if}
         {#if field === 'state' && standardSuggestions.length > 0}
           <header class="dropdown-header">Стандартные варианты:</header>
           {#each standardSuggestions as s, i ('std_' + s)}

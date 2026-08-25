@@ -5,7 +5,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from '$lib/api/devices';
   import { printers } from './api';
@@ -20,7 +20,7 @@
 
   // --- Form state ---
   let name = $state('');
-  let location = $state('');
+  let placeId = $state<number | null>(null);
   let ipAddress = $state('');
   let community = $state('public');
   let submitting = $state(false);
@@ -32,7 +32,7 @@
   $effect(() => {
     if (open) {
       name = '';
-      location = '';
+      placeId = null;
       ipAddress = '';
       community = 'public';
       submitting = false;
@@ -65,8 +65,7 @@
         specs: null,
         kit: null,
         state: null,
-        location: location.trim() || null,
-        location_id: null,
+        place_id: placeId,
         status_id: 1,
       });
 
@@ -122,15 +121,10 @@
       {/if}
     </div>
 
-    <!-- Расположение (опционально) -->
+    <!-- Место (опционально) -->
     <div class="field">
-      <label class="label" for="pc-location">Расположение</label>
-      <LocationAutocomplete
-        value={location}
-        placeholder="Кабинет, склад и т.д. (необязательно)"
-        id="pc-location"
-        onChange={(v) => (location = v)}
-      />
+      <label class="label" for="pc-place">Место</label>
+      <PlacePicker value={placeId} onChange={(id) => (placeId = id)} id="pc-place" />
     </div>
 
     <!-- SNMP-секция (опционально) -->
