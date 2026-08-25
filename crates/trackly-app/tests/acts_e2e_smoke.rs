@@ -179,7 +179,7 @@ async fn full_lifecycle_then_undo() {
         assert_eq!(act_items.len(), 3);
 
         // Real place row for the bulk-return destination — auto-create-by-name
-        // (payload.location_name) no longer exists (D-18); the caller must
+        // via the old freeform place-name field no longer exists (D-18); the caller must
         // resolve a real place id via PlacePicker before submitting the return.
         let sklad_a_id: i64 = p
             .writer

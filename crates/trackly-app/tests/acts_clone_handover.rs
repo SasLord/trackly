@@ -933,13 +933,13 @@ async fn undo_return_restores_archived_to_false() {
 // После create: devices.place_id == handover place (не NULL).
 // После do_return с bulk_place_id: devices.place_id == return place.
 //
-// D-18 (Phase 39): auto-create-by-name (payload.location_name) больше не
+// D-18 (Phase 39): auto-create-by-name via the old freeform place-name field больше не
 // существует — caller обязан передать уже разрешённый place_id, выбранный
 // через PlacePicker. Тест переписан на создание двух настоящих строк
 // `places` вместо свободнотекстового имени.
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn handover_via_location_name_sets_device_place_id() {
+async fn handover_via_resolved_place_sets_device_place_id() {
     tokio::time::timeout(Duration::from_secs(30), async {
         use trackly_core::ports::places::PlaceRepository;
 
@@ -1060,5 +1060,5 @@ async fn handover_via_location_name_sets_device_place_id() {
         );
     })
     .await
-    .expect("handover_via_location_name_sets_device_place_id budget");
+    .expect("handover_via_resolved_place_sets_device_place_id budget");
 }

@@ -569,7 +569,7 @@
     height: 36px;
     padding: 0 var(--tr-space-md);
     // Plan 27-G2: unified field surface — was --tr-bg/--tr-border/--tr-radius-xs,
-    // now matches Input.svelte/LocationAutocomplete.svelte/PersonAutocomplete.svelte.
+    // now matches Input.svelte/PlacePicker.svelte/PersonAutocomplete.svelte.
     background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border-strong);
@@ -600,7 +600,7 @@
     left: 0;
     right: 0;
     z-index: 50;
-    // Plan 27-G2: unified panel surface — matches LocationAutocomplete.svelte/
+    // Plan 27-G2: unified panel surface — matches PlacePicker.svelte/
     // PersonAutocomplete.svelte's global dropdown panel (--tr-surface-raised).
     background: var(--tr-surface-raised);
     border: 1px solid var(--tr-border);

@@ -192,7 +192,7 @@ async fn search_filters_by_tab() {
             .expect("spawn")
         };
         // Real place row for the bulk-return destination — auto-create-by-name
-        // (payload.location_name) no longer exists (D-18); the caller must
+        // via the old freeform place-name field no longer exists (D-18); the caller must
         // resolve a real place id via PlacePicker before submitting the return.
         let sklad_id: i64 = {
             use trackly_core::ports::places::PlaceRepository;

@@ -260,20 +260,20 @@ impl SqliteDeviceRepository {
         self.get_in_tx(tx, id)
     }
 
-    /// UPDATE device.status_id + device.location_id внутри транзакции.
+    /// UPDATE device.status_id + device.place_id внутри транзакции.
     ///
     /// Используется в `ActService::create` (handover): после INSERT акта
-    /// все позиции переводятся в статус «В работе» с новым `location_id`.
+    /// все позиции переводятся в статус «В работе» с новым `place_id`.
     /// Возвращает свежий `DeviceRow` (после update) для записи в `audit_log.after_json`.
     ///
     /// NB: `version` инкрементируется, `updated_at_utc` обновляется. FK на
     /// `device_statuses(status_id)` гарантирует целостность.
-    pub fn update_status_and_location_in_tx(
+    pub fn update_status_and_place_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         device_id: i64,
         status_id: i64,
-        location_id: Option<i64>,
+        place_id: Option<i64>,
         now_utc: i64,
     ) -> Result<DeviceRow, AppError> {
         let affected = tx
@@ -281,7 +281,7 @@ impl SqliteDeviceRepository {
                 "UPDATE devices SET status_id = ?1, place_id = ?2, \
                  version = version + 1, updated_at_utc = ?3 \
                  WHERE id = ?4 AND deleted_at_utc IS NULL",
-                rusqlite::params![status_id, location_id, now_utc, device_id],
+                rusqlite::params![status_id, place_id, now_utc, device_id],
             )
             .map_err(map_rusqlite)?;
         if affected == 0 {
@@ -293,8 +293,8 @@ impl SqliteDeviceRepository {
         self.get_in_tx(tx, device_id)
     }
 
-    /// UPDATE status_id + location_id + condition внутри транзакции — used by
-    /// `do_return` (plan 03). В отличие от `update_status_and_location_in_tx`
+    /// UPDATE status_id + place_id + condition внутри транзакции — used by
+    /// `do_return` (plan 03). В отличие от `update_status_and_place_in_tx`
     /// (plan 02 handover path), здесь также может меняться `condition` поле.
     ///
     /// `condition: Option<&str>` — если `None`, поле НЕ меняется (COALESCE);
@@ -305,7 +305,7 @@ impl SqliteDeviceRepository {
         tx: &rusqlite::Transaction<'_>,
         device_id: i64,
         status_id: i64,
-        location_id: Option<i64>,
+        place_id: Option<i64>,
         condition: Option<&str>,
         now_utc: i64,
     ) -> Result<DeviceRow, AppError> {
@@ -318,7 +318,7 @@ impl SqliteDeviceRepository {
                    version        = version + 1, \
                    updated_at_utc = ?4 \
                  WHERE id = ?5 AND deleted_at_utc IS NULL",
-                rusqlite::params![status_id, location_id, condition, now_utc, device_id],
+                rusqlite::params![status_id, place_id, condition, now_utc, device_id],
             )
             .map_err(map_rusqlite)?;
         if affected == 0 {
@@ -334,7 +334,7 @@ impl SqliteDeviceRepository {
     /// `audit_log.before_json` (D-Undo-01).
     ///
     /// snapshot — это `serde_json::Value`, который содержит как минимум
-    /// поля `status_id`, `location_id`, `state` (= condition), `kit`
+    /// поля `status_id`, `place_id`, `state` (= condition), `kit`
     /// (= complectation), `version`. Дополнительные поля (`name`, `model`,
     /// `inventory_no`, `serial_no`, `specs`, `type_id`) применяются, если
     /// присутствуют, иначе COALESCE сохраняет текущее значение в БД.
@@ -360,7 +360,7 @@ impl SqliteDeviceRepository {
             .ok_or_else(|| AppError::Internal {
                 source_chain: format!("undo: snapshot for device {device_id} lacks status_id"),
             })?;
-        let location_id: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
+        let place_id: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
         let state: Option<&str> = snapshot.get("state").and_then(|v| v.as_str());
         let kit: Option<&str> = snapshot.get("kit").and_then(|v| v.as_str());
         // Optional «full» fields (когда snapshot писался полностью).
@@ -397,7 +397,7 @@ impl SqliteDeviceRepository {
                     kit,
                     specs,
                     status_id,
-                    location_id,
+                    place_id,
                     now_utc,
                     device_id,
                 ],
@@ -422,7 +422,7 @@ impl SqliteDeviceRepository {
     /// - `version := 1`, `created_at_utc/updated_at_utc := now_utc`,
     ///   `deleted_at_utc := NULL`.
     /// - `status_id` сохраняется (caller сразу переведёт в 'в_работе' через
-    ///   update_status_and_location_in_tx — типичный pattern в ActService::create).
+    ///   update_status_and_place_in_tx — типичный pattern в ActService::create).
     ///
     /// Errors: AppError::NotFound если source отсутствует / soft-deleted.
     pub fn clone_device_in_tx(
@@ -969,7 +969,7 @@ impl DeviceRepository for SqliteDeviceRepository {
         // Group devices by (type_id, name[, model]) — ITEM-1 / Phase 18 dual-mode.
         //
         // Round 8 fix: the previous key included model/notes/complectation/condition/
-        // location_id/status_id, which was too strict — two monitors with the same
+        // place_id/status_id, which was too strict — two monitors with the same
         // Наименование but different locations or statuses would NOT collapse.
         //
         // Round 9 fix (DEF-2B): condition was included in the group key for the
@@ -1164,12 +1164,12 @@ impl DeviceRepository for SqliteDeviceRepository {
                 kit,
                 state,
                 condition_distinct_count,
-                location_id,
+                place_id_val,
                 status_id,
                 version,
                 created_at_utc,
                 updated_at_utc,
-                location_name,
+                full_path_val,
                 inv_no,
                 serial_no,
             ) = row_result.map_err(map_rusqlite)?;
@@ -1193,8 +1193,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                 specs,
                 kit,
                 state,
-                place_id: location_id,
-                full_path: location_name,
+                place_id: place_id_val,
+                full_path: full_path_val,
                 status_id,
                 version,
                 created_at_utc,

@@ -448,7 +448,7 @@ impl ActService {
                         // DEF-3: передавать resolved_place_id (payload.place_id,
                         // D-18 — caller-validated, no auto-resolve) — устройства
                         // берут место с акта при handover.
-                        let after = devices_repo.update_status_and_location_in_tx(
+                        let after = devices_repo.update_status_and_place_in_tx(
                             &tx,
                             dev_id,
                             in_work_status_id,
@@ -711,7 +711,7 @@ impl ActService {
                         device_snapshot_json(&before).map_err(|e| AppError::Internal {
                             source_chain: format!("before_json: {e}"),
                         })?;
-                    let after = devices_repo.update_status_and_location_in_tx(
+                    let after = devices_repo.update_status_and_place_in_tx(
                         &tx,
                         dev_id,
                         in_work_status_id,

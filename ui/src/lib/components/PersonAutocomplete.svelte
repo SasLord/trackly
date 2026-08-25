@@ -294,7 +294,7 @@
    * управляется JS через use:dropdownAnchor, здесь только визуал (AUTO-01).
    */
   // WR-03: дропдаун портирован в <body> из НЕСКОЛЬКИХ компонентов
-  // (PersonAutocomplete/LocationAutocomplete/DeviceAutocompleteField/
+  // (PersonAutocomplete/PlacePicker/DeviceAutocompleteField/
   // ActFormItemsTable) — без namespace-класса на корне глобальные правила
   // .dropdown/.dropdown-item/... коллизируют между компонентами (последний
   // подключённый stylesheet выигрывает). Все правила ниже скопированы под

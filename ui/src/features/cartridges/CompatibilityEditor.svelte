@@ -265,7 +265,7 @@
     height: 36px;
     padding: 0 var(--tr-space-md);
     // Plan 27-G2: unified field surface — was --tr-bg/--tr-border/--tr-radius-xs,
-    // now matches Input.svelte/LocationAutocomplete.svelte/PersonAutocomplete.svelte.
+    // now matches Input.svelte/PlacePicker.svelte/PersonAutocomplete.svelte.
     background: var(--tr-surface-raised);
     color: var(--tr-text-primary);
     border: 1px solid var(--tr-border-strong);
@@ -287,7 +287,7 @@
 
   // Plan 260819-thx (Task 3): портирован в <body> через portal-utility +
   // dropdownAnchor-utility (см. PersonAutocomplete.svelte/DeviceAutocompleteField.svelte/
-  // LocationAutocomplete.svelte) — панель больше не живёт внутри
+  // PlacePicker.svelte) — панель больше не живёт внутри
   // .autocomplete-wrapper, поэтому стили здесь :global и namespaced
   // (WR-03: без namespace-класса глобальные правила .dropdown/.dropdown-item
   // коллизируют между несколькими портированными компонентами).

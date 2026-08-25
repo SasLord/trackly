@@ -80,7 +80,7 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             include_str!("../../templates/_legacy_defaults/v24/act_handover.html"),
             include_str!("../../templates/_legacy_defaults/v25/act_handover.html"),
             // Phase 39 Plan 11: pre-change snapshot captured immediately
-            // before the act.location_name -> act.place_path contract rename
+            // before the old freeform place-name field -> act.place_path contract rename
             // + the new unconditional "Расположение:" field-row (D-27) —
             // without this entry, any install that materialized the
             // pre-Phase-39 body would be misclassified as user-customized

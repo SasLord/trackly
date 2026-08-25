@@ -13,7 +13,7 @@
 //!
 //! `PlaceRepository` is the SOLE contract for creating/reading/renaming/moving/
 //! archiving/deleting a place — unlike the freeform `locations` table's
-//! `resolve_location_id_in_tx` helper it replaces, no method here auto-creates a
+//! auto-create-by-name helper it replaces, no method here auto-creates a
 //! place by name. Place creation is always an explicit, Admin-gated call to
 //! `create()` (D-18).
 

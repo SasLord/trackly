@@ -1,8 +1,8 @@
 <script lang="ts">
   // Phase 39 Plan 13 (D-17): единственный контрол выбора места во всём приложении —
-  // заменяет LocationAutocomplete.svelte (D-17/удаляется в Плане 21). Механика
-  // (portal + dropdownAnchor, open-on-focus, 200ms debounce, таймер очищается в
-  // onDestroy — WR-05) унаследована от LocationAutocomplete построчно; панель — своя,
+  // заменяет прежний свободнотекстовый автокомплит места (D-17, удалён в Плане 21).
+  // Механика (portal + dropdownAnchor, open-on-focus, 200ms debounce, таймер очищается
+  // в onDestroy — WR-05) унаследована от него построчно; панель — своя,
   // древовидная с ленивой подгрузкой узлов (см. 39-UI-SPEC.md §10).
   //
   // В отличие от Dropdown.svelte (D-01/D-02 25-й фазы, «zero data-fetching»,
@@ -105,7 +105,7 @@
   const uid = $props.id();
   const panelId = `${uid}-panel`;
 
-  // WR-05: тот же класс бага, что и в LocationAutocomplete — debounce-таймер,
+  // WR-05: тот же класс бага, что и в прежнем автокомплите места — debounce-таймер,
   // не отменённый на unmount, дописывает $state уже мёртвого компонента.
   onDestroy(() => {
     if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);

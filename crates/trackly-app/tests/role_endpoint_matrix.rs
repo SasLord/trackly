@@ -326,8 +326,7 @@ async fn role_endpoint_matrix_test() {
                 "specs": null,
                 "kit": null,
                 "state": null,
-                "location": null,
-                "location_id": null,
+                "place_id": null,
                 "status_id": 1
             }
         });
@@ -337,8 +336,7 @@ async fn role_endpoint_matrix_test() {
                 "number_override": null,
                 "giver_name": "Тест Тестов",
                 "receiver_name": "Тест2 Тестов",
-                "location_id": null,
-                "location_name": null,
+                "place_id": null,
                 "notes": null,
                 "deadline_utc": null,
                 "handover_date_utc": null,
@@ -355,8 +353,7 @@ async fn role_endpoint_matrix_test() {
                 "number_override": null,
                 "giver_name": "Тест Тестов",
                 "receiver_name": "Тест2 Тестов",
-                "location_id": null,
-                "location_name": null,
+                "place_id": null,
                 "notes": null,
                 "deadline_utc": null,
                 "handover_date_utc": null,
@@ -373,14 +370,12 @@ async fn role_endpoint_matrix_test() {
                 "expected_version": 1,
                 "giver_name": "Тест",
                 "receiver_name": "Тест2",
-                "location_id": null,
-                "location_name": null,
+                "place_id": null,
                 "notes": null,
                 "deadline_utc": null,
                 "handover_date_utc": 0,
                 "bulk_condition": null,
-                "bulk_location_id": null,
-                "bulk_location_name": null,
+                "bulk_place_id": null,
                 "apply_to_all": false,
                 "items": []
             }
@@ -389,7 +384,7 @@ async fn role_endpoint_matrix_test() {
         let cartridge_payload = json!({
             "payload": {
                 "model_id": 1,
-                "location": null,
+                "place_id": null,
                 "notes": null
             }
         });
@@ -409,7 +404,7 @@ async fn role_endpoint_matrix_test() {
         let device_list_payload = json!({
             "filter": {
                 "type_id": null,
-                "location_id": null,
+                "place_id": null,
                 "status_id": null,
                 "state": null,
                 "name_prefix": null,
@@ -469,7 +464,7 @@ async fn role_endpoint_matrix_test() {
             "filter": {
                 "date_from_utc": null,
                 "date_to_utc": null,
-                "location_id": null,
+                "place_id": null,
                 "status_id": null,
                 "type_id": null,
                 "act_type": null,
@@ -1113,7 +1108,7 @@ async fn role_endpoint_matrix_test() {
         let devices_export_payload = json!({
             "filter": {
                 "type_id": null,
-                "location_id": null,
+                "place_id": null,
                 "status_id": null,
                 "state": null,
                 "name_prefix": null,
@@ -1234,7 +1229,7 @@ async fn role_endpoint_matrix_test() {
                     "date_utc": 1_700_000_000,
                     "given_by_name": "Тест",
                     "given_to_name": "Тест2",
-                    "location": "Каб. 1"
+                    "place_id": null
                 }
             });
             let status = post_with_cookie(
