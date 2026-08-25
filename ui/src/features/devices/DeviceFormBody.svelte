@@ -20,11 +20,17 @@
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { apiCall } from '$lib/api/client';
   import { devices } from './api';
   import type { DeviceDto, DeviceNew, DevicePatch } from '../../bindings';
+
+  // Seed status ids (see STATUSES below / device_service.rs::resolve_status_id):
+  // 1 = На складе, 2 = В работе, 3 = На ремонте, 4 = Списано.
+  const STORAGE_STATUS_ID = 1;
 
   const STATUSES = [
     { id: 1, label: 'На складе' },
@@ -86,6 +92,22 @@
   // successful update without requiring the parent to re-mount the form.
   let currentVersion = $state(target?.version ?? 1);
 
+  // D-11.3: storage-place status suggestion. `storagePlaceIds` is fetched once
+  // per form instance (this component is always freshly mounted per modal
+  // open — {#key openInstanceCounter} in DeviceFormModal — so a plain onMount
+  // fetch, no `open`-toggle re-fetch guard needed, unlike OperationModal.svelte
+  // which reuses one mounted instance across opens). Reuses the same
+  // `cartridge_storage_place_ids` Tauri/HTTP command cartridges already call —
+  // the underlying query (`PlaceRepo::list_storage_place_ids`, D-11.4 ancestor
+  // inheritance) is place-tree-derived and entity-agnostic despite the
+  // command's cartridge-era name; it is `Action::ReadData`-gated, not
+  // cartridge-specific, so any caller able to open this device form already
+  // has permission to call it.
+  let storagePlaceIds = $state<Set<number>>(new Set());
+  // Default-checked (D-11.3: "включённый по умолчанию"); the user may uncheck
+  // it (D-10: no forced status change once unchecked).
+  let storageStatusSuggested = $state(true);
+
   const isEdit = $derived(target !== null);
 
   const quantityDisabled = $derived(isEdit || inventoryNo.trim() !== '' || serialNo.trim() !== '');
@@ -100,6 +122,23 @@
   $effect(() => {
     if (inventoryNo.trim() !== '' || serialNo.trim() !== '') {
       quantity = 1;
+    }
+  });
+
+  // D-11.3: the selected place (including D-11.4 ancestor inheritance,
+  // already resolved server-side into the flat `storagePlaceIds` set) is a
+  // storage place.
+  const isStoragePlace = $derived(placeId !== null && storagePlaceIds.has(placeId));
+
+  // D-11.3: while a storage place is selected AND the suggestion checkbox is
+  // checked, the device status is (re-)set to «На складе» — this has a real
+  // payload effect (unlike the cartridge form, cartridges have no
+  // status-override field; devices do, via DevicePatch.status_id/
+  // DeviceNew.status_id). Unchecking stops the auto-apply; the Статус
+  // dropdown above is then fully manual again — no forced change (D-10).
+  $effect(() => {
+    if (isStoragePlace && storageStatusSuggested) {
+      statusId = String(STORAGE_STATUS_ID);
     }
   });
 
@@ -119,6 +158,22 @@
   // onRegisterSubmit with the new closure.
   onMount(() => {
     onRegisterSubmit(handleSubmit);
+
+    let cancelled = false;
+    apiCall<number[]>('cartridge_storage_place_ids', {})
+      .then((ids) => {
+        if (cancelled) return;
+        storagePlaceIds = new Set(ids);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fail-safe: a failed lookup just hides the suggestion checkbox —
+        // never blocks saving the device itself.
+        storagePlaceIds = new Set();
+      });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // ---------------------------------------------------------------------------
@@ -347,6 +402,11 @@
     />
     {#if fieldErrors['place_id']}
       <p class="field-error">{fieldErrors['place_id']}</p>
+    {/if}
+    {#if isStoragePlace}
+      <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
+        Перевести устройство в статус «На складе»
+      </Checkbox>
     {/if}
   </div>
 

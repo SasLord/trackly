@@ -143,3 +143,63 @@ have NOT been exercised in a real webview — add to the same batched UAT pass:
 2. Ungrouped rows show each device's `full_path` in the Место column.
 3. Grouped rows (same name+model+specs+kit+state+place+status) show the group's
    representative `full_path`; changing a device's place moves it out of its old group.
+
+## D-11.3 cross-plan fix (post-Plan-16) — runtime verification NOT performed
+
+Plan 39-16 shipped D-11.3's "Перевести устройство в статус «На складе»" checkbox on the
+WRONG surface (`OperationModal.svelte`, cartridges) and never implemented it on the RIGHT
+one (`DeviceFormBody.svelte`, devices — see 39-16-SUMMARY.md's own flag to Plans 17/18: "the
+device/act-status field pattern... should re-verify"). This fix:
+
+- **Removed** the checkbox (and its now-fully-dead state: `storagePlaceIds`,
+  `isStoragePlace`, `storageStatusSuggested`, the `cartridge_storage_place_ids` fetch
+  `$effect`, the `Checkbox`/`apiCall` imports) from both `OperationModal.svelte` render
+  sites (install/to_refill block and return_to_stock/from_refill block). Verified via grep
+  that `storagePlaceIds`/`isStoragePlace`/`storageStatusSuggested` had zero other
+  usages in the file (no D-11.4 "Возврат на склад → складское место" prefill exists there
+  today — that half of D-13's prefill promise was apparently never built for cartridges;
+  out of scope for this fix, not re-flagging beyond this note since it is a pre-existing
+  gap, not something this fix touched or regressed).
+- **Added** the checkbox to `DeviceFormBody.svelte`'s Место field block, gated on the same
+  kind of storage-place-set lookup (reused the existing `cartridge_storage_place_ids`
+  Tauri/HTTP command — confirmed via `crates/trackly-app/src/services/cartridge_service.rs`
+  and `trackly-infra/src/repos/places_sqlite.rs` that the underlying
+  `PlaceRepo::list_storage_place_ids` query is place-tree-derived and entity-agnostic
+  despite the command's cartridge-era name, and is `Action::ReadData`-gated rather than
+  cartridge-specific). Checking it sets `statusId` to `'1'` («На складе», confirmed against
+  `crates/trackly-app/src/services/device_service.rs::resolve_status_id`/
+  `status_id_to_name` as the real seed value, not assumed) — this DOES flow into the
+  submitted `DeviceNew.status_id`/`DevicePatch.status_id` payload, unlike the cartridge
+  checkbox which had no backend field to affect.
+
+Compile/lint/build gates pass (svelte-check: 274 files/14 errors/54 warnings — identical
+before and after via `git checkout --`/`git apply` A-B comparison, zero new errors; eslint
+clean on both touched files; `pnpm --dir ui build` succeeds). **Runtime is UNVERIFIED** — add
+to the batched UAT pass:
+
+**OperationModal.svelte (cartridges) — checkbox should be GONE:**
+1. Open any of the 5 cartridge operations (Install/Возврат на склад/В заправку/Из заправки/
+   Списание) and pick a place known to be a storage place — confirm NO "Перевести устройство
+   в статус «На складе»" checkbox appears anywhere in the modal (it was never wired to any
+   payload field and always described the wrong entity — cartridges don't have a device-style
+   status override).
+
+**DeviceFormBody.svelte (devices) — checkbox should be NEW and functional:**
+1. Create a new device, pick a place that is NOT a storage place — no checkbox appears;
+   Статус dropdown behaves as before (fully manual).
+2. Pick a place that IS a storage place (or a descendant of one, exercising D-11.4 ancestor
+   inheritance) — checkbox "Перевести устройство в статус «На складе»" appears under Место,
+   default checked, and Статус silently reads «На складе» (id 1).
+3. Uncheck the checkbox — Статус dropdown becomes freely editable again; pick a different
+   status (e.g. «В работе») and submit — the saved device's real status is NOT «На складе»
+   (confirms the "no forced change" half of D-11.3/D-10).
+4. Leave the checkbox checked and submit — the saved device's real status IS «На складе»
+   (confirms the payload actually changes, not just cosmetic).
+5. Edit an existing device that currently has some other status (e.g. «В работе»), change its
+   place to a storage place — checkbox appears default-checked; verify this does NOT silently
+   flip the status until the operator actually submits (i.e. no premature write), and that
+   submitting with the box checked does flip it as expected.
+6. Switch the place away from a storage place after the checkbox was checked — checkbox
+   disappears; confirm the previously-applied `statusId='1'` value is NOT silently reverted
+   (matches this fix's decision to only apply forward, never auto-revert on leave — flag if
+   this reads as confusing in practice).

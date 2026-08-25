@@ -11,11 +11,9 @@
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
-  import Checkbox from '$lib/components/Checkbox.svelte';
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
   import PrinterSelect from '$lib/components/PrinterSelect.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { apiCall } from '$lib/api/client';
   import { cartridges } from './api';
   import { printers } from '../printers/api';
   import type { CartridgeDto, CartridgeTransitionPayload, PrinterDto } from '../../bindings';
@@ -88,15 +86,6 @@
   let notes = $state('');
   let submitting = $state(false);
 
-  // D-11.3: storage-place suggestion checkbox. `storagePlaceIds` is fetched
-  // once per modal open (Plan 09's `cartridge_storage_place_ids` read, D-11.4
-  // ancestor inheritance already resolved server-side); `isStoragePlace`
-  // gates whether the checkbox is shown at all; `storageStatusSuggested`
-  // is the checkbox's own checked state (default checked, no forced change —
-  // D-10).
-  let storagePlaceIds = $state<Set<number>>(new Set());
-  let storageStatusSuggested = $state(true);
-
   // Validation errors
   let placeError = $state('');
   let givenByError = $state('');
@@ -159,40 +148,8 @@
       placeError = '';
       givenByError = '';
       givenToError = '';
-      storageStatusSuggested = true;
     }
   });
-
-  // D-11.4/D-11.3: fetch the storage-place-id set once per modal open (not
-  // once per component mount) — `open` toggles across the same mounted
-  // instance for request-centric flows (RequestDetail keeps the modal
-  // mounted). Cleared when the modal closes so a stale set never lingers.
-  $effect(() => {
-    if (!open) {
-      storagePlaceIds = new Set();
-      return;
-    }
-    let cancelled = false;
-    apiCall<number[]>('cartridge_storage_place_ids', {})
-      .then((ids) => {
-        if (cancelled) return;
-        storagePlaceIds = new Set(ids);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // Fail-safe: a failed lookup just hides the suggestion checkbox —
-        // never blocks the operation itself.
-        storagePlaceIds = new Set();
-      });
-    return () => {
-      cancelled = true;
-    };
-  });
-
-  // D-11.3: the selected place (including D-11.4 ancestor inheritance,
-  // already resolved server-side into the flat `storagePlaceIds` set) is a
-  // storage place.
-  const isStoragePlace = $derived(placeId !== null && storagePlaceIds.has(placeId));
 
   // GAP-12-05/A2 (Plan 12-12): the target printer's full DTO (deviceName +
   // ipAddress), populated by the lookup $effect below. Drives
@@ -815,11 +772,6 @@
         {:else if op === 'install'}
           <span class="field-hint">Укажите рабочее место или кабинет (не склад)</span>
         {/if}
-        {#if isStoragePlace}
-          <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
-            Перевести устройство в статус «На складе»
-          </Checkbox>
-        {/if}
       </div>
     {:else if op === 'return_to_stock' || op === 'from_refill'}
       <!-- Состояние (заряда — для картриджей; для фотобарабанов — состояние) -->
@@ -845,11 +797,6 @@
           <span class="field-error">{placeError}</span>
         {:else if op === 'return_to_stock'}
           <span class="field-hint">Укажите склад или место хранения</span>
-        {/if}
-        {#if isStoragePlace}
-          <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
-            Перевести устройство в статус «На складе»
-          </Checkbox>
         {/if}
       </div>
 

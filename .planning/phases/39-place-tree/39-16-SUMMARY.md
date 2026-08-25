@@ -132,10 +132,64 @@ None — no external service configuration required.
 Cartridges are now the third (after devices, per Plan 15) fully `place_id`/`PlacePicker`-wired UI-facing entity in this phase — form, all 5 lifecycle operations, detail panel, list row, and list header all speak `place_id`/`full_path` with zero freeform-`location` surfaces remaining anywhere in `ui/src/features/cartridges/`. `PlacePicker`'s injection-prop contract from Plan 13 held up unmodified for both new real consumers (`CartridgeFormBody`, `OperationModal` x3 usages) — no changes to `PlacePicker.svelte` itself were needed, consistent with Plan 15's own finding. `svelte-check` error count dropped from 26 (baseline before this plan) to 14 (all in `acts/`, `PrinterDetail.svelte`, `PrinterSelect.svelte`, `GroupedPrinterSelect.svelte` — Plans 17/18's declared territory, zero new errors introduced by this plan, confirmed via `git stash` before/after comparison). Runtime behavior (PlacePicker's actual open/select/clear interaction inside the form/modal, D-11.3 checkbox visibility/default-checked live in a real webview, Install-prefill from a real printer's place) is **UNVERIFIED** per project convention (svelte-check/eslint/build are compile/lint gates, not runtime verification) — deferred to Plan 20/21's batched UAT pass per `deferred-items.md`. **Flag for Plans 17/18:** re-verify whether their own D-11.3 checkbox implementations (devices/acts, which have a real device-status field per D-11 point 3, unlike cartridges) need to actually wire a payload field — this plan's cartridge-side checkbox does not, and should not be used as a template for that decision.
 
 ---
+
+## Amendment (2026-08-25) — D-11.3 checkbox moved off cartridges, onto devices
+
+**This plan's own "Flag for Plans 17/18" above turned out to be premature — Plans 17/18
+never actually re-verified it, and Plan 15 (devices, which DOES have a real status field
+per D-11 point 3) never implemented D-11.3 at all.** A cross-plan defect review caught both
+halves of the mismatch simultaneously: this plan's `OperationModal.svelte` checkbox
+(cartridges) rendered on the wrong entity with the literal copy "Перевести **устройство** в
+статус «На складе»" inside a **cartridge** modal, with zero payload effect (as this plan's
+own Issues Encountered section already documented, informational-only by design); meanwhile
+`ui/src/features/devices/DeviceFormBody.svelte` (Plan 15's surface) had no D-11.3
+implementation whatsoever.
+
+**Fixed as a direct follow-up, same day, committed atomically:**
+
+- **`OperationModal.svelte`:** removed the checkbox from both render sites (install/to_refill
+  and return_to_stock/from_refill blocks) and all of its now-fully-dead supporting state —
+  `storagePlaceIds` ($state Set), `isStoragePlace` ($derived), `storageStatusSuggested`
+  ($state boolean), the `cartridge_storage_place_ids`-fetching `$effect` (fired once per
+  modal open), plus the now-unused `Checkbox` and `apiCall` imports. Verified via `grep` that
+  none of these identifiers had any other usage in the file before deleting them — in
+  particular, `storagePlaceIds`/`isStoragePlace` were checked for a possible D-11.4
+  "Возврат на склад → складское место" default-place prefill use (per this task's own
+  caution) and confirmed to have none; that half of D-13's prefill promise (Install →
+  printer's place IS implemented; Возврат на склад → storage place default is NOT) remains
+  unimplemented in this file — a pre-existing gap, not something this fix caused or is
+  fixing, noted in `deferred-items.md` rather than silently addressed here.
+- **`DeviceFormBody.svelte`:** added the D-11.3 checkbox to the Место field block, gated on
+  the same `cartridge_storage_place_ids` command (confirmed generic/place-tree-derived, not
+  cartridge-specific, via `PlaceRepo::list_storage_place_ids` in
+  `trackly-infra/src/repos/places_sqlite.rs` — reused rather than adding a new,
+  properly-named backend command, to keep this a same-day defect fix rather than a rename
+  refactor). Checking the box (default-checked, per D-11.3's literal wording) sets the form's
+  own `statusId` state to `'1'` — confirmed against `device_service.rs::resolve_status_id`/
+  `status_id_to_name` that `1` really is the seed "На складе" status, not assumed from the
+  frontend's own `STATUSES` display array alone — which flows directly into the real
+  `DeviceNew.status_id`/`DevicePatch.status_id` payload fields on submit. Unlike the
+  cartridge checkbox, this one has an actual, verified backend effect.
+
+**Verification:** `pnpm --dir ui run svelte-check` — 274 files / 14 errors / 54 warnings /
+21 files with problems, identical before (`git checkout --` on the two touched files) and
+after (`git apply` restore) this fix — zero new errors. `pnpm --dir ui exec eslint` on both
+touched files — clean, zero output. `pnpm --dir ui build` — succeeds (pre-existing warnings
+only, none newly introduced). No `.rs` files were touched by this fix (reused an existing,
+already-tested Tauri/HTTP command), so `cargo test` was not re-run for this amendment.
+**Runtime is UNVERIFIED** — both halves (checkbox correctly absent from cartridges, checkbox
+correctly present + functional on devices) added to `deferred-items.md`'s batched UAT
+checklist under "D-11.3 cross-plan fix (post-Plan-16)".
+
+---
 *Phase: 39-place-tree*
 *Completed: 2026-08-25*
+*Amended: 2026-08-25 — D-11.3 checkbox relocated cartridges → devices (see Amendment above)*
 
 ## Self-Check: PASSED
 
 All 7 modified source files confirmed present on disk, plus this SUMMARY. All four task commit
-hashes (`ca0f0601`, `9f0c1f03`, `7e4fe5fb`, `bf588882`) confirmed present in `git log`.
+hashes (`ca0f0601`, `9f0c1f03`, `7e4fe5fb`, `bf588882`) confirmed present in `git log`. The
+amendment above adds one more commit (D-11.3 relocation) touching
+`ui/src/features/cartridges/OperationModal.svelte` and
+`ui/src/features/devices/DeviceFormBody.svelte` — both confirmed present on disk.
