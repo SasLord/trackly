@@ -25,7 +25,6 @@
   }
 
   interface ReportFilter {
-    location_name?: string | null;
     status_id?: number | null;
     type_id?: number | null;
     model_id?: number | null;
@@ -33,7 +32,8 @@
     search?: string | null;
     date_from_utc?: number | null;
     date_to_utc?: number | null;
-    location_id?: number | null;
+    place_id?: number | null;
+    is_storage?: boolean | null;
     act_type?: string | null;
     request_category_filter?: string[] | null;
   }
@@ -46,7 +46,7 @@
     giver_name?: string | null;
     receiver_name?: string | null;
     handover_date_utc?: number | null;
-    location_name?: string | null;
+    place_path?: string | null;
     act_type?: string | null;
     device_name?: string | null;
     quantity?: number | null;
@@ -128,7 +128,7 @@
     { key: 'request_type_label', label: 'Тип' },
     { key: 'status_name', label: 'Статус' },
     { key: 'giver_name', label: 'Заявитель' },
-    { key: 'location_name', label: 'Принтер / Локация' },
+    { key: 'place_path', label: 'Место' },
   ];
 
   // Column definitions per report type
@@ -138,7 +138,7 @@
       { key: 'giver_name', label: 'Сдал' },
       { key: 'receiver_name', label: 'Принял' },
       { key: 'handover_date_utc', label: 'Дата' },
-      { key: 'location_name', label: 'Локация' },
+      { key: 'place_path', label: 'Место' },
       { key: 'device_name', label: 'Устройства' },
     ],
     returns: [
@@ -147,40 +147,40 @@
       { key: 'giver_name', label: 'Сдал' },
       { key: 'receiver_name', label: 'Принял' },
       { key: 'handover_date_utc', label: 'Дата' },
-      { key: 'location_name', label: 'Локация' },
+      { key: 'place_path', label: 'Место' },
     ],
     in_use: [
       { key: 'device_name', label: 'Наименование' },
-      { key: 'location_name', label: 'Расположение' },
+      { key: 'place_path', label: 'Место' },
       { key: 'status_name', label: 'Статус' },
     ],
     in_stock: [
       { key: 'device_name', label: 'Наименование' },
-      { key: 'location_name', label: 'Расположение' },
+      { key: 'place_path', label: 'Место' },
       { key: 'status_name', label: 'Статус' },
     ],
     consumption: [
       { key: 'month_key', label: 'Месяц' },
       { key: 'model_label', label: 'Модель' },
       { key: 'code', label: 'Код картриджа' },
-      { key: 'location_name', label: 'Локация' },
+      { key: 'place_path', label: 'Место' },
     ],
     refills: [
       { key: 'month_key', label: 'Месяц' },
       { key: 'model_label', label: 'Модель' },
       { key: 'code', label: 'Код картриджа' },
-      { key: 'location_name', label: 'Локация' },
+      { key: 'place_path', label: 'Место' },
     ],
     cartridge_in_use: [
       { key: 'code', label: 'Код' },
       { key: 'model_label', label: 'Модель' },
-      { key: 'location_name', label: 'Расположение' },
+      { key: 'place_path', label: 'Место' },
       { key: 'status_name', label: 'Статус' },
     ],
     cartridge_in_stock: [
       { key: 'code', label: 'Код' },
       { key: 'model_label', label: 'Модель' },
-      { key: 'location_name', label: 'Расположение' },
+      { key: 'place_path', label: 'Место' },
       { key: 'status_name', label: 'Статус' },
     ],
     all: REQUEST_COLUMNS,
@@ -240,7 +240,6 @@
   // ---------------------------------------------------------------------------
   // Filter dropdown data
   // ---------------------------------------------------------------------------
-  let filterLocations = $state<string[]>([]);
   let filterDeviceTypes = $state<Array<{ id: number; name: string }>>([
     { id: 1, name: 'Устройство' },
     { id: 2, name: 'Расходник' },
@@ -449,14 +448,6 @@
   // onMount: load dynamic filter data
   // ---------------------------------------------------------------------------
   onMount(async () => {
-    // Load locations — locations_autocomplete returns string[] (location names)
-    try {
-      const locs = await apiCall<string[]>('locations_autocomplete', { prefix: '' });
-      filterLocations = locs;
-    } catch {
-      // Non-fatal; filter shows empty list
-    }
-
     // Load cartridge models — used for model filter and color derivation
     try {
       const models = await apiCall<CartridgeModelDto[]>('cartridge_models_list', {});
@@ -514,13 +505,13 @@
       <ReportFilters
         reportDomain={activeDomain}
         reportType={activeReport}
-        locationName={filter.location_name ?? null}
+        placeId={filter.place_id ?? null}
+        isStorage={filter.is_storage ?? null}
         statusId={filter.status_id ?? null}
         typeId={filter.type_id ?? null}
         modelId={filter.model_id ?? null}
         color={filter.color ?? null}
         search={filter.search ?? ''}
-        locations={filterLocations}
         deviceTypes={filterDeviceTypes}
         cartridgeModels={filterCartridgeModels}
         cartridgeStatuses={filterCartridgeStatuses}
