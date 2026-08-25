@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-25T04:43:10.889Z"
+last_updated: "2026-08-25T06:52:46.366Z"
 last_activity: 2026-08-25
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 0
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39 (place-tree) — EXECUTING
-Plan: 20 of 22
+Plan: 21 of 22
 Status: Ready to execute
 Last activity: 2026-08-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -326,6 +326,7 @@ Last activity: 2026-08-25
 | Phase 39 P16 | 35min | 4 tasks | 7 files |
 | Phase 39 P17 | 35min | 4 tasks | 6 files |
 | Phase 39 P18 | 55min | 4 tasks | 6 files |
+| Phase 39 P14 | 65min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -815,6 +816,8 @@ Recent decisions affecting current work:
 - [Phase 39]: Plan 17: D-11.1 quick-pick реализован как chip-строка над PlacePicker в ReturnModal.svelte (не пин/приоритет внутри самого контрола, PlacePicker не менялся); D-11.3 checkbox НЕ добавлен ни на одну act-поверхность — принадлежит только устройствам (см. Plan 16 amendment)
 - [Phase ?]: 39-18: D-26 short-path/tooltip display implemented in ReportTable.svelte (the actual cell renderer), not ReportsPage.svelte where the plan's task text placed it
 - [Phase ?]: 39-18: ReportsPage.svelte's filter-state ReportFilter drops location_name entirely rather than renaming to place_path (semantically nonsensical on a filter-parameter type); location_id renamed to place_id as instructed
+- [Phase 39]: PlaceMoveModal defaultParentId/targetChosen fix — Rule 1 bug fix: null selectedParentId could not distinguish root-chosen from unfilled, blocking D-03 root-move; fixed with explicit targetChosen boolean, needed for Plan 14's drag-drop root dropzone
+- [Phase 39]: PlaceTree fetches whole tree once, counters lazy per visible node — T-39-14-02 confirms ~300 rows makes places_list_all trivial; D-25 content counters use places_subtree_stats lazily per visible node, cached, to avoid 300 eager round-trips
 
 ### Pending Todos
 
@@ -997,8 +1000,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-25T04:43:08.000Z
-Stopped at: Completed 39-17-PLAN.md
+Last session: 2026-08-25T06:52:46.357Z
+Stopped at: Completed 39-14-PLAN.md
 Resume file: 
 
 None

@@ -322,3 +322,112 @@ mounted, you MUST convert these to `$derived`/`$effect` and say so.
 
 Add to the batched UAT pass: open rename on node A, close, open rename on node B — the field
 must show B's name, not A's.
+
+## Plan 14 — PlaceTree/PlaceTreeNode runtime verification NOT performed
+
+Only `svelte-check` (0 errors, 56 warnings — 2 new, both the accepted
+`state_referenced_locally` pattern on `PlaceMoveModal.svelte`'s new
+`defaultParentId` prop), `eslint` (0 problems after adding the missing
+`DragEvent` browser global to `eslint.config.js`), `node scripts/check-tokens.mjs`
+/`check-contrast.mjs`/`check-focus-outline.mjs` (all PASS), and `pnpm --dir ui build`
+ran on the frontend. Per this plan's own `<verification>` block, full interactive
+verification (keyboard, drag-drop, role gating, Tauri + LAN browser parity) is
+explicitly deferred to Plan 20's end-of-wave checkpoint, once the right panel
+exists to complete the screen. Nothing below has been exercised in a real webview:
+
+**Routing / sidebar / master-detail shell (Task 1):**
+1. As Admin, sidebar shows "Места" immediately after "Карта", before the first
+   divider; navigating to it renders PageHeader "Места" + primary "Создать место".
+2. As Manager, sidebar shows "Места" too, but with NO "Создать место" button.
+3. As Employee, "Места" does not appear in the sidebar at all, and `#/places`
+   is not directly reachable (falls through to AccessDenied per the employee
+   route table).
+4. Panels are 35%/65%, each scrolls independently (app-shell `.content{overflow:
+   hidden}` convention) — resize the window narrower than 1099px, confirm the
+   380px/1fr fallback.
+5. `#/places?id=<some place id>` typed directly into the address bar (or via
+   `window.location.hash =` in devtools) pre-selects and expands the tree to
+   that node on load.
+6. Selecting a different node in the tree updates the hash to `#/places?id=<new
+   id>` WITHOUT adding a new browser-history entry (back button should not step
+   through every node selection).
+
+**PlaceTree — structure/sort/counters (Task 2, D-05/D-25):**
+1. Root places render at `--depth: 0`; a grandchild renders at `--depth: 2`
+   with the correct cumulative left padding.
+2. Siblings with an explicit "Порядок" win over level/name; floor siblings
+   (level 0, negative, positive, no explicit order) sort numerically, not
+   alphabetically; siblings with neither sort naturally ("2 этаж" before
+   "10 этаж").
+3. A place with zero devices+cartridges (incl. nested) shows NO counter span
+   at all — not "0" — confirm by inspecting the DOM, not just visually.
+4. A place with content renders the correct SUM across its whole subtree in
+   `.tr-mono`, with `title="Всего с вложенными: N"`.
+5. Toggling "Показывать архивные" on/off reloads the tree and shows/hides
+   archived nodes (with the "Архив" badge, tertiary-colored name).
+6. "Обновить" button reloads the tree from a fresh `places_list_all` call.
+7. Empty-tree states render the correct Admin vs Manager copy (§14.2).
+
+**Keyboard/ARIA (§8.5, Фаза 30 parity — the phase's hardest-to-fake-with-compile-gates area):**
+1. Tab into the tree lands on exactly ONE row (roving tabindex); ↑/↓ move
+   among VISIBLE nodes only (collapsed subtrees skipped); Home/End jump to
+   first/last visible node.
+2. → expands a collapsed node with children, or moves into the first child if
+   already expanded; ← collapses an expanded node, or moves to the parent if
+   already collapsed/a leaf.
+3. Enter selects the focused node (right panel selection — currently just
+   flips the static placeholder's... actually nothing visible changes yet
+   since Plan 20 owns the real content; confirm via the hash update instead).
+4. F2 (Admin only) opens "Переименовать" for the focused node; Manager
+   pressing F2 does nothing.
+5. Typing into the search field switches to flat search-results mode (full
+   path per row, no indentation); Escape clears the search and returns to
+   tree mode, restoring the previous expand/select state.
+6. Screen reader (or the `aria-live="polite"` region's text, inspectable via
+   devtools) announces search-result counts, and move/archive/delete outcomes.
+
+**ActionMenu wiring (§8.3) and mutation modals (Task 2, ties into Plan 19):**
+1. "Переименовать" opens `PlaceFormModal` in rename mode for the correct node
+   (verify against the mount-contract regression noted above — this is the
+   FIRST real consumer of that contract).
+2. "Создать вложенное место" opens create mode with the parent pre-set to the
+   clicked node; after save, the tree reloads AND auto-expands+selects+
+   scrolls to the new node.
+3. "Переместить в…" opens `PlaceMoveModal` with NOTHING pre-selected — submit
+   stays disabled until a target is picked via `PlacePicker`.
+4. "Архивировать"/"Вернуть из архива" (label flips correctly per node state)
+   opens the inline confirm with the exact §11.4 copy; submit calls the
+   correct one of `places_archive`/`places_unarchive`.
+5. "Удалить" opens the inline confirm (§11.5); deleting an EMPTY node
+   succeeds with toast "Место удалено"; deleting a NON-empty node replaces
+   the modal body with the server's literal D-14 message and swaps the
+   footer to "Показать содержимое" (selects the node, closes the modal) /
+   "Архивировать" (pivots straight into the archive confirm for the same
+   node) — "Удалить" itself must be gone from the footer in this state.
+6. "Показать содержимое" quick smoke: repeat the delete-blocked flow starting
+   from a node whose PARENT is currently collapsed — confirm selection still
+   works (Plan 20 will render real content; this plan only needs the
+   selection/hash side-effect to fire correctly).
+
+**Drag-n-drop (§8.4/D-03/D-21 — Admin only, native HTML5 DnD):**
+1. As Manager, rows are NOT draggable at all (no drag ghost appears).
+2. As Admin, dragging a row over an INVALID target (itself, or a descendant)
+   shows the danger/no-drop styling and the drop is ignored (no modal opens).
+3. Dragging onto a VALID target shows the accent-soft/inset-ring styling;
+   dropping opens `PlaceMoveModal` with that target ALREADY selected as the
+   destination (confirm the picker field shows the right full path
+   immediately, not empty) and "Переместить" already enabled — the modal
+   still shows the consequences callout and requires an explicit confirm
+   click (never a silent move).
+4. Starting a drag reveals the "В корень дерева" dashed drop zone at the
+   bottom of the list; dropping there opens `PlaceMoveModal` pre-filled for
+   root (confirm "Переместить" is enabled immediately here too — this is the
+   scenario the `defaultParentId`/`targetChosen` fix in this plan exists for;
+   before the fix this exact flow was unreachable).
+5. Canceling the pre-filled move modal (either path) performs NO mutation.
+
+**LAN browser parity:** `pnpm --dir ui build`, then repeat the keyboard and
+drag-drop checks above from a LAN browser tab — HTML5 DnD and
+`aria-activedescendant`-style composite-widget patterns are exactly the class
+of thing that can behave differently between WebView2/WKWebView and a real
+browser (per project convention: compile gates catch neither).
