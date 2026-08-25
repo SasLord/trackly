@@ -642,6 +642,10 @@
   // container has to do its own elementFromPoint hit-testing to know which
   // row (or the root dropzone) the pointer currently sits above.
   let draggingId = $state<number | null>(null);
+  // UAT прогон 6: pointer-события, в отличие от нативного HTML5 DnD, не рисуют
+  // полупрозрачный «призрак» перетаскиваемой строки — браузер делал это сам.
+  // Рисуем его вручную: плавающая копия имени, следующая за курсором.
+  let dragGhost = $state<{ label: string; x: number; y: number } | null>(null);
   let dragOverId = $state<number | null>(null);
   let overRootDropzone = $state(false);
 
@@ -672,6 +676,7 @@
     draggingId = null;
     dragOverId = null;
     overRootDropzone = false;
+    dragGhost = null;
   }
 
   function updateDropHitTest(clientX: number, clientY: number): void {
@@ -715,9 +720,16 @@
       if (Math.hypot(dx, dy) < DRAG_START_THRESHOLD_PX) return;
       pointerDragStarted = true;
       draggingId = pointerDragOriginId;
+      const dragged = placeById.get(pointerDragOriginId);
+      dragGhost = {
+        label: dragged?.name ?? '',
+        x: e.clientX,
+        y: e.clientY,
+      };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     }
     e.preventDefault();
+    if (dragGhost) dragGhost = { ...dragGhost, x: e.clientX, y: e.clientY };
     updateDropHitTest(e.clientX, e.clientY);
   }
 
@@ -876,6 +888,16 @@
 
   <div class="sr-only" aria-live="polite">{liveMessage}</div>
 </div>
+
+{#if dragGhost}
+  <div
+    class="drag-ghost"
+    aria-hidden="true"
+    style="transform: translate3d({dragGhost.x + 12}px, {dragGhost.y + 12}px, 0)"
+  >
+    {dragGhost.label}
+  </div>
+{/if}
 
 {#if formModal}
   <PlaceFormModal
@@ -1090,5 +1112,27 @@
     border-radius: var(--tr-radius-xs);
     font-size: var(--tr-font-size-body);
     color: var(--tr-danger);
+  }
+
+  // Плавающая копия перетаскиваемой строки (UAT прогон 6). pointer-events: none —
+  // иначе призрак попадал бы под document.elementFromPoint и ломал hit-test дропа.
+  .drag-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    max-width: 260px;
+    padding: var(--tr-space-2xs) var(--tr-space-sm);
+    border: 1px solid var(--tr-border-strong);
+    border-radius: var(--tr-radius-sm);
+    background: var(--tr-surface-raised);
+    color: var(--tr-text-primary);
+    font-size: var(--tr-font-size-body);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.75;
+    pointer-events: none;
+    box-shadow: var(--tr-elev-3);
   }
 </style>
