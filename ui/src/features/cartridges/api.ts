@@ -27,8 +27,8 @@ export const cartridges = {
 
   create: (payload: CartridgeCreateDto) => apiCall<CartridgeDto>('cartridges_create', { payload }),
 
-  update: (id: number, version: number, location: string | null, notes: string | null) =>
-    apiCall<CartridgeDto>('cartridges_update', { id, version, location, notes }),
+  update: (id: number, version: number, placeId: number | null, notes: string | null) =>
+    apiCall<CartridgeDto>('cartridges_update', { id, version, placeId, notes }),
 
   delete: (id: number, version: number) => apiCall<null>('cartridges_delete', { id, version }),
 
@@ -67,6 +67,4 @@ export const cartridges = {
   // Plan 13-05: field param removed — autocompletes from devices.name (D-06).
   suggestCompatPrinter: (prefix: string) =>
     apiCall<string[]>('cartridges_suggest_compat_printer', { prefix }),
-
-  suggestLocation: (prefix: string) => apiCall<string[]>('cartridges_suggest_location', { prefix }),
 };
