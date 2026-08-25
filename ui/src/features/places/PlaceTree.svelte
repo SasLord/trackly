@@ -729,8 +729,15 @@
 </script>
 
 <div class="place-tree-shell">
-  <div class="toolbar">
+  <!-- UAT gap 4 (2026-08-25): previously one cramped 36px row (search + checkbox +
+       button all inline) that read as a squeezed table header. Split into two
+       full-width rows — search on its own line, secondary controls below — each
+       with its own comfortable padding, still both OUTSIDE `.tree-body` (the
+       actual scrollable tree) at the same shell level as before. -->
+  <div class="toolbar-search">
     <Input value={searchQuery} placeholder="Поиск места" oninput={handleSearchInput} />
+  </div>
+  <div class="toolbar-actions">
     <Checkbox checked={showArchived} onchange={(c) => (showArchived = c)}
       >Показывать архивные</Checkbox
     >
@@ -915,19 +922,24 @@
     min-height: 0;
   }
 
-  .toolbar {
+  .toolbar-search {
     flex: none;
-    display: flex;
-    align-items: center;
-    gap: var(--tr-space-sm);
-    height: 36px;
     padding: var(--tr-space-sm) var(--tr-space-md);
     border-bottom: 1px solid var(--tr-border);
 
     :global(.input-wrap) {
-      flex: 1 1 auto;
-      min-width: 0;
+      width: 100%;
     }
+  }
+
+  .toolbar-actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tr-space-sm);
+    padding: var(--tr-space-xs) var(--tr-space-md);
+    border-bottom: 1px solid var(--tr-border);
   }
 
   .tree-body {
