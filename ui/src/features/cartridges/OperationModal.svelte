@@ -10,10 +10,12 @@
   import Select from '$lib/components/Select.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import PersonAutocomplete from '$lib/components/PersonAutocomplete.svelte';
-  import LocationAutocomplete from '$lib/components/LocationAutocomplete.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
+  import Checkbox from '$lib/components/Checkbox.svelte';
   import CartridgeSelect from '$lib/components/CartridgeSelect.svelte';
   import PrinterSelect from '$lib/components/PrinterSelect.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { apiCall } from '$lib/api/client';
   import { cartridges } from './api';
   import { printers } from '../printers/api';
   import type { CartridgeDto, CartridgeTransitionPayload, PrinterDto } from '../../bindings';
@@ -36,8 +38,6 @@
     preFillPrinterId?: number;
     /** Filter the request-centric cartridge picker to the request's model (D-02). */
     cartridgeModelId?: number;
-    /** Pre-fill «Расположение» from the request's printer location (D-05). */
-    prefillLocation?: string;
     /** Pre-fill «Кому отдал» from the requester's name (D-04). */
     prefillGivenToName?: string;
     /**
@@ -67,7 +67,6 @@
     cartridge,
     preFillPrinterId,
     cartridgeModelId,
-    prefillLocation,
     prefillGivenToName,
     suppressSuccessToast,
     onClose,
@@ -78,18 +77,28 @@
   let dateIso = $state(''); // ISO YYYY-MM-DD (DatePicker output)
   let givenByName = $state('');
   let givenToName = $state('');
-  let location = $state('');
-  // DEC-B (Round 5, WR-01 fix): tracks whether `location` currently holds a
-  // value auto-filled from the selected printer's deviceLocation (vs. typed by
-  // the operator). Lets a printer switch refresh the auto-fill while still
-  // never clobbering manual input.
-  let locationAutofilled = $state(false);
+  // Plan 16 (D-13): текстовое «Расположение» заменено на PlacePicker/place_id.
+  let placeId = $state<number | null>(null);
+  // DEC-B (Round 5, WR-01 fix) — carried over from the pre-Plan-16 free-text field: tracks
+  // whether `placeId` currently holds a value auto-filled from the selected
+  // printer's own place (vs. picked by the operator). Lets a printer switch
+  // refresh the auto-fill while still never clobbering manual selection.
+  let placeAutofilled = $state(false);
   let stateId = $state(3); // default: Пустой (D-Op-Fields-01)
   let notes = $state('');
   let submitting = $state(false);
 
+  // D-11.3: storage-place suggestion checkbox. `storagePlaceIds` is fetched
+  // once per modal open (Plan 09's `cartridge_storage_place_ids` read, D-11.4
+  // ancestor inheritance already resolved server-side); `isStoragePlace`
+  // gates whether the checkbox is shown at all; `storageStatusSuggested`
+  // is the checkbox's own checked state (default checked, no forced change —
+  // D-10).
+  let storagePlaceIds = $state<Set<number>>(new Set());
+  let storageStatusSuggested = $state(true);
+
   // Validation errors
-  let locationError = $state('');
+  let placeError = $state('');
   let givenByError = $state('');
   let givenToError = $state('');
 
@@ -106,13 +115,13 @@
   // D-16 (Phase 12 gap closure GAP-12-03, Plan 12-09): when installing into a
   // printer that already has a cartridge «В работе», show a «Предыдущий
   // картридж» block — read-only code+model, editable charge state (default
-  // Пустой/3) and location (default empty) — both flow into the same
+  // Пустой/3) and place (default none) — both flow into the same
   // transition() call via printer_device_id/previous_cartridge_state_id/
-  // previous_cartridge_location, no second API request (D-16 success
-  // criterion: single transition() call).
+  // previous_cartridge_place_id (Plan 16 rename, D-13), no second API request
+  // (D-16 success criterion: single transition() call).
   let previousCartridge = $state<CartridgeDto | null>(null);
   let previousCartridgeStateId = $state(3); // default: Пустой
-  let previousCartridgeLocation = $state('');
+  let previousCartridgePlaceId = $state<number | null>(null);
 
   const effectiveCartridge = $derived(cartridge ?? selectedCartridge);
 
@@ -137,21 +146,53 @@
       dateIso = `${y}-${m}-${d}`;
       givenByName = '';
       givenToName = prefillGivenToName ?? '';
-      location = prefillLocation ?? '';
-      locationAutofilled = false;
+      placeId = null;
+      placeAutofilled = false;
       notes = '';
       stateId = defaultStateId;
       selectedCartridge = null;
       selectedPrinterId = undefined;
       previousCartridge = null;
       previousCartridgeStateId = 3;
-      previousCartridgeLocation = '';
+      previousCartridgePlaceId = null;
       printerContext = null;
-      locationError = '';
+      placeError = '';
       givenByError = '';
       givenToError = '';
+      storageStatusSuggested = true;
     }
   });
+
+  // D-11.4/D-11.3: fetch the storage-place-id set once per modal open (not
+  // once per component mount) — `open` toggles across the same mounted
+  // instance for request-centric flows (RequestDetail keeps the modal
+  // mounted). Cleared when the modal closes so a stale set never lingers.
+  $effect(() => {
+    if (!open) {
+      storagePlaceIds = new Set();
+      return;
+    }
+    let cancelled = false;
+    apiCall<number[]>('cartridge_storage_place_ids', {})
+      .then((ids) => {
+        if (cancelled) return;
+        storagePlaceIds = new Set(ids);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fail-safe: a failed lookup just hides the suggestion checkbox —
+        // never blocks the operation itself.
+        storagePlaceIds = new Set();
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // D-11.3: the selected place (including D-11.4 ancestor inheritance,
+  // already resolved server-side into the flat `storagePlaceIds` set) is a
+  // storage place.
+  const isStoragePlace = $derived(placeId !== null && storagePlaceIds.has(placeId));
 
   // GAP-12-05/A2 (Plan 12-12): the target printer's full DTO (deviceName +
   // ipAddress), populated by the lookup $effect below. Drives
@@ -234,11 +275,14 @@
       previousCartridge = null;
       printerContext = null;
       // DEC-B/WR-01: deselecting the printer ("Без привязки") drops an
-      // auto-filled location so a stale value isn't recorded; manual input
-      // (locationAutofilled === false) is left untouched.
-      if (preFillPrinterId === undefined && locationAutofilled) {
-        location = '';
-        locationAutofilled = false;
+      // auto-filled place so a stale value isn't recorded; manual selection
+      // (placeAutofilled === false) is left untouched. Only relevant to the
+      // cartridge-centric selector below — the request-centric flow's
+      // preFillPrinterId is fixed for the modal's lifetime and never
+      // "deselects".
+      if (preFillPrinterId === undefined && placeAutofilled) {
+        placeId = null;
+        placeAutofilled = false;
       }
       return;
     }
@@ -252,20 +296,20 @@
       .then((printer) => {
         if (cancelled) return null;
         printerContext = printer;
-        // DEC-B (Phase 12 Round 5): in the cartridge-centric entry (no
-        // incoming preFillPrinterId — the operator just picked a printer via
-        // the selector below), auto-fill «Расположение» from the printer's
-        // device location. Never clobbers manual operator input: fills while
-        // the field is empty OR still holds a prior auto-fill (WR-01 — so
-        // switching printers refreshes the location instead of keeping the
-        // first printer's value).
-        if (
-          preFillPrinterId === undefined &&
-          printer.deviceLocation &&
-          (!location.trim() || locationAutofilled)
-        ) {
-          location = printer.deviceLocation;
-          locationAutofilled = true;
+        // D-13: Install always prefills «Место» from the target printer's
+        // own place (devices.place_id) — applies to BOTH the request-centric
+        // flow (fixed preFillPrinterId) and the cartridge-centric flow
+        // (selectedPrinterId, changeable via PrinterSelect below); no
+        // remaining special-case per flow (Plan 16 generalizes the old
+        // cartridge-centric-only DEC-B autofill, which used to rely on a
+        // separate `prefillLocation` string prop for the request-centric
+        // path — removed, this single effect now covers both). Never
+        // clobbers manual operator selection: fills while the field is empty
+        // OR still holds a prior auto-fill (WR-01 — so switching printers
+        // refreshes the place instead of keeping the first printer's value).
+        if (printer.devicePlaceId !== null && (placeId === null || placeAutofilled)) {
+          placeId = printer.devicePlaceId;
+          placeAutofilled = true;
         }
         if (printer.currentCartridgeId === null) {
           previousCartridge = null;
@@ -498,10 +542,10 @@
         date_utc: isoToUnix(dateIso),
         given_by_name: givenByName.trim(),
         given_to_name: givenToName.trim(),
-        location: location.trim(),
+        place_id: placeId,
         printer_device_id: effectivePrinterId ?? null,
         previous_cartridge_state_id: previousCartridge !== null ? previousCartridgeStateId : null,
-        previous_cartridge_location: previousCartridge !== null ? previousCartridgeLocation : null,
+        previous_cartridge_place_id: previousCartridge !== null ? previousCartridgePlaceId : null,
       };
     } else if (op === 'return_to_stock') {
       return {
@@ -509,7 +553,7 @@
         cartridge_id: id,
         version,
         state_id: stateId,
-        location: location.trim(),
+        place_id: placeId,
         notes: notes.trim() || null,
       };
     } else if (op === 'to_refill') {
@@ -520,7 +564,7 @@
         date_utc: isoToUnix(dateIso),
         given_by_name: givenByName.trim(),
         given_to_name: givenToName.trim(),
-        location: location.trim(),
+        place_id: placeId,
       };
     } else if (op === 'from_refill') {
       return {
@@ -528,7 +572,7 @@
         cartridge_id: id,
         version,
         state_id: stateId,
-        location: location.trim(),
+        place_id: placeId,
         notes: notes.trim() || null,
       };
     } else {
@@ -545,7 +589,7 @@
 
   function validate(): boolean {
     let valid = true;
-    locationError = '';
+    placeError = '';
     givenByError = '';
     givenToError = '';
 
@@ -558,13 +602,13 @@
         givenToError = 'Заполните это поле';
         valid = false;
       }
-      if (!location.trim()) {
-        locationError = 'Заполните это поле';
+      if (placeId === null) {
+        placeError = 'Заполните это поле';
         valid = false;
       }
     } else if (op === 'return_to_stock' || op === 'from_refill') {
-      if (!location.trim()) {
-        locationError = 'Заполните это поле';
+      if (placeId === null) {
+        placeError = 'Заполните это поле';
         valid = false;
       }
     }
@@ -681,7 +725,7 @@
       {#if previousCartridge}
         <!-- D-16 (Plan 12-09): previous-cartridge block — shown only when the
              target printer already has a cartridge «В работе». Read-only
-             code+model; editable charge state/location flow into the SAME
+             code+model; editable charge state/place flow into the SAME
              transition() call via buildPayload(), no second request. -->
         <div class="field field-full previous-cartridge-block">
           <p class="field-hint">
@@ -708,12 +752,11 @@
               <option value={String(opt.value)}>{opt.label}</option>
             {/each}
           </Select>
-          <label class="label" for="op-prev-location">Расположение (предыдущий картридж)</label>
-          <LocationAutocomplete
-            value={previousCartridgeLocation}
-            placeholder="Расположение"
-            id="op-prev-location"
-            onChange={(v) => (previousCartridgeLocation = v)}
+          <label class="label" for="op-prev-place">Место (предыдущий картридж)</label>
+          <PlacePicker
+            value={previousCartridgePlaceId}
+            id="op-prev-place"
+            onChange={(id) => (previousCartridgePlaceId = id)}
           />
         </div>
       {/if}
@@ -753,25 +796,29 @@
         {/if}
       </div>
 
-      <!-- Расположение -->
+      <!-- Место -->
       <div class="field">
-        <label class="label" for="op-location">Расположение</label>
-        <LocationAutocomplete
-          value={location}
-          placeholder="Расположение"
-          id="op-location"
-          invalid={!!locationError}
-          onChange={(v) => {
-            location = v;
-            // WR-01: a manual edit unmarks the auto-fill so a later printer
-            // switch will not overwrite what the operator typed.
-            locationAutofilled = false;
+        <label class="label" for="op-place">Место</label>
+        <PlacePicker
+          value={placeId}
+          id="op-place"
+          invalid={!!placeError}
+          onChange={(id) => {
+            placeId = id;
+            // WR-01: a manual selection unmarks the auto-fill so a later
+            // printer switch will not overwrite what the operator picked.
+            placeAutofilled = false;
           }}
         />
-        {#if locationError}
-          <span class="field-error">{locationError}</span>
+        {#if placeError}
+          <span class="field-error">{placeError}</span>
         {:else if op === 'install'}
           <span class="field-hint">Укажите рабочее место или кабинет (не склад)</span>
+        {/if}
+        {#if isStoragePlace}
+          <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
+            Перевести устройство в статус «На складе»
+          </Checkbox>
         {/if}
       </div>
     {:else if op === 'return_to_stock' || op === 'from_refill'}
@@ -785,20 +832,24 @@
         </Select>
       </div>
 
-      <!-- Расположение -->
+      <!-- Место -->
       <div class="field">
-        <label class="label" for="op-location">Расположение</label>
-        <LocationAutocomplete
-          value={location}
-          placeholder="Расположение"
-          id="op-location"
-          invalid={!!locationError}
-          onChange={(v) => (location = v)}
+        <label class="label" for="op-place">Место</label>
+        <PlacePicker
+          value={placeId}
+          id="op-place"
+          invalid={!!placeError}
+          onChange={(id) => (placeId = id)}
         />
-        {#if locationError}
-          <span class="field-error">{locationError}</span>
+        {#if placeError}
+          <span class="field-error">{placeError}</span>
         {:else if op === 'return_to_stock'}
           <span class="field-hint">Укажите склад или место хранения</span>
+        {/if}
+        {#if isStoragePlace}
+          <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
+            Перевести устройство в статус «На складе»
+          </Checkbox>
         {/if}
       </div>
 

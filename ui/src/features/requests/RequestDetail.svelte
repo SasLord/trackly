@@ -727,7 +727,6 @@
     cartridge={null}
     preFillPrinterId={request.printerDeviceId ?? undefined}
     cartridgeModelId={request.cartridgeModelId ?? undefined}
-    prefillLocation={request.printerLocation ?? undefined}
     prefillGivenToName={request.requesterName ?? undefined}
     suppressSuccessToast={true}
     onClose={() => (operationModalOpen = false)}
