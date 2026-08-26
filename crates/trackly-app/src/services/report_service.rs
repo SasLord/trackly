@@ -1546,6 +1546,7 @@ fn query_cartridge_snapshot(
 /// exclusion of `ad_register` (REQ-06/T-09-11). Shared by all four
 /// `requests_*` report tabs — the tab distinguishes itself only by
 /// `status_filter` (VAD-01).
+#[allow(clippy::too_many_arguments)]
 fn query_requests_inner(
     conn: &rusqlite::Connection,
     ts_from: Option<i64>,

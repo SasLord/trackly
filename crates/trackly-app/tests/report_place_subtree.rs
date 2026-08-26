@@ -4,16 +4,22 @@
 //! вложено под ним (рекурсивный CTE `subtree` в `report_service.rs`), а не
 //! только строки с точным совпадением `place_id`.
 //!
-//! В `report_service.rs` этот фильтр реализован ЧЕТЫРЬМЯ независимыми
-//! построителями SQL (каждый со своей копией CTE), и все четыре достижимы
+//! В `report_service.rs` этот фильтр реализован ДЕСЯТЬЮ независимыми
+//! построителями SQL (каждый со своей копией CTE), и все десять достижимы
 //! через публичный API `ReportService`:
 //!
-//! | Построитель             | Публичный вход                                  |
-//! |-------------------------|-------------------------------------------------|
-//! | `query_acts_inner`      | `list_device_acts` / `list_device_returns`      |
-//! | `query_device_snapshot` | `list_device_in_stock` / `list_device_in_use`   |
-//! | `count_acts_inner`      | `get_report_counts("devices")` → `acts`/`returns` |
-//! | `count_device_snapshot` | `get_report_counts("devices")` → `in_use`/`in_stock` |
+//! | Построитель                    | Публичный вход                                       |
+//! |---------------------------------|-------------------------------------------------------|
+//! | `query_acts_inner`              | `list_device_acts` / `list_device_returns`            |
+//! | `query_device_snapshot`         | `list_device_in_stock` / `list_device_in_use`         |
+//! | `count_acts_inner`              | `get_report_counts("devices")` → `acts`/`returns`     |
+//! | `count_device_snapshot`         | `get_report_counts("devices")` → `in_use`/`in_stock`  |
+//! | `query_cartridge_audit`         | `list_cartridge_consumption` / `list_cartridge_refills` |
+//! | `query_cartridge_snapshot`      | `list_cartridge_in_use` / `list_cartridge_in_stock`   |
+//! | `count_cartridge_audit_inner`   | `get_report_counts("cartridges")` → `consumption`/`refills` |
+//! | `count_cartridge_snapshot_inner`| `get_report_counts("cartridges")` → `in_use`/`in_stock` |
+//! | `query_requests_inner`          | `list_requests_all`/`open`/`in_progress`/`completed`  |
+//! | `count_requests_inner`          | `get_report_counts("requests")` → `all`/`open`/`in_progress`/`completed` |
 //!
 //! Каждый тест проверяет ДВЕ стороны контракта:
 //!   1. строка на самом глубоком уровне («Здание А / 2 этаж / Кабинет 214»)
@@ -181,6 +187,140 @@ fn count_for(counts: &trackly_app::dto::reports::ReportCountsDto, key: &str) -> 
         .find(|e| e.key == key)
         .unwrap_or_else(|| panic!("no count entry for key {key}: {:?}", counts.counts))
         .count
+}
+
+async fn seed_cartridge_model(writer: &Arc<WriterHandle>, brand: &str, model: &str) -> i64 {
+    let brand = brand.to_string();
+    let model = model.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridge_models \
+                 (brand, model, created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, ?3, ?3, 1)",
+                params![brand, model, NOW],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed cartridge model")
+}
+
+/// `status_id = 1` = «На складе» (сид V001, тот же id, что и у device_statuses).
+async fn seed_cartridge(
+    writer: &Arc<WriterHandle>,
+    code: &str,
+    model_id: i64,
+    place_id: i64,
+) -> i64 {
+    let code = code.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO cartridges \
+                 (code, model_id, status_id, place_id, created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, 1, ?3, ?4, ?4, 1)",
+                params![code, model_id, place_id, NOW],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed cartridge")
+}
+
+/// `status_id = 2` = «В работе» (сид V001) — moves a cartridge out of the
+/// «На складе» snapshot bucket without touching its place.
+async fn set_cartridge_in_use(writer: &Arc<WriterHandle>, cartridge_id: i64) {
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "UPDATE cartridges SET status_id = 2 WHERE id = ?1",
+                params![cartridge_id],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("set cartridge in_use");
+}
+
+async fn seed_audit_log(
+    writer: &Arc<WriterHandle>,
+    entity_type: &str,
+    entity_id: i64,
+    action: &str,
+    created_at_utc: i64,
+) {
+    let entity_type = entity_type.to_string();
+    let action = action.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO audit_log (entity_type, entity_id, action, created_at_utc) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![entity_type, entity_id, action, created_at_utc],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed audit log");
+}
+
+/// Mirrors `seed_employee_with_request`'s user INSERT shape from
+/// `tests/dashboard_widgets.rs` (separate integration test binary, cannot
+/// import directly).
+async fn seed_requester(writer: &Arc<WriterHandle>, login: &str, full_name: &str) -> i64 {
+    let login = login.to_string();
+    let full_name = full_name.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, NULL, 'employee', 1, 0, ?3, ?3, 1)",
+                params![login, full_name, NOW],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed requester")
+}
+
+async fn seed_request(
+    writer: &Arc<WriterHandle>,
+    request_type: &str,
+    status: &str,
+    requested_by_user_id: i64,
+    printer_device_id: Option<i64>,
+    created_at_utc: i64,
+) -> i64 {
+    let request_type = request_type.to_string();
+    let status = status.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO requests \
+                 (request_type, status, requested_by_user_id, printer_device_id, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5, 1)",
+                params![
+                    request_type,
+                    status,
+                    requested_by_user_id,
+                    printer_device_id,
+                    created_at_utc
+                ],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed request")
 }
 
 // ---------------------------------------------------------------------------
@@ -498,6 +638,407 @@ async fn place_filter_walks_more_than_one_level_of_nesting() {
                 Some("Здание А / 2 этаж / Кабинет 214 / Шкаф 3")
             );
         }
+    })
+    .await
+    .expect("timeout");
+}
+
+// ---------------------------------------------------------------------------
+// 5. query_cartridge_audit — list_cartridge_consumption
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cartridge_consumption_report_root_place_filter_and_excludes_sibling() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let model = seed_cartridge_model(&ctx.writer, "HP", "CB435A").await;
+        let cart_a = seed_cartridge(&ctx.writer, "C-000001", model, tree.room_a).await;
+        let cart_b = seed_cartridge(&ctx.writer, "C-000002", model, tree.room_b).await;
+        seed_audit_log(&ctx.writer, "cartridge", cart_a, "custom:install", NOW).await;
+        seed_audit_log(&ctx.writer, "cartridge", cart_b, "custom:install", NOW).await;
+
+        let all = ctx
+            .reports
+            .list_cartridge_consumption(ReportFilter::default(), wide_period())
+            .await
+            .expect("list all consumption");
+        assert_eq!(all.rows.len(), 2, "фикстура: должно быть 2 строки расхода");
+
+        let filtered_a = ctx
+            .reports
+            .list_cartridge_consumption(
+                ReportFilter {
+                    place_id: Some(tree.building_a),
+                    ..Default::default()
+                },
+                wide_period(),
+            )
+            .await
+            .expect("consumption filtered by root A");
+        assert_eq!(
+            filtered_a.rows.len(),
+            1,
+            "фильтр по «Здание А» должен вернуть РОВНО 1 строку (вложенный \
+             картридж из «Кабинет 214»): {filtered_a:?}"
+        );
+        assert_eq!(
+            filtered_a.rows[0].place_path.as_deref(),
+            Some("Здание А / 2 этаж / Кабинет 214")
+        );
+
+        let filtered_b = ctx
+            .reports
+            .list_cartridge_consumption(
+                ReportFilter {
+                    place_id: Some(tree.building_b),
+                    ..Default::default()
+                },
+                wide_period(),
+            )
+            .await
+            .expect("consumption filtered by root B");
+        assert_eq!(filtered_b.rows.len(), 1, "«Корпус Б» → ровно 1 строка");
+        assert!(
+            filtered_b.rows.iter().all(|r| !r
+                .place_path
+                .as_deref()
+                .unwrap_or("")
+                .contains("Здание А")),
+            "поддерево «Корпус Б» не должно захватывать строку из «Здание А»: {filtered_b:?}"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+// ---------------------------------------------------------------------------
+// 6. query_cartridge_snapshot — list_cartridge_in_stock
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cartridge_snapshot_root_place_filter_and_excludes_sibling() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let model = seed_cartridge_model(&ctx.writer, "HP", "CB435A").await;
+        seed_cartridge(&ctx.writer, "C-000001", model, tree.room_a).await;
+        seed_cartridge(&ctx.writer, "C-000002", model, tree.room_b).await;
+
+        let all = ctx
+            .reports
+            .list_cartridge_in_stock(ReportFilter::default())
+            .await
+            .expect("snapshot without filter");
+        assert_eq!(all.rows.len(), 2, "фикстура: 2 картриджа «На складе»");
+
+        let filtered_a = ctx
+            .reports
+            .list_cartridge_in_stock(ReportFilter {
+                place_id: Some(tree.building_a),
+                ..Default::default()
+            })
+            .await
+            .expect("snapshot filtered by root A");
+        assert_eq!(
+            filtered_a.rows.len(),
+            1,
+            "фильтр по «Здание А» должен вернуть вложенный картридж из \
+             «Кабинет 214» и только его: {filtered_a:?}"
+        );
+        assert_eq!(filtered_a.rows[0].code.as_deref(), Some("C-000001"));
+        assert_eq!(
+            filtered_a.rows[0].place_path.as_deref(),
+            Some("Здание А / 2 этаж / Кабинет 214")
+        );
+
+        let filtered_b = ctx
+            .reports
+            .list_cartridge_in_stock(ReportFilter {
+                place_id: Some(tree.building_b),
+                ..Default::default()
+            })
+            .await
+            .expect("snapshot filtered by root B");
+        assert_eq!(filtered_b.rows.len(), 1, "«Корпус Б» → ровно 1 картридж");
+        assert_eq!(filtered_b.rows[0].code.as_deref(), Some("C-000002"));
+    })
+    .await
+    .expect("timeout");
+}
+
+// ---------------------------------------------------------------------------
+// 7. count_cartridge_audit_inner + count_cartridge_snapshot_inner —
+//    get_report_counts("cartridges")
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_counts_cartridges_domain_place_filter_is_subtree_inclusive() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let model = seed_cartridge_model(&ctx.writer, "HP", "CB435A").await;
+
+        // Отдельная пара картриджей для "consumption" (со своим audit_log).
+        let consumption_a = seed_cartridge(&ctx.writer, "C-000001", model, tree.room_a).await;
+        let consumption_b = seed_cartridge(&ctx.writer, "C-000002", model, tree.room_b).await;
+        seed_audit_log(
+            &ctx.writer,
+            "cartridge",
+            consumption_a,
+            "custom:install",
+            NOW,
+        )
+        .await;
+        seed_audit_log(
+            &ctx.writer,
+            "cartridge",
+            consumption_b,
+            "custom:install",
+            NOW,
+        )
+        .await;
+        // Move the consumption pair to «В работе» so they drop out of the
+        // «На складе» snapshot bucket — otherwise both counts would double-count
+        // the same 2 cartridges (seed_cartridge defaults status_id=1).
+        set_cartridge_in_use(&ctx.writer, consumption_a).await;
+        set_cartridge_in_use(&ctx.writer, consumption_b).await;
+
+        // Отдельная пара картриджей для "in_stock" (БЕЗ audit_log — иначе
+        // пересечение состояний с consumption-парой).
+        seed_cartridge(&ctx.writer, "C-000003", model, tree.room_a).await;
+        seed_cartridge(&ctx.writer, "C-000004", model, tree.room_b).await;
+
+        let unfiltered = ctx
+            .reports
+            .get_report_counts("cartridges", ReportFilter::default(), wide_period(), false)
+            .await
+            .expect("counts without filter");
+        assert_eq!(
+            count_for(&unfiltered, "consumption"),
+            2,
+            "фикстура: 2 строки расхода"
+        );
+        assert_eq!(
+            count_for(&unfiltered, "in_stock"),
+            2,
+            "фикстура: 2 картриджа на складе"
+        );
+
+        let filtered_a = ctx
+            .reports
+            .get_report_counts(
+                "cartridges",
+                ReportFilter {
+                    place_id: Some(tree.building_a),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("counts filtered by root A");
+        assert_eq!(
+            count_for(&filtered_a, "consumption"),
+            1,
+            "count_cartridge_audit_inner: «Здание А» → 1 вложенная строка"
+        );
+        assert_eq!(
+            count_for(&filtered_a, "in_stock"),
+            1,
+            "count_cartridge_snapshot_inner: «Здание А» → 1 вложенный картридж"
+        );
+
+        let filtered_b = ctx
+            .reports
+            .get_report_counts(
+                "cartridges",
+                ReportFilter {
+                    place_id: Some(tree.building_b),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("counts filtered by root B");
+        assert_eq!(count_for(&filtered_b, "consumption"), 1);
+        assert_eq!(count_for(&filtered_b, "in_stock"), 1);
+    })
+    .await
+    .expect("timeout");
+}
+
+// ---------------------------------------------------------------------------
+// 8. query_requests_inner — list_requests_all
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn requests_report_root_place_filter_and_excludes_sibling() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let requester = seed_requester(&ctx.writer, "ivanov", "Иванов И.И.").await;
+        let printer_a = seed_device(&ctx.writer, "Принтер А-214", tree.room_a).await;
+        let printer_b = seed_device(&ctx.writer, "Принтер Б-101", tree.room_b).await;
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester,
+            Some(printer_a),
+            NOW,
+        )
+        .await;
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester,
+            Some(printer_b),
+            NOW,
+        )
+        .await;
+
+        let all = ctx
+            .reports
+            .list_requests_all(ReportFilter::default(), wide_period(), false)
+            .await
+            .expect("list all requests");
+        assert_eq!(all.rows.len(), 2, "фикстура: должно быть 2 заявки");
+
+        let filtered_a = ctx
+            .reports
+            .list_requests_all(
+                ReportFilter {
+                    place_id: Some(tree.building_a),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("requests filtered by root A");
+        assert_eq!(
+            filtered_a.rows.len(),
+            1,
+            "фильтр по «Здание А» (место принтера) должен вернуть РОВНО 1 \
+             заявку: {filtered_a:?}"
+        );
+        assert!(
+            filtered_a.rows[0]
+                .place_path
+                .as_deref()
+                .unwrap_or("")
+                .contains("Кабинет 214"),
+            "строка должна ссылаться на место принтера из «Кабинет 214»: {filtered_a:?}"
+        );
+
+        let filtered_b = ctx
+            .reports
+            .list_requests_all(
+                ReportFilter {
+                    place_id: Some(tree.building_b),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("requests filtered by root B");
+        assert_eq!(filtered_b.rows.len(), 1, "«Корпус Б» → ровно 1 заявка");
+        assert!(
+            !filtered_b.rows[0]
+                .place_path
+                .as_deref()
+                .unwrap_or("")
+                .contains("Здание А"),
+            "поддерево «Корпус Б» не должно захватывать заявку из «Здание А»: {filtered_b:?}"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+// ---------------------------------------------------------------------------
+// 9. count_requests_inner — get_report_counts("requests")
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_counts_requests_domain_place_filter_is_subtree_inclusive() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let requester = seed_requester(&ctx.writer, "petrov", "Петров П.П.").await;
+        let printer_a = seed_device(&ctx.writer, "Принтер А-214", tree.room_a).await;
+        let printer_b = seed_device(&ctx.writer, "Принтер Б-101", tree.room_b).await;
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester,
+            Some(printer_a),
+            NOW,
+        )
+        .await;
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester,
+            Some(printer_b),
+            NOW,
+        )
+        .await;
+
+        let unfiltered = ctx
+            .reports
+            .get_report_counts("requests", ReportFilter::default(), wide_period(), false)
+            .await
+            .expect("counts without filter");
+        assert_eq!(count_for(&unfiltered, "all"), 2, "фикстура: 2 заявки");
+        assert_eq!(count_for(&unfiltered, "open"), 2, "фикстура: обе «open»");
+
+        let filtered_a = ctx
+            .reports
+            .get_report_counts(
+                "requests",
+                ReportFilter {
+                    place_id: Some(tree.building_a),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("counts filtered by root A");
+        assert_eq!(
+            count_for(&filtered_a, "all"),
+            1,
+            "count_requests_inner: «Здание А» → 1 заявка на вложенный принтер"
+        );
+        assert_eq!(count_for(&filtered_a, "open"), 1);
+
+        let filtered_b = ctx
+            .reports
+            .get_report_counts(
+                "requests",
+                ReportFilter {
+                    place_id: Some(tree.building_b),
+                    ..Default::default()
+                },
+                wide_period(),
+                false,
+            )
+            .await
+            .expect("counts filtered by root B");
+        assert_eq!(count_for(&filtered_b, "all"), 1);
+        assert_eq!(count_for(&filtered_b, "open"), 1);
     })
     .await
     .expect("timeout");
