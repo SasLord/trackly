@@ -382,7 +382,17 @@ impl PlaceService {
             })??
         };
 
-        let total = stats.device_count + stats.nested_places + stats.cartridge_count;
+        // CR-01 (phase 39 review): `referencing_act_count` must gate the delete
+        // too — D-16 freezes an act's place reference even after every device
+        // has moved away, so a place can have zero children/devices/cartridges
+        // and still be undeletable (`ON DELETE RESTRICT`, V038). Without this,
+        // the pre-check reports "safe to delete", the writer's `DELETE` hits the
+        // FK constraint, and a raw English SQLite error leaks into the
+        // Russian-only «Удалить место?» dialog.
+        let total = stats.device_count
+            + stats.nested_places
+            + stats.cartridge_count
+            + stats.referencing_act_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: build_delete_blocked_message(&stats),
@@ -632,7 +642,13 @@ fn join_with_and(parts: &[String]) -> String {
 /// omitted (§11.3's rule, applied identically here). `cartridge_count` is not
 /// part of the literal §11.5 example but is included as a third clause when
 /// non-zero (Rule 2 — without it, a place containing ONLY cartridges would
-/// otherwise produce an empty, broken message body).
+/// otherwise produce an empty, broken message body). `referencing_act_count`
+/// (CR-01, phase 39 review) is included the same way: D-16 freezes an act's
+/// place reference even after its devices have all moved away, so a place
+/// can be otherwise-empty and still blocked from deletion by live act
+/// history — there is no user action that clears this reference (an act's
+/// frozen `place_id` isn't reachable from any UI mutation), but it must
+/// still be surfaced instead of falling through to a raw FK error.
 fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
     let mut parts = Vec::new();
     if stats.device_count > 0 {
@@ -661,6 +677,13 @@ fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
             ru_plural(stats.cartridge_count, "картридж", "картриджа", "картриджей")
         ));
     }
+    if stats.referencing_act_count > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.referencing_act_count,
+            ru_plural(stats.referencing_act_count, "акт", "акта", "актов")
+        ));
+    }
     format!(
         "Место нельзя удалить: в нём {}. Перенесите содержимое или архивируйте место.",
         join_with_and(&parts)
@@ -685,6 +708,7 @@ mod tests {
             nested_places: 2,
             device_count: 12,
             cartridge_count: 0,
+            referencing_act_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -701,6 +725,7 @@ mod tests {
             nested_places: 0,
             device_count: 1,
             cartridge_count: 0,
+            referencing_act_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -716,11 +741,61 @@ mod tests {
             nested_places: 0,
             device_count: 0,
             cartridge_count: 3,
+            referencing_act_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
             msg,
             "Место нельзя удалить: в нём 3 картриджа. Перенесите содержимое или архивируйте место."
+        );
+    }
+
+    /// CR-01 (phase 39 review): a place referenced only by acts (zero children,
+    /// zero devices, zero cartridges) must still produce a correctly pluralized
+    /// Russian message — this is the exact scenario that previously fell through
+    /// `subtree_stats_impl` uncounted and hit the raw SQLite FK error instead.
+    #[test]
+    fn build_delete_blocked_message_includes_acts_when_only_acts_present() {
+        let stats = SubtreeStats {
+            direct_children: 0,
+            nested_places: 0,
+            device_count: 0,
+            cartridge_count: 0,
+            referencing_act_count: 1,
+        };
+        let msg = build_delete_blocked_message(&stats);
+        assert_eq!(
+            msg,
+            "Место нельзя удалить: в нём 1 акт. Перенесите содержимое или архивируйте место."
+        );
+
+        let stats_many = SubtreeStats {
+            direct_children: 0,
+            nested_places: 0,
+            device_count: 0,
+            cartridge_count: 0,
+            referencing_act_count: 5,
+        };
+        let msg_many = build_delete_blocked_message(&stats_many);
+        assert_eq!(
+            msg_many,
+            "Место нельзя удалить: в нём 5 актов. Перенесите содержимое или архивируйте место."
+        );
+    }
+
+    #[test]
+    fn build_delete_blocked_message_combines_devices_and_acts() {
+        let stats = SubtreeStats {
+            direct_children: 0,
+            nested_places: 0,
+            device_count: 2,
+            cartridge_count: 0,
+            referencing_act_count: 1,
+        };
+        let msg = build_delete_blocked_message(&stats);
+        assert_eq!(
+            msg,
+            "Место нельзя удалить: в нём 2 устройства и 1 акт. Перенесите содержимое или архивируйте место."
         );
     }
 }

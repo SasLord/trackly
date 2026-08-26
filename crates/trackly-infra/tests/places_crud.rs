@@ -305,3 +305,126 @@ async fn delete_hard_blocks_non_empty_subtree_and_succeeds_on_empty_leaf() {
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// subtree_stats / delete_hard: CR-01 (phase 39 review) — acts referencing a
+// place through `acts.place_id`, `acts.bulk_place_id`, or
+// `act_items.place_id_override` must be counted even when the place has zero
+// child places, zero devices and zero cartridges (D-16 freezes these
+// references even after every device has moved away). Before the fix,
+// `subtree_stats_impl` never queried `acts`/`act_items` at all, so this
+// exact scenario passed the pre-flight check as "empty" and only failed at
+// the raw `ON DELETE RESTRICT` FK layer.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn subtree_stats_counts_acts_referencing_place_via_place_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let repo = SqlitePlaceRepository;
+
+        let room_id = repo
+            .create(&mut conn, &new_place(None, PlaceKind::Room, "214"), NOW)
+            .expect("create room");
+
+        let stats_before = repo.subtree_stats(&conn, room_id).expect("stats before");
+        assert_eq!(stats_before.referencing_act_count, 0);
+
+        conn.execute(
+            "INSERT INTO acts (number, act_type, giver_name, receiver_name, place_id, created_at_utc, updated_at_utc) \
+             VALUES (1, 'handover', 'Иванов И.И.', 'Петров П.П.', ?1, ?2, ?2)",
+            rusqlite::params![room_id, NOW],
+        )
+        .expect("insert act referencing room via place_id");
+
+        let stats_after = repo.subtree_stats(&conn, room_id).expect("stats after");
+        assert_eq!(
+            stats_after.referencing_act_count, 1,
+            "act referencing the place via place_id must be counted"
+        );
+        assert_eq!(stats_after.device_count, 0);
+        assert_eq!(stats_after.cartridge_count, 0);
+        assert_eq!(stats_after.nested_places, 0);
+
+        // The pre-flight check inside `delete_hard` must now block, even
+        // though every OTHER count is zero.
+        let err = repo
+            .delete_hard(&mut conn, room_id, 1)
+            .expect_err("place referenced only by a live act must not be deletable");
+        assert!(matches!(err, AppError::Conflict { .. }));
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn subtree_stats_counts_acts_referencing_place_via_bulk_place_id_and_item_override() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let repo = SqlitePlaceRepository;
+
+        let bulk_target = repo
+            .create(&mut conn, &new_place(None, PlaceKind::Room, "Каб. 1"), NOW)
+            .expect("create bulk target room");
+        let override_target = repo
+            .create(&mut conn, &new_place(None, PlaceKind::Room, "Каб. 2"), NOW)
+            .expect("create override target room");
+        let device_home = repo
+            .create(&mut conn, &new_place(None, PlaceKind::Room, "Каб. 3"), NOW)
+            .expect("create device home room");
+
+        // Act #1 references `bulk_target` only via `bulk_place_id`.
+        conn.execute(
+            "INSERT INTO acts (number, act_type, giver_name, receiver_name, bulk_place_id, created_at_utc, updated_at_utc) \
+             VALUES (1, 'handover', 'Иванов И.И.', 'Петров П.П.', ?1, ?2, ?2)",
+            rusqlite::params![bulk_target, NOW],
+        )
+        .expect("insert act referencing bulk_target via bulk_place_id");
+
+        let bulk_stats = repo.subtree_stats(&conn, bulk_target).expect("bulk stats");
+        assert_eq!(bulk_stats.referencing_act_count, 1, "bulk_place_id path must be counted");
+
+        // Act #2 references `override_target` only via `act_items.place_id_override`
+        // — the device itself lives elsewhere (`device_home`), proving the query
+        // follows the override column and not the device's own place_id.
+        conn.execute(
+            "INSERT INTO devices (type_id, name, place_id, status_id, version, created_at_utc, updated_at_utc) \
+             VALUES (1, 'Ноутбук override', ?1, 1, 1, ?2, ?2)",
+            rusqlite::params![device_home, NOW],
+        )
+        .expect("insert fixture device");
+        let device_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO acts (number, act_type, giver_name, receiver_name, created_at_utc, updated_at_utc) \
+             VALUES (2, 'handover', 'Иванов И.И.', 'Петров П.П.', ?1, ?1)",
+            rusqlite::params![NOW],
+        )
+        .expect("insert act #2");
+        let act_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO act_items (act_id, device_id, place_id_override) VALUES (?1, ?2, ?3)",
+            rusqlite::params![act_id, device_id, override_target],
+        )
+        .expect("insert act_item with place_id_override");
+
+        let override_stats = repo.subtree_stats(&conn, override_target).expect("override stats");
+        assert_eq!(
+            override_stats.referencing_act_count, 1,
+            "act_items.place_id_override path must be counted"
+        );
+
+        // The device's OWN place (`device_home`) is untouched by this act
+        // reference — its subtree stats must remain zero on the act axis,
+        // even though the device itself lives there.
+        let device_home_stats = repo.subtree_stats(&conn, device_home).expect("device_home stats");
+        assert_eq!(
+            device_home_stats.referencing_act_count, 0,
+            "device's own place must not be counted via an unrelated act's override"
+        );
+        assert_eq!(device_home_stats.device_count, 1);
+    })
+    .await
+    .expect("test timed out");
+}

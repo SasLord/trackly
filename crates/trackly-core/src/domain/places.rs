@@ -133,6 +133,13 @@ pub struct SubtreeStats {
     pub nested_places: i64,
     pub device_count: i64,
     pub cartridge_count: i64,
+    /// Distinct live (non-soft-deleted) acts referencing any place in the subtree
+    /// through `acts.place_id`, `acts.bulk_place_id`, or `act_items.place_id_override`
+    /// (CR-01, phase 39 review): D-16 freezes these references even after every
+    /// device has moved away, so a place can be otherwise-empty yet still
+    /// undeletable — `ON DELETE RESTRICT` on all three columns enforces this at
+    /// the schema level (V038), this counter surfaces it in the pre-flight check.
+    pub referencing_act_count: i64,
 }
 
 /// A single row in the "content of place" listing (PLC-06 / D-23 — one table, column

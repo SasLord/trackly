@@ -161,6 +161,14 @@ pub struct SubtreeStatsDto {
     pub device_count: i64,
     #[specta(type = i32)]
     pub cartridge_count: i64,
+    /// CR-01 (phase 39 review): acts still referencing this subtree via a D-16
+    /// frozen snapshot column, even though every device/cartridge/child place
+    /// may already be gone. Currently used by `PlaceService::delete_hard`'s
+    /// pre-flight check; not yet surfaced as a distinct UI badge (WR-01 tracks
+    /// the separate stats-cache-never-invalidates issue for the badges already
+    /// on screen).
+    #[specta(type = i32)]
+    pub referencing_act_count: i64,
 }
 
 impl From<SubtreeStats> for SubtreeStatsDto {
@@ -170,6 +178,7 @@ impl From<SubtreeStats> for SubtreeStatsDto {
             nested_places: s.nested_places,
             device_count: s.device_count,
             cartridge_count: s.cartridge_count,
+            referencing_act_count: s.referencing_act_count,
         }
     }
 }

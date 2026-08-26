@@ -128,7 +128,20 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
            (SELECT COUNT(*) FROM places WHERE parent_id = ?1 AND deleted_at_utc IS NULL) AS direct_children,
            (SELECT COUNT(*) FROM places WHERE id IN (SELECT id FROM subtree) AND id != ?1 AND deleted_at_utc IS NULL) AS nested_places,
            (SELECT COUNT(*) FROM devices WHERE place_id IN (SELECT id FROM subtree) AND deleted_at_utc IS NULL) AS device_count,
-           (SELECT COUNT(*) FROM cartridges WHERE place_id IN (SELECT id FROM subtree) AND deleted_at_utc IS NULL) AS cartridge_count",
+           (SELECT COUNT(*) FROM cartridges WHERE place_id IN (SELECT id FROM subtree) AND deleted_at_utc IS NULL) AS cartridge_count,
+           -- CR-01 (phase 39 review): acts referencing this subtree through ANY of
+           -- the three D-16 frozen-snapshot columns (`acts.place_id`,
+           -- `acts.bulk_place_id`, `act_items.place_id_override`) — DISTINCT on
+           -- `a.id` so an act referencing the subtree through two/three columns at
+           -- once still counts once. `act_items` has no `deleted_at_utc` of its own
+           -- (D-Schema-03, junction table); soft-delete is checked on the parent
+           -- act only, matching how the row would actually disappear from the UI.
+           (SELECT COUNT(DISTINCT a.id) FROM acts a
+              LEFT JOIN act_items ai ON ai.act_id = a.id
+            WHERE (a.place_id IN (SELECT id FROM subtree)
+                OR a.bulk_place_id IN (SELECT id FROM subtree)
+                OR ai.place_id_override IN (SELECT id FROM subtree))
+              AND a.deleted_at_utc IS NULL) AS referencing_act_count",
         rusqlite::params![root_id],
         |row| {
             Ok(SubtreeStats {
@@ -136,6 +149,7 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
                 nested_places: row.get(1)?,
                 device_count: row.get(2)?,
                 cartridge_count: row.get(3)?,
+                referencing_act_count: row.get(4)?,
             })
         },
     )
@@ -436,12 +450,16 @@ impl PlaceRepository for SqlitePlaceRepository {
         // `nested_places` уже считает ВСЕХ потомков, включая прямых детей:
         // прибавлять к нему `direct_children` — значит посчитать их дважды.
         // Сервисный слой (D-14, `build_delete_blocked_message`) тоже берёт `nested_places`.
-        let total = stats.nested_places + stats.device_count + stats.cartridge_count;
+        // CR-01: `referencing_act_count` тоже блокирует удаление — D-16 замораживает
+        // ссылку акта на место даже после того, как все устройства уехали, так что
+        // место с нулевыми остальными счётчиками всё ещё может быть undeletable.
+        let total =
+            stats.nested_places + stats.device_count + stats.cartridge_count + stats.referencing_act_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: format!(
-                    "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей.",
-                    stats.nested_places, stats.device_count, stats.cartridge_count,
+                    "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей, {} актов.",
+                    stats.nested_places, stats.device_count, stats.cartridge_count, stats.referencing_act_count,
                 ),
             });
         }
