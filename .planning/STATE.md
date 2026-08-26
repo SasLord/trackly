@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-08-25T17:38:04.256Z"
-last_activity: 2026-08-25
+status: verifying
+last_updated: "2026-08-26T00:10:29.249Z"
+last_activity: 2026-08-26
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 22
-  completed_plans: 21
-  percent: 0
+  completed_plans: 22
+  percent: 14
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 39 (place-tree) — EXECUTING
 Plan: 22 of 22
-Status: Ready to execute
-Last activity: 2026-08-25
+Status: Phase complete — ready for verification
+Last activity: 2026-08-26
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -328,6 +328,7 @@ Last activity: 2026-08-25
 | Phase 39 P18 | 55min | 4 tasks | 6 files |
 | Phase 39 P14 | 65min | 2 tasks | 8 files |
 | Phase 39 P20 | 7 UAT rounds | 2 tasks | 21 files |
+| Phase 39 P21 | 250min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -822,6 +823,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Native HTML5 drag-and-drop for the place tree does not work in WKWebView; reimplemented on Pointer Events with a manually-rendered drag ghost (GAP-2/GAP-11)
 - [Phase ?]: PlacesPage owns onlyHere/activeTab/tree-selection as controlled props + localStorage (trackly:places:*) because PlaceContents/PlaceTree remount on every place selection via {#key place.id:token}
 - [Phase ?]: Content-row click opens a read-only PlaceEntityViewModal (readonly mode added to existing DeviceFormBody/CartridgeFormBody) instead of navigating away; printers reuse the device form since no dedicated printer form exists
+- [Phase 39]: Kept migration_idempotency.rs's location_id-absence assertions and the frozen _legacy_defaults/v20-v26 template snapshots as deliberate exceptions to the phase-closing vocabulary sweep — the test's purpose IS asserting the column is gone (PLC-04 regression lock); the templates are byte-identical upgrade-detection fixtures whose text must match what was actually shipped historically
+- [Phase 39]: prettier drift on 11 phase-39-authored files was fixed (by the coordinator, commit e07c702f) rather than deferred, because pnpm lint is a sequential first-fail CI gate in ci-fast.yml/ci-full.yml — leaving it red would have masked every downstream CI check, the same failure class that left this project's CI red unnoticed for two weeks previously
 
 ### Pending Todos
 
@@ -1004,8 +1007,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-25T17:38:04.246Z
-Stopped at: Completed 39-20-PLAN.md
+Last session: 2026-08-26T00:10:29.239Z
+Stopped at: Completed 39-21-PLAN.md
 Resume file: 
 
 None
