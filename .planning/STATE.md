@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-08-26T00:10:29.249Z"
+status: ready_to_plan
+last_updated: 2026-08-26T05:10:44.627Z
 last_activity: 2026-08-26
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 22
-  completed_plans: 22
+  completed_plans: 285
   percent: 14
+stopped_at: Phase 39 complete (22/22) — ready to discuss Phase 40
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 39 — place-tree
+**Current focus:** Phase 40 — история перемещений
 
 ## Current Position
 
-Phase: 39 (place-tree) — EXECUTING
-Plan: 22 of 22
-Status: Phase complete — ready for verification
+Phase: 40
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-26
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
@@ -41,7 +42,7 @@ Last activity: 2026-08-26
 
 **Velocity:**
 
-- Total plans completed: 184
+- Total plans completed: 206
 - Average duration: —
 - Total execution time: —
 
@@ -76,6 +77,7 @@ Last activity: 2026-08-26
 | 34 | 6 | - | - |
 | 35 | 7 | - | - |
 | 37 | 4 | - | - |
+| 39 | 22 | - | - |
 
 **Recent Trend:**
 
