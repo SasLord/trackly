@@ -160,7 +160,7 @@ findings:
   warning: 2
   info: 2
   total: 5
-status: issues_found
+status: critical_resolved
 ---
 
 # Phase 39: Code Review Report
@@ -403,3 +403,24 @@ reader from re-deriving this.
 _Reviewed: 2026-08-26T00:20:47Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+
+---
+
+## Пост-ревью: статус исправлений (оркестратор, 2026-08-26)
+
+- **CR-01 — ИСПРАВЛЕНО** (коммит `22e2c6c6`). `SubtreeStats` получил
+  `referencing_act_count`; `subtree_stats_impl` считает DISTINCT акты по всем трём
+  внешним ключам (`acts.place_id`, `acts.bulk_place_id`, `act_items.place_id_override`)
+  с дедупликацией и учётом мягкого удаления; счёт включён в блокирующее условие
+  `delete_hard` и в оба сообщения (репозиторий + `build_delete_blocked_message`
+  с правильной формой «акт/акта/актов»).
+  Добавлено 6 регрессионных тестов (2 в `places_crud.rs`, 4 в `places_delete_blocked.rs`),
+  покрывающих все три пути ссылки и случай двойной ссылки.
+  **Доказательство:** перед восстановлением фикса production-файлы были убраны в
+  `git stash` и новый тест прогнан против старого кода — упал именно с
+  `FOREIGN KEY constraint failed`, как и предсказывало ревью.
+  Гейты после фикса: clippy чист · trackly-app 750/0 · trackly-infra 174/0 ·
+  svelte-check 0 ошибок · pnpm lint PASS · сборка успешна.
+
+- **WR-01, WR-02, INFO-01, INFO-02 — не исправлялись**, вынесены в долг вехи.
