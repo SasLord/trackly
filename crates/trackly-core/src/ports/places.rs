@@ -36,10 +36,18 @@ pub trait PlaceRepository {
 
     /// Direct children only, in DB order (caller applies natural sort — `sibling_cmp`,
     /// `domain::places::sibling_cmp`, Pattern 4). `parent_id: None` lists root nodes.
-    fn list_children(&self, conn: &Self::Conn, parent_id: Option<i64>) -> Result<Vec<PlaceRow>, AppError>;
+    fn list_children(
+        &self,
+        conn: &Self::Conn,
+        parent_id: Option<i64>,
+    ) -> Result<Vec<PlaceRow>, AppError>;
 
     /// Whole tree, flattened, for initial `PlacePicker`/tree-view hydration.
-    fn list_all(&self, conn: &Self::Conn, include_archived: bool) -> Result<Vec<PlaceRow>, AppError>;
+    fn list_all(
+        &self,
+        conn: &Self::Conn,
+        include_archived: bool,
+    ) -> Result<Vec<PlaceRow>, AppError>;
 
     /// Rename a place. Optimistic-lock CAS via `version` (mirrors `ActPatch`/`DevicePatch`
     /// pattern — reuse `expected_version` + `WHERE version = ?`, no new locking scheme).
@@ -70,10 +78,22 @@ pub trait PlaceRepository {
 
     /// Archive a place (soft, reversible — sets `archived_at_utc`). Optimistic-lock
     /// CAS via `version`.
-    fn archive(&self, conn: &mut Self::Conn, id: i64, version: i64, now_utc: i64) -> Result<(), AppError>;
+    fn archive(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError>;
 
     /// Reverse `archive`. Optimistic-lock CAS via `version`.
-    fn unarchive(&self, conn: &mut Self::Conn, id: i64, version: i64, now_utc: i64) -> Result<(), AppError>;
+    fn unarchive(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError>;
 
     /// Hard-delete a place (irreversible).
     ///

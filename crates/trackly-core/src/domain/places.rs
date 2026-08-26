@@ -266,17 +266,17 @@ mod tests {
         match err {
             AppError::Validation { field, message } => {
                 assert_eq!(field, "kind");
-                for token in [
-                    "territory", "zone", "building", "floor", "room", "outdoor",
-                ] {
+                for token in ["territory", "zone", "building", "floor", "room", "outdoor"] {
                     assert!(
                         message.contains(token),
                         "message should list '{token}': {message}"
                     );
                 }
                 assert!(
-                    message.chars().any(|c| ('а'..='я').contains(&c.to_ascii_lowercase())
-                        || ('А'..='Я').contains(&c)),
+                    message
+                        .chars()
+                        .any(|c| ('а'..='я').contains(&c.to_ascii_lowercase())
+                            || ('А'..='Я').contains(&c)),
                     "message should contain Russian text: {message}"
                 );
             }
@@ -321,7 +321,10 @@ mod tests {
     #[test]
     fn natural_name_cmp_compares_numeric_runs_as_integers() {
         assert_eq!(natural_name_cmp("2", "10"), std::cmp::Ordering::Less);
-        assert_eq!(natural_name_cmp("Каб. 2", "Каб. 10"), std::cmp::Ordering::Less);
+        assert_eq!(
+            natural_name_cmp("Каб. 2", "Каб. 10"),
+            std::cmp::Ordering::Less
+        );
     }
 
     #[test]

@@ -29,7 +29,9 @@ use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::{SqliteDeviceRepository, SqlitePlaceRepository, SqlitePrinterRepository};
+use trackly_infra::repos::{
+    SqliteDeviceRepository, SqlitePlaceRepository, SqlitePrinterRepository,
+};
 
 use std::collections::HashMap;
 

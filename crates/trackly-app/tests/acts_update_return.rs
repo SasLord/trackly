@@ -527,11 +527,7 @@ async fn reject_edit_after_manual_device_relocation() {
             dev_after.status_id, dev_before.status_id,
             "status unchanged (на_складе)"
         );
-        assert_eq!(
-            dev_after.place_id,
-            Some(loc_c),
-            "location manually changed"
-        );
+        assert_eq!(dev_after.place_id, Some(loc_c), "location manually changed");
 
         // update_return attempts to edit condition (apply_to_all=false
         // isolates the intent per-row) with a location override supplied

@@ -44,7 +44,11 @@ async fn create_root_and_child_get_returns_correct_parent_id_and_full_path() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
         let child_id = repo
             .create(
@@ -79,7 +83,11 @@ async fn rename_updates_descendant_full_path_without_separate_reindex_call() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
         let child_id = repo
             .create(
@@ -174,7 +182,11 @@ async fn move_node_into_own_descendant_rejected_as_validation_error() {
         let repo = SqlitePlaceRepository;
 
         let building_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create building");
         let floor_id = repo
             .create(
@@ -184,7 +196,11 @@ async fn move_node_into_own_descendant_rejected_as_validation_error() {
             )
             .expect("create floor");
         let room_id = repo
-            .create(&mut conn, &new_place(Some(floor_id), PlaceKind::Room, "214"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(floor_id), PlaceKind::Room, "214"),
+                NOW,
+            )
             .expect("create room");
 
         // Attempt to move the building (ancestor of room_id) into room_id (its own descendant).
@@ -217,23 +233,46 @@ async fn duplicate_name_under_same_parent_conflicts_different_parent_succeeds() 
         let repo = SqlitePlaceRepository;
 
         let floor_a_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Floor, "2 этаж (крыло А)"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Floor, "2 этаж (крыло А)"),
+                NOW,
+            )
             .expect("create floor A");
         let floor_b_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Floor, "2 этаж (крыло Б)"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Floor, "2 этаж (крыло Б)"),
+                NOW,
+            )
             .expect("create floor B");
 
-        repo.create(&mut conn, &new_place(Some(floor_a_id), PlaceKind::Room, "214"), NOW)
-            .expect("create room 214 under floor A");
+        repo.create(
+            &mut conn,
+            &new_place(Some(floor_a_id), PlaceKind::Room, "214"),
+            NOW,
+        )
+        .expect("create room 214 under floor A");
 
         let err = repo
-            .create(&mut conn, &new_place(Some(floor_a_id), PlaceKind::Room, "214"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(floor_a_id), PlaceKind::Room, "214"),
+                NOW,
+            )
             .expect_err("duplicate name under same parent must conflict");
-        assert!(matches!(err, AppError::Conflict { .. }), "expected Conflict, got {err:?}");
+        assert!(
+            matches!(err, AppError::Conflict { .. }),
+            "expected Conflict, got {err:?}"
+        );
 
         // Same name under a DIFFERENT parent succeeds.
-        repo.create(&mut conn, &new_place(Some(floor_b_id), PlaceKind::Room, "214"), NOW)
-            .expect("same name under a different parent must succeed");
+        repo.create(
+            &mut conn,
+            &new_place(Some(floor_b_id), PlaceKind::Room, "214"),
+            NOW,
+        )
+        .expect("same name under a different parent must succeed");
     })
     .await
     .expect("test timed out");

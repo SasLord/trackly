@@ -61,7 +61,12 @@ async fn insert_device(svc: &PlaceService, place_id: i64, name: &str) {
 /// review) regression fixture. Only fictional names, per the project's hard
 /// privacy constraint. `number` must be unique among live acts
 /// (`idx_acts_number_sub_unique`), so callers pass a distinct value per test.
-async fn insert_act_referencing_place(svc: &PlaceService, column: &'static str, place_id: i64, number: i64) {
+async fn insert_act_referencing_place(
+    svc: &PlaceService,
+    column: &'static str,
+    place_id: i64,
+    number: i64,
+) {
     svc.writer
         .execute(move |conn| {
             let sql = format!(
@@ -83,7 +88,12 @@ async fn insert_act_referencing_place(svc: &PlaceService, column: &'static str, 
 /// device is inserted under `device_place_id` (deliberately NOT the place
 /// under test, to prove the override column — not the device's own
 /// location — is what the subtree-stats query must catch).
-async fn insert_act_with_item_override(svc: &PlaceService, place_id: i64, device_place_id: i64, number: i64) {
+async fn insert_act_with_item_override(
+    svc: &PlaceService,
+    place_id: i64,
+    device_place_id: i64,
+    number: i64,
+) {
     svc.writer
         .execute(move |conn| {
             conn.execute(
@@ -125,10 +135,7 @@ async fn delete_blocked_on_non_empty_subtree_surfaces_exact_counts() {
             .await
             .expect("create building");
         let _room = svc
-            .create(
-                &admin,
-                new_place(PlaceKind::Room, "214", Some(building.id)),
-            )
+            .create(&admin, new_place(PlaceKind::Room, "214", Some(building.id)))
             .await
             .expect("create nested room");
 
@@ -138,7 +145,9 @@ async fn delete_blocked_on_non_empty_subtree_surfaces_exact_counts() {
         let err = svc
             .delete_hard(&admin, building.id, building.version)
             .await
-            .expect_err("удаление непустого узла (2 устройства, 1 вложенное место) должно быть отклонено");
+            .expect_err(
+                "удаление непустого узла (2 устройства, 1 вложенное место) должно быть отклонено",
+            );
 
         match err {
             AppError::Conflict { reason } => {
@@ -173,7 +182,10 @@ async fn delete_succeeds_on_empty_leaf_place() {
         let admin = admin_caller();
 
         let empty_leaf = svc
-            .create(&admin, new_place(PlaceKind::Territory, "Пустая территория", None))
+            .create(
+                &admin,
+                new_place(PlaceKind::Territory, "Пустая территория", None),
+            )
             .await
             .expect("create empty leaf");
 

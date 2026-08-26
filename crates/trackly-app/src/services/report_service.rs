@@ -2282,10 +2282,7 @@ mod tests {
     #[test]
     fn combine_printer_and_place_appends_place() {
         assert_eq!(
-            combine_printer_and_place(
-                Some("Принтер А".to_string()),
-                Some("Каб. 305".to_string())
-            ),
+            combine_printer_and_place(Some("Принтер А".to_string()), Some("Каб. 305".to_string())),
             Some("Принтер А, Каб. 305".to_string())
         );
     }

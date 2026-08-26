@@ -52,8 +52,8 @@ fn seed_cartridge(conn: &mut Connection, place_id: Option<i64>) -> i64 {
             NOW,
         )
         .expect("insert model");
-    let (code, _) = SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, NOW)
-        .expect("assign code");
+    let (code, _) =
+        SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, NOW).expect("assign code");
     let cart_id = repo
         .insert_cartridge_in_tx(&tx, &code, model_id, 1, None, place_id, None, None, NOW)
         .expect("insert cartridge");
@@ -77,7 +77,11 @@ async fn search_matches_by_place_path_substring() {
         let cart_repo = SqliteCartridgeRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
 
         seed_cartridge(&mut conn, Some(building_id));
@@ -115,7 +119,11 @@ async fn search_matches_cartridge_in_descendant_place() {
         let cart_repo = SqliteCartridgeRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create building");
         let floor_id = place_repo
             .create(
@@ -166,7 +174,11 @@ async fn search_reflects_place_rename_without_reindex() {
         let cart_repo = SqliteCartridgeRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
         seed_cartridge(&mut conn, Some(building_id));
 
@@ -218,7 +230,11 @@ async fn search_punctuation_only_query_returns_ok() {
         let cart_repo = SqliteCartridgeRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
         seed_cartridge(&mut conn, Some(building_id));
 

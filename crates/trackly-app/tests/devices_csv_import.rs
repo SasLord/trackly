@@ -77,7 +77,8 @@ async fn seed_place(svc: &DeviceService, name: &str) -> i64 {
 /// "Расположение" column, so `import_csv_commit`'s exact-match place
 /// resolution succeeds for every row.
 async fn seed_utf8_fixture_places(svc: &DeviceService) {
-    for name in ["Кабинет 305", "Кабинет 101", "Кабинет 102", "Кладовая"] {
+    for name in ["Кабинет 305", "Кабинет 101", "Кабинет 102", "Кладовая"]
+    {
         seed_place(svc, name).await;
     }
 }

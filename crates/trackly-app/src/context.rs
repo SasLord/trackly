@@ -291,7 +291,11 @@ impl AppCtx {
         // Phase 39 Plan 05: place-tree service. No cross-entity dependencies
         // (unlike DeviceService's printer_repo), so no ordering constraint
         // beyond writer/readers/clock being available.
-        let places = Arc::new(PlaceService::new(writer.clone(), readers.clone(), clock.clone()));
+        let places = Arc::new(PlaceService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
 
         // Runtime AD mock switch (D-Mock-01, Phase 9 Plan 02):
         // config.ad.use_mock || TRACKLY_AD_MOCK env var → MockAdClient;

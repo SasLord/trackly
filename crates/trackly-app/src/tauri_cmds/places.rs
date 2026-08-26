@@ -60,7 +60,9 @@ pub async fn build_places_move(
     version: i64,
 ) -> Result<PlaceDto, AppError> {
     authorize(caller, &Action::MutatePlaces)?;
-    ctx.places.move_node(caller, id, new_parent_id, version).await
+    ctx.places
+        .move_node(caller, id, new_parent_id, version)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `MutatePlaces` (D-20, Admin-only).

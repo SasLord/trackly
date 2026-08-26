@@ -103,9 +103,11 @@ async fn seed_printer_devices(ctx: &AppCtx, printers: &[(&str, Option<&str>)]) {
         .collect();
     ctx.writer
         .execute(move |conn| {
-            let tx = conn.transaction().map_err(|e| trackly_core::error::AppError::Internal {
-                source_chain: format!("{e}"),
-            })?;
+            let tx = conn
+                .transaction()
+                .map_err(|e| trackly_core::error::AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
             for (name, loc) in &printers {
                 let place_id: Option<i64> = if let Some(place_name) = loc {
                     tx.execute(
@@ -140,9 +142,10 @@ async fn seed_printer_devices(ctx: &AppCtx, printers: &[(&str, Option<&str>)]) {
                     source_chain: format!("{e}"),
                 })?;
             }
-            tx.commit().map_err(|e| trackly_core::error::AppError::Internal {
-                source_chain: format!("{e}"),
-            })?;
+            tx.commit()
+                .map_err(|e| trackly_core::error::AppError::Internal {
+                    source_chain: format!("{e}"),
+                })?;
             Ok(())
         })
         .await
@@ -185,13 +188,21 @@ async fn employee_gets_printer_options_minimal_dto() {
         .await;
 
         let session_store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
-        let employee_cookie = create_session_cookie(&session_store, employee_dto.id, Role::Employee)
-            .await
-            .expect("create employee session");
+        let employee_cookie =
+            create_session_cookie(&session_store, employee_dto.id, Role::Employee)
+                .await
+                .expect("create employee session");
 
-        let app = build_router(&ctx, RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()));
-        let (status, body) =
-            post_with_cookie(app, "/api/v1/request_printer_options", Some(&employee_cookie)).await;
+        let app = build_router(
+            &ctx,
+            RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+        );
+        let (status, body) = post_with_cookie(
+            app,
+            "/api/v1/request_printer_options",
+            Some(&employee_cookie),
+        )
+        .await;
 
         assert_eq!(
             status,
@@ -199,9 +210,7 @@ async fn employee_gets_printer_options_minimal_dto() {
             "Employee → request_printer_options expected 200, got {status} (body: {body:?})"
         );
 
-        let items = body
-            .as_array()
-            .expect("response body must be a JSON array");
+        let items = body.as_array().expect("response body must be a JSON array");
         assert_eq!(items.len(), 4, "expected 4 seeded printers, got {items:?}");
 
         // Minimal DTO: only id/name/place keys, nothing else (BOLA/BOPLA
@@ -215,7 +224,15 @@ async fn employee_gets_printer_options_minimal_dto() {
                 vec!["id", "name", "place"],
                 "request_printer_options item must contain ONLY id/name/place, got keys: {keys:?}"
             );
-            for forbidden in ["snmp", "community", "ip", "ipAddress", "serial", "serialNo", "model"] {
+            for forbidden in [
+                "snmp",
+                "community",
+                "ip",
+                "ipAddress",
+                "serial",
+                "serialNo",
+                "model",
+            ] {
                 assert!(
                     !obj.contains_key(forbidden),
                     "request_printer_options item leaked forbidden key '{forbidden}': {obj:?}"
@@ -228,14 +245,16 @@ async fn employee_gets_printer_options_minimal_dto() {
         let names: Vec<&str> = items.iter().map(|i| i["name"].as_str().unwrap()).collect();
         assert_eq!(
             names,
-            vec!["Принтер А1", "Принтер Б1", "Принтер Б2", "Принтер Без Расположения"],
+            vec![
+                "Принтер А1",
+                "Принтер Б1",
+                "Принтер Б2",
+                "Принтер Без Расположения"
+            ],
             "sort order must be place then name, NULL-place last; got {names:?}"
         );
 
-        let places: Vec<Option<&str>> = items
-            .iter()
-            .map(|i| i["place"].as_str())
-            .collect();
+        let places: Vec<Option<&str>> = items.iter().map(|i| i["place"].as_str()).collect();
         assert_eq!(
             places,
             vec![Some("Офис А"), Some("Офис Б"), Some("Офис Б"), None],

@@ -898,10 +898,7 @@ impl SqliteCartridgeRepository {
 
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
-            .query_map(
-                param_refs.as_slice(),
-                map_row,
-            )
+            .query_map(param_refs.as_slice(), map_row)
             .map_err(map_rusqlite)?;
 
         let mut out = Vec::new();
@@ -1815,17 +1812,7 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code");
             let id = repo
-                .insert_cartridge_in_tx(
-                    &tx,
-                    &code,
-                    drum_model,
-                    1,
-                    Some(4),
-                    None,
-                    None,
-                    None,
-                    now,
-                )
+                .insert_cartridge_in_tx(&tx, &code, drum_model, 1, Some(4), None, None, None, now)
                 .expect("insert prev drum");
             tx.commit().expect("commit");
             id
@@ -1853,17 +1840,7 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code2");
             let id = repo
-                .insert_cartridge_in_tx(
-                    &tx,
-                    &code,
-                    drum_model,
-                    1,
-                    Some(4),
-                    None,
-                    None,
-                    None,
-                    now,
-                )
+                .insert_cartridge_in_tx(&tx, &code, drum_model, 1, Some(4), None, None, None, now)
                 .expect("insert new drum");
             tx.commit().expect("commit");
             id
@@ -1906,17 +1883,7 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
             let id = repo
-                .insert_cartridge_in_tx(
-                    &tx,
-                    &code,
-                    model_id,
-                    1,
-                    Some(1),
-                    None,
-                    None,
-                    None,
-                    now,
-                )
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert prev cartridge");
             tx.commit().expect("commit");
             id
@@ -1942,17 +1909,7 @@ mod tests {
             let (code, _) =
                 SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code2");
             let id = repo
-                .insert_cartridge_in_tx(
-                    &tx,
-                    &code,
-                    model_id,
-                    1,
-                    Some(1),
-                    None,
-                    None,
-                    None,
-                    now,
-                )
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert new cartridge");
             tx.commit().expect("commit");
             id
@@ -2034,31 +1991,13 @@ mod tests {
             {
                 let code = format!("A-{i:03}");
                 repo.insert_cartridge_in_tx(
-                    &tx,
-                    &code,
-                    model_a,
-                    *status,
-                    *state,
-                    None,
-                    None,
-                    None,
-                    now,
+                    &tx, &code, model_a, *status, *state, None, None, None, now,
                 )
                 .expect("insert A cartridge");
             }
             // Soft-deleted status=1 cartridge for model A — excluded from counts.
             let soft_deleted_id = repo
-                .insert_cartridge_in_tx(
-                    &tx,
-                    "A-DEL",
-                    model_a,
-                    1,
-                    Some(1),
-                    None,
-                    None,
-                    None,
-                    now,
-                )
+                .insert_cartridge_in_tx(&tx, "A-DEL", model_a, 1, Some(1), None, None, None, now)
                 .expect("insert soft-deleted A cartridge");
             tx.execute(
                 "UPDATE cartridges SET deleted_at_utc = ?1 WHERE id = ?2",
@@ -2071,36 +2010,16 @@ mod tests {
         // Model B cartridge: a single status=2 (в работе) unit.
         {
             let tx = conn.transaction().expect("tx");
-            repo.insert_cartridge_in_tx(
-                &tx,
-                "B-001",
-                model_b,
-                2,
-                Some(2),
-                None,
-                None,
-                None,
-                now,
-            )
-            .expect("insert B cartridge");
+            repo.insert_cartridge_in_tx(&tx, "B-001", model_b, 2, Some(2), None, None, None, now)
+                .expect("insert B cartridge");
             tx.commit().expect("commit");
         }
 
         // Model C cartridge exists but model C is not compatible → never appears.
         {
             let tx = conn.transaction().expect("tx");
-            repo.insert_cartridge_in_tx(
-                &tx,
-                "C-001",
-                model_c,
-                1,
-                Some(1),
-                None,
-                None,
-                None,
-                now,
-            )
-            .expect("insert C cartridge");
+            repo.insert_cartridge_in_tx(&tx, "C-001", model_c, 1, Some(1), None, None, None, now)
+                .expect("insert C cartridge");
             tx.commit().expect("commit");
         }
 

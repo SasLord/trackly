@@ -66,11 +66,19 @@ async fn search_fts_matches_by_place_path_substring() {
         let device_repo = SqliteDeviceRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
 
         device_repo
-            .create(&mut conn, &new_device("Ноутбук Lenovo", Some(building_id)), NOW)
+            .create(
+                &mut conn,
+                &new_device("Ноутбук Lenovo", Some(building_id)),
+                NOW,
+            )
             .expect("create device");
 
         // "здание" matches no intrinsic device field (name/inventory/serial/model)
@@ -79,7 +87,10 @@ async fn search_fts_matches_by_place_path_substring() {
             .search_fts(&conn, "здание", &page())
             .expect("search_fts");
 
-        assert_eq!(total, 1, "должен найти 1 устройство по подстроке пути места");
+        assert_eq!(
+            total, 1,
+            "должен найти 1 устройство по подстроке пути места"
+        );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].name, "Ноутбук Lenovo");
         assert_eq!(
@@ -104,7 +115,11 @@ async fn search_fts_matches_device_in_descendant_place() {
         let device_repo = SqliteDeviceRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create building");
         let floor_id = place_repo
             .create(
@@ -159,10 +174,18 @@ async fn search_fts_reflects_place_rename_without_reindex() {
         let device_repo = SqliteDeviceRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
         device_repo
-            .create(&mut conn, &new_device("Сканер Canon", Some(building_id)), NOW)
+            .create(
+                &mut conn,
+                &new_device("Сканер Canon", Some(building_id)),
+                NOW,
+            )
             .expect("create device");
 
         // Sanity: old name matches before the rename.
@@ -231,7 +254,11 @@ async fn search_fts_place_only_match_when_fts5_side_has_zero_hits() {
         let device_repo = SqliteDeviceRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create building");
         let floor_id = place_repo
             .create(
@@ -286,7 +313,11 @@ async fn search_fts_empty_query_returns_nothing_not_everything() {
         let device_repo = SqliteDeviceRepository;
 
         let building_id = place_repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create place");
         device_repo
             .create(&mut conn, &new_device("Моноблок", Some(building_id)), NOW)
@@ -295,7 +326,10 @@ async fn search_fts_empty_query_returns_nothing_not_everything() {
         let (rows, total) = device_repo
             .search_fts(&conn, "", &page())
             .expect("search_fts empty query");
-        assert_eq!(total, 0, "пустой запрос не должен возвращать все устройства с местом");
+        assert_eq!(
+            total, 0,
+            "пустой запрос не должен возвращать все устройства с местом"
+        );
         assert!(rows.is_empty());
 
         let (rows2, total2) = device_repo

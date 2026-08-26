@@ -115,7 +115,10 @@ async fn create_forbidden_for_manager_before_any_db_write() {
             .create(&manager, minimal_new_building("Здание Б"))
             .await
             .expect_err("Manager должен получить Forbidden");
-        assert!(matches!(err, AppError::Forbidden), "ожидали Forbidden, получили {err:?}");
+        assert!(
+            matches!(err, AppError::Forbidden),
+            "ожидали Forbidden, получили {err:?}"
+        );
 
         let readers = svc.readers.clone();
         let count: i64 = tokio::task::spawn_blocking(move || {
@@ -126,7 +129,10 @@ async fn create_forbidden_for_manager_before_any_db_write() {
         .expect("join")
         .expect("query places");
 
-        assert_eq!(count, 0, "Manager's forbidden create не должен был писать в places");
+        assert_eq!(
+            count, 0,
+            "Manager's forbidden create не должен был писать в places"
+        );
     })
     .await
     .expect("test timed out");
@@ -215,12 +221,13 @@ async fn archive_sets_and_unarchive_clears_archived_at_utc() {
         .expect("join")
         .expect("query archived_at_utc after archive");
 
-        assert!(archived_at.is_some(), "archived_at_utc должен быть установлен после archive");
+        assert!(
+            archived_at.is_some(),
+            "archived_at_utc должен быть установлен после archive"
+        );
 
         // archive's UPDATE bumps version 1 -> 2.
-        svc.unarchive(&admin, place.id, 2)
-            .await
-            .expect("unarchive");
+        svc.unarchive(&admin, place.id, 2).await.expect("unarchive");
 
         let archived_at_after: Option<i64> = tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();

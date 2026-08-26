@@ -116,9 +116,9 @@ impl PlaceService {
             Some(parent_path) => {
                 format!("В «{parent_path}» уже есть место «{name}». Укажите другое имя.")
             }
-            None => format!(
-                "Место «{name}» уже существует в списке корневых мест. Укажите другое имя."
-            ),
+            None => {
+                format!("Место «{name}» уже существует в списке корневых мест. Укажите другое имя.")
+            }
         };
         AppError::Validation {
             field: "name".to_string(),
@@ -160,7 +160,12 @@ impl PlaceService {
                 let id = match repo.create(conn, &new, now) {
                     Ok(id) => id,
                     Err(err) if Self::is_duplicate_name_conflict(&err) => {
-                        return Err(Self::duplicate_name_error(conn, &repo, new.parent_id, &new.name));
+                        return Err(Self::duplicate_name_error(
+                            conn,
+                            &repo,
+                            new.parent_id,
+                            &new.name,
+                        ));
                     }
                     Err(other) => return Err(other),
                 };
@@ -216,7 +221,12 @@ impl PlaceService {
                 let row = match repo.rename(conn, id, &name, version, now) {
                     Ok(row) => row,
                     Err(err) if Self::is_duplicate_name_conflict(&err) => {
-                        return Err(Self::duplicate_name_error(conn, &repo, before_parent_id, &name));
+                        return Err(Self::duplicate_name_error(
+                            conn,
+                            &repo,
+                            before_parent_id,
+                            &name,
+                        ));
                     }
                     Err(other) => return Err(other),
                 };
@@ -302,13 +312,20 @@ impl PlaceService {
     /// `PlacePicker` (a read-path concern, Plan 08).
     pub async fn archive(&self, caller: &Identity, id: i64, version: i64) -> Result<(), AppError> {
         authorize(caller, &Action::MutatePlaces)?;
-        self.set_archived(caller.user_id, id, version, true, "archive").await
+        self.set_archived(caller.user_id, id, version, true, "archive")
+            .await
     }
 
     /// Reverse `archive`. Admin-only (D-20).
-    pub async fn unarchive(&self, caller: &Identity, id: i64, version: i64) -> Result<(), AppError> {
+    pub async fn unarchive(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+    ) -> Result<(), AppError> {
         authorize(caller, &Action::MutatePlaces)?;
-        self.set_archived(caller.user_id, id, version, false, "unarchive").await
+        self.set_archived(caller.user_id, id, version, false, "unarchive")
+            .await
     }
 
     /// Shared archive/unarchive body — called only after the public method's
@@ -366,7 +383,12 @@ impl PlaceService {
     /// READ path (reader pool, not the writer) first; if non-empty, an
     /// `AppError::Conflict` carrying the exact UI-SPEC §11.5/§14.3 counts is
     /// returned WITHOUT touching the writer at all.
-    pub async fn delete_hard(&self, caller: &Identity, id: i64, version: i64) -> Result<(), AppError> {
+    pub async fn delete_hard(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+    ) -> Result<(), AppError> {
         authorize(caller, &Action::MutatePlaces)?;
 
         let stats: SubtreeStats = {
@@ -500,7 +522,11 @@ impl PlaceService {
 
     /// Subtree counts under `root_id`, inclusive of the root itself (D-14/
     /// D-21/D-25/PLC-06).
-    pub async fn subtree_stats(&self, caller: &Identity, root_id: i64) -> Result<SubtreeStats, AppError> {
+    pub async fn subtree_stats(
+        &self,
+        caller: &Identity,
+        root_id: i64,
+    ) -> Result<SubtreeStats, AppError> {
         authorize(caller, &Action::ReadPlaces)?;
         let readers = self.readers.clone();
         let repo = self.repo.clone();
@@ -560,7 +586,11 @@ impl PlaceService {
     /// live-joined by `repo.list_all`), then filter in Rust via
     /// `full_path.to_lowercase().contains(&query.to_lowercase())`, capped at
     /// `SEARCH_RESULT_LIMIT` rows. Archived places are excluded (D-15).
-    pub async fn search(&self, caller: &Identity, query: String) -> Result<Vec<PlacePathDto>, AppError> {
+    pub async fn search(
+        &self,
+        caller: &Identity,
+        query: String,
+    ) -> Result<Vec<PlacePathDto>, AppError> {
         authorize(caller, &Action::ReadPlaces)?;
 
         if query.chars().count() > SEARCH_QUERY_MAX_CHARS {
@@ -696,9 +726,18 @@ mod tests {
 
     #[test]
     fn ru_plural_device_word_matches_ui_spec_example() {
-        assert_eq!(ru_plural(12, "устройство", "устройства", "устройств"), "устройств");
-        assert_eq!(ru_plural(1, "устройство", "устройства", "устройств"), "устройство");
-        assert_eq!(ru_plural(2, "устройство", "устройства", "устройств"), "устройства");
+        assert_eq!(
+            ru_plural(12, "устройство", "устройства", "устройств"),
+            "устройств"
+        );
+        assert_eq!(
+            ru_plural(1, "устройство", "устройства", "устройств"),
+            "устройство"
+        );
+        assert_eq!(
+            ru_plural(2, "устройство", "устройства", "устройств"),
+            "устройства"
+        );
     }
 
     #[test]

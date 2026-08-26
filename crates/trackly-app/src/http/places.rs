@@ -20,8 +20,7 @@ use crate::http::auth::session_identity;
 use crate::tauri_cmds::places::{
     build_places_archive, build_places_contents, build_places_create, build_places_delete,
     build_places_get, build_places_list_all, build_places_list_children, build_places_move,
-    build_places_rename, build_places_search, build_places_subtree_stats,
-    build_places_unarchive,
+    build_places_rename, build_places_search, build_places_subtree_stats, build_places_unarchive,
 };
 
 // ---------------------------------------------------------------------------
@@ -314,10 +313,7 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/places_get", post(handler_get))
         .route("/api/v1/places_list_children", post(handler_list_children))
         .route("/api/v1/places_list_all", post(handler_list_all))
-        .route(
-            "/api/v1/places_subtree_stats",
-            post(handler_subtree_stats),
-        )
+        .route("/api/v1/places_subtree_stats", post(handler_subtree_stats))
         .route("/api/v1/places_contents", post(handler_contents))
         .route("/api/v1/places_search", post(handler_search))
 }

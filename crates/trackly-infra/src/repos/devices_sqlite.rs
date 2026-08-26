@@ -821,7 +821,8 @@ impl DeviceRepository for SqliteDeviceRepository {
 
         // --- Total count (own prepared statement — CTEs are not shared
         //     across statements in SQLite, so the WITH clause is repeated). ---
-        let count_sql = format!("WITH {cte_sql} SELECT COUNT(*) FROM devices d WHERE {where_clause}");
+        let count_sql =
+            format!("WITH {cte_sql} SELECT COUNT(*) FROM devices d WHERE {where_clause}");
         let total: i64 = {
             let mut stmt = conn.prepare(&count_sql).map_err(map_rusqlite)?;
             let param_refs: Vec<&dyn ToSql> = cte_params.iter().map(|b| b.as_ref()).collect();

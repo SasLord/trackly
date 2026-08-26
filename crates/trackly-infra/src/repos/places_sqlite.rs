@@ -80,7 +80,10 @@ fn get_impl(conn: &Connection, id: i64) -> Result<PlaceRow, AppError> {
         from_row,
     )
     .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound { entity: "place", id },
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+            entity: "place",
+            id,
+        },
         other => map_rusqlite(other),
     })
 }
@@ -101,7 +104,10 @@ fn resolve_cas_failure(conn: &Connection, id: i64, expected: i64) -> AppError {
         .optional()
         .unwrap_or(None);
     match actual {
-        None => AppError::NotFound { entity: "place", id },
+        None => AppError::NotFound {
+            entity: "place",
+            id,
+        },
         Some(actual) => AppError::OptimisticLockMismatch {
             entity: "place",
             id,
@@ -228,7 +234,8 @@ fn list_subtree_contents_impl(
             })
         })
         .map_err(map_rusqlite)?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(map_rusqlite)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(map_rusqlite)
 }
 
 /// D-11.4: a place counts as a storage place if it itself OR any ancestor has
@@ -255,7 +262,8 @@ fn list_storage_place_ids_impl(conn: &Connection) -> Result<Vec<i64>, AppError> 
         )
         .map_err(map_rusqlite)?;
     let rows = stmt.query_map([], |row| row.get(0)).map_err(map_rusqlite)?;
-    rows.collect::<rusqlite::Result<Vec<i64>>>().map_err(map_rusqlite)
+    rows.collect::<rusqlite::Result<Vec<i64>>>()
+        .map_err(map_rusqlite)
 }
 
 /// Resolve the root-to-leaf, `' / '`-joined full path via `place_full_paths`
@@ -267,7 +275,10 @@ fn full_path_impl(conn: &Connection, id: i64) -> Result<String, AppError> {
         |row| row.get(0),
     )
     .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound { entity: "place", id },
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+            entity: "place",
+            id,
+        },
         other => map_rusqlite(other),
     })
 }
@@ -301,7 +312,11 @@ impl PlaceRepository for SqlitePlaceRepository {
         get_impl(conn, id)
     }
 
-    fn list_children(&self, conn: &Self::Conn, parent_id: Option<i64>) -> Result<Vec<PlaceRow>, AppError> {
+    fn list_children(
+        &self,
+        conn: &Self::Conn,
+        parent_id: Option<i64>,
+    ) -> Result<Vec<PlaceRow>, AppError> {
         // `p.parent_id IS ?1` handles both `Some(id)` (behaves like `=`) and
         // `None` (matches NULL rows, i.e. root nodes) with a single query —
         // no branching SQL needed. Natural sibling sort (D-05, Pattern 4)
@@ -312,10 +327,15 @@ impl PlaceRepository for SqlitePlaceRepository {
         let rows = stmt
             .query_map(rusqlite::params![parent_id], from_row)
             .map_err(map_rusqlite)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(map_rusqlite)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(map_rusqlite)
     }
 
-    fn list_all(&self, conn: &Self::Conn, include_archived: bool) -> Result<Vec<PlaceRow>, AppError> {
+    fn list_all(
+        &self,
+        conn: &Self::Conn,
+        include_archived: bool,
+    ) -> Result<Vec<PlaceRow>, AppError> {
         let sql = if include_archived {
             format!("{SELECT_PLACES} WHERE p.deleted_at_utc IS NULL")
         } else {
@@ -323,7 +343,8 @@ impl PlaceRepository for SqlitePlaceRepository {
         };
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt.query_map([], from_row).map_err(map_rusqlite)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(map_rusqlite)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(map_rusqlite)
     }
 
     fn rename(
@@ -385,8 +406,9 @@ impl PlaceRepository for SqlitePlaceRepository {
             if is_cycle != 0 {
                 return Err(AppError::Validation {
                     field: "parent_id".to_string(),
-                    message: "Нельзя переместить место внутрь самого себя или своего вложенного места."
-                        .to_string(),
+                    message:
+                        "Нельзя переместить место внутрь самого себя или своего вложенного места."
+                            .to_string(),
                 });
             }
         }
@@ -408,7 +430,13 @@ impl PlaceRepository for SqlitePlaceRepository {
         Ok(row)
     }
 
-    fn archive(&self, conn: &mut Self::Conn, id: i64, version: i64, now_utc: i64) -> Result<(), AppError> {
+    fn archive(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
         let affected = conn
             .execute(
                 "UPDATE places SET archived_at_utc = ?1, updated_at_utc = ?1, version = version + 1 \
@@ -423,7 +451,13 @@ impl PlaceRepository for SqlitePlaceRepository {
         Ok(())
     }
 
-    fn unarchive(&self, conn: &mut Self::Conn, id: i64, version: i64, now_utc: i64) -> Result<(), AppError> {
+    fn unarchive(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
         let affected = conn
             .execute(
                 "UPDATE places SET archived_at_utc = NULL, updated_at_utc = ?1, version = version + 1 \
@@ -453,8 +487,10 @@ impl PlaceRepository for SqlitePlaceRepository {
         // CR-01: `referencing_act_count` тоже блокирует удаление — D-16 замораживает
         // ссылку акта на место даже после того, как все устройства уехали, так что
         // место с нулевыми остальными счётчиками всё ещё может быть undeletable.
-        let total =
-            stats.nested_places + stats.device_count + stats.cartridge_count + stats.referencing_act_count;
+        let total = stats.nested_places
+            + stats.device_count
+            + stats.cartridge_count
+            + stats.referencing_act_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: format!(

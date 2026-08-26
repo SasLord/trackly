@@ -152,8 +152,14 @@ async fn create_with_no_place_keeps_null() {
         let new = new_with_place_id("Устройство без места", None);
         let dto = svc.create(new).await.expect("create");
 
-        assert!(dto.place_id.is_none(), "place_id должен быть None (D-07: место опционально)");
-        assert!(dto.full_path.is_none(), "full_path должен быть None без места");
+        assert!(
+            dto.place_id.is_none(),
+            "place_id должен быть None (D-07: место опционально)"
+        );
+        assert!(
+            dto.full_path.is_none(),
+            "full_path должен быть None без места"
+        );
     })
     .await
     .expect("create_with_no_place_keeps_null exceeded 30 s budget");

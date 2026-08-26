@@ -325,11 +325,7 @@ async fn add_multiple_positions_transitions_all_devices() {
         for &id in &extra_ids {
             let post = read_device_snap(&svc, id).await;
             assert_eq!(post.status_id, 2, "device {id} now в_работе");
-            assert_eq!(
-                post.place_id,
-                Some(loc_b),
-                "device {id} at act's location"
-            );
+            assert_eq!(post.place_id, Some(loc_b), "device {id} at act's location");
 
             let readers = readers.clone();
             let count: i64 = tokio::task::spawn_blocking(move || {

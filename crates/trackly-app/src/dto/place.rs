@@ -253,8 +253,14 @@ mod tests {
     fn snake_case_json_invariant() {
         let dto = PlaceDto::from(sample_row());
         let json = serde_json::to_string(&dto).expect("serialize");
-        assert!(json.contains("parent_id"), "должен содержать snake_case 'parent_id'");
-        assert!(json.contains("full_path"), "должен содержать snake_case 'full_path'");
+        assert!(
+            json.contains("parent_id"),
+            "должен содержать snake_case 'parent_id'"
+        );
+        assert!(
+            json.contains("full_path"),
+            "должен содержать snake_case 'full_path'"
+        );
         assert!(!json.contains("parentId"), "НЕ должен содержать camelCase");
     }
 }

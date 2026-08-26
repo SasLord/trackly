@@ -95,13 +95,7 @@ async fn current_printer_device_id_of(svc: &CartridgeService, cartridge_id: i64)
 async fn cartridge_snapshot(
     svc: &CartridgeService,
     cartridge_id: i64,
-) -> (
-    i64,
-    Option<i64>,
-    Option<i64>,
-    Option<String>,
-    Option<i64>,
-) {
+) -> (i64, Option<i64>, Option<i64>, Option<String>, Option<i64>) {
     svc.writer
         .execute(move |conn| {
             conn.query_row(
