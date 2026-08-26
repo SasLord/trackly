@@ -580,6 +580,7 @@ impl ReportService {
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
                 filter.is_storage,
+                filter.place_id,
             )
         })
         .await
@@ -608,6 +609,7 @@ impl ReportService {
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
                 filter.is_storage,
+                filter.place_id,
             )
         })
         .await
@@ -636,6 +638,7 @@ impl ReportService {
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
                 filter.is_storage,
+                filter.place_id,
             )
         })
         .await
@@ -664,6 +667,7 @@ impl ReportService {
                 exclude_ad_register,
                 filter.request_category_filter.as_deref(),
                 filter.is_storage,
+                filter.place_id,
             )
         })
         .await
@@ -762,6 +766,7 @@ impl ReportService {
                             None,
                             exclude_ad_register,
                             category_filter,
+                            filter.place_id,
                         )
                         .unwrap_or(0),
                     },
@@ -774,6 +779,7 @@ impl ReportService {
                             Some("open"),
                             exclude_ad_register,
                             category_filter,
+                            filter.place_id,
                         )
                         .unwrap_or(0),
                     },
@@ -786,6 +792,7 @@ impl ReportService {
                             Some("in_progress"),
                             exclude_ad_register,
                             category_filter,
+                            filter.place_id,
                         )
                         .unwrap_or(0),
                     },
@@ -798,6 +805,7 @@ impl ReportService {
                             Some("completed"),
                             exclude_ad_register,
                             category_filter,
+                            filter.place_id,
                         )
                         .unwrap_or(0),
                     },
@@ -1546,6 +1554,7 @@ fn query_requests_inner(
     exclude_ad_register: bool,
     category_filter: Option<&[String]>,
     is_storage: Option<bool>,
+    place_id: Option<i64>,
 ) -> Result<ReportResponse, AppError> {
     let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
@@ -1569,6 +1578,28 @@ fn query_requests_inner(
         clauses.push(format!("r.created_at_utc <= ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(to));
     }
+    // D-28: subtree-inclusive place filter, applied to the request's printer's
+    // own place_id (requests have no place_id of their own — filter follows
+    // the printer via the LEFT JOIN devices d below); merge-safe with_prefix
+    // composition so a simultaneous is_storage filter does not clobber this CTE.
+    if let Some(place_id) = place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("d.place_id IN (SELECT id FROM subtree)".to_string());
+    }
     // D-11.2/D-11.4: geographic "на складе" quick filter, applied to the
     // request's printer's own place_id; independent of item status (D-11.5).
     if let Some(want_storage) = is_storage {
@@ -1578,7 +1609,11 @@ fn query_requests_inner(
                  SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
                  WHERE p.deleted_at_utc IS NULL \
              ) ";
-        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
         if want_storage {
             clauses.push("d.place_id IN (SELECT id FROM storage_ids)".to_string());
         } else {
@@ -1650,9 +1685,11 @@ fn count_requests_inner(
     status_filter: Option<&str>,
     exclude_ad_register: bool,
     category_filter: Option<&[String]>,
+    place_id: Option<i64>,
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = vec!["r.deleted_at_utc IS NULL".to_string()];
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     if let Some(status) = status_filter {
         clauses.push(format!("r.status = ?{}", next_idx(&owned_params)));
@@ -1672,9 +1709,33 @@ fn count_requests_inner(
         clauses.push(format!("r.created_at_utc <= ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(to));
     }
+    // D-28: subtree-inclusive place filter, applied to the request's printer's
+    // own place_id via the LEFT JOIN devices d below — mirrors query_requests_inner.
+    if let Some(place_id) = place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("d.place_id IN (SELECT id FROM subtree)".to_string());
+    }
 
     let where_clause = clauses.join(" AND ");
-    let sql = format!("SELECT COUNT(*) FROM requests r WHERE {where_clause}");
+    let sql = format!(
+        "{with_prefix}SELECT COUNT(*) FROM requests r \
+         LEFT JOIN devices d ON d.id = r.printer_device_id \
+         WHERE {where_clause}"
+    );
 
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))
