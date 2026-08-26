@@ -1317,6 +1317,27 @@ fn query_cartridge_audit(
         clauses.push(format!("c.status_id = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(status_id));
     }
+    // D-28: subtree-inclusive place filter — mirrors query_acts_inner; merge-safe
+    // with_prefix composition so a simultaneous is_storage filter below does not
+    // clobber this CTE.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("c.place_id IN (SELECT id FROM subtree)".to_string());
+    }
     // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
     // storage-place membership on the cartridge's own place_id (Plan 09 gave
     // cartridges a real place_id FK); independent of item status (D-11.5).
@@ -1327,7 +1348,11 @@ fn query_cartridge_audit(
                  SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
                  WHERE p.deleted_at_utc IS NULL \
              ) ";
-        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
         if want_storage {
             clauses.push("c.place_id IN (SELECT id FROM storage_ids)".to_string());
         } else {
@@ -1418,6 +1443,27 @@ fn query_cartridge_snapshot(
         clauses.push(format!("m.color = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(color.clone()));
     }
+    // D-28: subtree-inclusive place filter — mirrors query_acts_inner; merge-safe
+    // with_prefix composition so a simultaneous is_storage filter below does not
+    // clobber this CTE.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("c.place_id IN (SELECT id FROM subtree)".to_string());
+    }
     // D-11.2/D-11.4: geographic "на складе" quick filter — ancestor-inclusive
     // storage-place membership on the cartridge's own place_id; independent
     // of item status (D-11.5).
@@ -1428,7 +1474,11 @@ fn query_cartridge_snapshot(
                  SELECT p.id FROM places p JOIN storage_ids s ON p.parent_id = s.id \
                  WHERE p.deleted_at_utc IS NULL \
              ) ";
-        with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {storage_cte}");
+        } else {
+            with_prefix = format!("{}, {storage_cte}", with_prefix.trim_end());
+        }
         if want_storage {
             clauses.push("c.place_id IN (SELECT id FROM storage_ids)".to_string());
         } else {
@@ -1816,6 +1866,7 @@ fn count_cartridge_audit_inner(
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("al.entity_type = 'cartridge'".to_string());
 
@@ -1849,10 +1900,29 @@ fn count_cartridge_audit_inner(
         clauses.push(format!("c.status_id = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(status_id));
     }
+    // D-28: subtree-inclusive place filter — mirrors query_cartridge_audit.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("c.place_id IN (SELECT id FROM subtree)".to_string());
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT COUNT(*) \
+        "{with_prefix}SELECT COUNT(*) \
          FROM audit_log al \
          JOIN cartridges c ON c.id = al.entity_id \
          JOIN cartridge_models m ON m.id = c.model_id \
@@ -1872,6 +1942,7 @@ fn count_cartridge_snapshot_inner(
 ) -> Result<i64, AppError> {
     let mut clauses: Vec<String> = Vec::new();
     let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut with_prefix = String::new();
 
     clauses.push("c.deleted_at_utc IS NULL".to_string());
 
@@ -1893,10 +1964,29 @@ fn count_cartridge_snapshot_inner(
         clauses.push(format!("m.color = ?{}", next_idx(&owned_params)));
         owned_params.push(Box::new(color.clone()));
     }
+    // D-28: subtree-inclusive place filter — mirrors query_cartridge_snapshot.
+    if let Some(place_id) = filter.place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(place_id));
+        let subtree_cte = format!(
+            "subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             ) "
+        );
+        if with_prefix.is_empty() {
+            with_prefix = format!("WITH RECURSIVE {subtree_cte}");
+        } else {
+            with_prefix = format!("{}, {subtree_cte}", with_prefix.trim_end());
+        }
+        clauses.push("c.place_id IN (SELECT id FROM subtree)".to_string());
+    }
 
     let where_clause = clauses.join(" AND ");
     let sql = format!(
-        "SELECT COUNT(*) \
+        "{with_prefix}SELECT COUNT(*) \
          FROM cartridges c \
          JOIN cartridge_models m ON m.id = c.model_id \
          LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id \
