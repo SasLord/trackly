@@ -78,10 +78,23 @@
   function formatCellValue(row: ReportRow, colKey: string): string {
     const val = row[colKey];
     if (val === null || val === undefined) return '—';
-    // Format UTC timestamps as date string
+    // WSU-01/WSU-02: "дд.мм.гг, чч:мм" — same readable format the backend
+    // now emits for CSV/HTML export (report_service.rs::format_handover_date),
+    // so the screen table no longer disagrees with either export path. Local
+    // (not UTC) Date getters are used deliberately — same W-9 single-tz
+    // principle documented in DocumentAcceptanceModal.svelte: the browser's
+    // local clock is treated as the organization's timezone, no separate
+    // test/AD environment on a different timezone is assumed. Manual
+    // padStart (not toLocaleString/Intl) keeps the format deterministic
+    // regardless of browser locale.
     if (colKey === 'handover_date_utc' && typeof val === 'number') {
       const d = new Date(val * 1000);
-      return d.toLocaleDateString('ru-RU');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = String(d.getFullYear() % 100).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}.${month}.${year}, ${hours}:${minutes}`;
     }
     return String(val);
   }
