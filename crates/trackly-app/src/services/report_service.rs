@@ -276,6 +276,11 @@ fn translate_request_status(raw: &str) -> String {
 /// column value. `None` when the request has no printer selected — an empty
 /// cell, not a "—" placeholder (the frontend draws the dash for a null
 /// value on screen; CSV/print show a genuinely empty cell).
+///
+/// Called from `row_field`'s `"printer_place"` arm (CSV/PDF export) only —
+/// `query_requests_inner` no longer glues printer_name+place into `ReportRow`
+/// at query-build time; the screen (`ReportTable.svelte`) reads
+/// `device_name`/`place_path` as two separate fields instead.
 fn combine_printer_and_place(
     printer_name: Option<String>,
     printer_place: Option<String>,
@@ -1017,6 +1022,10 @@ fn row_field(row: &ReportRow, col: &str) -> String {
             .map(|ts| ts.to_string())
             .unwrap_or_default(),
         "place_path" => row.place_path.as_deref().unwrap_or("").to_string(),
+        "printer_place" => {
+            combine_printer_and_place(row.device_name.clone(), row.place_path.clone())
+                .unwrap_or_default()
+        }
         "act_type" => row.act_type.as_deref().unwrap_or("").to_string(),
         "device_name" => row.device_name.as_deref().unwrap_or("").to_string(),
         "quantity" => row.quantity.map(|q| q.to_string()).unwrap_or_default(),
@@ -1657,9 +1666,9 @@ fn query_requests_inner(
                 giver_name: r.get(5)?,
                 receiver_name: None,
                 handover_date_utc: r.get(2)?,
-                place_path: combine_printer_and_place(printer_name, printer_place),
+                place_path: printer_place,
                 act_type: None,
-                device_name: None,
+                device_name: printer_name,
                 quantity: None,
                 code: None,
                 model_label: None,
@@ -2293,6 +2302,25 @@ mod tests {
             combine_printer_and_place(Some("Принтер А".to_string()), None),
             Some("Принтер А".to_string())
         );
+    }
+
+    #[test]
+    fn row_field_printer_place_combines_device_name_and_place_path() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.device_name = Some("Kyocera-01".to_string());
+        row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        assert_eq!(
+            row_field(&row, "printer_place"),
+            "Kyocera-01, Здание А / 2 этаж / Кабинет 214"
+        );
+    }
+
+    #[test]
+    fn row_field_printer_place_empty_when_no_printer_and_no_place() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.device_name = None;
+        row.place_path = None;
+        assert_eq!(row_field(&row, "printer_place"), "");
     }
 
     #[test]

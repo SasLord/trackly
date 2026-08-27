@@ -964,6 +964,53 @@ async fn requests_report_root_place_filter_and_excludes_sibling() {
     .expect("timeout");
 }
 
+/// Регрессия W1 (v1.4 audit): имя принтера не должно теряться в отчёте
+/// «Заявки», когда путь размещения принтера состоит из 3+ сегментов
+/// («Здание А / 2 этаж / Кабинет 214»). Бэкенд обязан отдавать
+/// `device_name`/`place_path` РАЗДЕЛЬНО, без склейки в одну строку — только
+/// так фронтенд может сокращать (D-26) путь, никогда не задевая имя принтера.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn requests_report_printer_name_survives_deep_place_path() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let ctx = make_ctx();
+        let tree = seed_tree(&ctx.writer).await;
+
+        let requester = seed_requester(&ctx.writer, "sidorov", "Сидоров С.С.").await;
+        let printer = seed_device(&ctx.writer, "Kyocera-01", tree.room_a).await;
+        seed_request(
+            &ctx.writer,
+            "free_form",
+            "open",
+            requester,
+            Some(printer),
+            NOW,
+        )
+        .await;
+
+        let all = ctx
+            .reports
+            .list_requests_all(ReportFilter::default(), wide_period(), false)
+            .await
+            .expect("list all requests");
+        assert_eq!(all.rows.len(), 1, "фикстура: должна быть 1 заявка");
+
+        assert_eq!(
+            all.rows[0].device_name.as_deref(),
+            Some("Kyocera-01"),
+            "device_name должен содержать имя принтера отдельно от пути: {:?}",
+            all.rows[0]
+        );
+        assert_eq!(
+            all.rows[0].place_path.as_deref(),
+            Some("Здание А / 2 этаж / Кабинет 214"),
+            "place_path должен содержать ЧИСТЫЙ путь без склейки с именем принтера: {:?}",
+            all.rows[0]
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 // ---------------------------------------------------------------------------
 // 9. count_requests_inner — get_report_counts("requests")
 // ---------------------------------------------------------------------------

@@ -44,7 +44,7 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
                 "request_type_label",
                 "status_name",
                 "giver_name",
-                "place_path",
+                "printer_place",
             ]
         }
         _ => vec!["id"],
@@ -63,26 +63,19 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
 fn column_labels_for(report_type: &str) -> Vec<&'static str> {
     match report_type {
         "device_acts" | "device_returns" => {
-            vec!["Номер", "Устройства", "Сдал", "Принял", "Локация"]
+            vec!["Номер", "Устройства", "Сдал", "Принял", "Место"]
         }
         "device_in_use" | "device_in_stock" => {
-            vec!["Наименование", "Статус", "Расположение"]
+            vec!["Наименование", "Статус", "Место"]
         }
         "cartridge_consumption" | "cartridge_refills" => {
-            vec!["Код картриджа", "Модель", "Статус", "Локация"]
+            vec!["Код картриджа", "Модель", "Статус", "Место"]
         }
         "cartridge_in_use" | "cartridge_in_stock" => {
-            vec!["Код", "Модель", "Статус", "Расположение"]
+            vec!["Код", "Модель", "Статус", "Место"]
         }
         "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
-            vec![
-                "№",
-                "Дата",
-                "Тип",
-                "Статус",
-                "Заявитель",
-                "Принтер / Локация",
-            ]
+            vec!["№", "Дата", "Тип", "Статус", "Заявитель", "Место"]
         }
         _ => vec!["ID"],
     }
