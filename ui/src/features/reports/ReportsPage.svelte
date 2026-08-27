@@ -65,6 +65,9 @@
   interface Column {
     key: string;
     label: string;
+    // Name of a sibling ReportRow field to prepend to place_path (see
+    // ReportTable.svelte's formatPlaceCell) — never shortened by D-26.
+    compositeWith?: string;
   }
 
   // ---------------------------------------------------------------------------
@@ -128,7 +131,7 @@
     { key: 'request_type_label', label: 'Тип' },
     { key: 'status_name', label: 'Статус' },
     { key: 'giver_name', label: 'Заявитель' },
-    { key: 'place_path', label: 'Место' },
+    { key: 'place_path', label: 'Место', compositeWith: 'device_name' },
   ];
 
   // Column definitions per report type

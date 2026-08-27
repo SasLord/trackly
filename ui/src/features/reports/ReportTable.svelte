@@ -31,6 +31,11 @@
   interface Column {
     key: string;
     label: string;
+    // Name of a sibling ReportRow field whose value must be PREPENDED
+    // (joined with ", ") to the place_path cell's value — and must NEVER
+    // participate in the D-26 shortening. Used by the requests report's
+    // composite «Место» column (printer name + place path).
+    compositeWith?: string;
   }
 
   type SeparatorItem = { type: 'separator'; label: string };
@@ -87,21 +92,44 @@
     return segments.length <= 2 ? fullPath : segments.slice(-2).join(' / ');
   }
 
+  // Composite place cell: combines an optional sibling field (col.compositeWith,
+  // e.g. device_name for the requests report's printer column) with place_path
+  // via ", ". transformPath is applied ONLY to the path part — the prefix
+  // (printer name) never gets D-26-shortened or otherwise mangled, because it
+  // is read as a separate ReportRow field, never parsed out of a joined string.
+  function formatPlaceCell(
+    row: ReportRow,
+    col: Column,
+    transformPath: (path: string) => string,
+  ): string {
+    const rawPath = typeof row.place_path === 'string' ? row.place_path : '';
+    const path = rawPath ? transformPath(rawPath) : '';
+    const prefix =
+      col.compositeWith && typeof row[col.compositeWith] === 'string'
+        ? (row[col.compositeWith] as string)
+        : '';
+
+    if (prefix && path) return `${prefix}, ${path}`;
+    if (prefix) return prefix;
+    if (path) return path;
+    return formatCellValue(row, col.key);
+  }
+
   // D-26: the cell's rendered text and its title attribute diverge only for
   // place_path — every other column keeps formatCellValue's plain title=text
   // convention.
-  function formatCellTitle(row: ReportRow, colKey: string): string {
-    if (colKey === 'place_path' && typeof row.place_path === 'string') {
-      return row.place_path;
+  function formatCellTitle(row: ReportRow, col: Column): string {
+    if (col.key === 'place_path') {
+      return formatPlaceCell(row, col, (p) => p);
     }
-    return formatCellValue(row, colKey);
+    return formatCellValue(row, col.key);
   }
 
-  function formatCellDisplay(row: ReportRow, colKey: string): string {
-    if (colKey === 'place_path' && typeof row.place_path === 'string') {
-      return shortPlacePath(row.place_path);
+  function formatCellDisplay(row: ReportRow, col: Column): string {
+    if (col.key === 'place_path') {
+      return formatPlaceCell(row, col, shortPlacePath);
     }
-    return formatCellValue(row, colKey);
+    return formatCellValue(row, col.key);
   }
 
   // Build grouped rows: insert separator when month_key (temporal) or place_path (snapshot) changes
@@ -159,7 +187,7 @@
           {@const row = item as ReportRow}
           <TableRow>
             {#each columns as col}
-              <td title={formatCellTitle(row, col.key)}>{formatCellDisplay(row, col.key)}</td>
+              <td title={formatCellTitle(row, col)}>{formatCellDisplay(row, col)}</td>
             {/each}
           </TableRow>
         {/if}
