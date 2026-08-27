@@ -20,7 +20,7 @@ export type SaveFileResult = 'saved' | 'cancelled';
 export async function saveFile(
   bytes: Uint8Array,
   suggestedName: string,
-  mimeType: string
+  mimeType: string,
 ): Promise<SaveFileResult> {
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -44,7 +44,7 @@ export async function saveFile(
 
   const arrayBuffer = bytes.buffer.slice(
     bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength
+    bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
   const blob = new Blob([arrayBuffer], { type: mimeType });
   const url = URL.createObjectURL(blob);
