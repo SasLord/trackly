@@ -523,10 +523,13 @@ async fn report_requests_open_filters_by_status_and_translates_type() {
     assert_eq!(row.status_name, Some("Открыта".to_string()));
     assert_eq!(row.request_type_label, Some("Замена картриджа".to_string()));
     assert_eq!(row.giver_name, Some("Иванов И.И.".to_string()));
-    assert_eq!(
-        row.place_path,
-        Some("Принтер HP LaserJet, Склад тест".to_string())
-    );
+    // 260827-gim: printer name and place path are carried as SEPARATE
+    // ReportRow fields now — `query_requests_inner` no longer glues them into
+    // one `place_path` string. The composite «<принтер>, <путь>» lives only in
+    // the CSV/PDF export path (`row_field`'s "printer_place" arm), so the
+    // screen can shorten the path (D-26) without ever eating the printer name.
+    assert_eq!(row.device_name, Some("Принтер HP LaserJet".to_string()));
+    assert_eq!(row.place_path, Some("Склад тест".to_string()));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
