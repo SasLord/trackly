@@ -39,6 +39,12 @@ pub async fn build_auth_status_tauri(ctx: &AppCtx) -> Result<AuthStatusDto, AppE
         needs_bootstrap,
         desktop_lock_enabled,
         user: None,
+        place_path_display: ctx
+            .config
+            .organization
+            .place_path_display
+            .as_str()
+            .to_string(),
     })
 }
 
