@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { apiCall } from '$lib/api/client';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { saveFile } from '$lib/utils/saveFile';
   import type { CartridgeModelDto } from '../../bindings';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ReportSubNav from './ReportSubNav.svelte';
@@ -414,28 +415,43 @@
   // ---------------------------------------------------------------------------
   // Export handlers
   // ---------------------------------------------------------------------------
-  function exportCsv() {
+  // GAP-R1 sibling: builds a machine-readable, collision-resistant filename
+  // (report type key + local ISO date) so repeated exports on the same day
+  // don't collapse into a single «отчёт.csv» / «отчёт (1).csv».
+  //
+  // Uses local Y/M/D getters, NOT toISOString() — toISOString() returns the
+  // UTC date, which can drift by a day around midnight Moscow time.
+  function buildCsvFilename(): string {
+    const now = new Date();
+    const y = String(now.getFullYear());
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `отчёт-${reportTypeKey()}-${y}-${m}-${d}.csv`;
+  }
+
+  async function exportCsv() {
     csvExporting = true;
-    apiCall<number[]>('reports_export_csv', {
-      reportType: reportTypeKey(),
-      filter,
-      period: isSnapshot() ? undefined : period,
-    })
-      .then((bytes) => {
-        const blob = new Blob([new Uint8Array(bytes)], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'отчёт.csv';
-        a.click();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => {
-        pushToast('error', 'Ошибка при экспорте CSV. Попробуйте ещё раз.');
-      })
-      .finally(() => {
-        csvExporting = false;
+    try {
+      const bytes = await apiCall<number[]>('reports_export_csv', {
+        reportType: reportTypeKey(),
+        filter,
+        period: isSnapshot() ? undefined : period,
       });
+      const result = await saveFile(
+        new Uint8Array(bytes),
+        buildCsvFilename(),
+        'text/csv;charset=utf-8',
+      );
+      if (result === 'saved') {
+        pushToast('success', 'CSV-файл сохранён');
+      }
+      // result === 'cancelled' (user closed the save dialog) is a normal
+      // action, not an error — no toast.
+    } catch {
+      pushToast('error', 'Ошибка при экспорте CSV. Попробуйте ещё раз.');
+    } finally {
+      csvExporting = false;
+    }
   }
 
   // Plan 17-03 (D-10): both «Экспорт PDF» and «Печать» now open the same
