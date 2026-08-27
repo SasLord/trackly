@@ -836,6 +836,7 @@ impl ReportService {
         rows: &ReportResponse,
         columns: &[&str],
     ) -> Result<Vec<u8>, AppError> {
+        let tz = self.get_tz_offset();
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b';')
             .from_writer(Vec::new());
@@ -848,7 +849,7 @@ impl ReportService {
             let record: Vec<String> = columns
                 .iter()
                 .map(|col| {
-                    let raw = row_field(row, col);
+                    let raw = row_field(row, col, tz);
                     csv_safe(&raw)
                 })
                 .collect();
@@ -883,7 +884,7 @@ impl ReportService {
     /// pipeline shipped for acts in Phase 16 (`act_service.rs::render_pdf`).
     ///
     /// `columns` (keys, e.g. `"giver_name"`) remains the sole source of cell
-    /// values via `row_field(row, col)` — unchanged by the D-03/CR-01 fix.
+    /// values via `row_field(row, col, tz)` — unchanged by the D-03/CR-01 fix.
     /// `column_labels` (Russian labels, e.g. `"Сдал"`) is the NEW source of
     /// the header row (`ctx["columns"]`); `columns_for`/`column_labels_for`
     /// in `tauri_cmds/reports.rs` are index-aligned so `columns[i]` and
@@ -906,6 +907,7 @@ impl ReportService {
             .ok_or_else(|| AppError::Internal {
                 source_chain: "ReportService::export_pdf called without with_organization".into(),
             })?;
+        let tz = self.get_tz_offset();
 
         // T-17-01-01 mitigation: `logo_bytes` originates exclusively from
         // `OrgDbService`-sourced org_settings BLOB (see build_reports_export_pdf
@@ -965,7 +967,7 @@ impl ReportService {
                 current_month = Some(month_key.to_string());
             }
 
-            table_rows.push(columns.iter().map(|col| row_field(row, col)).collect());
+            table_rows.push(columns.iter().map(|col| row_field(row, col, tz)).collect());
         }
 
         if !table_rows.is_empty() {
@@ -1011,7 +1013,7 @@ impl ReportService {
 // ReportRow field accessor
 // ---------------------------------------------------------------------------
 
-fn row_field(row: &ReportRow, col: &str) -> String {
+fn row_field(row: &ReportRow, col: &str, tz: UtcOffset) -> String {
     match col {
         "number" => row.number.as_deref().unwrap_or("").to_string(),
         "sub_number" => row.sub_number.as_deref().unwrap_or("").to_string(),
@@ -1019,7 +1021,7 @@ fn row_field(row: &ReportRow, col: &str) -> String {
         "receiver_name" => row.receiver_name.as_deref().unwrap_or("").to_string(),
         "handover_date_utc" => row
             .handover_date_utc
-            .map(|ts| ts.to_string())
+            .map(|ts| format_handover_date(ts, tz))
             .unwrap_or_default(),
         "place_path" => row.place_path.as_deref().unwrap_or("").to_string(),
         "printer_place" => {
@@ -1036,6 +1038,28 @@ fn row_field(row: &ReportRow, col: &str) -> String {
         "request_type_label" => row.request_type_label.as_deref().unwrap_or("").to_string(),
         _ => String::new(),
     }
+}
+
+/// «27.08.26, 14:35» — читаемая дата+время колонки `handover_date_utc` в
+/// таймзоне организации (WSU-01/WSU-02). Двузначный год — по явной просьбе
+/// владельца продукта; неоднозначность 20xx/19xx не встаёт (отчёты покрывают
+/// текущий/недавний период). При невалидном `unix_seconds` — пустая строка
+/// (сохраняет конвенцию пустой ячейки для отсутствующего timestamp, см.
+/// `combine_printer_and_place`).
+fn format_handover_date(unix_seconds: i64, tz: UtcOffset) -> String {
+    let odt = match time::OffsetDateTime::from_unix_timestamp(unix_seconds) {
+        Ok(odt) => odt,
+        Err(_) => return String::new(),
+    };
+    let local = odt.to_offset(tz);
+    format!(
+        "{:02}.{:02}.{:02}, {:02}:{:02}",
+        local.day(),
+        local.month() as u8,
+        local.year().rem_euclid(100),
+        local.hour(),
+        local.minute()
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2310,7 +2334,7 @@ mod tests {
         row.device_name = Some("Kyocera-01".to_string());
         row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
         assert_eq!(
-            row_field(&row, "printer_place"),
+            row_field(&row, "printer_place", UtcOffset::UTC),
             "Kyocera-01, Здание А / 2 этаж / Кабинет 214"
         );
     }
@@ -2320,7 +2344,36 @@ mod tests {
         let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
         row.device_name = None;
         row.place_path = None;
-        assert_eq!(row_field(&row, "printer_place"), "");
+        assert_eq!(row_field(&row, "printer_place", UtcOffset::UTC), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // format_handover_date / row_field "handover_date_utc" tests (WSU-01/02)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn row_field_handover_date_formats_readable_moscow() {
+        // 1_768_515_300 = 2026-01-15 22:15:00 UTC -> +3h = 2026-01-16 01:15
+        // (day rollover proves tz is actually applied, not ignored).
+        assert_eq!(
+            format_handover_date(1_768_515_300, moscow()),
+            "16.01.26, 01:15"
+        );
+    }
+
+    #[test]
+    fn row_field_handover_date_formats_readable_utc() {
+        assert_eq!(
+            format_handover_date(1_768_515_300, UtcOffset::UTC),
+            "15.01.26, 22:15"
+        );
+    }
+
+    #[test]
+    fn row_field_handover_date_absent_is_empty() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.handover_date_utc = None;
+        assert_eq!(row_field(&row, "handover_date_utc", moscow()), "");
     }
 
     #[test]
