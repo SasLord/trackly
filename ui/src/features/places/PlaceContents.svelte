@@ -24,6 +24,8 @@
   import Badge from '$lib/components/Badge.svelte';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
+  import { shortenPlacePath } from '$lib/utils/placePath';
+  import { authStore } from '$lib/stores/auth.svelte';
 
   export type ContentTab = 'all' | 'device' | 'printer' | 'cartridge';
 
@@ -86,11 +88,6 @@
   function statusVariant(name: string | null): 'default' | 'accent' | 'warning' | 'destructive' {
     if (!name) return 'default';
     return STATUS_VARIANT_BY_NAME[name] ?? 'default';
-  }
-
-  function shortPath(fullPath: string): string {
-    const parts = fullPath.split(' / ');
-    return parts.length > 2 ? parts.slice(-2).join(' / ') : fullPath;
   }
 
   // GAP-8 (39-UAT.md, Прогон 3): row click used to navigate straight to the
@@ -309,7 +306,7 @@
           </td>
           {#if !onlyHere}
             <td class="cell" title={row.full_path} onclick={() => openView(row)}>
-              {shortPath(row.full_path)}
+              {shortenPlacePath(row.full_path, authStore.placePathDisplay)}
             </td>
           {/if}
           <td class="cell" onclick={() => openView(row)}>
