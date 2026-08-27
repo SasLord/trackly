@@ -101,12 +101,29 @@
     return 0;
   }
 
+  // quick 260827-rzq: mirrors the fixed Rust `sibling_cmp`
+  // (crates/trackly-core/src/domain/places.rs) — every pair goes through the SAME
+  // three-stage chain, and each stage explicitly decides `null`-vs-value instead of
+  // skipping the stage when only one side has a value. A node WITH a value at a given
+  // stage sorts BEFORE a node without one (D-05: manual order wins if set). The
+  // previous JS port shared the same bug as the old Rust version (only compared when
+  // BOTH sides were non-null) — `Array.prototype.sort` doesn't throw on an
+  // inconsistent comparator, so it silently produced an implementation-defined order
+  // instead of a visible error.
   function siblingCmp(a: PlaceDto, b: PlaceDto): number {
-    if (a.sort_order !== null && b.sort_order !== null) {
-      return a.sort_order - b.sort_order;
+    if (a.sort_order !== null || b.sort_order !== null) {
+      if (a.sort_order !== null && b.sort_order !== null) {
+        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+      } else {
+        return a.sort_order !== null ? -1 : 1;
+      }
     }
-    if (a.level !== null && b.level !== null) {
-      return a.level - b.level;
+    if (a.level !== null || b.level !== null) {
+      if (a.level !== null && b.level !== null) {
+        if (a.level !== b.level) return a.level - b.level;
+      } else {
+        return a.level !== null ? -1 : 1;
+      }
     }
     return naturalNameCmp(a.name, b.name);
   }

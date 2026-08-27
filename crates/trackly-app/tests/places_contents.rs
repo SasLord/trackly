@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use trackly_app::services::PlaceService;
 use trackly_core::auth::Identity;
-use trackly_core::domain::places::{PlaceKind, PlaceNew};
+use trackly_core::domain::places::{sibling_cmp, PlaceKind, PlaceNew};
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
@@ -190,6 +190,91 @@ async fn subtree_stats_counts_nested_places_and_devices_inclusive() {
             stats.device_count, 3,
             "device_count должен учитывать вложенные места (D-25): 2 прямых + 1 вложенное"
         );
+    })
+    .await
+    .expect("test timed out");
+}
+
+// ---------------------------------------------------------------------------
+// quick 260827-rzq: list_children/list_all must not panic on a partial
+// sort_order set that contradicts name/level order — the shape produced by
+// drag-and-drop reordering a subset of siblings, which crashed
+// places_list_all/places_list_children in production before the sibling_cmp fix.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_children_and_list_all_survive_partial_sort_order_without_panicking() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let building = svc
+            .create(&admin, new_place(PlaceKind::Building, "Здание Г", None))
+            .await
+            .expect("create building");
+
+        // ~15 rooms under the same building. Names deliberately contradict both
+        // level and sort_order. Roughly a third get an explicit sort_order that
+        // runs in reverse of insertion order (mirrors drag-and-drop reordering a
+        // subset of siblings); the rest get None (natural order applies).
+        for i in 0..15i64 {
+            let sort_order = if i % 3 == 0 { Some(15 - i) } else { None };
+            let level = Some((i % 4) - 1);
+            let name = format!("Каб. {}", 15 - i);
+            let place_new = PlaceNew {
+                parent_id: Some(building.id),
+                kind: PlaceKind::Room,
+                name,
+                level,
+                is_storage: false,
+                sort_order,
+                notes: None,
+            };
+            svc.create(&admin, place_new)
+                .await
+                .expect("create room with partial sort_order/level");
+        }
+
+        // Neither call must panic (production regression: sort_by(sibling_cmp)
+        // paniced with "user-provided comparison function does not correctly
+        // implement a total order" on exactly this partial-sort_order shape).
+        let children = svc
+            .list_children(&admin, Some(building.id))
+            .await
+            .expect("list_children must not panic on partial sort_order");
+        assert_eq!(children.len(), 15);
+        for w in children.windows(2) {
+            assert_ne!(
+                sibling_cmp(&w[0], &w[1]),
+                std::cmp::Ordering::Greater,
+                "list_children: non-decreasing sibling order violated between {:?} and {:?}",
+                w[0].name,
+                w[1].name
+            );
+        }
+
+        let all = svc
+            .list_all(&admin, false)
+            .await
+            .expect("list_all must not panic on partial sort_order");
+        assert!(all.len() >= 16, "building + 15 rooms");
+
+        // list_all groups by parent_id then applies sibling_cmp within the group —
+        // verify every adjacent pair sharing a parent_id is non-decreasing under
+        // sibling_cmp (non-adjacent-parent pairs are not meaningfully comparable
+        // and are not asserted on).
+        for w in all.windows(2) {
+            if w[0].parent_id == w[1].parent_id {
+                assert_ne!(
+                    sibling_cmp(&w[0], &w[1]),
+                    std::cmp::Ordering::Greater,
+                    "list_all: non-decreasing sibling order violated within parent_id={:?} between {:?} and {:?}",
+                    w[0].parent_id,
+                    w[0].name,
+                    w[1].name
+                );
+            }
+        }
     })
     .await
     .expect("test timed out");

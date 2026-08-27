@@ -499,7 +499,17 @@ impl PlaceService {
     }
 
     /// Whole tree, flattened, for initial `PlacePicker`/tree-view hydration —
-    /// sorted per `sibling_cmp` (same rationale as `list_children`).
+    /// sorted by `(parent_id, sibling_cmp)` rather than a flat `sibling_cmp` over the
+    /// whole result (quick 260827-rzq): the raw row set mixes territories, buildings,
+    /// floors, and rooms that are NOT siblings of one another, so comparing them
+    /// directly with `sibling_cmp` was meaningless (e.g. a building vs. an unrelated
+    /// room). No current consumer relies on the old flat order —
+    /// `PlaceTree.svelte` rebuilds the tree from `parent_id` and re-sorts each sibling
+    /// group itself, `PlaceContents.svelte` doesn't depend on order, and `search()`
+    /// calls `repo.list_all` directly, bypassing this service — but grouping by
+    /// `parent_id` first keeps the returned array deterministic and meaningful
+    /// (siblings adjacent and correctly ordered) for any future direct consumer,
+    /// instead of an arbitrary global order.
     pub async fn list_all(
         &self,
         caller: &Identity,
@@ -516,7 +526,11 @@ impl PlaceService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })??;
-        rows.sort_by(sibling_cmp);
+        rows.sort_by(|a, b| {
+            a.parent_id
+                .cmp(&b.parent_id)
+                .then_with(|| sibling_cmp(a, b))
+        });
         Ok(rows)
     }
 
