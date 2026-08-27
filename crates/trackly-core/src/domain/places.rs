@@ -156,16 +156,52 @@ pub struct PlaceContentRow {
     pub status_name: Option<String>,
 }
 
-/// Default sibling ordering (D-05): `sort_order` wins if both siblings have it set,
-/// else `level` (floors, including 0 and negatives — PLC-02) wins if both have it set,
-/// else fall back to natural name comparison.
+/// Default sibling ordering (D-05): `sort_order` wins if set, else `level` (floors,
+/// including 0 and negatives — PLC-02) wins if set, else fall back to natural name
+/// comparison.
+///
+/// **quick 260827-rzq fix:** the previous implementation only compared `sort_order`
+/// (or `level`) when BOTH siblings had it set — a pair where only one side had a value
+/// fell straight through to the next stage, silently skipping it. That means different
+/// pairs in the same slice were being ordered by different rules depending on what
+/// happened to be filled in on each side (exactly the shape produced by drag-and-drop
+/// reordering, which sets `sort_order` only on the moved nodes). A comparator that
+/// applies a different rule to different pairs is not a total order — transitivity can
+/// break on mixed slices, and since Rust 1.81 `slice::sort_by` detects that and panics
+/// with "user-provided comparison function does not correctly implement a total
+/// order". That panic (no `CatchPanicLayer` in this app) is what surfaced in
+/// production as `ERR_EMPTY_RESPONSE` on `places_list_all`/`places_list_children`.
+///
+/// The fix: every pair goes through the SAME three-stage chain, and every stage
+/// explicitly decides Some-vs-None instead of skipping when only one side has a value.
+/// Convention: a node WITH a value at a given stage sorts BEFORE a node without one —
+/// this matches D-05 ("manual order if set, else automatic") by making manually
+/// (drag-and-drop-)positioned nodes visibly take priority over naturally-ordered ones.
+/// This intentionally changes ordering for mixed sibling sets versus the old
+/// (non-deterministic) behavior — a deliberate decision, not a regression.
 pub fn sibling_cmp(a: &PlaceRow, b: &PlaceRow) -> std::cmp::Ordering {
-    if let (Some(sa), Some(sb)) = (a.sort_order, b.sort_order) {
-        return sa.cmp(&sb);
+    use std::cmp::Ordering;
+
+    match (a.sort_order, b.sort_order) {
+        (Some(sa), Some(sb)) => match sa.cmp(&sb) {
+            Ordering::Equal => {}
+            other => return other,
+        },
+        (Some(_), None) => return Ordering::Less,
+        (None, Some(_)) => return Ordering::Greater,
+        (None, None) => {}
     }
-    if let (Some(la), Some(lb)) = (a.level, b.level) {
-        return la.cmp(&lb);
+
+    match (a.level, b.level) {
+        (Some(la), Some(lb)) => match la.cmp(&lb) {
+            Ordering::Equal => {}
+            other => return other,
+        },
+        (Some(_), None) => return Ordering::Less,
+        (None, Some(_)) => return Ordering::Greater,
+        (None, None) => {}
     }
+
     natural_name_cmp(&a.name, &b.name)
 }
 
@@ -333,5 +369,156 @@ mod tests {
         let a = place(1, Some(5), Some(2), "Zzz");
         let b = place(2, Some(-5), Some(1), "Aaa");
         assert_eq!(sibling_cmp(&b, &a), std::cmp::Ordering::Less);
+    }
+
+    // quick 260827-rzq: sibling_cmp must be a genuine total order (Rust 1.81+
+    // `sort_by` panics otherwise), and natural_name_cmp must be one too.
+
+    #[test]
+    fn sibling_cmp_is_a_total_order_exhaustive() {
+        // Cartesian product: sort_order x level x name (36 rows), all with distinct ids
+        // so reflexivity/antisymmetry/transitivity are checked across every combination
+        // of "which stage has a value" — exactly the shape that broke transitivity
+        // before the fix (mixed Some/None across sort_order/level).
+        let sort_orders: [Option<i64>; 3] = [None, Some(0), Some(1)];
+        let levels: [Option<i64>; 4] = [None, Some(-1), Some(0), Some(1)];
+        let names = ["2", "10", "Zzz"];
+
+        let mut rows = Vec::new();
+        let mut next_id = 1i64;
+        for so in sort_orders {
+            for lvl in levels {
+                for name in names {
+                    rows.push(place(next_id, lvl, so, name));
+                    next_id += 1;
+                }
+            }
+        }
+        assert_eq!(rows.len(), 36);
+
+        // Reflexivity.
+        for a in &rows {
+            assert_eq!(
+                sibling_cmp(a, a),
+                std::cmp::Ordering::Equal,
+                "reflexivity failed for {a:?}"
+            );
+        }
+
+        // Antisymmetry.
+        for a in &rows {
+            for b in &rows {
+                assert_eq!(
+                    sibling_cmp(a, b),
+                    sibling_cmp(b, a).reverse(),
+                    "antisymmetry failed for a={a:?} b={b:?}"
+                );
+            }
+        }
+
+        // Transitivity: if a<=b and b<=c then a<=c (using != Greater as "<=").
+        for a in &rows {
+            for b in &rows {
+                if sibling_cmp(a, b) == std::cmp::Ordering::Greater {
+                    continue;
+                }
+                for c in &rows {
+                    if sibling_cmp(b, c) == std::cmp::Ordering::Greater {
+                        continue;
+                    }
+                    assert_ne!(
+                        sibling_cmp(a, c),
+                        std::cmp::Ordering::Greater,
+                        "transitivity failed for a={a:?} b={b:?} c={c:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sibling_cmp_sorts_partial_sort_order_slice_without_panicking_case_c() {
+        // Regression for the production panic: >=60 rows with PARTIAL sort_order
+        // (some Some, some None) whose values contradict both name and level order —
+        // this is exactly the shape produced by drag-and-drop reordering a subset of
+        // siblings. Before the fix, `sort_by(sibling_cmp)` panicked here on Rust 1.81+
+        // ("user-provided comparison function does not correctly implement a total
+        // order"); this test asserts it merely completes and yields a non-decreasing
+        // order.
+        let mut rows = Vec::new();
+        for i in 0..60i64 {
+            // Every 3rd row gets a manual sort_order that runs in REVERSE of insertion
+            // order (contradicts name/level); the rest are None (natural/level order).
+            let sort_order = if i % 3 == 0 { Some(60 - i) } else { None };
+            // Level contradicts name order too, and dips negative (PLC-02 coverage).
+            let level = Some((i % 5) - 2);
+            let name = format!("Каб. {}", 60 - i);
+            rows.push(place(i, level, sort_order, &name));
+        }
+        assert!(rows.len() >= 60);
+
+        rows.sort_by(sibling_cmp); // must not panic
+
+        for w in rows.windows(2) {
+            assert_ne!(
+                sibling_cmp(&w[0], &w[1]),
+                std::cmp::Ordering::Greater,
+                "non-decreasing order violated between {:?} and {:?}",
+                w[0],
+                w[1]
+            );
+        }
+    }
+
+    #[test]
+    fn natural_name_cmp_is_a_total_order() {
+        let names = [
+            "",
+            "2",
+            "10",
+            "Каб. 2",
+            "Каб. 10",
+            "Кабинет",
+            "Zzz",
+            "Ааа",
+            "10 этаж",
+            "2 этаж",
+        ];
+
+        for a in names {
+            assert_eq!(
+                natural_name_cmp(a, a),
+                std::cmp::Ordering::Equal,
+                "reflexivity failed for {a:?}"
+            );
+        }
+
+        for a in names {
+            for b in names {
+                assert_eq!(
+                    natural_name_cmp(a, b),
+                    natural_name_cmp(b, a).reverse(),
+                    "antisymmetry failed for a={a:?} b={b:?}"
+                );
+            }
+        }
+
+        for a in names {
+            for b in names {
+                if natural_name_cmp(a, b) == std::cmp::Ordering::Greater {
+                    continue;
+                }
+                for c in names {
+                    if natural_name_cmp(b, c) == std::cmp::Ordering::Greater {
+                        continue;
+                    }
+                    assert_ne!(
+                        natural_name_cmp(a, c),
+                        std::cmp::Ordering::Greater,
+                        "transitivity failed for a={a:?} b={b:?} c={c:?}"
+                    );
+                }
+            }
+        }
     }
 }
