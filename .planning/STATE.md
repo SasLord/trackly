@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-08-26T05:10:44.627Z
-last_activity: 2026-08-26
+status: planning
+last_updated: "2026-08-27T17:53:11.412Z"
+last_activity: "2026-08-27 - UAT пройден: 260827-gim/rzq/ui0/ui3 подтверждены живьём (Windows + десктоп). Открыто: 260827-wsu (дата в экспорте) + новая фаза — выбор сокращения Места в UI вместо конфига, с наследованием по дереву"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 1
   total_plans: 22
-  completed_plans: 285
-  percent: 14
-stopped_at: Phase 39 complete (22/22) — ready to discuss Phase 40
+  completed_plans: 22
+  percent: 13
 ---
 
 # Project State
@@ -21,14 +20,14 @@ stopped_at: Phase 39 complete (22/22) — ready to discuss Phase 40
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40 — история перемещений
+**Current focus:** Phase 39.1 — формат пути Места в UI (вставлена 2026-08-28); далее Phase 40 — история перемещений
 
 ## Current Position
 
-Phase: 40
+Phase: 39.1
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-27 - UAT пройден: 260827-gim/rzq/ui0/ui3 подтверждены живьём (Windows + десктоп). Открыто: 260827-wsu (дата в экспорте) + новая фаза — выбор сокращения Места в UI вместо конфига, с наследованием по дереву
+Last activity: 2026-08-28 - UAT пройден по 260827-gim/rzq/ui0/ui3; закрыта 260827-wsu (читаемая дата в CSV и PDF); релиз v1.4.0-phase39.2 пересобран; вставлена Фаза 39.1 (формат пути Места в UI, PLC-07/PLC-08)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -368,6 +367,7 @@ Last activity: 2026-08-27 - UAT пройден: 260827-gim/rzq/ui0/ui3 подт�
 - Phase 37 added (2026-08-08): Приватность данных — обезличивание HEAD от уже утёкших реальных данных организации и сотрудников (код/шаблоны/тесты/`.planning/`-артефакты) + durable-гейт против повторной утечки по образцу `check-contrast.mjs`/`check-print-isolation.mjs`, подключённый в `pnpm lint`. История git не переписывается (решение пользователя). Порядок внутри фазы: сначала чистка, затем гейт — иначе гейт падает на собственном репозитории. Независима от направления шаблонов. Milestone v1.3.3 (PRIV-01, PRIV-02).
 - Phase 38 added (2026-08-08): Nyquist-покрытие Фазы 32 — закрытие унаследованного из v1.3 долга (`32-VALIDATION.md: nyquist_compliant: false` → `true`). Независима от остальных фаз. Milestone v1.3.3 (QA-04).
 - Phases 37+38 merged into one (2026-08-08, решение пользователя при утверждении роадмапа): чистка и гейт всё равно планируются и проверяются вместе, потому что гейт обязан проходить на уже очищенном HEAD. Прежняя Phase 39 (Nyquist) стала Phase 38. Итог: 5 фаз вместо 6, покрытие требований не изменилось.
+- Phase 39.1 inserted after Phase 39: Формат пути Места переезжает из trackly.config.toml в UI: умолчание организации + переопределение на месте с наследованием (URGENT)
 
 ### Decisions
 
