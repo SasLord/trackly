@@ -15,7 +15,12 @@
         { "path": "$HOME/**/*.pdf" },
         { "path": "$DOCUMENT/**/*.pdf" },
         { "path": "$DESKTOP/**/*.pdf" },
-        { "path": "$DOWNLOAD/**/*.pdf" }
+        { "path": "$DOWNLOAD/**/*.pdf" },
+        { "path": "$TEMP/**/*.csv" },
+        { "path": "$HOME/**/*.csv" },
+        { "path": "$DOCUMENT/**/*.csv" },
+        { "path": "$DESKTOP/**/*.csv" },
+        { "path": "$DOWNLOAD/**/*.csv" }
       ]
     },
     {
