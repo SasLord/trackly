@@ -51,6 +51,11 @@ pub struct DeviceDto {
     pub place_id: Option<i64>,
     /// Resolved full path (from `place_full_paths` view via LEFT JOIN).
     pub full_path: Option<String>,
+    /// Resolved short path per the organization/place display-variant setting
+    /// (Phase 39.1 / PLC-08). `None` on read paths that don't join
+    /// `place_effective_variant` (autocomplete, restore-from-snapshot, D-19)
+    /// or when the device has no place.
+    pub place_path_short: Option<String>,
     #[specta(type = i32)]
     pub status_id: i64,
     #[specta(type = i32)]
@@ -74,6 +79,7 @@ impl From<DeviceRow> for DeviceDto {
             state: row.state,
             place_id: row.place_id,
             full_path: row.full_path,
+            place_path_short: row.place_path_short,
             status_id: row.status_id,
             created_at_utc: row.created_at_utc,
             updated_at_utc: row.updated_at_utc,
@@ -335,6 +341,7 @@ mod tests {
             state: Some("Хорошее".to_string()),
             place_id: Some(5),
             full_path: Some("Здание А / Склад".to_string()),
+            place_path_short: Some("Здание А / Склад".to_string()),
             status_id: 2,
             created_at_utc: 1_700_000_000,
             updated_at_utc: 1_700_001_000,
@@ -378,6 +385,7 @@ mod tests {
             state: None,
             place_id: None,
             full_path: None,
+            place_path_short: None,
             status_id: 1,
             created_at_utc: 0,
             updated_at_utc: 0,

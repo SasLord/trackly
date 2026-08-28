@@ -16,6 +16,7 @@ use rusqlite::{Connection, OptionalExtension};
 use trackly_core::domain::devices::{
     AutocompleteField, DeviceFilter, DeviceGroupRow, DeviceNew, DevicePatch, DeviceRow, Pagination,
 };
+use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::ports::devices::DeviceRepository;
 
@@ -26,18 +27,25 @@ use crate::error_conversions::map_rusqlite;
 pub struct SqliteDeviceRepository;
 
 /// SELECT с полным набором колонок в том порядке, который ожидает `from_row`.
-/// LEFT JOIN place_full_paths добавляет `pfp.full_path` как последний столбец (индекс 15).
+/// LEFT JOIN place_full_paths добавляет `pfp.full_path` как столбец с индексом 15;
+/// LEFT JOIN place_effective_variant добавляет `pev.effective_variant` как индекс 16
+/// (Phase 39.1 Plan 03). `from_row` НИКОГДА не читает индекс 16 — он используется
+/// только `from_row_with_short_path`, вызываемым из `list`/`search_fts` (D-19: `get`/
+/// `get_in_tx`/`list_by_ids`/`restore_from_snapshot_in_tx` продолжают использовать
+/// голый `from_row` и всегда получают `place_path_short: None`).
 const SELECT_DEVICES: &str = "
     SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, d.model,
            d.condition, d.complectation, d.place_id, d.status_id, d.notes,
            d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc,
-           pfp.full_path AS place_path
+           pfp.full_path AS place_path, pev.effective_variant AS place_variant
     FROM devices d
     LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id
+    LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
 ";
 
 /// Маппинг строки результата → `DeviceRow`.
-/// Порядок колонок должен совпадать с `SELECT_DEVICES`.
+/// Порядок колонок должен совпадать с `SELECT_DEVICES`. `place_path_short` всегда
+/// `None` здесь — вычисляется отдельно в `from_row_with_short_path` (D-19).
 fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
     Ok(DeviceRow {
         id: row.get(0)?,
@@ -56,7 +64,56 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         updated_at_utc: row.get(13)?,
         deleted_at_utc: row.get(14)?,
         full_path: row.get(15)?, // pfp.full_path from LEFT JOIN
+        place_path_short: None,
     })
+}
+
+/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
+/// `app_settings` once per query call (not per row), mirroring the guarded-read
+/// shape of `CartridgeRepository::low_stock`
+/// (`crates/trackly-infra/src/repos/cartridges_sqlite.rs:930`). Falls back to
+/// the V039-seeded defaults (`" // "`/`" / "`) if the row is somehow missing —
+/// defensive only, the migration always seeds both.
+fn read_path_display_separators(conn: &Connection) -> (String, String) {
+    let read_sep = |key: &str, default: &str| -> String {
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [key],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .unwrap_or_else(|| default.to_string())
+    };
+    (
+        read_sep("place_path_sep_ends", " // "),
+        read_sep("place_path_sep_last_two", " / "),
+    )
+}
+
+/// Wraps `from_row`, additionally reading `place_effective_variant.effective_variant`
+/// (column index 16, present only when the query joins `place_effective_variant` —
+/// see `SELECT_DEVICES`) and computing `place_path_short` via `shorten_place_path`.
+/// Used ONLY by `list()`/`search_fts()` (D-17); a device with `place_id IS NULL`
+/// naturally yields `effective_variant: None` (LEFT JOIN, no match) and thus
+/// `place_path_short: None`, mirroring `full_path`'s existing behavior.
+fn from_row_with_short_path<'a>(
+    sep_ends: &'a str,
+    sep_last_two: &'a str,
+) -> impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> + 'a {
+    move |row| {
+        let mut device = from_row(row)?;
+        let effective_variant: Option<String> = row.get(16)?;
+        if let (Some(full), Some(token)) = (device.full_path.as_deref(), effective_variant) {
+            // `place_effective_variant` always emits one of the 3 known tokens
+            // (view invariant) — `from_str` still gates it for type safety
+            // rather than trusting the raw string as-is (per <interfaces>).
+            if let Ok(variant) = PathDisplayVariant::from_str(&token) {
+                device.place_path_short =
+                    Some(shorten_place_path(full, variant, sep_ends, sep_last_two));
+            }
+        }
+        Ok(device)
+    }
 }
 
 /// Нормализует пустые строки в NULL (Pitfall #12: пустая строка ≠ отсутствие).
@@ -87,6 +144,7 @@ type GroupRowTuple = (
     Option<String>, // place_path
     Option<String>, // inv_no
     Option<String>, // serial_no
+    Option<String>, // place_variant (place_effective_variant.effective_variant, Phase 39.1 Plan 03)
 );
 
 /// Маппинг строки результата `list_grouped` → плоский tuple.
@@ -111,6 +169,7 @@ fn group_row_tuple(row: &rusqlite::Row<'_>) -> rusqlite::Result<GroupRowTuple> {
         row.get(15)?,
         row.get(16)?,
         row.get(17)?,
+        row.get(18)?,
     ))
 }
 
@@ -590,10 +649,11 @@ impl DeviceRepository for SqliteDeviceRepository {
             ))
             .map_err(map_rusqlite)?;
 
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let rows = stmt
             .query_map(
                 rusqlite::params![include_deleted as i64, status_id, type_id, limit, offset],
-                from_row,
+                from_row_with_short_path(&sep_ends, &sep_last_two),
             )
             .map_err(map_rusqlite)?;
 
@@ -850,14 +910,19 @@ impl DeviceRepository for SqliteDeviceRepository {
             "d.id"
         };
 
+        // Phase 39.1 Plan 03: same `place_effective_variant` LEFT JOIN as
+        // `SELECT_DEVICES`, so `search_fts` returns a `place_path_short`
+        // identical to what `list()` would return for the same `place_id`
+        // (D-17, single shared formula).
         let row_sql = format!(
             "WITH {cte_sql} \
              SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, \
                     d.model, d.condition, d.complectation, d.place_id, d.status_id, \
                     d.notes, d.version, d.created_at_utc, d.updated_at_utc, d.deleted_at_utc, \
-                    pfp.full_path AS place_path \
+                    pfp.full_path AS place_path, pev.effective_variant AS place_variant \
              FROM devices d \
              LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
+             LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id \
              {fh_join}\
              WHERE {where_clause} \
              ORDER BY {order_clause} \
@@ -866,8 +931,12 @@ impl DeviceRepository for SqliteDeviceRepository {
 
         let mut stmt = conn.prepare(&row_sql).map_err(map_rusqlite)?;
         let param_refs: Vec<&dyn ToSql> = cte_params.iter().map(|b| b.as_ref()).collect();
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let rows = stmt
-            .query_map(param_refs.as_slice(), from_row)
+            .query_map(
+                param_refs.as_slice(),
+                from_row_with_short_path(&sep_ends, &sep_last_two),
+            )
             .map_err(map_rusqlite)?;
 
         let mut devices = Vec::new();
@@ -1026,9 +1095,19 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.updated_at_utc)                AS updated_at_utc,
                    pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
-                   MAX(d.serial_number)                 AS serial_no
+                   MAX(d.serial_number)                 AS serial_no,
+                   pev.effective_variant                AS place_variant
                  FROM devices d
                  LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.model IS d.model
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
+                 LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
@@ -1060,10 +1139,20 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.updated_at_utc)                AS updated_at_utc,
                    pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
-                   MAX(d.serial_number)                 AS serial_no
+                   MAX(d.serial_number)                 AS serial_no,
+                   pev.effective_variant                AS place_variant
                  FROM devices d
                  JOIN devices_fts ON d.id = devices_fts.rowid
                  LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.model IS d.model
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
+                 LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
@@ -1096,9 +1185,18 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.updated_at_utc)                AS updated_at_utc,
                    pfp.full_path                        AS place_path,
                    MAX(d.inventory_number)              AS inv_no,
-                   MAX(d.serial_number)                 AS serial_no
+                   MAX(d.serial_number)                 AS serial_no,
+                   pev.effective_variant                AS place_variant
                  FROM devices d
                  LEFT JOIN place_full_paths pfp ON pfp.place_id = (
+                   SELECT MAX(d2.place_id)
+                   FROM devices d2
+                   WHERE d2.type_id = d.type_id
+                     AND d2.name = d.name
+                     AND d2.deleted_at_utc IS NULL
+                     AND (?1 IS NULL OR d2.status_id = ?1)
+                 )
+                 LEFT JOIN place_effective_variant pev ON pev.place_id = (
                    SELECT MAX(d2.place_id)
                    FROM devices d2
                    WHERE d2.type_id = d.type_id
@@ -1152,6 +1250,10 @@ impl DeviceRepository for SqliteDeviceRepository {
                 .map_err(map_rusqlite)?,
         };
 
+        // Phase 39.1 Plan 03: read once for the whole result set (D-17), same
+        // discipline as `list`/`search_fts`.
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
+
         let mut groups = Vec::new();
         for row_result in rows {
             let (
@@ -1173,6 +1275,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 full_path_val,
                 inv_no,
                 serial_no,
+                place_variant_val,
             ) = row_result.map_err(map_rusqlite)?;
 
             // Parse GROUP_CONCAT result (T-02-04-06: parse failure → AppError::Internal).
@@ -1183,6 +1286,16 @@ impl DeviceRepository for SqliteDeviceRepository {
             let ids = ids.map_err(|_e| AppError::Internal {
                 source_chain: format!("GROUP_CONCAT parsing failed for group id_list: {id_list}"),
             })?;
+
+            // Same formula as `from_row_with_short_path` — a group with no
+            // resolved place (`place_variant_val: None`, e.g. all members
+            // `place_id IS NULL`) yields `place_path_short: None`.
+            let place_path_short = match (full_path_val.as_deref(), place_variant_val) {
+                (Some(full), Some(token)) => PathDisplayVariant::from_str(&token)
+                    .ok()
+                    .map(|variant| shorten_place_path(full, variant, &sep_ends, &sep_last_two)),
+                _ => None,
+            };
 
             let repr = DeviceRow {
                 id: repr_id,
@@ -1196,6 +1309,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 state,
                 place_id: place_id_val,
                 full_path: full_path_val,
+                place_path_short,
                 status_id,
                 version,
                 created_at_utc,

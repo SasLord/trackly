@@ -97,6 +97,12 @@ pub struct DeviceRow {
     pub place_id: Option<i64>,
     /// Resolved full path from `place_full_paths` (via LEFT JOIN on read paths).
     pub full_path: Option<String>,
+    /// Resolved short path per `place_effective_variant` + `shorten_place_path`
+    /// (Phase 39.1 / PLC-08). Populated ONLY on `list`/`search_fts`/`list_grouped`
+    /// (D-17); `None` on `autocomplete`/`restore_from_snapshot_in_tx`/`get`/
+    /// `list_by_ids` (D-19 — those read paths never join `place_effective_variant`)
+    /// and on any row where `place_id IS NULL`.
+    pub place_path_short: Option<String>,
     pub status_id: i64,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
