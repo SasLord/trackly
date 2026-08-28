@@ -14,6 +14,10 @@
     oninput?: (_value: string) => void;
     /** Optional left icon; absent by default — no layout change when omitted. */
     iconLeft?: Snippet;
+    /** Renders the value in a monospace font (e.g. for values with significant
+     * leading/trailing spaces). Default `false` — no visual change for any
+     * existing call site that omits this prop. */
+    mono?: boolean;
   }
 
   let {
@@ -27,6 +31,7 @@
     autocomplete,
     oninput,
     iconLeft,
+    mono = false,
   }: Props = $props();
 </script>
 
@@ -41,6 +46,7 @@
     {disabled}
     class="input"
     class:invalid
+    class:mono
     class:has-icon={!!iconLeft}
     {value}
     {autocomplete}
@@ -98,6 +104,10 @@
     &.invalid {
       border-color: var(--tr-danger);
       box-shadow: 0 0 0 3px var(--tr-danger-ring);
+    }
+
+    &.mono {
+      font-family: var(--tr-font-mono);
     }
 
     &.has-icon {
