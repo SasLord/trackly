@@ -1,6 +1,6 @@
 //! Integration tests: `place_path_short` on `SqliteCartridgeRepository::list`
-//! (Phase 39.1 Plan 04, PLC-08, mirrors `devices_place_path_short.rs` from
-//! Plan 03).
+//! and `::search` (Phase 39.1 Plan 04, PLC-08, mirrors
+//! `devices_place_path_short.rs` from Plan 03).
 //!
 //! Only invented place/cartridge data ("Здание А", "1 этаж", "1-05") — never
 //! real organization data, per the project's hard privacy constraint.
@@ -143,6 +143,63 @@ async fn list_cartridge_without_place_has_no_short_path() {
         let row = &rows[0];
         assert_eq!(row.full_path, None);
         assert_eq!(row.place_path_short, None);
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Regression (code review CR-01): `search()` must shorten the path exactly like
+/// `list()` does. `CartridgeListRow.svelte` renders `place_path_short` only, so
+/// a bare `map_row` here blanked the «Место» column the moment the user typed
+/// anything into the cartridge search box.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn search_returns_shortened_path_like_list() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let place_repo = SqlitePlaceRepository;
+        let cartridge_repo = SqliteCartridgeRepository;
+
+        let building = place_repo
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
+            .expect("create building");
+        let floor = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(building), PlaceKind::Floor, "1 этаж"),
+                NOW,
+            )
+            .expect("create floor");
+        let room = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(floor), PlaceKind::Room, "1-05"),
+                NOW,
+            )
+            .expect("create room");
+
+        let model_id = seed_model(&mut conn);
+        create_cartridge(&mut conn, model_id, Some(room));
+
+        let rows = cartridge_repo
+            .search(&conn, "Pantum", &CartridgeFilter::default())
+            .expect("search");
+
+        assert_eq!(rows.len(), 1, "поиск по бренду должен найти картридж");
+        let row = &rows[0];
+        assert_eq!(
+            row.full_path.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "full_path должен остаться нетронутым и в поиске"
+        );
+        assert_eq!(
+            row.place_path_short.as_deref(),
+            Some("Здание А // 1-05"),
+            "search() должен отдавать тот же сокращённый путь, что и list()"
+        );
     })
     .await
     .expect("timeout");

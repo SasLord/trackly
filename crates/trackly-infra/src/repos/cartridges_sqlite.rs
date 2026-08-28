@@ -50,9 +50,10 @@ pub struct AuditEntryRow {
 ///   - `cartridge_states cst` for human-readable state name.
 ///   - `place_effective_variant pev` adds `pev.effective_variant` as column
 ///     index 18 (Phase 39.1 Plan 04). `map_row` NEVER reads index 18 — it is
-///     read only by `map_row_with_short_path`, used exclusively by `list()`
-///     (D-19-equivalent: `get`/`search_fts` keep using bare `map_row` and
-///     always yield `place_path_short: None`).
+///     read only by `map_row_with_short_path`, used by the two list-feeding
+///     reads `list()` and `search()`. Single-entity reads (`get`,
+///     `fetch_in_tx`) keep bare `map_row` and yield `place_path_short: None`;
+///     nothing renders a shortened path for them.
 const SELECT_CARTRIDGES: &str = "
     SELECT c.id, c.code, c.model_id,
            m.brand AS model_brand, m.model AS model_name, m.kind_id AS model_kind_id,
@@ -120,7 +121,9 @@ fn read_path_display_separators(conn: &Connection) -> (String, String) {
 /// Wraps `map_row`, additionally reading `place_effective_variant.effective_variant`
 /// (column index 18, present only when the query joins `place_effective_variant` —
 /// see `SELECT_CARTRIDGES`) and computing `place_path_short` via `shorten_place_path`.
-/// Used ONLY by `list()` (PLC-08); a cartridge with `place_id IS NULL` naturally
+/// Used by `list()` and `search()` — the two reads that feed the cartridge list
+/// UI, which renders `place_path_short` (PLC-08). A cartridge with
+/// `place_id IS NULL` naturally
 /// yields `effective_variant: None` (LEFT JOIN, no match) and thus
 /// `place_path_short: None`, mirroring `full_path`'s existing behavior.
 fn map_row_with_short_path<'a>(
@@ -951,9 +954,16 @@ impl SqliteCartridgeRepository {
         }
         let param_refs: Vec<&dyn ToSql> = bind_params.iter().map(|b| b.as_ref()).collect();
 
+        // Same shortened-path treatment as `list()` — CartridgeListRow renders
+        // `place_path_short` only, so a bare `map_row` here would blank the
+        // «Место» column the moment the user types anything into search.
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
         let rows = stmt
-            .query_map(param_refs.as_slice(), map_row)
+            .query_map(
+                param_refs.as_slice(),
+                map_row_with_short_path(&sep_ends, &sep_last_two),
+            )
             .map_err(map_rusqlite)?;
 
         let mut out = Vec::new();
