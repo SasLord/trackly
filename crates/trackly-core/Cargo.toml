@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# Never goes to crates.io — this is a workspace-internal crate. Also lets
+# cargo-deny's `allow-wildcard-paths` apply: that setting is scoped to
+# private crates, since crates.io forbids path deps in published ones.
+publish = false
 description = "Pure domain layer for Trackly. No I/O. No tokio. No rusqlite. No tauri."
 
 [lints]
