@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-28T12:36:10.400Z"
+last_updated: "2026-08-28T12:48:13.858Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 32
-  completed_plans: 30
+  completed_plans: 31
   percent: 13
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.1 (place-path-display) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-08-28
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -336,6 +336,7 @@ Last activity: 2026-08-28
 | Phase 39.1-place-path-display P06 | 30min | 2 tasks | 6 files |
 | Phase 39.1 P07 | 35min | 2 tasks | 10 files |
 | Phase 39.1 P08 | 35min | 2 tasks | 3 files |
+| Phase 39.1 P09 | 20min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -840,6 +841,7 @@ Recent decisions affecting current work:
 - [Phase 39.1-06]: render_pdf resolves place path variant at render time (current place_effective_variant for acts.place_id), not act-create time
 - [Phase ?]: Plan 07: HTTP SetPathVariantPayload uses camelCase (pathVariantOverride), matching existing places.rs Payload convention
 - [Phase 39.1-08]: Radio/Input подраздела получают disabled во время сохранения (states matrix UI-SPEC); .sr-only/.field-hint/.field-error продублированы локально в OrgSettings.svelte (Svelte scoped styles)
+- [Phase 39.1]: PlaceFormModal: дропдаун «Вариант сокращения» видим в create и rename режимах, сохраняется вторым RPC places_set_path_variant — D-12: поле мутируемо после создания места, в отличие от Типа/Родителя/Уровня
 
 ### Pending Todos
 
@@ -1028,7 +1030,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-28T12:31:00.240Z
+Last session: 2026-08-28T12:48:13.849Z
 Stopped at: Completed 39.1-06-PLAN.md
 Resume file: 
 
