@@ -888,7 +888,7 @@ impl ReportService {
             let record: Vec<String> = columns
                 .iter()
                 .map(|col| {
-                    let raw = row_field(row, col, tz);
+                    let raw = row_field(row, col, tz, false);
                     csv_safe(&raw)
                 })
                 .collect();
@@ -923,7 +923,8 @@ impl ReportService {
     /// pipeline shipped for acts in Phase 16 (`act_service.rs::render_pdf`).
     ///
     /// `columns` (keys, e.g. `"giver_name"`) remains the sole source of cell
-    /// values via `row_field(row, col, tz)` — unchanged by the D-03/CR-01 fix.
+    /// values via `row_field(row, col, tz, shorten=true)` (D-17, Plan 05) —
+    /// unchanged by the D-03/CR-01 fix.
     /// `column_labels` (Russian labels, e.g. `"Сдал"`) is the NEW source of
     /// the header row (`ctx["columns"]`); `columns_for`/`column_labels_for`
     /// in `tauri_cmds/reports.rs` are index-aligned so `columns[i]` and
@@ -1006,7 +1007,12 @@ impl ReportService {
                 current_month = Some(month_key.to_string());
             }
 
-            table_rows.push(columns.iter().map(|col| row_field(row, col, tz)).collect());
+            table_rows.push(
+                columns
+                    .iter()
+                    .map(|col| row_field(row, col, tz, true))
+                    .collect(),
+            );
         }
 
         if !table_rows.is_empty() {
@@ -1052,7 +1058,13 @@ impl ReportService {
 // ReportRow field accessor
 // ---------------------------------------------------------------------------
 
-fn row_field(row: &ReportRow, col: &str, tz: UtcOffset) -> String {
+/// `shorten` selects which of `place_path` (full, D-18/CSV) or
+/// `place_path_short` (D-17/PDF) backs the `"place_path"`/`"printer_place"`
+/// columns. Every OTHER call site (`export_csv` — always `false`;
+/// `export_pdf` — always `true`) must pass a literal, never a computed
+/// value, per T-39.1-13 — the two outputs must never accidentally move in
+/// lockstep on a future refactor.
+fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String {
     match col {
         "number" => row.number.as_deref().unwrap_or("").to_string(),
         "sub_number" => row.sub_number.as_deref().unwrap_or("").to_string(),
@@ -1062,10 +1074,23 @@ fn row_field(row: &ReportRow, col: &str, tz: UtcOffset) -> String {
             .handover_date_utc
             .map(|ts| format_handover_date(ts, tz))
             .unwrap_or_default(),
-        "place_path" => row.place_path.as_deref().unwrap_or("").to_string(),
+        "place_path" => if shorten {
+            row.place_path_short.as_deref()
+        } else {
+            row.place_path.as_deref()
+        }
+        .unwrap_or("")
+        .to_string(),
         "printer_place" => {
-            combine_printer_and_place(row.device_name.clone(), row.place_path.clone())
-                .unwrap_or_default()
+            // T-39.1-14: `shorten` narrows ONLY the place-path argument below
+            // — `combine_printer_and_place`'s signature and its first
+            // argument (`device_name`, the printer name) are never touched.
+            let place = if shorten {
+                row.place_path_short.clone()
+            } else {
+                row.place_path.clone()
+            };
+            combine_printer_and_place(row.device_name.clone(), place).unwrap_or_default()
         }
         "act_type" => row.act_type.as_deref().unwrap_or("").to_string(),
         "device_name" => row.device_name.as_deref().unwrap_or("").to_string(),
@@ -2431,8 +2456,9 @@ mod tests {
         let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
         row.device_name = Some("Kyocera-01".to_string());
         row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        row.place_path_short = Some("Здание А // Кабинет 214".to_string());
         assert_eq!(
-            row_field(&row, "printer_place", UtcOffset::UTC),
+            row_field(&row, "printer_place", UtcOffset::UTC, false),
             "Kyocera-01, Здание А / 2 этаж / Кабинет 214"
         );
     }
@@ -2442,7 +2468,75 @@ mod tests {
         let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
         row.device_name = None;
         row.place_path = None;
-        assert_eq!(row_field(&row, "printer_place", UtcOffset::UTC), "");
+        row.place_path_short = None;
+        assert_eq!(row_field(&row, "printer_place", UtcOffset::UTC, false), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // T-39.1-13/T-39.1-14: row_field(shorten) CSV/PDF asymmetry (Plan 05 Task 2)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn row_field_place_path_shorten_false_returns_full() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        row.place_path_short = Some("Здание А // Кабинет 214".to_string());
+        assert_eq!(
+            row_field(&row, "place_path", UtcOffset::UTC, false),
+            "Здание А / 2 этаж / Кабинет 214"
+        );
+    }
+
+    #[test]
+    fn row_field_place_path_shorten_true_returns_short() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        row.place_path_short = Some("Здание А // Кабинет 214".to_string());
+        assert_eq!(
+            row_field(&row, "place_path", UtcOffset::UTC, true),
+            "Здание А // Кабинет 214"
+        );
+    }
+
+    #[test]
+    fn row_field_printer_place_shorten_true_shortens_only_place_not_printer_name() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.device_name = Some("Kyocera-01".to_string());
+        row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        row.place_path_short = Some("Здание А // Кабинет 214".to_string());
+
+        let full = row_field(&row, "printer_place", UtcOffset::UTC, false);
+        let short = row_field(&row, "printer_place", UtcOffset::UTC, true);
+
+        assert_eq!(full, "Kyocera-01, Здание А / 2 этаж / Кабинет 214");
+        assert_eq!(short, "Kyocera-01, Здание А // Кабинет 214");
+        // Printer name identical in both — only the path part shortened.
+        assert!(full.starts_with("Kyocera-01,") && short.starts_with("Kyocera-01,"));
+    }
+
+    /// T-39.1-13: same `ReportResponse` (same `ReportRow`), exported to CSV
+    /// (D-18, `shorten=false`) vs PDF (D-17, `shorten=true`) — the
+    /// `place_path` column value must differ on a 3+ segment path, CSV
+    /// always the longer (or equal) string, never the reverse.
+    #[test]
+    fn csv_pdf_asymmetry_same_report_response_differs_on_place_path() {
+        let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
+        row.place_path = Some("Здание А / 2 этаж / Кабинет 214".to_string());
+        row.place_path_short = Some("Здание А // Кабинет 214".to_string());
+
+        let csv_value = row_field(&row, "place_path", UtcOffset::UTC, false);
+        let pdf_value = row_field(&row, "place_path", UtcOffset::UTC, true);
+
+        assert_ne!(
+            csv_value, pdf_value,
+            "CSV/PDF must diverge on a 3+ segment path"
+        );
+        assert!(
+            csv_value.len() >= pdf_value.len(),
+            "CSV must never be shorter than PDF: csv={csv_value:?} pdf={pdf_value:?}"
+        );
+        assert_eq!(csv_value, "Здание А / 2 этаж / Кабинет 214");
+        assert_eq!(pdf_value, "Здание А // Кабинет 214");
     }
 
     // -----------------------------------------------------------------------
@@ -2471,7 +2565,7 @@ mod tests {
     fn row_field_handover_date_absent_is_empty() {
         let mut row = make_row("2026-08", "Kyocera-01", "Иванов И.И.");
         row.handover_date_utc = None;
-        assert_eq!(row_field(&row, "handover_date_utc", moscow()), "");
+        assert_eq!(row_field(&row, "handover_date_utc", moscow(), false), "");
     }
 
     #[test]
