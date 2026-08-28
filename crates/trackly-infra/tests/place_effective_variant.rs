@@ -71,7 +71,11 @@ async fn no_parent_no_override_falls_back_to_org_default() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
 
         assert_eq!(effective_variant(&conn, root_id), "ends");
@@ -91,7 +95,11 @@ async fn explicit_override_wins_regardless_of_org_default() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
         set_override(&conn, root_id, Some("last_two"));
 
@@ -117,13 +125,25 @@ async fn descendants_inherit_ancestor_override_through_chain() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
         let child_id = repo
-            .create(&mut conn, &new_place(Some(root_id), PlaceKind::Floor, "2 этаж"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(root_id), PlaceKind::Floor, "2 этаж"),
+                NOW,
+            )
             .expect("create child");
         let grandchild_id = repo
-            .create(&mut conn, &new_place(Some(child_id), PlaceKind::Room, "214"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(child_id), PlaceKind::Room, "214"),
+                NOW,
+            )
             .expect("create grandchild");
 
         set_override(&conn, root_id, Some("last"));
@@ -148,12 +168,20 @@ async fn moving_inheriting_place_to_top_level_switches_to_org_default_immediatel
         let repo = SqlitePlaceRepository;
 
         let b_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create B");
         set_override(&conn, b_id, Some("ends"));
 
         let a_id = repo
-            .create(&mut conn, &new_place(Some(b_id), PlaceKind::Floor, "2 этаж"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(b_id), PlaceKind::Floor, "2 этаж"),
+                NOW,
+            )
             .expect("create A as child of B (NULL override)");
 
         // Before move: A inherits B's override.
@@ -190,10 +218,18 @@ async fn override_is_not_reset_by_move_including_move_to_top_level() {
         let repo = SqlitePlaceRepository;
 
         let old_parent_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create old parent");
         let new_parent_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание Б"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание Б"),
+                NOW,
+            )
             .expect("create new parent");
         let place_id = repo
             .create(
@@ -231,10 +267,18 @@ async fn org_default_change_is_visible_immediately_for_non_overridden_places() {
         let repo = SqlitePlaceRepository;
 
         let root_id = repo
-            .create(&mut conn, &new_place(None, PlaceKind::Building, "Здание А"), NOW)
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
             .expect("create root");
         let child_id = repo
-            .create(&mut conn, &new_place(Some(root_id), PlaceKind::Floor, "2 этаж"), NOW)
+            .create(
+                &mut conn,
+                &new_place(Some(root_id), PlaceKind::Floor, "2 этаж"),
+                NOW,
+            )
             .expect("create child");
 
         assert_eq!(effective_variant(&conn, root_id), "ends");
