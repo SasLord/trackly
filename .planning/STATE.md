@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-08-28T03:00:26.352Z"
-last_activity: 2026-08-28 - UAT пройден по 260827-gim/rzq/ui0/ui3; закрыта 260827-wsu (читаемая дата в CSV и PDF); релиз v1.4.0-phase39.2 пересобран; вставлена Фаза 39.1 (формат пути Места в UI, PLC-07/PLC-08)
+status: executing
+last_updated: "2026-08-28T04:58:43.585Z"
+last_activity: 2026-08-28 -- Phase 39.1 planning complete
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 22
+  total_plans: 32
   completed_plans: 22
   percent: 13
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 39.1
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-28 - UAT пройден по 260827-gim/rzq/ui0/ui3; закрыта 260827-wsu (читаемая дата в CSV и PDF); релиз v1.4.0-phase39.2 пересобран; вставлена Фаза 39.1 (формат пути Места в UI, PLC-07/PLC-08)
+Status: Ready to execute
+Last activity: 2026-08-28 -- Phase 39.1 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
