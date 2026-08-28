@@ -3,8 +3,10 @@
   import Button from '$lib/components/Button.svelte';
   import Input from '$lib/components/Input.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
+  import Radio from '$lib/components/Radio.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
+  import { previewShortenPath, monoReadout } from '$lib/utils/placePath';
 
   // DTO from backend (settings_get_org)
   interface OrgSettingsDto {
@@ -51,6 +53,92 @@
 
   // Hidden file input for browser context
   let fileInputEl: HTMLInputElement | null = $state(null);
+
+  // Подраздел «Формат отображения пути места» (D-07/PLC-07, 39.1-08).
+  interface OrgPathDisplayDto {
+    variant: string;
+    sep_ends: string;
+    sep_last_two: string;
+  }
+
+  const PATH_PREVIEW_SAMPLE_1 = 'Здание А / 1 этаж / 1-05';
+  const PATH_PREVIEW_SAMPLE_2 = 'Территория А / Объект Х / помещение 3';
+
+  let pathVariant = $state<'ends' | 'last_two' | 'last'>('ends');
+  let sepEnds = $state(' // ');
+  let sepLastTwo = $state(' / ');
+  let savingPath = $state(false);
+
+  // D-10: пустая строка запрещена, строка из одних пробелов — допустима.
+  // Намеренно `.length === 0`, НЕ `.trim().length === 0` (см. UI-SPEC.md
+  // «Проблема 1» — значимые пробелы).
+  const sepEndsErr = $derived(
+    sepEnds.length === 0 ? 'Разделитель не может быть пустым — введите хотя бы один символ.' : null
+  );
+  const sepLastTwoErr = $derived(
+    sepLastTwo.length === 0
+      ? 'Разделитель не может быть пустым — введите хотя бы один символ.'
+      : null
+  );
+
+  // D-11: все три варианта пересчитываются разом на каждый keystroke в любом
+  // из двух полей разделителей, независимо от выбранного `pathVariant`.
+  const previewEnds1 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'ends', sepEnds, sepLastTwo)
+  );
+  const previewLastTwo1 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last_two', sepEnds, sepLastTwo)
+  );
+  const previewLast1 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last', sepEnds, sepLastTwo)
+  );
+  const previewEnds2 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'ends', sepEnds, sepLastTwo)
+  );
+  const previewLastTwo2 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last_two', sepEnds, sepLastTwo)
+  );
+  const previewLast2 = $derived(
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last', sepEnds, sepLastTwo)
+  );
+
+  async function loadPathDefaults() {
+    try {
+      const dto = await apiCall<OrgPathDisplayDto>('settings_get_place_path_defaults', {});
+      pathVariant =
+        dto.variant === 'last_two' ? 'last_two' : dto.variant === 'last' ? 'last' : 'ends';
+      sepEnds = dto.sep_ends;
+      sepLastTwo = dto.sep_last_two;
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось загрузить формат отображения пути';
+      pushToast('error', msg);
+    }
+  }
+
+  async function savePathDefaults() {
+    savingPath = true;
+    try {
+      await apiCall<void>('settings_set_place_path_defaults', {
+        patch: {
+          variant: pathVariant,
+          sep_ends: sepEnds,
+          sep_last_two: sepLastTwo,
+        },
+      });
+      pushToast('success', 'Формат пути сохранён');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Не удалось сохранить формат пути';
+      pushToast('error', msg);
+    } finally {
+      savingPath = false;
+    }
+  }
 
   async function loadOrg() {
     try {
@@ -103,6 +191,7 @@
 
   onMount(() => {
     loadOrg();
+    loadPathDefaults();
   });
 
   async function saveOrg() {
@@ -359,6 +448,94 @@
       onchange={handleFileInput}
     />
   </div>
+
+  <div class="path-section">
+    <h3 class="subsection-title">Формат отображения пути места</h3>
+    <p class="path-lead">
+      Определяет, как сокращается длинный путь места в списках, отчётах и печатных формах. Любое
+      место может переопределить вариант в своей карточке.
+    </p>
+
+    <div class="path-variant-group" role="radiogroup" aria-label="Вариант сокращения по умолчанию">
+      <label class="path-radio-row">
+        <Radio bind:group={pathVariant} value="ends" disabled={savingPath} />
+        <span>Крайние</span>
+      </label>
+      <label class="path-radio-row">
+        <Radio bind:group={pathVariant} value="last_two" disabled={savingPath} />
+        <span>Два последних</span>
+      </label>
+      <label class="path-radio-row">
+        <Radio bind:group={pathVariant} value="last" disabled={savingPath} />
+        <span>Последнее</span>
+      </label>
+    </div>
+
+    <div class="form-grid path-sep-fields">
+      <div class="form-field">
+        <label class="form-label" for="path-sep-ends">Разделитель «Крайние»</label>
+        <Input
+          id="path-sep-ends"
+          bind:value={sepEnds}
+          mono
+          invalid={sepEndsErr !== null}
+          disabled={savingPath}
+        />
+        <span class="field-hint tr-mono">Значение: «{monoReadout(sepEnds)}»</span>
+        {#if sepEndsErr}
+          <span class="field-error">{sepEndsErr}</span>
+        {/if}
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="path-sep-last-two">Разделитель «Два последних»</label>
+        <Input
+          id="path-sep-last-two"
+          bind:value={sepLastTwo}
+          mono
+          invalid={sepLastTwoErr !== null}
+          disabled={savingPath}
+        />
+        <span class="field-hint tr-mono">Значение: «{monoReadout(sepLastTwo)}»</span>
+        {#if sepLastTwoErr}
+          <span class="field-error">{sepLastTwoErr}</span>
+        {/if}
+      </div>
+    </div>
+
+    <div class="path-preview-wrap">
+      <table class="path-preview">
+        <caption class="sr-only">Предпросмотр вариантов сокращения пути</caption>
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">Крайние</th>
+            <th scope="col">Два последних</th>
+            <th scope="col">Последнее</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">{PATH_PREVIEW_SAMPLE_1}</th>
+            <td class="tr-mono">{previewEnds1}</td>
+            <td class="tr-mono">{previewLastTwo1}</td>
+            <td class="tr-mono">{previewLast1}</td>
+          </tr>
+          <tr>
+            <th scope="row">{PATH_PREVIEW_SAMPLE_2}</th>
+            <td class="tr-mono">{previewEnds2}</td>
+            <td class="tr-mono">{previewLastTwo2}</td>
+            <td class="tr-mono">{previewLast2}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="save-row">
+      <Button variant="primary" loading={savingPath} onclick={savePathDefaults}>
+        Сохранить формат пути
+      </Button>
+    </div>
+  </div>
 </section>
 
 <style lang="scss">
@@ -470,5 +647,82 @@
     margin: 0;
     font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
+  }
+
+  .field-hint {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-tertiary);
+  }
+
+  .field-error {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-danger);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .path-section {
+    border-top: 1px solid var(--tr-border);
+    padding-top: var(--tr-space-md);
+    margin-top: var(--tr-space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-md);
+  }
+
+  .path-lead {
+    margin: 0;
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-secondary);
+  }
+
+  .path-variant-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-xs);
+  }
+
+  .path-radio-row {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+  }
+
+  .path-preview-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .path-preview {
+    width: 100%;
+    min-width: 480px;
+    border-collapse: collapse;
+
+    th,
+    td {
+      padding: var(--tr-space-xs) var(--tr-space-sm);
+      border-bottom: 1px solid var(--tr-border);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    thead th {
+      font-size: var(--tr-font-size-label);
+      font-weight: var(--tr-font-weight-medium);
+      color: var(--tr-text-secondary);
+    }
+
+    tbody th {
+      font-size: var(--tr-font-size-body);
+      color: var(--tr-text-secondary);
+      font-weight: var(--tr-font-weight-medium);
+    }
   }
 </style>
