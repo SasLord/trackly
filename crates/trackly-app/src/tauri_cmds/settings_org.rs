@@ -11,8 +11,8 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::context::AppCtx;
 use crate::dto::reports::{
-    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem,
-    TemplateFileStatus, TemplateStatusDto,
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgPathDisplayDto, OrgSettingsDto,
+    TemplateEditorItem, TemplateFileStatus, TemplateStatusDto,
 };
 use crate::pdf::html_templates::{
     read_template_if_present, resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS,
@@ -21,6 +21,7 @@ use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action};
 use trackly_core::domain::cartridges::LowStockBasis;
+use trackly_core::domain::places::PathDisplayVariant;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
 
@@ -292,6 +293,124 @@ pub async fn build_settings_set_low_stock_basis(
 }
 
 // ---------------------------------------------------------------------------
+// build_* helpers — Place path defaults (Phase 39.1 Plan 02, PLC-07)
+// ---------------------------------------------------------------------------
+
+/// GET never errors on a missing/malformed stored value — falls back to the
+/// V039-migration defaults (`"ends"` / `" // "` / `" / "`), defensive against a
+/// hand-deleted `app_settings` row. Mirrors `build_settings_get_low_stock_basis`'s
+/// resilience posture. Does NOT `.trim()` the separator values (D-09).
+pub async fn build_settings_get_place_path_defaults(
+    ctx: &AppCtx,
+) -> Result<OrgPathDisplayDto, AppError> {
+    let readers = ctx.readers.clone();
+    tokio::task::spawn_blocking(move || -> Result<OrgPathDisplayDto, AppError> {
+        let conn = readers.acquire();
+        let mut stmt = conn
+            .prepare(
+                "SELECT key, value FROM app_settings \
+                 WHERE key IN ('place_path_variant', 'place_path_sep_ends', 'place_path_sep_last_two')",
+            )
+            .map_err(map_rusqlite)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(map_rusqlite)?;
+
+        let mut variant = "ends".to_string();
+        let mut sep_ends = " // ".to_string();
+        let mut sep_last_two = " / ".to_string();
+        for row in rows {
+            let (key, value) = row.map_err(map_rusqlite)?;
+            match key.as_str() {
+                "place_path_variant" => variant = value,
+                "place_path_sep_ends" => sep_ends = value,
+                "place_path_sep_last_two" => sep_last_two = value,
+                _ => {}
+            }
+        }
+
+        Ok(OrgPathDisplayDto {
+            variant,
+            sep_ends,
+            sep_last_two,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking get_place_path_defaults: {e}"),
+    })?
+}
+
+/// SET rejects an unknown `variant` token (via `PathDisplayVariant::from_str`) and
+/// an empty separator string with `AppError::Validation`, BEFORE any write — the
+/// server is the source of truth (D-10), not the frontend. Deliberately checks
+/// `.is_empty()`, NOT `.trim().is_empty()`: a whitespace-only separator is valid
+/// and must round-trip byte-for-byte (D-09).
+pub async fn build_settings_set_place_path_defaults(
+    ctx: &AppCtx,
+    caller_identity: &trackly_core::auth::Identity,
+    patch: OrgPathDisplayDto,
+) -> Result<(), AppError> {
+    authorize(caller_identity, &Action::ManageSettings)?;
+
+    // `PathDisplayVariant::from_str` (Plan 01) reports its own field as
+    // `"path_variant"` (the DB/domain-internal name). Remap it to `"variant"`
+    // here so the API-facing field name matches this DTO's own field name,
+    // consistent with the `sep_ends`/`sep_last_two` validations below.
+    PathDisplayVariant::from_str(&patch.variant).map_err(|e| match e {
+        AppError::Validation { message, .. } => AppError::Validation {
+            field: "variant".to_string(),
+            message,
+        },
+        other => other,
+    })?;
+
+    if patch.sep_ends.is_empty() {
+        return Err(AppError::Validation {
+            field: "sep_ends".to_string(),
+            message: "Разделитель «Крайние» не может быть пустым — введите хотя бы один символ."
+                .to_string(),
+        });
+    }
+    if patch.sep_last_two.is_empty() {
+        return Err(AppError::Validation {
+            field: "sep_last_two".to_string(),
+            message: "Разделитель «Два последних» не может быть пустым — введите хотя бы один \
+                      символ."
+                .to_string(),
+        });
+    }
+
+    let now = ctx.clock.unix_seconds();
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                 VALUES ('place_path_variant', ?1, ?2, ?2) \
+                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                rusqlite::params![patch.variant, now],
+            )
+            .map_err(map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                 VALUES ('place_path_sep_ends', ?1, ?2, ?2) \
+                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                rusqlite::params![patch.sep_ends, now],
+            )
+            .map_err(map_rusqlite)?;
+            conn.execute(
+                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                 VALUES ('place_path_sep_last_two', ?1, ?2, ?2) \
+                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
+                rusqlite::params![patch.sep_last_two, now],
+            )
+            .map(|_| ())
+            .map_err(map_rusqlite)
+        })
+        .await
+}
+
+// ---------------------------------------------------------------------------
 // build_* helpers — Backup config
 // ---------------------------------------------------------------------------
 
@@ -550,6 +669,24 @@ pub async fn settings_set_low_stock_basis(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn settings_get_place_path_defaults(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<OrgPathDisplayDto, AppError> {
+    build_settings_get_place_path_defaults(state.inner()).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_set_place_path_defaults(
+    state: tauri::State<'_, AppCtx>,
+    patch: OrgPathDisplayDto,
+) -> Result<(), AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_settings_set_place_path_defaults(state.inner(), &caller, patch).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn settings_get_backup_config(
     state: tauri::State<'_, AppCtx>,
 ) -> Result<BackupConfigDto, AppError> {
@@ -622,4 +759,120 @@ pub async fn templates_validate_preview(
 ) -> Result<String, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_templates_validate_preview(state.inner(), &caller, kind, body).await
+}
+
+// ---------------------------------------------------------------------------
+// Tests — build_settings_get/set_place_path_defaults (Phase 39.1 Plan 02)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod place_path {
+    use super::*;
+    use trackly_core::auth::Identity;
+
+    /// Same fixture shape as `crates/trackly-app/tests/settings_ad.rs::make_test_ctx`,
+    /// adapted for an in-src unit test (uses `crate::` paths directly).
+    async fn make_test_ctx() -> anyhow::Result<(AppCtx, tempfile::TempDir)> {
+        let dir = tempfile::TempDir::new()?;
+        let dir_path = dir.path().to_path_buf();
+        let paths = trackly_infra::Paths::resolve_for_exe_dir(dir_path)?;
+        let config = trackly_infra::AppConfig::default();
+        let log_guard = crate::logging::init(&paths, &config).or_else(|_| {
+            let (_nb, guard) = tracing_appender::non_blocking(std::io::sink());
+            Ok::<_, anyhow::Error>(guard)
+        })?;
+        let ctx = AppCtx::build(paths, config, log_guard).await?;
+        Ok((ctx, dir))
+    }
+
+    /// D-09: on a fresh DB (post-V039), GET returns the migration-seeded
+    /// defaults without any preceding SET.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn get_on_fresh_db_returns_migration_defaults() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let dto = build_settings_get_place_path_defaults(&ctx)
+            .await
+            .expect("get_place_path_defaults");
+        assert_eq!(dto.variant, "ends");
+        assert_eq!(dto.sep_ends, " // ");
+        assert_eq!(dto.sep_last_two, " / ");
+    }
+
+    /// D-10: unknown `variant` token is rejected with `AppError::Validation`,
+    /// field == "variant" — before any write.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_with_bogus_variant_is_rejected() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin = Identity::trusted_admin();
+        let err = build_settings_set_place_path_defaults(
+            &ctx,
+            &admin,
+            OrgPathDisplayDto {
+                variant: "bogus".to_string(),
+                sep_ends: " // ".to_string(),
+                sep_last_two: " / ".to_string(),
+            },
+        )
+        .await
+        .expect_err("bogus variant должен быть отклонён");
+        match err {
+            AppError::Validation { field, .. } => assert_eq!(field, "variant"),
+            other => panic!("expected AppError::Validation{{field: \"variant\"}}, got {other:?}"),
+        }
+    }
+
+    /// D-10: empty `sep_ends` is rejected with `AppError::Validation`,
+    /// field == "sep_ends" — server is the source of truth, not the client.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_with_empty_sep_ends_is_rejected() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin = Identity::trusted_admin();
+        let err = build_settings_set_place_path_defaults(
+            &ctx,
+            &admin,
+            OrgPathDisplayDto {
+                variant: "ends".to_string(),
+                sep_ends: "".to_string(),
+                sep_last_two: " / ".to_string(),
+            },
+        )
+        .await
+        .expect_err("пустой sep_ends должен быть отклонён");
+        match err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "sep_ends");
+                assert!(
+                    message.contains("не может быть пустым"),
+                    "message should mention emptiness: {message}"
+                );
+            }
+            other => panic!("expected AppError::Validation{{field: \"sep_ends\"}}, got {other:?}"),
+        }
+    }
+
+    /// D-09: whitespace-only separators are accepted (NOT trimmed) and
+    /// round-trip byte-for-byte through GET after SET.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_with_whitespace_only_sep_round_trips_untrimmed() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+        let admin = Identity::trusted_admin();
+        build_settings_set_place_path_defaults(
+            &ctx,
+            &admin,
+            OrgPathDisplayDto {
+                variant: "last_two".to_string(),
+                sep_ends: "   ".to_string(),
+                sep_last_two: ", ".to_string(),
+            },
+        )
+        .await
+        .expect("set should succeed for whitespace-only sep_ends");
+
+        let dto = build_settings_get_place_path_defaults(&ctx)
+            .await
+            .expect("get_place_path_defaults");
+        assert_eq!(dto.variant, "last_two");
+        assert_eq!(dto.sep_ends, "   ");
+        assert_eq!(dto.sep_last_two, ", ");
+    }
 }

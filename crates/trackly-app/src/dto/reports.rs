@@ -248,6 +248,19 @@ pub struct OrgSettingsDto {
     pub full_name: String,
 }
 
+/// Organisation-wide default for place-path shortening (PLC-07, Phase 39.1).
+///
+/// `variant` is one of `PathDisplayVariant::as_str()`'s tokens (`"ends"` /
+/// `"last_two"` / `"last"`), validated server-side via `PathDisplayVariant::from_str`
+/// on SET. `sep_ends`/`sep_last_two` are stored and returned byte-for-byte —
+/// whitespace is significant (D-09) and never trimmed.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct OrgPathDisplayDto {
+    pub variant: String,
+    pub sep_ends: String,
+    pub sep_last_two: String,
+}
+
 // ---------------------------------------------------------------------------
 // Backup configuration
 // ---------------------------------------------------------------------------
