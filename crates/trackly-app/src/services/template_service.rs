@@ -511,6 +511,11 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
                 "giver_name": "Иванов И.И.",
                 "receiver_name": "Петров П.П.",
                 "place_path": "Офис 101",
+                // Phase 39.1 Plan 06: act_handover.html now prints the shortened
+                // snapshot path. validate_preview renders with strict undefined,
+                // so the demo context must carry the key. A single-segment path
+                // shortens to itself under every PathDisplayVariant.
+                "place_path_short": "Офис 101",
                 "deadline": null,
                 "deadline_human": null,
                 "parent": null,
