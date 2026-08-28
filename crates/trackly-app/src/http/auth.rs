@@ -213,12 +213,6 @@ pub async fn build_auth_status(ctx: &AppCtx, session: Session) -> Result<AuthSta
         needs_bootstrap,
         desktop_lock_enabled,
         user,
-        place_path_display: ctx
-            .config
-            .organization
-            .place_path_display
-            .as_str()
-            .to_string(),
     })
 }
 

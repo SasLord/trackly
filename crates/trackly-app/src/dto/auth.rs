@@ -102,12 +102,6 @@ pub struct ChangePasswordRequest {
 /// `desktop_lock_enabled` — читается из `app_settings` по ключу
 /// `desktop_lock_enabled` (D-Desktop-02); по умолчанию `false` (D-Desktop-01).
 /// `user` — текущий авторизованный пользователь или `null` если не вошёл.
-/// `place_path_display` — вариант сокращения пути места в узких колонках
-/// (quick 260827-ui3): `"ends"` (дефолт) | `"last_two"` | `"full"`, читается
-/// из `ctx.config.organization.place_path_display` (bootstrap-конфиг, тот же
-/// источник что и `desktop_lock_enabled`). Строка, а не typed-enum через
-/// specta — проект уже отдаёт enum-подобные значения по wire как строку
-/// (см. `UserDto.role`), не заводим новый прецедент.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AuthStatusDto {
     pub needs_bootstrap: bool,
@@ -115,7 +109,6 @@ pub struct AuthStatusDto {
     /// По умолчанию `false` — десктоп-режим без блокировки (D-Desktop-01).
     pub desktop_lock_enabled: bool,
     pub user: Option<UserDto>,
-    pub place_path_display: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -298,12 +291,14 @@ mod tests {
             needs_bootstrap: true,
             desktop_lock_enabled: false,
             user: None,
-            place_path_display: "ends".to_string(),
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("desktop_lock_enabled"));
         assert!(json.contains("needs_bootstrap"));
-        assert!(json.contains("place_path_display"));
+        // Phase 39.1 Plan 10 (D-22): place_path_display fixture contract — the
+        // config-backed field is gone, this asserts the removal, not just
+        // silently drops the check.
+        assert!(!json.contains("place_path_display"));
     }
 
     #[test]

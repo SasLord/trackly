@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use trackly_core::error::AppError;
-use trackly_infra::config::PlacePathDisplay;
 use trackly_infra::AppConfig;
 
 fn write_fixture(dir: &TempDir, contents: &str) -> PathBuf {
@@ -157,109 +156,4 @@ foo = "bar"
     let cfg = AppConfig::load_or_default(&path).expect("unknown keys must not block parsing");
     assert!(!cfg.server.enabled);
     assert_eq!(cfg.server.host, "127.0.0.1");
-}
-
-// ── place_path_display (quick 260827-ui3) ──────────────────────────────────
-//
-// Test 5 below deliberately diverges from the plan's original design note
-// (which mirrored `ldap_tls_mode`'s whole-file-fails-closed precedent): an
-// orchestrator amendment scoped the blast radius down for THIS ONE field.
-// `config_recovery::load_or_recover`'s whole-config fallback resets
-// `paths.db_path`/`server.enabled` too — a typo in a cosmetic display
-// setting must not silently switch databases or stop the LAN server. See
-// the doc comment on `OrganizationConfig::place_path_display` in
-// `crates/trackly-infra/src/config.rs` for the full rationale.
-
-#[test]
-fn test_7_place_path_display_missing_section_defaults_to_ends() {
-    let dir = tempfile::tempdir().unwrap();
-    let missing = dir.path().join("does-not-exist.toml");
-
-    let cfg = AppConfig::load_or_default(&missing).expect("missing file → defaults");
-
-    assert_eq!(cfg.organization.place_path_display, PlacePathDisplay::Ends);
-}
-
-#[test]
-fn test_8_place_path_display_partial_section_defaults_to_ends() {
-    // Section present, only `timezone` set (mirrors
-    // partial_ad_section_gets_per_field_defaults pattern) — the missing
-    // `place_path_display` key must still get its own default, not error.
-    let dir = tempfile::tempdir().unwrap();
-    let body = r#"
-[organization]
-timezone = "Europe/Berlin"
-"#;
-    let path = write_fixture(&dir, body);
-
-    let cfg = AppConfig::load_or_default(&path).expect("partial [organization] parses");
-
-    assert_eq!(cfg.organization.timezone, "Europe/Berlin");
-    assert_eq!(cfg.organization.place_path_display, PlacePathDisplay::Ends);
-}
-
-#[test]
-fn test_9_place_path_display_explicit_last_two() {
-    let dir = tempfile::tempdir().unwrap();
-    let body = r#"
-[organization]
-timezone = "Europe/Moscow"
-place_path_display = "last_two"
-"#;
-    let path = write_fixture(&dir, body);
-
-    let cfg = AppConfig::load_or_default(&path).expect("valid TOML parses");
-
-    assert_eq!(
-        cfg.organization.place_path_display,
-        PlacePathDisplay::LastTwo
-    );
-}
-
-#[test]
-fn test_10_place_path_display_explicit_full() {
-    let dir = tempfile::tempdir().unwrap();
-    let body = r#"
-[organization]
-timezone = "Europe/Moscow"
-place_path_display = "full"
-"#;
-    let path = write_fixture(&dir, body);
-
-    let cfg = AppConfig::load_or_default(&path).expect("valid TOML parses");
-
-    assert_eq!(cfg.organization.place_path_display, PlacePathDisplay::Full);
-}
-
-#[test]
-fn test_11_place_path_display_bogus_value_degrades_locally_not_whole_file() {
-    // Orchestrator amendment (260827-ui3): unlike `ldap_tls_mode`, an
-    // unrecognized `place_path_display` must NOT fail the whole TOML file.
-    // The rest of the config — including a sibling section like [server] —
-    // must still parse and keep its configured (non-default) values.
-    let dir = tempfile::tempdir().unwrap();
-    let body = r#"
-[server]
-enabled = true
-host = "10.0.0.9"
-port = 9443
-cert_path = ""
-
-[organization]
-timezone = "Europe/Moscow"
-place_path_display = "brief"
-"#;
-    let path = write_fixture(&dir, body);
-
-    let cfg = AppConfig::load_or_default(&path)
-        .expect("bogus place_path_display must NOT fail the whole file (amendment 260827-ui3)");
-
-    // The one bogus field degrades to the default...
-    assert_eq!(cfg.organization.place_path_display, PlacePathDisplay::Ends);
-    // ...but everything else stays exactly as configured — no whole-config
-    // fallback to AppConfig::default() (which would have reset `server.*`).
-    assert_eq!(cfg.organization.timezone, "Europe/Moscow");
-    assert!(cfg.server.enabled);
-    assert_eq!(cfg.server.host, "10.0.0.9");
-    assert_eq!(cfg.server.port, 9443);
 }

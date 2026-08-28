@@ -12,7 +12,6 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import type { UserRole } from '$lib/stores/auth.svelte';
   import type { AuthStatusDto } from './bindings';
-  import { normalizePlacePathDisplay } from '$lib/utils/placePath';
 
   // D-Desktop-01: detect Tauri context.
   const isTauri = typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
@@ -24,7 +23,6 @@
   async function loadAuthStatus(): Promise<boolean> {
     const status = await apiCall<AuthStatusDto>('auth_status', {});
     bootstrapNeeded = status.needs_bootstrap;
-    authStore.placePathDisplay = normalizePlacePathDisplay(status.place_path_display);
 
     if (status.user) {
       // Backend returned an authenticated user (HTTP session case).

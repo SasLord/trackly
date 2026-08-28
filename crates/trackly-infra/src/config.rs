@@ -113,96 +113,12 @@ impl Default for LoggingConfig {
 pub struct OrganizationConfig {
     /// Часовой пояс для отображения в UI. В БД всё в UTC.
     pub timezone: String,
-    /// Вариант сокращения пути места в узких колонках таблиц (quick 260827-ui3).
-    /// Опциональное поле — `#[serde(default)]` даёт `PlacePathDisplay::Ends`
-    /// для отсутствующего ключа/секции.
-    ///
-    /// ОТКЛОНЕНИЕ от прецедента `ldap_tls_mode`: нераспознанное строковое
-    /// значение здесь НЕ роняет весь TOML-файл через `config_recovery`
-    /// (тот путь откатывает `paths.db_path`/`server.enabled` — опечатка в
-    /// чисто косметической настройке не должна переключать БД или гасить
-    /// LAN-сервер). Вместо этого `deserialize_place_path_display` деградирует
-    /// ЛОКАЛЬНО: неизвестное значение → `Ends` + `tracing::warn!`, остальной
-    /// конфиг парсится как обычно. Осознанное решение оркестратора
-    /// (260827-ui3), не общий прецедент для остальных полей.
-    #[serde(default, deserialize_with = "deserialize_place_path_display")]
-    pub place_path_display: PlacePathDisplay,
 }
 
 impl Default for OrganizationConfig {
     fn default() -> Self {
         Self {
             timezone: "Europe/Moscow".to_string(),
-            place_path_display: PlacePathDisplay::default(),
-        }
-    }
-}
-
-/// Вариант сокращения пути места в узких колонках таблиц/отчётов
-/// (`ReportTable`, `PlaceContents`, списки Устройств/Картриджей).
-///
-/// `#[derive(Deserialize)]` здесь используется только для тестов и прямого
-/// парсинга значения в изоляции — реальное поле `OrganizationConfig::place_path_display`
-/// читается через `deserialize_place_path_display` (locally-degrading fallback,
-/// см. doc-комментарий поля), не через этот derive напрямую.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PlacePathDisplay {
-    /// «Здание А // Кабинет 214» — первый и последний сегмент пути через
-    /// `" // "`. Дефолт по решению продукта (2026-08-27, quick 260827-ui3).
-    #[default]
-    Ends,
-    /// «2 этаж / Кабинет 214» — последние два сегмента через `" / "`.
-    /// Прежнее (единственное до этой задачи) поведение — см. D-26.
-    LastTwo,
-    /// Путь целиком, без сокращения.
-    Full,
-}
-
-impl PlacePathDisplay {
-    /// Строковое представление для передачи через `AuthStatusDto` (wire —
-    /// строка, не typed-enum через specta, см. `UserDto.role`).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            PlacePathDisplay::Ends => "ends",
-            PlacePathDisplay::LastTwo => "last_two",
-            PlacePathDisplay::Full => "full",
-        }
-    }
-
-    /// Строгий парсер `&str` → `Option<Self>`, разделяемый между
-    /// `deserialize_place_path_display` и тестами. `None` на нераспознанной
-    /// строке — вызывающая сторона решает, как деградировать (здесь — до
-    /// `Ends` с предупреждением, см. doc на поле выше).
-    fn parse_known(raw: &str) -> Option<Self> {
-        match raw {
-            "ends" => Some(PlacePathDisplay::Ends),
-            "last_two" => Some(PlacePathDisplay::LastTwo),
-            "full" => Some(PlacePathDisplay::Full),
-            _ => None,
-        }
-    }
-}
-
-/// `deserialize_with` для `OrganizationConfig::place_path_display` — единственное
-/// поле в этом конфиге, которое деградирует ЛОКАЛЬНО на нераспознанном
-/// значении вместо того, чтобы завалить парсинг всего файла (см. doc-комментарий
-/// поля выше на обоснование отклонения от `ldap_tls_mode`-прецедента).
-fn deserialize_place_path_display<'de, D>(deserializer: D) -> Result<PlacePathDisplay, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let raw = String::deserialize(deserializer)?;
-    match PlacePathDisplay::parse_known(&raw) {
-        Some(variant) => Ok(variant),
-        None => {
-            tracing::warn!(
-                value = %raw,
-                accepted = "ends, last_two, full",
-                "неизвестное значение place_path_display в trackly.config.toml — \
-                 использован дефолт \"ends\", остальной конфиг не затронут"
-            );
-            Ok(PlacePathDisplay::Ends)
         }
     }
 }
