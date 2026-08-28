@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-28T09:48:34.770Z"
+last_updated: "2026-08-28T10:05:34.221Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 32
-  completed_plans: 26
+  completed_plans: 27
   percent: 13
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.1 (place-path-display) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-08-28
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -333,6 +333,7 @@ Last activity: 2026-08-28
 | Phase 39.1 P01 | 10min | 3 tasks | 3 files |
 | Phase 39.1 P03 | 35m | 2 tasks | 5 files |
 | Phase 39.1 P04 | ~20min | 1 tasks | 3 files |
+| Phase 39.1-place-path-display P06 | 30min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -834,6 +835,7 @@ Recent decisions affecting current work:
 - [Phase ?]: path_variant_override валидируется в Rust (PathDisplayVariant::from_str), без SQL CHECK — мирроринг places.kind
 - [Phase ?]: 39.1-03: D-24 regression test lives in existing devices_csv_export.rs integration test, not a new mod tests in device_service.rs
 - [Phase 39.1]: Phase 39.1 Plan 04: place_path_short на списке картриджей — общий SELECT_CARTRIDGES получил LEFT JOIN place_effective_variant, но только list() использует map_row_with_short_path; get()/search_fts() остаются на map_row и всегда дают None
+- [Phase 39.1-06]: render_pdf resolves place path variant at render time (current place_effective_variant for acts.place_id), not act-create time
 
 ### Pending Todos
 
@@ -1022,8 +1024,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-28T09:48:21.416Z
-Stopped at: Phase 39.1 UI-SPEC approved
+Last session: 2026-08-28T10:05:34.211Z
+Stopped at: Completed 39.1-06-PLAN.md
 Resume file: 
 
 None
