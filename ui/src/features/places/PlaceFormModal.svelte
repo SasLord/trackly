@@ -98,9 +98,11 @@
   const isRename = $derived(mode === 'rename');
 
   let name = $state(mode === 'rename' && place ? place.name : '');
-  let pathVariant = $state<string | null>(
-    mode === 'rename' && place ? (place.path_variant_override ?? null) : null,
-  );
+  // Captured once at mount so handleSubmit can tell "user changed the variant"
+  // from "user never touched it" — see the guarded second RPC below.
+  const initialPathVariant =
+    mode === 'rename' && place ? (place.path_variant_override ?? null) : null;
+  let pathVariant = $state<string | null>(initialPathVariant);
   let kind = $state('');
   let parentId = $state<number | null>(defaultParentId);
   let level = $state('');
@@ -228,13 +230,34 @@
         saved = await apiCall<PlaceDto>('places_create', { place: newPlace });
       }
       // PLC-08 (plan 07/09): second RPC, reusing the `version` the FIRST call
-      // just returned (not the stale `place.version` captured before submit) —
-      // the same try/catch below covers both requests' errors.
-      saved = await apiCall<PlaceDto>('places_set_path_variant', {
-        id: saved.id,
-        pathVariantOverride: pathVariant,
-        version: saved.version,
-      });
+      // just returned (not the stale `place.version` captured before submit).
+      //
+      // Only fire it when the variant actually changed. Firing unconditionally
+      // wrote a no-op audit_log entry and bumped `version` on every create and
+      // rename (invalidating any other open form for the same place), and — far
+      // worse — a failure here would surface as a plain error toast even though
+      // the create/rename had already committed, so the user would press
+      // «Создать» again and get a duplicate place (code review CR-02).
+      if (pathVariant !== initialPathVariant) {
+        try {
+          saved = await apiCall<PlaceDto>('places_set_path_variant', {
+            id: saved.id,
+            pathVariantOverride: pathVariant,
+            version: saved.version,
+          });
+        } catch {
+          // The primary mutation already landed. Report the PARTIAL failure and
+          // close the form — re-submitting would duplicate the place.
+          pushToast(
+            'error',
+            isRename
+              ? 'Место переименовано, но вариант сокращения не применён'
+              : 'Место создано, но вариант сокращения не применён',
+          );
+          onSaved(saved);
+          return;
+        }
+      }
       pushToast('success', isRename ? 'Место переименовано' : 'Место создано');
       onSaved(saved);
     } catch (e) {
