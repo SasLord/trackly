@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-28T08:43:00.232Z"
+last_updated: "2026-08-28T09:21:43.010Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 8
