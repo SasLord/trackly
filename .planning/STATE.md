@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: planning
-last_updated: "2026-08-27T17:53:11.412Z"
-last_activity: "2026-08-27 - UAT пройден: 260827-gim/rzq/ui0/ui3 подтверждены живьём (Windows + десктоп). Открыто: 260827-wsu (дата в экспорте) + новая фаза — выбор сокращения Места в UI вместо конфига, с наследованием по дереву"
+last_updated: "2026-08-28T01:32:11.547Z"
+last_activity: 2026-08-28 - UAT пройден по 260827-gim/rzq/ui0/ui3; закрыта 260827-wsu (читаемая дата в CSV и PDF); релиз v1.4.0-phase39.2 пересобран; вставлена Фаза 39.1 (формат пути Места в UI, PLC-07/PLC-08)
 progress:
   total_phases: 8
   completed_phases: 1
@@ -1015,11 +1015,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-26T00:10:29.239Z
-Stopped at: Completed 39-21-PLAN.md
+Last session: 2026-08-28T01:32:11.538Z
+Stopped at: Phase 39.1 context gathered
 Resume file: 
 
-None
+.planning/phases/39.1-place-path-display/39.1-CONTEXT.md
 
 ## Deferred Items
 
