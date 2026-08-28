@@ -10,6 +10,14 @@
   // submit — a Rule 1 bug, not a stylistic choice — so this component shows only
   // "Название" in rename mode and submits nothing else.
   //
+  // Phase 39.1 Plan 09 (PLC-08): "Вариант сокращения" is the one exception to the
+  // rule above — unlike kind/parent/level/is_storage/sort_order, it stays mutable
+  // after a place exists (D-12), so it is shown and editable in BOTH create and
+  // rename mode. It is saved by a SECOND network call (`places_set_path_variant`,
+  // plan 07) issued right after `places_create`/`places_rename` inside the same
+  // `handleSubmit` — one user-facing submit, two requests — rather than by
+  // widening `places_rename` itself.
+  //
   // No `open` prop: per this plan's props contract, the caller conditionally
   // mounts/unmounts this component ({#if}) rather than toggling visibility — each
   // mount is a fresh form instance, matching `mode`/`place`/`defaultParentId` as
@@ -69,9 +77,30 @@
     return [];
   }
 
+  interface PathVariantOption {
+    value: string | null;
+    label: string;
+  }
+
+  // D-05: literally "Как у родителя" — no hint/suffix naming the inherited
+  // variant, in any mode, for any place (including top-level ones, D-06).
+  const PATH_VARIANT_OPTIONS: PathVariantOption[] = [
+    { value: null, label: 'Как у родителя' },
+    { value: 'ends', label: 'Крайние' },
+    { value: 'last_two', label: 'Два последних' },
+    { value: 'last', label: 'Последнее' },
+  ];
+
+  function noExpandPathVariant(): PathVariantOption[] {
+    return [];
+  }
+
   const isRename = $derived(mode === 'rename');
 
   let name = $state(mode === 'rename' && place ? place.name : '');
+  let pathVariant = $state<string | null>(
+    mode === 'rename' && place ? (place.path_variant_override ?? null) : null,
+  );
   let kind = $state('');
   let parentId = $state<number | null>(defaultParentId);
   let level = $state('');
@@ -90,6 +119,9 @@
 
   const showLevel = $derived(kind === 'floor');
   const kindLabel = $derived(KIND_OPTIONS.find((o) => o.value === kind)?.label ?? '');
+  const pathVariantLabel = $derived(
+    PATH_VARIANT_OPTIONS.find((o) => o.value === pathVariant)?.label ?? '',
+  );
   const modalTitle = $derived(isRename ? 'Переименовать место' : 'Новое место');
   const submitLabel = $derived(isRename ? 'Сохранить' : 'Создать');
 
@@ -117,6 +149,10 @@
     kind = o.value;
     kindTouched = true;
     kindErr = null;
+  }
+
+  function pickPathVariant(o: PathVariantOption) {
+    pathVariant = o.value;
   }
 
   function parseOptionalInt(raw: string): number | null {
@@ -179,7 +215,6 @@
           name: name.trim(),
           version: place.version,
         });
-        pushToast('success', 'Место переименовано');
       } else {
         const newPlace: PlaceNewDto = {
           parent_id: parentId,
@@ -191,8 +226,16 @@
           notes: null,
         };
         saved = await apiCall<PlaceDto>('places_create', { place: newPlace });
-        pushToast('success', 'Место создано');
       }
+      // PLC-08 (plan 07/09): second RPC, reusing the `version` the FIRST call
+      // just returned (not the stale `place.version` captured before submit) —
+      // the same try/catch below covers both requests' errors.
+      saved = await apiCall<PlaceDto>('places_set_path_variant', {
+        id: saved.id,
+        pathVariantOverride: pathVariant,
+        version: saved.version,
+      });
+      pushToast('success', isRename ? 'Место переименовано' : 'Место создано');
       onSaved(saved);
     } catch (e) {
       mapServerError(e);
@@ -220,6 +263,32 @@
       {#if nameErr}
         <span class="field-error">{nameErr}</span>
       {/if}
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" for="pf-path-variant">Вариант сокращения</label>
+      <Dropdown
+        id="pf-path-variant"
+        variant="select"
+        flat={true}
+        value={pathVariantLabel}
+        placeholder="Как у родителя"
+        searchable={false}
+        disabled={saving}
+        loading={false}
+        groups={PATH_VARIANT_OPTIONS}
+        getGroupId={(o) => o.value ?? '__inherit__'}
+        getGroupName={(o) => o.label}
+        getGroupCount={() => 0}
+        isGroupExpandable={() => false}
+        isGroupSelected={(o) => o.value === pathVariant}
+        onExpandGroup={noExpandPathVariant}
+        getMemberId={(o) => o.value ?? '__inherit__'}
+        getMemberName={(o) => o.label}
+        onSearch={() => {}}
+        onPickGroup={pickPathVariant}
+        onPickMember={() => {}}
+      />
     </div>
 
     {#if !isRename}
