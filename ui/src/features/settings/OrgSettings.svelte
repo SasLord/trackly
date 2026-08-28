@@ -73,33 +73,33 @@
   // Намеренно `.length === 0`, НЕ `.trim().length === 0` (см. UI-SPEC.md
   // «Проблема 1» — значимые пробелы).
   const sepEndsErr = $derived(
-    sepEnds.length === 0 ? 'Разделитель не может быть пустым — введите хотя бы один символ.' : null
+    sepEnds.length === 0 ? 'Разделитель не может быть пустым — введите хотя бы один символ.' : null,
   );
   const sepLastTwoErr = $derived(
     sepLastTwo.length === 0
       ? 'Разделитель не может быть пустым — введите хотя бы один символ.'
-      : null
+      : null,
   );
 
   // D-11: все три варианта пересчитываются разом на каждый keystroke в любом
   // из двух полей разделителей, независимо от выбранного `pathVariant`.
   const previewEnds1 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'ends', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'ends', sepEnds, sepLastTwo),
   );
   const previewLastTwo1 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last_two', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last_two', sepEnds, sepLastTwo),
   );
   const previewLast1 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_1, 'last', sepEnds, sepLastTwo),
   );
   const previewEnds2 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'ends', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'ends', sepEnds, sepLastTwo),
   );
   const previewLastTwo2 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last_two', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last_two', sepEnds, sepLastTwo),
   );
   const previewLast2 = $derived(
-    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last', sepEnds, sepLastTwo)
+    previewShortenPath(PATH_PREVIEW_SAMPLE_2, 'last', sepEnds, sepLastTwo),
   );
 
   async function loadPathDefaults() {

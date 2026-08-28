@@ -44,7 +44,7 @@ export function previewShortenPath(
   fullPath: string,
   variant: 'ends' | 'last_two' | 'last',
   sepEnds: string,
-  sepLastTwo: string
+  sepLastTwo: string,
 ): string {
   if (!fullPath) return fullPath;
   const segments = fullPath.split(' / ');
