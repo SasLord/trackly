@@ -11,9 +11,11 @@
   field_row -> device listing (branches on act.items | length, see below) ->
   deadline field_row (always rendered, blank underline when the value is
   empty, Phase 35 D-03) -> place field_row (always rendered, blank underline
-  when unset, Phase 39 Plan 11 D-27 — prints act.place_path, the FULL D-16
-  write-time snapshot path, never the live-resolved short name, so the
-  printed document stays unambiguous without DB access) -> optional
+  when unset, Phase 39 Plan 11 D-27, updated Phase 39.1 Plan 06 D-20 — prints
+  act.place_path_short: the FROZEN D-16 write-time snapshot path, SHORTENED
+  by the CURRENT effective path-display variant for acts.place_id, computed
+  in Rust (act_service.rs::compute_place_path_short) — never a live-resolved
+  full path, and never any shortening logic in this template) -> optional
   parent-act paragraph -> horizontal one-line-per-signer signature block
   "Выдал: ⟨line⟩ ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35
   D-06/D-07/D-08) -> optional appendix (Phase 36, see below).
@@ -49,7 +51,7 @@
     org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
     act.number, act.suffix, act.date, act.date_human,
     act.receiver_name, act.giver_name, act.deadline, act.deadline_human,
-    act.place_path, act.items[], act.items_grouped[], act.parent
+    act.place_path, act.place_path_short, act.items[], act.items_grouped[], act.parent
     act.items[].name, act.items[].inventory_no, act.items[].serial_no,
     act.items[].model, act.items[].specs, act.items[].kit,
     act.items[].condition, act.items[].quantity
@@ -254,7 +256,7 @@
 
   <div class="field-row">Сроком до: {% if act.deadline_human %}{{ act.deadline_human }}{% elif act.deadline %}{{ act.deadline }}{% else %}<span class="value-blank"></span>{% endif %}</div>
 
-  <div class="field-row">Расположение: {% if act.place_path %}{{ act.place_path }}{% else %}<span class="value-blank"></span>{% endif %}</div>
+  <div class="field-row">Расположение: {% if act.place_path_short %}{{ act.place_path_short }}{% else %}<span class="value-blank"></span>{% endif %}</div>
 
   {%- if act.parent %}
   <div class="parent-note">

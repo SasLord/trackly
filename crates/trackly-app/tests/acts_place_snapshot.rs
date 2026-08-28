@@ -323,13 +323,17 @@ async fn seeded_default_template_renders_place_path_field_row() {
         // autoescaper encodes `/` as `&#x2f;` (OWASP-recommended, prevents a
         // `</script>`-style breakout in an HTML-embedding context), so the
         // rendered `/` path separators are entity-encoded, not literal.
-        let expected_row =
-            "<div class=\"field-row\">Расположение: Здание Б &#x2f; 3 этаж &#x2f; 301</div>";
+        //
+        // Phase 39.1 Plan 06 (D-20): the field-row now reads
+        // `act.place_path_short`, which shortens the frozen snapshot by the
+        // CURRENT effective variant. A fresh DB's organization default is
+        // 'ends' (V039 seed), so a 3-segment path renders first+last joined
+        // by `sep_ends` (" // ", two slashes, each individually escaped).
+        let expected_row = "<div class=\"field-row\">Расположение: Здание Б &#x2f;&#x2f; 301</div>";
         assert!(
             html.contains(expected_row),
-            "expected D-27 place field-row {expected_row:?} in rendered HTML — \
-             the renamed act.place_path key must reach the shipped default template \
-             without minijinja's default() filter silently swallowing it. Head: {:?}",
+            "expected D-20 shortened place field-row {expected_row:?} in rendered HTML — \
+             act.place_path_short must reach the shipped default template. Head: {:?}",
             html.chars().take(2000).collect::<String>()
         );
 

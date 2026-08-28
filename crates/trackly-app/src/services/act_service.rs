@@ -15,6 +15,7 @@ use std::sync::Arc;
 use rusqlite::params;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
+use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 use trackly_core::ports::places::PlaceRepository;
@@ -2664,6 +2665,28 @@ impl ActService {
         // (Task 2 of 36-06-PLAN.md).
         let items_grouped_json = group_items_for_print(&act.items);
 
+        // D-20 (Phase 39.1 Plan 06): the printed act shortens the FROZEN
+        // `place_path_snapshot` (D-16), but the VARIANT applied is the
+        // CURRENT effective variant for `acts.place_id` — never the variant
+        // at act-create time. `place_id` absent or the place having since
+        // disappeared (soft-deleted — Pitfall 4, `place_effective_variant`'s
+        // base case filters `deleted_at_utc IS NULL`) both fall back to the
+        // organization default. Entirely `Option`-chained, no
+        // `.expect()`/`.unwrap()`/`?` on this path — a printed act must
+        // never fail to render because of this cosmetic field.
+        let place_path_short = {
+            let readers = self.readers.clone();
+            let place_id = act.place_id;
+            let snapshot = act.place_path_snapshot.clone();
+            tokio::task::spawn_blocking(move || {
+                compute_place_path_short(&readers, place_id, snapshot)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })?
+        };
+
         let ctx = serde_json::json!({
             "org": {
                 "name": org_dto.org_name,
@@ -2692,6 +2715,11 @@ impl ActService {
                 // the live-resolved `full_path` — the printed act must not
                 // silently change if the place is later renamed/moved.
                 "place_path": act.place_path_snapshot,
+                // D-20: same frozen snapshot string, shortened by the
+                // CURRENT effective variant (computed above). `place_path`
+                // itself is never removed — only the template's field-row
+                // switches which key it reads (Pitfall 3).
+                "place_path_short": place_path_short,
                 "items": items_json,
                 "items_grouped": items_grouped_json,
                 "parent": parent_block,
@@ -2960,6 +2988,75 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
         odt.month() as u8,
         odt.day()
     )
+}
+
+/// Shortens `snapshot` (the frozen `place_path_snapshot`, D-16) by the
+/// CURRENT effective path-display variant for `place_id` (D-20, Phase 39.1
+/// Plan 06) — never the variant at act-create time.
+///
+/// Resolution order, mirroring the `read_path_display_separators` /
+/// `place_effective_variant` recipe established in `devices_sqlite.rs`
+/// (Plan 03):
+///   1. `snapshot` is `None`/absent → `None` (nothing to shorten — a
+///      genuinely place-less act, existing D-27 blank-underline fallback).
+///   2. `place_id` present AND `place_effective_variant` has a row for it →
+///      use that row's `effective_variant`.
+///   3. Otherwise (no `place_id`, OR `place_id` set but the place has since
+///      disappeared — soft-deleted, Pitfall 4) → fall back to the
+///      organization default (`app_settings.place_path_variant`, `"ends"`
+///      if even that is somehow missing).
+///
+/// Entirely `Option`/`Result`-chained with `.ok()`/`.unwrap_or()` — no
+/// `.expect()`/`.unwrap()`/`?` anywhere on this path. A printed act must
+/// never fail to render because of this cosmetic field.
+fn compute_place_path_short(
+    readers: &ReaderPool,
+    place_id: Option<i64>,
+    snapshot: Option<String>,
+) -> Option<String> {
+    let snapshot = snapshot?;
+    let conn = readers.acquire();
+
+    let variant_token: String = place_id
+        .and_then(|pid| {
+            conn.query_row(
+                "SELECT effective_variant FROM place_effective_variant WHERE place_id = ?1",
+                params![pid],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        })
+        .unwrap_or_else(|| {
+            conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'place_path_variant'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .unwrap_or_else(|| "ends".to_string())
+        });
+    // Unexpected/corrupt token → fall back to Ends rather than dropping the
+    // field-row entirely — this is a non-critical visual element.
+    let variant = PathDisplayVariant::from_str(&variant_token).unwrap_or(PathDisplayVariant::Ends);
+
+    let read_sep = |key: &str, default: &str| -> String {
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [key],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .unwrap_or_else(|| default.to_string())
+    };
+    let sep_ends = read_sep("place_path_sep_ends", " // ");
+    let sep_last_two = read_sep("place_path_sep_last_two", " / ");
+
+    Some(shorten_place_path(
+        &snapshot,
+        variant,
+        &sep_ends,
+        &sep_last_two,
+    ))
 }
 
 /// Извлекает суффикс (например, «в», «в1», «в2») из отформатированного

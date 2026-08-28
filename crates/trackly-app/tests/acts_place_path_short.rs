@@ -239,7 +239,10 @@ async fn render_pdf_uses_current_variant_not_create_time_variant() {
         // never removed, only place_path_short is newly added).
         set_override(&p.writer, room, Some("ends")).await;
         let html2 = p.acts.render_pdf(act.id).await.expect("render_pdf");
-        let expected_ends_row = "<div class=\"field-row\">Расположение: Здание А // 1-05</div>";
+        // sep_ends default is " // " (two slashes) — autoescape (T-16-01)
+        // encodes EACH '/' individually as `&#x2f;`.
+        let expected_ends_row =
+            "<div class=\"field-row\">Расположение: Здание А &#x2f;&#x2f; 1-05</div>";
         assert!(
             html2.contains(expected_ends_row),
             "expected D-20 shortened 'ends' place field-row {expected_ends_row:?} on a second \
