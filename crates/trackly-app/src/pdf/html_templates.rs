@@ -86,6 +86,13 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             // pre-Phase-39 body would be misclassified as user-customized
             // and never receive the D-27 place-path row.
             include_str!("../../templates/_legacy_defaults/v26/act_handover.html"),
+            // Phase 39.1 Plan 06: pre-change snapshot captured immediately
+            // before replacing the "Расположение:" field-row's
+            // `{{ act.place_path }}` read with `{{ act.place_path_short }}`
+            // (D-20) — without this entry, any install that materialized the
+            // pre-Phase-39.1 body would be misclassified as user-customized
+            // and never receive the shortened-path upgrade.
+            include_str!("../../templates/_legacy_defaults/v27/act_handover.html"),
         ],
     ),
     (

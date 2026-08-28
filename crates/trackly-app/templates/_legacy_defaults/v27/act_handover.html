@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+{#- Default HTML template for Акт приёма-передачи (Phase 16, D-01/D-02/D-03;
+  body reworked Phase 35, D-01..D-12; pagination by device count added
+  Phase 36, D-01..D-16; print-identical position merging added Plan 36-06,
+  D-17).
+
+  Self-contained HTML5 document (inline <style>, no external CSS/CDN, D-11
+  data: URI logo) reproducing the Word-sample block order fixed in Phase 15's
+  act_handover.minijinja: shared header partial (logo + org requisites,
+  Phase 34, see _header.html) -> centered title -> number/date -> intro
+  field_row -> device listing (branches on act.items | length, see below) ->
+  deadline field_row (always rendered, blank underline when the value is
+  empty, Phase 35 D-03) -> place field_row (always rendered, blank underline
+  when unset, Phase 39 Plan 11 D-27 — prints act.place_path, the FULL D-16
+  write-time snapshot path, never the live-resolved short name, so the
+  printed document stays unambiguous without DB access) -> optional
+  parent-act paragraph -> horizontal one-line-per-signer signature block
+  "Выдал: ⟨line⟩ ⟨printed name⟩ / Получил: ⟨line⟩ ⟨printed name⟩" (Phase 35
+  D-06/D-07/D-08) -> optional appendix (Phase 36, see below).
+
+  Device listing branches strictly on the RAW act.items count (D-13, exact
+  Jinja expression preserved unchanged at both branch points below — NOT
+  re-opened by Plan 36-06, see D-17 note further down):
+    - N = 1 (act.items | length == 1): unchanged single-sheet flow inherited
+      from Phase 35 — one .device-block with the "было получено устройство:
+      ⟨name⟩" label plus per-item field_rows (label + value as one run of
+      plain text, no underline, no "Устройство №N"). No appendix is rendered
+      at all for N=1 (D-08).
+    - N > 1: the first sheet renders ONLY a numbered <ol class="device-summary">
+      (one <li> per GROUPED position, order = act.items_grouped, numbers
+      align 1:1 with the appendix table's № column per D-07) followed by a
+      field-row referring to "Приложение №1" for the full description. No
+      .device-block is rendered on the first sheet in this branch (D-08 —
+      the per-device attribution that .device-block's label used to provide
+      is instead carried by the appendix table's own row-per-position
+      shape). The full per-position description (all optional fields) moves
+      to a forced-break appendix section after .signatures: a
+      table.appendix-table with one <tbody class="device-group"> per
+      GROUPED position (main row + optional kit/specs sub-row), zebra
+      striping, dash-for-empty formatting, and a quantity column that
+      prints the real merged count when > 1 (D-01..D-06, D-09, D-10, D-15,
+      D-16, D-17).
+
+  Context variables (same shape as act_service::render_pdf's ctx, D-04, plus
+  org.logo_data_uri replacing org.logo_path per D-11, plus org.full_name for
+  the shared header partial per Phase 34, plus act.giver_name for the
+  signature block per Phase 35 D-06):
+    org.name, org.full_name, org.inn, org.kpp, org.address, org.address_line2,
+    org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
+    act.number, act.suffix, act.date, act.date_human,
+    act.receiver_name, act.giver_name, act.deadline, act.deadline_human,
+    act.place_path, act.items[], act.items_grouped[], act.parent
+    act.items[].name, act.items[].inventory_no, act.items[].serial_no,
+    act.items[].model, act.items[].specs, act.items[].kit,
+    act.items[].condition, act.items[].quantity
+    act.items_grouped[].name, act.items_grouped[].inventory_no,
+    act.items_grouped[].serial_no, act.items_grouped[].model,
+    act.items_grouped[].specs, act.items_grouped[].kit,
+    act.items_grouped[].condition, act.items_grouped[].quantity
+
+  NOTE (Plan 36-06, D-17, supersedes the Phase 36 D-03 note this replaced):
+  act.items IS THE RAW per-act_items-row list — one entry per DB row,
+  quantity always 1 (act_items.quantity is hardcoded at INSERT time and
+  carries no multiplicity signal). It is used ONLY for the N=1/N>1 branch
+  threshold above and the N=1 .device-block loop; it is NEVER iterated by
+  the N>1 <ol>/appendix table.
+  act.items_grouped IS THE RENDER-READY list — computed in Rust by
+  `group_items_for_print` (act_service.rs) by merging act.items rows that
+  are print-identical on EVERY printed field (name, model, inventory_no,
+  serial_no, condition, kit, specs). Two units differing in even one
+  printed field (e.g. distinct inventory_no) always stay separate entries —
+  no inventory number is ever lost to a merge. Its `.quantity` is the
+  Rust-side merged-row COUNT, not the DB column. This is the list consumed
+  by BOTH the N>1 first-sheet <ol> and the appendix table's Кол-во column.
+
+  Autoescape is ON (build_safe_html_env, T-16-01) — plain {{ var }}
+  interpolation is HTML-safe by construction. The single exception is
+  `org.logo_data_uri | safe` (see inline comment at its use site): that value
+  is exclusively server-constructed base64 + a hardcoded mime whitelist,
+  never user-controlled HTML — `| safe` only prevents autoescape from
+  HTML-entity-encoding the URI's `/` characters, which would otherwise
+  corrupt the `data:` scheme. The user may freely edit this file in VSCode;
+  the engine re-reads it from disk on every render (D-08). The header block
+  (logo/orgName/requisites markup + CSS) now lives exclusively in the shared
+  _header.html partial (D-12), pulled in below via the Jinja include
+  directive — resolved from the in-memory Environment template registry,
+  never a filesystem loader (D-13). It is included exactly once, at the top
+  of body — the appendix section (Phase 36, D-11) does NOT include it again.
+-#}
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Акт приема-передачи{% if act.number %} №{{ act.number }}{{ act.suffix | default('') }}{% endif %}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 20mm 15mm;
+  }
+  body {
+    font-family: "Times New Roman", Georgia, "PT Serif", "Liberation Serif", "DejaVu Serif", serif;
+    font-size: 12pt;
+    color: #000;
+    margin: 0;
+    padding: 0;
+  }
+  .title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 8pt 0 0 0;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 11pt;
+    margin: 4pt 0 12pt 0;
+  }
+  .field-row {
+    margin: 4pt 0;
+  }
+  .value-blank {
+    display: inline-block;
+    min-width: 140pt;
+    border-bottom: 1px solid #000;
+    min-height: 1.1em;
+  }
+  .intro {
+    margin: 4pt 0 10pt 0;
+  }
+  .device-block {
+    page-break-inside: avoid;
+    margin-bottom: 8pt;
+  }
+  .device-summary {
+    margin: 4pt 0 4pt 20pt;
+  }
+  .parent-note {
+    margin: 8pt 0;
+  }
+  .signatures {
+    margin-top: 30pt;
+    page-break-inside: avoid;
+  }
+  .signature-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10pt;
+    margin: 16pt 0 0 0;
+  }
+  .signature-row .signature-label {
+    white-space: nowrap;
+  }
+  .signature-field {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 160pt;
+  }
+  .signature-field .signature-line {
+    display: block;
+    width: 100%;
+    border-bottom: 1px solid #000;
+    min-height: 1.2em;
+  }
+  .signature-field .signature-sublabel {
+    font-size: 8pt;
+    margin-top: 2pt;
+  }
+  .signature-row .signature-name {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .appendix {
+    break-before: page;
+  }
+  .appendix-mark {
+    text-align: right;
+    font-size: 10pt;
+    margin-bottom: 4pt;
+  }
+  .appendix-title {
+    text-align: center;
+    font-size: 13pt;
+    font-weight: bold;
+    margin: 4pt 0 10pt 0;
+  }
+  .appendix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+  .appendix-table th,
+  .appendix-table td {
+    padding: 3pt 4pt;
+    text-align: left;
+    vertical-align: top;
+  }
+  .appendix-table thead tr {
+    border-bottom: 0.5pt solid #999;
+  }
+  .appendix-table tbody.device-group {
+    break-inside: avoid;
+    border-top: 0.5pt solid #ccc;
+  }
+  .appendix-table tbody.row-even td {
+    background: #f2f2f2;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+</style>
+</head>
+<body>
+
+  {% include "_header.html" %}
+
+  <div class="title">Акт приема-передачи</div>
+  <div class="subtitle">№{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+
+  <div class="intro field-row">Настоящим актом утверждаю, что мною: {{ act.receiver_name }}</div>
+
+  {%- if act.items | length > 1 %}
+  <div class="field-row">были получены устройства:</div>
+  <ol class="device-summary">
+    {%- for item in act.items_grouped %}
+    <li>{{ item.name }}{% if item.quantity > 1 %} × {{ item.quantity }}{% endif %}</li>
+    {%- endfor %}
+  </ol>
+  <div class="field-row">Полное описание устройств — в Приложении №1.</div>
+  {%- else %}
+  {%- for item in act.items %}
+  <div class="device-block">
+    <div class="field-row">было получено устройство: {{ item.name }}</div>
+    {%- if item.inventory_no %}
+    <div class="field-row">Инвентарный номер: {{ item.inventory_no }}</div>
+    {%- endif %}
+    {%- if item.serial_no %}
+    <div class="field-row">Серийный номер: {{ item.serial_no }}</div>
+    {%- endif %}
+    {%- if item.model %}
+    <div class="field-row">Модель: {{ item.model }}</div>
+    {%- endif %}
+    {%- if item.kit %}
+    <div class="field-row">Комплектация: {{ item.kit }}</div>
+    {%- endif %}
+    {%- if item.specs %}
+    <div class="field-row">Технические характеристики: {{ item.specs }}</div>
+    {%- endif %}
+    {%- if item.condition %}
+    <div class="field-row">Состояние: {{ item.condition }}</div>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+  {%- endif %}
+
+  <div class="field-row">Сроком до: {% if act.deadline_human %}{{ act.deadline_human }}{% elif act.deadline %}{{ act.deadline }}{% else %}<span class="value-blank"></span>{% endif %}</div>
+
+  <div class="field-row">Расположение: {% if act.place_path %}{{ act.place_path }}{% else %}<span class="value-blank"></span>{% endif %}</div>
+
+  {%- if act.parent %}
+  <div class="parent-note">
+    По акту №{{ act.parent.number }} от {{ act.parent.date_human | default(act.parent.date | default("")) }}
+  </div>
+  {%- endif %}
+
+  <div class="signatures">
+    <div class="signature-row">
+      <span class="signature-label">Выдал:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ act.giver_name }}</span>
+    </div>
+    <div class="signature-row">
+      <span class="signature-label">Получил:</span>
+      <span class="signature-field">
+        <span class="signature-line"></span>
+        <span class="signature-sublabel">Подпись</span>
+      </span>
+      <span class="signature-name">{{ act.receiver_name }}</span>
+    </div>
+  </div>
+
+  {%- if act.items | length > 1 %}
+  <div class="appendix">
+    <div class="appendix-mark">Приложение №1<br>к акту приема-передачи №{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+    <div class="appendix-title">Опись передаваемых устройств</div>
+    <table class="appendix-table">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Наименование</th>
+          <th>Кол-во</th>
+          <th>Инв.№</th>
+          <th>Серийный №</th>
+          <th>Модель</th>
+          <th>Состояние</th>
+        </tr>
+      </thead>
+      {%- for item in act.items_grouped %}
+      <tbody class="device-group {{ loop.cycle('row-even', 'row-odd') }}">
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.name }}</td>
+          <td>{% if item.quantity > 1 %}{{ item.quantity }}{% else %}—{% endif %}</td>
+          <td>{{ item.inventory_no | default("—", true) }}</td>
+          <td>{{ item.serial_no | default("—", true) }}</td>
+          <td>{{ item.model | default("—", true) }}</td>
+          <td>{{ item.condition | default("—", true) }}</td>
+        </tr>
+        {%- if item.kit or item.specs %}
+        <tr class="device-subrow">
+          <td colspan="7">{% if item.kit %}Комплектация: {{ item.kit }}{% endif %}{% if item.kit and item.specs %} {% endif %}{% if item.specs %}Тех. характеристики: {{ item.specs }}{% endif %}</td>
+        </tr>
+        {%- endif %}
+      </tbody>
+      {%- endfor %}
+    </table>
+  </div>
+  {%- endif %}
+
+</body>
+</html>
