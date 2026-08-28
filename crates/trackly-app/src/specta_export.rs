@@ -183,6 +183,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 39 — Places CRUD (Plan 12)
         crate::tauri_cmds::places::places_create,
         crate::tauri_cmds::places::places_rename,
+        crate::tauri_cmds::places::places_set_path_variant,
         crate::tauri_cmds::places::places_move,
         crate::tauri_cmds::places::places_archive,
         crate::tauri_cmds::places::places_unarchive,

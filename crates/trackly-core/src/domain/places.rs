@@ -157,6 +157,11 @@ pub struct PlaceContentRow {
     pub name: String,
     pub inventory_or_code: Option<String>,
     pub full_path: String,
+    /// Short path per the effective D-06 variant (D-17) — symmetric with the
+    /// device/cartridge list `place_path_short` field. Not `Option`, mirroring
+    /// `full_path`'s own non-nullability here: `shorten_place_path` on a
+    /// non-empty `full_path` deterministically returns a non-empty string.
+    pub place_path_short: String,
     pub status_name: Option<String>,
 }
 

@@ -113,6 +113,60 @@ async fn list_subtree_contents_nested_true_includes_nested_place_devices() {
 }
 
 // ---------------------------------------------------------------------------
+// place_path_short — D-17 (Phase 39.1 Plan 07): PlaceContents carries the
+// shortened path, symmetric with device/cartridge list `place_path_short`.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_subtree_contents_computes_place_path_short_per_effective_variant() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let building = svc
+            .create(&admin, new_place(PlaceKind::Building, "Здание А", None))
+            .await
+            .expect("create building");
+        // Override on the top-level place (D-06) — floor/room below inherit it
+        // dynamically via place_effective_variant's upward walk.
+        svc.set_path_variant(
+            &admin,
+            building.id,
+            Some("last".to_string()),
+            building.version,
+        )
+        .await
+        .expect("set_path_variant last");
+
+        let floor = svc
+            .create(
+                &admin,
+                new_place(PlaceKind::Floor, "1 этаж", Some(building.id)),
+            )
+            .await
+            .expect("create floor");
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "1-05", Some(floor.id)))
+            .await
+            .expect("create room");
+        insert_device(&svc, room.id, "Ноутбук №1").await;
+
+        let contents = svc
+            .list_subtree_contents(&admin, building.id, true)
+            .await
+            .expect("list_subtree_contents");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].full_path, "Здание А / 1 этаж / 1-05");
+        assert_eq!(
+            contents[0].place_path_short, "1-05",
+            "«Последнее» на 3-сегментном пути должен вернуть только последний сегмент"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+// ---------------------------------------------------------------------------
 // list_children — sibling_cmp natural ordering, not DB insertion order
 // ---------------------------------------------------------------------------
 

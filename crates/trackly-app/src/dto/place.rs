@@ -198,6 +198,9 @@ pub struct PlaceContentDto {
     pub name: String,
     pub inventory_or_code: Option<String>,
     pub full_path: String,
+    /// Short path per the effective D-06 variant (D-17), symmetric with the
+    /// device/cartridge list `place_path_short` field.
+    pub place_path_short: String,
     pub status_name: Option<String>,
 }
 
@@ -209,6 +212,7 @@ impl From<PlaceContentRow> for PlaceContentDto {
             name: row.name,
             inventory_or_code: row.inventory_or_code,
             full_path: row.full_path,
+            place_path_short: row.place_path_short,
             status_name: row.status_name,
         }
     }

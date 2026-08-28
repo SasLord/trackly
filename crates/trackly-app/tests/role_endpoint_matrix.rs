@@ -1543,6 +1543,27 @@ async fn role_endpoint_matrix_test() {
         }
 
         // =====================================================================
+        // Case 50 (Phase 39.1 Plan 07): Employee session → POST
+        // /api/v1/places_set_path_variant → 403 Forbidden.
+        // authorize(&Action::MutatePlaces) — D-12: та же семантика прав, что
+        // places_rename, НЕ Action::ManageSettings.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_set_path_variant",
+                json!({"id": 1, "pathVariantOverride": "ends", "version": 1}),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 50: Employee → places_set_path_variant → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
         // Case 45 (Phase 39 Plan 12, T-39-12-01): Manager session (HTTP) →
         // all six places_* mutations → 403 Forbidden. authorize(&Action::
         // MutatePlaces) is the FIRST line of every PlaceService mutation

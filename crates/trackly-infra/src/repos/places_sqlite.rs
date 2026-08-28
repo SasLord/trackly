@@ -187,11 +187,34 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
 /// shape. `nested: true` (default, D-24) includes the whole subtree via the
 /// Pattern 2 descendant CTE; `nested: false` restricts to `place_id = root_id`
 /// exactly ("Только здесь").
+/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
+/// `app_settings` once per query call (not per row). Mirrors
+/// `devices_sqlite.rs::read_path_display_separators` (same guarded-read shape,
+/// same fallback to the V039-seeded defaults) — each read-path repo keeps its
+/// own private copy rather than sharing one, per the existing Phase 39.1
+/// convention (devices_sqlite.rs / cartridges_sqlite.rs).
+fn read_path_display_separators(conn: &Connection) -> (String, String) {
+    let read_sep = |key: &str, default: &str| -> String {
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [key],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .unwrap_or_else(|| default.to_string())
+    };
+    (
+        read_sep("place_path_sep_ends", " // "),
+        read_sep("place_path_sep_last_two", " / "),
+    )
+}
+
 fn list_subtree_contents_impl(
     conn: &Connection,
     root_id: i64,
     nested: bool,
 ) -> Result<Vec<PlaceContentRow>, AppError> {
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let cte = if nested {
         "WITH RECURSIVE subtree(id) AS (
             SELECT id FROM places WHERE id = ?1 AND deleted_at_utc IS NULL
@@ -212,29 +235,32 @@ fn list_subtree_contents_impl(
 
     let sql = format!(
         "{cte}SELECT 'device' AS kind, d.id, d.name, d.inventory_number,
-                pfp.full_path, ds.name AS status_name
+                pfp.full_path, ds.name AS status_name, pev.effective_variant
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
+         LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
          WHERE d.deleted_at_utc IS NULL
            AND d.type_id != (SELECT id FROM device_types WHERE name = 'Принтер')
            AND d.place_id {place_filter}
          UNION ALL
          SELECT 'printer' AS kind, d.id, d.name, d.inventory_number,
-                pfp.full_path, ds.name AS status_name
+                pfp.full_path, ds.name AS status_name, pev.effective_variant
          FROM devices d
          JOIN place_full_paths pfp ON pfp.place_id = d.place_id
          LEFT JOIN device_statuses ds ON ds.id = d.status_id
+         LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id
          WHERE d.deleted_at_utc IS NULL
            AND d.type_id = (SELECT id FROM device_types WHERE name = 'Принтер')
            AND d.place_id {place_filter}
          UNION ALL
          SELECT 'cartridge' AS kind, c.id, (m.brand || ' ' || m.model) AS name, c.code,
-                pfp.full_path, cs.name AS status_name
+                pfp.full_path, cs.name AS status_name, pev.effective_variant
          FROM cartridges c
          JOIN place_full_paths pfp ON pfp.place_id = c.place_id
          JOIN cartridge_models m ON m.id = c.model_id
          LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id
+         LEFT JOIN place_effective_variant pev ON pev.place_id = c.place_id
          WHERE c.deleted_at_utc IS NULL
            AND c.place_id {place_filter}"
     );
@@ -242,12 +268,19 @@ fn list_subtree_contents_impl(
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let rows = stmt
         .query_map(rusqlite::params![root_id], |row| {
+            let full_path: String = row.get(4)?;
+            let effective_variant: Option<String> = row.get(6)?;
+            let place_path_short = effective_variant
+                .and_then(|token| PathDisplayVariant::from_str(&token).ok())
+                .map(|variant| shorten_place_path(&full_path, variant, &sep_ends, &sep_last_two))
+                .unwrap_or_else(|| full_path.clone());
             Ok(PlaceContentRow {
                 kind: row.get(0)?,
                 id: row.get(1)?,
                 name: row.get(2)?,
                 inventory_or_code: row.get(3)?,
-                full_path: row.get(4)?,
+                full_path,
+                place_path_short,
                 status_name: row.get(5)?,
             })
         })
