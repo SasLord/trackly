@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-28T12:48:13.858Z"
+last_updated: "2026-08-28T13:05:32.414Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 32
-  completed_plans: 31
-  percent: 13
+  completed_plans: 32
+  percent: 25
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.1 (place-path-display) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-08-28
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -337,6 +337,7 @@ Last activity: 2026-08-28
 | Phase 39.1 P07 | 35min | 2 tasks | 10 files |
 | Phase 39.1 P08 | 35min | 2 tasks | 3 files |
 | Phase 39.1 P09 | 20min | 1 tasks | 1 files |
+| Phase 39.1 P10 | 40m | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -842,6 +843,7 @@ Recent decisions affecting current work:
 - [Phase ?]: Plan 07: HTTP SetPathVariantPayload uses camelCase (pathVariantOverride), matching existing places.rs Payload convention
 - [Phase 39.1-08]: Radio/Input подраздела получают disabled во время сохранения (states matrix UI-SPEC); .sr-only/.field-hint/.field-error продублированы локально в OrgSettings.svelte (Svelte scoped styles)
 - [Phase 39.1]: PlaceFormModal: дропдаун «Вариант сокращения» видим в create и rename режимах, сохраняется вторым RPC places_set_path_variant — D-12: поле мутируемо после создания места, в отличие от Типа/Родителя/Уровня
+- [Phase 39.1]: 39.1-10: dto::auth тест переписан на явный assert отсутствия place_path_display в JSON (D-22)
 
 ### Pending Todos
 
@@ -1030,8 +1032,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-28T12:48:13.849Z
-Stopped at: Completed 39.1-06-PLAN.md
+Last session: 2026-08-28T13:05:32.404Z
+Stopped at: Completed 39.1-10-PLAN.md — финальная волна фазы 39.1
 Resume file: 
 
 None
