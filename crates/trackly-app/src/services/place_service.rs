@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::domain::places::{
-    sibling_cmp, PlaceContentRow, PlaceNew, PlaceRow, SubtreeStats,
+    sibling_cmp, PathDisplayVariant, PlaceContentRow, PlaceNew, PlaceRow, SubtreeStats,
 };
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
@@ -239,6 +239,66 @@ impl PlaceService {
                         entity_type: "place",
                         entity_id: id,
                         action: "rename",
+                        user_id,
+                        before_json: Some(before_json),
+                        after_json: Some(after_json),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+
+                Ok(row)
+            })
+            .await?;
+
+        Ok(PlaceDto::from(row))
+    }
+
+    /// Set (or clear) a place's path-shortening variant override (D-06/D-12).
+    /// Same permission gate as `rename` (`Action::MutatePlaces`, D-20/D-12 —
+    /// deliberately NOT `Action::ManageSettings`, this is a place-editing
+    /// operation, not an organization setting). Works identically on top-level
+    /// places (`parent_id: None`) — no special-casing (D-06).
+    pub async fn set_path_variant(
+        &self,
+        caller: &Identity,
+        id: i64,
+        path_variant_override: Option<String>,
+        version: i64,
+    ) -> Result<PlaceDto, AppError> {
+        authorize(caller, &Action::MutatePlaces)?;
+        if let Some(token) = path_variant_override.as_deref() {
+            PathDisplayVariant::from_str(token)?;
+        }
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        let row: PlaceRow = self
+            .writer
+            .execute(move |conn| {
+                let before = repo.get(conn, id)?;
+                let before_json = Self::to_after_json(&PlaceDto::from(before))?;
+
+                let row = repo.set_path_variant(
+                    conn,
+                    id,
+                    path_variant_override.as_deref(),
+                    version,
+                    now,
+                )?;
+
+                let after_json = Self::to_after_json(&PlaceDto::from(row.clone()))?;
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "place",
+                        entity_id: id,
+                        action: "set_path_variant",
                         user_id,
                         before_json: Some(before_json),
                         after_json: Some(after_json),
@@ -732,6 +792,167 @@ fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
         "Место нельзя удалить: в нём {}. Перенесите содержимое или архивируйте место.",
         join_with_and(&parts)
     )
+}
+
+/// Phase 39.1 Plan 07: `PlaceService::set_path_variant` — CAS mutation of the
+/// per-place `path_variant_override` (D-06/D-12). Filter target for the plan's
+/// verify command (`cargo test -p trackly-app place_service::set_path_variant`).
+#[cfg(test)]
+mod set_path_variant {
+    use std::sync::Arc;
+
+    use trackly_core::auth::{Identity, Role};
+    use trackly_core::domain::places::{PlaceKind, PlaceNew};
+    use trackly_core::error::AppError;
+    use trackly_core::primitives::clock::Clock;
+    use trackly_infra::clock_impl::SystemClock;
+    use trackly_infra::test_support::test_writer_and_readers;
+
+    use super::PlaceService;
+
+    fn make_service() -> (PlaceService, tempfile::TempDir) {
+        let (writer, readers, dir) = test_writer_and_readers();
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+        (PlaceService::new(writer, readers, clock), dir)
+    }
+
+    fn admin() -> Identity {
+        Identity::trusted_admin()
+    }
+
+    fn employee() -> Identity {
+        Identity {
+            user_id: Some(2),
+            role: Role::Employee,
+        }
+    }
+
+    fn minimal_room(name: &str, parent_id: Option<i64>) -> PlaceNew {
+        PlaceNew {
+            parent_id,
+            kind: PlaceKind::Room,
+            name: name.to_string(),
+            level: None,
+            is_storage: false,
+            sort_order: None,
+            notes: None,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sets_override_and_increments_version() {
+        let (svc, _dir) = make_service();
+        let admin = admin();
+        // D-06: top-level place (parent_id: None) — no special-casing.
+        let place = svc
+            .create(&admin, minimal_room("Склад", None))
+            .await
+            .expect("create");
+
+        let updated = svc
+            .set_path_variant(
+                &admin,
+                place.id,
+                Some("last_two".to_string()),
+                place.version,
+            )
+            .await
+            .expect("set_path_variant success");
+
+        assert_eq!(updated.path_variant_override.as_deref(), Some("last_two"));
+        assert_eq!(updated.version, place.version + 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn clears_override_back_to_inherit() {
+        let (svc, _dir) = make_service();
+        let admin = admin();
+        let place = svc
+            .create(&admin, minimal_room("Склад", None))
+            .await
+            .expect("create");
+        let with_override = svc
+            .set_path_variant(&admin, place.id, Some("ends".to_string()), place.version)
+            .await
+            .expect("set override");
+
+        let cleared = svc
+            .set_path_variant(&admin, place.id, None, with_override.version)
+            .await
+            .expect("clear override");
+
+        assert_eq!(cleared.path_variant_override, None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn rejects_unknown_token_without_writing() {
+        let (svc, _dir) = make_service();
+        let admin = admin();
+        let place = svc
+            .create(&admin, minimal_room("Склад", None))
+            .await
+            .expect("create");
+
+        let err = svc
+            .set_path_variant(&admin, place.id, Some("bogus".to_string()), place.version)
+            .await
+            .expect_err("bogus token must be rejected");
+        assert!(matches!(err, AppError::Validation { .. }));
+
+        let unchanged = svc.get(&admin, place.id).await.expect("get");
+        assert_eq!(
+            unchanged.version, place.version,
+            "версия не должна была измениться при отклонённой валидации"
+        );
+        assert_eq!(unchanged.path_variant_override, None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn stale_version_returns_same_cas_conflict_as_rename() {
+        let (svc, _dir) = make_service();
+        let admin = admin();
+        let place = svc
+            .create(&admin, minimal_room("Склад", None))
+            .await
+            .expect("create");
+
+        let stale = place.version - 1;
+        let err_variant = svc
+            .set_path_variant(&admin, place.id, Some("ends".to_string()), stale)
+            .await
+            .expect_err("stale version must fail");
+        let err_rename = svc
+            .rename(&admin, place.id, "Склад-2".to_string(), stale)
+            .await
+            .expect_err("stale version must fail (rename)");
+
+        assert_eq!(
+            std::mem::discriminant(&err_variant),
+            std::mem::discriminant(&err_rename),
+            "set_path_variant должен возвращать ту же форму CAS-ошибки, что rename"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn employee_is_forbidden() {
+        let (svc, _dir) = make_service();
+        let admin = admin();
+        let place = svc
+            .create(&admin, minimal_room("Склад", None))
+            .await
+            .expect("create");
+
+        let err = svc
+            .set_path_variant(
+                &employee(),
+                place.id,
+                Some("ends".to_string()),
+                place.version,
+            )
+            .await
+            .expect_err("Employee должен получить Forbidden (D-12/D-20)");
+        assert!(matches!(err, AppError::Forbidden));
+    }
 }
 
 #[cfg(test)]

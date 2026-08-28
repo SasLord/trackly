@@ -20,7 +20,8 @@ use crate::http::auth::session_identity;
 use crate::tauri_cmds::places::{
     build_places_archive, build_places_contents, build_places_create, build_places_delete,
     build_places_get, build_places_list_all, build_places_list_children, build_places_move,
-    build_places_rename, build_places_search, build_places_subtree_stats, build_places_unarchive,
+    build_places_rename, build_places_search, build_places_set_path_variant,
+    build_places_subtree_stats, build_places_unarchive,
 };
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,14 @@ pub struct CreatePayload {
 pub struct RenamePayload {
     pub id: i64,
     pub name: String,
+    pub version: i64,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPathVariantPayload {
+    pub id: i64,
+    pub path_variant_override: Option<String>,
     pub version: i64,
 }
 
@@ -138,6 +147,27 @@ pub async fn handler_rename(
         build_places_rename(&ctx, &identity, payload.id, payload.name, payload.version)
             .await
             .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_set_path_variant(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<SetPathVariantPayload>,
+) -> Result<Json<PlaceDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_places_set_path_variant(
+            &ctx,
+            &identity,
+            payload.id,
+            payload.path_variant_override,
+            payload.version,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -306,6 +336,10 @@ pub fn router() -> Router<AppCtx> {
     Router::new()
         .route("/api/v1/places_create", post(handler_create))
         .route("/api/v1/places_rename", post(handler_rename))
+        .route(
+            "/api/v1/places_set_path_variant",
+            post(handler_set_path_variant),
+        )
         .route("/api/v1/places_move", post(handler_move))
         .route("/api/v1/places_archive", post(handler_archive))
         .route("/api/v1/places_unarchive", post(handler_unarchive))

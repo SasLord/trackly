@@ -60,6 +60,20 @@ pub trait PlaceRepository {
         now_utc: i64,
     ) -> Result<PlaceRow, AppError>;
 
+    /// Set (or clear, via `None`) the per-place path-shortening variant override
+    /// (D-06/D-12). Optimistic-lock CAS via `version`, identical error semantics
+    /// to `rename` — the implementing adapter accepts an already-validated token
+    /// (`Some("ends" | "last_two" | "last")` or `None`); token validation happens
+    /// at the service layer (`PathDisplayVariant::from_str`), not here.
+    fn set_path_variant(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        path_variant_override: Option<&str>,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<PlaceRow, AppError>;
+
     /// Move a place to a new parent (or to root, if `new_parent_id` is `None`).
     ///
     /// The implementation MUST run the Pattern 3 cycle check (39-RESEARCH.md) inside

@@ -39,6 +39,10 @@ pub struct PlaceDto {
     pub notes: Option<String>,
     /// Resolved root-to-leaf path (via `place_full_paths`, always live — never cached).
     pub full_path: Option<String>,
+    /// Raw per-place override token (`"ends"`/`"last_two"`/`"last"`), or `None` for
+    /// «Как у родителя» (D-06). Populated for the place form to show the current
+    /// value — NOT the resolved effective variant (that never reaches the wire here).
+    pub path_variant_override: Option<String>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
     #[specta(type = i32)]
@@ -60,6 +64,7 @@ impl From<PlaceRow> for PlaceDto {
             archived_at_utc: row.archived_at_utc,
             notes: row.notes,
             full_path: row.full_path,
+            path_variant_override: row.path_variant_override.map(|v| v.as_str().to_string()),
             created_at_utc: row.created_at_utc,
             updated_at_utc: row.updated_at_utc,
             version: row.version,
@@ -226,6 +231,7 @@ mod tests {
             archived_at_utc: None,
             notes: None,
             full_path: Some("Здание А / 2 этаж / 214".to_string()),
+            path_variant_override: None,
             created_at_utc: 1_700_000_000,
             updated_at_utc: 1_700_001_000,
             deleted_at_utc: None,

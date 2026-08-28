@@ -83,6 +83,10 @@ pub struct PlaceRow {
     /// Resolved root-to-leaf path via `LEFT JOIN place_full_paths` — populated on
     /// read paths only, never stored (mirrors `DeviceRow.location` convention).
     pub full_path: Option<String>,
+    /// Per-place override of the path-shortening variant (D-06). `None` means
+    /// «Как у родителя» — the effective variant is resolved dynamically by the
+    /// `place_effective_variant` SQL view (V039), never here.
+    pub path_variant_override: Option<PathDisplayVariant>,
     pub created_at_utc: i64,
     pub updated_at_utc: i64,
     pub deleted_at_utc: Option<i64>,
@@ -376,6 +380,7 @@ mod tests {
             archived_at_utc: None,
             notes: None,
             full_path: None,
+            path_variant_override: None,
             created_at_utc: 0,
             updated_at_utc: 0,
             deleted_at_utc: None,

@@ -51,6 +51,21 @@ pub async fn build_places_rename(
     ctx.places.rename(caller, id, name, version).await
 }
 
+/// Мутация: требует `caller` с правом `MutatePlaces` (D-12/D-20, Admin-only —
+/// НЕ `Action::ManageSettings`, права те же, что у `places_rename`).
+pub async fn build_places_set_path_variant(
+    ctx: &AppCtx,
+    caller: &Identity,
+    id: i64,
+    path_variant_override: Option<String>,
+    version: i64,
+) -> Result<PlaceDto, AppError> {
+    authorize(caller, &Action::MutatePlaces)?;
+    ctx.places
+        .set_path_variant(caller, id, path_variant_override, version)
+        .await
+}
+
 /// Мутация: требует `caller` с правом `MutatePlaces` (D-20, Admin-only).
 pub async fn build_places_move(
     ctx: &AppCtx,
@@ -195,6 +210,25 @@ pub async fn places_rename(
 ) -> Result<PlaceDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_places_rename(state.inner(), &caller, id as i64, name, version as i64).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn places_set_path_variant(
+    state: tauri::State<'_, AppCtx>,
+    id: i32,
+    path_variant_override: Option<String>,
+    version: i32,
+) -> Result<PlaceDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_places_set_path_variant(
+        state.inner(),
+        &caller,
+        id as i64,
+        path_variant_override,
+        version as i64,
+    )
+    .await
 }
 
 #[tauri::command]

@@ -16,7 +16,10 @@
 //! конкатенации caller-supplied значений в текст запроса.
 
 use rusqlite::{Connection, OptionalExtension};
-use trackly_core::domain::places::{PlaceContentRow, PlaceKind, PlaceNew, PlaceRow, SubtreeStats};
+use trackly_core::domain::places::{
+    shorten_place_path, PathDisplayVariant, PlaceContentRow, PlaceKind, PlaceNew, PlaceRow,
+    SubtreeStats,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 
@@ -32,7 +35,7 @@ pub struct SqlitePlaceRepository;
 /// `LEFT JOIN locations` shape, заменяя таблицу на всегда-живое view.
 const SELECT_PLACES: &str = "
     SELECT p.id, p.parent_id, p.kind, p.name, p.level, p.is_storage, p.sort_order,
-           p.archived_at_utc, p.notes, pfp.full_path,
+           p.archived_at_utc, p.notes, pfp.full_path, p.path_variant_override,
            p.created_at_utc, p.updated_at_utc, p.deleted_at_utc, p.version
     FROM places p
     LEFT JOIN place_full_paths pfp ON pfp.place_id = p.id
@@ -53,6 +56,20 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlaceRow> {
         )
     })?;
     let is_storage: i64 = row.get(5)?;
+    let path_variant_override_sql: Option<String> = row.get(10)?;
+    let path_variant_override = match path_variant_override_sql {
+        Some(v) => Some(PathDisplayVariant::from_str(&v).map_err(|_| {
+            // No CHECK constraint on this column (V039, mirrors places.kind's
+            // Rust-side validation choice) — an unrecognized value means the
+            // column was hand-edited outside the app, not a normal state.
+            rusqlite::Error::FromSqlConversionFailure(
+                10,
+                rusqlite::types::Type::Text,
+                format!("invalid places.path_variant_override in DB: {v}").into(),
+            )
+        })?),
+        None => None,
+    };
     Ok(PlaceRow {
         id: row.get(0)?,
         parent_id: row.get(1)?,
@@ -64,10 +81,11 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlaceRow> {
         archived_at_utc: row.get(7)?,
         notes: row.get(8)?,
         full_path: row.get(9)?,
-        created_at_utc: row.get(10)?,
-        updated_at_utc: row.get(11)?,
-        deleted_at_utc: row.get(12)?,
-        version: row.get(13)?,
+        path_variant_override,
+        created_at_utc: row.get(11)?,
+        updated_at_utc: row.get(12)?,
+        deleted_at_utc: row.get(13)?,
+        version: row.get(14)?,
     })
 }
 
@@ -360,6 +378,30 @@ impl PlaceRepository for SqlitePlaceRepository {
                 "UPDATE places SET name = ?1, updated_at_utc = ?2, version = version + 1 \
                  WHERE id = ?3 AND version = ?4 AND deleted_at_utc IS NULL",
                 rusqlite::params![name, now_utc, id, version],
+            )
+            .map_err(map_rusqlite)?;
+
+        if affected == 0 {
+            return Err(resolve_cas_failure(conn, id, version));
+        }
+
+        get_impl(conn, id)
+    }
+
+    fn set_path_variant(
+        &self,
+        conn: &mut Self::Conn,
+        id: i64,
+        path_variant_override: Option<&str>,
+        version: i64,
+        now_utc: i64,
+    ) -> Result<PlaceRow, AppError> {
+        let affected = conn
+            .execute(
+                "UPDATE places SET path_variant_override = ?1, updated_at_utc = ?2, \
+                 version = version + 1 \
+                 WHERE id = ?3 AND version = ?4 AND deleted_at_utc IS NULL",
+                rusqlite::params![path_variant_override, now_utc, id, version],
             )
             .map_err(map_rusqlite)?;
 
