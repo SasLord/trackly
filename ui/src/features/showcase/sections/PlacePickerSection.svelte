@@ -15,7 +15,12 @@
     kind: string,
     name: string,
     fullPath: string,
-    opts: { isStorage?: boolean; archived?: boolean; level?: number | null } = {},
+    opts: {
+      isStorage?: boolean;
+      archived?: boolean;
+      level?: number | null;
+      pathVariantOverride?: string | null;
+    } = {},
   ): PlaceDto {
     return {
       id,
@@ -28,6 +33,10 @@
       archived_at_utc: opts.archived ? now : null,
       notes: null,
       full_path: fullPath,
+      // Phase 39.1 Plan 07 added path_variant_override to PlaceDto. The showcase
+      // tree inherits the organization default everywhere (null), which is the
+      // shape PlacePicker actually sees for most places.
+      path_variant_override: opts.pathVariantOverride ?? null,
       created_at_utc: now,
       updated_at_utc: now,
       version: 1,
