@@ -3,8 +3,6 @@
   import TableRow from '$lib/components/TableRow.svelte';
   import DeviceContextMenu from './DeviceContextMenu.svelte';
   import type { DeviceDto } from '../../bindings';
-  import { shortenPlacePath } from '$lib/utils/placePath';
-  import { authStore } from '$lib/stores/auth.svelte';
 
   interface Props {
     device: DeviceDto;
@@ -67,9 +65,7 @@
     ><span class="tr-mono">{device.serial_no ?? '—'}</span></td
   >
   <td class="cell" title={device.model ?? ''}>{device.model ?? '—'}</td>
-  <td class="cell" title={device.full_path ?? ''}
-    >{device.full_path ? shortenPlacePath(device.full_path, authStore.placePathDisplay) : '—'}</td
-  >
+  <td class="cell" title={device.full_path ?? ''}>{device.place_path_short ?? '—'}</td>
   <td class="cell" title={device.state ?? ''}>{device.state ?? '—'}</td>
   {#if showStatus}
     <td class="cell cell-status">

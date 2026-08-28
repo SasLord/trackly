@@ -13,8 +13,6 @@
   import TableRow from '$lib/components/TableRow.svelte';
   import CartridgeContextMenu from './CartridgeContextMenu.svelte';
   import type { CartridgeDto } from '../../bindings';
-  import { shortenPlacePath } from '$lib/utils/placePath';
-  import { authStore } from '$lib/stores/auth.svelte';
 
   interface Props {
     cartridge: CartridgeDto;
@@ -101,9 +99,7 @@
   </td>
   <td class="cell" title={modelLabel ?? ''} onclick={handleClick}>{modelLabel ?? '—'}</td>
   <td class="cell" title={cartridge.full_path ?? ''} onclick={handleClick}
-    >{cartridge.full_path
-      ? shortenPlacePath(cartridge.full_path, authStore.placePathDisplay)
-      : '—'}</td
+    >{cartridge.place_path_short ?? '—'}</td
   >
   {#if !statusFiltered}
     <td class="cell cell-status" onclick={handleClick}>

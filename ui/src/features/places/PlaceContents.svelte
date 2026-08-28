@@ -24,8 +24,6 @@
   import Badge from '$lib/components/Badge.svelte';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
-  import { shortenPlacePath } from '$lib/utils/placePath';
-  import { authStore } from '$lib/stores/auth.svelte';
 
   export type ContentTab = 'all' | 'device' | 'printer' | 'cartridge';
 
@@ -306,7 +304,7 @@
           </td>
           {#if !onlyHere}
             <td class="cell" title={row.full_path} onclick={() => openView(row)}>
-              {shortenPlacePath(row.full_path, authStore.placePathDisplay)}
+              {row.place_path_short}
             </td>
           {/if}
           <td class="cell" onclick={() => openView(row)}>

@@ -9,8 +9,6 @@
   // sibling branch outside Table (no error-state equivalent in Table's API).
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
-  import { shortenPlacePath } from '$lib/utils/placePath';
-  import { authStore } from '$lib/stores/auth.svelte';
 
   interface ReportRow {
     id: number;
@@ -21,6 +19,7 @@
     receiver_name?: string | null;
     handover_date_utc?: number | null;
     place_path?: string | null;
+    place_path_short?: string | null;
     act_type?: string | null;
     device_name?: string | null;
     quantity?: number | null;
@@ -99,11 +98,11 @@
     return String(val);
   }
 
-  // quick 260827-ui3: place_path cells are shortened via the shared
-  // shortenPlacePath() (variant configurable through authStore.placePathDisplay,
-  // default "ends" — replaces the D-26-era local shortPlacePath). The full path
-  // always goes in the cell's title attribute regardless of variant, so the
-  // complete location is one hover away.
+  // Phase 39.1: place_path cells arrive already shortened from the backend
+  // (row.place_path_short, per the organization/place display-variant setting —
+  // PLC-07/PLC-08) — no local shortening formula on the frontend anymore. The
+  // full path always goes in the cell's title attribute regardless of variant,
+  // so the complete location is one hover away.
 
   // Composite place cell: combines an optional sibling field (col.compositeWith,
   // e.g. device_name for the requests report's printer column) with place_path
@@ -140,7 +139,7 @@
 
   function formatCellDisplay(row: ReportRow, col: Column): string {
     if (col.key === 'place_path') {
-      return formatPlaceCell(row, col, (p) => shortenPlacePath(p, authStore.placePathDisplay));
+      return formatPlaceCell(row, col, () => row.place_path_short ?? '');
     }
     return formatCellValue(row, col.key);
   }
