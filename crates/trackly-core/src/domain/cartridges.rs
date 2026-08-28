@@ -37,6 +37,10 @@ pub struct CartridgeRow {
     pub place_id: Option<i64>,
     /// Live-resolved display path via `place_full_paths`.
     pub full_path: Option<String>,
+    /// Effective shortened path per `place_effective_variant` (Phase 39.1 Plan 04);
+    /// `None` when `place_id` is absent, mirroring `full_path`'s semantics. Computed
+    /// only on `list()` — see `cartridges_sqlite.rs::map_row_with_short_path`.
+    pub place_path_short: Option<String>,
     /// Denormalised current holder (кому выдано).
     pub holder_name: Option<String>,
     pub notes: Option<String>,

@@ -15,6 +15,7 @@ use trackly_core::domain::cartridges::{
     CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeRow,
     CartridgeTransitionOp, CompatibleModelAggregate, LowStockBasis, LowStockItem, Pagination,
 };
+use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
 
@@ -47,21 +48,30 @@ pub struct AuditEntryRow {
 ///   - `cartridge_models m` for brand, model name and kind_id.
 ///   - `cartridge_statuses cs` for human-readable status name.
 ///   - `cartridge_states cst` for human-readable state name.
+///   - `place_effective_variant pev` adds `pev.effective_variant` as column
+///     index 18 (Phase 39.1 Plan 04). `map_row` NEVER reads index 18 — it is
+///     read only by `map_row_with_short_path`, used exclusively by `list()`
+///     (D-19-equivalent: `get`/`search_fts` keep using bare `map_row` and
+///     always yield `place_path_short: None`).
 const SELECT_CARTRIDGES: &str = "
     SELECT c.id, c.code, c.model_id,
            m.brand AS model_brand, m.model AS model_name, m.kind_id AS model_kind_id,
            c.status_id, cs.name AS status_name,
            c.state_id, cst.name AS state_name,
            c.place_id, pfp.full_path, c.holder_name, c.notes,
-           c.created_at_utc, c.updated_at_utc, c.deleted_at_utc, c.version
+           c.created_at_utc, c.updated_at_utc, c.deleted_at_utc, c.version,
+           pev.effective_variant AS place_variant
       FROM cartridges c
       LEFT JOIN cartridge_models m ON m.id = c.model_id
       LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id
       LEFT JOIN cartridge_states cst ON cst.id = c.state_id
       LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id
+      LEFT JOIN place_effective_variant pev ON pev.place_id = c.place_id
 ";
 
-/// Maps a row from `SELECT_CARTRIDGES` into `CartridgeRow`.
+/// Maps a row from `SELECT_CARTRIDGES` into `CartridgeRow`. `place_path_short`
+/// is always `None` here — it is computed separately by
+/// `map_row_with_short_path` (mirrors `devices_sqlite.rs::from_row`).
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
     Ok(CartridgeRow {
         id: row.get(0)?,
@@ -76,6 +86,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
         state_name: row.get(9)?,
         place_id: row.get(10)?,
         full_path: row.get(11)?,
+        place_path_short: None,
         holder_name: row.get(12)?,
         notes: row.get(13)?,
         created_at_utc: row.get(14)?,
@@ -83,6 +94,50 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
         deleted_at_utc: row.get(16)?,
         version: row.get(17)?,
     })
+}
+
+/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
+/// `app_settings` once per query call (not per row) — mirrors
+/// `devices_sqlite.rs::read_path_display_separators` (same guarded-read shape
+/// as `low_stock` above). Falls back to the V039-seeded defaults
+/// (`" // "`/`" / "`) if the row is somehow missing.
+fn read_path_display_separators(conn: &Connection) -> (String, String) {
+    let read_sep = |key: &str, default: &str| -> String {
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [key],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .unwrap_or_else(|| default.to_string())
+    };
+    (
+        read_sep("place_path_sep_ends", " // "),
+        read_sep("place_path_sep_last_two", " / "),
+    )
+}
+
+/// Wraps `map_row`, additionally reading `place_effective_variant.effective_variant`
+/// (column index 18, present only when the query joins `place_effective_variant` —
+/// see `SELECT_CARTRIDGES`) and computing `place_path_short` via `shorten_place_path`.
+/// Used ONLY by `list()` (PLC-08); a cartridge with `place_id IS NULL` naturally
+/// yields `effective_variant: None` (LEFT JOIN, no match) and thus
+/// `place_path_short: None`, mirroring `full_path`'s existing behavior.
+fn map_row_with_short_path<'a>(
+    sep_ends: &'a str,
+    sep_last_two: &'a str,
+) -> impl Fn(&rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> + 'a {
+    move |row| {
+        let mut cartridge = map_row(row)?;
+        let effective_variant: Option<String> = row.get(18)?;
+        if let (Some(full), Some(token)) = (cartridge.full_path.as_deref(), effective_variant) {
+            if let Ok(variant) = PathDisplayVariant::from_str(&token) {
+                cartridge.place_path_short =
+                    Some(shorten_place_path(full, variant, sep_ends, sep_last_two));
+            }
+        }
+        Ok(cartridge)
+    }
 }
 
 impl SqliteCartridgeRepository {
@@ -1330,6 +1385,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
             ))
             .map_err(map_rusqlite)?;
 
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let rows = stmt
             .query_map(
                 params![
@@ -1342,7 +1398,7 @@ impl CartridgeRepository for SqliteCartridgeRepository {
                     limit,
                     offset,
                 ],
-                map_row,
+                map_row_with_short_path(&sep_ends, &sep_last_two),
             )
             .map_err(map_rusqlite)?;
 

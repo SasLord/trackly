@@ -41,6 +41,9 @@ pub struct CartridgeDto {
     #[specta(type = Option<i32>)]
     pub place_id: Option<i64>,
     pub full_path: Option<String>,
+    /// Effective shortened path per `place_effective_variant` (Phase 39.1 Plan 04);
+    /// `None` when `place_id` is absent or the source query is not `list()`.
+    pub place_path_short: Option<String>,
     pub holder_name: Option<String>,
     pub notes: Option<String>,
     #[specta(type = i32)]
@@ -67,6 +70,7 @@ impl From<CartridgeRow> for CartridgeDto {
             state_name: r.state_name,
             place_id: r.place_id,
             full_path: r.full_path,
+            place_path_short: r.place_path_short,
             holder_name: r.holder_name,
             notes: r.notes,
             created_at_utc: r.created_at_utc,
