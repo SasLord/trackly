@@ -9,6 +9,10 @@
 //!   `place_full_paths` («Здание А / 2 этаж / Кабинет 214», разделитель
 //!   ровно `' / '` — см. `migrations/V037__places.sql`), а не имя листа и
 //!   не пустая строка.
+//! - D-24/Phase 39.1 Plan 03: даже когда у места установлен
+//!   `path_variant_override = 'ends'` (короткий путь отличался бы от
+//!   полного), колонка «Место» остаётся на ПОЛНОМ пути — `export_csv`
+//!   никогда не подключается к `place_effective_variant`/`place_path_short`.
 //!
 //! Каждый тест обёрнут в `tokio::time::timeout(30s)`.
 //!
@@ -498,6 +502,101 @@ async fn export_list_all_created_devices() {
             .await
             .expect("list");
         assert_eq!(list_resp.total, 3);
+    })
+    .await
+    .expect("timeout");
+}
+
+/// D-24 (Phase 39.1 Plan 03): устройство лежит в месте с явным
+/// `path_variant_override = 'ends'` (короткий путь "Здание А // 1-05"
+/// отличался бы от полного) — колонка «Место» в CSV всё равно печатает
+/// ПОЛНЫЙ путь ("Здание А / 1 этаж / 1-05"), а не сокращённый. Доказывает
+/// отсутствие регрессии, а не просто "тест проходит потому что код не
+/// менялся" — сокращение реально было бы видно, если бы `export_csv`
+/// случайно начал использовать `place_path_short`.
+///
+/// Нет ещё сервисного метода для установки `path_variant_override`
+/// (Phase 39.1 Plan 04+) — override ставится напрямую SQL-ом через
+/// `svc.writer`, тем же приёмом, что `place_effective_variant.rs`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn export_csv_place_column_stays_full_path_not_shortened() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let building = seed_place(&svc, None, PlaceKind::Building, "Здание А").await;
+        let floor = seed_place(&svc, Some(building), PlaceKind::Floor, "1 этаж").await;
+        let room = seed_place(&svc, Some(floor), PlaceKind::Room, "1-05").await;
+
+        // Явный override 'ends' на самом месте — короткий путь был бы
+        // "Здание А // 1-05", отличным от полного.
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE places SET path_variant_override = 'ends' WHERE id = ?1",
+                    rusqlite::params![room],
+                )
+                .map_err(|e| trackly_core::error::AppError::Internal {
+                    source_chain: format!("set path_variant_override in test: {e}"),
+                })?;
+                Ok(())
+            })
+            .await
+            .expect("set path_variant_override");
+
+        svc.create(DeviceNew {
+            type_id: 1,
+            name: "Ноутбук D-24".to_string(),
+            inventory_no: Some("INV-D24-001".to_string()),
+            serial_no: None,
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            place_id: Some(room),
+            status_id: 1,
+        })
+        .await
+        .expect("create device in overridden place");
+
+        let csv = svc
+            .export_csv(DeviceFilter::default())
+            .await
+            .expect("export should succeed");
+
+        let without_bom = csv.trim_start_matches('\u{FEFF}');
+        let mut lines = without_bom.lines().filter(|l| !l.trim().is_empty());
+        let header: Vec<String> = lines
+            .next()
+            .expect("header row")
+            .trim_end_matches('\r')
+            .split(';')
+            .map(|s| s.to_string())
+            .collect();
+        let data: Vec<String> = lines
+            .next()
+            .expect("одна строка данных")
+            .trim_end_matches('\r')
+            .split(';')
+            .map(|s| s.to_string())
+            .collect();
+
+        let idx = header
+            .iter()
+            .position(|h| h == "Место")
+            .unwrap_or_else(|| panic!("нет колонки «Место»: {header:?}"));
+
+        assert_eq!(
+            data.get(idx).map(String::as_str),
+            Some("Здание А / 1 этаж / 1-05"),
+            "колонка «Место» должна остаться ПОЛНЫМ путём, даже когда \
+             у места есть path_variant_override='ends' (D-24). \
+             header={header:?} data={data:?}"
+        );
+        assert_ne!(
+            data.get(idx).map(String::as_str),
+            Some("Здание А // 1-05"),
+            "колонка «Место» НЕ должна содержать сокращённую форму (D-24 регресс)"
+        );
     })
     .await
     .expect("timeout");
