@@ -112,6 +112,7 @@
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
+| 39.1. Формат пути Места в UI | v1.4 | 0/10 | Planned | - |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -243,10 +244,31 @@ Plans:
   через запятую» — читается как «разделитель соединяет показанные сегменты».
 - Что показывает вариант «Последнее» для пути из одного сегмента (вероятно, его же).
 
-**Plans:** 0 plans
+**Plans:** 10 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 39.1 to break down)
+**Wave 1**
+
+- [ ] 39.1-01-PLAN.md — миграция V039 (path_variant_override + app_settings умолчания + вью
+  place_effective_variant) + интеграционные тесты наследования + shorten_place_path в trackly-core
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 39.1-02-PLAN.md — settings_get/set_place_path_defaults (backend, оба транспорта) + Case 49
+- [ ] 39.1-03-PLAN.md — place_path_short в списках устройств (list/search_fts/list_grouped) + D-24 тест-замок export_csv
+- [ ] 39.1-04-PLAN.md — place_path_short в списке картриджей
+- [ ] 39.1-06-PLAN.md — печатная форма акта: place_path_short по текущему варианту + снапшот шаблона v27
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 39.1-05-PLAN.md — place_path_short в 5 доменах отчётов + row_field(shorten) CSV/PDF асимметрия
+- [ ] 39.1-07-PLAN.md — places_set_path_variant (backend) + PlaceContents place_path_short + Case 50
+- [ ] 39.1-08-PLAN.md — OrgSettings.svelte: подраздел «Формат отображения пути места» (UI)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 39.1-09-PLAN.md — PlaceFormModal.svelte: дропдаун «Вариант сокращения» (UI)
+- [ ] 39.1-10-PLAN.md — фронт переключается на place_path_short + удаление устаревшего конфига (D-22)
 
 ### Phase 40: История перемещений
 
