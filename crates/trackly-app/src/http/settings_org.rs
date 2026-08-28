@@ -19,7 +19,8 @@ use trackly_core::auth::{authorize, Action};
 
 use crate::context::AppCtx;
 use crate::dto::reports::{
-    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgSettingsDto, TemplateEditorItem, TemplateStatusDto,
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgPathDisplayDto, OrgSettingsDto, TemplateEditorItem,
+    TemplateStatusDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -27,10 +28,11 @@ use crate::services::backup_service::{BackupConfigDto, BackupResult};
 use crate::tauri_cmds::settings_org::{
     build_backup_run_manual, build_settings_get_backup_config, build_settings_get_db_path,
     build_settings_get_low_stock_basis, build_settings_get_low_stock_threshold,
-    build_settings_get_org, build_settings_get_org_logo, build_settings_remove_org_logo,
-    build_settings_save_backup_config, build_settings_save_org_fields,
-    build_settings_save_org_logo, build_settings_set_low_stock_basis,
-    build_settings_set_low_stock_threshold, build_templates_list_for_editor,
+    build_settings_get_org, build_settings_get_org_logo, build_settings_get_place_path_defaults,
+    build_settings_remove_org_logo, build_settings_save_backup_config,
+    build_settings_save_org_fields, build_settings_save_org_logo,
+    build_settings_set_low_stock_basis, build_settings_set_low_stock_threshold,
+    build_settings_set_place_path_defaults, build_templates_list_for_editor,
     build_templates_reset_to_default, build_templates_status, build_templates_update_body,
     build_templates_validate_preview,
 };
@@ -62,6 +64,12 @@ pub struct SetLowStockPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SetLowStockBasisPayload {
     pub basis: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPlacePathDefaultsPayload {
+    pub patch: OrgPathDisplayDto,
 }
 
 #[derive(serde::Deserialize)]
@@ -159,6 +167,20 @@ pub async fn handler_get_low_stock_basis(
         .map_err(AppErrorResponse::from)?;
     Ok(Json(
         build_settings_get_low_stock_basis(&ctx)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+pub async fn handler_get_place_path_defaults(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<OrgPathDisplayDto>, AppErrorResponse> {
+    let _identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_settings_get_place_path_defaults(&ctx)
             .await
             .map_err(AppErrorResponse::from)?,
     ))
@@ -265,6 +287,21 @@ pub async fn handler_set_low_stock_basis(
         .map_err(AppErrorResponse::from)?;
     authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
     build_settings_set_low_stock_basis(&ctx, &caller, p.basis)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(()))
+}
+
+pub async fn handler_set_place_path_defaults(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<SetPlacePathDefaultsPayload>,
+) -> Result<Json<()>, AppErrorResponse> {
+    let caller = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    authorize(&caller, &Action::ManageSettings).map_err(AppErrorResponse::from)?;
+    build_settings_set_place_path_defaults(&ctx, &caller, p.patch)
         .await
         .map_err(AppErrorResponse::from)?;
     Ok(Json(()))
@@ -388,6 +425,10 @@ pub fn router() -> Router<AppCtx> {
             post(handler_get_low_stock_basis),
         )
         .route(
+            "/api/v1/settings_get_place_path_defaults",
+            post(handler_get_place_path_defaults),
+        )
+        .route(
             "/api/v1/settings_get_backup_config",
             post(handler_get_backup_config),
         )
@@ -415,6 +456,10 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/settings_set_low_stock_basis",
             post(handler_set_low_stock_basis),
+        )
+        .route(
+            "/api/v1/settings_set_place_path_defaults",
+            post(handler_set_place_path_defaults),
         )
         .route(
             "/api/v1/settings_save_backup_config",

@@ -11,8 +11,8 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::context::AppCtx;
 use crate::dto::reports::{
-    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgPathDisplayDto, OrgSettingsDto,
-    TemplateEditorItem, TemplateFileStatus, TemplateStatusDto,
+    BackupConfigPatch, OrgLogoDto, OrgPatch, OrgPathDisplayDto, OrgSettingsDto, TemplateEditorItem,
+    TemplateFileStatus, TemplateStatusDto,
 };
 use crate::pdf::html_templates::{
     read_template_if_present, resolve_templates_dir, DEFAULT_HTML_TEMPLATES, KNOWN_LEGACY_DEFAULTS,

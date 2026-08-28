@@ -170,6 +170,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::settings_org::settings_set_low_stock_threshold,
         crate::tauri_cmds::settings_org::settings_get_low_stock_basis,
         crate::tauri_cmds::settings_org::settings_set_low_stock_basis,
+        crate::tauri_cmds::settings_org::settings_get_place_path_defaults,
+        crate::tauri_cmds::settings_org::settings_set_place_path_defaults,
         crate::tauri_cmds::settings_org::settings_get_backup_config,
         crate::tauri_cmds::settings_org::settings_save_backup_config,
         crate::tauri_cmds::settings_org::backup_run_manual,
