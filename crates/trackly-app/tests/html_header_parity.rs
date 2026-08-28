@@ -250,6 +250,7 @@ async fn render_header_fragments_for_org(
             receiver_name: Some("Петров П.П.".to_string()),
             handover_date_utc: Some(1_700_000_000),
             place_path: Some("Офис 101".to_string()),
+            place_path_short: Some("Офис 101".to_string()),
             act_type: Some("handover".to_string()),
             device_name: Some("Тестовый принтер".to_string()),
             quantity: Some(1),

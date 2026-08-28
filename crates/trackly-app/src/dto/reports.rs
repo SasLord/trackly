@@ -85,6 +85,12 @@ pub struct ReportRow {
     pub handover_date_utc: Option<i64>,
     /// Resolved place path (`place_full_paths.full_path`).
     pub place_path: Option<String>,
+    /// Shortened place path per `place_effective_variant` (D-17) — populated
+    /// alongside `place_path` in all 5 report domains; `None` when the row has
+    /// no place (mirrors `place_path`'s own null semantics). Consumed by
+    /// `row_field`'s `shorten: bool` switch — CSV (D-18) always reads
+    /// `place_path`, PDF/print (D-17) always reads this field.
+    pub place_path_short: Option<String>,
     /// Act type discriminator ("handover" | "return" | etc.).
     pub act_type: Option<String>,
     /// Device name or cartridge display name.

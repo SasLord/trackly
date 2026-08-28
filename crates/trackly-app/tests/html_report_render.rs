@@ -52,6 +52,7 @@ fn make_row(
         receiver_name: Some(receiver.to_string()),
         handover_date_utc: Some(1_780_000_000),
         place_path: Some(location.to_string()),
+        place_path_short: Some(location.to_string()),
         act_type: Some("handover".to_string()),
         device_name: Some(device_name.to_string()),
         quantity: Some(1),

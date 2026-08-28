@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use rusqlite::types::ToSql;
 use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
+use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
@@ -270,6 +271,44 @@ fn translate_request_status(raw: &str) -> String {
         "cancelled" => "Отменена".to_string(),
         other => other.to_string(),
     }
+}
+
+/// Read the two organization-wide path-shortening separators from
+/// `app_settings`, falling back to the V039-seeded defaults if either row is
+/// somehow missing. Mirrors `devices_sqlite.rs::read_path_display_separators`
+/// (Plan 03) — call once per query, never per row.
+fn read_path_display_separators(conn: &rusqlite::Connection) -> (String, String) {
+    let read_sep = |key: &str, default: &str| -> String {
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [key],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .unwrap_or_else(|| default.to_string())
+    };
+    (
+        read_sep("place_path_sep_ends", " // "),
+        read_sep("place_path_sep_last_two", " / "),
+    )
+}
+
+/// Compute `place_path_short` from a row's `place_path`/`place_variant`
+/// columns (the latter selected from `place_effective_variant`). `None` when
+/// either input is missing (no place, or the LEFT JOIN found no matching
+/// row) — mirrors `place_path`'s own null semantics (D-19 boundary is
+/// unaffected: callers that don't join `place_effective_variant` simply never
+/// populate `place_variant`, so this always yields `None` for them).
+fn compute_place_path_short(
+    full_path: Option<&str>,
+    effective_variant: Option<String>,
+    sep_ends: &str,
+    sep_last_two: &str,
+) -> Option<String> {
+    let full = full_path?;
+    let token = effective_variant?;
+    let variant = PathDisplayVariant::from_str(&token).ok()?;
+    Some(shorten_place_path(full, variant, sep_ends, sep_last_two))
 }
 
 /// Combine printer name + printer place path into the «Принтер / Место»
@@ -1160,9 +1199,11 @@ fn query_acts_inner(
                pfp.full_path AS place_path, \
                a.act_type, \
                GROUP_CONCAT(d.name, ', ') AS device_name, \
-               SUM(ai.quantity) AS quantity \
+               SUM(ai.quantity) AS quantity, \
+               pev.effective_variant AS place_variant \
          FROM acts a \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = a.place_id \
+         LEFT JOIN place_effective_variant pev ON pev.place_id = a.place_id \
          LEFT JOIN act_items ai ON ai.act_id = a.id \
          LEFT JOIN devices d ON d.id = ai.device_id \
          WHERE {where_clause} \
@@ -1171,10 +1212,19 @@ fn query_acts_inner(
          LIMIT 1000"
     );
 
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let row_iter = stmt
         .query_map(param_refs.as_slice(), |r| {
+            let place_path: Option<String> = r.get(7)?;
+            let place_variant: Option<String> = r.get(11)?;
+            let place_path_short = compute_place_path_short(
+                place_path.as_deref(),
+                place_variant,
+                &sep_ends,
+                &sep_last_two,
+            );
             Ok(ReportRow {
                 id: r.get(0)?,
                 month_key: r.get(1)?,
@@ -1183,7 +1233,8 @@ fn query_acts_inner(
                 giver_name: r.get(4)?,
                 receiver_name: r.get(5)?,
                 handover_date_utc: r.get(6)?,
-                place_path: r.get(7)?,
+                place_path,
+                place_path_short,
                 act_type: r.get(8)?,
                 device_name: r.get(9)?,
                 quantity: r.get(10)?,
@@ -1272,19 +1323,30 @@ fn query_device_snapshot(
     let where_clause = clauses.join(" AND ");
     let sql = format!(
         "{with_prefix}SELECT d.id, NULL as month_key, d.name as device_name, d.serial_number, \
-               pfp.full_path as place_path, s.name as status_name \
+               pfp.full_path as place_path, s.name as status_name, \
+               pev.effective_variant AS place_variant \
          FROM devices d \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
+         LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id \
          LEFT JOIN device_statuses s ON d.status_id = s.id \
          WHERE {where_clause} \
          ORDER BY d.name ASC, d.id ASC \
          LIMIT 1000"
     );
 
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let row_iter = stmt
         .query_map(param_refs.as_slice(), |r| {
+            let place_path: Option<String> = r.get(4)?;
+            let place_variant: Option<String> = r.get(6)?;
+            let place_path_short = compute_place_path_short(
+                place_path.as_deref(),
+                place_variant,
+                &sep_ends,
+                &sep_last_two,
+            );
             Ok(ReportRow {
                 id: r.get(0)?,
                 month_key: None,
@@ -1293,7 +1355,8 @@ fn query_device_snapshot(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: None,
-                place_path: r.get::<_, Option<String>>(4)?,
+                place_path,
+                place_path_short,
                 act_type: None,
                 device_name: r.get(2)?,
                 quantity: None,
@@ -1412,20 +1475,31 @@ fn query_cartridge_audit(
                pfp.full_path as place_path, \
                m.brand || ' ' || m.model AS model_label, \
                c.code, \
-               al.action \
+               al.action, \
+               pev.effective_variant AS place_variant \
          FROM audit_log al \
          JOIN cartridges c ON c.id = al.entity_id \
          JOIN cartridge_models m ON m.id = c.model_id \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id \
+         LEFT JOIN place_effective_variant pev ON pev.place_id = c.place_id \
          WHERE {where_clause} \
          ORDER BY al.created_at_utc ASC \
          LIMIT 1000"
     );
 
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let row_iter = stmt
         .query_map(param_refs.as_slice(), |r| {
+            let place_path: Option<String> = r.get(3)?;
+            let place_variant: Option<String> = r.get(7)?;
+            let place_path_short = compute_place_path_short(
+                place_path.as_deref(),
+                place_variant,
+                &sep_ends,
+                &sep_last_two,
+            );
             Ok(ReportRow {
                 id: r.get(0)?,
                 month_key: r.get(1)?,
@@ -1434,7 +1508,8 @@ fn query_cartridge_audit(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: r.get(2)?,
-                place_path: r.get(3)?,
+                place_path,
+                place_path_short,
                 act_type: r.get(6)?,
                 device_name: None,
                 quantity: None,
@@ -1533,20 +1608,31 @@ fn query_cartridge_snapshot(
     let where_clause = clauses.join(" AND ");
     let sql = format!(
         "{with_prefix}SELECT c.id, c.code, m.brand || ' ' || m.model AS model_label, \
-               pfp.full_path as place_path, cs.name as status_name \
+               pfp.full_path as place_path, cs.name as status_name, \
+               pev.effective_variant AS place_variant \
          FROM cartridges c \
          JOIN cartridge_models m ON m.id = c.model_id \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = c.place_id \
+         LEFT JOIN place_effective_variant pev ON pev.place_id = c.place_id \
          LEFT JOIN cartridge_statuses cs ON cs.id = c.status_id \
          WHERE {where_clause} \
          ORDER BY c.code ASC, c.id ASC \
          LIMIT 1000"
     );
 
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let row_iter = stmt
         .query_map(param_refs.as_slice(), |r| {
+            let place_path: Option<String> = r.get(3)?;
+            let place_variant: Option<String> = r.get(5)?;
+            let place_path_short = compute_place_path_short(
+                place_path.as_deref(),
+                place_variant,
+                &sep_ends,
+                &sep_last_two,
+            );
             Ok(ReportRow {
                 id: r.get(0)?,
                 month_key: None,
@@ -1555,7 +1641,8 @@ fn query_cartridge_snapshot(
                 giver_name: None,
                 receiver_name: None,
                 handover_date_utc: None,
-                place_path: r.get(3)?,
+                place_path,
+                place_path_short,
                 act_type: None,
                 device_name: None,
                 quantity: None,
@@ -1663,16 +1750,19 @@ fn query_requests_inner(
         "{with_prefix}SELECT r.id, \
                strftime('%Y-%m', datetime(r.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
                r.created_at_utc, r.request_type, r.status, u.full_name AS requester_name, \
-               d.name AS printer_name, pfp.full_path AS printer_place \
+               d.name AS printer_name, pfp.full_path AS printer_place, \
+               pev.effective_variant AS place_variant \
          FROM requests r \
          LEFT JOIN users u ON u.id = r.requested_by_user_id \
          LEFT JOIN devices d ON d.id = r.printer_device_id \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = d.place_id \
+         LEFT JOIN place_effective_variant pev ON pev.place_id = d.place_id \
          WHERE {where_clause} \
          ORDER BY r.created_at_utc ASC, r.id ASC \
          LIMIT 1000"
     );
 
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
     let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
     let row_iter = stmt
@@ -1682,6 +1772,13 @@ fn query_requests_inner(
             let status: String = r.get(4)?;
             let printer_name: Option<String> = r.get(6)?;
             let printer_place: Option<String> = r.get(7)?;
+            let place_variant: Option<String> = r.get(8)?;
+            let place_path_short = compute_place_path_short(
+                printer_place.as_deref(),
+                place_variant,
+                &sep_ends,
+                &sep_last_two,
+            );
             Ok(ReportRow {
                 id,
                 month_key: r.get(1)?,
@@ -1691,6 +1788,7 @@ fn query_requests_inner(
                 receiver_name: None,
                 handover_date_utc: r.get(2)?,
                 place_path: printer_place,
+                place_path_short,
                 act_type: None,
                 device_name: printer_name,
                 quantity: None,
@@ -2573,6 +2671,7 @@ mod tests {
             receiver_name: Some("Иванов И.И.".to_string()),
             handover_date_utc: Some(1_780_000_000),
             place_path: Some("Склад №1".to_string()),
+            place_path_short: Some("Склад №1".to_string()),
             act_type: Some("handover".to_string()),
             device_name: Some(device_name.to_string()),
             quantity: Some(1),
