@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-08-28T04:58:43.585Z"
-last_activity: 2026-08-28 -- Phase 39.1 planning complete
+last_updated: "2026-08-28T08:43:00.232Z"
+last_activity: 2026-08-28
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 32
-  completed_plans: 22
+  completed_plans: 23
   percent: 13
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 39.1 — формат пути Места в UI (вставлена 2026-08-28); далее Phase 40 — история перемещений
+**Current focus:** Phase 39.1 — place-path-display
 
 ## Current Position
 
-Phase: 39.1
-Plan: Not started
+Phase: 39.1 (place-path-display) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
-Last activity: 2026-08-28 -- Phase 39.1 planning complete
+Last activity: 2026-08-28
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -330,6 +330,7 @@ Last activity: 2026-08-28 -- Phase 39.1 planning complete
 | Phase 39 P14 | 65min | 2 tasks | 8 files |
 | Phase 39 P20 | 7 UAT rounds | 2 tasks | 21 files |
 | Phase 39 P21 | 250min | 2 tasks | 14 files |
+| Phase 39.1 P01 | 10min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -827,6 +828,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Content-row click opens a read-only PlaceEntityViewModal (readonly mode added to existing DeviceFormBody/CartridgeFormBody) instead of navigating away; printers reuse the device form since no dedicated printer form exists
 - [Phase 39]: Kept migration_idempotency.rs's location_id-absence assertions and the frozen _legacy_defaults/v20-v26 template snapshots as deliberate exceptions to the phase-closing vocabulary sweep — the test's purpose IS asserting the column is gone (PLC-04 regression lock); the templates are byte-identical upgrade-detection fixtures whose text must match what was actually shipped historically
 - [Phase 39]: prettier drift on 11 phase-39-authored files was fixed (by the coordinator, commit e07c702f) rather than deferred, because pnpm lint is a sequential first-fail CI gate in ci-fast.yml/ci-full.yml — leaving it red would have masked every downstream CI check, the same failure class that left this project's CI red unnoticed for two weeks previously
+- [Phase ?]: PathDisplayVariant: старый токен 'full' явно отклоняется, не трактуется как алиас 'last' (семантически противоположны)
+- [Phase ?]: path_variant_override валидируется в Rust (PathDisplayVariant::from_str), без SQL CHECK — мирроринг places.kind
 
 ### Pending Todos
 
@@ -1015,11 +1018,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-28T03:00:26.343Z
+Last session: 2026-08-28T08:41:56.078Z
 Stopped at: Phase 39.1 UI-SPEC approved
 Resume file: 
 
-.planning/phases/39.1-place-path-display/39.1-UI-SPEC.md
+None
 
 ## Deferred Items
 

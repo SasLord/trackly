@@ -112,7 +112,7 @@
 | 37. Приватность данных | v1.3.3 | 4/4 | Complete | 2026-08-18 |
 | 38. Nyquist-покрытие Фазы 32 | v1.3.3 | 0/0 | Complete | 2026-08-18 |
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
-| 39.1. Формат пути Места в UI | v1.4 | 0/10 | Planned | - |
+| 39.1. Формат пути Места в UI | v1.4 | 1/10 | In Progress|  |
 | 40. История перемещений | v1.4 | 0/TBD | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
@@ -244,12 +244,12 @@ Plans:
   через запятую» — читается как «разделитель соединяет показанные сегменты».
 - Что показывает вариант «Последнее» для пути из одного сегмента (вероятно, его же).
 
-**Plans:** 10 plans
+**Plans:** 1/10 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 39.1-01-PLAN.md — миграция V039 (path_variant_override + app_settings умолчания + вью
+- [x] 39.1-01-PLAN.md — миграция V039 (path_variant_override + app_settings умолчания + вью
   place_effective_variant) + интеграционные тесты наследования + shorten_place_path в trackly-core
 
 **Wave 2** *(blocked on Wave 1)*
