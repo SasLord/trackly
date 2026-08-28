@@ -266,6 +266,100 @@ fn take_non_digit_run(it: &mut std::iter::Peekable<std::str::Chars>) -> String {
     s
 }
 
+/// The three closed path-display-variant values (D-06, Phase 39.1). Not a freeform
+/// string — an unrecognized token is rejected with `AppError::Validation` at the
+/// domain boundary, mirroring `PlaceKind::from_str`/`as_str` above.
+///
+/// **Token note:** the two carried-over tokens `"ends"`/`"last_two"` keep their old
+/// names from the removed `PlacePathDisplay` config enum; only the old `"full"` token
+/// is retired and replaced by `"last"` — a SEMANTICALLY OPPOSITE meaning (old `full` =
+/// "never shorten, show the whole path"; new `last` = "show ONLY the final segment").
+/// Do not treat `last` as a synonym for the old `full` when reading historical code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathDisplayVariant {
+    /// «Крайние» — first + last segment, joined by `sep_ends`.
+    Ends,
+    /// «Два последних» — last two segments, joined by `sep_last_two`.
+    LastTwo,
+    /// «Последнее» — only the final segment.
+    Last,
+}
+
+impl PathDisplayVariant {
+    /// Parse from the DB/app_settings token. Returns `AppError::Validation` for
+    /// unknown values, with a Russian-language message listing all three permitted
+    /// values. The old `"full"` token is deliberately NOT accepted here (D-Open Q3) —
+    /// it is a different, retired variant, not an alias for `"last"`.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Result<Self, AppError> {
+        match s {
+            "ends" => Ok(Self::Ends),
+            "last_two" => Ok(Self::LastTwo),
+            "last" => Ok(Self::Last),
+            other => Err(AppError::Validation {
+                field: "path_variant".to_string(),
+                message: format!(
+                    "Неизвестный вариант сокращения пути: «{other}». Допустимые \
+                     значения: ends, last_two, last."
+                ),
+            }),
+        }
+    }
+
+    /// Returns the DB token corresponding to this variant (inverse of `from_str`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ends => "ends",
+            Self::LastTwo => "last_two",
+            Self::Last => "last",
+        }
+    }
+}
+
+/// Shorten a `' / '`-joined full place path (as produced by the `place_full_paths`
+/// SQL view) according to `variant`, using the given organization-wide separators.
+///
+/// Pure string transform — does NOT read the database, does NOT walk the place tree.
+/// Tree-walking for inheritance lives exclusively in the `place_effective_variant` SQL
+/// view (V039); callers resolve `variant` there first, then call this function once on
+/// the already-resolved full-path string. Never call this in a loop over ancestors.
+///
+/// D-13/D-14: the variant's separator (`sep_ends`/`sep_last_two`) is used ONLY when it
+/// actually stands in for something that was dropped from the path. A 2-segment path
+/// under `Ends`/`LastTwo` has nothing to drop, so it is returned unchanged, joined by
+/// the ordinary `' / '` — never by `sep_ends`/`sep_last_two`. D-15: `Last` on a
+/// single-segment path returns that segment unchanged, with no shortening marker.
+pub fn shorten_place_path(
+    full_path: &str,
+    variant: PathDisplayVariant,
+    sep_ends: &str,
+    sep_last_two: &str,
+) -> String {
+    if full_path.is_empty() {
+        return full_path.to_string();
+    }
+
+    let segments: Vec<&str> = full_path.split(" / ").collect();
+
+    match segments.len() {
+        0 => full_path.to_string(),
+        1 => segments[0].to_string(),
+        2 => match variant {
+            // Nothing to drop on a 2-segment path — D-14 keeps the ordinary
+            // ' / ' join for Ends/LastTwo; only Last narrows to one segment.
+            PathDisplayVariant::Ends | PathDisplayVariant::LastTwo => full_path.to_string(),
+            PathDisplayVariant::Last => segments[1].to_string(),
+        },
+        n => match variant {
+            PathDisplayVariant::Ends => format!("{}{sep_ends}{}", segments[0], segments[n - 1]),
+            PathDisplayVariant::LastTwo => {
+                format!("{}{sep_last_two}{}", segments[n - 2], segments[n - 1])
+            }
+            PathDisplayVariant::Last => segments[n - 1].to_string(),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,5 +614,223 @@ mod tests {
                 }
             }
         }
+    }
+
+    // PathDisplayVariant::from_str / as_str
+
+    #[test]
+    fn path_display_variant_from_str_full_is_rejected() {
+        // "full" is the retired old-config token — it must NOT be accepted as a
+        // synonym for the new "last" variant (semantically opposite meanings).
+        let err = PathDisplayVariant::from_str("full").expect_err("должна быть ошибка");
+        match err {
+            AppError::Validation { field, .. } => assert_eq!(field, "path_variant"),
+            other => panic!("ожидали AppError::Validation, получили {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_display_variant_from_str_last_is_accepted() {
+        assert_eq!(
+            PathDisplayVariant::from_str("last").unwrap(),
+            PathDisplayVariant::Last
+        );
+    }
+
+    #[test]
+    fn path_display_variant_from_str_unknown_lists_all_three_values_in_russian() {
+        let err = PathDisplayVariant::from_str("bogus").expect_err("должна быть ошибка");
+        match err {
+            AppError::Validation { field, message } => {
+                assert_eq!(field, "path_variant");
+                for token in ["ends", "last_two", "last"] {
+                    assert!(
+                        message.contains(token),
+                        "message should list '{token}': {message}"
+                    );
+                }
+                assert!(
+                    message
+                        .chars()
+                        .any(|c| ('а'..='я').contains(&c.to_ascii_lowercase())
+                            || ('А'..='Я').contains(&c)),
+                    "message should contain Russian text: {message}"
+                );
+            }
+            other => panic!("ожидали AppError::Validation, получили {other:?}"),
+        }
+    }
+
+    #[test]
+    fn path_display_variant_as_str_roundtrips_all_three_variants() {
+        for variant in [
+            PathDisplayVariant::Ends,
+            PathDisplayVariant::LastTwo,
+            PathDisplayVariant::Last,
+        ] {
+            let s = variant.as_str();
+            assert_eq!(PathDisplayVariant::from_str(s).unwrap(), variant);
+        }
+    }
+
+    // shorten_place_path — full "input -> output" table from RESEARCH.md § Pattern 3
+    // (D-13..D-16). Uses the D-09 default separators (' // ' / ' / ') unless a test
+    // specifically exercises D-09/D-10 whitespace significance.
+
+    const SEP_ENDS: &str = " // ";
+    const SEP_LAST_TWO: &str = " / ";
+
+    #[test]
+    fn shorten_empty_input_returns_empty() {
+        assert_eq!(
+            shorten_place_path("", PathDisplayVariant::Ends, SEP_ENDS, SEP_LAST_TWO),
+            ""
+        );
+    }
+
+    #[test]
+    fn shorten_one_segment_any_variant_returns_it_unchanged() {
+        for variant in [
+            PathDisplayVariant::Ends,
+            PathDisplayVariant::LastTwo,
+            PathDisplayVariant::Last,
+        ] {
+            assert_eq!(
+                shorten_place_path("Склад", variant, SEP_ENDS, SEP_LAST_TWO),
+                "Склад"
+            );
+        }
+    }
+
+    #[test]
+    fn shorten_two_segments_ends_keeps_ordinary_separator_d14() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж",
+                PathDisplayVariant::Ends,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "Здание А / 1 этаж"
+        );
+    }
+
+    #[test]
+    fn shorten_two_segments_last_two_keeps_ordinary_separator_d14() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж",
+                PathDisplayVariant::LastTwo,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "Здание А / 1 этаж"
+        );
+    }
+
+    #[test]
+    fn shorten_two_segments_last_returns_only_last_segment() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж",
+                PathDisplayVariant::Last,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "1 этаж"
+        );
+    }
+
+    #[test]
+    fn shorten_three_segments_ends_uses_sep_ends_d16() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж / 1-05",
+                PathDisplayVariant::Ends,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "Здание А // 1-05"
+        );
+    }
+
+    #[test]
+    fn shorten_three_segments_last_two_uses_sep_last_two_d16() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж / 1-05",
+                PathDisplayVariant::LastTwo,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "1 этаж / 1-05"
+        );
+    }
+
+    #[test]
+    fn shorten_three_segments_last_returns_only_last_segment() {
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж / 1-05",
+                PathDisplayVariant::Last,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "1-05"
+        );
+    }
+
+    #[test]
+    fn shorten_four_plus_segments_ends_uses_first_and_last() {
+        assert_eq!(
+            shorten_place_path(
+                "Территория А / Объект Х / Здание 1 / помещение 3",
+                PathDisplayVariant::Ends,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "Территория А // помещение 3"
+        );
+    }
+
+    #[test]
+    fn shorten_four_plus_segments_last_two_uses_last_two() {
+        assert_eq!(
+            shorten_place_path(
+                "Территория А / Объект Х / Здание 1 / помещение 3",
+                PathDisplayVariant::LastTwo,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "Здание 1 / помещение 3"
+        );
+    }
+
+    #[test]
+    fn shorten_four_plus_segments_last_uses_only_last() {
+        assert_eq!(
+            shorten_place_path(
+                "Территория А / Объект Х / Здание 1 / помещение 3",
+                PathDisplayVariant::Last,
+                SEP_ENDS,
+                SEP_LAST_TWO
+            ),
+            "помещение 3"
+        );
+    }
+
+    #[test]
+    fn shorten_separator_whitespace_is_not_trimmed_d09_d10() {
+        // A comma-space separator must survive verbatim through the function —
+        // no .trim() anywhere on the sep_ends/sep_last_two path.
+        assert_eq!(
+            shorten_place_path(
+                "Здание А / 1 этаж / 1-05",
+                PathDisplayVariant::Ends,
+                ", ",
+                SEP_LAST_TWO
+            ),
+            "Здание А, 1-05"
+        );
     }
 }
