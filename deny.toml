@@ -31,11 +31,23 @@ allow = [
     "CC0-1.0",
 ]
 confidence-threshold = 0.8
-exceptions = []
+exceptions = [
+    # webpki-roots ships the Mozilla CA root store — that payload is DATA, and
+    # CDLA-Permissive-2.0 is a data license, not a code license. Scoped
+    # exception rather than adding CDLA-Permissive-2.0 to `allow`, so the
+    # exemption cannot silently spread to other crates. Reached transitively:
+    # reqwest -> hyper-rustls -> webpki-roots.
+    { allow = ["CDLA-Permissive-2.0"], name = "webpki-roots" },
+]
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Intra-workspace `{ path = "../trackly-core" }` deps carry no version req, which
+# cargo-deny counts as a wildcard. That is the normal shape for a path dependency
+# inside one workspace and is not the supply-chain risk `wildcards = "deny"`
+# exists to catch — registry deps are still held to the rule.
+allow-wildcard-paths = true
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
