@@ -1,0 +1,228 @@
+{
+  "_about": [
+    "Golden-фикстура формулы сокращения пути места (Phase 39.1, PLC-07/PLC-08, D-13..D-16).",
+    "ЕДИНСТВЕННЫЙ источник истины для ДВУХ независимых реализаций одной формулы:",
+    "  Rust — trackly_core::domain::places::shorten_place_path (боевая, D-01);",
+    "  JS   — ui/src/lib/utils/placePath.ts::previewShortenPath (офлайн-зеркало",
+    "         для живого предпросмотра в «Настройки → Организация», D-11).",
+    "Обе стороны обязаны выдавать побайтово одинаковый результат на каждом кейсе.",
+    "Проверяется с обеих сторон:",
+    "  cargo test -p trackly-core domain::places::tests::shorten_place_path_matches_golden_fixture",
+    "  node ui/scripts/check-placepath-parity.mjs   (входит в `pnpm lint` → CI)",
+    "Почему фикстура существует: зеркало уже РАСХОДИЛОСЬ с Rust на 2-сегментном пути",
+    "под вариантом `last` (WR-03 из 39.1-REVIEW.md, чинилось руками в 10707242).",
+    "Расхождение не ловил ни один гейт — svelte-check видит типы, но не формулу.",
+    "Меняешь формулу — правь фикстуру и ОБЕ реализации, иначе оба гейта покраснеют.",
+    "Имена мест здесь вымышленные и обязаны такими остаться (репозиторий публичный)."
+  ],
+  "default_separators": {
+    "sep_ends": " // ",
+    "sep_last_two": " / ",
+    "_note": "Умолчания из migrations/V039__place_path_display.sql (значимые пробелы, D-09)."
+  },
+  "cases": [
+    {
+      "id": "empty-ends",
+      "note": "Пустой путь возвращается как есть на любом варианте.",
+      "full_path": "",
+      "variant": "ends",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": ""
+    },
+    {
+      "id": "empty-last-two",
+      "full_path": "",
+      "variant": "last_two",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": ""
+    },
+    {
+      "id": "empty-last",
+      "full_path": "",
+      "variant": "last",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": ""
+    },
+
+    {
+      "id": "one-segment-ends",
+      "note": "D-15: один сегмент — сокращать нечего, маркер сокращения не появляется.",
+      "full_path": "Склад",
+      "variant": "ends",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Склад"
+    },
+    {
+      "id": "one-segment-last-two",
+      "full_path": "Склад",
+      "variant": "last_two",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Склад"
+    },
+    {
+      "id": "one-segment-last",
+      "full_path": "Склад",
+      "variant": "last",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Склад"
+    },
+
+    {
+      "id": "two-segments-ends-default-seps",
+      "note": "D-14 + WR-03: на 2 сегментах выбрасывать нечего — путь возвращается ЦЕЛИКОМ, склеенный ОБЫЧНЫМ ' / ', а НЕ sep_ends. Именно здесь JS-зеркало разошлось с Rust.",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "ends",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Здание А / 1 этаж"
+    },
+    {
+      "id": "two-segments-last-two-default-seps",
+      "note": "D-14: то же для last_two.",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "last_two",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Здание А / 1 этаж"
+    },
+    {
+      "id": "two-segments-last-default-seps",
+      "note": "WR-03: `last` — ЕДИНСТВЕННЫЙ вариант, который сужает 2-сегментный путь.",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "last",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "1 этаж"
+    },
+
+    {
+      "id": "two-segments-ends-custom-seps",
+      "note": "Тот же D-14 при НЕумолчальных разделителях: sep_ends не должен просочиться в результат.",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "ends",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "Здание А / 1 этаж"
+    },
+    {
+      "id": "two-segments-last-two-custom-seps",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "last_two",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "Здание А / 1 этаж"
+    },
+    {
+      "id": "two-segments-last-custom-seps",
+      "full_path": "Здание А / 1 этаж",
+      "variant": "last",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "1 этаж"
+    },
+
+    {
+      "id": "three-segments-ends-default-seps",
+      "note": "D-13: середина выброшена — вот теперь sep_ends действительно за что-то отвечает.",
+      "full_path": "Здание А / 1 этаж / 1-05",
+      "variant": "ends",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Здание А // 1-05"
+    },
+    {
+      "id": "three-segments-last-two-default-seps",
+      "note": "D-16: два последних сегмента через sep_last_two.",
+      "full_path": "Здание А / 1 этаж / 1-05",
+      "variant": "last_two",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "1 этаж / 1-05"
+    },
+    {
+      "id": "three-segments-last-default-seps",
+      "full_path": "Здание А / 1 этаж / 1-05",
+      "variant": "last",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "1-05"
+    },
+
+    {
+      "id": "four-segments-ends-default-seps",
+      "note": "4+ сегментов идут по той же ветке, что и 3 — первый и последний.",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "ends",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "Территория А // 2-14"
+    },
+    {
+      "id": "four-segments-last-two-default-seps",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "last_two",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "2 этаж / 2-14"
+    },
+    {
+      "id": "four-segments-last-default-seps",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "last",
+      "sep_ends": " // ",
+      "sep_last_two": " / ",
+      "expected": "2-14"
+    },
+
+    {
+      "id": "four-segments-ends-custom-seps",
+      "note": "Неумолчальные разделители обязаны попасть в результат ровно как заданы.",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "ends",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "Территория А ... 2-14"
+    },
+    {
+      "id": "four-segments-last-two-custom-seps",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "last_two",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "2 этаж, 2-14"
+    },
+    {
+      "id": "four-segments-last-custom-seps",
+      "note": "`last` игнорирует ОБА разделителя — их подмена ничего не меняет.",
+      "full_path": "Территория А / Здание Б / 2 этаж / 2-14",
+      "variant": "last",
+      "sep_ends": " ... ",
+      "sep_last_two": ", ",
+      "expected": "2-14"
+    },
+
+    {
+      "id": "three-segments-ends-whitespace-only-sep",
+      "note": "D-10: разделитель из одних пробелов — валидное значение (в отличие от пустого), должен пережить формулу без тримминга.",
+      "full_path": "Здание А / 1 этаж / 1-05",
+      "variant": "ends",
+      "sep_ends": " ",
+      "sep_last_two": " ",
+      "expected": "Здание А 1-05"
+    },
+    {
+      "id": "three-segments-last-two-whitespace-only-sep",
+      "full_path": "Здание А / 1 этаж / 1-05",
+      "variant": "last_two",
+      "sep_ends": " ",
+      "sep_last_two": " ",
+      "expected": "1 этаж 1-05"
+    }
+  ]
+}

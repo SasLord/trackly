@@ -843,4 +843,76 @@ mod tests {
             "Здание А, 1-05"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Golden-фикстура: паритет с JS-зеркалом (Phase 39.1, WR-03)
+    // -----------------------------------------------------------------------
+
+    /// `shorten_place_path` против общей golden-фикстуры
+    /// `scripts/fixtures/place-path/shorten-cases.json`.
+    ///
+    /// Ту же фикстуру читает `ui/scripts/check-placepath-parity.mjs` и прогоняет
+    /// через `previewShortenPath` — офлайн-зеркало этой функции на фронте (D-11).
+    /// Две реализации одной формулы уже расходились на 2-сегментном пути под
+    /// вариантом `last` (WR-03, чинилось руками в 10707242): расхождение не ловил
+    /// ни один гейт, потому что `svelte-check` видит типы, а не формулу. Фикстура —
+    /// единственная точка, где обе стороны пришпилены к одним и тем же ожиданиям.
+    ///
+    /// Тест выше по файлу проверяют формулу как таковую; этот проверяет ровно то,
+    /// что фикстура не разошлась с боевым Rust — иначе JS-гейт стерёг бы неправду.
+    ///
+    /// `include_str!` вместо чтения с диска: фикстура вшивается на этапе
+    /// компиляции, тест остаётся без файлового ввода-вывода (FOUND-01).
+    #[test]
+    fn shorten_place_path_matches_golden_fixture() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            id: String,
+            full_path: String,
+            variant: String,
+            sep_ends: String,
+            sep_last_two: String,
+            expected: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct Fixture {
+            cases: Vec<Case>,
+        }
+
+        const RAW: &str =
+            include_str!("../../../../scripts/fixtures/place-path/shorten-cases.json");
+
+        let fixture: Fixture = serde_json::from_str(RAW).expect("фикстура — валидный JSON");
+
+        assert!(
+            fixture.cases.len() >= 20,
+            "фикстура подозрительно похудела ({} кейсов) — её урезали вместо того, \
+             чтобы починить формулу?",
+            fixture.cases.len()
+        );
+
+        for case in &fixture.cases {
+            let variant = PathDisplayVariant::from_str(&case.variant).unwrap_or_else(|_| {
+                panic!("кейс {}: неизвестный вариант {}", case.id, case.variant)
+            });
+
+            let actual =
+                shorten_place_path(&case.full_path, variant, &case.sep_ends, &case.sep_last_two);
+
+            assert_eq!(
+                actual,
+                case.expected,
+                "кейс {}: shorten_place_path({:?}, {:?}, {:?}, {:?}) вернул {:?}, \
+                 фикстура ожидает {:?}",
+                case.id,
+                case.full_path,
+                case.variant,
+                case.sep_ends,
+                case.sep_last_two,
+                actual,
+                case.expected
+            );
+        }
+    }
 }
