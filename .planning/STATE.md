@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-08-28T13:05:32.414Z"
+status: ready_to_plan
+last_updated: 2026-08-31T14:31:13.438Z
 last_activity: 2026-08-28
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 32
-  completed_plans: 32
+  completed_plans: 295
   percent: 25
+stopped_at: Phase 39.1 complete (10/10) — ready to discuss Phase 40
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 39.1 — place-path-display
+**Current focus:** Phase 40 — история перемещений
 
 ## Current Position
 
-Phase: 39.1 (place-path-display) — EXECUTING
-Plan: 10 of 10
-Status: Ready to execute
-Last activity: 2026-08-28
+Phase: 40
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-31
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -41,7 +42,7 @@ Last activity: 2026-08-28
 
 **Velocity:**
 
-- Total plans completed: 206
+- Total plans completed: 216
 - Average duration: —
 - Total execution time: —
 
@@ -77,6 +78,7 @@ Last activity: 2026-08-28
 | 35 | 7 | - | - |
 | 37 | 4 | - | - |
 | 39 | 22 | - | - |
+| 39.1 | 10 | - | - |
 
 **Recent Trend:**
 
