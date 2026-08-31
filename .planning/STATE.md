@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-08-31T14:31:13.438Z
-last_activity: 2026-08-28
+status: planning
+last_updated: "2026-08-31T18:45:03.344Z"
+last_activity: 2026-08-31
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 2
   total_plans: 32
-  completed_plans: 295
-  percent: 25
-stopped_at: Phase 39.1 complete (10/10) — ready to discuss Phase 40
+  completed_plans: 32
+  percent: 22
 ---
 
 # Project State
@@ -21,11 +20,11 @@ stopped_at: Phase 39.1 complete (10/10) — ready to discuss Phase 40
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40 — история перемещений
+**Current focus:** Phase 39.2 — долг фазы 39.1
 
 ## Current Position
 
-Phase: 40
+Phase: 39.2
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-08-31
@@ -378,6 +377,7 @@ Last activity: 2026-08-31
 - Phase 38 added (2026-08-08): Nyquist-покрытие Фазы 32 — закрытие унаследованного из v1.3 долга (`32-VALIDATION.md: nyquist_compliant: false` → `true`). Независима от остальных фаз. Milestone v1.3.3 (QA-04).
 - Phases 37+38 merged into one (2026-08-08, решение пользователя при утверждении роадмапа): чистка и гейт всё равно планируются и проверяются вместе, потому что гейт обязан проходить на уже очищенном HEAD. Прежняя Phase 39 (Nyquist) стала Phase 38. Итог: 5 фаз вместо 6, покрытие требований не изменилось.
 - Phase 39.1 inserted after Phase 39: Формат пути Места переезжает из trackly.config.toml в UI: умолчание организации + переопределение на месте с наследованием (URGENT)
+- Phase 39.2 inserted after Phase 39.1: Долг фазы 39.1: 6 Warning + 4 Info из 39.1-REVIEW.md (единый владелец дефолтов пути, транзакция на записи, робастность на битых данных, UI/a11y экрана Настроек) (URGENT)
 
 ### Decisions
 
