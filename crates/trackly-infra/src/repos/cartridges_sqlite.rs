@@ -22,6 +22,7 @@ use trackly_core::ports::cartridges::CartridgeRepository;
 use crate::error_conversions::map_rusqlite;
 use crate::repos::acts_sqlite::increment_counter_in_tx;
 use crate::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
+use crate::repos::place_path_settings::read_path_display_separators;
 
 /// SQLite-backed cartridge repository adapter (zero-sized).
 #[derive(Debug, Default, Clone)]
@@ -95,27 +96,6 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
         deleted_at_utc: row.get(16)?,
         version: row.get(17)?,
     })
-}
-
-/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
-/// `app_settings` once per query call (not per row) — mirrors
-/// `devices_sqlite.rs::read_path_display_separators` (same guarded-read shape
-/// as `low_stock` above). Falls back to the V039-seeded defaults
-/// (`" // "`/`" / "`) if the row is somehow missing.
-fn read_path_display_separators(conn: &Connection) -> (String, String) {
-    let read_sep = |key: &str, default: &str| -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            [key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .unwrap_or_else(|| default.to_string())
-    };
-    (
-        read_sep("place_path_sep_ends", " // "),
-        read_sep("place_path_sep_last_two", " / "),
-    )
 }
 
 /// Wraps `map_row`, additionally reading `place_effective_variant.effective_variant`

@@ -24,6 +24,7 @@ use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
 
 use crate::error_conversions::map_rusqlite;
+use crate::repos::place_path_settings::read_path_display_separators;
 
 /// SQLite-backed place repository adapter (zero-sized, mirrors `SqliteDeviceRepository`).
 #[derive(Debug, Default, Clone)]
@@ -198,28 +199,6 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
 /// shape. `nested: true` (default, D-24) includes the whole subtree via the
 /// Pattern 2 descendant CTE; `nested: false` restricts to `place_id = root_id`
 /// exactly ("Только здесь").
-/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
-/// `app_settings` once per query call (not per row). Mirrors
-/// `devices_sqlite.rs::read_path_display_separators` (same guarded-read shape,
-/// same fallback to the V039-seeded defaults) — each read-path repo keeps its
-/// own private copy rather than sharing one, per the existing Phase 39.1
-/// convention (devices_sqlite.rs / cartridges_sqlite.rs).
-fn read_path_display_separators(conn: &Connection) -> (String, String) {
-    let read_sep = |key: &str, default: &str| -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            [key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .unwrap_or_else(|| default.to_string())
-    };
-    (
-        read_sep("place_path_sep_ends", " // "),
-        read_sep("place_path_sep_last_two", " / "),
-    )
-}
-
 fn list_subtree_contents_impl(
     conn: &Connection,
     root_id: i64,

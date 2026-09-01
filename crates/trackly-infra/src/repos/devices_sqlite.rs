@@ -21,6 +21,7 @@ use trackly_core::error::AppError;
 use trackly_core::ports::devices::DeviceRepository;
 
 use crate::error_conversions::map_rusqlite;
+use crate::repos::place_path_settings::read_path_display_separators;
 
 /// SQLite-backed device repository adapter.
 #[derive(Debug, Default, Clone)]
@@ -66,28 +67,6 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         full_path: row.get(15)?, // pfp.full_path from LEFT JOIN
         place_path_short: None,
     })
-}
-
-/// Reads org-wide `place_path_sep_ends`/`place_path_sep_last_two` from
-/// `app_settings` once per query call (not per row), mirroring the guarded-read
-/// shape of `CartridgeRepository::low_stock`
-/// (`crates/trackly-infra/src/repos/cartridges_sqlite.rs:930`). Falls back to
-/// the V039-seeded defaults (`" // "`/`" / "`) if the row is somehow missing —
-/// defensive only, the migration always seeds both.
-fn read_path_display_separators(conn: &Connection) -> (String, String) {
-    let read_sep = |key: &str, default: &str| -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            [key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .unwrap_or_else(|| default.to_string())
-    };
-    (
-        read_sep("place_path_sep_ends", " // "),
-        read_sep("place_path_sep_last_two", " / "),
-    )
 }
 
 /// Wraps `from_row`, additionally reading `place_effective_variant.effective_variant`
