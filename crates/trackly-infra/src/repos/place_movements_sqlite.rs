@@ -50,6 +50,24 @@ pub struct NewMovement<'a> {
     pub created_at_utc: i64,
 }
 
+/// A single `place_movements` row, as read back for history display (HST-02/HST-04).
+#[derive(Debug, Clone)]
+pub struct MovementRow {
+    pub id: i64,
+    pub entity_type: String,
+    pub entity_id: i64,
+    pub from_place_id: i64,
+    pub from_place_path: String,
+    pub to_place_id: i64,
+    pub to_place_path: String,
+    pub source: String,
+    pub note: Option<String>,
+    pub act_id: Option<i64>,
+    pub user_id: Option<i64>,
+    pub actor_name_snapshot: Option<String>,
+    pub created_at_utc: i64,
+}
+
 impl SqlitePlaceMovementsRepository {
     /// Insert a single `place_movements` row inside an open transaction.
     ///
@@ -169,5 +187,51 @@ impl SqlitePlaceMovementsRepository {
             params![act_id],
         )
         .map_err(map_rusqlite)
+    }
+
+    /// HST-02/HST-17 timeline read: all movements for one `(entity_type, entity_id)`
+    /// pair, newest-first (D-20), unpaginated (no `LIMIT` — D-20/RESEARCH's scale note:
+    /// movements per item are "единицы за годы" at this org's scale).
+    pub fn get_history(
+        &self,
+        conn: &Connection,
+        entity_type: &str,
+        entity_id: i64,
+    ) -> Result<Vec<MovementRow>, AppError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
+                        to_place_path, source, note, act_id, user_id, actor_name_snapshot, created_at_utc \
+                   FROM place_movements \
+                  WHERE entity_type = ?1 AND entity_id = ?2 \
+                  ORDER BY created_at_utc DESC, id DESC",
+            )
+            .map_err(map_rusqlite)?;
+
+        let rows = stmt
+            .query_map(params![entity_type, entity_id], |r| {
+                Ok(MovementRow {
+                    id: r.get(0)?,
+                    entity_type: r.get(1)?,
+                    entity_id: r.get(2)?,
+                    from_place_id: r.get(3)?,
+                    from_place_path: r.get(4)?,
+                    to_place_id: r.get(5)?,
+                    to_place_path: r.get(6)?,
+                    source: r.get(7)?,
+                    note: r.get(8)?,
+                    act_id: r.get(9)?,
+                    user_id: r.get(10)?,
+                    actor_name_snapshot: r.get(11)?,
+                    created_at_utc: r.get(12)?,
+                })
+            })
+            .map_err(map_rusqlite)?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(map_rusqlite)?);
+        }
+        Ok(out)
     }
 }

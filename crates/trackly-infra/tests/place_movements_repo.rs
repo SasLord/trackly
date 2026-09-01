@@ -1,8 +1,7 @@
 //! Integration tests: `SqlitePlaceMovementsRepository` (Phase 40 Plan 05, HST-01/02/03).
 //!
 //! Covers the write-side guard (D-04/D-06), the real insert path (D-09/D-10 snapshots),
-//! and the act-scoped delete (D-03). The read-side `get_history` (D-20) is covered by
-//! Task 2's tests, appended to this same file.
+//! the act-scoped delete (D-03), and the read-side ordering (D-20).
 //!
 //! Only invented place/user data ("Здание А", "1 этаж", "Иванов И.И.") — never real
 //! organization data, per the project's hard privacy constraint.
@@ -351,6 +350,110 @@ async fn delete_by_act_id_removes_only_matching_rows() {
         assert_eq!(
             remaining, 2,
             "the act-99 row and the act_id-NULL row must remain untouched"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+// ---------------------------------------------------------------------------
+// Task 2: get_history — newest-first (D-20), empty Vec on no rows, no LIMIT
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn place_movements_history_order_newest_first() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let (place_a, place_b) = seed_two_places(&mut conn);
+
+        let places_repo = SqlitePlaceRepository;
+        let movements_repo = SqlitePlaceMovementsRepository;
+
+        // Empty history for an entity with zero rows.
+        let empty = movements_repo
+            .get_history(&conn, "device", 999)
+            .expect("get_history (empty)");
+        assert!(
+            empty.is_empty(),
+            "no rows must return an empty Vec, not an error"
+        );
+
+        // Seed 3 movement rows for the same (entity_type, entity_id) at increasing
+        // created_at_utc — alternate from/to so every call is a real (reportable) move.
+        {
+            let tx = conn.transaction().expect("tx");
+            for i in 0..3 {
+                let (from, to) = if i % 2 == 0 {
+                    (place_a, place_b)
+                } else {
+                    (place_b, place_a)
+                };
+                movements_repo
+                    .record_movement_if_applicable(
+                        &tx,
+                        &places_repo,
+                        MovementEntityKind::Device,
+                        7,
+                        Some(from),
+                        Some(to),
+                        MovementSource::Manual,
+                        None,
+                        None,
+                        None,
+                        NOW + i,
+                    )
+                    .expect("record seed row");
+            }
+            tx.commit().expect("commit");
+        }
+
+        let history = movements_repo
+            .get_history(&conn, "device", 7)
+            .expect("get_history");
+        assert_eq!(history.len(), 3, "all 3 seeded rows must come back");
+        assert!(
+            history[0].created_at_utc >= history[1].created_at_utc
+                && history[1].created_at_utc >= history[2].created_at_utc,
+            "rows must be ordered newest-first (D-20)"
+        );
+        assert_eq!(history[0].created_at_utc, NOW + 2, "newest row first");
+        assert_eq!(history[2].created_at_utc, NOW, "oldest row last");
+
+        // No LIMIT — seed 25 more rows for a different entity and confirm all come back.
+        {
+            let tx = conn.transaction().expect("tx");
+            for i in 0..25 {
+                let (from, to) = if i % 2 == 0 {
+                    (place_a, place_b)
+                } else {
+                    (place_b, place_a)
+                };
+                movements_repo
+                    .record_movement_if_applicable(
+                        &tx,
+                        &places_repo,
+                        MovementEntityKind::Device,
+                        8,
+                        Some(from),
+                        Some(to),
+                        MovementSource::Manual,
+                        None,
+                        None,
+                        None,
+                        NOW + i,
+                    )
+                    .expect("record unpaginated seed row");
+            }
+            tx.commit().expect("commit");
+        }
+
+        let unpaginated = movements_repo
+            .get_history(&conn, "device", 8)
+            .expect("get_history (unpaginated)");
+        assert_eq!(
+            unpaginated.len(),
+            25,
+            "get_history must never apply a LIMIT (D-20 — no pagination)"
         );
     })
     .await
