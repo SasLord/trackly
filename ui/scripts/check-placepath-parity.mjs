@@ -21,6 +21,17 @@
 //   cargo test -p trackly-core shorten_place_path_matches_golden_fixture
 // Пришпилены обе стороны — уехать может только фикстура, и то громко.
 //
+// С фазы 39.2 (план 05, IN-04) файл держит ДВА инварианта одного модуля, и оба —
+// исполняющие, на реальном вызове функции:
+//   1. ПАРИТЕТ ФОРМУЛЫ — `previewShortenPath` против golden-фикстуры (см. выше);
+//   2. ПОЛНОТА READOUT'А — `monoReadout` не оставляет ни одного «сырого»
+//      пробельного символа. Whitespace-only разделитель легален (D-09/D-10:
+//      запрещена только пустая строка), поэтому readout под полем — единственное
+//      место, где пользователь видит, ЧТО именно он сохранил. До 39.2 замена
+//      покрывала лишь U+0020: табуляция, NBSP (U+00A0) и узкий неразрывный
+//      пробел (U+202F) оставались невидимыми, и два разных значения выглядели
+//      на экране одинаково.
+//
 // Зависимости: `typescript` (уже прямой devDependency в ui/package.json, ставится
 // тем же `pnpm install --frozen-lockfile`, что и всё остальное) — нужен, чтобы
 // снять аннотации типов с .ts перед исполнением. Node 20-совместимо: никакого
@@ -96,7 +107,61 @@ async function loadImpl(implPath) {
     );
     process.exit(1);
   }
-  return mod.previewShortenPath;
+  return mod;
+}
+
+/**
+ * Символы, которые разрешено сохранять в разделителе и которые обязаны стать
+ * видимыми в readout'е (IN-04). Заданы escape-последовательностями намеренно:
+ * литеральные NBSP/узкий пробел в исходнике гейта неотличимы от обычного
+ * пробела — ровно та беда, которую гейт и проверяет.
+ */
+const INVISIBLE_WS = [
+  { ch: '\u0020', name: 'U+0020 (обычный пробел)' },
+  { ch: '\u0009', name: 'U+0009 (табуляция)' },
+  { ch: '\u00a0', name: 'U+00A0 (неразрывный пробел)' },
+  { ch: '\u202f', name: 'U+202F (узкий неразрывный пробел)' },
+];
+const SPACE_MARKER = '\u00b7'; // «·» — то, что пользователь уже видел для U+0020
+
+/**
+ * Исполняющая проверка `monoReadout` (IN-04): вызывает функцию на строке со
+ * ВСЕМИ четырьмя пробельными символами и требует, чтобы ни один из них не
+ * остался в результате «сырым», а обычный пробел по-прежнему давал «·».
+ */
+function checkMonoReadout(monoReadout) {
+  const failures = [];
+  if (typeof monoReadout !== 'function') {
+    failures.push(
+      'модуль не экспортирует функцию monoReadout — readout значения разделителя ' +
+        'больше никем не удерживается. Обнови гейт вместе с рефакторингом, осознанно.',
+    );
+    return failures;
+  }
+
+  const space = monoReadout('\u0020');
+  if (space !== SPACE_MARKER) {
+    failures.push(
+      `monoReadout(" ") вернул ${JSON.stringify(space)}, ожидалось ` +
+        `${JSON.stringify(SPACE_MARKER)}: представление обычного пробела пользователь ` +
+        'уже видел, менять его без нужды не надо.',
+    );
+  }
+
+  const sample = INVISIBLE_WS.map((w) => w.ch).join('');
+  const out = monoReadout(sample);
+  for (const w of INVISIBLE_WS) {
+    if (out.includes(w.ch)) {
+      failures.push(
+        `monoReadout не проявляет ${w.name}: символ остался в результате как есть, ` +
+          'то есть на экране его по-прежнему не видно. Разделитель из одних пробельных ' +
+          'символов легален (D-09/D-10), и readout — единственное место, где ' +
+          'пользователь может отличить одно такое значение от другого.',
+      );
+    }
+  }
+
+  return failures;
 }
 
 function loadFixture() {
@@ -135,7 +200,8 @@ async function main() {
   }
 
   const cases = loadFixture();
-  const previewShortenPath = await loadImpl(args.impl);
+  const mod = await loadImpl(args.impl);
+  const previewShortenPath = mod.previewShortenPath;
   const label = path.relative(REPO_ROOT, args.impl);
 
   const failures = [];
@@ -170,6 +236,20 @@ async function main() {
     process.exit(1);
   }
 
+  // Второй инвариант файла (IN-04) — полнота readout'а. Он намеренно проверяется
+  // ПОСЛЕ паритета: расхождение формулы важнее и должно печататься первым.
+  const monoFailures = checkMonoReadout(mod.monoReadout);
+  for (const message of monoFailures) console.error(`${TAG} ${label} — ${message}`);
+  if (monoFailures.length > 0) {
+    console.error(
+      `${TAG} FAIL — ${monoFailures.length} нарушений полноты monoReadout (IN-04). ` +
+        'Разделитель, состоящий из невидимых символов, легален и обязан читаться ' +
+        'однозначно: два разных значения не должны выглядеть на экране одинаково.',
+    );
+    process.exit(1);
+  }
+
+  console.error(`${TAG} PASS (monoReadout) — сырых пробельных символов не осталось`);
   console.error(`${TAG} PASS — ${cases.length} кейсов, 0 расхождений`);
   process.exit(0);
 }
