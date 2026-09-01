@@ -392,28 +392,29 @@ pub async fn build_settings_set_place_path_defaults(
     let now = ctx.clock.unix_seconds();
     ctx.writer
         .execute(move |conn| {
-            conn.execute(
-                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
-                 VALUES ('place_path_variant', ?1, ?2, ?2) \
-                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
-                rusqlite::params![patch.variant, now],
-            )
-            .map_err(map_rusqlite)?;
-            conn.execute(
-                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
-                 VALUES ('place_path_sep_ends', ?1, ?2, ?2) \
-                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
-                rusqlite::params![patch.sep_ends, now],
-            )
-            .map_err(map_rusqlite)?;
-            conn.execute(
-                "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
-                 VALUES ('place_path_sep_last_two', ?1, ?2, ?2) \
-                 ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at_utc = ?2",
-                rusqlite::params![patch.sep_last_two, now],
-            )
-            .map(|_| ())
-            .map_err(map_rusqlite)
+            // WR-05 (фаза 39.2): три ключа — один набор. В autocommit отказ на
+            // втором операторе оставлял «вариант новый, разделители старые» И
+            // возвращал `Err` — пользователь видел «не сохранилось» при уже
+            // сдвинутой настройке. Транзакция делает частичное применение
+            // невозможным; доказано инъекцией отказа в
+            // `set_is_atomic_partial_failure_leaves_all_three_keys_unchanged`.
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            // Ключ — параметр, а не кусок текста запроса: конкатенации здесь
+            // заводить нельзя (T-39.2-03-02).
+            for (key, value) in [
+                ("place_path_variant", &patch.variant),
+                ("place_path_sep_ends", &patch.sep_ends),
+                ("place_path_sep_last_two", &patch.sep_last_two),
+            ] {
+                tx.execute(
+                    "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+                     VALUES (?1, ?2, ?3, ?3) \
+                     ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at_utc = ?3",
+                    rusqlite::params![key, value, now],
+                )
+                .map_err(map_rusqlite)?;
+            }
+            tx.commit().map_err(map_rusqlite)
         })
         .await
 }
@@ -882,5 +883,64 @@ mod place_path {
         assert_eq!(dto.variant, "last_two");
         assert_eq!(dto.sep_ends, "   ");
         assert_eq!(dto.sep_last_two, ", ");
+    }
+
+    /// WR-05 (фаза 39.2): три ключа org-дефолтов пишутся ОДНОЙ транзакцией.
+    /// Отказ на третьем операторе обязан откатить и первые два — иначе
+    /// пользователь получает «не сохранилось» при уже сдвинутом варианте.
+    ///
+    /// Отказ инъецируется триггером `BEFORE UPDATE`: V039 засеивает все три
+    /// строки, поэтому UPSERT идёт по ветке `DO UPDATE`. Триггер и на INSERT
+    /// добавлен на случай, если сид когда-нибудь перестанет засеивать строку —
+    /// тогда тест продолжит проверять то же самое, а не молча позеленеет.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_is_atomic_partial_failure_leaves_all_three_keys_unchanged() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute_batch(
+                    "CREATE TRIGGER injected_fail_upd BEFORE UPDATE ON app_settings \
+                     WHEN NEW.key = 'place_path_sep_last_two' \
+                     BEGIN SELECT RAISE(ABORT, 'injected failure'); END; \
+                     CREATE TRIGGER injected_fail_ins BEFORE INSERT ON app_settings \
+                     WHEN NEW.key = 'place_path_sep_last_two' \
+                     BEGIN SELECT RAISE(ABORT, 'injected failure'); END;",
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("создание триггера-инъекции");
+
+        let admin = Identity::trusted_admin();
+        let err = build_settings_set_place_path_defaults(
+            &ctx,
+            &admin,
+            OrgPathDisplayDto {
+                variant: "last".to_string(),
+                sep_ends: " @ ".to_string(),
+                sep_last_two: " ~ ".to_string(),
+            },
+        )
+        .await
+        .expect_err("инъецированный отказ на третьем ключе обязан вернуть Err");
+        assert!(
+            !matches!(err, AppError::Validation { .. }),
+            "отказ должен прийти от записи, а не от валидации: {err:?}"
+        );
+
+        let dto = build_settings_get_place_path_defaults(&ctx)
+            .await
+            .expect("get_place_path_defaults");
+        assert_eq!(
+            (
+                dto.variant.as_str(),
+                dto.sep_ends.as_str(),
+                dto.sep_last_two.as_str()
+            ),
+            (DEFAULT_VARIANT, DEFAULT_SEP_ENDS, DEFAULT_SEP_LAST_TWO),
+            "WR-05: частичный отказ оставил применённой часть набора — записи \
+             org-дефолтов не хватает транзакции"
+        );
     }
 }
