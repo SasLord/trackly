@@ -5,6 +5,7 @@
 pub mod acts;
 pub mod cartridges;
 pub mod devices;
+pub mod place_movements;
 pub mod places;
 pub mod printers;
 pub mod requests;
