@@ -112,9 +112,9 @@
 //!     places_get → 403 Forbidden (Action::ReadPlaces denies Employee).
 //! 48. Manager Identity (Tauri path — build_places_* helpers called
 //!     directly, the exact function every `#[tauri::command]` wrapper
-//!     delegates to) → create/rename/move/archive/unarchive/delete →
-//!     Err(AppError::Forbidden) for all six, mirroring Case 45 on the
-//!     second transport.
+//!     delegates to) → create/rename/move/archive/unarchive/delete/
+//!     set_path_variant → Err(AppError::Forbidden) for all seven,
+//!     mirroring Case 45 on the second transport.
 //!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
@@ -136,7 +136,7 @@ use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::tauri_cmds::places::{
     build_places_archive, build_places_create, build_places_delete, build_places_move,
-    build_places_rename, build_places_unarchive,
+    build_places_rename, build_places_set_path_variant, build_places_unarchive,
 };
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
@@ -1786,10 +1786,17 @@ async fn role_endpoint_matrix_test() {
         // Case 48 (Phase 39 Plan 12, T-39-12-01): Manager Identity (Tauri
         // path) → build_places_* helpers called directly — the exact
         // function every #[tauri::command] wrapper delegates to after
-        // resolve_tauri_identity — → Err(AppError::Forbidden) for all six
+        // resolve_tauri_identity — → Err(AppError::Forbidden) for all seven
         // mutations, mirroring Case 45 on the second transport (mirrors the
         // devices_http_smoke.rs precedent of exercising build_devices_*
         // directly as "the Tauri path").
+        //
+        // Седьмая мутация (set_path_variant) добавлена быстрозадачей 260901-qj7,
+        // закрывающей остаток IN-02: Фаза 39.2 расширила только Case 45 (HTTP),
+        // оставив здесь асимметрию. Право и тогда было покрыто — authorize()
+        // стоит первой строкой ВНУТРИ build_places_set_path_variant, а оба
+        // транспорта лишь делегируют, — но именно на случай, если Tauri-команда
+        // однажды перестанет делегировать, этот кейс и заводится.
         // =====================================================================
         {
             let manager_id = Identity {
@@ -1845,6 +1852,15 @@ async fn role_endpoint_matrix_test() {
             assert!(
                 matches!(result, Err(AppError::Forbidden)),
                 "Case 48: Manager (Tauri path) → build_places_delete → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result =
+                build_places_set_path_variant(&ctx, &manager_id, 1, Some("ends".to_string()), 1)
+                    .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 48: Manager (Tauri path) → build_places_set_path_variant → expected \
                  Err(AppError::Forbidden), got {result:?}"
             );
         }
