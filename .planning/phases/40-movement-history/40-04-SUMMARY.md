@@ -108,3 +108,7 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+All modified files and all 5 commit hashes (3948b8ce test, 875a6da1 feat, 9b881442 test, 6c5fc7ca feat, 0ee3a8a7 docs) verified present.
