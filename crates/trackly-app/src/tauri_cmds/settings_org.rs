@@ -24,6 +24,9 @@ use trackly_core::domain::cartridges::LowStockBasis;
 use trackly_core::domain::places::PathDisplayVariant;
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::place_path_settings::{
+    DEFAULT_SEP_ENDS, DEFAULT_SEP_LAST_TWO, DEFAULT_VARIANT,
+};
 
 // ---------------------------------------------------------------------------
 // build_* helpers — Organisation settings
@@ -296,10 +299,13 @@ pub async fn build_settings_set_low_stock_basis(
 // build_* helpers — Place path defaults (Phase 39.1 Plan 02, PLC-07)
 // ---------------------------------------------------------------------------
 
-/// GET never errors on a missing/malformed stored value — falls back to the
-/// V039-migration defaults (`"ends"` / `" // "` / `" / "`), defensive against a
-/// hand-deleted `app_settings` row. Mirrors `build_settings_get_low_stock_basis`'s
-/// resilience posture. Does NOT `.trim()` the separator values (D-09).
+/// GET never errors on a missing/malformed stored value — falls back to
+/// `place_path_settings::DEFAULT_VARIANT` / `DEFAULT_SEP_ENDS` /
+/// `DEFAULT_SEP_LAST_TWO` (the same values V039 seeds), defensive against a
+/// hand-deleted `app_settings` row. Значения намеренно не цитируются здесь:
+/// у дефолта один владелец — модуль `trackly_infra::repos::place_path_settings`
+/// (WR-08). Mirrors `build_settings_get_low_stock_basis`'s resilience posture.
+/// Does NOT `.trim()` the separator values (D-09).
 pub async fn build_settings_get_place_path_defaults(
     ctx: &AppCtx,
 ) -> Result<OrgPathDisplayDto, AppError> {
@@ -316,9 +322,11 @@ pub async fn build_settings_get_place_path_defaults(
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
             .map_err(map_rusqlite)?;
 
-        let mut variant = "ends".to_string();
-        let mut sep_ends = " // ".to_string();
-        let mut sep_last_two = " / ".to_string();
+        // Дефолты берутся из единственного владельца (WR-08, фаза 39.2), а не
+        // из литералов: сдвиг дефолта не должен требовать правки этой функции.
+        let mut variant = DEFAULT_VARIANT.to_string();
+        let mut sep_ends = DEFAULT_SEP_ENDS.to_string();
+        let mut sep_last_two = DEFAULT_SEP_LAST_TWO.to_string();
         for row in rows {
             let (key, value) = row.map_err(map_rusqlite)?;
             match key.as_str() {
@@ -793,9 +801,9 @@ mod place_path {
         let dto = build_settings_get_place_path_defaults(&ctx)
             .await
             .expect("get_place_path_defaults");
-        assert_eq!(dto.variant, "ends");
-        assert_eq!(dto.sep_ends, " // ");
-        assert_eq!(dto.sep_last_two, " / ");
+        assert_eq!(dto.variant, DEFAULT_VARIANT);
+        assert_eq!(dto.sep_ends, DEFAULT_SEP_ENDS);
+        assert_eq!(dto.sep_last_two, DEFAULT_SEP_LAST_TWO);
     }
 
     /// D-10: unknown `variant` token is rejected with `AppError::Validation`,
@@ -809,8 +817,8 @@ mod place_path {
             &admin,
             OrgPathDisplayDto {
                 variant: "bogus".to_string(),
-                sep_ends: " // ".to_string(),
-                sep_last_two: " / ".to_string(),
+                sep_ends: " ~ ".to_string(),
+                sep_last_two: " ~~ ".to_string(),
             },
         )
         .await
@@ -831,9 +839,9 @@ mod place_path {
             &ctx,
             &admin,
             OrgPathDisplayDto {
-                variant: "ends".to_string(),
+                variant: DEFAULT_VARIANT.to_string(),
                 sep_ends: "".to_string(),
-                sep_last_two: " / ".to_string(),
+                sep_last_two: " ~~ ".to_string(),
             },
         )
         .await

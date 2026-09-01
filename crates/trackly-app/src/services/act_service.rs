@@ -27,6 +27,9 @@ use trackly_infra::repos::acts_sqlite::{
     recompute_parent_archived,
 };
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
+use trackly_infra::repos::place_path_settings::{
+    read_org_default_variant_token, read_path_display_separators,
+};
 use trackly_infra::repos::{
     SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqlitePlaceRepository,
 };
@@ -2994,17 +2997,17 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
 /// CURRENT effective path-display variant for `place_id` (D-20, Phase 39.1
 /// Plan 06) — never the variant at act-create time.
 ///
-/// Resolution order, mirroring the `read_path_display_separators` /
-/// `place_effective_variant` recipe established in `devices_sqlite.rs`
-/// (Plan 03):
+/// Resolution order (org-wide defaults and separators come from
+/// `trackly_infra::repos::place_path_settings` — the single owner since
+/// Phase 39.2 / WR-08; this function no longer keeps its own copy):
 ///   1. `snapshot` is `None`/absent → `None` (nothing to shorten — a
 ///      genuinely place-less act, existing D-27 blank-underline fallback).
 ///   2. `place_id` present AND `place_effective_variant` has a row for it →
 ///      use that row's `effective_variant`.
 ///   3. Otherwise (no `place_id`, OR `place_id` set but the place has since
 ///      disappeared — soft-deleted, Pitfall 4) → fall back to the
-///      organization default (`app_settings.place_path_variant`, `"ends"`
-///      if even that is somehow missing).
+///      organization default via `read_org_default_variant_token`, which in
+///      turn falls back to `DEFAULT_VARIANT` if even the setting is missing.
 ///
 /// Entirely `Option`/`Result`-chained with `.ok()`/`.unwrap_or()` — no
 /// `.expect()`/`.unwrap()`/`?` anywhere on this path. A printed act must
@@ -3026,30 +3029,12 @@ fn compute_place_path_short(
             )
             .ok()
         })
-        .unwrap_or_else(|| {
-            conn.query_row(
-                "SELECT value FROM app_settings WHERE key = 'place_path_variant'",
-                [],
-                |r| r.get::<_, String>(0),
-            )
-            .ok()
-            .unwrap_or_else(|| "ends".to_string())
-        });
+        .unwrap_or_else(|| read_org_default_variant_token(&conn));
     // Unexpected/corrupt token → fall back to Ends rather than dropping the
     // field-row entirely — this is a non-critical visual element.
     let variant = PathDisplayVariant::from_str(&variant_token).unwrap_or(PathDisplayVariant::Ends);
 
-    let read_sep = |key: &str, default: &str| -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            [key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .unwrap_or_else(|| default.to_string())
-    };
-    let sep_ends = read_sep("place_path_sep_ends", " // ");
-    let sep_last_two = read_sep("place_path_sep_last_two", " / ");
+    let (sep_ends, sep_last_two) = read_path_display_separators(&conn);
 
     Some(shorten_place_path(
         &snapshot,

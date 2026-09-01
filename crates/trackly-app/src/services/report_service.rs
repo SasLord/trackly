@@ -18,6 +18,7 @@ use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::place_path_settings::read_path_display_separators;
 use trackly_infra::repos::requests_sqlite::ad_register_predicate;
 use trackly_infra::AppConfig;
 
@@ -271,26 +272,6 @@ fn translate_request_status(raw: &str) -> String {
         "cancelled" => "Отменена".to_string(),
         other => other.to_string(),
     }
-}
-
-/// Read the two organization-wide path-shortening separators from
-/// `app_settings`, falling back to the V039-seeded defaults if either row is
-/// somehow missing. Mirrors `devices_sqlite.rs::read_path_display_separators`
-/// (Plan 03) — call once per query, never per row.
-fn read_path_display_separators(conn: &rusqlite::Connection) -> (String, String) {
-    let read_sep = |key: &str, default: &str| -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            [key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .unwrap_or_else(|| default.to_string())
-    };
-    (
-        read_sep("place_path_sep_ends", " // "),
-        read_sep("place_path_sep_last_two", " / "),
-    )
 }
 
 /// Compute `place_path_short` from a row's `place_path`/`place_variant`
