@@ -309,3 +309,148 @@ async fn list_two_segment_path_unchanged_by_ends_variant() {
     .await
     .expect("timeout");
 }
+
+/// WR-01 (фаза 39.2): нераспознанный токен в `places.path_variant_override`
+/// делает вариант невыводимым — вью честно отдаёт `'bogus'`, а
+/// `PathDisplayVariant::from_str` его отвергает. Полный путь при этом известен,
+/// поэтому `place_path_short` обязан деградировать к ПОЛНОМУ пути, а не к
+/// `None`: `None` в ячейке «Место» рендерится как «—» и утверждает «места нет».
+/// Форма деградации взята у `places_sqlite::list_subtree_contents_impl`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_unknown_variant_token_degrades_to_full_path() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let place_repo = SqlitePlaceRepository;
+        let device_repo = SqliteDeviceRepository;
+
+        let building = place_repo
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
+            .expect("create building");
+        let floor = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(building), PlaceKind::Floor, "1 этаж"),
+                NOW,
+            )
+            .expect("create floor");
+        let room = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(floor), PlaceKind::Room, "1-05"),
+                NOW,
+            )
+            .expect("create room");
+
+        device_repo
+            .create(&mut conn, &new_device("Ноутбук", Some(room)), NOW)
+            .expect("create device");
+
+        // Сырым SQL — штатный путь записи такой токен не пропустит (валидация
+        // на записи остаётся строгой, ослабляется только чтение).
+        conn.execute(
+            "UPDATE places SET path_variant_override = 'bogus' WHERE id = ?1",
+            [room],
+        )
+        .expect("подсунуть нераспознанный токен");
+
+        let (rows, total) = device_repo
+            .list(&conn, &DeviceFilter::default(), &page())
+            .expect("list");
+
+        assert_eq!(total, 1);
+        let row = &rows[0];
+        assert_eq!(
+            row.full_path.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "full_path известен — именно поэтому «—» здесь недопустимо"
+        );
+        assert_eq!(
+            row.place_path_short.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "невыводимый вариант → деградация к полному пути, а не к None"
+        );
+
+        // Сгруппированный список обязан деградировать так же, иначе плоский и
+        // сгруппированный виды разойдутся (прецедент WR-04, коммит 8fa995e5).
+        let groups = device_repo
+            .list_grouped(&conn, &DeviceFilter::default(), &page())
+            .expect("list_grouped");
+        assert_eq!(groups.len(), 1);
+        assert_eq!(
+            groups[0].repr.place_path_short.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "list_grouped обязан деградировать той же формулой, что list"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// WR-01 + WR-02b (фаза 39.2): при отсутствии строки `place_path_variant` в
+/// `app_settings` строка во вью `place_effective_variant` ЕСТЬ, но колонка
+/// `effective_variant` равна NULL (зафиксировано планом 01) — это второе,
+/// отличное по форме состояние «вариант невыводим». Читатель обязан
+/// деградировать в нём точно так же.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_missing_org_variant_key_degrades_to_full_path() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let place_repo = SqlitePlaceRepository;
+        let device_repo = SqliteDeviceRepository;
+
+        let building = place_repo
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
+            .expect("create building");
+        let floor = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(building), PlaceKind::Floor, "1 этаж"),
+                NOW,
+            )
+            .expect("create floor");
+        let room = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(floor), PlaceKind::Room, "1-05"),
+                NOW,
+            )
+            .expect("create room");
+
+        device_repo
+            .create(&mut conn, &new_device("Ноутбук", Some(room)), NOW)
+            .expect("create device");
+
+        conn.execute(
+            "DELETE FROM app_settings WHERE key = 'place_path_variant'",
+            [],
+        )
+        .expect("убрать org-дефолт варианта");
+
+        let (rows, total) = device_repo
+            .list(&conn, &DeviceFilter::default(), &page())
+            .expect("list");
+
+        assert_eq!(total, 1);
+        let row = &rows[0];
+        assert_eq!(
+            row.full_path.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "full_path известен — «—» здесь означало бы потерю данных на экране"
+        );
+        assert_eq!(
+            row.place_path_short.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "NULL из вью → деградация к полному пути, а не к None"
+        );
+    })
+    .await
+    .expect("timeout");
+}

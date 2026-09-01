@@ -72,9 +72,24 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
 /// Wraps `from_row`, additionally reading `place_effective_variant.effective_variant`
 /// (column index 16, present only when the query joins `place_effective_variant` —
 /// see `SELECT_DEVICES`) and computing `place_path_short` via `shorten_place_path`.
-/// Used ONLY by `list()`/`search_fts()` (D-17); a device with `place_id IS NULL`
-/// naturally yields `effective_variant: None` (LEFT JOIN, no match) and thus
-/// `place_path_short: None`, mirroring `full_path`'s existing behavior.
+/// Used ONLY by `list()`/`search_fts()` (D-17).
+///
+/// Деградация (WR-01, фаза 39.2). `place_path_short: None` означает ровно одно —
+/// **у устройства нет места** (`place_id IS NULL` → нет `full_path`, а LEFT JOIN
+/// не даёт варианта). Если путь известен, а вариант вывести не удалось, поле
+/// несёт ПОЛНЫЙ путь: пустое поле рендерится списком как «—», то есть утверждает
+/// «места нет» там, где место есть. Вариант бывает невыводим в двух РАЗНЫХ по
+/// форме состояниях. Первое — колонка `effective_variant` пришла NULL, потому
+/// что в `app_settings` нет строки `place_path_variant` (WR-02b, зафиксировано
+/// тестом `place_effective_variant::missing_org_default_key_yields_null_variant`).
+/// Второе — токен пришёл, но не распознан `PathDisplayVariant::from_str`: мусор
+/// в `places.path_variant_override` (IN-01; путь записи остаётся строгим).
+///
+/// Форма деградации повторяет уже существующий прецедент
+/// `places_sqlite::list_subtree_contents_impl` (`unwrap_or_else(|| full_path.clone())`),
+/// чтобы «содержимое места» и списки не расходились. Ячейку правит бэкенд, а не
+/// компонент: гейт `ui/scripts/check-place-path-short.mjs` (INV-3) запрещает
+/// рендерить полный путь в тексте ячейки из самого Svelte.
 fn from_row_with_short_path<'a>(
     sep_ends: &'a str,
     sep_last_two: &'a str,
@@ -82,15 +97,12 @@ fn from_row_with_short_path<'a>(
     move |row| {
         let mut device = from_row(row)?;
         let effective_variant: Option<String> = row.get(16)?;
-        if let (Some(full), Some(token)) = (device.full_path.as_deref(), effective_variant) {
-            // `place_effective_variant` always emits one of the 3 known tokens
-            // (view invariant) — `from_str` still gates it for type safety
-            // rather than trusting the raw string as-is (per <interfaces>).
-            if let Ok(variant) = PathDisplayVariant::from_str(&token) {
-                device.place_path_short =
-                    Some(shorten_place_path(full, variant, sep_ends, sep_last_two));
-            }
-        }
+        device.place_path_short = device.full_path.as_deref().map(|full| {
+            effective_variant
+                .and_then(|token| PathDisplayVariant::from_str(&token).ok())
+                .map(|variant| shorten_place_path(full, variant, sep_ends, sep_last_two))
+                .unwrap_or_else(|| full.to_string())
+        });
         Ok(device)
     }
 }
@@ -1266,15 +1278,19 @@ impl DeviceRepository for SqliteDeviceRepository {
                 source_chain: format!("GROUP_CONCAT parsing failed for group id_list: {id_list}"),
             })?;
 
-            // Same formula as `from_row_with_short_path` — a group with no
-            // resolved place (`place_variant_val: None`, e.g. all members
-            // `place_id IS NULL`) yields `place_path_short: None`.
-            let place_path_short = match (full_path_val.as_deref(), place_variant_val) {
-                (Some(full), Some(token)) => PathDisplayVariant::from_str(&token)
-                    .ok()
-                    .map(|variant| shorten_place_path(full, variant, &sep_ends, &sep_last_two)),
-                _ => None,
-            };
+            // Same formula as `from_row_with_short_path`, включая деградацию
+            // (WR-01): `None` здесь означает только «у группы нет места»
+            // (`full_path_val: None`, все члены с `place_id IS NULL`), а при
+            // известном пути и невыводимом варианте (NULL из вью — WR-02b —
+            // либо нераспознанный токен) поле несёт полный путь. Расхождение
+            // формул плоского и сгруппированного видов уже случалось однажды
+            // (WR-04, коммит 8fa995e5), поэтому семантика повторена дословно.
+            let place_path_short = full_path_val.as_deref().map(|full| {
+                place_variant_val
+                    .and_then(|token| PathDisplayVariant::from_str(&token).ok())
+                    .map(|variant| shorten_place_path(full, variant, &sep_ends, &sep_last_two))
+                    .unwrap_or_else(|| full.to_string())
+            });
 
             let repr = DeviceRow {
                 id: repr_id,
