@@ -98,9 +98,12 @@
 //! that every other entity's equivalent endpoint would accept (T-39-12-01/02).
 //! 45. Manager session (HTTP) → POST /api/v1/places_create /
 //!     places_rename / places_move / places_archive / places_unarchive /
-//!     places_delete → 403 Forbidden for all six (Action::MutatePlaces,
-//!     Admin-only — the regression test explicitly designed to catch a
-//!     copy-paste of the MutateDevices/MutateCartridges Admin|Manager bucket).
+//!     places_delete / places_set_path_variant → 403 Forbidden for all seven
+//!     (Action::MutatePlaces, Admin-only — the regression test explicitly
+//!     designed to catch a copy-paste of the
+//!     MutateDevices/MutateCartridges Admin|Manager bucket). Седьмая мутация
+//!     (places_set_path_variant) добавлена фазой 39.2 по IN-02: гейт у неё тот
+//!     же Action::MutatePlaces, но Manager до этого был покрыт только на шести.
 //! 46. Manager session (HTTP) → POST /api/v1/places_list_all /
 //!     places_get → not 401/403 (Action::ReadPlaces, Admin|Manager — proves
 //!     the split is precise, Manager is NOT blocked from everything
@@ -1565,12 +1568,17 @@ async fn role_endpoint_matrix_test() {
 
         // =====================================================================
         // Case 45 (Phase 39 Plan 12, T-39-12-01): Manager session (HTTP) →
-        // all six places_* mutations → 403 Forbidden. authorize(&Action::
+        // all seven places_* mutations → 403 Forbidden. authorize(&Action::
         // MutatePlaces) is the FIRST line of every PlaceService mutation
         // method AND of every build_places_* helper (belt-and-suspenders),
         // so a nonexistent id/version is fine — the gate fires before any
         // DB lookup, same pattern as Case 5 (cartridges_create) / Case 31
         // (cartridges_transition).
+        //
+        // Седьмая проверка (places_set_path_variant) добавлена фазой 39.2 по
+        // IN-02: гейт тот же — Action::MutatePlaces, — но до неё Manager на
+        // этой мутации не проверялся вообще, и её ослабление до Admin|Manager
+        // прошло бы мимо матрицы. Employee на ней покрыт Case 50.
         // =====================================================================
         {
             let create_payload = json!({
@@ -1665,6 +1673,46 @@ async fn role_endpoint_matrix_test() {
                 status,
                 StatusCode::FORBIDDEN,
                 "Case 45: Manager → places_delete → expected 403 (D-20 Admin-only), got {status}"
+            );
+
+            let set_path_variant_payload =
+                json!({ "id": 1, "pathVariantOverride": "ends", "version": 1 });
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_set_path_variant",
+                set_path_variant_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 45: Manager → places_set_path_variant → expected 403 (D-20 Admin-only, \
+                 IN-02), got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 51 (Phase 39.2 Plan 03, IN-02): Manager session (HTTP) → POST
+        // /api/v1/settings_set_place_path_defaults → 403 Forbidden.
+        // authorize(&Action::ManageSettings) — Admin-only, как и у соседних
+        // settings_set_low_stock_*. Симметрично Case 49 (тот же эндпоинт,
+        // Employee): гейт был покрыт только на одной роли, поэтому его
+        // ослабление до Admin|Manager матрица бы не заметила.
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/settings_set_place_path_defaults",
+                json!({"patch": {"variant": "ends", "sep_ends": " // ", "sep_last_two": " / "}}),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 51: Manager → settings_set_place_path_defaults → expected 403 \
+                 (Action::ManageSettings, IN-02), got {status}"
             );
         }
 
