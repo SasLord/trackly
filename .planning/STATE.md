@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-08-31T18:45:03.344Z"
+status: executing
+last_updated: "2026-09-01T01:05:48.473Z"
 last_activity: 2026-08-31
 progress:
   total_phases: 9
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.2
-Plan: Not started
-Status: Ready to plan
+Plan: 5 plans, 5 waves
+Status: Planned — ready to execute
 Last activity: 2026-08-31
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
