@@ -113,3 +113,12 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-infra/src/repos/place_movements_sqlite.rs
+- FOUND: crates/trackly-infra/tests/place_movements_repo.rs
+- FOUND: .planning/phases/40-movement-history/40-05-SUMMARY.md
+- FOUND commit: f220535a
+- FOUND commit: 3ee55d3d
+- FOUND commit: 1a46ac26
