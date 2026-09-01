@@ -249,11 +249,18 @@ recorded here explicitly rather than silently assumed:
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS (not applicable — no shadcn/Tailwind in this stack)
 
-**Approval:** pending
+**Approval:** approved 2026-09-01 by `gsd-ui-checker` (6/6 dimensions)
+
+**Non-blocking recommendations from the checker (not applied, recorded for the executor):**
+- The 2px `--tr-space-3xs` step is described as a "hairline" in prose while the Spacing section
+  also states "Exceptions: none". It is a pre-existing, already-shipped token (mirrors
+  `PlaceContents.svelte`'s `.crumb-sep`), not new to this phase — cosmetic wording only.
+- The primary visual anchor of the new «Все перемещения» report page is not named explicitly.
+  Follow the existing report pages' scan order; no new contract is implied.

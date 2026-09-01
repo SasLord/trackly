@@ -1,10 +1,11 @@
 ---
 phase: 40
 slug: movement-history
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-01
+verified: 2026-09-02
 ---
 
 # Phase 40 — Validation Strategy
@@ -54,7 +55,7 @@ Requirement -> test mapping the planner must honor:
 |--------|----------|-----------|-------------------|-------------|
 | HST-01 | Manual device place change (D-27) writes one row, `source='manual'` | integration | `cargo test -p trackly-app place_movements_manual_device -- --test-threads=1` | W0 |
 | HST-01 | Save with unchanged place (D-04) writes zero rows | integration | same file | W0 |
-| HST-01 | Cartridge transition into printer writes one row with derived source (D-05) | integration | `cargo test -p trackly-app place_movements_cartridge_transition -- --test-threads=1` | W0 |
+| HST-01 | Cartridge transition into printer writes one row with an operation-derived `note` (D-05); `source` stays 'manual' per D-07 | integration | `cargo test -p trackly-app place_movements_cartridge_transition -- --test-threads=1` | W0 |
 | HST-01 | Nested auto-return inside `transition_in_tx` writes a SECOND row (Pitfall 3) | integration | same file | W0 |
 | HST-01 | place -> NULL (return act, no override) writes ZERO rows (D-06, Pitfall 4) | integration | `cargo test -p trackly-app place_movements_null_place_skip -- --test-threads=1` | W0 |
 | HST-01 | NULL -> place (first assignment) writes ZERO rows (D-06) | integration | same file | W0 |
@@ -76,20 +77,28 @@ Requirement -> test mapping the planner must honor:
 
 ## Wave 0 Requirements
 
-- [ ] `crates/trackly-infra/tests/place_movements_migration.rs` (or extend `migration_idempotency.rs`)
+> **Verified 2026-09-02 by `gsd-plan-checker`:** every item below is covered by a plan, but the
+> test files are distributed across more (and differently named) files than originally suggested
+> here. Actual mapping: `place_movements_write_sites.rs` became
+> `place_movements_write_sites_devices.rs` (40-07) + `place_movements_write_sites_cartridges.rs`
+> (40-08); system-actor and unknown-source coverage lives in `place_movements_timeline.rs` (40-10);
+> NULL-skip coverage lives in `place_movements_act_link.rs` (40-09), which 40-20 then extends with
+> the undo-deletion tests. Functional coverage is complete — only the filenames below are stale.
+
+- [x] `crates/trackly-infra/tests/place_movements_migration.rs` (or extend `migration_idempotency.rs`)
       — new migration idempotency + fresh-DB check, mirroring the V037-V039 pattern.
-- [ ] `crates/trackly-app/tests/place_movements_write_sites.rs` — the six write-site integration
+- [x] `crates/trackly-app/tests/place_movements_write_sites.rs` — the six write-site integration
       tests (manual device, manual cartridge, transition, nested auto-return, null-skip both
       directions, system actor).
-- [ ] `crates/trackly-app/tests/place_movements_act_link.rs` — HST-03 act link + D-03 undo,
+- [x] `crates/trackly-app/tests/place_movements_act_link.rs` — HST-03 act link + D-03 undo,
       including the nested-cascade case.
-- [ ] `crates/trackly-app/tests/report_movements.rs` — HST-04 filters, subtree inclusion,
+- [x] `crates/trackly-app/tests/report_movements.rs` — HST-04 filters, subtree inclusion,
       soft-deleted marker, CSV/PDF export.
-- [ ] Extend `crates/trackly-app/tests/role_endpoint_matrix.rs` with new Cases for the movements
+- [x] Extend `crates/trackly-app/tests/role_endpoint_matrix.rs` with new Cases for the movements
       read endpoints and the new report endpoint (Manager allow / Employee 403, both transports).
-- [ ] Test ФИО fixtures use invented names only («Иванов И.И.», «Петров П.П.») — first time a
+- [x] Test ФИО fixtures use invented names only («Иванов И.И.», «Петров П.П.») — first time a
       table other than `users`/`acts` stores a ФИО snapshot, so state it explicitly in the plan.
-- [ ] No new JS mirror of the path-shortening formula. If one is added anyway, it needs a shared
+- [x] No new JS mirror of the path-shortening formula. If one is added anyway, it needs a shared
       golden fixture + `check-*.mjs` gate — the preferred outcome is a single server-side owner.
 
 ---
@@ -108,11 +117,13 @@ Requirement -> test mapping the planner must honor:
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or a Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all missing references above
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s for targeted runs
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or a Wave 0 dependency — 1:1 with task count across all 20 plans
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all missing references above (see the filename note in Wave 0 Requirements)
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s for targeted runs
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-09-02 — `gsd-plan-checker` iteration 2/3 returned VERIFICATION PASSED
+(0 blockers) and confirmed every test-function name in the Per-Task Verification Map is created by
+a plan and traced verbatim in that plan's grep-based acceptance criteria.
