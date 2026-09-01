@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-01T11:24:07.839Z"
+status: planning
+last_updated: "2026-09-01T11:33:30.748Z"
 last_activity: 2026-09-01
 progress:
   total_phases: 9
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 39.2 — долг фазы 39.1
+**Current focus:** Phase 40 — история перемещений
 
 ## Current Position
 
-Phase: 39.2
-Plan: 5 of 5
-Status: Executed — awaiting phase verification
+Phase: 40
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-09-01
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
