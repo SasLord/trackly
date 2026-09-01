@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-01T17:40:43.979Z"
+last_updated: "2026-09-01T18:07:26.445Z"
 last_activity: 2026-09-01
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 40
+  completed_plans: 41
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 4 of 20
+Plan: 5 of 20
 Status: Ready to execute
 Last activity: 2026-09-01
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -346,6 +346,7 @@ Last activity: 2026-09-01
 | Phase 40-movement-history P01 | 8min | 3 tasks | 4 files |
 | Phase 40 P02 | 15min | 1 tasks | 3 files |
 | Phase 40 P03 | 9min | 1 tasks | 6 files |
+| Phase 40 P04 | 17min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -862,6 +863,8 @@ Recent decisions affecting current work:
 - [Phase 40]: compute_place_path_short lives in trackly-app (not trackly-core) because it needs &ReaderPool, an I/O-capable type forbidden by the no_io_deps.rs boundary gate
 - [Phase 40]: New module place_path_display.rs is standalone rather than folded into place_path_settings.rs, which stays scoped to bare &Connection settings reads
 - [Phase 40]: device_service::update caller threading: extract user_id from &Identity before the writer closure (mirrors place_service::create); http/devices.rs::handler_update needed zero changes
+- [Phase 40]: cartridge_service::update/transition caller threading follows device_service::update's proven pattern (Plan 40-03): extract caller.user_id before the writer closure
+- [Phase 40]: transition_in_tx's caller_user_id: Option<i64> is a trailing param; both main mutation AND nested D-16/D-17 auto-return audit inserts now use it (Pitfall 3 closed)
 
 ### Pending Todos
 
@@ -1050,8 +1053,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-01T17:39:36.171Z
-Stopped at: Phase 40 UI-SPEC approved
+Last session: 2026-09-01T18:07:26.435Z
+Stopped at: Completed 40-04-PLAN.md
 Resume file: 
 
 None
