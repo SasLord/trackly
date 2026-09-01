@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-01"
+last_updated: "2026-09-01T01:30:11.391Z"
 last_activity: 2026-09-01
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 37
-  completed_plans: 33
+  completed_plans: 34
   percent: 22
 ---
 
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.2
-Plan: 2 of 5
-Status: Executing — план 01 выполнен (Wave 0: тесты вью + робастность чтения варианта)
+Plan: 3 of 5
+Status: Executing — планы 01 и 02 выполнены (волна 2: единственный владелец дефолтов формата пути, WR-08)
 Last activity: 2026-09-01
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
@@ -340,6 +340,7 @@ Last activity: 2026-09-01
 | Phase 39.1 P08 | 35min | 2 tasks | 3 files |
 | Phase 39.1 P09 | 20min | 1 tasks | 1 files |
 | Phase 39.1 P10 | 40m | 2 tasks | 13 files |
+| Phase 39.2 P02 | 25min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -847,6 +848,7 @@ Recent decisions affecting current work:
 - [Phase 39.1-08]: Radio/Input подраздела получают disabled во время сохранения (states matrix UI-SPEC); .sr-only/.field-hint/.field-error продублированы локально в OrgSettings.svelte (Svelte scoped styles)
 - [Phase 39.1]: PlaceFormModal: дропдаун «Вариант сокращения» видим в create и rename режимах, сохраняется вторым RPC places_set_path_variant — D-12: поле мутируемо после создания места, в отличие от Типа/Родителя/Уровня
 - [Phase 39.1]: 39.1-10: dto::auth тест переписан на явный assert отсутствия place_path_display в JSON (D-22)
+- [Phase 39.2]: 39.2-02: у дефолтов формата пути один владелец — trackly_infra::repos::place_path_settings; сид V039 связан с константами тестом fresh_db_seed_matches_module_defaults, а не doc-комментарием
 
 ### Pending Todos
 
@@ -1035,8 +1037,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-01T01:11:37.182Z
-Stopped at: Completed 39.1-10-PLAN.md — финальная волна фазы 39.1
+Last session: 2026-09-01T01:30:11.382Z
+Stopped at: Завершён 39.2-02-PLAN.md
 Resume file: 
 
 None
