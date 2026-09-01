@@ -15,6 +15,7 @@ use rusqlite::params;
 
 use trackly_app::dto::device::{DeviceNew, DevicePatch};
 use trackly_app::services::DeviceService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
@@ -28,6 +29,11 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = DeviceService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// «Доверенный администратор» — десктоп unlocked mode (D-Desktop-01).
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
 }
 
 /// `DeviceNew` с минимальными обязательными полями и заданным `type_id`.
@@ -221,7 +227,12 @@ async fn update_upgrade_device_to_printer_creates_printers_row() {
         assert_eq!(printers_count_for_device(&svc, dto.id).await, 0);
 
         let updated = svc
-            .update(dto.id, dto.version, type_patch(Some(PRINTER_TYPE_ID)))
+            .update(
+                &admin_caller(),
+                dto.id,
+                dto.version,
+                type_patch(Some(PRINTER_TYPE_ID)),
+            )
             .await
             .expect("upgrade to printer");
 
@@ -256,7 +267,12 @@ async fn update_downgrade_printer_to_device_cascades_monitoring_history() {
         assert_eq!(alerts_before, 1, "alert should be seeded");
 
         let updated = svc
-            .update(dto.id, dto.version, type_patch(Some(DEVICE_TYPE_ID)))
+            .update(
+                &admin_caller(),
+                dto.id,
+                dto.version,
+                type_patch(Some(DEVICE_TYPE_ID)),
+            )
             .await
             .expect("downgrade to device");
 
@@ -290,7 +306,7 @@ async fn update_without_type_change_called_twice_stays_idempotent() {
 
         // Первый update() без смены типа (patch.type_id = None).
         let updated1 = svc
-            .update(dto.id, dto.version, type_patch(None))
+            .update(&admin_caller(), dto.id, dto.version, type_patch(None))
             .await
             .expect("first no-op-type update");
         assert_eq!(updated1.type_id, PRINTER_TYPE_ID);
@@ -302,7 +318,12 @@ async fn update_without_type_change_called_twice_stays_idempotent() {
 
         // Второй update() без смены типа — не должен создать дубликат.
         let updated2 = svc
-            .update(updated1.id, updated1.version, type_patch(None))
+            .update(
+                &admin_caller(),
+                updated1.id,
+                updated1.version,
+                type_patch(None),
+            )
             .await
             .expect("second no-op-type update");
         assert_eq!(updated2.type_id, PRINTER_TYPE_ID);

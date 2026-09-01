@@ -62,7 +62,7 @@ pub async fn build_devices_update(
     patch: DevicePatch,
 ) -> Result<DeviceDto, AppError> {
     authorize(caller, &Action::MutateDevices)?;
-    ctx.devices.update(id, version, patch).await
+    ctx.devices.update(caller, id, version, patch).await
 }
 
 /// Мутация: требует `caller` с правом `MutateDevices`.

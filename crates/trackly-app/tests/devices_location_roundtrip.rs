@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceNew, DevicePatch};
 use trackly_app::services::DeviceService;
+use trackly_core::auth::Identity;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
 use trackly_core::error::AppError;
 use trackly_core::ports::places::PlaceRepository;
@@ -26,6 +27,11 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = DeviceService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// «Доверенный администратор» — десктоп unlocked mode (D-Desktop-01).
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
 }
 
 /// Создаёт корневое место (kind=Building) напрямую через `SqlitePlaceRepository`
@@ -121,7 +127,7 @@ async fn update_changes_place_id_round_trips() {
             ..Default::default()
         };
         let updated = svc
-            .update(dto.id, dto.version, patch)
+            .update(&admin_caller(), dto.id, dto.version, patch)
             .await
             .expect("update");
 

@@ -24,6 +24,7 @@ use trackly_app::dto::act::{
 };
 use trackly_app::dto::device::DevicePatch;
 use trackly_app::services::{ActService, DeviceService};
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -505,6 +506,7 @@ async fn reject_edit_after_manual_device_relocation() {
         .expect("spawn_blocking");
         device_svc
             .update(
+                &Identity::trusted_admin(),
                 dev_id,
                 dev_version, // do_return already bumped this past the seed value
                 DevicePatch {

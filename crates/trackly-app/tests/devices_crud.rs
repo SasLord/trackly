@@ -15,6 +15,7 @@ use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::test_support::test_writer_and_readers;
 
 /// Создаёт тестовый `DeviceService` поверх свежего tempfile DB.
@@ -30,13 +31,33 @@ fn admin_caller() -> Identity {
     Identity::trusted_admin()
 }
 
-/// Менеджер с реальным `user_id` — для проверки, что audit_log.user_id
-/// отражает настоящего актёра, а не системный NULL (Plan 40-03, Pitfall 1).
-fn manager_caller() -> Identity {
-    Identity {
-        user_id: Some(1),
-        role: Role::Manager,
-    }
+/// Сеет реальную строку `users` (FK-цель для `audit_log.user_id`) и возвращает
+/// её id. Вымышленные имена — privacy gate (CLAUDE.md).
+async fn seed_manager_user(writer: &WriterHandle) -> i64 {
+    let now = SystemClock.unix_seconds();
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('petrov.pp', 'Петров П.П.', NULL, 'manager', 0, 1, ?1, ?1, 1)",
+                rusqlite::params![now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let user_id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(user_id)
+        })
+        .await
+        .expect("seed manager user")
 }
 
 /// DeviceNew с минимальными обязательными полями.
@@ -165,7 +186,7 @@ async fn update_succeeds_with_correct_version() {
             ..Default::default()
         };
         let updated = svc
-            .update(dto.id, dto.version, patch)
+            .update(&admin_caller(), dto.id, dto.version, patch)
             .await
             .expect("update");
         assert_eq!(updated.version, 2);
@@ -207,13 +228,13 @@ async fn update_returns_optimistic_lock_mismatch_on_stale_version() {
             name: Some("Тест OLM v2".to_string()),
             ..Default::default()
         };
-        svc.update(dto.id, 1, patch.clone())
+        svc.update(&admin_caller(), dto.id, 1, patch.clone())
             .await
             .expect("first update");
 
         // Второй update со старой version=1 — должен вернуть OptimisticLockMismatch.
         let err = svc
-            .update(dto.id, 1, patch)
+            .update(&admin_caller(), dto.id, 1, patch)
             .await
             .expect_err("должно вернуть ошибку со stale version");
         match err {
@@ -557,7 +578,10 @@ async fn update_second_save_after_successful_first_uses_new_version() {
             name: Some("Тест версий v2".to_string()),
             ..Default::default()
         };
-        let v2 = svc.update(dto.id, 1, patch1).await.expect("first update");
+        let v2 = svc
+            .update(&admin_caller(), dto.id, 1, patch1)
+            .await
+            .expect("first update");
         assert_eq!(v2.version, 2, "first update must return version=2");
 
         // Second update using the REFRESHED version: expected_version=2 → succeeds, returns v3.
@@ -566,7 +590,7 @@ async fn update_second_save_after_successful_first_uses_new_version() {
             ..Default::default()
         };
         let v3 = svc
-            .update(dto.id, v2.version, patch2)
+            .update(&admin_caller(), dto.id, v2.version, patch2)
             .await
             .expect("second update must succeed when using refreshed version");
         assert_eq!(v3.version, 3, "second update must return version=3");
@@ -590,7 +614,11 @@ async fn update_stores_real_caller_user_id_in_audit_log() {
         let (svc, _dir) = make_service();
         let dto = svc.create(minimal_new("Принтер HP")).await.expect("create");
 
-        let manager = manager_caller();
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
         let patch = DevicePatch {
             name: Some("Принтер HP v2".to_string()),
             ..Default::default()

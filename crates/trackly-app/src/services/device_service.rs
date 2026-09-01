@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 
 /// Excel formula injection prevention (T-02-05-03).
@@ -258,6 +259,7 @@ impl DeviceService {
     /// `patch.place_id` — уже разрешённый caller'ом ID места (PlacePicker); D-18.
     pub async fn update(
         &self,
+        caller: &Identity,
         id: i64,
         version: i64,
         patch: DevicePatch,
@@ -266,7 +268,9 @@ impl DeviceService {
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
         let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
-        let user_id_opt: Option<i64> = None;
+        // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через эту
+        // границу (Plan 40-03, аналог `place_service::create`).
+        let user_id_opt: Option<i64> = caller.user_id;
 
         let updated_row = self
             .writer
