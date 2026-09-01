@@ -57,19 +57,30 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlaceRow> {
     })?;
     let is_storage: i64 = row.get(5)?;
     let path_variant_override_sql: Option<String> = row.get(10)?;
-    let path_variant_override = match path_variant_override_sql {
-        Some(v) => Some(PathDisplayVariant::from_str(&v).map_err(|_| {
-            // No CHECK constraint on this column (V039, mirrors places.kind's
-            // Rust-side validation choice) — an unrecognized value means the
-            // column was hand-edited outside the app, not a normal state.
-            rusqlite::Error::FromSqlConversionFailure(
-                10,
-                rusqlite::types::Type::Text,
-                format!("invalid places.path_variant_override in DB: {v}").into(),
-            )
-        })?),
-        None => None,
-    };
+    // В отличие от `places.kind` выше, этот столбец добавлен ALTER'ом в V039 БЕЗ
+    // CHECK constraint — схема его форму не гарантирует, поэтому вероятность
+    // мусора здесь выше. Читатель мягкий, писатель строгий: нераспознанный токен
+    // деградирует до `None` («как у родителя») + `tracing::warn!`, а валидация
+    // остаётся на пути записи (`PathDisplayVariant::from_str` в `place_service`).
+    // Иначе одна испорченная строка роняла бы `list_all`/`list_children`/`get`
+    // целиком, то есть весь раздел «Места» (IN-01). Единообразно с четырьмя
+    // другими потребителями того же токена (`devices_sqlite`, `cartridges_sqlite`,
+    // `report_service`, `act_service`), которые уже деградируют мягко.
+    let path_variant_override =
+        path_variant_override_sql.and_then(|v| match PathDisplayVariant::from_str(&v) {
+            Ok(variant) => Some(variant),
+            Err(_) => {
+                let place_id: i64 = row.get(0).unwrap_or(-1);
+                tracing::warn!(
+                    place_id,
+                    token = %v,
+                    "unrecognized places.path_variant_override token — degrading to NULL \
+                     (\"as parent\"); the column has no CHECK constraint, so this value was \
+                     written outside the app"
+                );
+                None
+            }
+        });
     Ok(PlaceRow {
         id: row.get(0)?,
         parent_id: row.get(1)?,

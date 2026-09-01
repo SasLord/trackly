@@ -467,3 +467,68 @@ async fn subtree_stats_counts_acts_referencing_place_via_bulk_place_id_and_item_
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// IN-01: нераспознанный токен в places.path_variant_override не роняет список
+// ---------------------------------------------------------------------------
+
+/// Столбец `path_variant_override` добавлен ALTER'ом в V039 БЕЗ CHECK constraint —
+/// то есть схема не гарантирует его форму. Читатель обязан деградировать до
+/// `None` («как у родителя»), а не превращать одну испорченную строку в отказ
+/// всего раздела «Места» (`list_all`/`list_children`/`get` идут через один
+/// `from_row`). Строгость остаётся на пути записи.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unknown_path_variant_override_token_degrades_to_none_and_does_not_break_list() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let repo = SqlitePlaceRepository;
+
+        let root_id = repo
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
+            .expect("create root");
+        let child_id = repo
+            .create(
+                &mut conn,
+                &new_place(Some(root_id), PlaceKind::Floor, "2 этаж"),
+                NOW,
+            )
+            .expect("create child");
+
+        // Сырым SQL — через сервис/репозиторий такой токен не записать.
+        conn.execute(
+            "UPDATE places SET path_variant_override = 'bogus' WHERE id = ?1",
+            rusqlite::params![child_id],
+        )
+        .expect("write bogus token");
+
+        let all = repo
+            .list_all(&conn, false)
+            .expect("list_all не должен падать из-за одной испорченной строки");
+        assert_eq!(all.len(), 2, "оба места остаются в списке");
+
+        let child = all
+            .iter()
+            .find(|p| p.id == child_id)
+            .expect("испорченное место присутствует в списке");
+        assert_eq!(
+            child.path_variant_override, None,
+            "нераспознанный токен деградирует до None («как у родителя»)"
+        );
+
+        let root = all
+            .iter()
+            .find(|p| p.id == root_id)
+            .expect("корень в списке");
+        assert_eq!(root.path_variant_override, None);
+
+        // `get` идёт через тот же from_row — тоже обязан пережить мусор.
+        let child_via_get = repo.get(&conn, child_id).expect("get не должен падать");
+        assert_eq!(child_via_get.path_variant_override, None);
+    })
+    .await
+    .expect("test timed out");
+}
