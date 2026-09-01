@@ -18,12 +18,51 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
+use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeFilter, Pagination};
 use trackly_app::services::CartridgeService;
+
+/// `Identity::trusted_admin()` — desktop unlocked mode (D-Desktop-01),
+/// `user_id: None`. Used for pre-existing call sites that don't assert on
+/// `audit_log.user_id`.
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
+}
+
+/// Seed a real `users` row (FK target for `audit_log.user_id`) and return its
+/// id. Invented name — privacy gate (CLAUDE.md hard constraint, no real ФИО).
+async fn seed_manager_user(writer: &WriterHandle) -> i64 {
+    let now = SystemClock.unix_seconds();
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('sidorov.ss', 'Сидоров С.С.', NULL, 'manager', 0, 1, ?1, ?1, 1)",
+                rusqlite::params![now],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            let user_id = tx.last_insert_rowid();
+            tx.commit().map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(user_id)
+        })
+        .await
+        .expect("seed manager user")
+}
 
 /// Set up a fresh CartridgeService backed by an in-memory migrated DB.
 fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
@@ -572,4 +611,127 @@ async fn suggest_compat_printer_returns_distinct_printer_names() {
     })
     .await
     .expect("suggest_compat_printer_returns_distinct_printer_names budget")
+}
+
+// ---------------------------------------------------------------------------
+// update — caller threading + before-fetch (Plan 40-04, Pitfall 1/2)
+// ---------------------------------------------------------------------------
+
+/// Seed a real `places` row — FK-valid `place_id` (V038 `REFERENCES places(id)`).
+async fn seed_place(svc: &CartridgeService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO places (kind, name, is_storage, created_at_utc, updated_at_utc, version) \
+                 VALUES ('room', ?1, 0, ?2, ?2, 1)",
+                rusqlite::params![name, 1_700_000_000_i64],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed place")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_stores_real_caller_user_id_in_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_place(&svc, "Склад").await;
+        let place_b = seed_place(&svc, "Каб. 101").await;
+
+        let dto = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: None,
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge");
+
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
+
+        // Real before/after place_id change — exercises the before-fetch
+        // (Pitfall 2) this task adds alongside caller threading.
+        svc.update(&manager, dto.id, dto.version, Some(place_b), None)
+            .await
+            .expect("update with manager caller");
+
+        // audit_log.user_id должен равняться caller.user_id — реальный
+        // менеджер, не хардкод NULL (Pitfall 1).
+        let readers = svc.readers.clone();
+        let entity_id = dto.id;
+        let user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='cartridge' AND entity_id=?1 AND action='update'",
+                rusqlite::params![entity_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id");
+
+        assert_eq!(
+            user_id, manager.user_id,
+            "audit_log.user_id должен совпадать с caller.user_id реального менеджера"
+        );
+    })
+    .await
+    .expect("update_stores_real_caller_user_id_in_audit_log exceeded 30 s budget");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_with_trusted_admin_caller_stores_null_user_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let dto = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: None,
+                place_id: None,
+                notes: None,
+            })
+            .await
+            .expect("create cartridge");
+
+        let admin = admin_caller();
+        svc.update(&admin, dto.id, dto.version, None, Some("заметка".into()))
+            .await
+            .expect("update with admin caller");
+
+        let readers = svc.readers.clone();
+        let entity_id = dto.id;
+        let user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='cartridge' AND entity_id=?1 AND action='update'",
+                rusqlite::params![entity_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id");
+
+        assert_eq!(
+            user_id, None,
+            "trusted_admin caller has no user_id — audit_log.user_id остаётся NULL (unchanged behavior)"
+        );
+    })
+    .await
+    .expect("update_with_trusted_admin_caller_stores_null_user_id exceeded 30 s budget");
 }
