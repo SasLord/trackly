@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-01T17:03:58.475Z"
-last_activity: 2026-09-01 -- Phase 40 planning complete
+last_updated: "2026-09-01T17:14:39.182Z"
+last_activity: 2026-09-01
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 37
+  completed_plans: 38
   percent: 33
 ---
 
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40 — история перемещений
+**Current focus:** Phase 40 — movement-history
 
 ## Current Position
 
-Phase: 40
-Plan: Not started
+Phase: 40 (movement-history) — EXECUTING
+Plan: 2 of 20
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 40 planning complete
+Last activity: 2026-09-01
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -343,6 +343,7 @@ Last activity: 2026-09-01 -- Phase 40 planning complete
 | Phase 39.2 P02 | 25min | 2 tasks | 9 files |
 | Phase 39.2 P03 | 25min | 3 tasks | 2 files |
 | Phase 39.2 P04 | 20min | 2 tasks | 4 files |
+| Phase 40-movement-history P01 | 8min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -855,6 +856,7 @@ Recent decisions affecting current work:
 - [Phase 39.2]: 39.2-03 (IN-05): GET org-дефолтов прогоняет variant через PathDisplayVariant::from_str с fallback на DEFAULT_VARIANT и warn!; разделители не валидируются и не триммятся (D-09)
 - [Phase 39.2]: 39.2-03 (IN-02): Manager покрыт матрицей ролей на обеих мутациях формата пути — Case 45 расширен седьмой мутацией, добавлен Case 51
 - [Phase ?]: 39.2-04: деградация place_path_short к полному пути сделана в репозиториях (не в Svelte) — «—» в колонке «Место» теперь означает только отсутствие места
+- [Phase 40-01]: place_movements — standalone append-only table (D-01), no SQL CHECK on source/entity_type, Rust-side from_str_lenient soft-degrade parsing (Pitfall 6/IN-01)
 
 ### Pending Todos
 
@@ -1043,11 +1045,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-01T14:12:44.793Z
+Last session: 2026-09-01T17:11:18.733Z
 Stopped at: Phase 40 UI-SPEC approved
 Resume file: 
 
-.planning/phases/40-movement-history/40-UI-SPEC.md
+None
 
 ## Deferred Items
 
