@@ -302,7 +302,9 @@ pub async fn build_settings_set_low_stock_basis(
 /// GET never errors on a missing/malformed stored value — falls back to
 /// `place_path_settings::DEFAULT_VARIANT` / `DEFAULT_SEP_ENDS` /
 /// `DEFAULT_SEP_LAST_TWO` (the same values V039 seeds), defensive against a
-/// hand-deleted `app_settings` row. Значения намеренно не цитируются здесь:
+/// hand-deleted `app_settings` row. IN-05 (фаза 39.2): «malformed» относится и
+/// к содержимому — `variant` прогоняется через `PathDisplayVariant::from_str`,
+/// нераспознанный токен деградирует до `DEFAULT_VARIANT` с `warn!`. Значения намеренно не цитируются здесь:
 /// у дефолта один владелец — модуль `trackly_infra::repos::place_path_settings`
 /// (WR-08). Mirrors `build_settings_get_low_stock_basis`'s resilience posture.
 /// Does NOT `.trim()` the separator values (D-09).
@@ -336,6 +338,25 @@ pub async fn build_settings_get_place_path_defaults(
                 _ => {}
             }
         }
+
+        // IN-05 (фаза 39.2): чтение так же строго к токену варианта, как запись.
+        // Сырое значение из БД (правка руками, откат версии) не выходит наружу:
+        // UI схлопнул бы неизвестный токен в «Крайние» у себя и при следующем
+        // «Сохранить» перезаписал бы настройку без действия пользователя.
+        // Разделители НЕ валидируются и НЕ триммятся: пустая строка запрещена
+        // только на записи, whitespace-only разделитель легален (D-09).
+        let variant = match PathDisplayVariant::from_str(&variant) {
+            Ok(parsed) => parsed.as_str().to_string(),
+            Err(_) => {
+                tracing::warn!(
+                    stored_variant = %variant,
+                    fallback = DEFAULT_VARIANT,
+                    "app_settings.place_path_variant содержит нераспознанный токен; \
+                     настройка отдана как дефолт и будет перезаписана при следующем сохранении"
+                );
+                DEFAULT_VARIANT.to_string()
+            }
+        };
 
         Ok(OrgPathDisplayDto {
             variant,
@@ -942,5 +963,38 @@ mod place_path {
             "WR-05: частичный отказ оставил применённой часть набора — записи \
              org-дефолтов не хватает транзакции"
         );
+    }
+
+    /// IN-05 (фаза 39.2): мусорный токен в `app_settings.place_path_variant`
+    /// (правка руками, откат версии) не выходит наружу сырым — GET отдаёт
+    /// `DEFAULT_VARIANT`. Иначе UI схлопнул бы неизвестное значение в «Крайние»
+    /// у себя и при следующем «Сохранить» перезаписал настройку без действия
+    /// пользователя. Разделители при этом не трогаются (D-09).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn get_with_bogus_variant_in_db_falls_back_to_ends() {
+        let (ctx, _dir) = make_test_ctx().await.expect("make_test_ctx");
+
+        // Сырой UPDATE в обход валидирующего SET — воспроизводит правку БД руками.
+        ctx.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE app_settings SET value = 'bogus' WHERE key = 'place_path_variant'",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("сырой UPDATE варианта");
+
+        let dto = build_settings_get_place_path_defaults(&ctx)
+            .await
+            .expect("get_place_path_defaults");
+        assert_eq!(
+            dto.variant, DEFAULT_VARIANT,
+            "IN-05: мусорный вариант обязан деградировать до дефолта, а не выйти сырым"
+        );
+        assert_eq!(dto.sep_ends, DEFAULT_SEP_ENDS);
+        assert_eq!(dto.sep_last_two, DEFAULT_SEP_LAST_TWO);
     }
 }
