@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 0/TBD | Not started | - |
+| 40. История перемещений | v1.4 | 0/19 | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -376,7 +376,42 @@ Plans:
   4. Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу
      устройства.
 
-**Plans**: TBD
+**Plans**: 19 plans in 5 waves
+
+Plans:
+**Wave 1**
+
+- [ ] 40-01-PLAN.md — миграция V040 (place_movements) + домен MovementSource/MovementEntityKind + Wave 0 migration test
+- [ ] 40-02-PLAN.md — промоушен compute_place_path_short в place_path_display.rs (единственный владелец, D-18)
+- [ ] 40-03-PLAN.md — caller: &Identity в device_service::update (сигнатурная плотина, без записи истории)
+- [ ] 40-04-PLAN.md — caller: &Identity в cartridge_service::update/transition + before-fetch (сигнатурная плотина)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 40-05-PLAN.md — репозиторий place_movements_sqlite.rs (insert/record_movement_if_applicable/delete_by_act_id/get_history)
+- [ ] 40-06-PLAN.md — caller: &Identity в act_service create/update/do_return/update_return (сигнатурная плотина)
+- [ ] 40-11-PLAN.md — отчёт «Перемещения», часть A: ReportFilter/ReportRow + list_movements/query_movements_inner
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 40-07-PLAN.md — запись перемещений: device_service::update (D-27/D-04/D-06) + тесты devices
+- [ ] 40-08-PLAN.md — запись перемещений: cartridge update/transition + вложенный auto-return (Pitfall 3) + тесты cartridges
+- [ ] 40-09-PLAN.md — запись перемещений в актах (HST-03) + отмена акта удаляет свои записи (D-03/Pitfall 5)
+- [ ] 40-10-PLAN.md — таймлайн: MovementEntryDto + PlaceMovementService + оба транспорта (Action::ReadPlaces)
+- [ ] 40-12-PLAN.md — отчёт «Перемещения», часть B: columns_for/gate ReadPlaces (не ReadData!) + HTTP + экспорт
+- [ ] 40-13-PLAN.md — D-28 массовый перенос: PlaceService::move_subtree_contents + оба транспорта
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 40-14-PLAN.md — матрица ролей: новые Cases для таймлайна/отчёта/массового переноса (оба транспорта, IN-02)
+- [ ] 40-15-PLAN.md — MovementTimeline.svelte (общий компонент) + ActsPage ?id= (D-19)
+- [ ] 40-18-PLAN.md — UI отчёта: ReportSubNav 4-й домен + два PlacePicker + колонки + бейдж «Удалено»
+- [ ] 40-19-PLAN.md — UI массового переноса: кнопка + confirm-модалка на PlaceContents.svelte
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 40-16-PLAN.md — таймлайн в PlaceEntityViewModal + «Просмотр» в DeviceContextMenu (D-14)
+- [ ] 40-17-PLAN.md — CartridgeDetail (переименование + новая секция) + PrinterDetail (D-16/D-21)
 
 **UI hint**: yes
 
