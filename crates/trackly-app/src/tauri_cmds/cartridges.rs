@@ -64,7 +64,9 @@ pub async fn build_cartridges_update(
     notes: Option<String>,
 ) -> Result<CartridgeDto, AppError> {
     authorize(caller, &Action::MutateCartridges)?;
-    ctx.cartridges.update(id, version, place_id, notes).await
+    ctx.cartridges
+        .update(caller, id, version, place_id, notes)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `MutateCartridges`.

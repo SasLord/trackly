@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
+use trackly_core::auth::Identity;
 use trackly_core::domain::cartridges::CartridgeModelNew;
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -186,6 +187,7 @@ impl CartridgeService {
 
     pub async fn update(
         &self,
+        caller: &Identity,
         id: i64,
         version: i64,
         place_id: Option<i64>,
@@ -193,10 +195,26 @@ impl CartridgeService {
     ) -> Result<CartridgeDto, AppError> {
         let now = self.clock.unix_seconds();
         let audit_repo = self.audit_repo.clone();
+        // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через
+        // эту границу (Plan 40-03/40-04, аналог `place_service::create`).
+        let user_id = caller.user_id;
 
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                // Pitfall 2 (RESEARCH.md): before-fetch — `update` had NO
+                // preceding SELECT, so no "before" state existed to diff
+                // against. Plan 40-08 will consume this before-value for
+                // `place_movements`; this plan only makes it available.
+                let _before_place_id: Option<Option<i64>> = tx
+                    .query_row(
+                        "SELECT place_id FROM cartridges WHERE id = ?1",
+                        params![id],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?;
 
                 let affected = tx
                     .execute(
@@ -236,7 +254,7 @@ impl CartridgeService {
                         entity_type: "cartridge",
                         entity_id: id,
                         action: "update",
-                        user_id: None,
+                        user_id,
                         before_json: None,
                         after_json: None,
                         payload_json: None,
