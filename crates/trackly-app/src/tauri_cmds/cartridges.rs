@@ -87,7 +87,7 @@ pub async fn build_cartridges_transition(
     payload: CartridgeTransitionPayload,
 ) -> Result<CartridgeDto, AppError> {
     authorize(caller, &Action::MutateCartridges)?;
-    ctx.cartridges.transition(payload).await
+    ctx.cartridges.transition(caller, payload).await
 }
 
 pub async fn build_cartridges_search(

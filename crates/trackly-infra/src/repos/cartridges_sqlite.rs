@@ -462,6 +462,7 @@ impl SqliteCartridgeRepository {
         version: i64,
         op: &CartridgeTransitionOp,
         now_utc: i64,
+        caller_user_id: Option<i64>,
     ) -> Result<(), AppError> {
         // 1. Fetch current row (also validates it exists).
         let current = self.fetch_in_tx(tx, cartridge_id)?;
@@ -678,7 +679,7 @@ impl SqliteCartridgeRepository {
                         entity_type: "cartridge",
                         entity_id: prev_id,
                         action: auto_return_op.audit_action(),
-                        user_id: None,
+                        user_id: caller_user_id,
                         before_json: Some(prev_before_json),
                         after_json: None,
                         payload_json: Some(prev_payload_json),
@@ -712,7 +713,7 @@ impl SqliteCartridgeRepository {
                 entity_type: "cartridge",
                 entity_id: cartridge_id,
                 action: op.audit_action(),
-                user_id: None, // Phase 4: always NULL (RBAC is Phase 5)
+                user_id: caller_user_id, // Plan 40-04: real caller (Pitfall 1)
                 before_json: Some(before_json),
                 after_json: None,
                 payload_json: Some(payload_json),
@@ -1804,7 +1805,7 @@ mod tests {
 
         {
             let tx = conn.transaction().expect("tx");
-            repo.transition_in_tx(&tx, cart_id, 1, &op, now)
+            repo.transition_in_tx(&tx, cart_id, 1, &op, now, None)
                 .expect("transition");
             tx.commit().expect("commit");
         }
@@ -1842,7 +1843,7 @@ mod tests {
 
         let tx = conn.transaction().expect("tx");
         let err = repo
-            .transition_in_tx(&tx, cart_id, 1, &op, now)
+            .transition_in_tx(&tx, cart_id, 1, &op, now, None)
             .expect_err("should fail");
         assert!(matches!(err, AppError::Validation { .. }), "got {err:?}");
     }
@@ -2033,7 +2034,7 @@ mod tests {
                 previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
-            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
+            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now, None)
                 .expect("install prev drum");
             tx.commit().expect("commit");
         }
@@ -2061,7 +2062,7 @@ mod tests {
                 previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
-            repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
+            repo.transition_in_tx(&tx, new_id, 1, &install_new, now, None)
                 .expect("install new drum");
             tx.commit().expect("commit");
         }
@@ -2104,7 +2105,7 @@ mod tests {
                 previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
-            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now)
+            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now, None)
                 .expect("install prev cartridge");
             tx.commit().expect("commit");
         }
@@ -2130,7 +2131,7 @@ mod tests {
                 previous_cartridge_place_id: None,
             };
             let tx = conn.transaction().expect("tx");
-            repo.transition_in_tx(&tx, new_id, 1, &install_new, now)
+            repo.transition_in_tx(&tx, new_id, 1, &install_new, now, None)
                 .expect("install new cartridge");
             tx.commit().expect("commit");
         }

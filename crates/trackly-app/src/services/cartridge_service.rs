@@ -400,6 +400,7 @@ impl CartridgeService {
 
     pub async fn transition(
         &self,
+        caller: &Identity,
         mut payload: CartridgeTransitionPayload,
     ) -> Result<CartridgeDto, AppError> {
         // D-13: Install with no explicit place_id defaults from the target
@@ -440,11 +441,14 @@ impl CartridgeService {
         let op: trackly_core::domain::cartridges::CartridgeTransitionOp = payload.into();
         let now = self.clock.unix_seconds();
         let cart_repo = self.cart_repo.clone();
+        // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send`
+        // через эту границу (Plan 40-03/40-04, аналог `place_service::create`).
+        let user_id = caller.user_id;
 
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
-                cart_repo.transition_in_tx(&tx, cartridge_id, version, &op, now)?;
+                cart_repo.transition_in_tx(&tx, cartridge_id, version, &op, now, user_id)?;
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
             })

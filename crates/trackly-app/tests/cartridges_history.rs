@@ -9,6 +9,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use trackly_core::auth::Identity;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::test_support::test_writer_and_readers;
 
@@ -16,6 +17,13 @@ use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
 };
 use trackly_app::services::CartridgeService;
+
+/// `Identity::trusted_admin()` — unlocked-desktop identity (D-Desktop-01),
+/// `user_id: None`. Used here since these tests don't assert on
+/// `audit_log.user_id` (Plan 40-04 caller-threading).
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
+}
 
 fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -67,17 +75,20 @@ async fn history_returns_audit_entries_for_cartridge() {
 
         // Transition should add more entries.
         let in_use = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "A".into(),
-                given_to_name: "B".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "A".into(),
+                    given_to_name: "B".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install");
 
@@ -111,29 +122,35 @@ async fn history_is_chronological() {
 
         // Install (adds audit entry).
         let in_use = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_001,
-                given_by_name: "A".into(),
-                given_to_name: "B".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_001,
+                    given_by_name: "A".into(),
+                    given_to_name: "B".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install");
 
         // Return to stock (adds another audit entry).
         let _returned = svc
-            .transition(CartridgeTransitionPayload::ReturnToStock {
-                cartridge_id: in_use.id,
-                version: in_use.version,
-                state_id: 3,
-                place_id: None,
-                notes: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ReturnToStock {
+                    cartridge_id: in_use.id,
+                    version: in_use.version,
+                    state_id: 3,
+                    place_id: None,
+                    notes: None,
+                },
+            )
             .await
             .expect("return to stock");
 

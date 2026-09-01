@@ -206,17 +206,20 @@ async fn install_changes_status_to_in_use() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let updated = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("transition Install");
 
@@ -240,29 +243,35 @@ async fn return_to_stock_sets_default_empty_state() {
 
         // First install it
         let in_use = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "A".into(),
-                given_to_name: "B".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "A".into(),
+                    given_to_name: "B".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install");
 
         // Then return to stock with state = 3 (Пустой)
         let returned = svc
-            .transition(CartridgeTransitionPayload::ReturnToStock {
-                cartridge_id: in_use.id,
-                version: in_use.version,
-                state_id: 3, // Пустой
-                place_id: None,
-                notes: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ReturnToStock {
+                    cartridge_id: in_use.id,
+                    version: in_use.version,
+                    state_id: 3, // Пустой
+                    place_id: None,
+                    notes: None,
+                },
+            )
             .await
             .expect("return_to_stock");
 
@@ -285,14 +294,17 @@ async fn to_refill_changes_status() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let at_refill = svc
-            .transition(CartridgeTransitionPayload::ToRefill {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "ООО Заправка".into(),
-                place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "ООО Заправка".into(),
+                    place_id: None,
+                },
+            )
             .await
             .expect("to_refill");
 
@@ -311,26 +323,32 @@ async fn from_refill_sets_default_full_state() {
 
         // Send to refill
         let at_refill = svc
-            .transition(CartridgeTransitionPayload::ToRefill {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "A".into(),
-                given_to_name: "Заправщик".into(),
-                place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "A".into(),
+                    given_to_name: "Заправщик".into(),
+                    place_id: None,
+                },
+            )
             .await
             .expect("to_refill");
 
         // Return from refill with state = 1 (Полный)
         let back = svc
-            .transition(CartridgeTransitionPayload::FromRefill {
-                cartridge_id: at_refill.id,
-                version: at_refill.version,
-                state_id: 1, // Полный
-                place_id: None,
-                notes: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::FromRefill {
+                    cartridge_id: at_refill.id,
+                    version: at_refill.version,
+                    state_id: 1, // Полный
+                    place_id: None,
+                    notes: None,
+                },
+            )
             .await
             .expect("from_refill");
 
@@ -349,12 +367,15 @@ async fn write_off_changes_status_to_written_off() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let written_off = svc
-            .transition(CartridgeTransitionPayload::WriteOff {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                notes: Some("Физический износ".into()),
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::WriteOff {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    notes: Some("Физический износ".into()),
+                },
+            )
             .await
             .expect("write_off");
 
@@ -374,17 +395,20 @@ async fn all_transitions_write_audit_log() {
 
         // Install
         let in_use = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "A".into(),
-                given_to_name: "B".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "A".into(),
+                    given_to_name: "B".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install");
 
@@ -404,13 +428,16 @@ async fn all_transitions_write_audit_log() {
 
         // Return to stock
         let _returned = svc
-            .transition(CartridgeTransitionPayload::ReturnToStock {
-                cartridge_id: in_use.id,
-                version: in_use.version,
-                state_id: 3,
-                place_id: None,
-                notes: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ReturnToStock {
+                    cartridge_id: in_use.id,
+                    version: in_use.version,
+                    state_id: 3,
+                    place_id: None,
+                    notes: None,
+                },
+            )
             .await
             .expect("return_to_stock");
 
@@ -671,17 +698,20 @@ async fn install_with_printer_sets_current_printer_device_id() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install with printer");
 
@@ -713,7 +743,7 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
 
         // Install A into the printer first.
         let a_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
+            .transition(&admin_caller(), CartridgeTransitionPayload::Install {
                 cartridge_id: cart_a.id,
                 version: cart_a.version,
                 date_utc: 1_700_000_000,
@@ -730,7 +760,7 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
 
         // Install B into the SAME printer — must auto-return A.
         let b_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
+            .transition(&admin_caller(), CartridgeTransitionPayload::Install {
                 cartridge_id: cart_b.id,
                 version: cart_b.version,
                 date_utc: 1_700_000_100,
@@ -782,17 +812,20 @@ async fn install_into_empty_printer_has_no_side_effects() {
         let unrelated = create_stock_cartridge(&svc, model_id).await;
 
         let installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart_c.id,
-                version: cart_c.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_c.id,
+                    version: cart_c.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install C into empty printer");
 
@@ -823,17 +856,20 @@ async fn install_without_printer_device_id_has_no_side_effects() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let updated = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: None,
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install without printer_device_id");
 
@@ -868,7 +904,7 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
         let cart_b = create_stock_cartridge(&svc, model_id).await;
 
         let a_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
+            .transition(&admin_caller(), CartridgeTransitionPayload::Install {
                 cartridge_id: cart_a.id,
                 version: cart_a.version,
                 date_utc: 1_700_000_000,
@@ -882,7 +918,7 @@ async fn auto_return_writes_return_to_stock_audit_entry() {
             .await
             .expect("install A");
 
-        svc.transition(CartridgeTransitionPayload::Install {
+        svc.transition(&admin_caller(), CartridgeTransitionPayload::Install {
             cartridge_id: cart_b.id,
             version: cart_b.version,
             date_utc: 1_700_000_100,
@@ -938,17 +974,20 @@ async fn return_to_stock_clears_current_printer_device_id() {
         let cart = create_stock_cartridge(&svc, model_id).await;
 
         let installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart.id,
-                version: cart.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install with printer");
 
@@ -960,13 +999,16 @@ async fn return_to_stock_clears_current_printer_device_id() {
         );
 
         let returned = svc
-            .transition(CartridgeTransitionPayload::ReturnToStock {
-                cartridge_id: installed.id,
-                version: installed.version,
-                state_id: 3,
-                place_id: None,
-                notes: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ReturnToStock {
+                    cartridge_id: installed.id,
+                    version: installed.version,
+                    state_id: 3,
+                    place_id: None,
+                    notes: None,
+                },
+            )
             .await
             .expect("direct return to stock");
         assert_eq!(returned.status_id, 1, "status must be На складе (1)");
@@ -1005,34 +1047,40 @@ async fn install_auto_return_uses_previous_cartridge_overrides_when_present() {
 
         // Install A into the printer first.
         let a_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart_a.id,
-                version: cart_a.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install A");
 
         // Install B into the SAME printer with explicit overrides for A's
         // auto-return — state_id=1 (Полный), place_id=override_place_id.
         let b_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart_b.id,
-                version: cart_b.version,
-                date_utc: 1_700_000_100,
-                given_by_name: "Сидоров".into(),
-                given_to_name: "Кузнецов".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: Some(1),
-                previous_cartridge_place_id: Some(override_place_id),
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: Some(1),
+                    previous_cartridge_place_id: Some(override_place_id),
+                },
+            )
             .await
             .expect("install B into same printer with overrides");
 
@@ -1078,32 +1126,38 @@ async fn install_auto_return_falls_back_to_defaults_when_overrides_absent() {
         let cart_b = create_stock_cartridge(&svc, model_id).await;
 
         let a_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart_a.id,
-                version: cart_a.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install A");
 
         let b_installed = svc
-            .transition(CartridgeTransitionPayload::Install {
-                cartridge_id: cart_b.id,
-                version: cart_b.version,
-                date_utc: 1_700_000_100,
-                given_by_name: "Сидоров".into(),
-                given_to_name: "Кузнецов".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install B into same printer without overrides");
 
