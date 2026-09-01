@@ -1847,6 +1847,158 @@ mod tests {
         assert!(matches!(err, AppError::Validation { .. }), "got {err:?}");
     }
 
+    /// Сид пользователя (users) — FK-цель для audit_log.user_id в тестах
+    /// caller-threading (Plan 40-04). Вымышленное имя — privacy gate (CLAUDE.md).
+    fn seed_user(conn: &mut Connection, login: &str, full_name: &str) -> i64 {
+        let now = 1_700_000_000_i64;
+        conn.execute(
+            "INSERT INTO users \
+             (login, full_name, password_hash, role, ad_user, is_active, \
+              created_at_utc, updated_at_utc, version) \
+             VALUES (?1, ?2, NULL, 'manager', 0, 1, ?3, ?3, 1)",
+            params![login, full_name, now],
+        )
+        .expect("insert user");
+        conn.last_insert_rowid()
+    }
+
+    /// Plan 40-04 (Pitfall 1): the main mutation's own audit_log row must
+    /// carry the real caller's user_id, not a hard-coded NULL.
+    #[test]
+    fn transition_in_tx_stores_caller_user_id_on_main_mutation() {
+        let (mut conn, _g) = fresh_conn();
+        let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let caller_user_id = seed_user(&mut conn, "ivanov.ii", "Иванов И.И.");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        let cart_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+            let id = repo
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
+                .expect("insert");
+            tx.commit().expect("commit");
+            id
+        };
+
+        let op = CartridgeTransitionOp::Install {
+            date_utc: now,
+            given_by_name: "Иванов".into(),
+            given_to_name: "Петров".into(),
+            place_id: None,
+            printer_device_id: None,
+            previous_cartridge_state_id: None,
+            previous_cartridge_place_id: None,
+        };
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, cart_id, 1, &op, now, Some(caller_user_id))
+                .expect("transition");
+            tx.commit().expect("commit");
+        }
+
+        let user_id: Option<i64> = conn
+            .query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='cartridge' AND entity_id=?1",
+                params![cart_id],
+                |r| r.get(0),
+            )
+            .expect("query audit_log user_id");
+        assert_eq!(user_id, Some(caller_user_id));
+    }
+
+    /// Plan 40-04 (Pitfall 3): the nested auto-return branch writes its OWN
+    /// audit_log row for a SEPARATE entity (the previously installed
+    /// cartridge) — that row must ALSO carry the real caller's user_id, not
+    /// a hard-coded NULL, matching the main mutation's own row.
+    #[test]
+    fn transition_in_tx_stores_caller_user_id_on_auto_return_and_main() {
+        let (mut conn, _g) = fresh_conn();
+        let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let printer_device_id = seed_device(&mut conn);
+        let caller_user_id = seed_user(&mut conn, "sidorov.ss", "Сидоров С.С.");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        let prev_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+            let id = repo
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
+                .expect("insert prev");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_prev = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                place_id: None,
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_place_id: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, prev_id, 1, &install_prev, now, Some(caller_user_id))
+                .expect("install prev");
+            tx.commit().expect("commit");
+        }
+
+        let new_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code2");
+            let id = repo
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
+                .expect("insert new");
+            tx.commit().expect("commit");
+            id
+        };
+        {
+            let install_new = CartridgeTransitionOp::Install {
+                date_utc: now,
+                given_by_name: "Кузнецов".into(),
+                given_to_name: "Смирнов".into(),
+                place_id: None,
+                printer_device_id: Some(printer_device_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_place_id: None,
+            };
+            let tx = conn.transaction().expect("tx");
+            repo.transition_in_tx(&tx, new_id, 1, &install_new, now, Some(caller_user_id))
+                .expect("install new (triggers auto-return of prev)");
+            tx.commit().expect("commit");
+        }
+
+        // Main mutation's own row (the new cartridge's install).
+        let new_user_id: Option<i64> = conn
+            .query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='cartridge' AND entity_id=?1 \
+                 AND action='custom:install'",
+                params![new_id],
+                |r| r.get(0),
+            )
+            .expect("query audit_log user_id for new (main mutation)");
+        assert_eq!(new_user_id, Some(caller_user_id));
+
+        // Auto-return's own row for the PREVIOUS cartridge — separate entity,
+        // separate call site (Pitfall 3).
+        let prev_user_id: Option<i64> = conn
+            .query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='cartridge' AND entity_id=?1 \
+                 AND action='custom:return_to_stock'",
+                params![prev_id],
+                |r| r.get(0),
+            )
+            .expect("query audit_log user_id for prev (auto-return)");
+        assert_eq!(prev_user_id, Some(caller_user_id));
+    }
+
     #[test]
     fn auto_return_uses_kind_aware_default_state_for_drum() {
         // R7 regression: устанавливают фотобарабан (kind_id=2) на принтер,

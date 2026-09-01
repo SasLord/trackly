@@ -13,7 +13,9 @@ use std::time::Duration;
 
 use rusqlite::params;
 use serde_json::Value;
+use trackly_core::auth::{Identity, Role};
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
@@ -22,6 +24,37 @@ use trackly_app::dto::cartridge::{
     Pagination,
 };
 use trackly_app::services::CartridgeService;
+
+/// `Identity::trusted_admin()` — unlocked-desktop identity (D-Desktop-01),
+/// `user_id: None`. Used for pre-existing call sites that don't assert on
+/// `audit_log.user_id` (Plan 40-04 caller-threading, mirrors device_service's
+/// `admin_caller()` precedent from Plan 40-03).
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
+}
+
+/// Seed a real `users` row (FK target for `audit_log.user_id`) and return its
+/// id. Invented name — privacy gate (CLAUDE.md hard constraint, no real ФИО).
+async fn seed_manager_user(writer: &WriterHandle) -> i64 {
+    let now = 1_700_000_000_i64;
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('kuznetsov.kk', 'Кузнецов К.К.', NULL, 'manager', 0, 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(map_rusqlite)?;
+            let user_id = tx.last_insert_rowid();
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(user_id)
+        })
+        .await
+        .expect("seed manager user")
+}
 
 fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -1091,4 +1124,174 @@ async fn install_auto_return_falls_back_to_defaults_when_overrides_absent() {
     })
     .await
     .expect("install_auto_return_falls_back_to_defaults_when_overrides_absent budget")
+}
+
+// ---------------------------------------------------------------------------
+// transition — caller threading (Plan 40-04, Pitfall 1/3)
+// ---------------------------------------------------------------------------
+
+/// Main mutation: a plain Install (no auto-return triggered) must store the
+/// real caller's user_id on its own audit_log row, not a hard-coded NULL.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn transition_stores_real_caller_user_id_on_main_mutation_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
+
+        let installed = svc
+            .transition(
+                &manager,
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("transition Install with manager caller");
+
+        let readers = svc.readers.clone();
+        let entity_id = installed.id;
+        let user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log \
+                 WHERE entity_type='cartridge' AND entity_id=?1 AND action='custom:install'",
+                params![entity_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id");
+
+        assert_eq!(
+            user_id, manager.user_id,
+            "audit_log.user_id должен совпадать с caller.user_id реального менеджера"
+        );
+    })
+    .await
+    .expect("transition_stores_real_caller_user_id_on_main_mutation_audit_log budget")
+}
+
+/// Pitfall 3 (RESEARCH.md): the nested auto-return branch inside
+/// `transition_in_tx` writes its OWN audit_log row for the PREVIOUSLY
+/// installed cartridge — a separate entity, a separate call site. Both the
+/// main mutation's row AND the auto-returned cartridge's row must carry the
+/// real caller's user_id.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn transition_stores_real_caller_user_id_on_auto_return_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Pantum BM5100ADN").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
+
+        // Install A into the printer first.
+        let a_installed = svc
+            .transition(
+                &manager,
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install A with manager caller");
+
+        // Install B into the SAME printer — auto-returns A within the SAME
+        // transition() call, using the SAME manager caller.
+        let b_installed = svc
+            .transition(
+                &manager,
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install B with manager caller (triggers auto-return of A)");
+
+        let readers = svc.readers.clone();
+        let a_id = a_installed.id;
+        let b_id = b_installed.id;
+
+        // B's own audit row (the main mutation this transition() call made).
+        let b_user_id: Option<i64> = tokio::task::spawn_blocking({
+            let readers = readers.clone();
+            move || {
+                let conn = readers.acquire();
+                conn.query_row(
+                    "SELECT user_id FROM audit_log \
+                     WHERE entity_type='cartridge' AND entity_id=?1 AND action='custom:install'",
+                    params![b_id],
+                    |r| r.get(0),
+                )
+            }
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id for B (main mutation)");
+
+        // A's auto-return audit row — a SEPARATE entity, SEPARATE call site
+        // (Pitfall 3), written by the nested branch inside transition_in_tx.
+        let a_user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log \
+                 WHERE entity_type='cartridge' AND entity_id=?1 AND action='custom:return_to_stock'",
+                params![a_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id for A (auto-return)");
+
+        assert_eq!(
+            b_user_id, manager.user_id,
+            "main mutation's audit_log.user_id must be the real manager caller"
+        );
+        assert_eq!(
+            a_user_id, manager.user_id,
+            "auto-return's audit_log.user_id must ALSO be the real manager caller (Pitfall 3)"
+        );
+    })
+    .await
+    .expect("transition_stores_real_caller_user_id_on_auto_return_audit_log budget")
 }
