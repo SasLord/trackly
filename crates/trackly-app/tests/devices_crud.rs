@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceFilter, DeviceNew, DevicePatch, Pagination};
 use trackly_app::services::DeviceService;
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -22,6 +23,20 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = DeviceService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// «Доверенный администратор» — десктоп unlocked mode, `user_id = None` (D-Desktop-01).
+fn admin_caller() -> Identity {
+    Identity::trusted_admin()
+}
+
+/// Менеджер с реальным `user_id` — для проверки, что audit_log.user_id
+/// отражает настоящего актёра, а не системный NULL (Plan 40-03, Pitfall 1).
+fn manager_caller() -> Identity {
+    Identity {
+        user_id: Some(1),
+        role: Role::Manager,
+    }
 }
 
 /// DeviceNew с минимальными обязательными полями.
@@ -559,6 +574,99 @@ async fn update_second_save_after_successful_first_uses_new_version() {
     })
     .await
     .expect("update_second_save_after_successful_first_uses_new_version exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// update_stores_real_caller_user_id_in_audit_log (Plan 40-03 — Pitfall 1)
+//
+// Threads a real `caller: &Identity` into `device_service::update` end-to-end:
+// audit_log.user_id must equal the real actor's user_id, not the hard-coded
+// `None` this method previously wrote unconditionally.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_stores_real_caller_user_id_in_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let dto = svc.create(minimal_new("Принтер HP")).await.expect("create");
+
+        let manager = manager_caller();
+        let patch = DevicePatch {
+            name: Some("Принтер HP v2".to_string()),
+            ..Default::default()
+        };
+        svc.update(&manager, dto.id, dto.version, patch)
+            .await
+            .expect("update with manager caller");
+
+        // audit_log.user_id должен равняться caller.user_id — реальный менеджер, не NULL.
+        let readers = svc.readers.clone();
+        let entity_id = dto.id;
+        let user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='device' AND entity_id=?1 AND action='update'",
+                rusqlite::params![entity_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id");
+
+        assert_eq!(
+            user_id, manager.user_id,
+            "audit_log.user_id должен совпадать с caller.user_id реального менеджера"
+        );
+    })
+    .await
+    .expect("update_stores_real_caller_user_id_in_audit_log exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// update_with_trusted_admin_caller_stores_null_user_id
+//
+// `Identity::trusted_admin()` (desktop unlocked mode, D-Desktop-01) has
+// `user_id = None` — this must still succeed and store NULL, matching the
+// pre-existing system-initiated-change semantics.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_with_trusted_admin_caller_stores_null_user_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let dto = svc.create(minimal_new("Ноутбук Dell")).await.expect("create");
+
+        let admin = admin_caller();
+        let patch = DevicePatch {
+            name: Some("Ноутбук Dell v2".to_string()),
+            ..Default::default()
+        };
+        svc.update(&admin, dto.id, dto.version, patch)
+            .await
+            .expect("update with trusted-admin caller");
+
+        let readers = svc.readers.clone();
+        let entity_id = dto.id;
+        let user_id: Option<i64> = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT user_id FROM audit_log WHERE entity_type='device' AND entity_id=?1 AND action='update'",
+                rusqlite::params![entity_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("query audit_log user_id");
+
+        assert_eq!(
+            user_id, None,
+            "trusted-admin (unlocked desktop) не должен писать user_id в audit_log"
+        );
+    })
+    .await
+    .expect("update_with_trusted_admin_caller_stores_null_user_id exceeded 30 s budget");
 }
 
 // ---------------------------------------------------------------------------
