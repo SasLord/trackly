@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 1/20 | In Progress|  |
+| 40. История перемещений | v1.4 | 2/20 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -382,7 +382,7 @@ Plans:
 **Wave 1**
 
 - [x] 40-01-PLAN.md — миграция V040 (place_movements) + домен MovementSource/MovementEntityKind + Wave 0 migration test
-- [ ] 40-02-PLAN.md — промоушен compute_place_path_short в place_path_display.rs (единственный владелец, D-18)
+- [x] 40-02-PLAN.md — промоушен compute_place_path_short в place_path_display.rs (единственный владелец, D-18)
 - [ ] 40-03-PLAN.md — caller: &Identity в device_service::update (сигнатурная плотина, без записи истории)
 - [ ] 40-04-PLAN.md — caller: &Identity в cartridge_service::update/transition + before-fetch (сигнатурная плотина)
 
