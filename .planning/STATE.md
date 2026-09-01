@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-01T01:05:48.473Z"
-last_activity: 2026-08-31
+last_updated: "2026-09-01"
+last_activity: 2026-09-01
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 32
-  completed_plans: 32
+  total_plans: 37
+  completed_plans: 33
   percent: 22
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 39.2
-Plan: 5 plans, 5 waves
-Status: Planned — ready to execute
-Last activity: 2026-08-31
+Plan: 2 of 5
+Status: Executing — план 01 выполнен (Wave 0: тесты вью + робастность чтения варианта)
+Last activity: 2026-09-01
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -41,7 +41,7 @@ Last activity: 2026-08-31
 
 **Velocity:**
 
-- Total plans completed: 216
+- Total plans completed: 217
 - Average duration: —
 - Total execution time: —
 
@@ -78,6 +78,7 @@ Last activity: 2026-08-31
 | 37 | 4 | - | - |
 | 39 | 22 | - | - |
 | 39.1 | 10 | - | - |
+| 39.2 | 1 | ~18 мин | ~18 мин |
 
 **Recent Trend:**
 
@@ -1034,7 +1035,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-08-28T13:05:32.404Z
+Last session: 2026-09-01T01:11:37.182Z
 Stopped at: Completed 39.1-10-PLAN.md — финальная волна фазы 39.1
 Resume file: 
 
