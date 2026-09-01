@@ -13,6 +13,7 @@ pub mod dashboard_service;
 pub mod device_service;
 pub mod org_db_service;
 pub mod organization_service;
+pub mod place_path_display;
 pub mod place_service;
 pub mod printer_service;
 pub mod report_service;

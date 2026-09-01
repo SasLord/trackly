@@ -15,7 +15,6 @@ use std::sync::Arc;
 use rusqlite::params;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
-use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 use trackly_core::ports::places::PlaceRepository;
@@ -27,9 +26,6 @@ use trackly_infra::repos::acts_sqlite::{
     recompute_parent_archived,
 };
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
-use trackly_infra::repos::place_path_settings::{
-    read_org_default_variant_token, read_path_display_separators,
-};
 use trackly_infra::repos::{
     SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqlitePlaceRepository,
 };
@@ -42,6 +38,7 @@ use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
+use crate::services::place_path_display::compute_place_path_short;
 use crate::services::template_service::TemplateService;
 
 /// Application service for act lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -2991,57 +2988,6 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
         odt.month() as u8,
         odt.day()
     )
-}
-
-/// Shortens `snapshot` (the frozen `place_path_snapshot`, D-16) by the
-/// CURRENT effective path-display variant for `place_id` (D-20, Phase 39.1
-/// Plan 06) — never the variant at act-create time.
-///
-/// Resolution order (org-wide defaults and separators come from
-/// `trackly_infra::repos::place_path_settings` — the single owner since
-/// Phase 39.2 / WR-08; this function no longer keeps its own copy):
-///   1. `snapshot` is `None`/absent → `None` (nothing to shorten — a
-///      genuinely place-less act, existing D-27 blank-underline fallback).
-///   2. `place_id` present AND `place_effective_variant` has a row for it →
-///      use that row's `effective_variant`.
-///   3. Otherwise (no `place_id`, OR `place_id` set but the place has since
-///      disappeared — soft-deleted, Pitfall 4) → fall back to the
-///      organization default via `read_org_default_variant_token`, which in
-///      turn falls back to `DEFAULT_VARIANT` if even the setting is missing.
-///
-/// Entirely `Option`/`Result`-chained with `.ok()`/`.unwrap_or()` — no
-/// `.expect()`/`.unwrap()`/`?` anywhere on this path. A printed act must
-/// never fail to render because of this cosmetic field.
-fn compute_place_path_short(
-    readers: &ReaderPool,
-    place_id: Option<i64>,
-    snapshot: Option<String>,
-) -> Option<String> {
-    let snapshot = snapshot?;
-    let conn = readers.acquire();
-
-    let variant_token: String = place_id
-        .and_then(|pid| {
-            conn.query_row(
-                "SELECT effective_variant FROM place_effective_variant WHERE place_id = ?1",
-                params![pid],
-                |r| r.get::<_, String>(0),
-            )
-            .ok()
-        })
-        .unwrap_or_else(|| read_org_default_variant_token(&conn));
-    // Unexpected/corrupt token → fall back to Ends rather than dropping the
-    // field-row entirely — this is a non-critical visual element.
-    let variant = PathDisplayVariant::from_str(&variant_token).unwrap_or(PathDisplayVariant::Ends);
-
-    let (sep_ends, sep_last_two) = read_path_display_separators(&conn);
-
-    Some(shorten_place_path(
-        &snapshot,
-        variant,
-        &sep_ends,
-        &sep_last_two,
-    ))
 }
 
 /// Извлекает суффикс (например, «в», «в1», «в2») из отформатированного
