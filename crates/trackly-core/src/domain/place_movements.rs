@@ -42,9 +42,14 @@ impl MovementSource {
     /// errors. This is the read-side soft-degrade entry point (Pitfall 6 / IN-01): a
     /// value written by a future binary version that this binary doesn't recognize yet
     /// must not crash the history screen, it should just fall back to a safe label.
-    pub fn from_str_lenient(_s: &str) -> Option<Self> {
-        // RED: stub, not yet implemented.
-        None
+    pub fn from_str_lenient(s: &str) -> Option<Self> {
+        match s {
+            "manual" => Some(Self::Manual),
+            "act" => Some(Self::Act),
+            "map" => Some(Self::Map),
+            "workstation" => Some(Self::Workstation),
+            _ => None,
+        }
     }
 }
 
@@ -92,9 +97,8 @@ impl MovementEntityKind {
 /// - Both `Some` and equal → `false` (D-04: no actual change, e.g. a no-op edit).
 /// - Either side `None` → `false` (D-06: first assignment `NULL -> place` and clearing
 ///   `place -> NULL` are not "movements" — there is no "from" or "to" place to record).
-pub fn is_reportable_place_change(_before: Option<i64>, _after: Option<i64>) -> bool {
-    // RED: stub, not yet implemented.
-    false
+pub fn is_reportable_place_change(before: Option<i64>, after: Option<i64>) -> bool {
+    matches!((before, after), (Some(b), Some(a)) if b != a)
 }
 
 #[cfg(test)]
