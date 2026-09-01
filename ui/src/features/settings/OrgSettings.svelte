@@ -64,19 +64,34 @@
   const PATH_PREVIEW_SAMPLE_1 = 'Здание А / 1 этаж / 1-05';
   const PATH_PREVIEW_SAMPLE_2 = 'Территория А / Объект Х / помещение 3';
 
-  let pathVariant = $state<'ends' | 'last_two' | 'last'>('ends');
-  let sepEnds = $state(' // ');
-  let sepLastTwo = $state(' / ');
+  // WR-08 (фаза 39.2, план 05): экран НЕ владеет дефолтами формата пути.
+  // После фазы 39.2 они объявлены ровно в двух местах — модуль
+  // `trackly_infra::repos::place_path_settings` (код) и сид
+  // `migrations/V039__place_path_display.sql` (БД). Здесь состояние стартует
+  // «незагруженным», а значения приходят ТОЛЬКО из
+  // `settings_get_place_path_defaults`. Если загрузка отказала, `pathLoaded`
+  // остаётся false, форма заблокирована — и «Сохранить формат пути» физически
+  // не может перезаписать реальные настройки организации умолчаниями,
+  // которых пользователь не выбирал.
+  let pathVariant = $state<'ends' | 'last_two' | 'last' | null>(null);
+  let sepEnds = $state('');
+  let sepLastTwo = $state('');
+  let pathLoaded = $state(false);
   let savingPath = $state(false);
 
   // D-10: пустая строка запрещена, строка из одних пробелов — допустима.
   // Намеренно `.length === 0`, НЕ `.trim().length === 0` (см. UI-SPEC.md
   // «Проблема 1» — значимые пробелы).
+  // Пока `pathLoaded === false`, поля пусты не потому, что пользователь их
+  // очистил, а потому, что значений с бэкенда ещё нет — ошибку в этом
+  // состоянии не показываем.
   const sepEndsErr = $derived(
-    sepEnds.length === 0 ? 'Разделитель не может быть пустым — введите хотя бы один символ.' : null,
+    pathLoaded && sepEnds.length === 0
+      ? 'Разделитель не может быть пустым — введите хотя бы один символ.'
+      : null,
   );
   const sepLastTwoErr = $derived(
-    sepLastTwo.length === 0
+    pathLoaded && sepLastTwo.length === 0
       ? 'Разделитель не может быть пустым — введите хотя бы один символ.'
       : null,
   );
@@ -109,6 +124,7 @@
         dto.variant === 'last_two' ? 'last_two' : dto.variant === 'last' ? 'last' : 'ends';
       sepEnds = dto.sep_ends;
       sepLastTwo = dto.sep_last_two;
+      pathLoaded = true;
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -119,6 +135,14 @@
   }
 
   async function savePathDefaults() {
+    // WR-06: кнопку можно нажать программно в обход `disabled`. Сервер остаётся
+    // источником истины (`is_empty()` + `PathDisplayVariant::from_str`), но
+    // лишний round-trip и дублирующий inline-ошибку красный тост здесь не нужны.
+    // `!pathLoaded` в этом же условии — WR-08: незагруженный экран не имеет
+    // права записывать что бы то ни было.
+    if (!pathLoaded || pathVariant === null || sepEndsErr !== null || sepLastTwoErr !== null) {
+      return;
+    }
     savingPath = true;
     try {
       await apiCall<void>('settings_set_place_path_defaults', {
@@ -457,18 +481,15 @@
     </p>
 
     <div class="path-variant-group" role="radiogroup" aria-label="Вариант сокращения по умолчанию">
-      <label class="path-radio-row">
-        <Radio bind:group={pathVariant} value="ends" disabled={savingPath} />
-        <span>Крайние</span>
-      </label>
-      <label class="path-radio-row">
-        <Radio bind:group={pathVariant} value="last_two" disabled={savingPath} />
-        <span>Два последних</span>
-      </label>
-      <label class="path-radio-row">
-        <Radio bind:group={pathVariant} value="last" disabled={savingPath} />
-        <span>Последнее</span>
-      </label>
+      <Radio bind:group={pathVariant} value="ends" disabled={savingPath || !pathLoaded}>
+        Крайние
+      </Radio>
+      <Radio bind:group={pathVariant} value="last_two" disabled={savingPath || !pathLoaded}>
+        Два последних
+      </Radio>
+      <Radio bind:group={pathVariant} value="last" disabled={savingPath || !pathLoaded}>
+        Последнее
+      </Radio>
     </div>
 
     <div class="form-grid path-sep-fields">
@@ -479,11 +500,16 @@
           bind:value={sepEnds}
           mono
           invalid={sepEndsErr !== null}
-          disabled={savingPath}
+          disabled={savingPath || !pathLoaded}
+          aria-describedby={sepEndsErr
+            ? 'path-sep-ends-hint path-sep-ends-error'
+            : 'path-sep-ends-hint'}
         />
-        <span class="field-hint tr-mono">Значение: «{monoReadout(sepEnds)}»</span>
+        <span id="path-sep-ends-hint" class="field-hint tr-mono"
+          >Значение: «{monoReadout(sepEnds)}»</span
+        >
         {#if sepEndsErr}
-          <span class="field-error">{sepEndsErr}</span>
+          <span id="path-sep-ends-error" class="field-error">{sepEndsErr}</span>
         {/if}
       </div>
       <div class="form-field">
@@ -493,11 +519,16 @@
           bind:value={sepLastTwo}
           mono
           invalid={sepLastTwoErr !== null}
-          disabled={savingPath}
+          disabled={savingPath || !pathLoaded}
+          aria-describedby={sepLastTwoErr
+            ? 'path-sep-last-two-hint path-sep-last-two-error'
+            : 'path-sep-last-two-hint'}
         />
-        <span class="field-hint tr-mono">Значение: «{monoReadout(sepLastTwo)}»</span>
+        <span id="path-sep-last-two-hint" class="field-hint tr-mono"
+          >Значение: «{monoReadout(sepLastTwo)}»</span
+        >
         {#if sepLastTwoErr}
-          <span class="field-error">{sepLastTwoErr}</span>
+          <span id="path-sep-last-two-error" class="field-error">{sepLastTwoErr}</span>
         {/if}
       </div>
     </div>
@@ -531,7 +562,12 @@
     </div>
 
     <div class="save-row">
-      <Button variant="primary" loading={savingPath} onclick={savePathDefaults}>
+      <Button
+        variant="primary"
+        loading={savingPath}
+        disabled={!pathLoaded || sepEndsErr !== null || sepLastTwoErr !== null}
+        onclick={savePathDefaults}
+      >
         Сохранить формат пути
       </Button>
     </div>
@@ -686,12 +722,6 @@
   .path-variant-group {
     display: flex;
     flex-direction: column;
-    gap: var(--tr-space-xs);
-  }
-
-  .path-radio-row {
-    display: flex;
-    align-items: center;
     gap: var(--tr-space-xs);
   }
 
