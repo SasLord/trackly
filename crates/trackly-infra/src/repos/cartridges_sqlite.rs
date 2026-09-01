@@ -102,10 +102,17 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CartridgeRow> {
 /// (column index 18, present only when the query joins `place_effective_variant` —
 /// see `SELECT_CARTRIDGES`) and computing `place_path_short` via `shorten_place_path`.
 /// Used by `list()` and `search()` — the two reads that feed the cartridge list
-/// UI, which renders `place_path_short` (PLC-08). A cartridge with
-/// `place_id IS NULL` naturally
-/// yields `effective_variant: None` (LEFT JOIN, no match) and thus
-/// `place_path_short: None`, mirroring `full_path`'s existing behavior.
+/// UI, which renders `place_path_short` (PLC-08).
+///
+/// Деградация (WR-01, фаза 39.2) — дословно та же, что в
+/// `devices_sqlite::from_row_with_short_path`, см. её doc-комментарий.
+/// `place_path_short: None` означает ровно одно: **у картриджа нет места**
+/// (`place_id IS NULL` → нет `full_path`, LEFT JOIN не даёт варианта). Если
+/// путь известен, а вариант вывести не удалось — колонка `effective_variant`
+/// пришла NULL (WR-02b) либо токен не распознан `PathDisplayVariant::from_str`
+/// (IN-01) — поле несёт ПОЛНЫЙ путь: пустое поле рендерится списком как «—»,
+/// то есть утверждает «места нет» там, где место есть. Форма взята у
+/// `places_sqlite::list_subtree_contents_impl` (`unwrap_or_else(|| full_path.clone())`).
 fn map_row_with_short_path<'a>(
     sep_ends: &'a str,
     sep_last_two: &'a str,
@@ -113,12 +120,12 @@ fn map_row_with_short_path<'a>(
     move |row| {
         let mut cartridge = map_row(row)?;
         let effective_variant: Option<String> = row.get(18)?;
-        if let (Some(full), Some(token)) = (cartridge.full_path.as_deref(), effective_variant) {
-            if let Ok(variant) = PathDisplayVariant::from_str(&token) {
-                cartridge.place_path_short =
-                    Some(shorten_place_path(full, variant, sep_ends, sep_last_two));
-            }
-        }
+        cartridge.place_path_short = cartridge.full_path.as_deref().map(|full| {
+            effective_variant
+                .and_then(|token| PathDisplayVariant::from_str(&token).ok())
+                .map(|variant| shorten_place_path(full, variant, sep_ends, sep_last_two))
+                .unwrap_or_else(|| full.to_string())
+        });
         Ok(cartridge)
     }
 }

@@ -204,3 +204,68 @@ async fn search_returns_shortened_path_like_list() {
     .await
     .expect("timeout");
 }
+
+/// WR-01 (фаза 39.2), зеркало `devices_place_path_short::
+/// list_unknown_variant_token_degrades_to_full_path`: нераспознанный токен в
+/// `places.path_variant_override` делает вариант невыводимым, но полный путь
+/// известен — значит `place_path_short` обязан деградировать к нему, а не к
+/// `None`. `None` в ячейке «Место» рендерится как «—» и утверждает «места нет».
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_unknown_variant_token_degrades_to_full_path() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (mut conn, _dir) = test_db();
+        let place_repo = SqlitePlaceRepository;
+        let cartridge_repo = SqliteCartridgeRepository;
+
+        let building = place_repo
+            .create(
+                &mut conn,
+                &new_place(None, PlaceKind::Building, "Здание А"),
+                NOW,
+            )
+            .expect("create building");
+        let floor = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(building), PlaceKind::Floor, "1 этаж"),
+                NOW,
+            )
+            .expect("create floor");
+        let room = place_repo
+            .create(
+                &mut conn,
+                &new_place(Some(floor), PlaceKind::Room, "1-05"),
+                NOW,
+            )
+            .expect("create room");
+
+        let model_id = seed_model(&mut conn);
+        create_cartridge(&mut conn, model_id, Some(room));
+
+        // Сырым SQL — штатный путь записи такой токен не пропустит.
+        conn.execute(
+            "UPDATE places SET path_variant_override = 'bogus' WHERE id = ?1",
+            [room],
+        )
+        .expect("подсунуть нераспознанный токен");
+
+        let (rows, total) = cartridge_repo
+            .list(&conn, &CartridgeFilter::default(), &page())
+            .expect("list");
+
+        assert_eq!(total, 1);
+        let row = &rows[0];
+        assert_eq!(
+            row.full_path.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "full_path известен — именно поэтому «—» здесь недопустимо"
+        );
+        assert_eq!(
+            row.place_path_short.as_deref(),
+            Some("Здание А / 1 этаж / 1-05"),
+            "невыводимый вариант → деградация к полному пути, а не к None"
+        );
+    })
+    .await
+    .expect("timeout");
+}
