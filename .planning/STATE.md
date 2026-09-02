@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-01T23:56:48.807Z"
-last_activity: 2026-09-01
+last_updated: "2026-09-02T00:29:50.421Z"
+last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 42
+  completed_plans: 43
   percent: 33
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 6 of 20
+Plan: 7 of 20
 Status: Ready to execute
-Last activity: 2026-09-01
+Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -348,6 +348,7 @@ Last activity: 2026-09-01
 | Phase 40 P03 | 9min | 1 tasks | 6 files |
 | Phase 40 P04 | 17min | 2 tasks | 6 files |
 | Phase 40 P05 | 45min | 2 tasks | 3 files |
+| Phase 40 P06 | 19min | 2 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -868,6 +869,7 @@ Recent decisions affecting current work:
 - [Phase 40]: transition_in_tx's caller_user_id: Option<i64> is a trailing param; both main mutation AND nested D-16/D-17 auto-return audit inserts now use it (Pitfall 3 closed)
 - [Phase 40-05]: record_movement_if_applicable takes places_repo as &dyn PlaceRepository<Conn = Connection> per the plan's exact interface, keeping all seven downstream write-site call sites uniform
 - [Phase 40-05]: delete_by_act_id_in_tx is the sole owner of DELETE FROM place_movements WHERE act_id = ? (D-03); plan 40-20's undo path must call it, never hand-roll the statement
+- [Phase ?]: act_service's four write-site methods (create/update/do_return/update_return) now thread caller: &Identity end-to-end, matching device_service/cartridge_service pattern from 40-03/40-04 — update_return's 3 internal loops already shared one top-level user_id_opt, so one signature change fixed all of them (verified via a both-loops test)
 
 ### Pending Todos
 
@@ -1056,8 +1058,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-01T23:56:48.798Z
-Stopped at: Completed 40-05-PLAN.md
+Last session: 2026-09-02T00:29:50.411Z
+Stopped at: Completed 40-06-PLAN.md
 Resume file: 
 
 None
