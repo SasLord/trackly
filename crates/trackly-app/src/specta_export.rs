@@ -194,5 +194,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::places::places_subtree_stats,
         crate::tauri_cmds::places::places_contents,
         crate::tauri_cmds::places::places_search,
+        // Phase 40 — Movement history timeline (Plan 10)
+        crate::tauri_cmds::place_movements::place_movements_get_timeline,
     ])
 }

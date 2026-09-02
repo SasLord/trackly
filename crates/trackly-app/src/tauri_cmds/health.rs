@@ -144,10 +144,12 @@ mod tests {
             readers.clone(),
             clock.clone(),
         ));
+        let place_movements = Arc::new(crate::services::PlaceMovementService::new(readers.clone()));
         let ctx = AppCtx {
             writer,
             readers,
             places,
+            place_movements,
             paths: paths_arc,
             org_db,
             reports,

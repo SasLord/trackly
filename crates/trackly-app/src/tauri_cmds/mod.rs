@@ -14,6 +14,7 @@ pub mod devices;
 pub mod fs_helpers;
 pub mod health;
 pub mod organization;
+pub mod place_movements;
 pub mod places;
 pub mod printers;
 pub mod reports;
