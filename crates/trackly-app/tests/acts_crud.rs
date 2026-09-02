@@ -105,7 +105,10 @@ async fn create_handover_happy() {
                 })
                 .collect(),
         };
-        let dto = svc.create(payload).await.expect("create");
+        let dto = svc
+            .create(&Identity::trusted_admin(), payload)
+            .await
+            .expect("create");
         assert_eq!(dto.number, "1");
         assert_eq!(dto.number_raw, 1);
         assert_eq!(dto.act_type, "handover");
@@ -193,7 +196,10 @@ async fn create_with_override_audits_and_increments_only_audit() {
                 quantity: 1,
             }],
         };
-        let dto = svc.create(payload).await.expect("create override");
+        let dto = svc
+            .create(&Identity::trusted_admin(), payload)
+            .await
+            .expect("create override");
         assert_eq!(dto.number_raw, 99);
         assert_eq!(dto.number, "99");
 
@@ -272,7 +278,9 @@ async fn override_number_already_exists_returns_conflict() {
                 quantity: 1,
             }],
         };
-        svc.create(p1).await.expect("first");
+        svc.create(&Identity::trusted_admin(), p1)
+            .await
+            .expect("first");
 
         let p2 = ActCreateDto {
             number_override: Some(1),
@@ -288,7 +296,10 @@ async fn override_number_already_exists_returns_conflict() {
                 quantity: 1,
             }],
         };
-        let err = svc.create(p2).await.expect_err("conflict expected");
+        let err = svc
+            .create(&Identity::trusted_admin(), p2)
+            .await
+            .expect_err("conflict expected");
         match err {
             AppError::Conflict { reason } => {
                 assert!(
@@ -326,7 +337,10 @@ async fn rollback_on_invalid_device_id() {
                 quantity: 1,
             }],
         };
-        let err = svc.create(payload).await.expect_err("must fail");
+        let err = svc
+            .create(&Identity::trusted_admin(), payload)
+            .await
+            .expect_err("must fail");
         match err {
             AppError::NotFound { entity, id } => {
                 assert_eq!(entity, "device");
@@ -392,7 +406,9 @@ async fn counts_match_switch_bar() {
                     quantity: 1,
                 }],
             };
-            svc.create(p).await.expect("create");
+            svc.create(&Identity::trusted_admin(), p)
+                .await
+                .expect("create");
         }
         let counts = svc.counts().await.expect("counts");
         assert_eq!(counts.handover_active, 3);
@@ -430,7 +446,7 @@ async fn handover_with_quantity_persists() {
                 quantity: 3,
             }],
         };
-        let dto = svc.create(payload).await.expect("create");
+        let dto = svc.create(&Identity::trusted_admin(), payload).await.expect("create");
         // G-12: 3 act_items (1 original + 2 clones), все с quantity=1.
         assert_eq!(dto.items.len(), 3);
         for it in &dto.items {
@@ -496,7 +512,10 @@ async fn create_validates_required_fields() {
                 quantity: 1,
             }],
         };
-        let err = svc.create(p1).await.expect_err("empty giver");
+        let err = svc
+            .create(&Identity::trusted_admin(), p1)
+            .await
+            .expect_err("empty giver");
         match err {
             AppError::Validation { field, .. } => assert_eq!(field, "giver_name"),
             other => panic!("expected Validation, got {other:?}"),
@@ -513,7 +532,10 @@ async fn create_validates_required_fields() {
             handover_date_utc: None,
             items: vec![],
         };
-        let err = svc.create(p2).await.expect_err("empty items");
+        let err = svc
+            .create(&Identity::trusted_admin(), p2)
+            .await
+            .expect_err("empty items");
         match err {
             AppError::Validation { field, .. } => assert_eq!(field, "items"),
             other => panic!("expected Validation, got {other:?}"),
@@ -549,7 +571,9 @@ async fn list_returns_handover_with_items() {
                 })
                 .collect(),
         };
-        svc.create(payload).await.expect("create");
+        svc.create(&Identity::trusted_admin(), payload)
+            .await
+            .expect("create");
 
         let filter = ActFilter {
             act_type: Some("handover".into()),

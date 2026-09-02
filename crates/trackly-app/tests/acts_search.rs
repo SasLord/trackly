@@ -16,6 +16,7 @@ use std::time::Duration;
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActFilter, ActItemNewDto, Pagination};
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -60,23 +61,26 @@ async fn create_handover(
     giver: &str,
     receiver: &str,
 ) -> trackly_app::dto::act::ActDto {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: giver.to_string(),
-        receiver_name: receiver.to_string(),
-        place_id: None,
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: device_ids
-            .iter()
-            .map(|&id| ActItemNewDto {
-                device_id: id,
-                device_ids: Vec::new(),
-                quantity: 1,
-            })
-            .collect(),
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: giver.to_string(),
+            receiver_name: receiver.to_string(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: device_ids
+                .iter()
+                .map(|&id| ActItemNewDto {
+                    device_id: id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                })
+                .collect(),
+        },
+    )
     .await
     .expect("create handover")
 }

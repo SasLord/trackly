@@ -15,6 +15,7 @@ use std::time::Duration;
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -145,7 +146,10 @@ async fn recompute_parent_archived_count_based() {
                 },
             ],
         };
-        let handover = svc.create(payload).await.expect("create handover");
+        let handover = svc
+            .create(&Identity::trusted_admin(), payload)
+            .await
+            .expect("create handover");
         assert_eq!(handover.items.len(), 3);
         assert!(!handover.archived, "fresh handover must not be archived");
 
@@ -263,20 +267,23 @@ async fn clone_3_devices_on_handover_qty_3() {
         let source = seed_device(&svc.writer, "ClonedSource").await;
 
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=3");
 
@@ -317,20 +324,23 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "PartialReturn").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=3");
 
@@ -392,20 +402,23 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "FullCycle").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=3");
 
@@ -503,20 +516,23 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "AllInOne").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=3");
 
@@ -576,20 +592,23 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "Outstanding").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=3");
 
@@ -664,20 +683,23 @@ async fn cardinality_bound_rejects_extra_device_id() {
         let source = seed_device(&svc.writer, "InHandover").await;
         let foreign = seed_device(&svc.writer, "Foreign").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 1,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
             .await
             .expect("create handover qty=1");
 
@@ -729,20 +751,23 @@ async fn max_clone_qty_validation_rejects_1001() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "OverLimit").await;
         let err = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 1001,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 1001,
+                    }],
+                },
+            )
             .await
             .expect_err("qty=1001 must fail");
         match err {
@@ -772,20 +797,23 @@ async fn clones_have_null_serial_number_per_w5() {
             seed_device_with_serial(&svc.writer, "WithSerial", Some("SN-0042"), Some("INV-1"))
                 .await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create qty=3 with serial source");
 
@@ -851,20 +879,23 @@ async fn undo_return_restores_archived_to_false() {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "UndoCycle").await;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id: source,
-                    device_ids: Vec::new(),
-                    quantity: 3,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: source,
+                        device_ids: Vec::new(),
+                        quantity: 3,
+                    }],
+                },
+            )
             .await
             .expect("create qty=3");
 
@@ -977,20 +1008,23 @@ async fn handover_via_resolved_place_sets_device_place_id() {
 
         // Create handover act with an already-resolved place_id.
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "Иванов И.И.".into(),
-                receiver_name: "Петров П.П.".into(),
-                place_id: Some(handover_place_id),
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id,
-                    device_ids: Vec::new(),
-                    quantity: 1,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "Иванов И.И.".into(),
+                    receiver_name: "Петров П.П.".into(),
+                    place_id: Some(handover_place_id),
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
             .await
             .expect("create handover via place_id");
 

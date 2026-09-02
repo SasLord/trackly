@@ -21,6 +21,7 @@ use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::report_service::ReportService;
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
@@ -124,20 +125,23 @@ async fn seed_device(writer: &Arc<WriterHandle>, name: &str, place_id: Option<i6
 }
 
 async fn create_handover(acts: &ActService, device_id: i64, place_id: i64, giver: &str) {
-    acts.create(ActCreateDto {
-        number_override: None,
-        giver_name: giver.to_string(),
-        receiver_name: "Петров П.П.".to_string(),
-        place_id: Some(place_id),
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: vec![ActItemNewDto {
-            device_id,
-            device_ids: Vec::new(),
-            quantity: 1,
-        }],
-    })
+    acts.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: giver.to_string(),
+            receiver_name: "Петров П.П.".to_string(),
+            place_id: Some(place_id),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        },
+    )
     .await
     .expect("create handover act");
 }

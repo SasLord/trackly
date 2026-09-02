@@ -177,20 +177,23 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
         // 1. Create handover via service (bypass HTTP for setup).
         let handover = ctx
             .acts
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "А".into(),
-                receiver_name: "Б".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: vec![ActItemNewDto {
-                    device_id,
-                    device_ids: Vec::new(),
-                    quantity: 1,
-                }],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
             .await?;
 
         // 2. POST /api/v1/acts_return for that handover.

@@ -243,20 +243,23 @@ async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
         .expect("seed device");
 
     let act = acts
-        .create(ActCreateDto {
-            number_override: None,
-            giver_name: "Логотестов Л.Л.".into(),
-            receiver_name: "Приемов П.П.".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id,
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        })
+        .create(
+            &Identity::trusted_admin(),
+            ActCreateDto {
+                number_override: None,
+                giver_name: "Логотестов Л.Л.".into(),
+                receiver_name: "Приемов П.П.".into(),
+                place_id: None,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: vec![ActItemNewDto {
+                    device_id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                }],
+            },
+        )
         .await
         .expect("create handover");
 

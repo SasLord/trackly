@@ -226,7 +226,10 @@ async fn render_header_fragments_for_org(
             quantity: 1,
         }],
     };
-    let act = acts.create(act_payload).await.expect("create handover");
+    let act = acts
+        .create(&Identity::trusted_admin(), act_payload)
+        .await
+        .expect("create handover");
 
     let handover_html = acts.render_pdf(act.id).await.expect("render_pdf");
     let acceptance_html = acts

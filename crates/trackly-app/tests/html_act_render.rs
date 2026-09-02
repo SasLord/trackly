@@ -133,7 +133,9 @@ async fn create_handover(
             })
             .collect(),
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 async fn create_handover_with_handover_date(
@@ -160,7 +162,9 @@ async fn create_handover_with_handover_date(
             })
             .collect(),
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 async fn create_handover_with_deadline(
@@ -187,7 +191,9 @@ async fn create_handover_with_deadline(
             })
             .collect(),
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 /// Returns the substring of `html` strictly between the first
@@ -445,7 +451,9 @@ async fn create_handover_with_items(
         handover_date_utc: None,
         items,
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 /// Extracts the text of the Кол-во `<td>` (the cell immediately following

@@ -150,7 +150,9 @@ async fn create_handover_with_giver(
             })
             .collect(),
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 /// Fictional (NOT a real employee's ФИО, CLAUDE.md privacy constant) long

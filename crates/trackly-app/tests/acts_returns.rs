@@ -32,6 +32,7 @@ use std::time::Duration;
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -91,7 +92,9 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
             })
             .collect(),
     };
-    svc.create(payload).await.expect("create handover")
+    svc.create(&Identity::trusted_admin(), payload)
+        .await
+        .expect("create handover")
 }
 
 // ---------------------------------------------------------------------------

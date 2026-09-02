@@ -13,6 +13,7 @@
 use std::sync::Arc;
 
 use rusqlite::params;
+use trackly_core::auth::Identity;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
 use trackly_core::error::AppError;
@@ -207,14 +208,18 @@ impl ActService {
     // Create handover (ACT-01, ACT-03, ACT-13, ACT-14)
     // -----------------------------------------------------------------------
 
-    pub async fn create(&self, payload: ActCreateDto) -> Result<ActDto, AppError> {
+    pub async fn create(
+        &self,
+        caller: &Identity,
+        payload: ActCreateDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_create(&payload)?;
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = caller.user_id;
 
         let act_id = self
             .writer
@@ -587,14 +592,18 @@ impl ActService {
     /// independent of the UI's disabled-button state. D-08: a `removed`
     /// device_id that has already been consumed by a completed/active return
     /// is rejected, aborting the WHOLE update (no partial writes).
-    pub async fn update(&self, payload: ActUpdateDto) -> Result<ActDto, AppError> {
+    pub async fn update(
+        &self,
+        caller: &Identity,
+        payload: ActUpdateDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_update(&payload)?;
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = caller.user_id;
 
         let act_id = self
             .writer

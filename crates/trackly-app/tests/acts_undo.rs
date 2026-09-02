@@ -13,6 +13,7 @@ use std::time::Duration;
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -85,23 +86,26 @@ async fn create_handover_with_location(
     device_ids: &[i64],
     place_id: i64,
 ) -> ActDto {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: "А".into(),
-        receiver_name: "Б".into(),
-        place_id: Some(place_id),
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: device_ids
-            .iter()
-            .map(|&id| ActItemNewDto {
-                device_id: id,
-                device_ids: Vec::new(),
-                quantity: 1,
-            })
-            .collect(),
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: "А".into(),
+            receiver_name: "Б".into(),
+            place_id: Some(place_id),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: device_ids
+                .iter()
+                .map(|&id| ActItemNewDto {
+                    device_id: id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                })
+                .collect(),
+        },
+    )
     .await
     .expect("create handover")
 }

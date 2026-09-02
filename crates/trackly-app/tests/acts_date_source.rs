@@ -18,6 +18,7 @@ use trackly_app::dto::act::{
     Pagination as ActPagination,
 };
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::writer_worker::WriterHandle;
@@ -54,20 +55,23 @@ async fn create_handover_with_date(
     giver: &str,
     handover_date_utc: i64,
 ) -> ActDto {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: giver.to_string(),
-        receiver_name: "Получатель Т.Т.".into(),
-        place_id: None,
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: Some(handover_date_utc),
-        items: vec![ActItemNewDto {
-            device_id,
-            device_ids: Vec::new(),
-            quantity: 1,
-        }],
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: giver.to_string(),
+            receiver_name: "Получатель Т.Т.".into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: Some(handover_date_utc),
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        },
+    )
     .await
     .expect("create handover")
 }
@@ -182,27 +186,30 @@ async fn do_return_persists_own_date() {
 
         let t = 1_700_000_000_i64;
         let handover = svc
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "Иванов И.И.".into(),
-                receiver_name: "Получатель Т.Т.".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: Some(t),
-                items: vec![
-                    ActItemNewDto {
-                        device_id: device_a,
-                        device_ids: Vec::new(),
-                        quantity: 1,
-                    },
-                    ActItemNewDto {
-                        device_id: device_b,
-                        device_ids: Vec::new(),
-                        quantity: 1,
-                    },
-                ],
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "Иванов И.И.".into(),
+                    receiver_name: "Получатель Т.Т.".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: Some(t),
+                    items: vec![
+                        ActItemNewDto {
+                            device_id: device_a,
+                            device_ids: Vec::new(),
+                            quantity: 1,
+                        },
+                        ActItemNewDto {
+                            device_id: device_b,
+                            device_ids: Vec::new(),
+                            quantity: 1,
+                        },
+                    ],
+                },
+            )
             .await
             .expect("create handover with 2 devices");
 

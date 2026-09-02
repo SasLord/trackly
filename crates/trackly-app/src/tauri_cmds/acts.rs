@@ -58,7 +58,7 @@ pub async fn build_acts_create(
     payload: ActCreateDto,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.create(payload).await
+    ctx.acts.create(caller, payload).await
 }
 
 /// Мутация: требует `caller` с правом `MutateActs`.
@@ -92,7 +92,7 @@ pub async fn build_acts_update(
     payload: ActUpdateDto,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.update(payload).await
+    ctx.acts.update(caller, payload).await
 }
 
 /// Мутация (ACT-03): требует `caller` с правом `MutateActs`. Same `Action`

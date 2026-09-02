@@ -97,23 +97,26 @@ async fn create_handover_with_location(
     device_ids: &[i64],
     place_id: i64,
 ) -> ActDto {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: "Иванов И.И.".into(),
-        receiver_name: "Петров П.П.".into(),
-        place_id: Some(place_id),
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: device_ids
-            .iter()
-            .map(|&id| ActItemNewDto {
-                device_id: id,
-                device_ids: Vec::new(),
-                quantity: 1,
-            })
-            .collect(),
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: "Иванов И.И.".into(),
+            receiver_name: "Петров П.П.".into(),
+            place_id: Some(place_id),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: device_ids
+                .iter()
+                .map(|&id| ActItemNewDto {
+                    device_id: id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                })
+                .collect(),
+        },
+    )
     .await
     .expect("create handover")
 }

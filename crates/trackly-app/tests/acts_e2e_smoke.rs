@@ -31,6 +31,7 @@ use tempfile::TempDir;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_core::auth::Identity;
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -131,23 +132,26 @@ async fn full_lifecycle_then_undo() {
         // 1. Handover 3 устройств.
         let handover = p
             .acts
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "Иванов И.И.".into(),
-                receiver_name: "Петров П.П.".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: ids
-                    .iter()
-                    .map(|&id| ActItemNewDto {
-                        device_id: id,
-                        device_ids: Vec::new(),
-                        quantity: 1,
-                    })
-                    .collect(),
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "Иванов И.И.".into(),
+                    receiver_name: "Петров П.П.".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: ids
+                        .iter()
+                        .map(|&id| ActItemNewDto {
+                            device_id: id,
+                            device_ids: Vec::new(),
+                            quantity: 1,
+                        })
+                        .collect(),
+                },
+            )
             .await
             .expect("create handover");
         let counts1 = p.acts.counts().await.expect("counts1");
@@ -296,23 +300,26 @@ async fn handover_pdf_render_within_e2e() {
         let ids = seed_devices(&p.writer, 2).await;
         let handover = p
             .acts
-            .create(ActCreateDto {
-                number_override: None,
-                giver_name: "Сидоров-Петроградский Иван Александрович".into(),
-                receiver_name: "Петров П.П.".into(),
-                place_id: None,
-                notes: None,
-                deadline_utc: None,
-                handover_date_utc: None,
-                items: ids
-                    .iter()
-                    .map(|&id| ActItemNewDto {
-                        device_id: id,
-                        device_ids: Vec::new(),
-                        quantity: 1,
-                    })
-                    .collect(),
-            })
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "Сидоров-Петроградский Иван Александрович".into(),
+                    receiver_name: "Петров П.П.".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: ids
+                        .iter()
+                        .map(|&id| ActItemNewDto {
+                            device_id: id,
+                            device_ids: Vec::new(),
+                            quantity: 1,
+                        })
+                        .collect(),
+                },
+            )
             .await
             .expect("create");
         let html = p.acts.render_pdf(handover.id).await.expect("render");

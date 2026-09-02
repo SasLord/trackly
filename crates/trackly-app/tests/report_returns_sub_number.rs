@@ -29,6 +29,7 @@ use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::report_service::ReportService;
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -76,23 +77,26 @@ async fn returns_report_loads_when_sub_number_is_set() {
     let device_ids = seed_devices(&writer, 2).await;
 
     let handover = act_svc
-        .create(ActCreateDto {
-            number_override: None,
-            giver_name: "Иванов И.И.".into(),
-            receiver_name: "Петров П.П.".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: device_ids
-                .iter()
-                .map(|&id| ActItemNewDto {
-                    device_id: id,
-                    device_ids: Vec::new(),
-                    quantity: 1,
-                })
-                .collect(),
-        })
+        .create(
+            &Identity::trusted_admin(),
+            ActCreateDto {
+                number_override: None,
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                place_id: None,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: device_ids
+                    .iter()
+                    .map(|&id| ActItemNewDto {
+                        device_id: id,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    })
+                    .collect(),
+            },
+        )
         .await
         .expect("create handover");
 

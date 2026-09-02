@@ -12,6 +12,7 @@ use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::dto::suggest::SuggestPersonField;
 use trackly_app::services::ActService;
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -55,20 +56,23 @@ async fn make_handover_with_giver_receiver(
     receiver: &str,
     device_id: i64,
 ) {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: giver.into(),
-        receiver_name: receiver.into(),
-        place_id: None,
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: vec![ActItemNewDto {
-            device_id,
-            device_ids: Vec::new(),
-            quantity: 1,
-        }],
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: giver.into(),
+            receiver_name: receiver.into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        },
+    )
     .await
     .expect("create handover");
 }
@@ -231,24 +235,9 @@ async fn suggest_person_excludes_soft_deleted_acts() {
         let d2 = seed_device(&svc.writer, "DB").await;
 
         // 2 акта с одинаковым giver: один — soft-delete'нем.
-        svc.create(ActCreateDto {
-            number_override: None,
-            giver_name: "Soft Иванов".into(),
-            receiver_name: "X".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id: d1,
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        })
-        .await
-        .expect("create 1");
-        let act2 = svc
-            .create(ActCreateDto {
+        svc.create(
+            &Identity::trusted_admin(),
+            ActCreateDto {
                 number_override: None,
                 giver_name: "Soft Иванов".into(),
                 receiver_name: "X".into(),
@@ -257,11 +246,32 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                 deadline_utc: None,
                 handover_date_utc: None,
                 items: vec![ActItemNewDto {
-                    device_id: d2,
+                    device_id: d1,
                     device_ids: Vec::new(),
                     quantity: 1,
                 }],
-            })
+            },
+        )
+        .await
+        .expect("create 1");
+        let act2 = svc
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: None,
+                    giver_name: "Soft Иванов".into(),
+                    receiver_name: "X".into(),
+                    place_id: None,
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: d2,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
             .await
             .expect("create 2");
 

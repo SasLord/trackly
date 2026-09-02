@@ -12,6 +12,7 @@ use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::pdf::docspec::{DocSpec, HeaderBlock, Section};
 use trackly_app::pdf::renderer::{truncate_to_width, PdfRenderer};
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -147,20 +148,23 @@ async fn device_card_long_field_wraps_instead_of_truncating() {
         .expect("seed device");
 
     let act = acts
-        .create(ActCreateDto {
-            number_override: None,
-            giver_name: "Тестов Т.Т.".into(),
-            receiver_name: "Приемов П.П.".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id,
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        })
+        .create(
+            &Identity::trusted_admin(),
+            ActCreateDto {
+                number_override: None,
+                giver_name: "Тестов Т.Т.".into(),
+                receiver_name: "Приемов П.П.".into(),
+                place_id: None,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: vec![ActItemNewDto {
+                    device_id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                }],
+            },
+        )
         .await
         .expect("create handover");
 

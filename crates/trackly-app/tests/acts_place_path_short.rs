@@ -22,6 +22,7 @@ use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
+use trackly_core::auth::Identity;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
 use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
@@ -176,20 +177,23 @@ async fn create_handover_at_place(
     giver: &str,
     receiver: &str,
 ) -> trackly_app::dto::act::ActDto {
-    svc.create(ActCreateDto {
-        number_override: None,
-        giver_name: giver.to_string(),
-        receiver_name: receiver.to_string(),
-        place_id,
-        notes: None,
-        deadline_utc: None,
-        handover_date_utc: None,
-        items: vec![ActItemNewDto {
-            device_id,
-            device_ids: Vec::new(),
-            quantity: 1,
-        }],
-    })
+    svc.create(
+        &Identity::trusted_admin(),
+        ActCreateDto {
+            number_override: None,
+            giver_name: giver.to_string(),
+            receiver_name: receiver.to_string(),
+            place_id,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        },
+    )
     .await
     .expect("create handover")
 }
