@@ -148,3 +148,7 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+All 5 created files verified present on disk; all 3 task commits (`250be312`, `080c3a8f`, `abe2f00a`) plus the summary commit (`4db68f9b`) verified present in `git log --oneline --all`.
