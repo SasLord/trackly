@@ -16,6 +16,7 @@ use rusqlite::params;
 use trackly_core::auth::Identity;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
 use trackly_core::ports::places::PlaceRepository;
@@ -28,7 +29,8 @@ use trackly_infra::repos::acts_sqlite::{
 };
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
-    SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository, SqlitePlaceRepository,
+    SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository,
+    SqlitePlaceMovementsRepository, SqlitePlaceRepository,
 };
 
 use crate::dto::act::{
@@ -56,6 +58,10 @@ pub struct ActService {
     /// construction (unit-struct adapter, zero config, no AppCtx wiring
     /// needed — same pattern as `place_service.rs`'s `repo` field).
     pub(crate) places_repo: Arc<SqlitePlaceRepository>,
+    /// HST-01/HST-03 (Plan 40-09): shared write-side entry point for
+    /// recording act-driven place changes into `place_movements`, with
+    /// `act_id` set so the timeline can link back to the act.
+    pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
     /// PDF pipeline deps — Optional чтобы Phase 2 тесты (helper-based fixtures
     /// `ActService::new`) могли работать без переписывания. AppCtx::build
     /// вызывает `with_pdf_pipeline(...)` — production runtime всегда имеет
@@ -84,6 +90,7 @@ impl ActService {
             audit_repo: Arc::new(SqliteAuditLogRepository),
             devices_repo: Arc::new(SqliteDeviceRepository),
             places_repo: Arc::new(SqlitePlaceRepository),
+            place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
             templates: None,
             organization: None,
             pdf: None,
@@ -219,6 +226,7 @@ impl ActService {
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
         let act_id = self
@@ -484,6 +492,22 @@ impl ActService {
                                 created_at_utc: now,
                             },
                         )?;
+
+                        // HST-03: record the act-driven place change, linked
+                        // to this act's id (D-04/D-06 guard inside).
+                        place_movements_repo.record_movement_if_applicable(
+                            &tx,
+                            places_repo.as_ref(),
+                            MovementEntityKind::Device,
+                            dev_id,
+                            before.place_id,
+                            after.place_id,
+                            MovementSource::Act,
+                            None,
+                            Some(act_id),
+                            user_id_opt,
+                            now,
+                        )?;
                     }
                 }
 
@@ -603,6 +627,7 @@ impl ActService {
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
         let act_id = self
@@ -749,6 +774,22 @@ impl ActService {
                             payload_json: Some(payload_json),
                             created_at_utc: now,
                         },
+                    )?;
+
+                    // HST-03: record the act-driven place change, linked
+                    // to this act's id (D-04/D-06 guard inside).
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        places_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        dev_id,
+                        before.place_id,
+                        after.place_id,
+                        MovementSource::Act,
+                        None,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
                     )?;
 
                     // INSERT act_items row for the newly added position.
