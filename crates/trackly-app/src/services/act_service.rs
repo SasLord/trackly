@@ -1172,6 +1172,7 @@ impl ActService {
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
         let return_act_id = self
@@ -1488,6 +1489,26 @@ impl ActService {
                                 created_at_utc: now,
                             },
                         )?;
+
+                        // HST-03: record the return-driven place change,
+                        // linked to the return act's id. Pitfall 4 (D-06):
+                        // when no place override is supplied,
+                        // `effective_location` is `None` and the guard
+                        // inside `record_movement_if_applicable` skips the
+                        // insert entirely — no extra check needed here.
+                        place_movements_repo.record_movement_if_applicable(
+                            &tx,
+                            places_repo.as_ref(),
+                            MovementEntityKind::Device,
+                            device_id,
+                            before.place_id,
+                            after.place_id,
+                            MovementSource::Act,
+                            None,
+                            Some(return_act_id),
+                            user_id_opt,
+                            now,
+                        )?;
                     }
                 }
 
@@ -1618,6 +1639,7 @@ impl ActService {
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
         let return_act_id = self
@@ -2023,6 +2045,23 @@ impl ActService {
                             created_at_utc: now,
                         },
                     )?;
+
+                    // HST-03: record the return-driven place change, linked
+                    // to this return act's id (D-04/D-06 guard inside).
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        places_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        added_id,
+                        before.place_id,
+                        after.place_id,
+                        MovementSource::Act,
+                        None,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
+
                     acts_repo.insert_act_item_in_tx(
                         &tx,
                         payload.id,
@@ -2092,6 +2131,23 @@ impl ActService {
                             created_at_utc: now,
                         },
                     )?;
+
+                    // HST-03: record the return-driven place change, linked
+                    // to this return act's id (D-04/D-06 guard inside).
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        places_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        dev_id,
+                        before.place_id,
+                        after.place_id,
+                        MovementSource::Act,
+                        None,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
+
                     tx.execute(
                         "UPDATE act_items SET condition_at_time = ?1 \
                          WHERE act_id = ?2 AND device_id = ?3",
