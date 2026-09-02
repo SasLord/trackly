@@ -2916,4 +2916,331 @@ mod tests {
             "expected org name in HTML header: {html}"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // list_movements / query_movements_inner (Phase 40 Plan 11, HST-04)
+    //
+    // D-24: two independent subtree-inclusive place filters («Откуда»/
+    // «Куда»), AND semantics when both are set. D-25: a movement whose
+    // underlying device has since been soft-deleted still appears, marked.
+    // Все имена мест/устройств — вымышленные (репозиторий публичный).
+    // -----------------------------------------------------------------------
+
+    fn make_movements_service() -> ReportService {
+        let (writer, readers, _guard) = trackly_infra::test_support::test_writer_and_readers();
+        let clock: Arc<dyn Clock + Send + Sync> = Arc::new(trackly_infra::clock_impl::SystemClock);
+        ReportService::new(
+            writer,
+            readers,
+            clock,
+            Arc::new(AppConfig::default()),
+            Arc::new(PdfRenderer::new()),
+        )
+    }
+
+    /// Период, заведомо накрывающий все тестовые `created_at_utc` значения
+    /// (мал. подобие `wide_period()` из `tests/report_place_subtree.rs`).
+    fn movements_wide_period() -> PeriodDto {
+        PeriodDto {
+            mode: "range".to_string(),
+            year: None,
+            month: None,
+            date_from: Some("2000-01-01".to_string()),
+            date_to: Some("2099-12-31".to_string()),
+        }
+    }
+
+    async fn create_test_place(
+        writer: &Arc<WriterHandle>,
+        parent_id: Option<i64>,
+        name: &str,
+    ) -> i64 {
+        let name = name.to_string();
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO places \
+                     (parent_id, kind, name, is_storage, created_at_utc, updated_at_utc) \
+                     VALUES (?1, 'building', ?2, 0, 1700000000, 1700000000)",
+                    rusqlite::params![parent_id, name],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("create test place")
+    }
+
+    async fn seed_test_device(writer: &Arc<WriterHandle>, name: &str) -> i64 {
+        let name = name.to_string();
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO devices \
+                     (type_id, name, status_id, version, created_at_utc, updated_at_utc) \
+                     VALUES (1, ?1, 1, 1, 1700000000, 1700000000)",
+                    rusqlite::params![name],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("seed test device")
+    }
+
+    async fn soft_delete_test_device(writer: &Arc<WriterHandle>, device_id: i64) {
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET deleted_at_utc = 1700000500 WHERE id = ?1",
+                    rusqlite::params![device_id],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("soft-delete test device")
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_test_movement(
+        writer: &Arc<WriterHandle>,
+        entity_type: &str,
+        entity_id: i64,
+        from_place_id: i64,
+        from_place_path: &str,
+        to_place_id: i64,
+        to_place_path: &str,
+        source: &str,
+        created_at_utc: i64,
+    ) -> i64 {
+        let entity_type = entity_type.to_string();
+        let from_place_path = from_place_path.to_string();
+        let to_place_path = to_place_path.to_string();
+        let source = source.to_string();
+        writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO place_movements \
+                     (entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
+                      to_place_path, source, created_at_utc) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![
+                        entity_type,
+                        entity_id,
+                        from_place_id,
+                        from_place_path,
+                        to_place_id,
+                        to_place_path,
+                        source,
+                        created_at_utc,
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("seed test movement")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn report_movements_place_filters() {
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let svc = make_movements_service();
+
+            // «Склад» (root) и «Здание Б» (root) с вложенным «Кабинет 101»,
+            // плюс несвязанное «Прочее здание» — mirrors D-24's own worked
+            // example «со склада в Здание Б».
+            let warehouse = create_test_place(&svc.writer, None, "Склад").await;
+            let building_b = create_test_place(&svc.writer, None, "Здание Б").await;
+            let room_b = create_test_place(&svc.writer, Some(building_b), "Кабинет 101").await;
+            let other = create_test_place(&svc.writer, None, "Прочее здание").await;
+
+            let dev1 = seed_test_device(&svc.writer, "Ноутбук 1").await;
+            let dev2 = seed_test_device(&svc.writer, "Ноутбук 2").await;
+            let dev3 = seed_test_device(&svc.writer, "Ноутбук 3").await;
+
+            // 1. Склад -> Кабинет 101 (вложено под Здание Б) — matches both
+            //    from=Склад and to=Здание Б (subtree-inclusive).
+            let mv1 = seed_test_movement(
+                &svc.writer,
+                "device",
+                dev1,
+                warehouse,
+                "Склад",
+                room_b,
+                "Здание Б / Кабинет 101",
+                "manual",
+                1_700_000_100,
+            )
+            .await;
+            // 2. Склад -> Прочее здание — matches from=Склад only.
+            seed_test_movement(
+                &svc.writer,
+                "device",
+                dev2,
+                warehouse,
+                "Склад",
+                other,
+                "Прочее здание",
+                "manual",
+                1_700_000_200,
+            )
+            .await;
+            // 3. Прочее здание -> Здание Б — matches to=Здание Б only, must
+            //    NOT show up in the from=Склад filter.
+            seed_test_movement(
+                &svc.writer,
+                "device",
+                dev3,
+                other,
+                "Прочее здание",
+                building_b,
+                "Здание Б",
+                "manual",
+                1_700_000_300,
+            )
+            .await;
+
+            let period = movements_wide_period();
+
+            // Sanity: без фильтра видны все 3 строки.
+            let all = svc
+                .list_movements(ReportFilter::default(), period.clone())
+                .await
+                .expect("list all movements");
+            assert_eq!(all.rows.len(), 3, "фикстура: 3 перемещения, {all:?}");
+
+            // Independent filter: only from_place_id set — both movement 1
+            // and 2 match (from=Склад), regardless of destination; movement
+            // 3 (from=Прочее здание) must not.
+            let from_only = svc
+                .list_movements(
+                    ReportFilter {
+                        from_place_id: Some(warehouse),
+                        ..Default::default()
+                    },
+                    period.clone(),
+                )
+                .await
+                .expect("list from-only");
+            assert_eq!(
+                from_only.rows.len(),
+                2,
+                "from_place_id=Склад без to-фильтра должен вернуть обе \
+                 строки независимо от места назначения: {from_only:?}"
+            );
+
+            // AND semantics (D-24): from=Склад AND to=Здание Б (subtree,
+            // includes Кабинет 101) — only movement 1 satisfies both sides.
+            let and_filtered = svc
+                .list_movements(
+                    ReportFilter {
+                        from_place_id: Some(warehouse),
+                        to_place_id: Some(building_b),
+                        ..Default::default()
+                    },
+                    period.clone(),
+                )
+                .await
+                .expect("list AND-filtered");
+            assert_eq!(
+                and_filtered.rows.len(),
+                1,
+                "AND-фильтр «со склада в Здание Б» должен вернуть РОВНО 1 \
+                 перемещение: {and_filtered:?}"
+            );
+            assert_eq!(and_filtered.rows[0].id, mv1);
+            assert_eq!(
+                and_filtered.rows[0].from_place_path.as_deref(),
+                Some("Склад")
+            );
+            assert_eq!(
+                and_filtered.rows[0].place_path.as_deref(),
+                Some("Здание Б / Кабинет 101"),
+                "«Куда» переиспользует place_path, не отдельное поле (D-23)"
+            );
+        })
+        .await
+        .expect("timeout");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn report_movements_deleted_item_marker() {
+        tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            let svc = make_movements_service();
+
+            let warehouse = create_test_place(&svc.writer, None, "Склад").await;
+            let office = create_test_place(&svc.writer, None, "Офис").await;
+            let device = seed_test_device(&svc.writer, "Принтер списанный").await;
+
+            seed_test_movement(
+                &svc.writer,
+                "device",
+                device,
+                warehouse,
+                "Склад",
+                office,
+                "Офис",
+                "manual",
+                1_700_000_100,
+            )
+            .await;
+
+            // D-25: soft-delete the underlying device AFTER the movement was
+            // recorded — a past-period report must not silently drop the row.
+            soft_delete_test_device(&svc.writer, device).await;
+
+            let result = svc
+                .list_movements(ReportFilter::default(), movements_wide_period())
+                .await
+                .expect("list movements after soft-delete");
+
+            assert_eq!(
+                result.rows.len(),
+                1,
+                "мягко удалённый предмет НЕ должен исчезать из отчёта: {result:?}"
+            );
+            assert_eq!(
+                result.rows[0].is_deleted,
+                Some(true),
+                "строка должна быть помечена как удалённая (D-25): {result:?}"
+            );
+            assert_eq!(
+                result.rows[0].device_name.as_deref(),
+                Some("Принтер списанный"),
+                "имя предмета должно резолвиться даже после удаления"
+            );
+        })
+        .await
+        .expect("timeout");
+    }
+
+    #[test]
+    fn row_field_reason_and_actor_name_and_from_place_path_arms() {
+        let mut row = make_row("2026-09", "Ноутбук 1", "Иванов И.И.");
+        row.from_place_path = Some("Склад / Стеллаж 3".to_string());
+        row.from_place_path_short = Some("Склад // Стеллаж 3".to_string());
+        row.actor_name = Some("Петров П.П.".to_string());
+        row.reason = Some("актом №42".to_string());
+
+        assert_eq!(
+            row_field(&row, "from_place_path", UtcOffset::UTC, false),
+            "Склад / Стеллаж 3"
+        );
+        assert_eq!(
+            row_field(&row, "from_place_path", UtcOffset::UTC, true),
+            "Склад // Стеллаж 3"
+        );
+        assert_eq!(
+            row_field(&row, "actor_name", UtcOffset::UTC, false),
+            "Петров П.П."
+        );
+        let reason = row_field(&row, "reason", UtcOffset::UTC, false);
+        assert_eq!(reason, "актом №42");
+        assert!(
+            !reason.contains("act") && !reason.contains("manual"),
+            "reason must never leak raw enum tokens: {reason}"
+        );
+    }
 }
