@@ -848,6 +848,73 @@ impl SqliteCartridgeRepository {
         })
     }
 
+    /// Каскадировать место принтера на все прикреплённые к нему картриджи
+    /// (Phase 40-21, UAT-40 gap «cartridge-does-not-follow-printer», вариант B).
+    ///
+    /// Читает `current_printer_device_id = printer_device_id` (FK-надёжный источник,
+    /// НЕ клиентский payload — T-40-21-01), для каждого картриджа проставляет новое
+    /// место и пишет отдельную запись перемещения через общий гейт D-04/D-06.
+    /// Без доп. optimistic-lock по `version` — это синхронизация производного
+    /// состояния (место следует за принтером), а не пользовательское редактирование;
+    /// конкурентный `transition()` картриджа перезапишет `place_id` своим следующим
+    /// шагом естественным образом.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cascade_place_for_printer_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        printer_device_id: i64,
+        new_place_id: Option<i64>,
+        source: MovementSource,
+        note: &str,
+        user_id: Option<i64>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        let attached: Vec<(i64, Option<i64>)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id, place_id FROM cartridges \
+                     WHERE current_printer_device_id = ?1 AND deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map(params![printer_device_id], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?))
+                })
+                .map_err(map_rusqlite)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row.map_err(map_rusqlite)?);
+            }
+            out
+        };
+
+        let place_movements_repo = SqlitePlaceMovementsRepository;
+        for (cartridge_id, old_place_id) in attached {
+            tx.execute(
+                "UPDATE cartridges SET place_id=?1, updated_at_utc=?2, version=version+1 \
+                 WHERE id=?3",
+                params![new_place_id, now_utc, cartridge_id],
+            )
+            .map_err(map_rusqlite)?;
+
+            place_movements_repo.record_movement_if_applicable(
+                tx,
+                &SqlitePlaceRepository,
+                MovementEntityKind::Cartridge,
+                cartridge_id,
+                old_place_id,
+                new_place_id,
+                source,
+                Some(note),
+                None,
+                user_id,
+                now_utc,
+            )?;
+        }
+
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Public read-only helpers (called from service layer via ReaderPool)
     // -----------------------------------------------------------------------

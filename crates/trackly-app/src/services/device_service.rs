@@ -32,8 +32,8 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::{
-    SqliteDeviceRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
-    SqlitePrinterRepository,
+    SqliteCartridgeRepository, SqliteDeviceRepository, SqlitePlaceMovementsRepository,
+    SqlitePlaceRepository, SqlitePrinterRepository,
 };
 
 use std::collections::HashMap;
@@ -57,6 +57,7 @@ pub struct DeviceService {
     pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
     pub(crate) place_repo: Arc<SqlitePlaceRepository>,
     pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
+    pub(crate) cartridge_repo: Arc<SqliteCartridgeRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
 }
@@ -78,6 +79,7 @@ impl DeviceService {
             printer_repo: Arc::new(SqlitePrinterRepository),
             place_repo: Arc::new(SqlitePlaceRepository),
             place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
+            cartridge_repo: Arc::new(SqliteCartridgeRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
         }
     }
@@ -273,6 +275,7 @@ impl DeviceService {
         let printer_repo = self.printer_repo.clone();
         let place_repo = self.place_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
+        let cartridge_repo = self.cartridge_repo.clone();
         let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через эту
         // границу (Plan 40-03, аналог `place_service::create`).
@@ -326,6 +329,23 @@ impl DeviceService {
                     user_id_opt,
                     now,
                 )?;
+
+                // Phase 40-21 (UAT-40 «cartridge-does-not-follow-printer», вариант B):
+                // когда меняется место принтера, каскадим место на все прикреплённые
+                // картриджи в ТОЙ ЖЕ транзакции. Шире, чем D-04/D-06 гейт самого
+                // устройства — принтеры физически двигаются даже когда их собственная
+                // запись не логируется (например переход через NULL).
+                if before_place_id != after.place_id {
+                    cartridge_repo.cascade_place_for_printer_in_tx(
+                        &tx,
+                        id,
+                        after.place_id,
+                        MovementSource::Manual,
+                        "вместе с принтером",
+                        user_id_opt,
+                        now,
+                    )?;
+                }
 
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(after)
