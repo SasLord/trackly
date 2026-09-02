@@ -123,3 +123,7 @@ None — no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+All 3 modified files verified present on disk; both task commits (`21731fdd`, `2a0d6b50`) and the summary commit (`5d68e927`) verified present in `git log --oneline --all`.
