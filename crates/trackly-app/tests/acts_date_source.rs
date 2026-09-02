@@ -228,6 +228,7 @@ async fn do_return_persists_own_date() {
         let explicit_date = t + 999_999;
         let ret_a = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -263,6 +264,7 @@ async fn do_return_persists_own_date() {
         let before_call = clock.unix_seconds();
         let ret_b = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),

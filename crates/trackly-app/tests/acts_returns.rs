@@ -153,7 +153,7 @@ async fn partial_return_keeps_handover_active() {
             }],
         };
         let ret = svc
-            .do_return(handover.id, return_payload)
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
             .await
             .expect("do_return");
         assert_eq!(ret.act_type, "return");
@@ -210,7 +210,7 @@ async fn full_return_archives_handover() {
                 })
                 .collect(),
         };
-        svc.do_return(handover.id, return_payload)
+        svc.do_return(&Identity::trusted_admin(), handover.id, return_payload)
             .await
             .expect("do_return full");
 
@@ -242,6 +242,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
         let it0 = &handover.items[0];
         let ret1 = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -267,6 +268,7 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
         // Return №2 — две оставшиеся позиции.
         let ret2 = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -370,7 +372,7 @@ async fn bulk_apply_with_per_row_override() {
                 },
             ],
         };
-        svc.do_return(handover.id, payload)
+        svc.do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect("do_return");
 
@@ -442,7 +444,7 @@ async fn return_when_apply_to_all_false_requires_per_row_values() {
             }],
         };
         let err = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect_err("must fail with Validation");
         match err {
@@ -478,6 +480,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
 
         let h1 = tokio::spawn(async move {
             svc1.do_return(
+                &Identity::trusted_admin(),
                 act_id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -500,6 +503,7 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
         });
         let h2 = tokio::spawn(async move {
             svc2.do_return(
+                &Identity::trusted_admin(),
                 act_id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -557,6 +561,7 @@ async fn return_does_not_increment_act_counter() {
         .expect("spawn before");
 
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -629,6 +634,7 @@ async fn return_with_apply_to_all_false_and_full_per_row_succeeds() {
             .expect("seed loc");
 
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: None,
@@ -705,7 +711,7 @@ async fn return_twice_same_device_rejected() {
 
         // 1st return of device A — succeeds; handover still has device B in
         // work, so parent.archived stays false.
-        svc.do_return(handover.id, payload())
+        svc.do_return(&Identity::trusted_admin(), handover.id, payload())
             .await
             .expect("first return");
 
@@ -713,7 +719,7 @@ async fn return_twice_same_device_rejected() {
         // must reject with Conflict («уже не в работе»). The parent-archived
         // check up the stack does NOT trip because device B is still in work.
         let err = svc
-            .do_return(handover.id, payload())
+            .do_return(&Identity::trusted_admin(), handover.id, payload())
             .await
             .expect_err("second return must fail");
         match err {
@@ -765,7 +771,7 @@ async fn return_with_duplicate_act_item_id_rejected() {
             items: vec![dup_item.clone(), dup_item],
         };
         let err = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect_err("dup act_item_id must fail");
         match err {
@@ -829,7 +835,7 @@ async fn return_with_duplicate_device_id_rejected() {
             ],
         };
         let err = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect_err("dup device_id must fail");
         match err {
@@ -884,7 +890,7 @@ async fn return_quantity_exceeds_handover_rejected() {
             }],
         };
         let err = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect_err("quantity overflow must fail");
         match err {
@@ -964,7 +970,7 @@ async fn create_persists_giver_receiver_from_payload() {
             }],
         };
         let ret = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect("do_return with explicit giver/receiver");
 
@@ -1015,7 +1021,7 @@ async fn create_falls_back_to_parent_swap_when_giver_receiver_absent() {
             }],
         };
         let ret = svc
-            .do_return(handover.id, payload)
+            .do_return(&Identity::trusted_admin(), handover.id, payload)
             .await
             .expect("do_return without giver/receiver (back-compat)");
 

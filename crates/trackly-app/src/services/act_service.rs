@@ -1119,14 +1119,19 @@ impl ActService {
         Ok(())
     }
 
-    pub async fn do_return(&self, act_id: i64, payload: ActReturnDto) -> Result<ActDto, AppError> {
+    pub async fn do_return(
+        &self,
+        caller: &Identity,
+        act_id: i64,
+        payload: ActReturnDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_return(&payload)?;
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = caller.user_id;
 
         let return_act_id = self
             .writer
@@ -1561,14 +1566,18 @@ impl ActService {
     ///
     /// D-10: an empty `items` set is rejected server-side before the
     /// transaction opens (`validate_update_return`).
-    pub async fn update_return(&self, payload: ActUpdateReturnDto) -> Result<ActDto, AppError> {
+    pub async fn update_return(
+        &self,
+        caller: &Identity,
+        payload: ActUpdateReturnDto,
+    ) -> Result<ActDto, AppError> {
         Self::validate_update_return(&payload)?;
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
         let places_repo = self.places_repo.clone();
-        let user_id_opt: Option<i64> = None;
+        let user_id_opt: Option<i64> = caller.user_id;
 
         let return_act_id = self
             .writer

@@ -182,7 +182,7 @@ async fn recompute_parent_archived_count_based() {
                 },
             ],
         };
-        svc.do_return(handover.id, ret_payload)
+        svc.do_return(&Identity::trusted_admin(), handover.id, ret_payload)
             .await
             .expect("do_return partial");
 
@@ -210,7 +210,7 @@ async fn recompute_parent_archived_count_based() {
                 place_id_override: None,
             }],
         };
-        svc.do_return(handover.id, ret_payload_2)
+        svc.do_return(&Identity::trusted_admin(), handover.id, ret_payload_2)
             .await
             .expect("do_return remaining");
 
@@ -348,6 +348,7 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
         let it1 = handover.items[1].clone();
         let ret = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -427,6 +428,7 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
         let it1 = handover.items[1].clone();
         let ret1 = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -462,6 +464,7 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
         let it2 = handover.items[2].clone();
         let ret2 = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -551,6 +554,7 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
 
         let ret = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -625,6 +629,7 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
         // Return first device.
         let it0 = handover.items[0].clone();
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -706,6 +711,7 @@ async fn cardinality_bound_rejects_extra_device_id() {
         let it0 = handover.items[0].clone();
         let err = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -914,6 +920,7 @@ async fn undo_return_restores_archived_to_false() {
             .collect();
         let ret = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -1052,6 +1059,7 @@ async fn handover_via_resolved_place_sets_device_place_id() {
         // Now do_return with bulk_place_id — verify devices.place_id is updated.
         let it0 = handover.items[0].clone();
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),

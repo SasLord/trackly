@@ -208,6 +208,7 @@ async fn delete_handover_with_partial_return_cascades_undo() {
 
         // Partial return: возвращаем одно устройство в condition="Б/У".
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Б/У".into()),
@@ -271,6 +272,7 @@ async fn delete_return_restores_to_handover_state_unarchives_parent() {
         // Full return → handover archived.
         let return_dto = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),

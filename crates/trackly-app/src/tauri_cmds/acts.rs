@@ -69,7 +69,7 @@ pub async fn build_acts_return(
     payload: ActReturnDto,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.do_return(act_id, payload).await
+    ctx.acts.do_return(caller, act_id, payload).await
 }
 
 /// Мутация: требует `caller` с правом `MutateActs`.
@@ -105,7 +105,7 @@ pub async fn build_acts_update_return(
     payload: ActUpdateReturnDto,
 ) -> Result<ActDto, AppError> {
     authorize(caller, &Action::MutateActs)?;
-    ctx.acts.update_return(payload).await
+    ctx.acts.update_return(caller, payload).await
 }
 
 pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCountsDto, AppError> {

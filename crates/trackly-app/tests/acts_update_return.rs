@@ -202,6 +202,7 @@ async fn do_return_for(
         })
         .collect();
     svc.do_return(
+        &Identity::trusted_admin(),
         handover.id,
         ActReturnDto {
             bulk_condition: Some(condition.into()),
@@ -285,7 +286,7 @@ async fn retained_edit_changes_device_condition_location() {
 
         let update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_c);
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return retained edit");
         assert_eq!(updated.items.len(), 1);
@@ -338,7 +339,7 @@ async fn un_return_restores_prior_state() {
         // Remove device 0 from the return (keep only device 1).
         let update = update_return_dto_from(&ret, &[kept_id], "Хорошее", loc_b);
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return un-return");
         assert_eq!(updated.items.len(), 1, "return now has 1 item");
@@ -393,7 +394,7 @@ async fn add_outstanding_device_to_return() {
         // Add the still-outstanding device (device 1) to the SAME return.
         let update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return add outstanding");
         assert_eq!(updated.items.len(), 2, "return now has 2 items");
@@ -429,7 +430,7 @@ async fn reject_empty_item_set() {
         update.items = Vec::new();
 
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("empty item set must be rejected");
         match err {
@@ -473,7 +474,7 @@ async fn reject_un_return_after_reissue() {
         // non-empty — still contains device 1 — so D-10 does not trip).
         let update = update_return_dto_from(&ret, &[other_id], "Хорошее", loc_b);
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("un-return after reissue must be rejected");
         match err {
@@ -580,7 +581,7 @@ async fn reject_edit_after_manual_device_relocation() {
         }];
 
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("edit after manual relocation must be rejected");
         match err {
@@ -610,7 +611,7 @@ async fn allow_edit_when_device_untouched() {
         // Re-submit the SAME condition/location — no drift since the return.
         let update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("no-op resubmit on an untouched device must succeed");
         assert_eq!(updated.items.len(), 1);
@@ -643,7 +644,7 @@ async fn add_last_device_archives_parent() {
 
         // Add device 1 to the SAME return.
         let update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
-        svc.update_return(update)
+        svc.update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return add last device");
 
@@ -677,7 +678,7 @@ async fn un_return_unarchives_parent() {
 
         // Un-return device 0 (keep device 1 in the return — non-empty items).
         let update = update_return_dto_from(&ret, &[device_ids[1]], "Хорошее", loc_b);
-        svc.update_return(update)
+        svc.update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return un-return one device");
 
@@ -708,7 +709,7 @@ async fn version_mismatch_returns_conflict() {
         update.expected_version = ret.version - 1;
 
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("stale version must fail");
         match err {
@@ -757,7 +758,7 @@ async fn edit_persists_giver_receiver() {
         update.receiver_name = "Новый Принимающий".into();
 
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return giver/receiver edit");
         assert_eq!(updated.giver_name, "Новый Возвращающий");
@@ -794,7 +795,7 @@ async fn retained_edit_condition_only_preserves_location() {
         let mut update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_b);
         update.bulk_place_id = None;
 
-        svc.update_return(update)
+        svc.update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return condition-only edit");
 
@@ -835,7 +836,7 @@ async fn add_outstanding_device_without_bulk_location_preserves_current_location
         let mut update = update_return_dto_from(&ret, &device_ids, "Хорошее", loc_b);
         update.bulk_place_id = None;
 
-        svc.update_return(update)
+        svc.update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return add outstanding without bulk location");
 
@@ -874,14 +875,14 @@ async fn un_return_after_retained_edit_restores_original_pre_return_state() {
         // writes dev1's custom:return_item_edit audit row (step 11).
         let update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_c);
         let updated = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect("update_return retained edit on dev1+dev2");
 
         // 3. Un-return dev1 (remove it, keep dev2 so D-10's non-empty guard
         // doesn't trip).
         let update2 = update_return_dto_from(&updated, &[dev2], "Хорошее", loc_b);
-        svc.update_return(update2)
+        svc.update_return(&Identity::trusted_admin(), update2)
             .await
             .expect("update_return un-return dev1 after retained edit");
 
@@ -928,7 +929,7 @@ async fn reject_update_return_duplicate_device_id_across_items() {
         update.items.push(dup);
 
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("duplicate device_id across items must be rejected");
         match err {
@@ -961,7 +962,7 @@ async fn reject_update_return_missing_override_when_apply_to_all_false() {
         // their helper-default None — this must be rejected server-side.
 
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("missing per-item override with apply_to_all=false must be rejected");
         match err {
@@ -1008,7 +1009,7 @@ async fn reject_add_when_device_already_returned_elsewhere_under_parent() {
         // -> 1+1>1.
         let update = update_return_dto_from(&r2, &[dev_y, dev_x], "Хорошее", loc_b);
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("adding a device already covered by a sibling return must be rejected");
         match err {
@@ -1056,7 +1057,7 @@ async fn update_return_null_parent_act_id_returns_error_not_panic() {
 
         let update = update_return_dto_from(&ret, &device_ids, "Б/У", loc_a);
         let err = svc
-            .update_return(update)
+            .update_return(&Identity::trusted_admin(), update)
             .await
             .expect_err("NULL parent_act_id must return an error, not panic the writer task");
         assert!(

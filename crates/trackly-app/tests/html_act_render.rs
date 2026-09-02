@@ -1336,6 +1336,7 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
     let return_act = p
         .acts
         .do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),

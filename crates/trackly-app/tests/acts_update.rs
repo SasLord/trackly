@@ -445,6 +445,7 @@ async fn reject_update_on_return_act() {
 
         let return_act = svc
             .do_return(
+                &Identity::trusted_admin(),
                 handover.id,
                 ActReturnDto {
                     bulk_condition: Some("Хорошее".into()),
@@ -654,6 +655,7 @@ async fn reject_removal_of_returned_device() {
             .find(|it| it.device_id == device_ids[0])
             .expect("item for device 0");
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -733,6 +735,7 @@ async fn header_edit_free_even_with_existing_return() {
             .find(|it| it.device_id == device_ids[0])
             .expect("item for device 0");
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -864,6 +867,7 @@ async fn remove_last_outstanding_archives_act() {
             .find(|it| it.device_id == device_ids[0])
             .expect("item for device 0");
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -934,6 +938,7 @@ async fn add_device_to_archived_unarchives() {
             .find(|it| it.device_id == device_ids[0])
             .expect("item for device 0");
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),
@@ -1015,6 +1020,7 @@ async fn rename_with_return_frees_old_number() {
             .find(|it| it.device_id == device_ids[0])
             .expect("item for device 0");
         svc.do_return(
+            &Identity::trusted_admin(),
             handover.id,
             ActReturnDto {
                 bulk_condition: Some("Хорошее".into()),

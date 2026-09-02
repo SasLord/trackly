@@ -236,7 +236,9 @@ async fn search_filters_by_tab() {
                 place_id_override: None,
             }],
         };
-        svc.do_return(h2.id, return_payload).await.expect("return");
+        svc.do_return(&Identity::trusted_admin(), h2.id, return_payload)
+            .await
+            .expect("return");
 
         // Search «Сидоров» по handover-filter (archived=None — h2 уже архивирован
         // после полного возврата) → 1 (только h2, без return).

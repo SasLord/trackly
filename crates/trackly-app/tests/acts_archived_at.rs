@@ -111,7 +111,7 @@ async fn archived_at_utc_present_for_fully_returned_parent() {
             handover_date_utc: None,
         };
         let ret = svc
-            .do_return(handover.id, return_payload)
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
             .await
             .expect("do_return full");
 
@@ -161,7 +161,7 @@ async fn archived_at_utc_absent_for_partially_returned_parent() {
             receiver_name: None,
             handover_date_utc: None,
         };
-        svc.do_return(handover.id, return_payload)
+        svc.do_return(&Identity::trusted_admin(), handover.id, return_payload)
             .await
             .expect("do_return partial");
 

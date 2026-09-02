@@ -226,7 +226,7 @@ async fn full_lifecycle_then_undo() {
                 .collect(),
         };
         p.acts
-            .do_return(handover.id, partial_payload)
+            .do_return(&Identity::trusted_admin(), handover.id, partial_payload)
             .await
             .expect("partial return");
         let counts2 = p.acts.counts().await.expect("counts2");
@@ -253,7 +253,7 @@ async fn full_lifecycle_then_undo() {
             }],
         };
         p.acts
-            .do_return(handover.id, final_payload)
+            .do_return(&Identity::trusted_admin(), handover.id, final_payload)
             .await
             .expect("final return");
         let counts3 = p.acts.counts().await.expect("counts3");

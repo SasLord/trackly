@@ -119,7 +119,7 @@ async fn returns_report_loads_when_sub_number_is_set() {
     };
 
     let ret = act_svc
-        .do_return(handover.id, return_payload)
+        .do_return(&Identity::trusted_admin(), handover.id, return_payload)
         .await
         .expect("do_return");
 
