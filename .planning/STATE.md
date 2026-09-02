@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-02T10:45:33.127Z"
+last_updated: "2026-09-02T11:01:49.909Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 50
+  completed_plans: 51
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 14 of 20
+Plan: 15 of 20
 Status: Ready to execute
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -356,6 +356,7 @@ Last activity: 2026-09-02
 | Phase 40 P10 | 30min | 3 tasks | 17 files |
 | Phase 40 P12 | 35m | 2 tasks | 4 files |
 | Phase 40 P13 | ~40min | 2 tasks | 4 files |
+| Phase 40 P14 | 35min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -887,6 +888,7 @@ Recent decisions affecting current work:
 - [Phase 40]: Added the actual #[tauri::command] reports_list_movements wrapper + specta registration in Plan 40-12, ahead of what its action text literally asked for, because Plan 40-18's UI wiring assumes it already exists
 - [Phase 40-13]: D-28 bulk move gated on Action::MutateDevices + Action::MutateCartridges (D-13, no new Action variant)
 - [Phase 40-13]: Tauri command returns i32 (not usize) — tauri-specta cannot export usize (BigIntForbidden); service/build_* layer keeps usize
+- [Phase 40]: Plan 14 (role-matrix coverage): 8 new Cases (52-59) in role_endpoint_matrix.rs, one HTTP + one Tauri Case per endpoint family, closing the IN-02-shaped gap for timeline read, movements report list/export, and bulk-move
 
 ### Pending Todos
 
@@ -1075,8 +1077,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T10:45:33.117Z
-Stopped at: Completed 40-13-PLAN.md
+Last session: 2026-09-02T11:01:49.898Z
+Stopped at: Completed 40-14-PLAN.md
 Resume file: 
 
 None
