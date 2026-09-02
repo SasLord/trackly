@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 12/20 | In Progress|  |
+| 40. История перемещений | v1.4 | 13/20 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -399,7 +399,7 @@ Plans:
 - [x] 40-09-PLAN.md — запись перемещений в актах (HST-03): create/update/do_return/update_return + NULL-skip (D-06/Pitfall 4)
 - [x] 40-10-PLAN.md — таймлайн: MovementEntryDto + PlaceMovementService + оба транспорта (Action::ReadPlaces)
 - [x] 40-12-PLAN.md — отчёт «Перемещения», часть B: columns_for/gate ReadPlaces (не ReadData!) + HTTP + экспорт
-- [ ] 40-13-PLAN.md — D-28 массовый перенос: PlaceService::move_subtree_contents + оба транспорта
+- [x] 40-13-PLAN.md — D-28 массовый перенос: PlaceService::move_subtree_contents + оба транспорта
 
 **Wave 4** *(blocked on Wave 3)*
 
