@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-02T02:06:22.842Z"
+last_updated: "2026-09-02T10:19:12.636Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 48
+  completed_plans: 49
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 12 of 20
+Plan: 13 of 20
 Status: Ready to execute
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -354,6 +354,7 @@ Last activity: 2026-09-02
 | Phase 40 P08 | 40min | 3 tasks | 3 files |
 | Phase 40 P09 | 40min | 3 tasks | 2 files |
 | Phase 40 P10 | 30min | 3 tasks | 17 files |
+| Phase 40 P12 | 35m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -881,6 +882,8 @@ Recent decisions affecting current work:
 - [Phase 40]: D-05's meaningful reason lives in note, not source — transition-driven cartridge movements keep source=Manual (D-07 closed enum) and carry an operation-derived Russian note; manual PlacePicker edits keep note=None
 - [Phase 40]: Plan 40-09: un-return loop in update_return not wired to record_movement_if_applicable — Plan scoped exactly 5 call sites (create/update/do_return/update_return's added+retained_with_change loops); un-return's place restoration explicitly out of scope per plan's own action text and grep-count acceptance criteria
 - [Phase 40]: Timeline actor_display resolved inline via SQL fallback (login), not a new repo method; compute_place_path_short called synchronously inside the same spawn_blocking closure to avoid N nested async spawns per timeline
+- [Phase 40]: columns_for("movements") uses handover_date_utc as its date key, not created_at_utc — row_field/ReportRow only populate the former (Plan 40-11's field-reuse decision)
+- [Phase 40]: Added the actual #[tauri::command] reports_list_movements wrapper + specta registration in Plan 40-12, ahead of what its action text literally asked for, because Plan 40-18's UI wiring assumes it already exists
 
 ### Pending Todos
 
@@ -1069,8 +1072,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T02:06:22.832Z
-Stopped at: Completed 40-10-PLAN.md
+Last session: 2026-09-02T10:19:12.626Z
+Stopped at: Completed 40-12-PLAN.md
 Resume file: 
 
 None
