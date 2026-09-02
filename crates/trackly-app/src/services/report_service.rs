@@ -1105,7 +1105,21 @@ fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String
             combine_printer_and_place(row.device_name.clone(), place).unwrap_or_default()
         }
         "act_type" => row.act_type.as_deref().unwrap_or("").to_string(),
-        "device_name" => row.device_name.as_deref().unwrap_or("").to_string(),
+        // WR-01/D-25: CSV/PDF export parity with the live table's
+        // «Удалено» badge (`ReportTable.svelte::showDeletedBadge`) — a
+        // soft-deleted item's exported row must stay distinguishable from a
+        // still-in-inventory one, not just on screen. `is_deleted` is only
+        // ever `Some(true)` for the movements report (every other report
+        // domain leaves it `None`), so this is a no-op for the other 12
+        // reports.
+        "device_name" => {
+            let name = row.device_name.as_deref().unwrap_or("");
+            if row.is_deleted == Some(true) {
+                format!("{name} (удалено)")
+            } else {
+                name.to_string()
+            }
+        }
         "quantity" => row.quantity.map(|q| q.to_string()).unwrap_or_default(),
         "code" => row.code.as_deref().unwrap_or("").to_string(),
         "model_label" => row.model_label.as_deref().unwrap_or("").to_string(),
@@ -3506,6 +3520,33 @@ mod tests {
         })
         .await
         .expect("timeout");
+    }
+
+    #[test]
+    fn row_field_device_name_appends_deleted_marker_when_is_deleted() {
+        // WR-01/D-25: CSV/PDF export parity with the live table's «Удалено»
+        // badge — a soft-deleted item's exported device_name cell must carry
+        // the same marker, not just the on-screen badge.
+        let mut row = make_row("2026-09", "Принтер списанный", "Иванов И.И.");
+        row.is_deleted = Some(true);
+        assert_eq!(
+            row_field(&row, "device_name", UtcOffset::UTC, false),
+            "Принтер списанный (удалено)"
+        );
+
+        // Not deleted (or unknown, `None`, as on the other 12 report
+        // domains) — no marker, byte-identical to the pre-fix behaviour.
+        let mut row_not_deleted = make_row("2026-09", "Принтер живой", "Иванов И.И.");
+        row_not_deleted.is_deleted = Some(false);
+        assert_eq!(
+            row_field(&row_not_deleted, "device_name", UtcOffset::UTC, false),
+            "Принтер живой"
+        );
+        let row_unknown = make_row("2026-09", "Ноутбук обычный", "Иванов И.И.");
+        assert_eq!(
+            row_field(&row_unknown, "device_name", UtcOffset::UTC, false),
+            "Ноутбук обычный"
+        );
     }
 
     #[test]

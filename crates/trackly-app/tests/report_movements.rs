@@ -539,3 +539,92 @@ async fn report_movements_export_pdf_has_d23_headers() {
         "PDF/HTML export must show the report_display_name in its header"
     );
 }
+
+/// WR-01/D-25: a soft-deleted item's movement row must carry the same
+/// «удалено» marker in the exported CSV body that the live table already
+/// shows via its badge — not just in the headers (the pre-existing
+/// `*_has_d23_headers` tests above only assert headers, never the body).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_csv_marks_deleted_device_in_body() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад").await;
+    let office = seed_place(&ctx, None, "Офис").await;
+    let device = seed_device(&ctx, "Принтер списанный CSV").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device,
+        warehouse,
+        "Склад",
+        office,
+        "Офис",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+    soft_delete_device(&ctx, device).await;
+
+    let bytes = build_reports_export_csv(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements CSV after soft-delete");
+
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("Принтер списанный CSV (удалено)"),
+        "WR-01: CSV export body must mark a soft-deleted item's row, got: {text}"
+    );
+}
+
+/// WR-01/D-25: same parity check as the CSV test above, for the PDF/HTML
+/// export body.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_pdf_marks_deleted_device_in_body() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад").await;
+    let office = seed_place(&ctx, None, "Офис").await;
+    let device = seed_device(&ctx, "Принтер списанный PDF").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device,
+        warehouse,
+        "Склад",
+        office,
+        "Офис",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+    soft_delete_device(&ctx, device).await;
+
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements PDF/HTML after soft-delete");
+
+    assert!(
+        html.contains("Принтер списанный PDF (удалено)"),
+        "WR-01: PDF/HTML export body must mark a soft-deleted item's row"
+    );
+}
