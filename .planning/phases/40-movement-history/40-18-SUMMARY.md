@@ -119,3 +119,14 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/reports/ReportSubNav.svelte
+- FOUND: ui/src/features/reports/ReportFilters.svelte
+- FOUND: ui/src/features/reports/ReportTable.svelte
+- FOUND: ui/src/features/reports/ReportsPage.svelte
+- FOUND: .planning/phases/40-movement-history/40-18-SUMMARY.md
+- FOUND commit: 4b9132c0
+- FOUND commit: 1741ed40
+- FOUND commit: c8d755ad
