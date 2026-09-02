@@ -31,7 +31,10 @@
 
 use std::sync::Arc;
 
+use rusqlite::OptionalExtension;
+
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::places::{
     sibling_cmp, PathDisplayVariant, PlaceContentRow, PlaceNew, PlaceRow, SubtreeStats,
 };
@@ -41,7 +44,9 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
-use trackly_infra::repos::SqlitePlaceRepository;
+use trackly_infra::repos::{
+    SqliteDeviceRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
+};
 
 use crate::dto::place::{PlaceDto, PlacePathDto};
 
@@ -651,6 +656,135 @@ impl PlaceService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
+    }
+
+    /// D-28 "Перенести всё содержимое в…" — bulk-relocate every device,
+    /// printer, and cartridge in `root_id`'s subtree (nested, matching
+    /// "и всех вложенных местах") to `target_place_id`, recording one
+    /// `place_movements` row per item, all inside ONE transaction
+    /// ("одной транзакцией" — atomicity mirrors the WR-05 lesson from Phase
+    /// 39.2: a failure partway through rolls back every UPDATE and INSERT
+    /// already performed in this call, not just the failing item).
+    ///
+    /// D-13: reuses the existing per-entity mutate permissions
+    /// (`MutateDevices` + `MutateCartridges`, both Admin|Manager) rather than
+    /// introducing a new blanket `Action` — the subtree may contain both
+    /// kinds, so both gates are checked up front, before any row is read.
+    ///
+    /// Walks the exact same `PlaceContentRow` shape `list_subtree_contents`
+    /// returns (`kind: 'device'|'printer'|'cartridge'`); `'printer'` is
+    /// treated identically to `'device'` since both address `devices.place_id`
+    /// (printers are devices with `type_id` = the printer type — Phase 6).
+    /// An item already at `target_place_id` still gets its (no-op) UPDATE but
+    /// is skipped for movement-recording by `record_movement_if_applicable`'s
+    /// own D-04 guard — counted in the returned total regardless.
+    pub async fn move_subtree_contents(
+        &self,
+        caller: &Identity,
+        root_id: i64,
+        target_place_id: i64,
+        note: Option<String>,
+    ) -> Result<usize, AppError> {
+        authorize(caller, &Action::MutateDevices)?;
+        authorize(caller, &Action::MutateCartridges)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let places_repo = self.repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                let devices_repo = SqliteDeviceRepository;
+                let place_movements_repo = SqlitePlaceMovementsRepository;
+
+                let items = places_repo.list_subtree_contents(&tx, root_id, true)?;
+
+                let mut moved = 0usize;
+                for item in &items {
+                    match item.kind.as_str() {
+                        "device" | "printer" => {
+                            let before = devices_repo.get_in_tx(&tx, item.id)?;
+                            let before_place_id = before.place_id;
+
+                            devices_repo.update_status_and_place_in_tx(
+                                &tx,
+                                item.id,
+                                before.status_id,
+                                Some(target_place_id),
+                                now,
+                            )?;
+
+                            place_movements_repo.record_movement_if_applicable(
+                                &tx,
+                                places_repo.as_ref(),
+                                MovementEntityKind::Device,
+                                item.id,
+                                before_place_id,
+                                Some(target_place_id),
+                                MovementSource::Manual,
+                                note.as_deref(),
+                                None,
+                                user_id,
+                                now,
+                            )?;
+                        }
+                        "cartridge" => {
+                            let before_place_id: Option<i64> = tx
+                                .query_row(
+                                    "SELECT place_id FROM cartridges WHERE id = ?1",
+                                    rusqlite::params![item.id],
+                                    |r| r.get(0),
+                                )
+                                .optional()
+                                .map_err(map_rusqlite)?
+                                .flatten();
+
+                            // No expected-version check: this is a
+                            // system-initiated bulk operation (D-28), not a
+                            // user-supplied optimistic-lock edit — mirrors
+                            // devices' `update_status_and_place_in_tx`, which
+                            // also bumps `version` without requiring a caller
+                            // -supplied expected value.
+                            let affected = tx
+                                .execute(
+                                    "UPDATE cartridges SET place_id = ?1, \
+                                     updated_at_utc = ?2, version = version + 1 \
+                                     WHERE id = ?3 AND deleted_at_utc IS NULL",
+                                    rusqlite::params![target_place_id, now, item.id],
+                                )
+                                .map_err(map_rusqlite)?;
+                            if affected == 0 {
+                                return Err(AppError::NotFound {
+                                    entity: "cartridge",
+                                    id: item.id,
+                                });
+                            }
+
+                            place_movements_repo.record_movement_if_applicable(
+                                &tx,
+                                places_repo.as_ref(),
+                                MovementEntityKind::Cartridge,
+                                item.id,
+                                before_place_id,
+                                Some(target_place_id),
+                                MovementSource::Manual,
+                                note.as_deref(),
+                                None,
+                                user_id,
+                                now,
+                            )?;
+                        }
+                        _ => {}
+                    }
+                    moved += 1;
+                }
+
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(moved)
+            })
+            .await
     }
 
     /// Cyrillic-safe full-path substring search (PLC-03/PLC-05). NEVER builds
