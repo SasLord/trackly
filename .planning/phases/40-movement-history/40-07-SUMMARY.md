@@ -95,3 +95,12 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-app/src/services/device_service.rs
+- FOUND: crates/trackly-app/tests/place_movements_write_sites_devices.rs
+- FOUND: .planning/phases/40-movement-history/40-07-SUMMARY.md
+- FOUND commit: e00d9d95
+- FOUND commit: 53825e87
+- FOUND commit: e95115de
