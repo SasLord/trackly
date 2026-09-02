@@ -2536,6 +2536,7 @@ impl ActService {
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let devices_repo = self.devices_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         self.writer
@@ -2577,6 +2578,11 @@ impl ActService {
                             // не сработает на soft-delete — делаем явно через
                             // helper repo).
                             acts_repo.soft_delete_in_tx(&tx, ret.id, ret.version, now)?;
+                            // D-03/HST-03: undo means the movement never
+                            // effectively happened — delete its own rows,
+                            // scoped strictly to this return's act_id, at
+                            // this point in the LIFO loop (Pitfall 5).
+                            place_movements_repo.delete_by_act_id_in_tx(&tx, ret.id)?;
                             audit_repo.insert(
                                 &tx,
                                 AuditEntry {
@@ -2607,6 +2613,9 @@ impl ActService {
                             now,
                         )?;
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
+                        // D-03/HST-03: the handover's own delete, at its own
+                        // point in the flow, scoped to its own act_id.
+                        place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
                         audit_repo.insert(
                             &tx,
                             AuditEntry {
@@ -2632,6 +2641,9 @@ impl ActService {
                             now,
                         )?;
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
+                        // D-03/HST-03: standalone return's own delete, scoped
+                        // to its own act_id.
+                        place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
                         if let Some(parent_id) = act.parent_act_id {
                             recompute_parent_archived(&tx, parent_id, now)?;
                         }
