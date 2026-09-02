@@ -12,7 +12,8 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
   import { portal } from '$lib/utils/portal';
-  import type { DeviceDto } from '../../bindings';
+  import PlaceEntityViewModal from '../places/PlaceEntityViewModal.svelte';
+  import type { DeviceDto, PlaceContentDto } from '../../bindings';
 
   interface Props {
     device: DeviceDto;
@@ -21,9 +22,57 @@
     /** Plan 03-05 (DEV-14): открыть intermediate-модал документа приёма
      *  для этого устройства. Optional — если не передан, пункт меню скрыт. */
     onPrintAcceptance?: (_d: DeviceDto) => void;
+    /** Plan 40-16 (D-14): `DeviceDto` only carries `status_id`, not a resolved
+     *  label — the parent `DeviceListRow` already computes this via its own
+     *  `STATUS_LABELS` map for the status `Badge`, so it's threaded through
+     *  here rather than re-deriving the same mapping a second time. Used only
+     *  to fill `PlaceContentDto.status_name` when opening the read-only view. */
+    statusName: string;
   }
 
-  const { device, onEdit, onDelete, onPrintAcceptance }: Props = $props();
+  const { device, onEdit, onDelete, onPrintAcceptance, statusName }: Props = $props();
+
+  // Plan 40-16 (D-14): first entry point for `PlaceEntityViewModal` outside
+  // `PlaceContents` — the new first menu item below opens the same read-only
+  // modal (now also showing the device/printer's «История перемещений»
+  // timeline, Plan 40-16 Task 1) directly from the device list's kebab menu.
+  // The device list only ever carries `kind: 'device'` rows (printers are
+  // edited/viewed via the
+  // exact same `devices` data — see `PlaceEntityViewModal`'s own file-header
+  // comment — but THIS entry point is device-list-only, so `kind` is always
+  // 'device' here, never 'printer').
+  let viewRow = $state<PlaceContentDto | null>(null);
+
+  function handleView() {
+    closeMenu();
+    viewRow = {
+      kind: 'device',
+      id: device.id,
+      name: device.name,
+      inventory_or_code: device.inventory_no ?? null,
+      full_path: device.full_path ?? '',
+      place_path_short: device.place_path_short ?? '',
+      status_name: statusName,
+    };
+  }
+
+  function handleViewClose() {
+    viewRow = null;
+  }
+
+  // Mirrors PlaceContents.svelte's own `onChanged` wiring for this exact same
+  // modal: a save from the view modal's internal edit form (its own «edit»
+  // menu label, not this file's) may have changed the device's
+  // name/place/status, so reuse the already-
+  // wired `onDelete` refresh callback (DevicesPage's `onDelete` handler is a
+  // generic "reload the list + counts" signal, not delete-specific — see
+  // `DevicesPage.svelte`'s own `onDelete={() => { refresh(); refreshCounts(); }}`)
+  // rather than threading a brand-new `onChanged` prop through
+  // DeviceList/DeviceGroupRow, which is out of this plan's file scope.
+  function handleViewChanged() {
+    viewRow = null;
+    onDelete();
+  }
 
   let menuOpen = $state(false);
   let confirmOpen = $state(false);
@@ -190,6 +239,7 @@
     style="left:{menuX}px; top:{menuY}px;"
     onkeydown={handleMenuKeydown}
   >
+    <button class="ctx-menu-item" role="menuitem" onclick={handleView}> Просмотр </button>
     <button class="ctx-menu-item" role="menuitem" onclick={handleEdit}> Редактировать </button>
     {#if onPrintAcceptance}
       <button class="ctx-menu-item" role="menuitem" onclick={handlePrintAcceptance}>
@@ -214,6 +264,10 @@
     <Button variant="destructive" loading={deleting} onclick={handleDelete}>Удалить</Button>
   {/snippet}
 </Modal>
+
+{#if viewRow}
+  <PlaceEntityViewModal row={viewRow} onClose={handleViewClose} onChanged={handleViewChanged} />
+{/if}
 
 <style lang="scss">
   .context-menu-wrapper {

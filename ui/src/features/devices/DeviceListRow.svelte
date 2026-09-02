@@ -73,7 +73,7 @@
     </td>
   {/if}
   <td class="cell cell-actions">
-    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} />
+    <DeviceContextMenu {device} {onEdit} {onDelete} {onPrintAcceptance} statusName={statusLabel} />
   </td>
 </TableRow>
 
