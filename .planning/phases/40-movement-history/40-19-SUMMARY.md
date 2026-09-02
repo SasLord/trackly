@@ -112,3 +112,9 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: ui/src/features/places/PlaceContents.svelte
+- FOUND commit: 8bc921c9
+- FOUND commit: ce52635b
