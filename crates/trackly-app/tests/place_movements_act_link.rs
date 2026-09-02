@@ -22,7 +22,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
-use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::act::{
+    ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto, ActUpdateDto, ActUpdateItemDto,
+    ActUpdateReturnDto,
+};
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -122,6 +125,36 @@ async fn count_movements_for_entities(
     .await
     .expect("spawn_blocking")
     .expect("count place_movements by entity_id")
+}
+
+/// Read the LATEST `place_movements` row for a single `(entity_type='device',
+/// entity_id)` — used by the CR-01 regression tests below, where an act edit
+/// records a SECOND row on top of the one created at handover/return time and
+/// only the newest one is under test.
+async fn latest_movement_for_device(
+    readers: Arc<trackly_infra::db::pools::ReaderPool>,
+    device_id: i64,
+) -> (String, i64, i64, Option<i64>) {
+    tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT source, from_place_id, to_place_id, act_id \
+             FROM place_movements WHERE entity_type='device' AND entity_id=?1 \
+             ORDER BY id DESC LIMIT 1",
+            params![device_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, Option<i64>>(3)?,
+                ))
+            },
+        )
+    })
+    .await
+    .expect("spawn_blocking")
+    .expect("query latest place_movements row for device")
 }
 
 // ---------------------------------------------------------------------------
@@ -413,4 +446,224 @@ async fn place_movements_act_undo_deletes() {
     })
     .await
     .expect("place_movements_act_undo_deletes exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// place_movements_act_edit_remove_records_reversion (CR-01 gap closure)
+// ---------------------------------------------------------------------------
+
+/// Editing an already-created handover act to drop one device must record
+/// the resulting place reversion, not just mutate `devices.place_id` silently
+/// (CR-01). `create` moves the device place_a -> place_b (recorded); `update`
+/// then drops the device, which `restore_from_snapshot_in_tx` reverts back to
+/// place_a — a SECOND real place->place change that must get its own
+/// `place_movements` row, linked to the SAME act (the edit, not a new act).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn place_movements_act_edit_remove_records_reversion() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let place_a = seed_place(&svc.writer, "Каб. 501").await;
+        let place_b = seed_place(&svc.writer, "Склад №5").await;
+        let device_ids =
+            seed_devices_at_place(&svc.writer, &["Ноутбук HP", "Ноутбук Lenovo"], Some(place_a))
+                .await;
+        let dev_id = device_ids[0];
+        let kept_id = device_ids[1];
+
+        let handover_payload = ActCreateDto {
+            number_override: None,
+            giver_name: "Фёдоров Ф.Ф.".into(),
+            receiver_name: "Морозов М.М.".into(),
+            place_id: Some(place_b),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: device_ids
+                .iter()
+                .map(|&id| ActItemNewDto {
+                    device_id: id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                })
+                .collect(),
+        };
+        let handover = svc
+            .create(&Identity::trusted_admin(), handover_payload)
+            .await
+            .expect("create handover, real place change a->b");
+
+        // Exactly one movement row per device so far: a -> b, linked to the
+        // handover.
+        assert_eq!(
+            count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
+            1,
+            "sanity: handover create recorded exactly one movement"
+        );
+
+        // Edit the act to drop `dev_id`, keeping `kept_id` (D-10 rejects an
+        // empty replacement set, so a real edit needs a survivor).
+        let update = ActUpdateDto {
+            id: handover.id,
+            expected_version: handover.version,
+            number_override: None,
+            giver_name: handover.giver_name.clone(),
+            receiver_name: handover.receiver_name.clone(),
+            place_id: handover.place_id,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActUpdateItemDto {
+                device_id: kept_id,
+                complectation_at_time: None,
+            }],
+        };
+        svc.update(&Identity::trusted_admin(), update)
+            .await
+            .expect("update: remove dev_id from the act, keep kept_id");
+
+        // CR-01: the reversion b -> a must now be recorded too, linked to
+        // the SAME act (this was an edit of the handover, not a new act).
+        assert_eq!(
+            count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
+            2,
+            "CR-01: removing a device from an act edit must record the place reversion"
+        );
+
+        let (source, from_place_id, to_place_id, act_id) =
+            latest_movement_for_device(svc.readers.clone(), dev_id).await;
+        assert_eq!(source, "act");
+        assert_eq!(from_place_id, place_b, "reversion starts where the device was IN the act");
+        assert_eq!(to_place_id, place_a, "reversion lands back at the pre-act place");
+        assert_eq!(act_id, Some(handover.id));
+    })
+    .await
+    .expect("place_movements_act_edit_remove_records_reversion exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// place_movements_return_edit_unreturn_records_reversion (CR-01 gap closure)
+// ---------------------------------------------------------------------------
+
+/// Editing an existing RETURN act to un-return one device must likewise
+/// record the resulting place reversion (CR-01's second code path,
+/// `ActService::update_return`). Device starts at place_a (handover is a
+/// same-place no-op), `do_return` moves it to place_b (recorded), then
+/// `update_return` un-returns it, which restores it back to place_a — a
+/// second real place->place change that must get its own row, linked to the
+/// return act being edited.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn place_movements_return_edit_unreturn_records_reversion() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let place_a = seed_place(&svc.writer, "Склад №6").await;
+        let place_b = seed_place(&svc.writer, "Каб. 601").await;
+        let device_ids =
+            seed_devices_at_place(&svc.writer, &["Монитор Dell", "Монитор Samsung"], Some(place_a))
+                .await;
+        let dev_id = device_ids[0];
+        let kept_id = device_ids[1];
+
+        // Handover at the SAME place (place_a) — D-04 no-op, zero movements.
+        let handover_payload = ActCreateDto {
+            number_override: None,
+            giver_name: "Соловьёв С.С.".into(),
+            receiver_name: "Орлов О.О.".into(),
+            place_id: Some(place_a),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: device_ids
+                .iter()
+                .map(|&id| ActItemNewDto {
+                    device_id: id,
+                    device_ids: Vec::new(),
+                    quantity: 1,
+                })
+                .collect(),
+        };
+        let handover = svc
+            .create(&Identity::trusted_admin(), handover_payload)
+            .await
+            .expect("create handover, no place change");
+        assert_eq!(
+            count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
+            0,
+            "sanity: same-place handover recorded zero movements (D-04)"
+        );
+
+        // Return moves BOTH devices to place_b — recorded for each.
+        let return_payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: Some(place_b),
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: handover
+                .items
+                .iter()
+                .map(|it| ActReturnItemDto {
+                    act_item_id: it.id,
+                    device_id: it.device_id,
+                    device_ids: vec![it.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    place_id_override: None,
+                })
+                .collect(),
+        };
+        let ret = svc
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
+            .await
+            .expect("do_return, real place change a->b");
+        assert_eq!(
+            count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
+            1,
+            "sanity: do_return recorded exactly one movement"
+        );
+
+        // Edit the return act to un-return `dev_id`, keeping `kept_id` (D-10
+        // rejects an empty replacement set, so a real edit needs a survivor).
+        let update = ActUpdateReturnDto {
+            id: ret.id,
+            expected_version: ret.version,
+            giver_name: ret.giver_name.clone(),
+            receiver_name: ret.receiver_name.clone(),
+            place_id: ret.place_id,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: ret.handover_date_utc,
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: Some(place_b),
+            apply_to_all: true,
+            items: vec![ActReturnItemDto {
+                act_item_id: 0,
+                device_id: kept_id,
+                device_ids: vec![kept_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }],
+        };
+        svc.update_return(&Identity::trusted_admin(), update)
+            .await
+            .expect("update_return: un-return dev_id, keep kept_id");
+
+        // CR-01: the reversion b -> a must now be recorded, linked to the
+        // return act being edited.
+        assert_eq!(
+            count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
+            2,
+            "CR-01: un-returning a device via act edit must record the place reversion"
+        );
+
+        let (source, from_place_id, to_place_id, act_id) =
+            latest_movement_for_device(svc.readers.clone(), dev_id).await;
+        assert_eq!(source, "act");
+        assert_eq!(from_place_id, place_b, "reversion starts at the returned-to place");
+        assert_eq!(to_place_id, place_a, "reversion lands back at the pre-return place");
+        assert_eq!(act_id, Some(ret.id));
+    })
+    .await
+    .expect("place_movements_return_edit_unreturn_records_reversion exceeded 30s budget");
 }

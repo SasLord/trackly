@@ -926,12 +926,43 @@ impl ActService {
                                 "update: corrupt before_json for device {removed_id}: {e}"
                             ),
                         })?;
+                    // CR-01: capture the device's CURRENT place (while still
+                    // part of this act) BEFORE the restore mutates it, so the
+                    // movement recorded below reflects the real
+                    // in-act-place -> restored-place reversion. Using the
+                    // snapshot's own place_id for both sides (as an earlier
+                    // draft of this fix did) would be a no-op: the snapshot
+                    // IS what `restored.place_id` becomes.
+                    let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = devices_repo
                         .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update remove after_json: {e}"),
                         })?;
+
+                    // HST-03/CR-01: the act edit dropped this device, so its
+                    // place reverted from the in-act place back to its prior
+                    // place — record that reversion (D-04/D-06 guard inside).
+                    // `delete_by_act_id_in_tx` is NOT used here: it deletes
+                    // ALL movement rows for this act_id, which would also
+                    // erase legitimate history for the OTHER devices still
+                    // on this act — this is a per-device edit, not a full
+                    // act undo (D-03 is act-scoped, not device-scoped).
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        places_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        removed_id,
+                        place_before_restore.place_id,
+                        restored.place_id,
+                        MovementSource::Act,
+                        None,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
+
                     audit_repo.insert(
                         &tx,
                         AuditEntry {
@@ -1969,12 +2000,39 @@ impl ActService {
                                 "update_return: corrupt before_json for device {removed_id}: {e}"
                             ),
                         })?;
+                    // CR-01: same reasoning as `update()`'s removed-device
+                    // branch — capture the current (in-act) place BEFORE the
+                    // restore, so the movement recorded below is a real
+                    // in-act-place -> restored-place reversion rather than a
+                    // no-op comparison against the snapshot's own value.
+                    let place_before_restore = devices_repo.get_in_tx(&tx, removed_id)?;
                     let restored = devices_repo
                         .restore_from_snapshot_in_tx(&tx, removed_id, &snapshot, now)?;
                     let after_json =
                         device_snapshot_json(&restored).map_err(|e| AppError::Internal {
                             source_chain: format!("update_return remove after_json: {e}"),
                         })?;
+
+                    // HST-03/CR-01: un-returning this device reverted its
+                    // place — record that reversion (D-04/D-06 guard
+                    // inside). `delete_by_act_id_in_tx` is act-scoped (would
+                    // also erase movement history for OTHER devices still on
+                    // this return act), so it is not used for this
+                    // per-device edit.
+                    place_movements_repo.record_movement_if_applicable(
+                        &tx,
+                        places_repo.as_ref(),
+                        MovementEntityKind::Device,
+                        removed_id,
+                        place_before_restore.place_id,
+                        restored.place_id,
+                        MovementSource::Act,
+                        None,
+                        Some(payload.id),
+                        user_id_opt,
+                        now,
+                    )?;
+
                     audit_repo.insert(
                         &tx,
                         AuditEntry {
