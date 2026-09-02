@@ -26,13 +26,22 @@
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import DetailSection from '$lib/components/DetailSection.svelte';
+  import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import DeviceFormBody from '../devices/DeviceFormBody.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import CartridgeFormBody from '../cartridges/CartridgeFormBody.svelte';
   import CartridgeFormModal from '../cartridges/CartridgeFormModal.svelte';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
-  import type { PlaceContentDto, DeviceDto, CartridgeDto, CartridgeModelDto } from '../../bindings';
+  import { apiCall } from '$lib/api/client';
+  import type {
+    PlaceContentDto,
+    DeviceDto,
+    CartridgeDto,
+    CartridgeModelDto,
+    MovementEntryDto,
+  } from '../../bindings';
 
   interface Props {
     row: PlaceContentDto;
@@ -70,6 +79,13 @@
   let deviceDto = $state<DeviceDto | null>(null);
   let cartridgeDto = $state<CartridgeDto | null>(null);
   let cartridgeModels = $state<CartridgeModelDto[]>([]);
+  // D-14/D-21: same section for kind='device' and kind='printer' rows — both
+  // resolve to the SAME underlying `devices` row (see file-header comment),
+  // so both fetch entity_type='device'. Only kind='cartridge' rows fetch
+  // entity_type='cartridge'. Loaded alongside the main entity fetch below, in
+  // the SAME $effect, sharing the modal's single `loading`/`loadError` state
+  // (must_haves truth — no independent spinner/error for this section).
+  let timelineEntries = $state<MovementEntryDto[]>([]);
 
   // View popup and edit popup are mutually exclusive, never stacked — a
   // second dim backdrop behind the edit form would just be visual noise.
@@ -84,25 +100,41 @@
     const r = row;
     loading = true;
     loadError = false;
+    timelineEntries = [];
     (async () => {
-      try {
-        if (r.kind === 'cartridge') {
-          const [cart, modelList] = await Promise.all([
-            cartridges.get(r.id),
-            cartridges.modelsList(),
-          ]);
-          cartridgeDto = cart;
-          cartridgeModels = modelList;
-        } else {
-          // device AND printer content rows both carry a `devices` row id —
-          // see the file-header comment.
-          deviceDto = await devices.get(r.id);
+      const mainLoad = (async () => {
+        try {
+          if (r.kind === 'cartridge') {
+            const [cart, modelList] = await Promise.all([
+              cartridges.get(r.id),
+              cartridges.modelsList(),
+            ]);
+            cartridgeDto = cart;
+            cartridgeModels = modelList;
+          } else {
+            // device AND printer content rows both carry a `devices` row id —
+            // see the file-header comment.
+            deviceDto = await devices.get(r.id);
+          }
+        } catch {
+          loadError = true;
         }
-      } catch {
-        loadError = true;
-      } finally {
-        loading = false;
-      }
+      })();
+      // D-21: printer content rows have no separate entity_type — they read
+      // the exact same timeline as the underlying device (no double-accounting).
+      const entityType = r.kind === 'cartridge' ? 'cartridge' : 'device';
+      const timelineLoad = (async () => {
+        try {
+          timelineEntries = await apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+            entityType,
+            entityId: r.id,
+          });
+        } catch {
+          loadError = true;
+        }
+      })();
+      await Promise.all([mainLoad, timelineLoad]);
+      loading = false;
     })();
   });
 
@@ -156,28 +188,46 @@
     </div>
   {:else if loadFailed}
     <p class="view-error">Не удалось загрузить данные. Закройте окно и попробуйте ещё раз.</p>
-  {:else if isCartridge && cartridgeDto}
-    <CartridgeFormBody
-      target={cartridgeDto}
-      models={cartridgeModels}
-      readonly={true}
-      onClose={() => {}}
-      onSuccess={() => {}}
-      onLoading={() => {}}
-      onCanSubmitChange={() => {}}
-      onRegisterSubmit={() => {}}
-    />
-  {:else if deviceDto}
-    <DeviceFormBody
-      target={deviceDto}
-      stateHints={[]}
-      typeId={deviceDto.type_id}
-      readonly={true}
-      onSaved={() => {}}
-      onLoading={() => {}}
-      onCanSubmitChange={() => {}}
-      onRegisterSubmit={() => {}}
-    />
+  {:else}
+    {#if isCartridge && cartridgeDto}
+      <CartridgeFormBody
+        target={cartridgeDto}
+        models={cartridgeModels}
+        readonly={true}
+        onClose={() => {}}
+        onSuccess={() => {}}
+        onLoading={() => {}}
+        onCanSubmitChange={() => {}}
+        onRegisterSubmit={() => {}}
+      />
+    {:else if deviceDto}
+      <DeviceFormBody
+        target={deviceDto}
+        stateHints={[]}
+        typeId={deviceDto.type_id}
+        readonly={true}
+        onSaved={() => {}}
+        onLoading={() => {}}
+        onCanSubmitChange={() => {}}
+        onRegisterSubmit={() => {}}
+      />
+    {/if}
+
+    <DetailSection heading="История перемещений">
+      <MovementTimeline
+        entries={timelineEntries}
+        {loading}
+        {loadError}
+        onNavigateToPlace={async (id) => {
+          await push(`#/places?id=${id}`);
+          onClose();
+        }}
+        onNavigateToAct={async (id) => {
+          await push(`#/acts?id=${id}`);
+          onClose();
+        }}
+      />
+    </DetailSection>
   {/if}
 
   {#snippet footer()}
