@@ -15,6 +15,7 @@ use trackly_core::domain::cartridges::{
     CartridgeCounts, CartridgeFilter, CartridgeModelNew, CartridgeModelRow, CartridgeRow,
     CartridgeTransitionOp, CompatibleModelAggregate, LowStockBasis, LowStockItem, Pagination,
 };
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -22,7 +23,9 @@ use trackly_core::ports::cartridges::CartridgeRepository;
 use crate::error_conversions::map_rusqlite;
 use crate::repos::acts_sqlite::increment_counter_in_tx;
 use crate::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
+use crate::repos::place_movements_sqlite::SqlitePlaceMovementsRepository;
 use crate::repos::place_path_settings::read_path_display_separators;
+use crate::repos::places_sqlite::SqlitePlaceRepository;
 
 /// SQLite-backed cartridge repository adapter (zero-sized).
 #[derive(Debug, Default, Clone)]
@@ -566,6 +569,34 @@ impl SqliteCartridgeRepository {
             });
         }
 
+        // HST-01/D-05: record a movement for the main mutation, distinguished
+        // from a plain manual PlacePicker edit by an operation-derived `note`
+        // (D-07's closed `source` enum stays MovementSource::Manual; the
+        // distinction lives in `note`, never in `source`). WriteOff never
+        // changes place_id, so the movement helper's D-04 guard always skips
+        // it — its match arm below exists only for exhaustiveness.
+        let note: &str = match op {
+            CartridgeTransitionOp::Install { .. } => "автоматически при установке в принтер",
+            CartridgeTransitionOp::ReturnToStock { .. } => "автоматически при возврате на склад",
+            CartridgeTransitionOp::ToRefill { .. } => "автоматически при отправке на заправку",
+            CartridgeTransitionOp::FromRefill { .. } => "автоматически при возврате с заправки",
+            CartridgeTransitionOp::WriteOff { .. } => "",
+        };
+        let place_movements_repo = SqlitePlaceMovementsRepository;
+        place_movements_repo.record_movement_if_applicable(
+            tx,
+            &SqlitePlaceRepository,
+            MovementEntityKind::Cartridge,
+            cartridge_id,
+            current.place_id,
+            new_place_id,
+            MovementSource::Manual,
+            Some(note),
+            None,
+            caller_user_id,
+            now_utc,
+        )?;
+
         // 5b. D-16/D-17: if installing into a printer that already has another
         // cartridge "В работе", auto-return that previous cartridge to stock in
         // the SAME transaction (DISC-06) — records an INVERTED actor from the
@@ -634,6 +665,25 @@ impl SqliteCartridgeRepository {
                         actual: prev_version + 1,
                     });
                 }
+
+                // HST-01/Pitfall 3: the auto-returned cartridge is a SEPARATE
+                // entity (prev_id, not cartridge_id) — its own movement row,
+                // with its own distinct note so the timeline can tell "I moved
+                // because of an install" apart from "I was auto-returned
+                // because someone else was installed".
+                place_movements_repo.record_movement_if_applicable(
+                    tx,
+                    &SqlitePlaceRepository,
+                    MovementEntityKind::Cartridge,
+                    prev_id,
+                    prev_current.place_id,
+                    resolved_place_id,
+                    MovementSource::Manual,
+                    Some("автоматически возвращён на склад при установке другого картриджа"),
+                    None,
+                    caller_user_id,
+                    now_utc,
+                )?;
 
                 let prev_before_json = serde_json::to_string(&json!({
                     "status_id": prev_current.status_id,
