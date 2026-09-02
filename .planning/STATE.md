@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-02T00:29:50.421Z"
+last_updated: "2026-09-02T00:54:01.108Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 43
+  completed_plans: 44
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 7 of 20
+Plan: 8 of 20
 Status: Ready to execute
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -349,6 +349,7 @@ Last activity: 2026-09-02
 | Phase 40 P04 | 17min | 2 tasks | 6 files |
 | Phase 40 P05 | 45min | 2 tasks | 3 files |
 | Phase 40 P06 | 19min | 2 tasks | 24 files |
+| Phase 40 P11 | 40min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -870,6 +871,8 @@ Recent decisions affecting current work:
 - [Phase 40-05]: record_movement_if_applicable takes places_repo as &dyn PlaceRepository<Conn = Connection> per the plan's exact interface, keeping all seven downstream write-site call sites uniform
 - [Phase 40-05]: delete_by_act_id_in_tx is the sole owner of DELETE FROM place_movements WHERE act_id = ? (D-03); plan 40-20's undo path must call it, never hand-roll the statement
 - [Phase ?]: act_service's four write-site methods (create/update/do_return/update_return) now thread caller: &Identity end-to-end, matching device_service/cartridge_service pattern from 40-03/40-04 — update_return's 3 internal loops already shared one top-level user_id_opt, so one signature change fixed all of them (verified via a both-loops test)
+- [Phase 40-11]: HST-04: from_place_id/to_place_id are independent subtree-inclusive filters combined by AND (D-24); Куда reuses place_path/place_path_short, Откуда gets new from_place_path fields (Pitfall 7)
+- [Phase 40-11]: query_movements_inner threads &ReaderPool alongside &Connection to call place_path_display::compute_place_path_short (single formula owner, D-18/D-20) rather than re-deriving the variant/separators inline
 
 ### Pending Todos
 
@@ -1058,13 +1061,11 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T00:29:50.411Z
-Stopped at: Completed 40-06-PLAN.md
+Last session: 2026-09-02T00:54:01.098Z
+Stopped at: Completed 40-11-PLAN.md
 Resume file: 
 
 None
-
-## Deferred Items
 
 Acknowledged and deferred at v1.2 milestone close (2026-07-29). Historical debt across the project (not v1.2 blockers — all 26 v1.2 requirements satisfied). Track in backlog.
 
