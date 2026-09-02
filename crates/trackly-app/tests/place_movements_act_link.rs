@@ -9,9 +9,10 @@
 //!   override is supplied — the documented DEF-3 `place -> NULL` code path
 //!   (Pitfall 4 / D-06), never a NOT NULL constraint violation or a panic.
 //!
-//! Plan 40-20 later extends this SAME file with
-//! `place_movements_act_undo_deletes` (D-03's undo-scoped deletion) — do not
-//! add that test here.
+//! - `ActService::delete_soft` correctly and precisely un-happens a deleted
+//!   act's own movement rows (D-03), scoped per-act inside the LIFO cascade
+//!   loop for a nested handover+return, leaving an unrelated control act's
+//!   rows untouched (`place_movements_act_undo_deletes`, Plan 40-20).
 //!
 //! Harness mirrors `acts_returns.rs` / `place_movements_write_sites_devices.rs`
 //! — real tempfile SQLite DB via `test_writer_and_readers`, invented device/
@@ -284,4 +285,132 @@ async fn place_movements_null_place_skip() {
     })
     .await
     .expect("place_movements_null_place_skip exceeded 30s budget");
+}
+
+// ---------------------------------------------------------------------------
+// place_movements_act_undo_deletes (Plan 40-20, D-03/Pitfall 5)
+// ---------------------------------------------------------------------------
+
+/// Deleting a handover act with a nested cascaded return must delete exactly
+/// the movement rows belonging to each deleted act's own `act_id` (the
+/// handover's own rows AND the nested return's own rows), each removed at its
+/// own point in the existing LIFO undo loop — never a single blanket delete
+/// at the end (D-03, Pitfall 5). A control act's rows, untouched by this
+/// cascade, must survive.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn place_movements_act_undo_deletes() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let place_a = seed_place(&svc.writer, "Каб. 301").await;
+        let place_b = seed_place(&svc.writer, "Склад №3").await;
+        let place_c = seed_place(&svc.writer, "Каб. 302").await;
+        let control_place_from = seed_place(&svc.writer, "Каб. 401").await;
+        let control_place_to = seed_place(&svc.writer, "Склад №4").await;
+
+        // Handover H: device moves place_a -> place_b, one movement row
+        // linked to H.id.
+        let device_ids = seed_devices_at_place(&svc.writer, &["Ноутбук Asus"], Some(place_a)).await;
+        let dev_id = device_ids[0];
+        let handover_payload = ActCreateDto {
+            number_override: None,
+            giver_name: "Смирнов С.С.".into(),
+            receiver_name: "Николаев Н.Н.".into(),
+            place_id: Some(place_b),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: dev_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let handover = svc
+            .create(&Identity::trusted_admin(), handover_payload)
+            .await
+            .expect("create handover H");
+
+        // Return R nested under H: device moves place_b -> place_c, one
+        // movement row linked to R.id.
+        let return_payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: handover.items[0].id,
+                device_id: dev_id,
+                device_ids: vec![dev_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: Some(place_c),
+            }],
+        };
+        let ret = svc
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
+            .await
+            .expect("do_return with a real place override, nested under H");
+
+        // Control handover C: unrelated device, unrelated place change — its
+        // movement row must survive H's cascade-delete untouched.
+        let control_device_ids =
+            seed_devices_at_place(&svc.writer, &["Монитор Acer"], Some(control_place_from)).await;
+        let control_dev_id = control_device_ids[0];
+        let control_payload = ActCreateDto {
+            number_override: None,
+            giver_name: "Волков В.В.".into(),
+            receiver_name: "Зайцев З.З.".into(),
+            place_id: Some(control_place_to),
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: control_dev_id,
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let control = svc
+            .create(&Identity::trusted_admin(), control_payload)
+            .await
+            .expect("create control handover C");
+
+        // Sanity: each act has exactly one movement row of its own before
+        // the delete.
+        assert_eq!(count_movements_for_act(svc.readers.clone(), handover.id).await, 1);
+        assert_eq!(count_movements_for_act(svc.readers.clone(), ret.id).await, 1);
+        assert_eq!(count_movements_for_act(svc.readers.clone(), control.id).await, 1);
+
+        // Delete H — cascades: undo+soft-delete R first (LIFO), then undo+
+        // soft-delete H itself. Both acts' own movement rows must be gone;
+        // the control act's row must remain untouched.
+        //
+        // `do_return` bumps the parent handover's `version` (via
+        // `recompute_parent_archived`) — re-fetch H to get its current
+        // version rather than the stale one captured at `create` time.
+        let handover_current = svc.get(handover.id).await.expect("re-fetch H before delete");
+        svc.delete_soft(handover.id, handover_current.version)
+            .await
+            .expect("delete_soft on H with nested cascade must succeed");
+
+        assert_eq!(
+            count_movements_for_act(svc.readers.clone(), handover.id).await,
+            0,
+            "D-03: handover's own movement rows must be deleted"
+        );
+        assert_eq!(
+            count_movements_for_act(svc.readers.clone(), ret.id).await,
+            0,
+            "D-03/Pitfall 5: nested return's own movement rows must be deleted, scoped to its own act_id"
+        );
+        assert_eq!(
+            count_movements_for_act(svc.readers.clone(), control.id).await,
+            1,
+            "Pitfall 5: an unrelated control act's movement rows must survive the cascade untouched"
+        );
+    })
+    .await
+    .expect("place_movements_act_undo_deletes exceeded 30s budget");
 }
