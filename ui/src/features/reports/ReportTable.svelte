@@ -9,6 +9,7 @@
   // sibling branch outside Table (no error-state equivalent in Table's API).
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
+  import Badge from '$lib/components/Badge.svelte';
 
   interface ReportRow {
     id: number;
@@ -26,6 +27,13 @@
     code?: string | null;
     model_label?: string | null;
     status_name?: string | null;
+    // HST-04 (D-23/D-25) — movements report row fields (Plan 40-11/40-12).
+    from_place_path?: string | null;
+    from_place_path_short?: string | null;
+    actor_name?: string | null;
+    reason?: string | null;
+    entity_type_label?: string | null;
+    is_deleted?: boolean | null;
     [key: string]: unknown;
   }
 
@@ -52,7 +60,7 @@
     isSnapshot: boolean;
   }
 
-  const { rows, columns, loading, error, isSnapshot }: Props = $props();
+  const { rows, columns, loading, error, reportType, isSnapshot }: Props = $props();
 
   const MONTH_NAMES = [
     'Январь',
@@ -127,12 +135,24 @@
     return formatCellValue(row, col.key);
   }
 
+  // Same place_path/place_path_short + title= convention, cloned for the
+  // movements report's genuinely separate "Откуда" column (D-23) — never
+  // shortened by D-26's compositeWith prefix logic, which is place_path-only.
+  function formatFromPlaceCell(row: ReportRow, full: boolean): string {
+    const raw = typeof row.from_place_path === 'string' ? row.from_place_path : '';
+    if (!raw) return '—';
+    return full ? raw : (row.from_place_path_short ?? raw);
+  }
+
   // D-26: the cell's rendered text and its title attribute diverge only for
-  // place_path — every other column keeps formatCellValue's plain title=text
-  // convention.
+  // place_path/from_place_path — every other column keeps formatCellValue's
+  // plain title=text convention.
   function formatCellTitle(row: ReportRow, col: Column): string {
     if (col.key === 'place_path') {
       return formatPlaceCell(row, col, (p) => p);
+    }
+    if (col.key === 'from_place_path') {
+      return formatFromPlaceCell(row, true);
     }
     return formatCellValue(row, col.key);
   }
@@ -141,7 +161,18 @@
     if (col.key === 'place_path') {
       return formatPlaceCell(row, col, () => row.place_path_short ?? '');
     }
+    if (col.key === 'from_place_path') {
+      return formatFromPlaceCell(row, false);
+    }
     return formatCellValue(row, col.key);
+  }
+
+  // D-25: soft-deleted report rows show an «Удалено» badge next to the
+  // «Предмет» cell (device_name) rather than silently vanishing — only ever
+  // true for the movements report, since is_deleted is null/undefined on
+  // every other report row shape.
+  function showDeletedBadge(row: ReportRow, col: Column): boolean {
+    return reportType === 'movements' && col.key === 'device_name' && row.is_deleted === true;
   }
 
   // Build grouped rows: insert separator when month_key (temporal) or place_path (snapshot) changes
@@ -199,7 +230,12 @@
           {@const row = item as ReportRow}
           <TableRow>
             {#each columns as col}
-              <td title={formatCellTitle(row, col)}>{formatCellDisplay(row, col)}</td>
+              <td title={formatCellTitle(row, col)}>
+                {formatCellDisplay(row, col)}
+                {#if showDeletedBadge(row, col)}
+                  <Badge variant="default">Удалено</Badge>
+                {/if}
+              </td>
             {/each}
           </TableRow>
         {/if}

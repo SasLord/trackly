@@ -18,6 +18,9 @@
     model_id?: number | null;
     color?: string | null;
     search?: string | null;
+    // D-24: two independent subtree-inclusive place filters, movements domain only.
+    from_place_id?: number | null;
+    to_place_id?: number | null;
   }
 
   interface StorageOption {
@@ -41,10 +44,14 @@
   ];
 
   interface Props {
-    reportDomain: 'devices' | 'cartridges' | 'requests';
+    reportDomain: 'devices' | 'cartridges' | 'requests' | 'movements';
     reportType: string;
     placeId?: number | null;
     isStorage?: boolean | null;
+    // D-24: movements domain only — two independent subtree-inclusive
+    // PlacePicker filters replace the single Место/Складское место pair.
+    fromPlaceId?: number | null;
+    toPlaceId?: number | null;
     // Props below are retained for parent compatibility but no longer rendered.
     // The parent (ReportsPage.svelte) still passes them; removing would require
     // parent refactor. They are accepted and unused here intentionally.
@@ -66,11 +73,14 @@
   }
 
   const {
-    // GAP-R4: filter props accepted but not rendered (kept for parent compat)
-    reportDomain: _reportDomain,
+    // Plan 40-18: reportDomain now actively branches the place-filter block
+    // (movements vs. every other domain) — no longer purely GAP-R4 dead compat.
+    reportDomain,
     reportType: _reportType,
     placeId = null,
     isStorage = null,
+    fromPlaceId = null,
+    toPlaceId = null,
     statusId: _statusId,
     typeId: _typeId,
     modelId: _modelId,
@@ -101,45 +111,75 @@
 </script>
 
 <div class="report-filters">
-  <div class="place-filter-group">
-    <label class="filter-label" for="report-place-filter">
-      <span class="filter-name">Место</span>
-    </label>
-    <div class="place-filter">
-      <PlacePicker
-        id="report-place-filter"
-        value={placeId}
-        onChange={(id) => onFilterChange?.({ place_id: id })}
-      />
+  {#if reportDomain === 'movements'}
+    <!-- D-24: two independent subtree-inclusive place filters fully replace
+         the single Место/Складское место filter pair for this domain. -->
+    <div class="place-filter-group">
+      <label class="filter-label" for="report-from-place-filter">
+        <span class="filter-name">Откуда</span>
+      </label>
+      <div class="place-filter">
+        <PlacePicker
+          id="report-from-place-filter"
+          value={fromPlaceId}
+          onChange={(id) => onFilterChange?.({ from_place_id: id })}
+        />
+      </div>
     </div>
-  </div>
 
-  <label class="filter-label">
-    <span class="filter-name">Складское место</span>
-    <div class="filter-dropdown">
-      <Dropdown
-        variant="select"
-        flat={true}
-        searchable={false}
-        value={storageLabel}
-        placeholder="Все"
-        searchPlaceholder="Поиск"
-        loading={false}
-        groups={STORAGE_OPTIONS}
-        getGroupId={(o) => o.id}
-        getGroupName={(o) => o.label}
-        getGroupCount={() => 0}
-        isGroupExpandable={() => false}
-        isGroupSelected={(o) => o.id === storageValue}
-        onExpandGroup={noExpand}
-        getMemberId={(o) => o.id}
-        getMemberName={(o) => o.label}
-        onSearch={() => {}}
-        onPickGroup={(o) => handleStorageChange(o.id)}
-        onPickMember={() => {}}
-      />
+    <div class="place-filter-group">
+      <label class="filter-label" for="report-to-place-filter">
+        <span class="filter-name">Куда</span>
+      </label>
+      <div class="place-filter">
+        <PlacePicker
+          id="report-to-place-filter"
+          value={toPlaceId}
+          onChange={(id) => onFilterChange?.({ to_place_id: id })}
+        />
+      </div>
     </div>
-  </label>
+  {:else}
+    <div class="place-filter-group">
+      <label class="filter-label" for="report-place-filter">
+        <span class="filter-name">Место</span>
+      </label>
+      <div class="place-filter">
+        <PlacePicker
+          id="report-place-filter"
+          value={placeId}
+          onChange={(id) => onFilterChange?.({ place_id: id })}
+        />
+      </div>
+    </div>
+
+    <label class="filter-label">
+      <span class="filter-name">Складское место</span>
+      <div class="filter-dropdown">
+        <Dropdown
+          variant="select"
+          flat={true}
+          searchable={false}
+          value={storageLabel}
+          placeholder="Все"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={STORAGE_OPTIONS}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === storageValue}
+          onExpandGroup={noExpand}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => handleStorageChange(o.id)}
+          onPickMember={() => {}}
+        />
+      </div>
+    </label>
+  {/if}
 
   <div class="export-buttons">
     <Button variant="secondary" size="sm" loading={csvExporting} onclick={onExportCsv}>

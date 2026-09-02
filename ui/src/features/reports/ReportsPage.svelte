@@ -15,7 +15,12 @@
   import ReportTable from './ReportTable.svelte';
   import PdfPreviewModal from '../acts/PdfPreviewModal.svelte';
 
-  type DomainKey = 'devices' | 'cartridges' | 'requests';
+  // Plan 40-18 (D-22): 'movements' mirrors ReportSubNav.svelte's own DomainKey
+  // union — the two files each keep an independent local copy (pre-existing
+  // duplication, e.g. REQUEST_REPORTS is likewise duplicated between the two
+  // files), so both must be extended together or the two DomainKey types
+  // stop being structurally compatible.
+  type DomainKey = 'devices' | 'cartridges' | 'requests' | 'movements';
 
   interface PeriodDto {
     mode: string;
@@ -37,6 +42,10 @@
     is_storage?: boolean | null;
     act_type?: string | null;
     request_category_filter?: string[] | null;
+    // Plan 40-18 (D-24): movements domain only — two independent
+    // subtree-inclusive place filters, AND semantics on the backend.
+    from_place_id?: number | null;
+    to_place_id?: number | null;
   }
 
   interface ReportRow {
@@ -55,6 +64,13 @@
     model_label?: string | null;
     status_name?: string | null;
     request_type_label?: string | null;
+    // Plan 40-18 (D-23/D-25) — movements report row fields.
+    from_place_path?: string | null;
+    from_place_path_short?: string | null;
+    actor_name?: string | null;
+    reason?: string | null;
+    entity_type_label?: string | null;
+    is_deleted?: boolean | null;
     [key: string]: unknown;
   }
 
@@ -125,6 +141,12 @@
     },
   ] as const;
 
+  // Plan 40-18 (D-22): mirrors ReportSubNav.svelte's own MOVEMENT_REPORTS
+  // copy (pre-existing per-domain-array duplication between the two files).
+  const MOVEMENT_REPORTS = [
+    { key: 'all', label: 'Все перемещения', temporal: true, cmd: 'reports_list_movements' },
+  ] as const;
+
   // VAD-02: одинаковый набор колонок для всех 4 вкладок домена «Заявки».
   const REQUEST_COLUMNS: Column[] = [
     { key: 'number', label: '№' },
@@ -191,6 +213,21 @@
     open: REQUEST_COLUMNS,
     in_progress: REQUEST_COLUMNS,
     completed: REQUEST_COLUMNS,
+    // Plan 40-18 (D-23) — order matches columns_for("movements") in
+    // tauri_cmds/reports.rs exactly (Дата/Предмет/Тип/Откуда/Куда/Кем/Причина).
+    // Own key 'movements', not 'all' — the movements domain's single report
+    // type also uses key 'all' (see MOVEMENT_REPORTS), which would otherwise
+    // collide with REQUEST_COLUMNS above; currentColumns() branches on
+    // activeDomain to resolve this key instead of activeReport.
+    movements: [
+      { key: 'handover_date_utc', label: 'Дата' },
+      { key: 'device_name', label: 'Предмет' },
+      { key: 'entity_type_label', label: 'Тип' },
+      { key: 'from_place_path', label: 'Откуда' },
+      { key: 'place_path', label: 'Куда' },
+      { key: 'actor_name', label: 'Кем' },
+      { key: 'reason', label: 'Причина' },
+    ],
   };
 
   // ---------------------------------------------------------------------------
@@ -271,6 +308,13 @@
   function currentCmd(): string {
     const allReports = [...DEVICE_REPORTS, ...CARTRIDGE_REPORTS, ...REQUEST_REPORTS];
     const found = allReports.find((r) => r.key === activeReport);
+    // Movements domain: activeReport is 'all', which would otherwise
+    // wrongly match REQUEST_REPORTS's own 'all' entry via `found` below —
+    // resolve explicitly before falling through to the generic lookup.
+    if (activeDomain === 'movements') {
+      const movementFound = MOVEMENT_REPORTS.find((r) => r.key === activeReport);
+      if (movementFound) return movementFound.cmd;
+    }
     // For cartridge domain in_use/in_stock, we need to find correct cmd
     if (activeDomain === 'cartridges') {
       const cartridgeFound = CARTRIDGE_REPORTS.find((r) => r.key === activeReport);
@@ -323,11 +367,18 @@
         case 'completed':
           return 'requests_completed';
       }
+    } else if (activeDomain === 'movements') {
+      return 'movements';
     }
     return 'device_acts'; // fallback
   }
 
   function currentColumns(): Column[] {
+    // Movements domain: own COLUMNS_MAP key, not keyed by activeReport (see
+    // COLUMNS_MAP.movements comment for why 'all' would collide with Заявки).
+    if (activeDomain === 'movements') {
+      return COLUMNS_MAP.movements ?? [];
+    }
     // For cartridge domain, use prefixed keys to differentiate from device in_use/in_stock
     if (
       activeDomain === 'cartridges' &&
@@ -526,6 +577,8 @@
         reportType={activeReport}
         placeId={filter.place_id ?? null}
         isStorage={filter.is_storage ?? null}
+        fromPlaceId={filter.from_place_id ?? null}
+        toPlaceId={filter.to_place_id ?? null}
         statusId={filter.status_id ?? null}
         typeId={filter.type_id ?? null}
         modelId={filter.model_id ?? null}
