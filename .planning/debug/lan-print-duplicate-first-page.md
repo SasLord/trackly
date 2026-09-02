@@ -1,16 +1,23 @@
 ---
-status: investigating
+status: diagnosed
 trigger: "Печать отчёта «Перемещения» из LAN-браузера добавляет третий лист — дубликат первого; из десктопа та же печать работает верно."
 created: 2026-09-03T00:00:00Z
-updated: 2026-09-03T00:00:00Z
+updated: 2026-09-03T03:30:00Z
 ---
 
 ## Current Focus
 
-hypothesis: (не сформирована — фаза 0/1, сбор улик)
-test: чтение пути печати отчёта (PdfPreviewModal + @media print каскад)
-expecting: найти элемент, который печатается дополнительно в браузере
-next_action: прочитать ui/src/features/acts/PdfPreviewModal.svelte целиком, найти LAN-ветку handlePrint
+hypothesis: Лишний лист — это НЕ артефакт геометрии печати, а РЕАЛЬНАЯ третья страница
+  Paged.js в DOM: `printViaTopLevel()` рендерит в общий, переиспользуемый контейнер
+  `#act-print-root` НЕ очищая его, а `Chunker.setup()` всегда ДОПИСЫВАЕТ новый
+  `.pagedjs_pages` (`renderTo.appendChild`). Второй запуск пагинации в той же сессии
+  модалки складывает свою копию документа поверх первой; на момент, когда Chrome снимает
+  layout для печати, второй прогон успел отрисовать только страницу 1 → листы [p1][p2][p1].
+test: (1) чтение исходника pagedjs 0.4.3 — подтверждено, что setup() именно appendChild и
+  что очистка цели рендера отсутствует; (2) Chrome-харнесс: число печатных листов 1:1
+  совпадает с числом `.pagedjs_page`, лишних листов геометрия не создаёт.
+expecting: —
+next_action: DONE (режим find_root_cause_only) — вернуть диагноз оркестратору; фикс не применялся.
 
 ## Symptoms
 
@@ -22,16 +29,132 @@ started: обнаружено при UAT фазы 40 (2026-09-03)
 
 ## Eliminated
 
+- hypothesis: Протечка print-каскада — при печати дополнительно печатается сама страница приложения или модалка предпросмотра (iframe).
+  evidence: Правило `@media print { body > :not(#act-print-root) { display: none !important } }`
+    покрывает все узлы: Svelte монтируется в `#app` (прямой потомок `body`, ui/index.html),
+    портал-узлы `[data-tr-portal]` тоже вешаются на `body`. Харнесс с открытой fixed-модалкой
+    и смонтированным iframe предпросмотра напечатал ровно 2 листа — вклада модалки нет.
+  timestamp: 2026-09-03T03:05:00Z
+
+- hypothesis: Расхождение шрифтовых/геометрических метрик между iframe предпросмотра и
+    top-level документом приложения даёт разное разбиение (2 против 3 страниц).
+  evidence: Возможный виновник — глобальный ресет `*{box-sizing:border-box}` (global.scss) —
+    не работает: сам Paged.js объявляет `.pagedjs_pagebox * { box-sizing: border-box }`,
+    т.е. border-box действует ОДИНАКОВО на обоих путях. Прочие унаследованные свойства
+    (line-height/letter-spacing/word-spacing) уже нейтрализованы фиксом 260805-jwf/ifj.
+    Кроме того, «расхождение разбиения» дало бы третий лист с ХВОСТОМ таблицы, а не
+    с дубликатом первого листа.
+  timestamp: 2026-09-03T03:20:00Z
+
+- hypothesis: Лишний лист порождает сам браузер (перелив страницы Paged.js за границу
+    печатного листа из-за разорванной цепочки `height:100%`, т.к. между `body` и
+    `.pagedjs_pages` вклинен `#act-print-root` с height:auto).
+  evidence: В Chrome-харнессе число печатных листов всегда совпадало с числом
+    `.pagedjs_page` (2 = 2) при полном каскаде приложения. Механизм остаётся реальным
+    структурным риском (см. Evidence), но в наблюдаемом виде лишних листов не даёт —
+    и дал бы пустую/срезанную полосу, а не дубликат первого листа.
+  timestamp: 2026-09-03T03:25:00Z
+
 ## Evidence
 
 - timestamp: phase-0
   checked: .planning/debug/knowledge-base.md
-  found: Совпадение по ключевым словам (LAN print, PdfPreviewModal, @media print, act-print-root) с записью desktop-webview-print-dialog. Там зафиксировано: LAN-ветка печати внедряет style+body отрендеренного документа в скрытый #act-print-root в ТОП-УРОВНЕВОМ документе и печатает его, а не iframe.
-  implication: Кандидат-гипотеза: лишняя страница приходит из top-level DOM приложения (или из самого предпросмотра), а не из содержимого отчёта.
+  found: Совпадение по ключевым словам с записью desktop-webview-print-dialog. Там зафиксировано: LAN-ветка печати внедряет style+body отрендеренного документа в скрытый #act-print-root в ТОП-УРОВНЕВОМ документе и печатает его, а не iframe.
+  implication: Виновника надо искать в top-level DOM, а не в содержимом отчёта.
+
+- timestamp: 2026-09-03T02:40:00Z
+  checked: ui/src/features/acts/PdfPreviewModal.svelte — три пути печати
+  found: |
+    Три РАЗНЫХ движка вывода:
+    (1) предпросмотр — srcdoc-iframe, изолированный документ, UMD-бутстрап
+        (ui/src/lib/pdfPreview/bootstrapScript.js), `previewer.preview()` БЕЗ аргументов
+        (wrapContent + removeStyles, renderTo = body самого iframe);
+    (2) десктоп — printViaSystemBrowser(): временный HTML-файл открывается в системном
+        браузере, тот же бутстрап, renderTo = body отдельного документа;
+    (3) LAN — printViaTopLevel(): `import('pagedjs')` (ESM) и
+        `previewer.preview(bodyHtml, [{...cssText}], printRoot)`, где
+        printRoot = общий div `#act-print-root` в документе ПРИЛОЖЕНИЯ.
+  implication: Только путь (3) рендерит в долгоживущий разделяемый контейнер. Асимметрия
+    «десктоп верно / LAN нет» структурно объясняется именно этим.
+
+- timestamp: 2026-09-03T02:55:00Z
+  checked: ui/node_modules/pagedjs/dist/paged.esm.js — Chunker.flow / Chunker.setup (0.4.3)
+  found: |
+    `setup(renderTo)` создаёт НОВЫЙ `<div class="pagedjs_pages">` и делает
+    `renderTo.appendChild(this.pagesArea)` — цель рендера НИКОГДА не очищается.
+    Ветка `removePages()` в `flow()` срабатывает только при повторном использовании
+    ТОГО ЖЕ экземпляра Chunker; `printViaTopLevel` каждый раз создаёт `new Previewer()`
+    → новый Chunker → всегда setup() → всегда appendChild.
+  implication: Каждый вызов printViaTopLevel ДОПИСЫВАЕТ полную копию документа в
+    `#act-print-root`. Идемпотентности нет.
+
+- timestamp: 2026-09-03T02:58:00Z
+  checked: ui/src/features/acts/PdfPreviewModal.svelte — жизненный цикл printRoot и cleanup
+  found: |
+    - `#act-print-root` создаётся один раз и переиспользуется
+      (`document.getElementById(PRINT_ROOT_ID)`), при повторном вызове НЕ очищается
+      перед `previewer.preview()`.
+    - `printRoot.innerHTML = ''` живёт ТОЛЬКО в обработчике `window.addEventListener('afterprint', cleanup)`.
+    - `handlePrint()` не имеет защиты от повторного входа; кнопка «Печать» в футере
+      модалки блокируется только по `loading`/`paginationStatus`, которые в момент
+      печати уже равны 'done' — то есть кнопка остаётся активной всё время, пока
+      Paged.js заново пагинирует документ (для многостраничного отчёта это заметные секунды
+      без какой-либо обратной связи).
+    - `registerHandlers(RepeatTableHeadHandler)` вызывается при КАЖДОМ вызове и
+      накапливается в глобальном реестре pagedjs (побочный, но того же класса дефект).
+  implication: Второй вызов (двойной клик по «Печать» / повторная попытка «на принтер»,
+    затем «сохранить в PDF») складывает второй `.pagedjs_pages` поверх первого.
+
+- timestamp: 2026-09-03T03:15:00Z
+  checked: |
+    Chrome-харнесс (реальный Blink, /Applications/Google Chrome.app, headless
+    --print-to-pdf): синтетический отчёт, собранный ИЗ РЕАЛЬНЫХ шаблонов
+    crates/trackly-app/templates/report.html + _header.html с обезличенными данными;
+    прогнаны три конфигурации — (a) чистый документ + polyfill (аналог десктопа/предпросмотра),
+    (b) документ приложения (полный собранный ui/dist CSS) + точная копия printViaTopLevel,
+    (c) то же, что (b), плюс открытая fixed-модалка со смонтированным iframe предпросмотра.
+  found: |
+    Во всех конфигурациях число листов в PDF совпадало с числом отрисованных
+    `.pagedjs_page` (2 = 2). Лишний лист не возникал ни от каскада приложения,
+    ни от модалки/iframe, ни от геометрии `@page`/`height:100%`.
+    (Ограничение харнесса: --dump-dom снимает DOM до окончания пагинации, поэтому
+    точные пороги разбиения по нему мерить нельзя; вывод 1:1 «листы ↔ страницы»
+    получен из самих PDF и от этого ограничения не зависит.)
+  implication: Печатных листов ровно столько, сколько страниц Paged.js в DOM. Значит третий
+    лист — это НАСТОЯЩАЯ третья страница Paged.js, содержащая контент первой страницы.
+    В рамках ОДНОГО прогона Paged.js такого не порождает (контент потребляется break-token'ами),
+    следовательно в DOM на момент печати было ДВЕ копии рендера.
+
+- timestamp: 2026-09-03T03:22:00Z
+  checked: crates/trackly-app/templates/report.html, _header.html, tauri_cmds/reports.rs
+  found: |
+    Отчёт «Перемещения» не имеет ничего структурно особенного: тот же `@page {size: A4
+    portrait; margin: 20mm 15mm}`, что и у актов, тот же общий партиал шапки, 7 колонок,
+    никакого landscape/особой разметки. Побочно зафиксировано: `_header.html` эмитит свой
+    `<style>` ВНУТРИ `<body>`, поэтому `printViaTopLevel` (он собирает только `head > style`)
+    не передаёт CSS шапки полишеру — но сам узел `<style>` попадает в поток контента и
+    в отрисованной странице присутствует (проверено в дампе DOM), так что вёрстка шапки
+    не ломается. Это скрытый риск, а не причина текущего дефекта.
+  implication: Причина не в содержимом отчёта. Отчёт лишь ДОЛЬШЕ пагинируется, чем акт,
+    и потому чаще ловит повторный клик по «Печать» — этим и объясняется, почему дефект
+    всплыл на отчёте, а не на актах.
 
 ## Resolution
 
-root_cause:
-fix:
-verification:
+root_cause: |
+  Путь LAN-печати `printViaTopLevel()` (ui/src/features/acts/PdfPreviewModal.svelte)
+  не идемпотентен: он рендерит Paged.js в ДОЛГОЖИВУЩИЙ разделяемый контейнер
+  `#act-print-root`, не очищая его перед рендером, а `Chunker.setup()` в pagedjs 0.4.3
+  всегда ДОПИСЫВАЕТ новый `<div class="pagedjs_pages">` через `renderTo.appendChild`.
+  Единственная очистка висит на событии `afterprint`, а `handlePrint()` не защищён от
+  повторного входа (кнопка «Печать» остаётся активной всё время пагинации).
+  Поэтому второй запуск печати в той же сессии модалки складывает вторую копию документа
+  поверх первой. К моменту, когда Chrome снимает layout для печати, второй прогон обычно
+  успевает отрисовать только первую страницу — итог [стр.1][стр.2][стр.1], то есть
+  «третий лист = дубликат первого».
+  Десктопная ветка (printViaSystemBrowser) от этого свободна: каждый вызов пишет свой
+  временный файл и печатает его в отдельном документе системного браузера — общего
+  накапливающего DOM там нет.
+fix: (не применялся — режим find_root_cause_only)
+verification: (не применялась)
 files_changed: []

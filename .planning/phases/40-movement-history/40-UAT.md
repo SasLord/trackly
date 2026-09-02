@@ -3,7 +3,7 @@ status: diagnosed
 phase: 40-movement-history
 source: [40-01-SUMMARY.md, 40-02-SUMMARY.md, 40-03-SUMMARY.md, 40-04-SUMMARY.md, 40-05-SUMMARY.md, 40-06-SUMMARY.md, 40-07-SUMMARY.md, 40-08-SUMMARY.md, 40-09-SUMMARY.md, 40-10-SUMMARY.md, 40-11-SUMMARY.md, 40-12-SUMMARY.md, 40-13-SUMMARY.md, 40-14-SUMMARY.md, 40-15-SUMMARY.md, 40-16-SUMMARY.md, 40-17-SUMMARY.md, 40-18-SUMMARY.md, 40-19-SUMMARY.md, 40-20-SUMMARY.md]
 started: 2026-09-02T15:37:51Z
-updated: 2026-09-03T20:10:00Z
+updated: 2026-09-03T21:05:00Z
 ---
 
 ## Current Test
@@ -230,8 +230,12 @@ blocked: 0
       issue: "поле «Место» обязательное (validate, стр. 562); автозаполнение из принтера стр. 267-270; нет эффекта на принтер"
     - path: ".planning/phases/39-place-tree/39-CONTEXT.md"
       issue: "D-12 — решение, которому противоречит ожидание пользователя"
+  decision: |
+    ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ вариант B — каскад при перемещении. Место картриджа остаётся
+    собственным полем; D-12 фазы 39 правится мягко (не отменяется).
   missing:
-    - "ПРОДУКТОВОЕ РЕШЕНИЕ о пересмотре D-12 (это не багфикс): вариант A — место картриджа производно от принтера при current_printer_device_id IS NOT NULL; вариант B — оставить снимок, но добавить каскад в device_service::update с отдельной записью перемещения «вместе с принтером»"
+    - "device_service::update: в той же транзакции обновлять place_id картриджей с current_printer_device_id = id и писать им ОТДЕЛЬНУЮ запись перемещения с note «вместе с принтером». Шаблон есть — вложенный авто-возврат в transition_in_tx уже пишет вторую запись для другой сущности в той же транзакции"
+    - "Согласовать с решением по D-06: на принтерах без места каскад иначе будет молчать"
     - "Сделать поле «Место» при установке необязательным"
     - "Добавить обратную запись devices.place_id, когда у принтера места нет, а пользователь указал место картриджу"
   debug_session: ".planning/debug/cartridge-does-not-follow-printer.md"
@@ -321,6 +325,9 @@ blocked: 0
       issue: "DeviceGroup без place_distinct_count"
     - path: "crates/trackly-core/src/domain/devices.rs"
       issue: "DeviceGroupRow, тот же пробел"
+  decision: |
+    ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ чинить ОБА дефекта (A и B) в рамках этой фазы, несмотря на то что
+    регрессия внесена фазой 39.1 — они в одном файле и по отдельности дают половинчатый фикс.
   missing:
     - "(A) Перевести list_by_ids на from_row_with_short_path; SQL менять не нужно, SELECT_DEVICES уже джойнит place_effective_variant — нужно прочитать сепараторы через read_path_display_separators"
     - "(A) Проверить, не питают ли списочные ячейки другие «не-списочные» пути"
@@ -356,8 +363,17 @@ blocked: 0
       issue: "стр. 113/146 поле стартует с null, 547-575 валидации нет, 712 подпись без хинта, 267-270 асимметричный автозаполнитель (у нового картриджа есть, у предыдущего нет)"
     - path: "crates/trackly-app/tests/cartridges_lifecycle.rs"
       issue: "стр. 786-790 и doc-comment 1113-1117 ФИКСИРУЮТ текущее поведение как контракт — любой фикс обязан переписать эти тесты; красный гейт там будет сменой контракта, а не регрессией"
+  decision: |
+    ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ автоподстановку прежнего места: при пустом поле подставлять
+    последнее складское место картриджа, восстановимое из place_movements (последняя запись
+    с to_place_id из складского множества places.is_storage). Молчаливое стирание места в
+    NULL устраняется.
   missing:
-    - "ПРОДУКТОВОЕ РЕШЕНИЕ. Факты: «склада по умолчанию» в системе нет (есть множественный флаг places.is_storage, настройки default_place нет). Для варианта с подсказкой бэкенд ГОТОВ: команда cartridge_storage_place_ids есть на обоих транспортах, применена в ReturnModal и DeviceFormBody, и не доведена именно до формы картриджных операций — работа UI-only."
+    - "Реализовать fallback в ветке авто-возврата (cartridges_sqlite.rs:614), симметрично уже существующему fallback у состояния заряда"
+    - "Определить поведение для картриджа БЕЗ истории перемещений (fallback не из чего вывести) — вероятно, оставить поле обязательным именно в этом случае"
+    - "Переписать подпись/хинт поля, чтобы поведение было явным"
+    - "Переписать тесты cartridges_lifecycle.rs:786-790 и doc-comment 1113-1117 — они фиксируют старый контракт «place_id must be cleared to NULL»; красный гейт там будет сменой контракта, а не регрессией"
+    - "СПРАВОЧНО. Факты: «склада по умолчанию» в системе нет (есть множественный флаг places.is_storage, настройки default_place нет). Для варианта с подсказкой бэкенд ГОТОВ: команда cartridge_storage_place_ids есть на обоих транспортах, применена в ReturnModal и DeviceFormBody, и не доведена именно до формы картриджных операций — работа UI-only."
     - "Технически наименее рискованно: добавить previousCartridgePlaceId в validate() симметрично return_to_stock + переписать подпись/хинт"
     - "Поверх — quick-pick складских мест из cartridge_storage_place_ids по образцу ReturnModal"
     - "Решить, вводить ли на уровне домена семантику «оставить место прежним» — PlacePicker её не имеет, null сейчас двусмыслен"
@@ -389,7 +405,26 @@ blocked: 0
     приложения та же печать работает правильно.
   severity: major
   test: 18
-  root_cause: "[диагностика в работе — первый агент оборван лимитом API, перезапущен]"
-  artifacts: []
-  missing: []
+  root_cause: |
+    НЕ протечка print-каскада (гипотеза проверена на реальном Blink и отвергнута: число
+    листов в PDF всегда 1:1 совпадало с числом отрисованных .pagedjs_page).
+    Путь LAN-печати printViaTopLevel() не идемпотентен: рендерит Paged.js в долгоживущий
+    разделяемый контейнер #act-print-root, не очищая его перед рендером, а Chunker.setup()
+    в pagedjs 0.4.3 всегда ДОПИСЫВАЕТ новый div.pagedjs_pages через appendChild. Единственная
+    очистка (printRoot.innerHTML='') висит на afterprint, а handlePrint() не защищён от
+    повторного входа — кнопка активна всё время, пока Paged.js пагинирует (для отчёта это
+    секунды без обратной связи). Второй запуск кладёт вторую копию поверх первой; к моменту
+    снятия layout она успевает отрисовать только первую страницу → [стр.1][стр.2][стр.1].
+    Десктопная ветка printViaSystemBrowser свободна структурно: каждый вызов пишет свой
+    временный файл и печатает отдельный документ, накапливающего общего DOM нет.
+    Отчёт «Перемещения» структурно не отличается от актов — он лишь дольше пагинируется,
+    поэтому повторный клик ловится именно на нём.
+  artifacts:
+    - path: "ui/src/features/acts/PdfPreviewModal.svelte"
+      issue: "printViaTopLevel() — переиспользуемый #act-print-root без очистки перед previewer.preview(); cleanup только по afterprint; registerHandlers() накапливается в глобальном реестре pagedjs; handlePrint() без защиты от повторного входа"
+  missing:
+    - "Очищать printRoot и вызывать polisher.destroy() предыдущего прогона В НАЧАЛЕ printViaTopLevel, не полагаясь на afterprint"
+    - "In-flight guard в handlePrint + disabled/спиннер на кнопке на время пагинации"
+    - "Не регистрировать RepeatTableHeadHandler повторно при каждом вызове"
+    - "Попутные риски (не причина, зафиксировать): _header.html эмитит <style> внутри <body>, а printViaTopLevel собирает только head > style; #act-print-root с height:auto рвёт цепочку height:100% из печатного base-CSS Paged.js"
   debug_session: ".planning/debug/lan-print-duplicate-first-page.md"
