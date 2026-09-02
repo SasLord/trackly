@@ -116,6 +116,37 @@
 //!     set_path_variant → Err(AppError::Forbidden) for all seven,
 //!     mirroring Case 45 on the second transport.
 //!
+//! Phase 40 Plan 14 (HST-01/02/04, D-12, IN-02) adds Cases 52-59: closes the
+//! access-control regression coverage for every new endpoint this phase
+//! introduced (timeline read — Plan 40-10, movements report list/export —
+//! Plan 40-12, bulk-move — Plan 40-13). Each family gets one HTTP Case and
+//! one Tauri Case (per the IN-02 lesson above — Case 45-48's own precedent —
+//! a gate proven on only one transport is a real, previously-shipped gap in
+//! this codebase).
+//! 52. Manager session (HTTP) → POST /api/v1/place_movements_get_timeline →
+//!     not 401/403; Employee session (HTTP) → same → 403 Forbidden
+//!     (Action::ReadPlaces, D-12).
+//! 53. Manager Identity (Tauri path) → build_place_movements_get_timeline →
+//!     Ok; Employee Identity → same → Err(AppError::Forbidden).
+//! 54. Manager session (HTTP) → POST /api/v1/reports_list_movements → 200;
+//!     Employee session (HTTP) → same → 403 Forbidden.
+//! 55. Manager Identity (Tauri path) → build_reports_list_movements → Ok;
+//!     Employee Identity → same → Err(AppError::Forbidden). Asserts
+//!     Action::ReadPlaces explicitly — the ONE report in the 13-report
+//!     family gated on ReadPlaces instead of ReadData (D-12).
+//! 56. Manager session (HTTP) → POST /api/v1/reports_export_csv and
+//!     /api/v1/reports_export_pdf with reportType: "movements" → 200;
+//!     Employee session (HTTP) → same two → 403 Forbidden.
+//! 57. Manager Identity (Tauri path) → build_reports_export_csv /
+//!     build_reports_export_pdf with report_type "movements" → Ok;
+//!     Employee Identity → same two → Err(AppError::Forbidden).
+//! 58. Manager session (HTTP) → POST /api/v1/places_move_subtree_contents →
+//!     200; Employee session (HTTP) → same → 403 Forbidden (D-13: reuses
+//!     MutateDevices + MutateCartridges, both Admin|Manager — NOT
+//!     MutatePlaces, which would incorrectly deny Manager per D-20).
+//! 59. Manager Identity (Tauri path) → build_places_move_subtree_contents →
+//!     Ok; Employee Identity → same → Err(AppError::Forbidden).
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -130,13 +161,19 @@ use tower_sessions::SessionStore;
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
 use trackly_app::dto::place::PlaceNewDto;
+use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::place_movements::build_place_movements_get_timeline;
 use trackly_app::tauri_cmds::places::{
     build_places_archive, build_places_create, build_places_delete, build_places_move,
-    build_places_rename, build_places_set_path_variant, build_places_unarchive,
+    build_places_move_subtree_contents, build_places_rename, build_places_set_path_variant,
+    build_places_unarchive,
+};
+use trackly_app::tauri_cmds::reports::{
+    build_reports_export_csv, build_reports_export_pdf, build_reports_list_movements,
 };
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
@@ -1862,6 +1899,442 @@ async fn role_endpoint_matrix_test() {
                 matches!(result, Err(AppError::Forbidden)),
                 "Case 48: Manager (Tauri path) → build_places_set_path_variant → expected \
                  Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 52 (Phase 40 Plan 14, HST-02, D-12/IN-02): Manager session
+        // (HTTP) → POST /api/v1/place_movements_get_timeline → not 401/403;
+        // Employee session (HTTP) → same endpoint → 403 Forbidden.
+        // `build_place_movements_get_timeline` (Plan 40-10) gates on
+        // `Action::ReadPlaces` (Admin|Manager). A nonexistent entity_id is
+        // fine — the gate fires before any DB lookup (same pattern as Case 45
+        // / Case 31), so this is a genuine success path, not an error the
+        // Employee-deny half would be riding on.
+        // =====================================================================
+        {
+            let timeline_payload = json!({ "entityType": "device", "entityId": 999_999 });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/place_movements_get_timeline",
+                timeline_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 52: Manager → place_movements_get_timeline → expected not 401/403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/place_movements_get_timeline",
+                timeline_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 52: Employee → place_movements_get_timeline → expected 403 \
+                 (Action::ReadPlaces, D-12), got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 53 (Phase 40 Plan 14, HST-02, D-12/IN-02): Manager Identity
+        // (Tauri path) → build_place_movements_get_timeline (the exact
+        // function the #[tauri::command] wrapper delegates to) → Ok;
+        // Employee Identity → same call → Err(AppError::Forbidden). Mirrors
+        // Case 52 on the second transport — the IN-02 lesson this plan
+        // exists to prevent: a gate proven on only one transport is a real,
+        // previously-shipped gap in this codebase.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+
+            let result =
+                build_place_movements_get_timeline(&ctx, &manager_id, "device".to_string(), 999_999)
+                    .await;
+            assert!(
+                result.is_ok(),
+                "Case 53: Manager (Tauri path) → build_place_movements_get_timeline → \
+                 expected Ok, got {result:?}"
+            );
+
+            let result = build_place_movements_get_timeline(
+                &ctx,
+                &employee_id,
+                "device".to_string(),
+                999_999,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 53: Employee (Tauri path) → build_place_movements_get_timeline → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 54 (Phase 40 Plan 14, HST-04, D-12/IN-02): Manager session
+        // (HTTP) → POST /api/v1/reports_list_movements → 200; Employee
+        // session (HTTP) → same endpoint → 403 Forbidden.
+        // `build_reports_list_movements` (Plan 40-12) gates on
+        // `Action::ReadPlaces` — the one report in the whole 13-report
+        // family that diverges from `Action::ReadData` (see Case 55's Tauri
+        // variant, which asserts the divergence explicitly).
+        // =====================================================================
+        let movements_filter_json = json!({
+            "date_from_utc": null,
+            "date_to_utc": null,
+            "place_id": null,
+            "from_place_id": null,
+            "to_place_id": null,
+            "status_id": null,
+            "type_id": null,
+            "act_type": null,
+            "model_id": null,
+            "color": null,
+            "search": null,
+            "request_category_filter": null,
+            "is_storage": null
+        });
+        let movements_period_json = json!({
+            "mode": "range",
+            "year": null,
+            "month": null,
+            "date_from": "2000-01-01",
+            "date_to": "2099-12-31"
+        });
+        {
+            let movements_payload = json!({
+                "filter": movements_filter_json.clone(),
+                "period": movements_period_json.clone()
+            });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_list_movements",
+                movements_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 54: Manager → reports_list_movements → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_list_movements",
+                movements_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 54: Employee → reports_list_movements → expected 403 \
+                 (Action::ReadPlaces, D-12), got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 55 (Phase 40 Plan 14, HST-04, D-12/IN-02): Manager Identity
+        // (Tauri path) → build_reports_list_movements → Ok; Employee
+        // Identity → same call → Err(AppError::Forbidden). Explicitly
+        // asserted against `Action::ReadPlaces` semantics (Admin|Manager) —
+        // NOT `Action::ReadData`, which every other `build_reports_list_*`
+        // uses — making the deliberate divergence visible in the test
+        // itself, not just in the source comment on
+        // `build_reports_list_movements`.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+            let period = PeriodDto {
+                mode: "range".to_string(),
+                year: None,
+                month: None,
+                date_from: Some("2000-01-01".to_string()),
+                date_to: Some("2099-12-31".to_string()),
+            };
+
+            let result = build_reports_list_movements(
+                &ctx,
+                &manager_id,
+                ReportFilter::default(),
+                period.clone(),
+            )
+            .await;
+            assert!(
+                result.is_ok(),
+                "Case 55: Manager (Tauri path) → build_reports_list_movements → expected Ok \
+                 (Action::ReadPlaces, D-12 — NOT Action::ReadData like every sibling report), \
+                 got {result:?}"
+            );
+
+            let result =
+                build_reports_list_movements(&ctx, &employee_id, ReportFilter::default(), period)
+                    .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 55: Employee (Tauri path) → build_reports_list_movements → expected \
+                 Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 56 (Phase 40 Plan 14, HST-04, D-12/IN-02): Manager session
+        // (HTTP) → POST /api/v1/reports_export_csv and
+        // /api/v1/reports_export_pdf with reportType: "movements" → 200;
+        // Employee session (HTTP) → same two endpoints → 403 Forbidden. Both
+        // handlers delegate to build_reports_export_csv/
+        // build_reports_export_pdf, which gate on `Action::ReadData`
+        // (unchanged, zero new export code per D-26) — currently the same
+        // Admin|Manager/Employee-denied role split as `Action::ReadPlaces`,
+        // so Manager-allow/Employee-deny holds for the movements report type
+        // as well.
+        // =====================================================================
+        {
+            let export_csv_payload = json!({
+                "reportType": "movements",
+                "filter": movements_filter_json.clone(),
+                "period": movements_period_json.clone()
+            });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_export_csv",
+                export_csv_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 56: Manager → reports_export_csv (movements) → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_export_csv",
+                export_csv_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 56: Employee → reports_export_csv (movements) → expected 403, got {status}"
+            );
+
+            let export_pdf_payload = json!({
+                "reportType": "movements",
+                "filter": movements_filter_json.clone(),
+                "period": movements_period_json.clone()
+            });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_export_pdf",
+                export_pdf_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 56: Manager → reports_export_pdf (movements) → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/reports_export_pdf",
+                export_pdf_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 56: Employee → reports_export_pdf (movements) → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 57 (Phase 40 Plan 14, HST-04, D-12/IN-02): Manager Identity
+        // (Tauri path) → build_reports_export_csv / build_reports_export_pdf
+        // with report_type "movements" → Ok; Employee Identity → same two
+        // calls → Err(AppError::Forbidden). Mirrors Case 56 on the second
+        // transport.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+            let period = PeriodDto {
+                mode: "range".to_string(),
+                year: None,
+                month: None,
+                date_from: Some("2000-01-01".to_string()),
+                date_to: Some("2099-12-31".to_string()),
+            };
+
+            let result = build_reports_export_csv(
+                &ctx,
+                &manager_id,
+                "movements".to_string(),
+                ReportFilter::default(),
+                Some(period.clone()),
+            )
+            .await;
+            assert!(
+                result.is_ok(),
+                "Case 57: Manager (Tauri path) → build_reports_export_csv (movements) → \
+                 expected Ok, got {result:?}"
+            );
+
+            let result = build_reports_export_csv(
+                &ctx,
+                &employee_id,
+                "movements".to_string(),
+                ReportFilter::default(),
+                Some(period.clone()),
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 57: Employee (Tauri path) → build_reports_export_csv (movements) → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_reports_export_pdf(
+                &ctx,
+                &manager_id,
+                "movements".to_string(),
+                ReportFilter::default(),
+                Some(period.clone()),
+            )
+            .await;
+            assert!(
+                result.is_ok(),
+                "Case 57: Manager (Tauri path) → build_reports_export_pdf (movements) → \
+                 expected Ok, got {result:?}"
+            );
+
+            let result = build_reports_export_pdf(
+                &ctx,
+                &employee_id,
+                "movements".to_string(),
+                ReportFilter::default(),
+                Some(period),
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 57: Employee (Tauri path) → build_reports_export_pdf (movements) → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 58 (Phase 40 Plan 14, HST-01, D-13/IN-02): Manager session
+        // (HTTP) → POST /api/v1/places_move_subtree_contents on an empty
+        // subtree → 200 OK (D-13 reuses `Action::MutateDevices` +
+        // `Action::MutateCartridges`, both Admin|Manager — deliberately NOT
+        // `Action::MutatePlaces`, which would incorrectly deny Manager per
+        // D-20); Employee session (HTTP) → same endpoint → 403 Forbidden. A
+        // nonexistent root_id is fine — `list_subtree_contents`'s recursive
+        // CTE simply returns zero rows, so the call still reaches a genuine
+        // success path (Ok(0)), not an unrelated error the Employee-deny
+        // half would be riding on.
+        // =====================================================================
+        {
+            let bulk_move_payload = json!({
+                "rootId": 1,
+                "targetPlaceId": 1,
+                "note": null
+            });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_move_subtree_contents",
+                bulk_move_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 58: Manager → places_move_subtree_contents → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/places_move_subtree_contents",
+                bulk_move_payload,
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 58: Employee → places_move_subtree_contents → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 59 (Phase 40 Plan 14, HST-01, D-13/IN-02): Manager Identity
+        // (Tauri path) → build_places_move_subtree_contents → Ok; Employee
+        // Identity → same call → Err(AppError::Forbidden). Mirrors Case 58
+        // on the second transport.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+
+            let result =
+                build_places_move_subtree_contents(&ctx, &manager_id, 1, 1, None).await;
+            assert!(
+                result.is_ok(),
+                "Case 59: Manager (Tauri path) → build_places_move_subtree_contents → \
+                 expected Ok, got {result:?}"
+            );
+
+            let result =
+                build_places_move_subtree_contents(&ctx, &employee_id, 1, 1, None).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 59: Employee (Tauri path) → build_places_move_subtree_contents → \
+                 expected Err(AppError::Forbidden), got {result:?}"
             );
         }
 
