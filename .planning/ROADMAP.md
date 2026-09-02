@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 19/20 | In Progress|  |
+| 40. История перемещений | v1.4 | 20/20 | Complete   | 2026-09-02 |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -412,7 +412,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4)*
 
 - [x] 40-16-PLAN.md — таймлайн в PlaceEntityViewModal + «Просмотр» в DeviceContextMenu (D-14)
-- [ ] 40-17-PLAN.md — CartridgeDetail (переименование + новая секция) + PrinterDetail (D-16/D-21)
+- [x] 40-17-PLAN.md — CartridgeDetail (переименование + новая секция) + PrinterDetail (D-16/D-21)
 
 **UI hint**: yes
 

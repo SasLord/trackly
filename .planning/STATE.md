@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-02T12:09:29.460Z"
+status: verifying
+last_updated: "2026-09-02T12:20:22.504Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 57
-  completed_plans: 56
-  percent: 33
+  completed_plans: 57
+  percent: 44
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40 (movement-history) — EXECUTING
 Plan: 20 of 20
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
@@ -362,6 +362,7 @@ Last activity: 2026-09-02
 | Phase 40 P18 | 20min | 2 tasks | 4 files |
 | Phase 40 P19 | 25min | 1 tasks | 1 files |
 | Phase 40 P16 | 20min | 2 tasks | 3 files |
+| Phase 40 P17 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -904,6 +905,7 @@ Recent decisions affecting current work:
 - [Phase 40]: Plan 40-19: bulk-move confirm dialog's {N} count is fetched fresh with nested=true, independent of the onlyHere toggle, to match move_subtree_contents' actual scope
 - [Phase 40]: Timeline fetch shares the modal's single loading/loadError state with the main entity fetch — a timeline-only failure surfaces as the modal's top-level error, not a scoped per-section message
 - [Phase 40]: DeviceContextMenu reuses its existing onDelete prop as the generic list-reload signal after the view-modal's edit-save, avoiding new prop threading through DeviceList/DeviceGroupRow
+- [Phase 40]: CartridgeDetail/PrinterDetail use MovementTimeline's own scoped loadError (not a shared page-level error) for the new timeline sections, opposite of Plan 40-16's modal — neither component had an existing single fetch to fold the new call into
 
 ### Pending Todos
 
@@ -1092,8 +1094,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T12:09:29.449Z
-Stopped at: Completed 40-16-PLAN.md
+Last session: 2026-09-02T12:20:22.494Z
+Stopped at: Completed 40-17-PLAN.md
 Resume file: 
 
 None
