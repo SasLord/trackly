@@ -13,6 +13,7 @@ pub mod device;
 pub mod health;
 pub mod organization;
 pub mod place;
+pub mod place_movements;
 pub mod printer;
 pub mod reports;
 pub mod request;
