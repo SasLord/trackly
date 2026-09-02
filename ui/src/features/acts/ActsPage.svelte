@@ -5,6 +5,7 @@
   import Button from '$lib/components/Button.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { parseIdFromHash } from '$lib/utils/hashId';
   import ActsSearchAndTabs from './ActsSearchAndTabs.svelte';
   import ActsMasterDetail from './ActsMasterDetail.svelte';
   import ActsList from './ActsList.svelte';
@@ -23,12 +24,18 @@
 
   type TabKey = 'handover' | 'returns' | 'archive';
 
+  // Plan 40-15 (D-19, UI-SPEC discretion #6): `#/acts?id=N` deep link — the
+  // MovementTimeline component's act-number segment navigates here. Same
+  // "read once at mount" convention already used by DevicesPage/
+  // CartridgesPage/PrintersPage's own `parseIdFromHash` consumption.
+  const initialFocusId = parseIdFromHash();
+
   let items = $state<ActDto[]>([]);
   let total = $state(0);
   let loading = $state(false);
   let counts = $state<ActsCountsDto>({ handover_active: 0, returns: 0, archived: 0 });
   let activeTab = $state<TabKey>('handover');
-  let selectedActId = $state<number | null>(null);
+  let selectedActId = $state<number | null>(initialFocusId);
   let selectedAct = $state<ActDto | null>(null);
   let detailLoading = $state(false);
   let createModalOpen = $state(false);
@@ -79,8 +86,20 @@
     }
   }
 
+  // GAP-8-style guard (mirrors CartridgesPage.svelte's own
+  // `isFirstTabEffectRun`): this $effect also fires once on initial mount
+  // (Svelte 5 runs every top-level $effect at least once right after first
+  // render) — without a guard it would immediately null out
+  // `initialFocusId`'s pre-set `selectedActId` before the user ever sees it.
+  // Skip exactly that first run; every REAL tab change after mount still
+  // resets as before.
+  let isFirstTabEffectRun = true;
   $effect(() => {
     void activeTab;
+    if (isFirstTabEffectRun) {
+      isFirstTabEffectRun = false;
+      return;
+    }
     selectedActId = null;
     selectedAct = null;
   });
