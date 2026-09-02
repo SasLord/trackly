@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-02T01:44:04.107Z"
+last_updated: "2026-09-02T02:06:22.842Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 47
+  completed_plans: 48
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 11 of 20
+Plan: 12 of 20
 Status: Ready to execute
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -353,6 +353,7 @@ Last activity: 2026-09-02
 | Phase 40 P07 | 35min | 2 tasks | 2 files |
 | Phase 40 P08 | 40min | 3 tasks | 3 files |
 | Phase 40 P09 | 40min | 3 tasks | 2 files |
+| Phase 40 P10 | 30min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -879,6 +880,7 @@ Recent decisions affecting current work:
 - [Phase 40-07]: place_movements_repo added as new DeviceService field (Arc-clone convention, mirrors printer_repo/place_repo) rather than passed per-call
 - [Phase 40]: D-05's meaningful reason lives in note, not source — transition-driven cartridge movements keep source=Manual (D-07 closed enum) and carry an operation-derived Russian note; manual PlacePicker edits keep note=None
 - [Phase 40]: Plan 40-09: un-return loop in update_return not wired to record_movement_if_applicable — Plan scoped exactly 5 call sites (create/update/do_return/update_return's added+retained_with_change loops); un-return's place restoration explicitly out of scope per plan's own action text and grep-count acceptance criteria
+- [Phase 40]: Timeline actor_display resolved inline via SQL fallback (login), not a new repo method; compute_place_path_short called synchronously inside the same spawn_blocking closure to avoid N nested async spawns per timeline
 
 ### Pending Todos
 
@@ -1067,8 +1069,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T01:44:04.096Z
-Stopped at: Completed 40-09-PLAN.md
+Last session: 2026-09-02T02:06:22.832Z
+Stopped at: Completed 40-10-PLAN.md
 Resume file: 
 
 None
