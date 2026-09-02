@@ -233,7 +233,7 @@
               <td title={formatCellTitle(row, col)}>
                 {formatCellDisplay(row, col)}
                 {#if showDeletedBadge(row, col)}
-                  <Badge variant="default">Удалено</Badge>
+                  <span class="deleted-badge"><Badge variant="default">Удалено</Badge></span>
                 {/if}
               </td>
             {/each}
@@ -267,6 +267,13 @@
     color: var(--tr-danger);
     font-size: var(--tr-font-size-body);
     margin: 0;
+  }
+
+  // D-25: explicit gap regardless of Svelte's whitespace-collapsing between
+  // the cell's text expression and the conditional badge — never rely on an
+  // incidental single space surviving the template.
+  .deleted-badge {
+    margin-left: var(--tr-space-2xs);
   }
 
   .report-separator td {
