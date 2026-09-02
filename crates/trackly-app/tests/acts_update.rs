@@ -33,9 +33,11 @@ use trackly_app::dto::act::{
     ActUpdateItemDto,
 };
 use trackly_app::services::ActService;
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
@@ -44,6 +46,29 @@ fn make_acts_service() -> (ActService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = ActService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// Сеет реальную строку `users` (FK-цель для `audit_log.user_id`) и возвращает
+/// её id. Вымышленное имя — privacy gate (CLAUDE.md).
+async fn seed_manager_user(writer: &WriterHandle) -> i64 {
+    let now = 1_700_000_000_i64;
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('kuznetsov.kk', 'Кузнецов К.К.', NULL, 'manager', 0, 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(map_rusqlite)?;
+            let user_id = tx.last_insert_rowid();
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(user_id)
+        })
+        .await
+        .expect("seed manager user")
 }
 
 async fn seed_devices_with_state(
@@ -1106,4 +1131,109 @@ async fn complectation_edit_writes_audit() {
     })
     .await
     .expect("complectation_edit_writes_audit budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 15: update_stores_real_caller_user_id_in_audit_log (Plan 40-06 — Pitfall 1)
+//
+// Threads a real `caller: &Identity` into `ActService::update` end-to-end:
+// the audit row for a newly-added device position must carry the real
+// actor's user_id, not the hard-coded `None` this method previously wrote
+// unconditionally.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_stores_real_caller_user_id_in_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_id = extra_ids[0];
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
+
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        let mut new_device_ids = device_ids.clone();
+        new_device_ids.push(extra_id);
+        let update = update_dto_from(&handover, &new_device_ids);
+
+        svc.update(&manager, update)
+            .await
+            .expect("update add position with manager caller");
+
+        let readers = svc.readers.clone();
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_log \
+                 WHERE entity_type = 'device' AND entity_id = ?1 AND action = 'update' \
+                   AND user_id = ?2",
+                params![extra_id, manager_user_id],
+                |r| r.get(0),
+            )
+            .expect("count")
+        })
+        .await
+        .expect("spawn_blocking");
+        assert_eq!(
+            count, 1,
+            "the added device's audit row must carry the real caller's user_id"
+        );
+    })
+    .await
+    .expect("update_stores_real_caller_user_id_in_audit_log budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 16: update_with_trusted_admin_caller_stores_null_user_id
+//
+// `Identity::trusted_admin()` (desktop unlocked mode, D-Desktop-01) has
+// `user_id = None` — this must still succeed and store NULL, matching the
+// pre-existing system-initiated-change semantics.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_with_trusted_admin_caller_stores_null_user_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let extra_id = extra_ids[0];
+
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        let mut new_device_ids = device_ids.clone();
+        new_device_ids.push(extra_id);
+        let update = update_dto_from(&handover, &new_device_ids);
+
+        svc.update(&Identity::trusted_admin(), update)
+            .await
+            .expect("update add position with trusted_admin caller");
+
+        let readers = svc.readers.clone();
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_log \
+                 WHERE entity_type = 'device' AND entity_id = ?1 AND action = 'update' \
+                   AND user_id IS NULL",
+                params![extra_id],
+                |r| r.get(0),
+            )
+            .expect("count")
+        })
+        .await
+        .expect("spawn_blocking");
+        assert_eq!(count, 1);
+    })
+    .await
+    .expect("update_with_trusted_admin_caller_stores_null_user_id budget");
 }
