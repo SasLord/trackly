@@ -866,6 +866,30 @@ impl ReportService {
                         .unwrap_or(0),
                     },
                 ]
+            } else if domain == "movements" {
+                // EX-01 gap closure: the movements tab counter always showed
+                // 0 because this `if`/`else if` chain had no "movements"
+                // branch, falling through to the empty `Vec::new()` below.
+                //
+                // Correctness constraint: this count MUST apply exactly the
+                // same filters and subtree CTEs as `list_movements`'s own
+                // query, or the badge would confidently lie. Reusing
+                // `query_movements_inner` (the SAME function `list_movements`
+                // calls) and counting its returned rows — rather than
+                // hand-writing a second `COUNT(*)` that re-derives the
+                // WHERE/CTE construction — is what guarantees that; a
+                // hand-rolled duplicate is exactly the WR-03/WR-08 class of
+                // drift bug this phase has been fighting. At this org's scale
+                // (movements per item are "единицы за годы", D-20/RESEARCH)
+                // materializing the full row set to count it is not a
+                // meaningful cost.
+                let count = query_movements_inner(&conn, &readers, &filter, ts_from, ts_to)
+                    .map(|resp| resp.rows.len() as i64)
+                    .unwrap_or(0);
+                vec![ReportCountEntry {
+                    key: "all".into(),
+                    count,
+                }]
             } else {
                 Vec::new()
             };

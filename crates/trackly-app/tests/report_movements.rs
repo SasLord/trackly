@@ -628,3 +628,127 @@ async fn report_movements_export_pdf_marks_deleted_device_in_body() {
         "WR-01: PDF/HTML export body must mark a soft-deleted item's row"
     );
 }
+
+// ---------------------------------------------------------------------------
+// EX-01 gap closure: get_report_counts("movements") no longer returns 0
+// ---------------------------------------------------------------------------
+
+/// EX-01: `get_report_counts`'s `if`/`else if` chain had no `"movements"`
+/// branch and fell through to an empty `Vec::new()`, so the «Все
+/// перемещения» tab badge always showed 0 regardless of data. This asserts
+/// the count under key `"all"` reflects the real row count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_get_report_counts_reflects_real_rows() {
+    let (ctx, _dir) = minimal_ctx();
+
+    let warehouse = seed_place(&ctx, None, "Склад").await;
+    let office = seed_place(&ctx, None, "Офис").await;
+    let device_a = seed_device(&ctx, "Ноутбук счётчик A").await;
+    let device_b = seed_device(&ctx, "Ноутбук счётчик B").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device_a,
+        warehouse,
+        "Склад",
+        office,
+        "Офис",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+    seed_movement(
+        &ctx,
+        "device",
+        device_b,
+        warehouse,
+        "Склад",
+        office,
+        "Офис",
+        "manual",
+        1_700_000_200,
+    )
+    .await;
+
+    let counts = ctx
+        .reports
+        .get_report_counts("movements", ReportFilter::default(), wide_period(), false)
+        .await
+        .expect("get_report_counts(movements)");
+
+    assert_eq!(
+        counts.counts.len(),
+        1,
+        "movements domain reports exactly one tab: \"all\""
+    );
+    assert_eq!(counts.counts[0].key, "all");
+    assert_eq!(
+        counts.counts[0].count, 2,
+        "EX-01: count must reflect the real number of movement rows, not 0"
+    );
+}
+
+/// EX-01 correctness constraint: the count must apply the SAME filters as
+/// the list (D-24's dual subtree-inclusive place filters), or the badge
+/// would lie. Seeds two movements at different places, filters to just one
+/// via `to_place_id`, and asserts the count matches the FILTERED list length
+/// (1), not the total row count (2).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_get_report_counts_respects_place_filter() {
+    let (ctx, _dir) = minimal_ctx();
+
+    let warehouse = seed_place(&ctx, None, "Склад-Ф").await;
+    let office = seed_place(&ctx, None, "Офис-Ф").await;
+    let other_office = seed_place(&ctx, None, "Другой офис-Ф").await;
+    let device_a = seed_device(&ctx, "Ноутбук фильтр A").await;
+    let device_b = seed_device(&ctx, "Ноутбук фильтр B").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device_a,
+        warehouse,
+        "Склад-Ф",
+        office,
+        "Офис-Ф",
+        "manual",
+        1_700_000_300,
+    )
+    .await;
+    seed_movement(
+        &ctx,
+        "device",
+        device_b,
+        warehouse,
+        "Склад-Ф",
+        other_office,
+        "Другой офис-Ф",
+        "manual",
+        1_700_000_400,
+    )
+    .await;
+
+    let filter = ReportFilter {
+        to_place_id: Some(office),
+        ..ReportFilter::default()
+    };
+
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+    let listed = build_reports_list_movements(&ctx, &manager, filter.clone(), wide_period())
+        .await
+        .expect("list_movements with to_place_id filter");
+    assert_eq!(listed.rows.len(), 1, "sanity: filter narrows the list to 1 row");
+
+    let counts = ctx
+        .reports
+        .get_report_counts("movements", filter, wide_period(), false)
+        .await
+        .expect("get_report_counts(movements) with the same filter");
+
+    assert_eq!(
+        counts.counts[0].count, 1,
+        "EX-01: the count must apply the SAME to_place_id filter as the list, not the unfiltered total"
+    );
+}
