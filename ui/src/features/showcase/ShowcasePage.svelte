@@ -7,6 +7,7 @@
   import TableSection from './sections/TableSection.svelte';
   import DropdownSection from './sections/DropdownSection.svelte';
   import PlacePickerSection from './sections/PlacePickerSection.svelte';
+  import MovementTimelineSection from './sections/MovementTimelineSection.svelte';
 </script>
 
 <div class="showcase-page">
@@ -47,6 +48,10 @@
 
   <section class="showcase-block">
     <PlacePickerSection />
+  </section>
+
+  <section class="showcase-block">
+    <MovementTimelineSection />
   </section>
 </div>
 
