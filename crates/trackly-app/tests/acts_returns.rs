@@ -32,10 +32,11 @@ use std::time::Duration;
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::services::ActService;
-use trackly_core::auth::Identity;
+use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
+use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
@@ -44,6 +45,29 @@ fn make_acts_service() -> (ActService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = ActService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// Сеет реальную строку `users` (FK-цель для `audit_log.user_id`) и возвращает
+/// её id. Вымышленное имя — privacy gate (CLAUDE.md).
+async fn seed_manager_user(writer: &WriterHandle) -> i64 {
+    let now = 1_700_000_000_i64;
+    writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO users \
+                 (login, full_name, password_hash, role, ad_user, is_active, \
+                  created_at_utc, updated_at_utc, version) \
+                 VALUES ('smirnov.aa', 'Смирнов А.А.', NULL, 'manager', 0, 1, ?1, ?1, 1)",
+                params![now],
+            )
+            .map_err(map_rusqlite)?;
+            let user_id = tx.last_insert_rowid();
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(user_id)
+        })
+        .await
+        .expect("seed manager user")
 }
 
 async fn seed_devices(
@@ -1006,4 +1030,146 @@ async fn create_falls_back_to_parent_swap_when_giver_receiver_absent() {
     })
     .await
     .expect("create_falls_back_to_parent_swap_when_giver_receiver_absent budget");
+}
+
+// ---------------------------------------------------------------------------
+// do_return_stores_real_caller_user_id_in_audit_log (Plan 40-06 — Pitfall 1)
+//
+// Threads a real `caller: &Identity` into `ActService::do_return` end-to-end:
+// every device audit row AND the return-act's own create audit row must
+// carry the real actor's user_id, not the hard-coded `None` this method
+// previously wrote unconditionally.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn do_return_stores_real_caller_user_id_in_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let manager_user_id = seed_manager_user(&svc.writer).await;
+        let manager = Identity {
+            user_id: Some(manager_user_id),
+            role: Role::Manager,
+        };
+
+        let first_item = &handover.items[0];
+        let return_payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: first_item.id,
+                device_id: first_item.device_id,
+                device_ids: vec![first_item.device_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }],
+        };
+        let ret = svc
+            .do_return(&manager, handover.id, return_payload)
+            .await
+            .expect("do_return with manager caller");
+
+        let readers = svc.readers.clone();
+        let return_act_id = ret.id;
+        let device_id = first_item.device_id;
+        let (device_rows, act_rows): (i64, i64) = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            let d: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM audit_log \
+                     WHERE entity_type='device' AND entity_id=?1 AND action='update' \
+                       AND json_extract(payload_json, '$.act_id') = ?2 \
+                       AND user_id = ?3",
+                    params![device_id, return_act_id, manager_user_id],
+                    |r| r.get(0),
+                )
+                .expect("count device audits");
+            let a: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM audit_log \
+                     WHERE entity_type='act' AND entity_id=?1 AND action='create' \
+                       AND user_id = ?2",
+                    params![return_act_id, manager_user_id],
+                    |r| r.get(0),
+                )
+                .expect("count act audits");
+            (d, a)
+        })
+        .await
+        .expect("spawn_blocking");
+        assert_eq!(
+            device_rows, 1,
+            "the returned device's audit row must carry the real caller's user_id"
+        );
+        assert_eq!(
+            act_rows, 1,
+            "the return-act's own create audit row must carry the real caller's user_id"
+        );
+    })
+    .await
+    .expect("do_return_stores_real_caller_user_id_in_audit_log budget");
+}
+
+// ---------------------------------------------------------------------------
+// do_return_with_trusted_admin_caller_stores_null_user_id
+//
+// `Identity::trusted_admin()` (desktop unlocked mode, D-Desktop-01) has
+// `user_id = None` — this must still succeed and store NULL, matching the
+// pre-existing system-initiated-change semantics.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn do_return_with_trusted_admin_caller_stores_null_user_id() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 1).await;
+        let handover = create_handover(&svc, &device_ids).await;
+
+        let first_item = &handover.items[0];
+        let return_payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: first_item.id,
+                device_id: first_item.device_id,
+                device_ids: vec![first_item.device_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }],
+        };
+        let ret = svc
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
+            .await
+            .expect("do_return with trusted_admin caller");
+
+        let readers = svc.readers.clone();
+        let return_act_id = ret.id;
+        let null_user_id_count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_log \
+                 WHERE entity_type='act' AND entity_id=?1 AND action='create' \
+                   AND user_id IS NULL",
+                params![return_act_id],
+                |r| r.get(0),
+            )
+            .expect("count null-user_id act audits")
+        })
+        .await
+        .expect("spawn_blocking");
+        assert_eq!(null_user_id_count, 1);
+    })
+    .await
+    .expect("do_return_with_trusted_admin_caller_stores_null_user_id budget");
 }
