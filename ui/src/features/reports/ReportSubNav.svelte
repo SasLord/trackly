@@ -7,7 +7,7 @@
   // (segmented for domain, underline+count for report type) — no bespoke tab markup.
   import Tabs from '$lib/components/Tabs.svelte';
 
-  type DomainKey = 'devices' | 'cartridges' | 'requests';
+  type DomainKey = 'devices' | 'cartridges' | 'requests' | 'movements';
 
   interface ReportConfig {
     key: string;
@@ -67,10 +67,18 @@
     },
   ];
 
+  // Plan 40-18 (D-22): «Перемещения» is its own 4th domain, not nested under
+  // Устройства/Картриджи — entity-type split (device vs cartridge) happens
+  // via the row-level «Тип» column, not via separate report-type tabs.
+  const MOVEMENT_REPORTS: ReportConfig[] = [
+    { key: 'all', label: 'Все перемещения', temporal: true, cmd: 'reports_list_movements' },
+  ];
+
   const DOMAINS = [
     { key: 'devices' as DomainKey, label: 'Устройства' },
     { key: 'cartridges' as DomainKey, label: 'Картриджи' },
     { key: 'requests' as DomainKey, label: 'Заявки' },
+    { key: 'movements' as DomainKey, label: 'Перемещения' },
   ];
 
   interface Props {
@@ -100,7 +108,9 @@
       ? DEVICE_REPORTS
       : activeDomain === 'cartridges'
         ? CARTRIDGE_REPORTS
-        : REQUEST_REPORTS,
+        : activeDomain === 'movements'
+          ? MOVEMENT_REPORTS
+          : REQUEST_REPORTS,
   );
 </script>
 
