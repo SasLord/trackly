@@ -133,3 +133,14 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-app/src/tauri_cmds/reports.rs
+- FOUND: crates/trackly-app/src/http/reports.rs
+- FOUND: crates/trackly-app/src/specta_export.rs
+- FOUND: crates/trackly-app/tests/report_movements.rs
+- FOUND: .planning/phases/40-movement-history/40-12-SUMMARY.md
+- FOUND commit: b2746ebf
+- FOUND commit: f99d2e26
+- FOUND commit: 9e1c15aa
