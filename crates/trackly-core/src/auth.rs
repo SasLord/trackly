@@ -86,7 +86,13 @@ impl Identity {
 // ---------------------------------------------------------------------------
 
 /// Действия, для которых нужна авторизация.
-#[derive(Debug, Clone)]
+///
+/// `PartialEq`/`Eq` added (WR-02 gap closure, Phase 40) so call sites that pick
+/// an `Action` dynamically (e.g. `reports.rs::export_gate_action`) can be
+/// unit-tested by asserting equality against a specific variant, not just by
+/// probing the currently-resolved role set (which can coincidentally match
+/// across two different actions, as `ReadData`/`ReadPlaces` do today).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// Создание, изменение, удаление, блокировка пользователей. Admin only.
     ManageUsers,

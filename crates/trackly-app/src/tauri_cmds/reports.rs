@@ -270,6 +270,76 @@ pub async fn build_reports_list_movements(
     ctx.reports.list_movements(filter, period).await
 }
 
+/// WR-02 gap closure: export gate must track the LIST gate per `report_type`,
+/// not uniformly `Action::ReadData`. `"movements"` is gated on
+/// `Action::ReadPlaces` in `build_reports_list_movements` (D-12) — export must
+/// match exactly, so a future divergence of `ReadData`'s role set from
+/// `ReadPlaces`'s (today identical, see the doc comment on
+/// `build_reports_list_movements`) cannot silently widen who can export the
+/// movements report while the on-screen list stays correctly restricted.
+///
+/// Split into a pure `export_gate_action` + thin `authorize_report_export`
+/// wrapper specifically so the mapping can be unit-tested by asserting
+/// equality against a specific `Action` variant (see the `tests` module
+/// below) — a role-set probe alone cannot distinguish `ReadPlaces` from
+/// `ReadData`, since both currently authorize the identical Admin|Manager
+/// set.
+fn export_gate_action(report_type: &str) -> Action {
+    if report_type == "movements" {
+        Action::ReadPlaces
+    } else {
+        Action::ReadData
+    }
+}
+
+fn authorize_report_export(caller: &Identity, report_type: &str) -> Result<(), AppError> {
+    authorize(caller, &export_gate_action(report_type))
+}
+
+#[cfg(test)]
+mod export_gate_tests {
+    use super::*;
+
+    /// WR-02: pins the movements report's export gate to `Action::ReadPlaces`
+    /// specifically — matching `build_reports_list_movements`'s own gate
+    /// (D-12) — rather than the uniform `Action::ReadData` every other
+    /// report_type uses. If `ReadData`'s role set is ever widened
+    /// independently of `ReadPlaces`, this test (unlike a role-probe test)
+    /// still fails, because it checks the ACTION, not just today's resolved
+    /// role set.
+    #[test]
+    fn movements_export_gate_is_read_places_not_read_data() {
+        assert_eq!(export_gate_action("movements"), Action::ReadPlaces);
+    }
+
+    /// Every other report_type keeps the pre-existing uniform `ReadData` gate
+    /// — this fix must not accidentally widen the special-case beyond
+    /// `"movements"`.
+    #[test]
+    fn other_report_types_keep_read_data_gate() {
+        for report_type in [
+            "device_acts",
+            "device_returns",
+            "device_in_use",
+            "device_in_stock",
+            "cartridge_consumption",
+            "cartridge_refills",
+            "cartridge_in_use",
+            "cartridge_in_stock",
+            "requests_all",
+            "requests_open",
+            "requests_in_progress",
+            "requests_completed",
+        ] {
+            assert_eq!(
+                export_gate_action(report_type),
+                Action::ReadData,
+                "report_type {report_type:?} must keep the ReadData export gate"
+            );
+        }
+    }
+}
+
 /// Export report rows as UTF-8 BOM CSV bytes.
 pub async fn build_reports_export_csv(
     ctx: &AppCtx,
@@ -278,7 +348,7 @@ pub async fn build_reports_export_csv(
     filter: ReportFilter,
     period: Option<PeriodDto>,
 ) -> Result<Vec<u8>, AppError> {
-    authorize(caller, &Action::ReadData)?;
+    authorize_report_export(caller, &report_type)?;
     let rows = fetch_report(ctx, caller, &report_type, filter, period).await?;
     let cols = columns_for(&report_type);
     ctx.reports.export_csv(&rows, &cols).await
@@ -292,7 +362,7 @@ pub async fn build_reports_export_pdf(
     filter: ReportFilter,
     period: Option<PeriodDto>,
 ) -> Result<String, AppError> {
-    authorize(caller, &Action::ReadData)?;
+    authorize_report_export(caller, &report_type)?;
     let rows = fetch_report(ctx, caller, &report_type, filter, period.clone()).await?;
     let org = ctx.org_db.get().await?;
     let logo_bytes = ctx.org_db.get_logo_bytes().await?;
