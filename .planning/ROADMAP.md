@@ -418,15 +418,15 @@ Plans:
 
 **Wave 6 (gap-closure wave 1)**
 
-- [ ] 40-21-PLAN.md — cartridge-does-not-follow-printer: каскад места «принтер → его картриджи» + обратная запись места принтеру
-- [ ] 40-24-PLAN.md — timeline-act-link-wrong-subsection: подраздел «Акты» из act_type/archived + канонический номер возврата + пояснение D-06
-- [ ] 40-25-PLAN.md — deleted-badge-missing-in-live-report-table: reportType={reportTypeKey()} + гейт
-- [ ] 40-26-PLAN.md — grouped-device-list-place-inversion: list_by_ids short-path fix (A) + place_distinct_count (B)
-- [ ] 40-27-PLAN.md — lan-print-duplicate-first-page: идемпотентный printViaTopLevel + re-entrancy guard
+- [ ] 40-21-PLAN.md — cartridge-does-not-follow-printer: каскад места «принтер → его картриджи» + обратная запись места принтеру (координация cargo test с 40-24/40-26 внутри волны)
+- [ ] 40-24-PLAN.md — timeline-act-link-wrong-subsection: подраздел «Акты» из act_type/archived + канонический номер возврата + пояснение D-06 (координация cargo test с 40-21/40-26 внутри волны)
+- [ ] 40-25-PLAN.md — deleted-badge-missing-in-live-report-table: reportType={reportTypeKey()} + гейт check-report-type-parity.mjs (первым дописывает в ui/package.json "lint")
+- [ ] 40-26-PLAN.md — grouped-device-list-place-inversion: list_by_ids short-path fix (A) + place_distinct_count (B) (координация cargo test с 40-21/40-24 внутри волны)
 
-**Wave 7 (gap-closure wave 2, blocked on 40-21)**
+**Wave 7 (gap-closure wave 2, blocked on 40-21 и/или 40-25)**
 
-- [ ] 40-22-PLAN.md — return-to-stock-empty-place-field: автоподстановка последнего складского места из place_movements
+- [ ] 40-22-PLAN.md — return-to-stock-empty-place-field: автоподстановка последнего складского места из place_movements (blocked on 40-21 — общий файл cartridges_sqlite.rs)
+- [ ] 40-27-PLAN.md — lan-print-duplicate-first-page: идемпотентный printViaTopLevel + re-entrancy guard + гейт check-print-idempotency.mjs (blocked on 40-25 — обе правки дописывают в одну строку "lint" ui/package.json)
 
 **Wave 8 (gap-closure wave 3, blocked on 40-21/40-22)**
 
