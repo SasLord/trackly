@@ -103,3 +103,14 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-app/src/services/cartridge_service.rs
+- FOUND: crates/trackly-infra/src/repos/cartridges_sqlite.rs
+- FOUND: crates/trackly-app/tests/place_movements_write_sites_cartridges.rs
+- FOUND: .planning/phases/40-movement-history/40-08-SUMMARY.md
+- FOUND commit: fe2f2778
+- FOUND commit: fc0e6cec
+- FOUND commit: 1116fe29
+- FOUND commit: 859afcdf
