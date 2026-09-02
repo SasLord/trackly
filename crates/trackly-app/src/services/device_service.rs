@@ -25,13 +25,15 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::PrinterNew;
 use trackly_core::ports::devices::DeviceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::{
-    SqliteDeviceRepository, SqlitePlaceRepository, SqlitePrinterRepository,
+    SqliteDeviceRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
+    SqlitePrinterRepository,
 };
 
 use std::collections::HashMap;
@@ -54,6 +56,7 @@ pub struct DeviceService {
     pub(crate) repo: Arc<SqliteDeviceRepository>,
     pub(crate) printer_repo: Arc<SqlitePrinterRepository>,
     pub(crate) place_repo: Arc<SqlitePlaceRepository>,
+    pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
 }
@@ -74,6 +77,7 @@ impl DeviceService {
             repo: Arc::new(SqliteDeviceRepository),
             printer_repo: Arc::new(SqlitePrinterRepository),
             place_repo: Arc::new(SqlitePlaceRepository),
+            place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
         }
     }
@@ -267,6 +271,8 @@ impl DeviceService {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
+        let place_repo = self.place_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через эту
         // границу (Plan 40-03, аналог `place_service::create`).
@@ -286,6 +292,7 @@ impl DeviceService {
                     .map_err(|e| AppError::Internal {
                         source_chain: format!("audit_log before-json: {e}"),
                     })?;
+                let before_place_id = before.as_ref().and_then(|b| b.place_id);
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now)?;
@@ -303,6 +310,22 @@ impl DeviceService {
                     rusqlite::params![id, user_id_opt, before_json, after_json, now],
                 )
                 .map_err(map_rusqlite)?;
+
+                // HST-01: запись перемещения (D-04/D-06 guard внутри record_movement_if_applicable).
+                // `source` жёстко задан сервером — клиент не может его подменить (T-40-15).
+                place_movements_repo.record_movement_if_applicable(
+                    &tx,
+                    place_repo.as_ref(),
+                    MovementEntityKind::Device,
+                    id,
+                    before_place_id,
+                    after.place_id,
+                    MovementSource::Manual,
+                    None,
+                    None,
+                    user_id_opt,
+                    now,
+                )?;
 
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(after)
