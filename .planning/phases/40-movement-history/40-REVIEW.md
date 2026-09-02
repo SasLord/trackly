@@ -99,6 +99,10 @@ findings:
   info: 1
   total: 5
 status: issues_found
+fixed_at: 2026-09-02T15:20:00Z
+fix_status: all_fixed
+fixes_applied: 4
+fixes_extra: 1
 ---
 
 # Phase 40: Code Review Report
@@ -367,3 +371,168 @@ so it's clear what was checked, not just what failed:
   no effect reads state it also writes, no `$derived` misused where an effect belongs, and the one
   cancellable async effect (`PlaceContents.svelte`'s bulk-move count fetch) correctly guards against
   a stale response via its `cancelled` closure variable.
+
+---
+
+## Fix Outcomes (2026-09-02)
+
+All four review findings plus one orchestrator-found defect (EX-01, not in the
+original review) were fixed. Each fix was applied in its own isolated worktree
+(`gsd-reviewfix/40-*`), committed atomically, and verified with a regression
+test confirmed to fail on the pre-fix code and pass on the fix, before being
+fast-forwarded onto `main`.
+
+### CR-01: Editing an act to remove one device silently drops its place-history entry
+
+**Status:** fixed
+**Commit:** `427ff9ca` — `fix(40): CR-01 record place reversion when an act edit drops a device`
+**Files:** `crates/trackly-app/src/services/act_service.rs`,
+`crates/trackly-app/tests/place_movements_act_link.rs`
+
+Fixed in both cited locations (`ActService::update`'s "removed devices" branch and
+`ActService::update_return`'s un-return branch) by capturing the device's place
+**before** `restore_from_snapshot_in_tx` runs and calling
+`record_movement_if_applicable` with that as `before` and the restored row's place
+as `after`.
+
+**Deviation from the review's suggested Fix snippet:** the snippet used the
+snapshot's own `place_id` for BOTH sides of the call
+(`snapshot_place_id` as `before`, `restored.place_id` as `after`). Tracing
+`restore_from_snapshot_in_tx` (`devices_sqlite.rs`) shows it writes
+`place_id = <the snapshot's place_id>` and then re-fetches the row via
+`get_in_tx` — so `restored.place_id` IS the snapshot's `place_id`. Using the
+snapshot for both sides would always compare a value to itself, so
+`is_reportable_place_change` would never see a real change and NO movement
+row would ever be recorded — a silent no-op that would have looked fixed
+(compiles, no panic) while leaving the original bug in place. Adapted the fix
+to fetch the device's actual pre-restore state via `devices_repo.get_in_tx`
+instead.
+
+**Why "record a new movement" over "delete the superseded row"
+(`delete_by_act_id_in_tx`):** that helper deletes ALL `place_movements` rows
+for the given `act_id`, not scoped to one device. Using it here (a per-device
+edit of an act that still exists with other devices) would also erase
+legitimate movement history for every OTHER device still on the act. D-03's
+"delete on undo" precedent is act-scoped (a full act soft-delete via
+`delete_soft`); this is a different, narrower case, so a compensating
+movement row is the correct, non-destructive choice — consistent with every
+other place-mutating branch in the file.
+
+**Regression tests:** `place_movements_act_edit_remove_records_reversion`,
+`place_movements_return_edit_unreturn_records_reversion` (both new, in
+`place_movements_act_link.rs`) — confirmed to fail (`1 == 2` assertion,
+count stuck at the pre-edit value) on the pre-fix code and pass on the fix.
+
+### CR-02: Movement timeline never shows the act number — wrong SQL type, error silently swallowed
+
+**Status:** fixed
+**Commit:** `24be893a` — `fix(40): CR-02 read acts.number as i64, not String, in timeline act_number`
+**Files:** `crates/trackly-app/src/services/place_movement_service.rs`,
+`crates/trackly-app/tests/place_movements_timeline.rs`
+
+Applied exactly as suggested: read `acts.number` as `i64` (matching its real
+`INTEGER NOT NULL` column type) and `.map(|n| n.to_string())` afterward,
+keeping the `.optional()`/`.ok()` soft-degrade for a genuinely missing act
+row (no longer masking a type mismatch, since the read type is now correct).
+
+**Regression test:** `place_movements_act_number_resolves` (new, in
+`place_movements_timeline.rs`) seeds a real `acts` row, links a movement to
+it, and asserts `act_number == Some("777")`. Confirmed to fail
+(`act_number == None`) on the pre-fix code and pass on the fix.
+
+### WR-01: D-25's "удалено" marker is UI-table-only — CSV/PDF exports lose it
+
+**Status:** fixed
+**Commit:** `3f29ad38` — `fix(40): WR-01 export the D-25 «удалено» marker in CSV/PDF movements report`
+**Files:** `crates/trackly-app/src/services/report_service.rs`,
+`crates/trackly-app/tests/report_movements.rs`
+
+Applied as suggested: `row_field`'s `"device_name"` arm now appends
+`" (удалено)"` when `row.is_deleted == Some(true)`. Since `export_pdf` routes
+every cell through the same `row_field` function as `export_csv`, one change
+covers both export paths (the review's "or the equivalent for the PDF
+template" branch was not needed). `is_deleted` is `None` for every report
+domain except movements, so this is a no-op for the other 12 reports.
+
+**Regression tests:** a `row_field` unit test
+(`row_field_device_name_appends_deleted_marker_when_is_deleted`) plus two
+integration tests asserting the marker appears in the actual exported CSV
+and PDF/HTML **body** (`report_movements_export_csv_marks_deleted_device_in_body`,
+`report_movements_export_pdf_marks_deleted_device_in_body`) — the
+pre-existing `*_has_d23_headers` tests only ever asserted headers, never the
+body, which is how this gap shipped untested. Confirmed to fail on the
+pre-fix code and pass on the fix.
+
+### WR-02: Movements report export gate diverges from list gate
+
+**Status:** fixed
+**Commit:** `ba16743a` — `fix(40): WR-02 movements report export gates on ReadPlaces, matching the list gate`
+**Files:** `crates/trackly-app/src/tauri_cmds/reports.rs`, `crates/trackly-core/src/auth.rs`
+
+Took the first of the finding's two suggested options: special-cased
+`"movements"` inside a new `export_gate_action(report_type)` helper so
+`build_reports_export_csv`/`build_reports_export_pdf` gate on
+`Action::ReadPlaces` for that one report type, matching
+`build_reports_list_movements` exactly, instead of the uniform
+`Action::ReadData` every other report_type keeps.
+
+Went slightly beyond the finding's own text for the regression test: added
+`PartialEq, Eq` to `Action` (trackly-core) so the test can assert on the
+ACTION variant itself
+(`export_gate_action("movements") == Action::ReadPlaces`) rather than only
+probing the resolved role set — a role-probe test cannot distinguish
+`ReadPlaces` from `ReadData` today, since both currently authorize the
+identical Admin|Manager set (this is exactly the coincidence the finding
+warns will not hold forever).
+
+**Regression tests:** `movements_export_gate_is_read_places_not_read_data`,
+`other_report_types_keep_read_data_gate` (new, in `tauri_cmds/reports.rs`).
+Not a "fails on pre-fix code" style test in the CR-01/CR-02/WR-01 sense
+(there was no bug in current output, only in future-proofing) — its value is
+that it pins the ACTION so a future accidental revert or copy-paste back to
+uniform `ReadData` fails this test immediately.
+
+### EX-01 (orchestrator-found): «Все перемещения» tab counter always showed 0
+
+**Status:** fixed
+**Commit:** `87412d4c` — `fix(40): EX-01 «Все перемещения» tab counter no longer always shows 0`
+**Files:** `crates/trackly-app/src/services/report_service.rs`,
+`crates/trackly-app/tests/report_movements.rs`
+
+`ReportService::get_report_counts`'s domain `if`/`else if` chain had no
+`"movements"` branch (only `"devices"`, `"cartridges"`, `"requests"`),
+falling through to an empty `Vec::new()`. Added a `"movements"` branch that
+calls `query_movements_inner` — the SAME function `list_movements` calls —
+and counts `.rows.len()`, rather than hand-writing a second `COUNT(*)` that
+re-derives the D-24 dual subtree-CTE WHERE construction (which would drift,
+per the finding's own WR-03/WR-08 warning). At this org's scale (movements
+per item are "единицы за годы"), materializing the row set to count it costs
+nothing meaningful.
+
+**Regression tests:** `report_movements_get_report_counts_reflects_real_rows`
+(count was 0, now reflects 2 real seeded rows) and
+`report_movements_get_report_counts_respects_place_filter` (asserts the
+count tracks the SAME `to_place_id` filter as `list_movements`, not the
+unfiltered total — the correctness constraint the orchestrator's brief
+specifically called out). Both confirmed to fail on the pre-fix code
+(0, and index-out-of-bounds on an empty `counts` vec) and pass on the fix.
+
+### Verification run
+
+Full workspace suite (worktree, post-fix):
+
+```
+TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test --workspace --no-fail-fast \
+  -- --test-threads=1 --skip login_remember_persistent_cookie
+```
+
+131 binaries (128 test binaries + 3 doc-test pseudo-binaries), **1156
+passed, 0 failed** (baseline was 1146 passed; +10 new regression tests added
+by these five fixes). No frontend files were touched by any of the five
+fixes, so `pnpm --dir ui svelte-check`/`lint`/`build` were not re-run —
+nothing in scope could have regressed them.
+
+---
+
+*Fixed: 2026-09-02*
+*Fixer: Claude (gsd-code-fixer)*
