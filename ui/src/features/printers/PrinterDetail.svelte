@@ -12,6 +12,13 @@
   // (.counter-row/.compat-agg-row/.meta-row/.reading-row) kept verbatim —
   // only re-clothed inside DetailSection, content/fields not removed (SC #4).
   // Async readings/aggregates data-loading below (unchanged — data, not visual).
+  //
+  // Plan 40-17 (HST-02, D-21): new "История перемещений" section — reads the
+  // IDENTICAL timeline as the underlying device, fetched by the device's own
+  // id (`printer.deviceId`, same field already used by the deviceData/
+  // compatAggregates effects below). No separate "printer" entity_type is
+  // ever passed — a printer's movement history genuinely IS its device's
+  // history, not a printer-specific variant (no double-accounting).
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
@@ -19,12 +26,20 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import TonerGauge from './TonerGauge.svelte';
   import PrinterAlertBanner from './PrinterAlertBanner.svelte';
+  import MovementTimeline from '$lib/components/MovementTimeline.svelte';
   import { printers } from './api';
   import { devices } from '../devices/api';
   import { cartridges } from '../cartridges/api';
+  import { apiCall } from '$lib/api/client';
+  import { push } from 'svelte-spa-router';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
-  import type { CompatibleModelAggregateDto, DeviceDto, CartridgeDto } from '../../bindings';
+  import type {
+    CompatibleModelAggregateDto,
+    DeviceDto,
+    CartridgeDto,
+    MovementEntryDto,
+  } from '../../bindings';
 
   interface Props {
     printer: PrinterDto | null;
@@ -137,6 +152,38 @@
       })
       .catch(() => {
         installedCartridge = null;
+      });
+  });
+
+  // Plan 40-17 (D-21): movement timeline, read by the printer's UNDERLYING
+  // device id — same code path/entity_type as any plain device row, never a
+  // separate "printer" entity_type.
+  let movements = $state<MovementEntryDto[]>([]);
+  let movementsLoading = $state(false);
+  let movementsLoadError = $state(false);
+
+  $effect(() => {
+    const p = printer;
+    if (p === null) {
+      movements = [];
+      movementsLoadError = false;
+      return;
+    }
+    movementsLoading = true;
+    movementsLoadError = false;
+    apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+      entityType: 'device',
+      entityId: p.deviceId,
+    })
+      .then((entries) => {
+        movements = entries;
+      })
+      .catch(() => {
+        movements = [];
+        movementsLoadError = true;
+      })
+      .finally(() => {
+        movementsLoading = false;
       });
   });
 
@@ -327,6 +374,17 @@
             {/each}
           </ul>
         {/if}
+      </DetailSection>
+
+      <!-- Секция: история перемещений (HST-02, D-21 — та же лента, что у устройства) -->
+      <DetailSection heading="История перемещений">
+        <MovementTimeline
+          entries={movements}
+          loading={movementsLoading}
+          loadError={movementsLoadError}
+          onNavigateToPlace={(id) => push(`#/places?id=${id}`)}
+          onNavigateToAct={(id) => push(`#/acts?id=${id}`)}
+        />
       </DetailSection>
 
       <!-- Секция: данные устройства (R5, D-08/D-09) -->
