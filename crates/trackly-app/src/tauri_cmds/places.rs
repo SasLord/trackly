@@ -174,6 +174,28 @@ pub async fn build_places_contents(
     Ok(rows.into_iter().map(PlaceContentDto::from).collect())
 }
 
+/// Мутация (D-28 "Перенести всё содержимое в…"): требует `caller` с ОБОИМИ
+/// правами `MutateDevices` И `MutateCartridges` (D-13 — reuses the existing
+/// per-entity mutate permissions, not `MutatePlaces`, since the subtree may
+/// contain both devices/printers and cartridges). Double-gated here for
+/// consistency with every other `build_places_*` mutation in this file —
+/// `PlaceService::move_subtree_contents`'s own internal `authorize()` calls
+/// are the actual enforcement, this is defense-in-depth at the transport
+/// boundary. Returns the count of items moved.
+pub async fn build_places_move_subtree_contents(
+    ctx: &AppCtx,
+    caller: &Identity,
+    root_id: i64,
+    target_place_id: i64,
+    note: Option<String>,
+) -> Result<usize, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
+    authorize(caller, &Action::MutateCartridges)?;
+    ctx.places
+        .move_subtree_contents(caller, root_id, target_place_id, note)
+        .await
+}
+
 /// Чтение: требует `caller` с правом `ReadPlaces` (D-20, Admin|Manager).
 /// Cyrillic-safe full-path substring search (PLC-03/PLC-05) — see
 /// `PlaceService::search`'s own doc-comment for the no-SQL-LIKE rationale.
@@ -339,4 +361,24 @@ pub async fn places_search(
 ) -> Result<Vec<PlacePathDto>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_places_search(state.inner(), &caller, query).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn places_move_subtree_contents(
+    state: tauri::State<'_, AppCtx>,
+    root_id: i32,
+    target_place_id: i32,
+    note: Option<String>,
+) -> Result<i32, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    let moved = build_places_move_subtree_contents(
+        state.inner(),
+        &caller,
+        root_id as i64,
+        target_place_id as i64,
+        note,
+    )
+    .await?;
+    Ok(moved as i32)
 }

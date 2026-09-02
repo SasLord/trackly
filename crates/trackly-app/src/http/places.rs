@@ -20,8 +20,8 @@ use crate::http::auth::session_identity;
 use crate::tauri_cmds::places::{
     build_places_archive, build_places_contents, build_places_create, build_places_delete,
     build_places_get, build_places_list_all, build_places_list_children, build_places_move,
-    build_places_rename, build_places_search, build_places_set_path_variant,
-    build_places_subtree_stats, build_places_unarchive,
+    build_places_move_subtree_contents, build_places_rename, build_places_search,
+    build_places_set_path_variant, build_places_subtree_stats, build_places_unarchive,
 };
 
 // ---------------------------------------------------------------------------
@@ -114,6 +114,14 @@ pub struct ContentsPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SearchPayload {
     pub query: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveSubtreeContentsPayload {
+    pub root_id: i64,
+    pub target_place_id: i64,
+    pub note: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +321,32 @@ pub async fn handler_contents(
     ))
 }
 
+/// D-28 "Перенести всё содержимое в…" — bulk-relocate a subtree's devices,
+/// printers, and cartridges to `target_place_id`. Gated on
+/// `Action::MutateDevices` + `Action::MutateCartridges` (D-13) inside
+/// `build_places_move_subtree_contents`, which is the SAME function
+/// `places_move_subtree_contents` (Tauri) calls — one gate, two transports.
+pub async fn handler_move_subtree_contents(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<MoveSubtreeContentsPayload>,
+) -> Result<Json<usize>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_places_move_subtree_contents(
+            &ctx,
+            &identity,
+            payload.root_id,
+            payload.target_place_id,
+            payload.note,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
+    ))
+}
+
 pub async fn handler_search(
     State(ctx): State<AppCtx>,
     session: Session,
@@ -350,4 +384,8 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/places_subtree_stats", post(handler_subtree_stats))
         .route("/api/v1/places_contents", post(handler_contents))
         .route("/api/v1/places_search", post(handler_search))
+        .route(
+            "/api/v1/places_move_subtree_contents",
+            post(handler_move_subtree_contents),
+        )
 }
