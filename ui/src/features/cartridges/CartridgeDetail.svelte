@@ -8,13 +8,32 @@
   // dropped — the CartridgesMasterDetail wrapper now owns the panel surface (D-02).
   // Loading state has no DetailPanel equivalent (empty/filled only) — kept as a
   // sibling branch with a matching container so layout doesn't jump between states.
+  //
+  // Plan 40-17 (HST-02, D-16): the section above ("История перемещений") is
+  // renamed to "Журнал операций" — its content/format is byte-for-byte
+  // unchanged, including the known numeric-place_id display bug in
+  // parsePayloadDetails below (explicitly NOT fixed by this phase). A NEW,
+  // separate "Перемещения" section is added directly below it, mounting the
+  // shared MovementTimeline component (Plan 40-15) fed by its OWN fetch —
+  // `history` above is a prop owned by CartridgesPage.svelte (this component
+  // has no existing internal fetch effect to fold into), so the new
+  // movements fetch is a genuinely independent, component-owned $effect
+  // keyed on `cartridge`, with its own minimal loading/error flags. Because
+  // the panel's `loading` prop governs the WHOLE detail pane (not just this
+  // section), a timeline-only failure here uses MovementTimeline's own
+  // scoped `loadError`, not the panel's loading gate — unlike Plan 40-16's
+  // modal, this page keeps rendering the rest of the cartridge's data even
+  // if only the movements fetch fails.
   import Button from '$lib/components/Button.svelte';
   import Badge from '$lib/components/Badge.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
   import DetailPanel from '$lib/components/DetailPanel.svelte';
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
-  import type { AuditEntryDto, CartridgeDto } from '../../bindings';
+  import MovementTimeline from '$lib/components/MovementTimeline.svelte';
+  import { apiCall } from '$lib/api/client';
+  import { push } from 'svelte-spa-router';
+  import type { AuditEntryDto, CartridgeDto, MovementEntryDto } from '../../bindings';
 
   interface Props {
     cartridge: CartridgeDto | null;
@@ -25,6 +44,35 @@
   }
 
   const { cartridge, history, loading, onCreate, onMenuAction }: Props = $props();
+
+  let movements = $state<MovementEntryDto[]>([]);
+  let movementsLoading = $state(false);
+  let movementsLoadError = $state(false);
+
+  $effect(() => {
+    const c = cartridge;
+    if (c === null) {
+      movements = [];
+      movementsLoadError = false;
+      return;
+    }
+    movementsLoading = true;
+    movementsLoadError = false;
+    apiCall<MovementEntryDto[]>('place_movements_get_timeline', {
+      entityType: 'cartridge',
+      entityId: c.id,
+    })
+      .then((entries) => {
+        movements = entries;
+      })
+      .catch(() => {
+        movements = [];
+        movementsLoadError = true;
+      })
+      .finally(() => {
+        movementsLoading = false;
+      });
+  });
 
   // Badge variant по status_id (UI-SPEC §Badge-цвета статусов):
   // 1→success, 2→accent, 3→warning, 4→default
@@ -189,7 +237,7 @@
         </div>
       </DetailSection>
 
-      <DetailSection heading="История перемещений">
+      <DetailSection heading="Журнал операций">
         {#if history.length === 0}
           <p class="history-empty">История пуста</p>
         {:else}
@@ -201,6 +249,16 @@
             {/each}
           </ul>
         {/if}
+      </DetailSection>
+
+      <DetailSection heading="Перемещения">
+        <MovementTimeline
+          entries={movements}
+          loading={movementsLoading}
+          loadError={movementsLoadError}
+          onNavigateToPlace={(id) => push(`#/places?id=${id}`)}
+          onNavigateToAct={(id) => push(`#/acts?id=${id}`)}
+        />
       </DetailSection>
     {/if}
   </DetailPanel>
