@@ -82,15 +82,24 @@ impl PlaceMovementService {
 
                 // Soft-degraded act_number resolution (never `.expect()`/`?` — an
                 // act row being gone must not crash the whole timeline read).
+                //
+                // CR-02: `acts.number` is `INTEGER NOT NULL` (V004__acts.sql) —
+                // read as `i64` and format afterward. Reading it as `String`
+                // failed with `InvalidColumnType` on every single row (never just
+                // a missing act), and `.ok()` silently swallowed that real error,
+                // so this was permanently `None`. The soft-degrade below is kept
+                // for a genuinely missing act row (`.optional()`/`.ok()`), not to
+                // mask a type mismatch.
                 let act_number: Option<String> = row.act_id.and_then(|act_id| {
                     conn.query_row(
                         "SELECT number FROM acts WHERE id = ?1",
                         params![act_id],
-                        |r| r.get::<_, String>(0),
+                        |r| r.get::<_, i64>(0),
                     )
                     .optional()
                     .ok()
                     .flatten()
+                    .map(|n| n.to_string())
                 });
 
                 // Shortening formula: single owner is

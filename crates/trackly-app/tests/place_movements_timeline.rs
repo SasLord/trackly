@@ -275,3 +275,114 @@ async fn place_movements_printer_is_device() {
     assert_eq!(timeline[0].entity_type, "device");
     assert_eq!(timeline[0].entity_id, printer_device_id);
 }
+
+// ---------------------------------------------------------------------------
+// place_movements_act_number_resolves (CR-02 gap closure)
+// ---------------------------------------------------------------------------
+
+/// Seed a real `acts` row (minimal columns) and return its id. Invented
+/// giver/receiver names only (CLAUDE.md privacy gate).
+async fn seed_act(writer: &WriterHandle, number: i64) -> i64 {
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO acts \
+                 (number, act_type, giver_name, receiver_name, created_at_utc, updated_at_utc) \
+                 VALUES (?1, 'handover', 'Кузнецов К.К.', 'Смирнов С.С.', ?2, ?2)",
+                params![number, 1_700_000_000_i64],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed act")
+}
+
+/// Seed a `place_movements` row with a real `act_id` set (bypassing
+/// `seed_movement_row`'s hardcoded `act_id = NULL`).
+#[allow(clippy::too_many_arguments)]
+async fn seed_movement_row_with_act(
+    writer: &WriterHandle,
+    entity_type: &str,
+    entity_id: i64,
+    from_place_id: i64,
+    from_place_path: &str,
+    to_place_id: i64,
+    to_place_path: &str,
+    act_id: i64,
+    created_at_utc: i64,
+) -> i64 {
+    let entity_type = entity_type.to_string();
+    let from_place_path = from_place_path.to_string();
+    let to_place_path = to_place_path.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO place_movements \
+                 (entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
+                  to_place_path, source, note, act_id, user_id, actor_name_snapshot, \
+                  created_at_utc) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'act', NULL, ?7, NULL, NULL, ?8)",
+                params![
+                    entity_type,
+                    entity_id,
+                    from_place_id,
+                    from_place_path,
+                    to_place_id,
+                    to_place_path,
+                    act_id,
+                    created_at_utc,
+                ],
+            )
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("{e}"),
+            })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed place_movements row with act_id")
+}
+
+/// CR-02: `acts.number` is `INTEGER NOT NULL` — the timeline read must resolve
+/// `act_number` to the act's REAL number, not silently degrade to `None` on
+/// every act-linked row (the type-mismatch regression this test guards
+/// against would have `act_number == None` here even though the linked act
+/// row exists).
+#[tokio::test]
+async fn place_movements_act_number_resolves() {
+    let (writer, readers, _dir) = test_writer_and_readers();
+    let manager = seed_manager_caller(&writer).await;
+    let from_place = seed_place(&writer, "Здание А / Каб. 104").await;
+    let to_place = seed_place(&writer, "Здание Б / Каб. 204").await;
+    let device_id = seed_device(&writer, "Сканер инв.004", 1, to_place).await;
+    let act_id = seed_act(&writer, 777).await;
+
+    seed_movement_row_with_act(
+        &writer,
+        "device",
+        device_id,
+        from_place,
+        "Здание А / Каб. 104",
+        to_place,
+        "Здание Б / Каб. 204",
+        act_id,
+        1_700_000_500,
+    )
+    .await;
+
+    let svc = PlaceMovementService::new(readers);
+    let timeline = svc
+        .get_timeline(&manager, "device", device_id)
+        .await
+        .expect("get_timeline");
+
+    assert_eq!(timeline.len(), 1);
+    assert_eq!(timeline[0].act_id, Some(act_id));
+    assert_eq!(
+        timeline[0].act_number,
+        Some("777".to_string()),
+        "CR-02: act_number must resolve to the real act number, not degrade to None"
+    );
+}
