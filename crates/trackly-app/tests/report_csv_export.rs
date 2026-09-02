@@ -60,6 +60,12 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
             model_label: None,
             status_name: None,
             request_type_label: None,
+            from_place_path: None,
+            from_place_path_short: None,
+            actor_name: None,
+            reason: None,
+            entity_type_label: None,
+            is_deleted: None,
         }],
     };
     let columns = &[
@@ -134,6 +140,12 @@ async fn csv_export_guards_formula_injection() {
             model_label: Some("+payload".to_string()),
             status_name: None,
             request_type_label: None,
+            from_place_path: None,
+            from_place_path_short: None,
+            actor_name: None,
+            reason: None,
+            entity_type_label: None,
+            is_deleted: None,
         }],
     };
     let columns = &["device_name", "model_label"];

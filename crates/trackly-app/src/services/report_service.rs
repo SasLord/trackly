@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use rusqlite::types::ToSql;
 use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
+use trackly_core::domain::place_movements::MovementSource;
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -28,6 +29,7 @@ use crate::dto::reports::{
 };
 use crate::pdf::PdfRenderer;
 use crate::services::organization_service::OrganizationService;
+use crate::services::place_path_display::compute_place_path_short as compute_movement_place_path_short;
 
 // ---------------------------------------------------------------------------
 // Russian month names for PDF month-separator headings
@@ -463,6 +465,35 @@ impl ReportService {
         .await
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking list_device_returns: {e}"),
+        })?
+    }
+
+    /// HST-04: movement-history report (`place_movements`, Phase 40). Two
+    /// independent subtree-inclusive place filters («Откуда»/«Куда», D-24,
+    /// AND semantics when both set) plus the usual period/type filters.
+    /// D-25: soft-deleted items stay in the result, marked `is_deleted`.
+    ///
+    /// Unlike every other `list_*` above, `query_movements_inner` needs
+    /// `&ReaderPool` (not just `&Connection`) so it can call
+    /// `place_path_display::compute_place_path_short` — the single owner of
+    /// the path-shortening formula (D-18/D-20, Plan 40-02) — for both the
+    /// "from" and "to" snapshots. This is why `readers` is cloned into the
+    /// `spawn_blocking` closure alongside the acquired `conn`.
+    pub async fn list_movements(
+        &self,
+        filter: ReportFilter,
+        period: PeriodDto,
+    ) -> Result<ReportResponse, AppError> {
+        let tz = self.get_tz_offset();
+        let (ts_from, ts_to) = compute_period_utc(&period, tz);
+        let readers = self.readers.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            query_movements_inner(&conn, &readers, &filter, ts_from, ts_to)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking list_movements: {e}"),
         })?
     }
 
@@ -1081,6 +1112,16 @@ fn row_field(row: &ReportRow, col: &str, tz: UtcOffset, shorten: bool) -> String
         "status_name" => row.status_name.as_deref().unwrap_or("").to_string(),
         "month_key" => row.month_key.as_deref().unwrap_or("").to_string(),
         "request_type_label" => row.request_type_label.as_deref().unwrap_or("").to_string(),
+        "from_place_path" => if shorten {
+            row.from_place_path_short.as_deref()
+        } else {
+            row.from_place_path.as_deref()
+        }
+        .unwrap_or("")
+        .to_string(),
+        "actor_name" => row.actor_name.as_deref().unwrap_or("").to_string(),
+        "reason" => row.reason.as_deref().unwrap_or("").to_string(),
+        "entity_type_label" => row.entity_type_label.as_deref().unwrap_or("").to_string(),
         _ => String::new(),
     }
 }
@@ -1261,6 +1302,251 @@ fn query_acts_inner(
     let mut rows = Vec::new();
     for row in row_iter {
         rows.push(row.map_err(map_rusqlite)?);
+    }
+    let total = rows.len() as i64;
+    Ok(ReportResponse { rows, total })
+}
+
+/// HST-04 «Причина» — a single backend-composed string (D-23), never
+/// assembled from parts on the frontend. `act_id`/`act_number` win first (a
+/// movement caused by an act always reads "актом №N", regardless of the
+/// `source` token it was written with); otherwise the label depends on the
+/// recognized `MovementSource` — soft-degraded (Pitfall 6 / IN-01) to the
+/// raw `source` token for anything `from_str_lenient` doesn't recognize yet,
+/// so an unrecognized future token never crashes this report, it just shows
+/// its raw value (mirrors `translate_request_status`'s unknown fallback).
+fn movement_reason(
+    source: &str,
+    note: Option<&str>,
+    act_id: Option<i64>,
+    act_number: Option<i64>,
+) -> String {
+    if act_id.is_some() {
+        if let Some(number) = act_number {
+            return format!("актом №{number}");
+        }
+    }
+    match MovementSource::from_str_lenient(source) {
+        Some(MovementSource::Manual) => match note {
+            Some(n) if !n.is_empty() => format!("вручную · {n}"),
+            _ => "вручную".to_string(),
+        },
+        // `source == "act"` with `act_id IS NULL` should not happen in
+        // practice (every act-caused write threads its `act_id`), but the
+        // fallback still needs a safe label rather than panicking.
+        Some(MovementSource::Act) => "актом".to_string(),
+        Some(MovementSource::Map) => "по карте".to_string(),
+        Some(MovementSource::Workstation) => "назначение АРМ".to_string(),
+        None => source.to_string(),
+    }
+}
+
+/// HST-04 movement-history report (Phase 40 Plan 11). D-24: `from_place_id`/
+/// `to_place_id` are two INDEPENDENT subtree-inclusive filters, combined by
+/// AND when both are set — each gets its own `WITH RECURSIVE` CTE, included
+/// only when the corresponding filter field is `Some` (an unused CTE is
+/// wasted work on every unfiltered call, which is the common case). D-25:
+/// a movement whose underlying device/cartridge has since been soft-deleted
+/// is NOT filtered out — it stays in the result, marked `is_deleted`, so a
+/// report for a past period never changes shape because of a write-off that
+/// happened after the fact.
+///
+/// Needs `&ReaderPool` (in addition to `&Connection`) because it calls
+/// `place_path_display::compute_place_path_short` — the single owner of the
+/// path-shortening formula (D-18/D-20, Plan 40-02) — for BOTH the "from" and
+/// "to" snapshots. Resolving the variant/separators directly against `conn`
+/// here instead would recreate the exact WR-03/WR-08 duplication this plan
+/// exists to avoid.
+fn query_movements_inner(
+    conn: &rusqlite::Connection,
+    readers: &ReaderPool,
+    filter: &ReportFilter,
+    ts_from: Option<i64>,
+    ts_to: Option<i64>,
+) -> Result<ReportResponse, AppError> {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut owned_params: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut cte_parts: Vec<String> = Vec::new();
+
+    if let Some(from) = ts_from {
+        clauses.push(format!("pm.created_at_utc >= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(from));
+    }
+    if let Some(to) = ts_to {
+        clauses.push(format!("pm.created_at_utc <= ?{}", next_idx(&owned_params)));
+        owned_params.push(Box::new(to));
+    }
+
+    // D-24: «Откуда» — independent, subtree-inclusive.
+    if let Some(from_place_id) = filter.from_place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(from_place_id));
+        cte_parts.push(format!(
+            "from_subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN from_subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             )"
+        ));
+        clauses.push("pm.from_place_id IN (SELECT id FROM from_subtree)".to_string());
+    }
+    // D-24: «Куда» — independent, subtree-inclusive. Combined with the
+    // «Откуда» clause above by AND (both pushed into the same `clauses`
+    // vec, joined with " AND " below) when both filters are set — the
+    // canonical "со склада в Здание Б" example from CONTEXT.md.
+    if let Some(to_place_id) = filter.to_place_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(to_place_id));
+        cte_parts.push(format!(
+            "to_subtree(id) AS ( \
+                 SELECT id FROM places WHERE id = ?{idx} AND deleted_at_utc IS NULL \
+                 UNION ALL \
+                 SELECT p.id FROM places p JOIN to_subtree s ON p.parent_id = s.id \
+                 WHERE p.deleted_at_utc IS NULL \
+             )"
+        ));
+        clauses.push("pm.to_place_id IN (SELECT id FROM to_subtree)".to_string());
+    }
+    // D-04 «тип устройства»: applies only to device-kind movements — a
+    // cartridge has no `type_id`, so setting this filter naturally narrows
+    // the report to devices of that type only.
+    if let Some(type_id) = filter.type_id {
+        let idx = next_idx(&owned_params);
+        owned_params.push(Box::new(type_id));
+        clauses.push(format!(
+            "(pm.entity_type = 'device' AND d.type_id = ?{idx})"
+        ));
+    }
+
+    let with_prefix = if cte_parts.is_empty() {
+        String::new()
+    } else {
+        format!("WITH RECURSIVE {} ", cte_parts.join(", "))
+    };
+    let where_clause = if clauses.is_empty() {
+        "1 = 1".to_string()
+    } else {
+        clauses.join(" AND ")
+    };
+
+    let sql = format!(
+        "{with_prefix}SELECT pm.id, \
+               strftime('%Y-%m', datetime(pm.created_at_utc, 'unixepoch', '+3 hours')) AS month_key, \
+               pm.from_place_id, pm.from_place_path, pm.to_place_id, pm.to_place_path, \
+               COALESCE(d.name, c.code) AS device_name, \
+               CASE pm.entity_type WHEN 'device' THEN 'Устройство' \
+                                   WHEN 'cartridge' THEN 'Картридж' \
+                                   ELSE pm.entity_type END AS entity_type_label, \
+               pm.source, pm.note, pm.act_id, a.number AS act_number, \
+               COALESCE(pm.actor_name_snapshot, u.login) AS actor_name, \
+               CASE WHEN d.deleted_at_utc IS NOT NULL OR c.deleted_at_utc IS NOT NULL \
+                    THEN 1 ELSE 0 END AS is_deleted, \
+               pm.created_at_utc \
+         FROM place_movements pm \
+         LEFT JOIN devices d ON pm.entity_type = 'device' AND pm.entity_id = d.id \
+         LEFT JOIN cartridges c ON pm.entity_type = 'cartridge' AND pm.entity_id = c.id \
+         LEFT JOIN acts a ON a.id = pm.act_id \
+         LEFT JOIN users u ON u.id = pm.user_id \
+         WHERE {where_clause} \
+         ORDER BY pm.created_at_utc ASC, pm.id ASC \
+         LIMIT 1000"
+    );
+
+    let param_refs: Vec<&dyn ToSql> = owned_params.iter().map(|b| b.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql).map_err(map_rusqlite)?;
+    let row_iter = stmt
+        .query_map(param_refs.as_slice(), |r| {
+            let from_place_id: i64 = r.get(2)?;
+            let from_place_path: Option<String> = r.get(3)?;
+            let to_place_id: i64 = r.get(4)?;
+            let to_place_path: Option<String> = r.get(5)?;
+            let source: String = r.get(8)?;
+            let note: Option<String> = r.get(9)?;
+            let act_id: Option<i64> = r.get(10)?;
+            let act_number: Option<i64> = r.get(11)?;
+            let actor_name: Option<String> = r.get(12)?;
+            let is_deleted: i64 = r.get(13)?;
+            let created_at_utc: i64 = r.get(14)?;
+
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                from_place_id,
+                from_place_path,
+                to_place_id,
+                to_place_path,
+                r.get::<_, Option<String>>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                source,
+                note,
+                act_id,
+                act_number,
+                actor_name,
+                is_deleted,
+                created_at_utc,
+            ))
+        })
+        .map_err(map_rusqlite)?;
+
+    let mut rows = Vec::new();
+    for row in row_iter {
+        let (
+            id,
+            month_key,
+            from_place_id,
+            from_place_path,
+            to_place_id,
+            to_place_path,
+            device_name,
+            entity_type_label,
+            source,
+            note,
+            act_id,
+            act_number,
+            actor_name,
+            is_deleted,
+            created_at_utc,
+        ) = row.map_err(map_rusqlite)?;
+
+        // D-18/D-20 (Plan 40-02): shorten by the CURRENT effective variant,
+        // never the variant at write time — `compute_place_path_short` is
+        // the single owner of this formula, called here for both sides.
+        let from_place_path_short = compute_movement_place_path_short(
+            readers,
+            Some(from_place_id),
+            from_place_path.clone(),
+        );
+        let place_path_short =
+            compute_movement_place_path_short(readers, Some(to_place_id), to_place_path.clone());
+
+        let reason = movement_reason(&source, note.as_deref(), act_id, act_number);
+        let actor_name = actor_name.unwrap_or_else(|| "система".to_string());
+
+        rows.push(ReportRow {
+            id,
+            month_key,
+            number: None,
+            sub_number: None,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: Some(created_at_utc),
+            place_path: to_place_path,
+            place_path_short,
+            act_type: None,
+            device_name,
+            quantity: None,
+            code: None,
+            model_label: None,
+            status_name: None,
+            request_type_label: None,
+            from_place_path,
+            from_place_path_short,
+            actor_name: Some(actor_name),
+            reason: Some(reason),
+            entity_type_label,
+            is_deleted: Some(is_deleted != 0),
+        });
     }
     let total = rows.len() as i64;
     Ok(ReportResponse { rows, total })
@@ -2926,16 +3212,22 @@ mod tests {
     // Все имена мест/устройств — вымышленные (репозиторий публичный).
     // -----------------------------------------------------------------------
 
-    fn make_movements_service() -> ReportService {
-        let (writer, readers, _guard) = trackly_infra::test_support::test_writer_and_readers();
+    /// Returns the tempdir guard alongside the service — unlike
+    /// `make_test_service` above, these tests actually query the DB through
+    /// `readers`/`writer` well after construction, so the guard MUST stay
+    /// alive for the whole test body (dropping it early causes SQLite WAL
+    /// I/O errors on later reads/writes against the now-deleted tempdir).
+    fn make_movements_service() -> (ReportService, tempfile::TempDir) {
+        let (writer, readers, guard) = trackly_infra::test_support::test_writer_and_readers();
         let clock: Arc<dyn Clock + Send + Sync> = Arc::new(trackly_infra::clock_impl::SystemClock);
-        ReportService::new(
+        let svc = ReportService::new(
             writer,
             readers,
             clock,
             Arc::new(AppConfig::default()),
             Arc::new(PdfRenderer::new()),
-        )
+        );
+        (svc, guard)
     }
 
     /// Период, заведомо накрывающий все тестовые `created_at_utc` значения
@@ -3046,7 +3338,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn report_movements_place_filters() {
         tokio::time::timeout(std::time::Duration::from_secs(30), async {
-            let svc = make_movements_service();
+            let (svc, _guard) = make_movements_service();
 
             // «Склад» (root) и «Здание Б» (root) с вложенным «Кабинет 101»,
             // плюс несвязанное «Прочее здание» — mirrors D-24's own worked
@@ -3168,7 +3460,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn report_movements_deleted_item_marker() {
         tokio::time::timeout(std::time::Duration::from_secs(30), async {
-            let svc = make_movements_service();
+            let (svc, _guard) = make_movements_service();
 
             let warehouse = create_test_place(&svc.writer, None, "Склад").await;
             let office = create_test_place(&svc.writer, None, "Офис").await;

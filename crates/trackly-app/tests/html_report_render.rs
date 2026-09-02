@@ -60,6 +60,12 @@ fn make_row(
         model_label: None,
         status_name: None,
         request_type_label: None,
+        from_place_path: None,
+        from_place_path_short: None,
+        actor_name: None,
+        reason: None,
+        entity_type_label: None,
+        is_deleted: None,
     }
 }
 
