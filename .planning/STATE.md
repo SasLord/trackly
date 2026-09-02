@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-02T01:09:43.228Z"
+last_updated: "2026-09-02T01:25:59.314Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 57
-  completed_plans: 45
+  completed_plans: 46
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 9 of 20
+Plan: 10 of 20
 Status: Ready to execute
 Last activity: 2026-09-02
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -351,6 +351,7 @@ Last activity: 2026-09-02
 | Phase 40 P06 | 19min | 2 tasks | 24 files |
 | Phase 40 P11 | 40min | 2 tasks | 5 files |
 | Phase 40 P07 | 35min | 2 tasks | 2 files |
+| Phase 40 P08 | 40min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -875,6 +876,7 @@ Recent decisions affecting current work:
 - [Phase 40-11]: HST-04: from_place_id/to_place_id are independent subtree-inclusive filters combined by AND (D-24); Куда reuses place_path/place_path_short, Откуда gets new from_place_path fields (Pitfall 7)
 - [Phase 40-11]: query_movements_inner threads &ReaderPool alongside &Connection to call place_path_display::compute_place_path_short (single formula owner, D-18/D-20) rather than re-deriving the variant/separators inline
 - [Phase 40-07]: place_movements_repo added as new DeviceService field (Arc-clone convention, mirrors printer_repo/place_repo) rather than passed per-call
+- [Phase 40]: D-05's meaningful reason lives in note, not source — transition-driven cartridge movements keep source=Manual (D-07 closed enum) and carry an operation-derived Russian note; manual PlacePicker edits keep note=None
 
 ### Pending Todos
 
@@ -1063,7 +1065,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-02T01:09:43.218Z
+Last session: 2026-09-02T01:22:42.612Z
 Stopped at: Completed 40-07-PLAN.md
 Resume file: 
 
