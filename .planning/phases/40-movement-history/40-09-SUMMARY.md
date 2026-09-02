@@ -105,3 +105,13 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-02*
+
+## Self-Check: PASSED
+
+- FOUND: crates/trackly-app/src/services/act_service.rs
+- FOUND: crates/trackly-app/tests/place_movements_act_link.rs
+- FOUND: .planning/phases/40-movement-history/40-09-SUMMARY.md
+- FOUND commit: 6c52082b
+- FOUND commit: 0aa53914
+- FOUND commit: 4be7ec8d
+- FOUND commit: 371fbc9c
