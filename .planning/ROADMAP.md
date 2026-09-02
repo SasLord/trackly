@@ -376,7 +376,7 @@ Plans:
   4. Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу
      устройства.
 
-**Plans**: 20 plans in 5 waves
+**Plans**: 27 plans in 8 waves (20 initial + 7 gap-closure, UAT 2026-09-03)
 
 Plans:
 **Wave 1**
@@ -413,6 +413,24 @@ Plans:
 
 - [x] 40-16-PLAN.md — таймлайн в PlaceEntityViewModal + «Просмотр» в DeviceContextMenu (D-14)
 - [x] 40-17-PLAN.md — CartridgeDetail (переименование + новая секция) + PrinterDetail (D-16/D-21)
+
+**Gap closure (UAT 2026-09-03, 7 gaps — см. 40-UAT.md)**
+
+**Wave 6 (gap-closure wave 1)**
+
+- [ ] 40-21-PLAN.md — cartridge-does-not-follow-printer: каскад места «принтер → его картриджи» + обратная запись места принтеру
+- [ ] 40-24-PLAN.md — timeline-act-link-wrong-subsection: подраздел «Акты» из act_type/archived + канонический номер возврата + пояснение D-06
+- [ ] 40-25-PLAN.md — deleted-badge-missing-in-live-report-table: reportType={reportTypeKey()} + гейт
+- [ ] 40-26-PLAN.md — grouped-device-list-place-inversion: list_by_ids short-path fix (A) + place_distinct_count (B)
+- [ ] 40-27-PLAN.md — lan-print-duplicate-first-page: идемпотентный printViaTopLevel + re-entrancy guard
+
+**Wave 7 (gap-closure wave 2, blocked on 40-21)**
+
+- [ ] 40-22-PLAN.md — return-to-stock-empty-place-field: автоподстановка последнего складского места из place_movements
+
+**Wave 8 (gap-closure wave 3, blocked on 40-21/40-22)**
+
+- [ ] 40-23-PLAN.md — OperationModal: место необязательно при установке в принтер + подсказка автоподстановки
 
 **UI hint**: yes
 
