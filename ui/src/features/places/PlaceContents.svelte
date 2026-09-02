@@ -22,6 +22,11 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import Modal from '$lib/components/Modal.svelte';
+  import Button from '$lib/components/Button.svelte';
+  import Spinner from '$lib/components/Spinner.svelte';
+  import PlacePicker from '$lib/components/PlacePicker.svelte';
+  import { pushToast } from '$lib/stores/toast.svelte';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
 
@@ -214,6 +219,69 @@
   // combinations or the empty-state row's colspan is wrong.
   const showKindColumn = $derived(activeTab === 'all');
   const columnCount = $derived(3 + (showKindColumn ? 1 : 0) + (!onlyHere ? 1 : 0));
+
+  // --- D-28 bulk move ("Перенести всё содержимое в…", Plan 40-19) ---
+  // `rows` above is filtered by the `onlyHere` toggle (nested = !onlyHere), but
+  // the backend's `move_subtree_contents` always walks the FULL nested subtree
+  // (Plan 40-13) regardless of that toggle. The confirm dialog's {N} must match
+  // what actually gets moved, so it fetches its own always-nested count on open
+  // rather than reusing `counts.all`, which would under-report when "Только
+  // здесь" is on.
+  let moveModalOpen = $state(false);
+  let moveTargetId = $state<number | null>(null);
+  let moving = $state(false);
+  let moveCount = $state<number | null>(null);
+  let moveCountLoading = $state(false);
+
+  function openMoveModal(): void {
+    moveTargetId = null;
+    moveCount = null;
+    moveModalOpen = true;
+  }
+
+  function closeMoveModal(): void {
+    if (moving) return;
+    moveModalOpen = false;
+  }
+
+  $effect(() => {
+    if (!moveModalOpen) return;
+    const rootId = place.id;
+    let cancelled = false;
+    moveCountLoading = true;
+    apiCall<PlaceContentDto[]>('places_contents', { rootId, nested: true })
+      .then((r) => {
+        if (!cancelled) moveCount = r.length;
+      })
+      .catch(() => {
+        if (!cancelled) moveCount = null;
+      })
+      .finally(() => {
+        if (!cancelled) moveCountLoading = false;
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  async function handleMoveConfirm(): Promise<void> {
+    if (moveTargetId === null || moving) return;
+    moving = true;
+    try {
+      await apiCall<number>('places_move_subtree_contents', {
+        rootId: place.id,
+        targetPlaceId: moveTargetId,
+        note: null,
+      });
+      pushToast('success', 'Содержимое перенесено');
+      moveModalOpen = false;
+      reloadToken += 1;
+    } catch {
+      pushToast('error', 'Не удалось перенести содержимое. Попробуйте ещё раз.');
+    } finally {
+      moving = false;
+    }
+  }
 </script>
 
 <div class="place-contents">
@@ -244,9 +312,12 @@
       onchange={(k) => onActiveTabChange(k as ContentTab)}
       ariaLabel="Фильтр содержимого"
     />
-    <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
-      <span title="Не показывать содержимое вложенных мест">Только здесь</span>
-    </Checkbox>
+    <div class="controls-right">
+      <Checkbox checked={onlyHere} onchange={onOnlyHereChange} id="place-contents-only-here">
+        <span title="Не показывать содержимое вложенных мест">Только здесь</span>
+      </Checkbox>
+      <Button variant="secondary" onclick={openMoveModal}>Перенести всё содержимое в…</Button>
+    </div>
   </div>
 
   <div class="table-region">
@@ -327,6 +398,44 @@
     onChanged={() => (reloadToken += 1)}
   />
 {/if}
+
+<Modal open={moveModalOpen} title="Перенести содержимое в другое место?" onClose={closeMoveModal}>
+  <div class="move-form">
+    <div class="form-field">
+      <label class="form-label" for="place-contents-move-target">Новое место</label>
+      <PlacePicker
+        id="place-contents-move-target"
+        value={moveTargetId}
+        disabled={moving}
+        onChange={(id) => (moveTargetId = id)}
+      />
+    </div>
+
+    {#if moveCountLoading}
+      <div class="stats-loading">
+        <Spinner size="sm" />
+        <span>Загрузка…</span>
+      </div>
+    {:else}
+      <p class="confirm-body">
+        Место изменится у {moveCount ?? 0} предметов в этом разделе и всех вложенных местах. Для каждого
+        появится запись в истории перемещений с причиной «вручную».
+      </p>
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    <Button variant="secondary" onclick={closeMoveModal} disabled={moving}>Отмена</Button>
+    <Button
+      variant="primary"
+      loading={moving}
+      disabled={moveTargetId === null}
+      onclick={handleMoveConfirm}
+    >
+      Перенести
+    </Button>
+  {/snippet}
+</Modal>
 
 <style lang="scss">
   .place-contents {
@@ -420,5 +529,47 @@
   .cell-kind {
     color: var(--tr-text-secondary);
     font-size: var(--tr-font-size-caption);
+  }
+
+  .controls-right {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-md);
+  }
+
+  // Bulk-move confirm dialog (D-28, Plan 40-19) — mirrors PlaceMoveModal.svelte's
+  // form-field/stats-loading pattern for visual consistency across the two
+  // "move something" dialogs in this feature.
+  .move-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-md);
+    padding: var(--tr-space-md) 0;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-2xs);
+  }
+
+  .form-label {
+    font-size: var(--tr-font-size-label);
+    font-weight: var(--tr-font-weight-medium);
+    color: var(--tr-text-secondary);
+  }
+
+  .stats-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+    color: var(--tr-text-secondary);
+    font-size: var(--tr-font-size-body);
+  }
+
+  .confirm-body {
+    margin: 0;
+    color: var(--tr-text-secondary);
+    line-height: var(--tr-line-height-body);
   }
 </style>
