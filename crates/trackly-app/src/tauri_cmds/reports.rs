@@ -47,6 +47,23 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
                 "printer_place",
             ]
         }
+        // HST-04 (D-23). NOTE: the key is `handover_date_utc`, not
+        // `created_at_utc` — `query_movements_inner` (Plan 40-11) reuses the
+        // existing `ReportRow.handover_date_utc` field to carry
+        // `pm.created_at_utc` (same reuse convention as `place_path` for
+        // "Куда"), and `row_field` only has a match arm for
+        // `"handover_date_utc"`. Using `"created_at_utc"` here would compile
+        // fine but silently render an empty «Дата» column in both the table
+        // and CSV/PDF export — see Deviations in the plan Summary.
+        "movements" => vec![
+            "handover_date_utc",
+            "device_name",
+            "entity_type_label",
+            "from_place_path",
+            "place_path",
+            "actor_name",
+            "reason",
+        ],
         _ => vec!["id"],
     }
 }
@@ -77,6 +94,8 @@ fn column_labels_for(report_type: &str) -> Vec<&'static str> {
         "requests_all" | "requests_open" | "requests_in_progress" | "requests_completed" => {
             vec!["№", "Дата", "Тип", "Статус", "Заявитель", "Место"]
         }
+        // HST-04 (D-23) — index-aligned with columns_for("movements") above.
+        "movements" => vec!["Дата", "Предмет", "Тип", "Откуда", "Куда", "Кем", "Причина"],
         _ => vec!["ID"],
     }
 }
@@ -96,6 +115,7 @@ fn report_display_name(report_type: &str) -> &'static str {
         "requests_open" => "Открытые заявки",
         "requests_in_progress" => "Заявки в работе",
         "requests_completed" => "Выполненные заявки",
+        "movements" => "Перемещения",
         _ => "Отчёт",
     }
 }
@@ -232,6 +252,24 @@ pub async fn build_reports_list_requests_completed(
         .await
 }
 
+/// HST-04 movements report. **Gate diverges from every other `build_reports_list_*`
+/// above**: `Action::ReadPlaces`, NOT `Action::ReadData` (D-12 — this is the single
+/// highest-risk copy-paste spot in the whole report clone, PATTERNS.md's own named
+/// warning). Functionally both actions currently authorize the same two roles
+/// (Admin | Manager, Employee excluded — see the permission-matrix doc comment on
+/// `authorize()`), but the semantic gate MUST be `ReadPlaces` per D-12, since the
+/// role-matrix regression test added by Plan 40-14 asserts this action specifically,
+/// not just its current role set.
+pub async fn build_reports_list_movements(
+    ctx: &AppCtx,
+    caller: &Identity,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    authorize(caller, &Action::ReadPlaces)?;
+    ctx.reports.list_movements(filter, period).await
+}
+
 /// Export report rows as UTF-8 BOM CSV bytes.
 pub async fn build_reports_export_csv(
     ctx: &AppCtx,
@@ -295,7 +333,7 @@ pub async fn build_reports_export_pdf(
 
 /// Report types whose query is period-scoped. For these, `period` is
 /// mandatory — see `require_period`.
-pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 8] = [
+pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 9] = [
     "device_acts",
     "device_returns",
     "cartridge_consumption",
@@ -304,6 +342,7 @@ pub(crate) const PERIOD_BASED_REPORT_TYPES: [&str; 8] = [
     "requests_open",
     "requests_in_progress",
     "requests_completed",
+    "movements",
 ];
 
 /// WR-07: reject an absent `period` for a period-scoped report instead of
@@ -397,6 +436,11 @@ async fn fetch_report(
                     require_period(report_type, period)?,
                     exclude_ad_register,
                 )
+                .await
+        }
+        "movements" => {
+            ctx.reports
+                .list_movements(filter, require_period(report_type, period)?)
                 .await
         }
         other => Err(AppError::Validation {
@@ -538,6 +582,20 @@ pub async fn reports_list_requests_completed(
     build_reports_list_requests_completed(state.inner(), &caller, filter, period).await
 }
 
+/// HST-04. Delegates to `build_reports_list_movements`, which gates on
+/// `Action::ReadPlaces` — NOT `Action::ReadData` like every sibling command
+/// above (D-12).
+#[tauri::command]
+#[specta::specta]
+pub async fn reports_list_movements(
+    state: tauri::State<'_, AppCtx>,
+    filter: ReportFilter,
+    period: PeriodDto,
+) -> Result<ReportResponse, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_reports_list_movements(state.inner(), &caller, filter, period).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn reports_export_csv(
@@ -620,6 +678,7 @@ mod tests {
             "requests_open",
             "requests_in_progress",
             "requests_completed",
+            "movements",
         ] {
             let cols = columns_for(report_type);
             let labels = column_labels_for(report_type);

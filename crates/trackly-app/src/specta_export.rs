@@ -150,6 +150,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::reports::reports_list_requests_open,
         crate::tauri_cmds::reports::reports_list_requests_in_progress,
         crate::tauri_cmds::reports::reports_list_requests_completed,
+        crate::tauri_cmds::reports::reports_list_movements,
         crate::tauri_cmds::reports::reports_export_csv,
         crate::tauri_cmds::reports::reports_export_pdf,
         crate::tauri_cmds::reports::reports_get_report_counts,
