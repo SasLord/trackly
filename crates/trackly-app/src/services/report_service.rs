@@ -1248,6 +1248,12 @@ fn query_acts_inner(
                 model_label: None,
                 status_name: None,
                 request_type_label: None,
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1370,6 +1376,12 @@ fn query_device_snapshot(
                 model_label: None,
                 status_name: r.get(5)?,
                 request_type_label: None,
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1523,6 +1535,12 @@ fn query_cartridge_audit(
                 model_label: r.get(4)?,
                 status_name: None,
                 request_type_label: None,
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1656,6 +1674,12 @@ fn query_cartridge_snapshot(
                 model_label: r.get(2)?,
                 status_name: r.get(4)?,
                 request_type_label: None,
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -1802,6 +1826,12 @@ fn query_requests_inner(
                 model_label: None,
                 status_name: Some(translate_request_status(&status)),
                 request_type_label: Some(translate_request_type(&request_type)),
+                from_place_path: None,
+                from_place_path_short: None,
+                actor_name: None,
+                reason: None,
+                entity_type_label: None,
+                is_deleted: None,
             })
         })
         .map_err(map_rusqlite)?;
@@ -2754,6 +2784,12 @@ mod tests {
             model_label: None,
             status_name: None,
             request_type_label: None,
+            from_place_path: None,
+            from_place_path_short: None,
+            actor_name: None,
+            reason: None,
+            entity_type_label: None,
+            is_deleted: None,
         }
     }
 

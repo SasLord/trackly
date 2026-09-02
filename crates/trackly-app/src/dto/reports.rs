@@ -30,6 +30,17 @@ pub struct ReportFilter {
     /// everything nested under it, not just an exact `place_id` match).
     #[specta(type = Option<i32>)]
     pub place_id: Option<i64>,
+    /// HST-04 «Откуда» — движения из этого места (D-24: независимый,
+    /// subtree-inclusive фильтр, как `place_id`). Комбинируется с
+    /// `to_place_id` по AND, когда оба заданы (пример из CONTEXT.md — «со
+    /// склада в Здание Б»).
+    #[specta(type = Option<i32>)]
+    pub from_place_id: Option<i64>,
+    /// HST-04 «Куда» — движения в это место (D-24: независимый,
+    /// subtree-inclusive фильтр, как `place_id`). Комбинируется с
+    /// `from_place_id` по AND, когда оба заданы.
+    #[specta(type = Option<i32>)]
+    pub to_place_id: Option<i64>,
     /// Filter by cartridge / device status ID.
     #[specta(type = Option<i32>)]
     pub status_id: Option<i64>,
@@ -109,6 +120,31 @@ pub struct ReportRow {
     /// rendered in the «Тип» column on screen, in CSV, and in print — computed
     /// once on the backend so all three outputs stay in sync.
     pub request_type_label: Option<String>,
+    /// HST-04 «Откуда» для отчёта о перемещениях — снапшот полного пути
+    /// (`place_movements.from_place_path`, D-16-style заморозка). «Куда»
+    /// переиспользует существующие `place_path`/`place_path_short` (D-23) —
+    /// НЕ отдельное поле, во избежание путаницы с колонкой «Место» других
+    /// доменов отчётов (Pitfall 7).
+    pub from_place_path: Option<String>,
+    /// Сокращённый вариант `from_place_path` — та же формула
+    /// (`place_path_display::compute_place_path_short`, D-18/D-20 — единственный
+    /// владелец), что и `place_path_short`, применённая к «from»-снапшоту.
+    pub from_place_path_short: Option<String>,
+    /// HST-04 «Кем» — ФИО из `actor_name_snapshot`, иначе `users.login`,
+    /// иначе «система» (D-11).
+    pub actor_name: Option<String>,
+    /// HST-04 «Причина» — готовая строка, сформированная на бэкенде
+    /// («актом №42» / «вручную» / «вручную · с примечанием» / raw source
+    /// token как soft-degrade), НЕ собирается из частей на фронте (D-23).
+    pub reason: Option<String>,
+    /// HST-04: тип сущности перемещения — «Устройство» / «Картридж»
+    /// (`MovementEntityKind::label_ru`), для отчётной колонки «Тип».
+    pub entity_type_label: Option<String>,
+    /// D-25 — предмет (устройство/картридж), которого касалось это
+    /// перемещение, с тех пор был мягко удалён. Строка остаётся в отчёте
+    /// (прошлый период не должен «плыть» из-за списания задним числом),
+    /// но помечается на экране/в CSV/PDF как «удалено».
+    pub is_deleted: Option<bool>,
 }
 
 /// Paged response wrapper for report queries.
