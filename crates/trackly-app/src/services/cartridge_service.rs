@@ -16,6 +16,7 @@ use std::sync::Arc;
 use rusqlite::{params, OptionalExtension};
 use trackly_core::auth::Identity;
 use trackly_core::domain::cartridges::CartridgeModelNew;
+use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
 use trackly_core::primitives::clock::Clock;
@@ -24,7 +25,7 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
     SqliteAuditLogRepository, SqliteCartridgeRepository, SqliteDeviceRepository,
-    SqlitePlaceRepository,
+    SqlitePlaceMovementsRepository, SqlitePlaceRepository,
 };
 
 use crate::dto::cartridge::{
@@ -46,6 +47,8 @@ pub struct CartridgeService {
     pub(crate) device_repo: Arc<SqliteDeviceRepository>,
     /// D-11.4 storage-place listing for the ReturnToStock suggestion UX.
     pub(crate) place_repo: Arc<SqlitePlaceRepository>,
+    /// HST-01: place_movements write-side entry point (D-04/D-06 guard owner).
+    pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
 }
 
 impl CartridgeService {
@@ -62,6 +65,7 @@ impl CartridgeService {
             audit_repo: Arc::new(SqliteAuditLogRepository),
             device_repo: Arc::new(SqliteDeviceRepository),
             place_repo: Arc::new(SqlitePlaceRepository),
+            place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
         }
     }
 
@@ -195,6 +199,8 @@ impl CartridgeService {
     ) -> Result<CartridgeDto, AppError> {
         let now = self.clock.unix_seconds();
         let audit_repo = self.audit_repo.clone();
+        let place_repo = self.place_repo.clone();
+        let place_movements_repo = self.place_movements_repo.clone();
         // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через
         // эту границу (Plan 40-03/40-04, аналог `place_service::create`).
         let user_id = caller.user_id;
@@ -205,16 +211,17 @@ impl CartridgeService {
 
                 // Pitfall 2 (RESEARCH.md): before-fetch — `update` had NO
                 // preceding SELECT, so no "before" state existed to diff
-                // against. Plan 40-08 will consume this before-value for
-                // `place_movements`; this plan only makes it available.
-                let _before_place_id: Option<Option<i64>> = tx
+                // against. Plan 40-08 consumes this before-value for
+                // `place_movements` below.
+                let before_place_id: Option<i64> = tx
                     .query_row(
                         "SELECT place_id FROM cartridges WHERE id = ?1",
                         params![id],
                         |r| r.get(0),
                     )
                     .optional()
-                    .map_err(map_rusqlite)?;
+                    .map_err(map_rusqlite)?
+                    .flatten();
 
                 let affected = tx
                     .execute(
@@ -260,6 +267,23 @@ impl CartridgeService {
                         payload_json: None,
                         created_at_utc: now,
                     },
+                )?;
+
+                // HST-01: запись перемещения (D-04/D-06 guard внутри
+                // record_movement_if_applicable). `source` жёстко задан
+                // сервером — клиент не может его подменить.
+                place_movements_repo.record_movement_if_applicable(
+                    &tx,
+                    place_repo.as_ref(),
+                    MovementEntityKind::Cartridge,
+                    id,
+                    before_place_id,
+                    place_id,
+                    MovementSource::Manual,
+                    None,
+                    None,
+                    user_id,
+                    now,
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
