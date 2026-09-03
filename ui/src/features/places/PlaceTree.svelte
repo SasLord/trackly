@@ -12,6 +12,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { placeContentEventsStore } from '$lib/stores/placeContentEvents.svelte';
   import Input from '$lib/components/Input.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
   import Button from '$lib/components/Button.svelte';
@@ -238,6 +239,19 @@
     }
   }
 
+  // Plan 40-32 (UAT3-03): id itself plus the full parent_id ancestor chain —
+  // used to evict statsCache for a moved node AND every ancestor whose
+  // subtree count also changed.
+  function ancestorsAndSelf(id: number): number[] {
+    const ids = [id];
+    let cur = placeById.get(id)?.parent_id ?? null;
+    while (cur !== null) {
+      ids.push(cur);
+      cur = placeById.get(cur)?.parent_id ?? null;
+    }
+    return ids;
+  }
+
   let liveMessage = $state('');
   let firstLoadHandled = false;
 
@@ -327,6 +341,23 @@
           statsInFlight.delete(id);
         });
     }
+  });
+
+  // Plan 40-32 (UAT3-03): evict statsCache for a producer-reported set of
+  // changed place ids AND all their ancestors — the lazy-fetch effect above
+  // re-requests places_subtree_stats for any evicted id the next time it
+  // reappears in visibleNodes, so nodes hidden inside a collapsed branch
+  // don't waste a request until actually shown.
+  $effect(() => {
+    if (placeContentEventsStore.seq === 0) return; // initial value — nothing invalidated yet
+    const affected = new Set<number>();
+    for (const id of placeContentEventsStore.placeIds) {
+      for (const a of ancestorsAndSelf(id)) affected.add(a);
+    }
+    if (affected.size === 0) return;
+    const next = { ...statsCache };
+    for (const id of affected) delete next[id];
+    statsCache = next;
   });
 
   // --- Search mode (§8.1/§8.5) ---
