@@ -279,6 +279,21 @@
   const PRINT_ROOT_ID = 'act-print-root';
   const PRINT_STYLE_ID = 'act-print-style';
 
+  // Gap closure UAT-40 lan-print-duplicate-first-page: these three must live
+  // at COMPONENT scope, not inside printViaTopLevel/handlePrint, because the
+  // bug is exactly that a NEW function-local `injectedPolisher` (and an
+  // unconditional `registerHandlers` call) forgot everything from the
+  // PREVIOUS invocation. Component scope is what lets one call see what the
+  // last call left behind — a leftover Polisher, a leftover DOM subtree, or
+  // an in-flight print — so it can clean up or refuse instead of stacking a
+  // second render on top of the first.
+  /** Captured Paged.js Polisher from the most recent printViaTopLevel() run, if any. */
+  let activePolisher: { destroy: () => void } | null = null;
+  /** Ensures pagedjs's RepeatTableHeadHandler is registered once per component lifetime, not once per print. */
+  let repeatTableHeadHandlerRegistered = false;
+  /** Re-entrancy guard: blocks a second concurrent handlePrint() while one is still in flight. */
+  let printing = $state(false);
+
   /**
    * GAP-16-01 desktop fix: Tauri's webview (WKWebView/WebView2) print
    * support is unreliable from JS (see script-block comment). Instead of
@@ -367,6 +382,18 @@
       document.body.appendChild(printRoot);
     }
 
+    // Idempotency fix (UAT-40 lan-print-duplicate-first-page): clean up
+    // whatever the PREVIOUS printViaTopLevel() run left behind, UNCONDITIONALLY,
+    // at the START of this run — not only on `afterprint`. pagedjs 0.4.3's
+    // Chunker.setup() always `appendChild`s a new `.pagedjs_pages` into
+    // whatever `printRoot` already contains; if a prior run's cleanup never
+    // fired (e.g. a second click landed before `afterprint`), the previous
+    // render's pages are still in `printRoot` and pagination stacks a
+    // duplicate page (typically the first) on top of them.
+    activePolisher?.destroy();
+    activePolisher = null;
+    printRoot.innerHTML = '';
+
     let printStyle = document.getElementById(PRINT_STYLE_ID) as HTMLStyleElement | null;
     if (!printStyle) {
       printStyle = document.createElement('style');
@@ -445,19 +472,21 @@
       }
     `;
 
-    // Captured after previewer.preview() resolves (see below) — Paged.js's
-    // own Polisher inserts style elements marked data-pagedjs-inserted-
-    // styles into this shared document's head (unscoped, same mechanism as
-    // the duplicate cssText interpolation removed above). destroy() removes
-    // every element it ever inserted; without this, nothing would stop
-    // those from surviving past a single print cycle (defect A).
-    let injectedPolisher: { destroy: () => void } | null = null;
-
+    // `activePolisher` (component-scope, declared above) is captured after
+    // previewer.preview() resolves (see below) — Paged.js's own Polisher
+    // inserts style elements marked data-pagedjs-inserted-styles into this
+    // shared document's head (unscoped, same mechanism as the duplicate
+    // cssText interpolation removed above). destroy() removes every element
+    // it ever inserted; without this, nothing would stop those from
+    // surviving past a single print cycle (defect A). Component scope (not a
+    // function-local variable) is what lets the NEXT invocation of
+    // printViaTopLevel() find and destroy this run's Polisher above, even if
+    // `afterprint` never fires for this run.
     const cleanup = () => {
       printRoot!.innerHTML = '';
       printStyle!.textContent = '';
-      injectedPolisher?.destroy();
-      injectedPolisher = null;
+      activePolisher?.destroy();
+      activePolisher = null;
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
@@ -490,18 +519,29 @@
         });
       }
     }
-    registerHandlers(RepeatTableHeadHandler);
+    // pagedjs's registerHandlers() call accumulates into its own internal
+    // registry — it does not deduplicate by class identity across repeated
+    // calls with a freshly-declared class each time. Guard it so the
+    // registry does not grow one entry per print click over a component's
+    // lifetime; the handler class itself is still redeclared/reconstructed
+    // per call (it needs a fresh `savedThead` snapshot each print), only the
+    // registration call is now one-shot.
+    if (!repeatTableHeadHandlerRegistered) {
+      registerHandlers(RepeatTableHeadHandler);
+      repeatTableHeadHandlerRegistered = true;
+    }
 
     const previewer = new Previewer();
     await previewer.preview(bodyHtml, [{ 'act-preview.css': cssText }], printRoot);
-    injectedPolisher = previewer.polisher;
+    activePolisher = previewer.polisher;
 
     window.focus();
     window.print();
   }
 
   async function handlePrint() {
-    if (!ready || htmlContent === null) return;
+    if (!ready || htmlContent === null || printing) return;
+    printing = true;
     const printPath = isTauri ? 'printViaSystemBrowser' : 'printViaTopLevel';
     try {
       if (isTauri) {
@@ -512,6 +552,8 @@
     } catch (err) {
       console.error('[PdfPreviewModal] handlePrint failed', printPath, err);
       pushToast('error', 'Не удалось открыть документ для печати');
+    } finally {
+      printing = false;
     }
   }
 </script>
@@ -603,7 +645,8 @@
       onclick={handlePrint}
       disabled={loading ||
         errorMsg !== null ||
-        (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded')}
+        (htmlContent !== null && paginationStatus !== 'done' && paginationStatus !== 'degraded') ||
+        printing}
     >
       Печать
     </Button>
