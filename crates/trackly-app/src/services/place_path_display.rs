@@ -13,7 +13,7 @@
 //! belong in `trackly_infra::repos::place_path_settings`, which stays
 //! narrowly scoped to `&Connection`-level settings reads.
 
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_infra::db::pools::ReaderPool;
 use trackly_infra::repos::place_path_settings::{
@@ -44,8 +44,25 @@ pub fn compute_place_path_short(
     place_id: Option<i64>,
     snapshot: Option<String>,
 ) -> Option<String> {
-    let snapshot = snapshot?;
     let conn = readers.acquire();
+    compute_place_path_short_with_conn(&conn, place_id, snapshot)
+}
+
+/// `&Connection` sibling of [`compute_place_path_short`] — for callers that
+/// already hold a `Connection` (from a `ReaderPool::acquire()` done ONCE at
+/// the top of their own read, e.g. `PlaceMovementService::get_timeline`,
+/// `report_service.rs::query_movements_inner`) and must not take a SECOND
+/// connection from the same pool inside a per-row loop (Phase 40 gap-closure
+/// CR-01 — a nested `acquire()` on an exhausted pool blocks forever on an
+/// untimed `Condvar`, risking a whole-app read deadlock under LAN
+/// concurrency). Identical logic to `compute_place_path_short`, just without
+/// the `readers.acquire()` step.
+pub fn compute_place_path_short_with_conn(
+    conn: &Connection,
+    place_id: Option<i64>,
+    snapshot: Option<String>,
+) -> Option<String> {
+    let snapshot = snapshot?;
 
     let variant_token: String = place_id
         .and_then(|pid| {
@@ -56,12 +73,12 @@ pub fn compute_place_path_short(
             )
             .ok()
         })
-        .unwrap_or_else(|| read_org_default_variant_token(&conn));
+        .unwrap_or_else(|| read_org_default_variant_token(conn));
     // Unexpected/corrupt token → fall back to Ends rather than dropping the
     // field-row entirely — this is a non-critical visual element.
     let variant = PathDisplayVariant::from_str(&variant_token).unwrap_or(PathDisplayVariant::Ends);
 
-    let (sep_ends, sep_last_two) = read_path_display_separators(&conn);
+    let (sep_ends, sep_last_two) = read_path_display_separators(conn);
 
     Some(shorten_place_path(
         &snapshot,

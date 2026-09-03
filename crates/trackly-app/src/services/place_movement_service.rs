@@ -25,7 +25,7 @@ use trackly_infra::repos::SqlitePlaceMovementsRepository;
 
 use crate::dto::act::format_act_number;
 use crate::dto::place_movements::MovementEntryDto;
-use crate::services::place_path_display::compute_place_path_short;
+use crate::services::place_path_display::compute_place_path_short_with_conn;
 
 /// Application service for the HST-02 timeline read side.
 pub struct PlaceMovementService {
@@ -142,13 +142,13 @@ impl PlaceMovementService {
                 // Shortening formula: single owner is
                 // `place_path_display::compute_place_path_short` (Plan 40-02) — no
                 // JS mirror, no re-derived copy (WR-03/WR-08 anti-pattern).
-                let from_place_path_short = compute_place_path_short(
-                    &readers,
+                let from_place_path_short = compute_place_path_short_with_conn(
+                    &conn,
                     Some(row.from_place_id),
                     Some(row.from_place_path.clone()),
                 );
-                let to_place_path_short = compute_place_path_short(
-                    &readers,
+                let to_place_path_short = compute_place_path_short_with_conn(
+                    &conn,
                     Some(row.to_place_id),
                     Some(row.to_place_path.clone()),
                 );

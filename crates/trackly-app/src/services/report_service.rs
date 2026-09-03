@@ -29,7 +29,7 @@ use crate::dto::reports::{
 };
 use crate::pdf::PdfRenderer;
 use crate::services::organization_service::OrganizationService;
-use crate::services::place_path_display::compute_place_path_short as compute_movement_place_path_short;
+use crate::services::place_path_display::compute_place_path_short_with_conn as compute_movement_place_path_short;
 
 // ---------------------------------------------------------------------------
 // Russian month names for PDF month-separator headings
@@ -473,12 +473,11 @@ impl ReportService {
     /// AND semantics when both set) plus the usual period/type filters.
     /// D-25: soft-deleted items stay in the result, marked `is_deleted`.
     ///
-    /// Unlike every other `list_*` above, `query_movements_inner` needs
-    /// `&ReaderPool` (not just `&Connection`) so it can call
-    /// `place_path_display::compute_place_path_short` — the single owner of
-    /// the path-shortening formula (D-18/D-20, Plan 40-02) — for both the
-    /// "from" and "to" snapshots. This is why `readers` is cloned into the
-    /// `spawn_blocking` closure alongside the acquired `conn`.
+    /// `query_movements_inner` takes only `&Connection` (Phase 40 gap-closure
+    /// CR-01) — the ONE connection acquired below is held for the entire
+    /// query, including its per-row calls into
+    /// `place_path_display::compute_place_path_short_with_conn`, so this read
+    /// never takes a second connection from `readers` mid-flight.
     pub async fn list_movements(
         &self,
         filter: ReportFilter,
@@ -489,7 +488,7 @@ impl ReportService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            query_movements_inner(&conn, &readers, &filter, ts_from, ts_to)
+            query_movements_inner(&conn, &filter, ts_from, ts_to)
         })
         .await
         .map_err(|e| AppError::Internal {
@@ -883,7 +882,7 @@ impl ReportService {
                 // (movements per item are "единицы за годы", D-20/RESEARCH)
                 // materializing the full row set to count it is not a
                 // meaningful cost.
-                let count = query_movements_inner(&conn, &readers, &filter, ts_from, ts_to)
+                let count = query_movements_inner(&conn, &filter, ts_from, ts_to)
                     .map(|resp| resp.rows.len() as i64)
                     .unwrap_or(0);
                 vec![ReportCountEntry {
@@ -1389,15 +1388,14 @@ fn movement_reason(
 /// report for a past period never changes shape because of a write-off that
 /// happened after the fact.
 ///
-/// Needs `&ReaderPool` (in addition to `&Connection`) because it calls
-/// `place_path_display::compute_place_path_short` — the single owner of the
-/// path-shortening formula (D-18/D-20, Plan 40-02) — for BOTH the "from" and
-/// "to" snapshots. Resolving the variant/separators directly against `conn`
-/// here instead would recreate the exact WR-03/WR-08 duplication this plan
-/// exists to avoid.
+/// Takes only `&Connection` (Phase 40 gap-closure CR-01) — the single
+/// connection the caller already holds is reused for BOTH the "from" and
+/// "to" path-shortening calls (`place_path_display::
+/// compute_place_path_short_with_conn`, D-18/D-20, Plan 40-02) instead of
+/// pulling a second connection from `&ReaderPool` per row, which could block
+/// forever on an exhausted pool (root cause of the CR-01 deadlock risk).
 fn query_movements_inner(
     conn: &rusqlite::Connection,
-    readers: &ReaderPool,
     filter: &ReportFilter,
     ts_from: Option<i64>,
     ts_to: Option<i64>,
@@ -1550,13 +1548,10 @@ fn query_movements_inner(
         // D-18/D-20 (Plan 40-02): shorten by the CURRENT effective variant,
         // never the variant at write time — `compute_place_path_short` is
         // the single owner of this formula, called here for both sides.
-        let from_place_path_short = compute_movement_place_path_short(
-            readers,
-            Some(from_place_id),
-            from_place_path.clone(),
-        );
+        let from_place_path_short =
+            compute_movement_place_path_short(conn, Some(from_place_id), from_place_path.clone());
         let place_path_short =
-            compute_movement_place_path_short(readers, Some(to_place_id), to_place_path.clone());
+            compute_movement_place_path_short(conn, Some(to_place_id), to_place_path.clone());
 
         let reason = movement_reason(&source, note.as_deref(), act_id, act_number);
         let actor_name = actor_name.unwrap_or_else(|| "система".to_string());
