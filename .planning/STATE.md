@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T03:22:57.570Z"
-last_activity: 2026-09-03 -- Plan 40-28 executed (CR-03, CR-02 closed)
+last_updated: "2026-09-03T06:36:01.915Z"
+last_activity: 2026-09-03
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 66
-  completed_plans: 65
-  percent: 33
+  completed_plans: 66
+  percent: 44
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40 (movement-history) — EXECUTING
-Plan: 28 of 29 executed — 40-29 (gap-closure round 2) pending
-Status: Ready to execute
-Last activity: 2026-09-03 -- Plan 40-28 executed (CR-03, CR-02 closed)
+Phase: 40 (movement-history) — 29/29 plans executed
+Plan: 40-29 (gap-closure round 2: CR-01, WR-10) executed
+Status: Phase 40 plans complete — ready for phase verification/close
+Last activity: 2026-09-03 -- Plan 40-29 executed (CR-01 reader-pool deadlock risk closed, WR-10 canonical act number in movements report closed)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -371,6 +371,7 @@ Last activity: 2026-09-03 -- Plan 40-28 executed (CR-03, CR-02 closed)
 | Phase 40 P27 | 10min | 2 tasks | 3 files |
 | Phase 40 P23 | 15m | 1 tasks | 1 files |
 | Phase 40 P28 | 50min | 2 tasks | 7 files |
+| Phase 40 P29 | 70min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -928,6 +929,9 @@ Recent decisions affecting current work:
 - [Phase 40]: CR-03: каскад места принтера на картриджи гейтится на after.place_id.is_some() — очистка места принтера не трогает картриджи
 - [Phase 40]: CR-02: last_known_storage_place_in_tx — трёхступенчатая цепочка fallback (to_place_id ИЛИ from_place_id складского места, затем собственное место картриджа)
 - [Phase 40]: Rule 3 auto-fix: DevicePatch.place_id стал Option<Option<i64>> — COALESCE не мог отличить 'поле не передано' от 'поле явно NULL', очистка места устройства была невозможна
+- [Phase 40]: CR-01: устранён вложенный ReaderPool::acquire() в get_timeline/query_movements_inner — compute_place_path_short_with_conn(&Connection) переиспользует уже удержанное соединение; acquire_timeout добавлен только как defense-in-depth, без миграции существующих вызовов
+- [Phase 40]: WR-10: resolve_movement_act_number вынесен в общий act_number_display.rs — таймлайн и отчёт «Перемещения» теперь показывают один и тот же канонический номер акта ("20в", не голое "20")
+- [Phase 40]: Deadlock regression-тесты на ReaderPool: #[tokio::test]+tokio::time::timeout НЕ защищает прогон (Runtime::drop блокируется на утёкшей spawn_blocking-задаче) — использовать std::thread + собственный Runtime + mpsc::recv_timeout
 
 ### Pending Todos
 
@@ -1116,8 +1120,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T03:22:57.560Z
-Stopped at: Completed 40-28-PLAN.md
+Last session: 2026-09-03T06:36:01.905Z
+Stopped at: Completed 40-29-PLAN.md
 Resume file: 
 
 None

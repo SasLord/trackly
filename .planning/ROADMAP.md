@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 28/29 | In Progress|  |
+| 40. История перемещений | v1.4 | 29/29 | Complete   | 2026-09-03 |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -437,7 +437,7 @@ Plans:
 **Wave 9 (gap-closure wave 4, независимая от 40-21..27 — новые файлы/новые находки)**
 
 - [x] 40-28-PLAN.md — cascade Some->None не трогает место картриджей (CR-03) + полная fallback-цепочка last_known_storage_place_in_tx через реальный поток (CR-02)
-- [ ] 40-29-PLAN.md — устранение вложенного ReaderPool.acquire() в get_timeline/query_movements_inner (CR-01) + acquire_timeout defense-in-depth + единый resolve_movement_act_number для таймлайна и отчёта (WR-10)
+- [x] 40-29-PLAN.md — устранение вложенного ReaderPool.acquire() в get_timeline/query_movements_inner (CR-01) + acquire_timeout defense-in-depth + единый resolve_movement_act_number для таймлайна и отчёта (WR-10)
 
 **UI hint**: yes
 
