@@ -604,7 +604,7 @@
       columns={currentColumns()}
       {loading}
       {error}
-      reportType={activeReport}
+      reportType={reportTypeKey()}
       isSnapshot={isSnapshot()}
     />
   </div>
