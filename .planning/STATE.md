@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40 (movement-history) — 29/29 plans executed
 Plan: 40-29 (gap-closure round 2: CR-01, WR-10) executed
-Status: Phase 40 plans complete — ready for phase verification/close
-Last activity: 2026-09-03 -- Plan 40-29 executed (CR-01 reader-pool deadlock risk closed, WR-10 canonical act number in movements report closed)
+Status: Верификация пройдена код-уровнево (16/16 must-haves, все 4 гэпа закрыты), но status: human_needed — фаза НЕ закрыта до живого UAT. См. 40-HUMAN-UAT.md (3 пункта). Также не пройден /gsd-secure-phase 40.
+Last activity: 2026-09-03 -- Гап-клозур раунд 2 завершён (40-28, 40-29), код-ревью раунда 2 (0 critical), WR-01/WR-02 исправлены, полный воркспейс 1172 passed / 0 failed
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
