@@ -1,25 +1,144 @@
 ---
 phase: 40-movement-history
-verified: 2026-09-02T15:32:10Z
-status: human_needed
-score: 4/4 success criteria mechanically verified; 5 manual UAT items outstanding (UI runtime + print/export visual checks)
+verified: 2026-09-03T22:30:00Z
+status: gaps_found
+score: 12/16 must-haves verified (4 failed — see gaps)
 overrides_applied: 0
+re_verification:
+  previous_status: human_needed
+  previous_score: "4/4 success criteria mechanically verified; 5 manual UAT items outstanding"
+  note: |
+    The prior 40-VERIFICATION.md (2026-09-02) predates the 2026-09-03 live UAT and the entire
+    gap-closure round (plans 40-21..40-27). It is superseded, not extended — this is a fresh
+    full pass, not an optimized re-check of a prior gaps: list (the prior report had no
+    gaps: section; it was human_needed, not gaps_found).
+  gaps_closed:
+    - "cargo fmt drift in phase-40 test files (CR-04, fixed in commit 9d128257)"
+    - "Deleted-badge (D-25) invisible in the live Перемещения report table (UAT test 13 — fixed in 40-25, confirmed by direct code read)"
+    - "Grouped device list place inversion (UAT test 13 second issue — fixed in 40-26, confirmed by direct code read)"
+    - "Timeline act-link opens wrong Акты subsection / wrong return-act number (UAT test 7 — fixed in 40-24, confirmed by direct code read)"
+    - "LAN print duplicate first page (UAT test 18 — fixed in 40-27, confirmed by direct code read)"
+    - "Install-into-printer blocked by mandatory place field (UAT test 5 partial — fixed in 40-23, confirmed by direct code read)"
+    - "Empty/short timeline gives no explanation for D-06 first-placement gap (wontfix_by_decision item — UI text added in 40-24, confirmed present)"
+  gaps_remaining:
+    - "Cartridge does not follow printer when printer's place is CLEARED (Some->None) — cascade silently wipes cartridge places with no movement row and no audit_log row (CR-01/CR-03, new code from 40-21 itself)"
+    - "Return-to-stock auto-fallback to last known storage place does not cover the primary/common scenario (first install after creation) — the exact UAT-16 defect the gap plan claims to close (CR-02)"
+    - "Reader-pool nested-acquire deadlock risk in the timeline read path with no acquire timeout (CR-01, inherited from 40-10 but still load-bearing for HST-02)"
+  regressions:
+    - "None found relative to the pre-gap-closure baseline — all 3 remaining issues are either pre-existing (CR-01, from 40-10) or introduced by new gap-closure code with no prior working behavior to regress from (CR-02, CR-03)."
+gaps:
+  - truth: "Cascade: when a printer's place is cleared (set to empty), attached cartridges' place changes are still recorded in movement history"
+    status: failed
+    reason: |
+      `DeviceService::update` fires `cascade_place_for_printer_in_tx` on any
+      `before_place_id != after.place_id`, including `Some(P) -> None`. The cascade
+      unconditionally sets every attached cartridge's `place_id = NULL` (UPDATE with no
+      guard on `new_place_id.is_some()`), then calls `record_movement_if_applicable`,
+      which the D-06 guard (`is_reportable_place_change`) makes a silent no-op for any
+      `Some -> None` transition. Result: clearing one field on a printer erases the
+      recorded location of every cartridge attached to it, with no `place_movements` row
+      and no `audit_log` row — the data is unrecoverable from the app. No test exercises
+      `Some -> None` (`place_movements_write_sites_devices.rs` only covers `A -> B`).
+      This is new code from this phase's own gap-closure round (40-21) — not a
+      pre-existing bug being carried forward.
+    severity: major
+    artifacts:
+      - path: "crates/trackly-app/src/services/device_service.rs"
+        issue: "lines ~338-348: cascade call is not gated on after.place_id.is_some()"
+      - path: "crates/trackly-infra/src/repos/cartridges_sqlite.rs"
+        issue: "cascade_place_for_printer_in_tx (~956-1010): unconditional UPDATE place_id=NULL for every attached cartridge when new_place_id is None"
+      - path: "crates/trackly-app/tests/place_movements_write_sites_devices.rs"
+        issue: "update_cascades_place_to_attached_cartridges only tests A->B; no Some->None test exists"
+    missing:
+      - "Skip the cascade (or cascade only the movement-eligible subset) when after.place_id is None — a printer with an unknown place says nothing about where its cartridges are"
+      - "Regression test asserting a cartridge keeps its place and version==1 when the printer's place is cleared"
+  - truth: "Когда авто-возврат предыдущего картриджа при установке нового не получает явного previous_cartridge_place_id, картриджу подставляется его последнее известное складское место (из place_movements), а не NULL"
+    status: failed
+    reason: |
+      `last_known_storage_place_in_tx` derives the fallback exclusively from
+      `place_movements.to_place_id` WHERE `places.is_storage = 1`. Per this phase's own
+      D-06 rule, a cartridge's FIRST place assignment (created at the warehouse, or any
+      `NULL -> place` transition) never produces a movement row. The common real
+      lifecycle — create at storage (no row) -> install into printer (one row, S -> Q,
+      Q not storage) -> second cartridge installed into same printer, triggering this
+      cartridge's auto-return with no explicit place -> fallback query finds no
+      to_place_id row that is a storage place -> returns None -> place_id set to NULL —
+      is exactly the UAT-reported defect (test 16, "return-to-stock-empty-place-field")
+      and it STILL reproduces on the first/most common install-then-replace cycle. The
+      new regression test (`install_auto_return_falls_back_to_last_known_storage_place`)
+      does not catch this because it hand-seeds a place_movements row via raw SQL into
+      the storage place before either Install call — DB state the real code path never
+      produces on its own — so the test is green while the user-visible defect survives.
+    severity: major
+    artifacts:
+      - path: "crates/trackly-infra/src/repos/cartridges_sqlite.rs"
+        issue: "last_known_storage_place_in_tx (~928-943) only checks to_place_id WHERE is_storage=1; ignores from_place_id and the cartridge's own current place_id; also ignores archived_at_utc/deleted_at_utc (WR-07)"
+      - path: "crates/trackly-app/tests/cartridges_lifecycle.rs"
+        issue: "install_auto_return_falls_back_to_last_known_storage_place hand-seeds place_movements via raw SQL — does not drive the flow that actually reaches this code path in production"
+    missing:
+      - "Fallback chain: (1) explicit override, (2) from_place_id of the movement that took the cartridge OUT of a storage place, (3) the cartridge's own place_id if it is already a storage place, (4) only then NULL"
+      - "Filter candidate storage places on archived_at_utc IS NULL AND deleted_at_utc IS NULL (WR-07)"
+      - "A test that drives the whole flow through CartridgeService (create at storage -> install -> install second cartridge into same printer) with NO hand-seeded place_movements row, asserting the auto-returned cartridge lands back at the storage place"
+  - truth: "The timeline read path (HST-02) is safe under the project's stated concurrent-access model (SQLite WAL + reader pool, ~20 LAN users) and does not risk starving or deadlocking all DB reads"
+    status: failed
+    reason: |
+      `PlaceMovementService::get_timeline` acquires one reader connection and holds it
+      for the entire row loop (`let conn = readers.acquire();`). Inside the loop it calls
+      `compute_place_path_short(&readers, ...)` twice per row, and that function opens a
+      SECOND connection from the SAME pool. `ReaderPool::acquire()` blocks on a
+      `std::sync::Condvar` with NO timeout when the pool is exhausted (confirmed by
+      direct read of `pools.rs::acquire` — a plain `loop { ... available.wait(conns) }`).
+      Production reader-pool size is 8. If enough concurrent timeline reads each hold
+      their outer connection and then each try to take a second one, every one of them
+      parks forever — every DB read in the app hangs, not just the timeline. Short of a
+      full deadlock, a 20-row timeline still performs 41 pool acquisitions instead of 1
+      and holds 2 of 8 connections for the whole read. The same shape exists in the
+      movements report (report_service.rs, up to 2000 nested acquisitions per render).
+      This machinery is Plan 40-10's (not a gap-closure plan), but it is the sole backing
+      implementation for HST-02's "user sees the timeline" promise and is unresolved as
+      of this verification pass.
+    severity: major
+    artifacts:
+      - path: "crates/trackly-app/src/services/place_movement_service.rs"
+        issue: "get_timeline holds one reader conn across the row loop (line ~64) while compute_place_path_short (called twice per row, lines ~145/150) acquires a second one from the same pool"
+      - path: "crates/trackly-app/src/services/place_path_display.rs"
+        issue: "compute_place_path_short(&ReaderPool, ...) always calls readers.acquire() itself — no variant accepts an already-held &Connection"
+      - path: "crates/trackly-infra/src/db/pools.rs"
+        issue: "ReaderPool::acquire() (~74-92): blocking Condvar wait with no timeout — an exhausted pool parks the calling thread indefinitely"
+      - path: "crates/trackly-app/src/services/report_service.rs"
+        issue: "movements report (~1495-1559) has the same nested-acquire shape, up to LIMIT 1000 rows"
+    missing:
+      - "A &Connection-taking sibling of compute_place_path_short in place_path_display.rs so callers that already hold a reader never acquire a second one"
+      - "get_timeline (and the movements report) read variant/separator settings ONCE from the already-held connection, loop with the pure shorten_place_path formula only"
+      - "Consider a bounded acquire() (or acquire_timeout()) as a defense-in-depth measure independent of the nested-acquire fix"
+  - truth: "Отчёт «Перемещения» показывает канонический номер возврата (например «20в»), согласованно с таймлайном (D-Numbering-01, single owner)"
+    status: failed
+    reason: |
+      Plan 40-24 correctly routed the TIMELINE through format_act_number (confirmed by
+      direct code read of place_movement_service.rs). Its sibling surface — the
+      «Перемещения» report, also built in this phase (40-11/40-12) and re-touched in
+      40-25 for the deleted badge — still selects the raw a.number column and never
+      calls format_act_number. A return act now displays as "20в" in the device-card
+      timeline and as the bare "20" in the report table/CSV/PDF — indistinguishable from
+      the parent handover act on that surface. This is the exact screen-vs-export
+      divergence class this phase itself added a structural gate against (WR-03/D-25),
+      just for a different column.
+    severity: minor
+    artifacts:
+      - path: "crates/trackly-app/src/services/report_service.rs"
+        issue: "lines ~1479,1505: `a.number AS act_number` read raw, never passed through format_act_number (dto/act.rs)"
+    missing:
+      - "Reuse format_act_number (or extract one shared \"resolve display act number for an act_id\" helper) so report_service.rs and place_movement_service.rs have a single owner"
 human_verification:
-  - test: "Открыть карточку устройства (модалка «Просмотр устройства», D-14) с ≥2 записями в истории и проверить, что секция «История перемещений» рендерится и консоль браузера/webview чистая"
-    expected: "Таймлайн рендерится без ошибок рун Svelte 5; строки в формате «ДД.ММ — откуда → куда · Кем · причина»"
-    why_human: "svelte-check/eslint не видят рантайм-ошибок рун Svelte 5; ни одна из четырёх точек монтирования MovementTimeline не наблюдалась в запущенном приложении"
-  - test: "Открыть карточку картриджа с историей операций и с перемещениями; убедиться, что ОБЕ секции («Журнал операций» и «Перемещения», D-16) присутствуют и не потеряны"
-    expected: "Видны обе секции одновременно, «Журнал операций» показывает прежний числовой place_id (сознательный долг, не эта фаза), «Перемещения» — новый таймлайн с читаемыми путями"
-    why_human: "Визуальная проверка layout/потери секции недоступна текстовым assert'ам"
-  - test: "Навести курсор на длинный сокращённый путь в таймлайне (D-17/D-18) и убедиться, что tooltip показывает полный путь на реальных ширинах модалки"
-    expected: "title= показывает полный сохранённый путь; сокращённая форма читаема в строке"
-    why_human: "Layout/overflow при реальной ширине не виден текстовым тестам"
-  - test: "Экспортировать отчёт «Перемещения» в PDF и открыть файл; затем открыть редактор шаблонов и убедиться, что предпросмотр по-прежнему рендерится"
-    expected: "PDF открывается, кириллица не искажена, разбиение на страницы корректно; предпросмотр шаблона не ломается (WR-01's «(удалено)» суффикс не вводит новую переменную шаблона — риск низкий, но не проверен визуально)"
-    why_human: "Strict-undefined в редакторе шаблонов и PDF-наложение текста невидимы тестам на извлечение текста"
-  - test: "Собрать `pnpm --dir ui build` и повторить оба предыдущих UI-проверки (таймлайн в карточках, отчёт) в LAN-браузере"
-    expected: "Тот же результат, что и в десктоп-приложении; никакой асимметрии каскада печати или DOM-протечки"
-    why_human: "Печать/DOM-каскад асимметричны между десктопом и браузером — известный паттерн проекта (lan_print_dom_leakage)"
+  - test: "Собрать `pnpm --dir ui build`, повторно пройти тесты 5, 7, 13, 16, 18 из 40-UAT.md в запущенном приложении (десктоп и LAN-браузер) после закрытия гейтов 40-21..27"
+    expected: "Каждая из 5 UAT-проблем действительно не воспроизводится живьём (код-уровень фиксов подтверждён этим отчётом, но живого повторного прогона после гап-клозура не было)"
+    why_human: "Verification в этом отчёте — код-уровневая (grep/read), не рантайм; последний живой UAT предшествовал гап-клозур коммитам"
+  - test: "OperationModal (40-23): открыть установку картриджа в принтер, у которого места нет, оставить поле «Место» пустым, отправить"
+    expected: "Форма не блокирует отправку; сервер резолвит/не резолвит место согласно D-13 без ошибки формы"
+    why_human: "Client-side validate() гейт подтверждён чтением кода, но реальный рендер подсказки/поведение поля не наблюдались в запущенном приложении"
+  - test: "Очистить место у принтера с прикреплёнными картриджами (после того как gap CR-03 будет закрыт) и убедиться, что поведение соответствует продуктовому решению — оставить место картриджей нетронутым"
+    expected: "Место картриджей не меняется, версия не бампится, никакой потери данных"
+    why_human: "Требует UI-действия «очистить место» на форме принтера — сценарий не покрыт ни одним текущим Rust/JS тестом"
 ---
 
 # Phase 40: История перемещений — Verification Report
@@ -27,198 +146,171 @@ human_verification:
 **Phase Goal:** Каждая смена места устройства или картриджа наблюдаема — вручную, актом или
 (структурно, на будущее) перетаскиванием на карте — с указанием откуда, куда, когда, кем и почему.
 
-**Verified:** 2026-09-02T15:32:10Z
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Verified:** 2026-09-03T22:30:00Z
+**Status:** gaps_found
+**Re-verification:** Yes — full pass after the 2026-09-03 UAT + 7-gap closure round (plans
+40-21..40-27); the prior VERIFICATION.md (2026-09-02) predates both and is superseded.
 
 ## Method
 
-This is an initial (non-re-verification) goal-backward pass. Every claim below is backed by a
-direct code read (`Read`/`grep` against the actual files in `crates/` and `ui/src/`), not by
-trusting `40-SUMMARY.md` or `40-REVIEW.md` prose. Where `40-REVIEW.md`'s Fix Outcomes section
-claimed a defect was fixed, the fix was independently re-derived by reading the current code at
-the cited line numbers (not by trusting the commit message). The full workspace test suite and
-both frontend gates (`svelte-check`, `pnpm lint`) were re-run fresh in this session, not copied
-from the review's reported numbers.
+Every claim below is backed by direct `Read`/`grep` against the current `HEAD` (commit
+`9d128257`), not by trusting `*-SUMMARY.md` prose or `40-REVIEW.md`'s claims. `40-REVIEW.md`'s
+three open Critical Issues (CR-01, CR-02, CR-03) were independently re-derived by reading the
+exact cited code (not accepted at face value) — all three are confirmed real and unfixed. CR-04
+(rustfmt drift) is confirmed fixed (`cargo fmt --all --check` is clean at HEAD; fix commit
+`9d128257`). One additional gap not flagged as a remaining CR by the orchestrator (report-service
+act-number formatting, WR-10 in the review) was independently confirmed and is included below at
+minor severity because it is a genuine, currently-live divergence on a surface this phase built.
 
-```
-TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test --workspace --no-fail-fast \
-  -- --test-threads=1 --skip login_remember_persistent_cookie
-→ exit 0, 131 binaries, 1156 passed, 0 failed  (matches the state claimed in the brief)
-
-pnpm --dir ui svelte-check → 284 files, 0 ERRORS, 60 WARNINGS (pre-existing rune-capture style
-  warnings across the whole app, not phase-40-specific defects — see analysis below)
-
-pnpm --dir ui lint → eslint clean, prettier clean, all 7 check-*.mjs gates PASS including
-  check-placepath-parity (23 cases, 0 divergences) and check-place-path-short
-
-node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256 → PASS, 0 violations
-```
+The already-established facts (full workspace test suite 1166/1166 passing with the documented
+pre-existing skip, clean clippy, clean fmt, clean UI build/lint) are accepted as given per the
+task brief and were not independently re-run — but per this report's own findings, a clean test
+suite does not prove the goal is achieved: the two most serious defects (CR-02, CR-03) are
+UNCOVERED by any passing test, and one test (`install_auto_return_falls_back_to_last_known_storage_place`)
+is actively green while the scenario it claims to close still reproduces.
 
 ## Goal Achievement
 
-### Success Criteria (from ROADMAP.md)
+### Observable Truths — Roadmap Success Criteria
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Пользователь видит в карточке устройства и картриджа таймлайн перемещений: откуда, куда, когда, кем, почему | ⚠️ MECHANICALLY VERIFIED / UI RUNTIME UNVERIFIED | Backend: `PlaceMovementService::get_timeline` (gated `ReadPlaces`) → `MovementEntryDto` (all 5 fields present: `from/to_place_path(_short)`, `created_at_utc`, `actor_display`, `source`/`note`/`act_number`). Frontend: `MovementTimeline.svelte` mounted in `PlaceEntityViewModal.svelte` (device+printer, entry point wired from `DeviceContextMenu.svelte`→`DeviceListRow.svelte`), `CartridgeDetail.svelte`, `PrinterDetail.svelte` (3 distinct mount points, all confirmed by direct grep of the render tree). Compiles clean (`svelte-check` 0 errors), all rune usage in `MovementTimeline.svelte` is pure prop-driven with no local effect/derived entanglement. **Not observed rendering in a running app** — see Human Verification #1/#2/#3. |
-| 2 | Ручное изменение места фиксируется в истории с причиной «вручную»; схема причины предусматривает будущий источник «перетаскиванием на карте» | ✓ VERIFIED | `device_service.rs:316` and `cartridge_service.rs:275` both call `record_movement_if_applicable(..., MovementSource::Manual, ...)` on the manual-edit write path. `MovementSource` enum (`trackly-core/src/domain/place_movements.rs`) has 4 variants incl. `Map` and `Workstation`, unused today but reserved; migration `V040` stores `source` as unconstrained `TEXT` (no `CHECK`), confirmed by direct read of `V040__place_movements.sql`. Tests `place_movements_write_sites_devices.rs`/`_cartridges.rs` pass. |
-| 3 | Акт приёма-передачи автоматически меняет место переданных устройств и создаёт запись в истории со ссылкой на номер акта | ✓ VERIFIED | 7 call sites in `act_service.rs` (create:498, update added:781, update removed/CR-01 fix:952, do_return:1530, update_return removed/CR-01 fix:2022, update_return added:2109, update_return retained:2195) all pass `act_id: Some(...)`. CR-01 (act-edit-drops-a-device losing its history entry) independently re-verified fixed: `place_before_restore = devices_repo.get_in_tx(...)` captured BEFORE `restore_from_snapshot_in_tx`, then `record_movement_if_applicable` called with the real pre/post values — matches the review's stated correction (not its original, wrong, snippet). CR-02 (act number resolved as wrong SQL type, silently `None`) independently re-verified fixed: `place_movement_service.rs:83-94` now reads `r.get::<_, i64>(0)` and `.map(|n| n.to_string())`, with a passing regression test `place_movements_act_number_resolves`. D-03 undo scoping verified: `delete_by_act_id_in_tx` called at all 3 correct points in `delete_soft`'s LIFO cascade (return-loop, handover-own, standalone-return). |
-| 4 | Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу устройства | ✓ VERIFIED (mechanically) / PDF visual UNVERIFIED | `report_service.rs::query_movements_inner` implements D-23 columns, D-24 two independent subtree-inclusive filters combined by AND (`from_subtree`/`to_subtree` CTEs, confirmed by direct read), D-25 `is_deleted` marker now present in CSV/PDF body (WR-01 fix independently re-verified: `row_field`'s `"device_name"` arm appends `" (удалено)"`), D-26 CSV/PDF export parity. `ReportSubNav.svelte`/`ReportFilters.svelte`/`ReportsPage.svelte` wire the new "Перемещения" domain with `fromPlaceId`/`toPlaceId` filters. EX-01 fix (tab counter always 0) independently re-verified: `get_report_counts` now has a `"movements"` branch calling the same `query_movements_inner`. Both transports gate on `Action::ReadPlaces`, including export (WR-02 fix independently re-verified via `export_gate_action` helper used by both Tauri and HTTP handlers). **PDF rendering/Cyrillic fidelity not visually inspected** — see Human Verification #4/#5. |
+| # | Truth | Status | Evidence |
+|---|-------|--------|----------|
+| SC1 | Пользователь видит таймлайн перемещений в карточке устройства и картриджа (откуда/куда/когда/кем/почему) | ✓ VERIFIED | `MovementTimeline.svelte` wired into `PlaceEntityViewModal.svelte`, `CartridgeDetail.svelte`, `PrinterDetail.svelte`; UAT 2026-09-03 tests 2, 4, 6 all `pass` live. Reliability caveat: see gap "reader-pool deadlock risk" below — the read path backing this truth has an unresolved availability risk under concurrent load. |
+| SC2 | Ручное изменение места фиксируется в истории с причиной «вручную»; схема причины предусматривает будущий источник «перетаскиванием на карте» | ✓ VERIFIED | UAT test 3 `pass` live; `MovementSource::Manual` confirmed wired in `device_service.rs::update`; `MovementSource` domain enum has room for a future map-drag source per `40-01-PLAN.md`. |
+| SC3 | Акт приёма-передачи автоматически меняет место переданных устройств и создаёт запись в истории со ссылкой на номер акта | ⚠️ MOSTLY VERIFIED | Core write path confirmed (UAT tests 7 `pass`-after-fix, 8 `pass`); deep-link subsection + canonical return-number fixed in 40-24 (confirmed by code read). Gap: the sibling movements-REPORT surface (also this phase's own deliverable) still shows the bare parent number for return acts (see gaps: WR-10) — minor severity, does not affect the timeline itself. |
+| SC4 | Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу устройства | ✓ VERIFIED | UAT tests 11, 12, 14 `pass` live; deleted-badge live-table gap (test 13) closed by 40-25, confirmed by code read (`ReportsPage.svelte:607` passes `reportType={reportTypeKey()}` to the one `<ReportTable>` instance; `ReportTable.svelte:175` gates on `reportType === 'movements'`). |
 
-**Score:** 4/4 success criteria have a fully-wired, tested backend and frontend implementation.
-0/4 have been visually confirmed running. Per the phase brief's own framing, this is reported
-honestly as `human_needed`, not upgraded to `passed`.
+**Score:** 4/4 roadmap success criteria hold at the surface level, but SC1 and SC3 each carry an
+unresolved reliability/consistency gap discovered underneath them (see Gaps).
 
-### D-01..D-29 Decision Coverage (40-CONTEXT.md)
+### Observable Truths — Gap-Closure Plans (40-21..40-27)
 
-| Decision | Status | Evidence |
-|---|---|---|
-| D-01 Standalone table, single writer, same-tx | ✓ | `V040__place_movements.sql` is a dedicated table; `record_movement_if_applicable` is the sole insert path (doc comment + grep confirms no other `INSERT INTO place_movements` anywhere in the codebase); all 13 call sites operate on the caller's already-open `&Transaction<'_>`. |
-| D-02 No retroactive backfill | ✓ | Migration inserts nothing; `place_movements_starts_empty` test passes. |
-| D-03 Act delete/undo deletes movement rows | ✓ | `delete_by_act_id_in_tx` called at 3 points inside `delete_soft`'s LIFO cascade, scoped per-act, in the same transaction as `undo_device_mutations_for_act`. |
-| D-04 Status-only change is not a movement | ✓ | `is_reportable_place_change` requires both sides `Some` AND different; unit tests cover the equal-Some case. |
-| D-05 Cartridge ops write only if place changes | ✓ | `cartridges_sqlite.rs:586` transition main mutation and `:674` nested auto-return both go through the same guarded helper; `source` stays `Manual`, distinction lives in `note` (confirmed by direct read). |
-| D-06 Only place→place (NULL edges skipped) | ✓ | `is_reportable_place_change` requires both `Some`; 3 dedicated repo tests (`record_movement_skips_when_place_unchanged`, `_on_first_assignment_from_null`, `_when_cleared_to_null`) all pass; act `do_return`'s `effective_location=None` case explicitly relies on this guard (comment + code confirmed). |
-| D-07 Closed 4-value source enum + free note | ✓ | `MovementSource` enum, 4 variants, `TEXT` column (no SQL CHECK — deliberate, matches IN-01 lesson), `note: Option<&str>`. |
-| D-08 Note optional | ✓ | `note TEXT NULL` in schema; DTO `note: Option<String>`. |
-| D-09 Dual actor snapshot (user_id + ФИО) | ✓ | `user_id NULL`/`actor_name_snapshot TEXT NULL` columns; snapshot resolved at write time via `SELECT full_name FROM users` with `.ok()` soft-degrade. |
-| D-10 Dual place snapshot (id + path) | ✓ | `from_place_id`+`from_place_path`, `to_place_id`+`to_place_path`, both resolved via `PlaceRepository::full_path` at write time, never a later JOIN. |
-| D-11 Actor display precedence (ФИО→login→«система») | ✓ | `place_movement_service.rs`'s `actor_display` match arm implements exactly this 3-way fallback. |
-| D-12 Read access Admin+Manager via ReadPlaces, gated on both transports | ✓ | `PlaceMovementService::get_timeline` and `build_reports_list_movements` both call `authorize(caller, &Action::ReadPlaces)` first; both Tauri `place_movements_get_timeline`/`reports_list_movements` and HTTP `handler_get_timeline`/`handler_list_movements` delegate to the same gated `build_*` function; `role_endpoint_matrix.rs` Cases 52-59 assert Manager-allow/Employee-403 on both transports for timeline, report list, report export, and bulk-move. |
-| D-13 Mutation permissions unchanged | ✓ | Manual writes reuse existing `MutateDevices`/`MutateCartridges` (no new mutate Action introduced); bulk move explicitly reuses these two, not a new blanket action. |
-| D-14 Device — extend PlaceEntityViewModal, open from device list | ✓ | `PlaceEntityViewModal.svelte` renders `DeviceFormBody` (readonly) + new "История перемещений" `DetailSection`; entry point wired `DeviceListRow.svelte`→`DeviceContextMenu.svelte`→`PlaceEntityViewModal` («Просмотр» menu item). |
-| D-15 Minimal card scope (no act list, no new actions) | ✓ | Modal footer only has «Перейти к устройству»/«Редактировать» — no related-acts list added, confirmed by direct read of the full component. |
-| D-16 Cartridge — keep BOTH sections | ✓ | `CartridgeDetail.svelte` retains "Журнал операций" (unchanged, still the raw numeric `place_id` compromise, per file-header comment) AND adds a new "Перемещения" `DetailSection` right below it — both present simultaneously in the render tree. |
-| D-17 Short path in row + full path tooltip | ✓ | `MovementTimeline.svelte`: `title={entry.from_place_path}` (full) on a button showing `entry.from_place_path_short ?? entry.from_place_path`. |
-| D-18 Shorten the STORED snapshot, not live path | ✓ | `place_movement_service.rs` calls `compute_place_path_short(readers, Some(row.from_place_id), Some(row.from_place_path.clone()))` — operates on the snapshot column, single owner (`place_path_display.rs`), no JS mirror (confirmed by `check-placepath-parity` PASS + no duplicate implementation found by grep). |
-| D-19 Clickable place + act number | ✓ | `onNavigateToPlace`/`onNavigateToAct` wired in `MovementTimeline.svelte`, consumed in `PlaceEntityViewModal`/`CartridgeDetail`/`PrinterDetail` via `push('#/places?id=...')`/`push('#/acts?id=...')`. |
-| D-20 Newest-first, unpaginated | ✓ | `ORDER BY created_at_utc DESC, id DESC` in `get_history`, no `LIMIT`; `MovementTimeline.svelte` renders the full `entries` array with no "load more" control. |
-| D-21 Printer recorded as `device`, shares the same timeline | ✓ | `MovementEntityKind` has no `Printer` variant; `PrinterDetail.svelte` calls the timeline with `entityType: 'device', entityId: p.deviceId`. |
-| D-22 Own "Перемещения" ReportSubNav group | ✓ | `ReportSubNav.svelte` `DomainKey` includes `'movements'` as its own top-level domain, not nested. |
-| D-23 Report columns (Дата·Предмет·Тип·Откуда·Куда·Кем·Причина) | ✓ | `columns_for("movements")` in `report_service.rs` (Tauri side) returns exactly these 7 labels; index-alignment test `column_labels_for_is_index_aligned_with_columns_for` passes. |
-| D-24 Two independent subtree-inclusive place filters, AND semantics | ✓ | `query_movements_inner` builds `from_subtree`/`to_subtree` `WITH RECURSIVE` CTEs independently, both pushed into the same AND-joined `clauses` vec; `report_movements_place_filters` test (seeds 3 movements, asserts exactly the AND-matching one survives) passes. |
-| D-25 Soft-deleted items stay, marked «удалено» | ✓ | `is_deleted` computed in the SQL (`CASE WHEN ... THEN 1 ELSE 0 END`), rendered as a live-table badge (`ReportTable.svelte::showDeletedBadge`) AND (after WR-01 fix) appended to the exported CSV/PDF body via `row_field`'s `"device_name"` arm. |
-| D-26 CSV+PDF export parity | ✓ | `build_reports_export_csv`/`_export_pdf` both handle `report_type: "movements"`; `report_movements_export_csv_has_d23_headers`/`_export_pdf_has_d23_headers` plus the new body-content tests all pass. |
-| D-27 Manual place change stays in the existing edit form | ✓ | No new "Переместить…" dialog introduced for single-item moves; `device_service.rs::update`/`cartridge_service.rs::update` write `MovementSource::Manual` inline with the existing PATCH flow. |
-| D-28 Bulk move via place-contents panel | ✓ | `PlaceContents.svelte` "Перенести всё содержимое в…" button → `places_move_subtree_contents` → `PlaceService::move_subtree_contents` (one transaction, one row per moved item, `MutateDevices`+`MutateCartridges` gate) — independently re-read in full, including the confirm-count fetch's `cancelled` closure guard against stale async responses. |
-| D-29 No WebSocket, load on open/after save | ✓ | No `WebSocket`/`ws.` usage found in any of the 3 mount-point files or `MovementTimeline.svelte` itself (grep confirmed zero hits); timeline is fetched inside each parent's own `$effect` keyed on the entity prop. |
+| # | Truth (from PLAN must_haves) | Status | Evidence |
+|---|-------|--------|----------|
+| 1 | 40-21: printer place change cascades to attached cartridges' places, logged with note «вместе с принтером» | ⚠️ PARTIAL | `Some -> Some` transition VERIFIED (`update_cascades_place_to_attached_cartridges` test passes, confirmed by reading the assertions). `Some -> None` (clearing a printer's place) FAILS — see gaps: silently wipes cartridge places, no movement row, no audit row, untested. |
+| 2 | 40-21: explicit cartridge place on install backfills an unset printer's place | ✓ VERIFIED (write happens) | Confirmed at `cartridges_sqlite.rs:614-644`: `UPDATE devices SET place_id=... WHERE place_id IS NULL` executes. Caveat (WR-06, not independently escalated to a blocking gap here): the paired `record_movement_if_applicable(None, Some(explicit))` call is dead by construction (D-06 guard makes `None -> Some` non-reportable), so the write is real but never appears in the printer's own timeline or `audit_log` — an audit-trail gap, not a data-correctness gap. |
+| 3 | 40-22: auto-return with no explicit place falls back to the cartridge's last known storage place instead of NULL | ✗ FAILED | See gaps — confirmed by direct code read that the fallback query only checks `to_place_id` rows, which the phase's own D-06 rule prevents from ever being written for a cartridge's first placement; the regression test hand-seeds the missing data via raw SQL rather than driving the real flow. |
+| 4 | 40-23: install into a printer without a place does not block on the form's required-place validation | ✓ VERIFIED | `OperationModal.svelte::validate()` (~573): `placeId` required only when `effectivePrinterId === undefined`; confirmed no other gate blocks submit when a printer is selected. |
+| 5 | 40-24: deep-link from timeline opens the correct Акты subsection (Акты/Возвраты/Архив) and highlights the row | ✓ VERIFIED | `ActsPage.svelte` derives `activeTab` from the target act's `act_type`/`archived` on first resolution of `initialFocusId` (confirmed at lines ~127-152), guarded against re-firing on subsequent normal row clicks. |
+| 6 | 40-24: timeline shows the canonical return-act number (e.g. «20в»), not the bare parent number | ✓ VERIFIED | `place_movement_service.rs` resolves `act_type`/`sub_number`/`parent_number`/`sibling_return_count` and calls `format_act_number` (confirmed at ~lines 104-140), replacing the prior raw `SELECT number`. |
+| 7 | 40-24: empty/short timeline explains that first placement is not recorded (D-06) | ✓ VERIFIED | Explanatory paragraph present in both the empty-state and non-empty-footer branches of `MovementTimeline.svelte` (confirmed at lines ~87-90 and ~134-137; cosmetic duplication/CSS-class mismatch noted as info-level only, IN-05). |
+| 8 | 40-25: «Удалено» badge visible in the LIVE Перемещения report table, not only in export | ✓ VERIFIED | `ReportsPage.svelte:607` passes `reportType={reportTypeKey()}` to the sole `<ReportTable>` instance (confirmed only one occurrence exists — the review's WR-03 concern about the structural gate's robustness against a second occurrence does not currently manifest as a live bug); `ReportTable.svelte:175` gate confirmed. |
+| 9 | 40-26: expanded device group shows each device's own place; the group row shows a place only when uniform across the group | ✓ VERIFIED | `list_by_ids` now uses `from_row_with_short_path` (confirmed, was `from_row` with hardcoded `None`); `place_distinct_count` computed identically in all three `list_grouped` SQL branches and threaded through `DeviceGroupRow`/`DeviceGroup` DTOs to `DeviceGroupRow.svelte` (confirmed). Minor caveat (WR-11, not escalated): the FTS-search branch's place-path subqueries don't apply the same `MATCH` filter as the outer query, so in a narrow edge case (search + heterogeneous same-model devices) the displayed path could belong to a device outside the matched set even though `place_distinct_count` says 1. |
+| 10 | 40-27: LAN print/export of the Перемещения report never produces a duplicated first page | ✓ VERIFIED | `printViaTopLevel` now clears `printRoot`/destroys the previous `activePolisher` UNCONDITIONALLY at the start of every run (confirmed at lines ~393-395), and `handlePrint` has a `printing` re-entrancy guard (confirmed at lines ~542-556). Residual edge case (WR-04, not escalated): the previous run's `afterprint` listener is not explicitly removed at the start of the next run, which could theoretically race a very fast second click against a slow first-run `afterprint` in some engines — flagged for human verification, not a confirmed reproducible defect. |
 
-**All 29 locked decisions are implemented and independently confirmed in the codebase — none
-found merely claimed.** No decision required an override.
+**Score:** 7/10 gap-closure truths fully verified, 2 partial (audit-trail/edge-case caveats not
+escalated to blocking), 1 failed outright (auto-return fallback).
+
+### Deferred Items
+
+None. Phase 41 (АРМ) and later phases were checked against every gap found here; none of the
+CR-01/CR-02/CR-03/WR-10 gaps are covered by a later phase's stated goal or success criteria —
+Phase 41 addresses workstation-composition place cascades, a different (though related) surface,
+and does not mention the reader pool, the storage-place fallback, or the report act-number
+formatting.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
-|---|---|---|---|
-| `migrations/V040__place_movements.sql` | New table, append-only, indexes for entity/created/from/to/act | ✓ VERIFIED | Read in full; matches D-01/D-02/D-06/D-07/D-08/D-09/D-21/D-03 doc comments and schema. |
-| `crates/trackly-core/src/domain/place_movements.rs` | `MovementSource`, `MovementEntityKind`, `is_reportable_place_change` | ✓ VERIFIED | Pure domain, 190 lines, 10 unit tests, all pass. |
-| `crates/trackly-infra/src/repos/place_movements_sqlite.rs` | Single-writer repo: insert/record_movement_if_applicable/delete_by_act_id/get_history | ✓ VERIFIED | 237 lines, matches doc contract; every write site funnels through `record_movement_if_applicable`. |
-| `crates/trackly-app/src/services/place_movement_service.rs` | HST-02 read service, `ReadPlaces` gate | ✓ VERIFIED | 149 lines; CR-02 fix confirmed present. |
-| `crates/trackly-app/src/dto/place_movements.rs` | `MovementEntryDto` | ✓ VERIFIED | Flat DTO, all fields present, 3 unit tests pass. |
-| `crates/trackly-app/src/{tauri_cmds,http}/place_movements.rs` | Both-transport timeline read | ✓ VERIFIED | Both gate `ReadPlaces`, both delegate to same `build_place_movements_get_timeline`. |
-| `ui/src/lib/components/MovementTimeline.svelte` | Shared, prop-driven timeline row component | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Pure presentational, no local state entanglement; not observed rendering. |
-| `ui/src/features/places/PlaceEntityViewModal.svelte` | D-14 device+printer mount point | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Wired correctly; not observed rendering. |
-| `ui/src/features/cartridges/CartridgeDetail.svelte` | D-16 cartridge mount point, both sections | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Both sections present in source; not observed rendering. |
-| `ui/src/features/printers/PrinterDetail.svelte` | D-21 printer mount point | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Reads device-id timeline; not observed rendering. |
-| `ui/src/features/reports/{ReportSubNav,ReportFilters,ReportsPage,ReportTable}.svelte` | HST-04 report UI | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Domain, filters, export wired; not observed rendering. |
-| `ui/src/features/places/PlaceContents.svelte` | D-28 bulk-move dialog | ✓ VERIFIED (static) / UNVERIFIED (runtime) | Button + modal + cancelled-guard fetch wired; not observed rendering. |
+|----------|----------|--------|---------|
+| `migrations/V040__place_movements.sql` | `place_movements` table + indexes | ✓ VERIFIED | UAT test 1 confirms migration applies cleanly on both a fresh dev DB and a real V38 working copy. |
+| `crates/trackly-infra/src/repos/cartridges_sqlite.rs::cascade_place_for_printer_in_tx` | Cascade printer place to cartridges | ⚠️ STUB-LIKE GAP | Exists, wired, tested for `Some->Some`; untested and unsafe for `Some->None` (see gaps). |
+| `crates/trackly-infra/src/repos/cartridges_sqlite.rs::last_known_storage_place_in_tx` | Storage-place fallback | ✗ FUNCTIONALLY INCOMPLETE | Exists, wired, but its only positive test does not exercise a reachable production path (see gaps). |
+| `crates/trackly-app/src/services/place_movement_service.rs::get_timeline` | Timeline read | ⚠️ WIRED BUT RISKY | Exists, wired to both transports, functionally correct output; concurrency-unsafe implementation (nested pool acquire, no timeout). |
+| `ui/src/lib/components/MovementTimeline.svelte` | Shared timeline component | ✓ VERIFIED | Mounted in 3 real screens + showcase; D-06 explanatory text present. |
+| `ui/scripts/check-report-type-parity.mjs`, `ui/scripts/check-print-idempotency.mjs` | Structural regression gates | ⚠️ WEAKER THAN INTENDED | Both gates pass today (no current bypass in the actual codebase), but the review demonstrated by mutation that both can be satisfied by a comment rather than real behavior — a future regression of the same shape could slip through silently. Not a gap against the CURRENT code, but a gap in the gate's protective value. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
-|---|---|---|---|---|
-| `device_service::update` | `place_movements` | `record_movement_if_applicable` in same tx | ✓ WIRED | Confirmed line 316. |
-| `cartridge_service::update` | `place_movements` | same helper | ✓ WIRED | Confirmed line 275. |
-| `cartridges_sqlite::transition_in_tx` (main + nested auto-return) | `place_movements` | same helper, correct entity attribution (`prev_id` not new cartridge) | ✓ WIRED | Confirmed lines 586, 674-687; auto-return uses `prev_id`/`prev_current.place_id`, not the newly-installed cartridge. |
-| `act_service::create/update/do_return/update_return` (7 sites) | `place_movements` | same helper | ✓ WIRED | All 7 confirmed, including the two CR-01-fixed "removed"/"un-return" branches. |
-| `place_service::move_subtree_contents` (device+cartridge branches) | `place_movements` | same helper | ✓ WIRED | Confirmed lines 719, 765. |
-| `act_service::delete_soft` (3 undo points) | `place_movements` deletion | `delete_by_act_id_in_tx` in same tx as `undo_device_mutations_for_act` | ✓ WIRED | Confirmed lines 2643, 2676, 2704. |
-| `PlaceMovementService::get_timeline` | Tauri + HTTP | `authorize(ReadPlaces)` first line, both transports delegate to same `build_*` | ✓ WIRED | Confirmed. |
-| `ReportService::list_movements`/export | Tauri + HTTP | `Action::ReadPlaces` via `export_gate_action` (list) and same helper (export, both transports) | ✓ WIRED | Confirmed both `tauri_cmds/reports.rs` and `http/reports.rs` delegate to the same gated `build_*` functions. |
-| `DeviceListRow` → `DeviceContextMenu` → `PlaceEntityViewModal` | UI mount chain | prop drilling + `viewRow` state | ✓ WIRED (static) | Confirmed by grep chain; not runtime-observed. |
-| `PlaceContents` "Перенести всё содержимое" | `places_move_subtree_contents` | `apiCall` | ✓ WIRED (static) | Confirmed; not runtime-observed. |
-
-### Data-Flow Trace (Level 4)
-
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-|---|---|---|---|---|
-| `MovementTimeline.svelte` (all 3 mount points) | `entries: MovementEntryDto[]` | `apiCall('place_movements_get_timeline', ...)` inside each parent's `$effect` | Yes — real DB query via `SqlitePlaceMovementsRepository::get_history`, no static fallback found | ✓ FLOWING (mechanically; UI render not observed) |
-| `ReportsPage.svelte` movements domain | `filter.from_place_id`/`to_place_id` | `ReportFilters.svelte` bound to real component state, passed through to `reports_list_movements` | Yes — real recursive CTE query | ✓ FLOWING (mechanically; UI render not observed) |
-| `PlaceContents.svelte` bulk-move dialog | `moveCount` | Own `$effect` fetching `places_contents` with `nested: true`, cancelled-guarded | Yes — real subtree query, correctly always-nested regardless of the "Только здесь" toggle | ✓ FLOWING (mechanically; UI render not observed) |
+|------|-----|-----|--------|---------|
+| `device_service.rs::update` | `cartridges_sqlite.rs::cascade_place_for_printer_in_tx` | direct call inside the same `tx` | ✓ WIRED (partially unsafe) | Called unconditionally on any place change including clearing — see gaps. |
+| `cartridges_sqlite.rs` auto-return branch | `last_known_storage_place_in_tx` | direct call when `previous_cartridge_place_id` is `None` | ✓ WIRED (functionally incomplete) | Wired correctly; the function it calls doesn't return the right answer in the common case. |
+| `MovementTimeline.svelte` | `ActsPage.svelte` | `onNavigateToAct` → `#/acts?id=N` → `activeTab` derived from `act.act_type`/`archived` | ✓ WIRED | Confirmed end-to-end. |
+| `ReportsPage.svelte` | `ReportTable.svelte` | `reportType={reportTypeKey()}` prop | ✓ WIRED | Confirmed single call site, correct value. |
+| `PdfPreviewModal.svelte::handlePrint` | `printViaTopLevel` | `printing` in-flight guard | ✓ WIRED | Confirmed. |
 
 ### Behavioral Spot-Checks
 
-| Behavior | Command | Result | Status |
-|---|---|---|---|
-| Full workspace test suite (includes every HST-01..04 automated test named in 40-VALIDATION.md's Per-Task Verification Map, plus all 5 fix regression tests) | `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1 cargo test --workspace --no-fail-fast -- --test-threads=1 --skip login_remember_persistent_cookie` | exit 0, 131 binaries, 1156 passed, 0 failed | ✓ PASS |
-| `place_movements_act_edit_remove_records_reversion`, `place_movements_return_edit_unreturn_records_reversion` (CR-01 regression) | included above | `ok` | ✓ PASS |
-| `place_movements_act_number_resolves` (CR-02 regression) | included above | `ok` | ✓ PASS |
-| `report_movements_export_csv_marks_deleted_device_in_body`, `report_movements_export_pdf_marks_deleted_device_in_body` (WR-01 regression) | included above | `ok` | ✓ PASS |
-| `movements_export_gate_is_read_places_not_read_data`, `other_report_types_keep_read_data_gate` (WR-02 regression) | included above | `ok` | ✓ PASS |
-| `report_movements_get_report_counts_reflects_real_rows`, `report_movements_get_report_counts_respects_place_filter` (EX-01 regression) | included above | `ok` | ✓ PASS |
-| Frontend type/lint gates | `pnpm --dir ui svelte-check` / `pnpm --dir ui lint` | 0 errors (60 pre-existing whole-app warnings, none phase-40-introduced by content); all 7 `check-*.mjs` PASS | ✓ PASS |
-| Privacy gate | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | PASS, 0 violations | ✓ PASS |
-| Live app rendering of any of the 4 timeline mount points, the report page, or the bulk-move dialog | — | not run (no server start permitted in this verification pass; also a Tauri desktop app can't be meaningfully spot-checked headlessly) | ? SKIP — routed to Human Verification |
-
-### Probe Execution
-
-No `scripts/*/tests/probe-*.sh` files exist in this repository and neither PLAN nor SUMMARY nor
-VALIDATION for Phase 40 reference a probe script. Step 7c: SKIPPED — not applicable to this
-project's test infrastructure (plain `cargo test`, no probe-script convention).
+Not run as live browser/app sessions (out of scope for this code-level pass — see Human
+Verification Required). `cargo fmt --all --check` was re-run directly and confirmed clean.
 
 ### Requirements Coverage
 
-| Requirement | Source Plan(s) | Description | Status | Evidence |
+| Requirement | Source Plans | Description | Status | Evidence |
 |---|---|---|---|---|
-| HST-01 | 40-01, 40-03..40-09 | Каждая смена места записывается в историю (откуда/куда/когда/кем/почему; вручную/актом/картой) | ✓ SATISFIED | All 13 write sites instrumented, D-04/D-06 guard centralized, D-09/D-10/D-11 satisfied, schema future-proofed for map/workstation sources. |
-| HST-02 | 40-10, 40-15..40-17 | Таймлайн в карточке устройства и картриджа | ⚠️ SATISFIED (backend+wiring) / NEEDS HUMAN (visible render) | Read path, DTO, and all 3 UI mount points wired and type-checked; not observed rendering live. |
-| HST-03 | 40-06, 40-09, 40-20 | Акт автоматически меняет место и создаёт запись со ссылкой на номер акта | ✓ SATISFIED | 7 write sites incl. two CR-01-fixed reversion branches; CR-02-fixed act-number resolution; D-03 undo scoping. |
-| HST-04 | 40-11..40-14, 40-18..40-19 | Отчёт за период с фильтром по месту и типу устройства | ⚠️ SATISFIED (backend+wiring) / NEEDS HUMAN (PDF visual) | Filters, columns, D-25 marker (list+export), export gate, tab-counter all correct and tested; PDF Cyrillic/pagination fidelity not visually inspected. |
-
-No orphaned requirements found in `REQUIREMENTS.md` for Phase 40 beyond HST-01..04 — the section
-also lists WKS-03/WKS-06 and MAP-* as depending on this phase's schema (not owned by it); their
-schema-readiness prerequisite (D-07's `map`/`workstation` source tokens, `entity_type` covering
-both kinds) is confirmed present.
+| HST-01 | 40-01,03,04,05,07,08,13,14,19,21,22,26 | Каждая смена места фиксируется в истории с откуда/куда/когда/кем/почему | ⚠️ PARTIALLY SATISFIED | Manual/act paths solid (UAT pass); cascade write path has a silent, unlogged data-loss case (CR-03) and the auto-return fallback still loses place data in the common case (CR-02) — both are direct violations of HST-01's own wording for those specific write sites. |
+| HST-02 | 40-02,10,14,15,16,17,24 | Пользователь видит таймлайн перемещений в карточке устройства и картриджа | ⚠️ PARTIALLY SATISFIED | UI-level truth holds (UAT pass); the read path backing it has an unresolved concurrency/availability risk (CR-01) that is outside this phase's UAT scope (single-user manual testing would never surface it) but squarely inside the project's own stated 20-concurrent-user LAN requirement. |
+| HST-03 | 40-06,09,10,20,24 | Акт приёма-передачи автоматически меняет место и фиксирует ссылку на номер акта в истории | ⚠️ PARTIALLY SATISFIED | Timeline surface fully correct after 40-24; the movements REPORT (a different surface, also this phase's deliverable) still shows the wrong number for return acts. |
+| HST-04 | 40-11,12,18,25,27 | Пользователь может получить отчёт о перемещениях с фильтром по месту и типу устройства | ✓ SATISFIED | All UAT tests for this requirement pass; deleted-badge and print-duplication gaps closed and confirmed by code read. |
 
 ### Anti-Patterns Found
 
-None. Scanned every backend file in `40-REVIEW.md`'s `files_reviewed_list` plus the UI mount-point
-files for `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` and Russian placeholder-copy patterns
-(`placeholder`, `coming soon`, `not yet implemented`) — zero hits. No empty-implementation
-patterns (`return null`/`return {}`/`=> {}`) found in the phase's own new files. The one known,
-explicitly-documented compromise (`CartridgeDetail.svelte`'s pre-existing numeric `place_id`
-display in "Журнал операций") is unchanged by this phase, not a new defect, and is called out in
-its own file-header comment as intentionally out of scope (D-16).
+| File | Line | Pattern | Severity | Impact |
+|------|------|---------|----------|--------|
+| `crates/trackly-app/src/services/device_service.rs` | ~338-348 | Missing guard on a `Some -> None` branch before a destructive cascade | 🛑 Blocker | Silent, unlogged data loss (CR-03) |
+| `crates/trackly-infra/src/repos/cartridges_sqlite.rs` | ~928-943 | Incomplete fallback query (single-direction lookup) presented as fixing a bug it doesn't fix in the common case | 🛑 Blocker | User-visible defect (CR-02) survives behind a green test |
+| `crates/trackly-app/src/services/place_movement_service.rs` | ~64,145-154 | Nested resource acquisition from a bounded pool with no timeout | 🛑 Blocker | Unrecoverable app-wide DB-read hang under concurrent load (CR-01) |
+| `crates/trackly-app/tests/cartridges_lifecycle.rs` | ~1246-1260 | Test seeds unreachable DB state via raw SQL to make a broken code path pass | ⚠️ Warning | Test gives false confidence; masks CR-02 |
+| `crates/trackly-app/src/services/report_service.rs` | ~1479,1505 | Raw column read where a canonical formatter exists and is used elsewhere for the same data | ⚠️ Warning | Screen/report number divergence for return acts (WR-10) |
+| `ui/scripts/check-report-type-parity.mjs`, `check-print-idempotency.mjs` | multiple | Structural gate anchored on text position/comment content rather than parsed AST semantics | ⚠️ Warning | Gate can be satisfied by a comment (proven by mutation in 40-REVIEW.md); not exploited in current code |
+
+No `TBD`/`FIXME`/`XXX` debt markers found in any file modified by plans 40-01..40-27.
 
 ### Human Verification Required
 
-See YAML frontmatter `human_verification` for the structured list. Summary: 5 items, all carried
-forward verbatim from `40-VALIDATION.md`'s "Manual-Only Verifications" table (none dropped) —
-rune-runtime rendering in both card modals, tooltip-at-real-width behavior, PDF export + template
-editor regression, and LAN-browser parity. These exist precisely because `svelte-check`/eslint/
-`cargo test` cannot observe Svelte 5 rune runtime errors, layout/overflow, or print-time DOM
-rendering — this is a known, documented limitation of this project's test infrastructure
-(`compile_gates_miss_svelte_runtime` in project memory), not a gap specific to this phase's
-execution quality.
+### 1. Live re-run of the 5 previously-failing UAT tests after gap closure
 
-### Gaps Summary
+**Test:** In the running desktop app and in a LAN browser, repeat UAT tests 5, 7, 13, 16, 18 from
+`40-UAT.md` exactly as originally performed.
+**Expected:** Each of the 5 originally-reported issues no longer reproduces (except the two
+confirmed-still-broken scenarios below, which should reproduce until fixed).
+**Why human:** This report verifies the fix code exists and is wired; it does not replace a live
+re-run of the exact UAT script, which is the only way to confirm the fix "feels" fixed to the
+reporting user.
 
-No code-level gaps were found. All 4 ROADMAP success criteria have complete, correctly-wired,
-tested implementations at every layer (schema → domain → repo → service → both transports → UI
-component tree). All 29 CONTEXT.md decisions were independently re-derived from the code, not
-copied from REVIEW.md's claims. Both defects the code review found (CR-01, CR-02) plus both
-warnings (WR-01, WR-02) plus the orchestrator-found EX-01 were independently re-verified fixed in
-the current `main` branch — each fix's regression test was confirmed present AND passing in a
-fresh full-suite run in this session, not merely cited from the review document.
+### 2. Clearing a printer's place with attached cartridges
 
-The phase is withheld from `passed` status solely because five behaviors require a running,
-visually-inspected app to confirm (Svelte 5 rune runtime correctness, layout at real widths, PDF
-visual fidelity, LAN-browser parity) — exactly the set of checks `40-VALIDATION.md` itself
-pre-identified as impossible to verify mechanically. This is the honest, non-padded reporting the
-brief asked for: "compiles and is wired" is not being upgraded to "works."
+**Test:** Attach a cartridge to a printer, then edit the printer and clear its «Место» field
+(leave it empty), save. Open the cartridge's card.
+**Expected (currently, per this report):** The cartridge silently loses its recorded place with
+no entry in its movement history — this is the CR-03 gap, expected to reproduce until fixed.
+**Why human:** Confirms the code-level finding against the real running UI before treating it as
+authoritative for a product decision.
+
+### 3. First install-then-replace cycle for a freshly created cartridge
+
+**Test:** Create a new cartridge at a storage place, install it into a printer, then install a
+second cartridge into the SAME printer without specifying a place for the first cartridge's
+return.
+**Expected (currently, per this report):** The first cartridge's place is cleared to empty
+instead of falling back to its original storage place — this is the CR-02 gap, expected to
+reproduce until fixed (this is the exact UAT-16 scenario).
+**Why human:** Confirms the code-level finding against the real running UI.
+
+## Gaps Summary
+
+Four gaps block clean phase-goal achievement, three of them major:
+
+1. **Printer place clear silently wipes attached cartridges' places** (CR-03) — new code from
+   this phase's own gap-closure round, unlogged, untested, directly contradicts HST-01.
+2. **Auto-return storage-place fallback doesn't cover the scenario it was built for** (CR-02) —
+   the UAT-16 defect this gap plan claims to close still reproduces on the common path; its
+   regression test passes only because it seeds unreachable DB state.
+3. **Reader-pool nested-acquire has no timeout and can deadlock all DB reads** (CR-01) — inherited
+   from Plan 40-10, not a gap-closure regression, but still the sole mechanism behind HST-02 and
+   unresolved; severity is amplified by the project's own 20-concurrent-LAN-user requirement.
+4. **Movements report shows the wrong number for return acts** (minor) — a screen/export
+   consistency gap on a surface (`report_service.rs`) this phase itself built, parallel to the one
+   the phase just fixed on the timeline surface.
+
+Five of the seven original UAT gaps are closed and independently confirmed by code read (deleted
+badge, grouped-list inversion, act-link subsection/number in the timeline, LAN print duplication,
+install-place-optional). rustfmt drift (CR-04) is fixed. The remaining work is concentrated in
+`crates/trackly-infra/src/repos/cartridges_sqlite.rs` and `place_movement_service.rs` — the same
+two files the code review already pointed at, now independently confirmed by direct verification.
 
 ---
 
-*Verified: 2026-09-02T15:32:10Z*
-*Verifier: Claude (gsd-verifier)*
+_Verified: 2026-09-03T22:30:00Z_
+_Verifier: Claude (gsd-verifier)_
