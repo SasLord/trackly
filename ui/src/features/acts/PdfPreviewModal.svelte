@@ -369,11 +369,47 @@
    */
   async function printViaTopLevel(html: string) {
     const parsed = new DOMParser().parseFromString(html, 'text/html');
+    // Bug lan-print-duplicate-first-page: collect (and REMOVE) every STYLE
+    // element in the WHOLE parsed document, not just `head > style`.
+    // (Deliberately NOT writing the literal angle-bracket tag spelling in
+    // this comment — same reason the pagedjsScript string below is built via
+    // '<' + 'script>' concatenation: Svelte's compiler scans raw <script>
+    // block text, including comments, for tag-like sequences at compile
+    // time; a literal style-tag spelling here previously made it treat this
+    // whole component's <script> block as never closed.)
+    // Templates are free to emit a STYLE block at their include site inside
+    // the document body (e.g. _header.html, deliberately — see that file's
+    // own IN-02 doc comment: browsers apply STYLE-tag CSS regardless of
+    // head vs body placement, so this is harmless for every OTHER render
+    // path). This is the one call site that is NOT just "another browser"
+    // — it hands `content` to pagedjs's `previewer.preview(content,
+    // stylesheets, renderTo)` with an EXPLICIT `stylesheets` argument.
+    // Passing that argument makes pagedjs 0.4.3 skip its own
+    // `removeStyles()` (dist/paged.esm.js Previewer.preview(): `if
+    // (!stylesheets) { stylesheets = this.removeStyles(); }`) — the exact
+    // mechanism that finds and removes EVERY STYLE tag (head or body) on
+    // every other path (preview iframe / printViaSystemBrowser both call
+    // `previewer.preview()` with NO `stylesheets` arg, so pagedjs's own
+    // removeStyles() always ran there). Only collecting `head > style` here
+    // left the body-scoped STYLE tag inside `bodyHtml`, handed to pagedjs's
+    // Chunker as literal PAGINATED CONTENT instead of CSS. A STYLE element
+    // renders with zero height; having one as the very first flowed node
+    // triggers a duplicate-page defect in pagedjs 0.4.3's Chunker overflow
+    // bookkeeping — confirmed by a minimal previewer.preview() repro (real
+    // pagedjs module, real Chrome): 3 correctly-paginated pages became 4
+    // once a leading STYLE tag was prepended to the fed content, with the
+    // extra page an exact duplicate of the real first page. Matches the
+    // live UAT symptom exactly (verified via an actual print-to-PDF render
+    // of the running app: pages 0 and 1 were byte-identical). Stripping
+    // every STYLE element from the DOM before reading `bodyHtml` removes it
+    // from the content stream entirely — mirroring pagedjs's own default
+    // behaviour — and also fixes a previously-flagged side effect: the
+    // header's own CSS (only ever in `head > style` before) now reaches the
+    // Polisher too.
+    const styleEls = Array.from(parsed.querySelectorAll('style'));
+    const cssText = styleEls.map((el) => el.textContent ?? '').join('\n');
+    styleEls.forEach((el) => el.remove());
     const bodyHtml = parsed.body?.innerHTML ?? '';
-    const styleHtml = Array.from(parsed.head?.querySelectorAll('style') ?? [])
-      .map((el) => el.outerHTML)
-      .join('\n');
-    const cssText = styleHtml.replace(/<\/?style[^>]*>/gi, '');
 
     let printRoot = document.getElementById(PRINT_ROOT_ID);
     if (!printRoot) {
