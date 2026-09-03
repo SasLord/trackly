@@ -151,14 +151,42 @@
     }
   });
 
-  // Plan 40-31 (UAT3-01 frontend): server-computed place default for
-  // «Отправка на заправку»/«Получение с заправки» — mirrors the
-  // install-printer-place autofill effect below (D-13/WR-01 pattern) but
-  // sources the value from cartridges.operationDefaultPlace (plan 40-30)
-  // instead of a printer lookup. Runs AFTER the reset effect above, same
-  // ordering the install-autofill effect relies on. `effectiveCartridge` is
-  // always non-null here — to_refill/from_refill are never opened with
+  // Plan 40-31 (UAT3-01 frontend), gap-closure round 3 (defect 40-31/hot-reopen
+  // race): server-computed place default for «Отправка на заправку»/
+  // «Получение с заправки» — mirrors the install-printer-place autofill
+  // effect below (D-13/WR-01 pattern) but sources the value from
+  // cartridges.operationDefaultPlace (plan 40-30) instead of a printer
+  // lookup. Runs AFTER the reset effect above, same ordering the
+  // install-autofill effect relies on. `effectiveCartridge` is always
+  // non-null here — to_refill/from_refill are never opened with
   // cartridge={null} (only install's request-centric flow does that).
+  //
+  // Round-3 root cause (confirmed live, NOT the WS-broadcast/effect-restart
+  // hypothesis the review started from — that was disproven: this page
+  // never subscribes to WS events at all, and a live instrumented run
+  // showed this effect dispatches exactly ONE request per open, which
+  // resolves and writes `placeId` successfully). The actual bug is a
+  // cross-effect clobber: the install-printer-place autofill effect below
+  // (GAP-12-13/DEC-B) has an early-return branch that runs for EVERY op
+  // other than 'install' (since `op === 'install'` is false, its gate
+  // condition is never true for to_refill/from_refill) and unconditionally
+  // does `if (preFillPrinterId === undefined && placeAutofilled) { placeId
+  // = null; placeAutofilled = false; }` — a cleanup meant for "operator
+  // deselected the printer in an install dialog". That branch reads
+  // `placeAutofilled`, so it re-runs whenever `placeAutofilled` changes,
+  // and it fires for to_refill/from_refill too because Svelte effects
+  // aren't scoped per-op. Once THIS effect sets `placeAutofilled = true`,
+  // the install-effect wakes up, sees `placeAutofilled` true and
+  // `preFillPrinterId` undefined (always true outside the request-centric
+  // install flow), and immediately resets `placeId`/`placeAutofilled` back
+  // — a few microtasks after the write, invisibly to the user. This was
+  // dead code for to_refill/from_refill before plan 40-31 (nothing used to
+  // set `placeAutofilled` for those ops), which is why it only surfaces
+  // once real history exists to autofill from (i.e. after at least one
+  // prior to_refill submit) — matching the reported "cold open is fine,
+  // hot re-open after prior submits is broken" symptom exactly, with no
+  // timing/race component at all. Fixed at the source below (install-effect
+  // now scoped to `op === 'install'`), not here.
   $effect(() => {
     if (!(open && (op === 'to_refill' || op === 'from_refill') && effectiveCartridge)) {
       return;
@@ -271,7 +299,22 @@
       // cartridge-centric selector below — the request-centric flow's
       // preFillPrinterId is fixed for the modal's lifetime and never
       // "deselects".
-      if (preFillPrinterId === undefined && placeAutofilled) {
+      //
+      // Round-3 fix (gap-closure): this early-return branch runs for EVERY
+      // op, not just 'install' — it's simply the "gate condition is false"
+      // path. Before plan 40-31 that was harmless because nothing ever set
+      // `placeAutofilled = true` outside the install flow. Plan 40-31 added
+      // its own to_refill/from_refill place-default autofill (above), which
+      // DOES set `placeAutofilled = true` — and because this branch reads
+      // `placeAutofilled`, it re-runs the moment that happens and (since
+      // `preFillPrinterId` is undefined outside the request-centric install
+      // flow) immediately clobbers the just-autofilled `placeId` back to
+      // null, a few microtasks later, invisibly to the user. This IS the
+      // root cause of the hot-reopen defect (confirmed live via
+      // instrumented run — not a WS/effect-restart race, a cross-effect
+      // clobber). `op === 'install'` scopes this DEC-B cleanup to the flow
+      // it was actually written for.
+      if (op === 'install' && preFillPrinterId === undefined && placeAutofilled) {
         placeId = null;
         placeAutofilled = false;
       }
