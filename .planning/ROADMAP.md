@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 20/20 | Complete   | 2026-09-02 |
+| 40. История перемещений | v1.4 | 21/27 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -418,7 +418,7 @@ Plans:
 
 **Wave 6 (gap-closure wave 1)**
 
-- [ ] 40-21-PLAN.md — cartridge-does-not-follow-printer: каскад места «принтер → его картриджи» + обратная запись места принтеру (координация cargo test с 40-24/40-26 внутри волны)
+- [x] 40-21-PLAN.md — cartridge-does-not-follow-printer: каскад места «принтер → его картриджи» + обратная запись места принтеру (координация cargo test с 40-24/40-26 внутри волны)
 - [ ] 40-24-PLAN.md — timeline-act-link-wrong-subsection: подраздел «Акты» из act_type/archived + канонический номер возврата + пояснение D-06 (координация cargo test с 40-21/40-26 внутри волны)
 - [ ] 40-25-PLAN.md — deleted-badge-missing-in-live-report-table: reportType={reportTypeKey()} + гейт check-report-type-parity.mjs (первым дописывает в ui/package.json "lint")
 - [ ] 40-26-PLAN.md — grouped-device-list-place-inversion: list_by_ids short-path fix (A) + place_distinct_count (B) (координация cargo test с 40-21/40-24 внутри волны)
