@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T01:46:55.287Z"
-last_activity: 2026-09-03
+last_updated: "2026-09-03T02:51:37.246Z"
+last_activity: 2026-09-03 -- Phase 40 planning complete
 progress:
   total_phases: 9
-  completed_phases: 4
-  total_plans: 64
+  completed_phases: 3
+  total_plans: 66
   completed_plans: 64
-  percent: 44
+  percent: 33
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 8 of 27
+Plan: 27 of 29 executed — 40-28/40-29 (gap-closure round 2) pending
 Status: Ready to execute
-Last activity: 2026-09-03
+Last activity: 2026-09-03 -- Phase 40 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
