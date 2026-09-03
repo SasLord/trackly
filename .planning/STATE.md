@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T02:51:37.246Z"
-last_activity: 2026-09-03 -- Phase 40 planning complete
+last_updated: "2026-09-03T03:22:57.570Z"
+last_activity: 2026-09-03 -- Plan 40-28 executed (CR-03, CR-02 closed)
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 66
-  completed_plans: 64
+  completed_plans: 65
   percent: 33
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 27 of 29 executed — 40-28/40-29 (gap-closure round 2) pending
+Plan: 28 of 29 executed — 40-29 (gap-closure round 2) pending
 Status: Ready to execute
-Last activity: 2026-09-03 -- Phase 40 planning complete
+Last activity: 2026-09-03 -- Plan 40-28 executed (CR-03, CR-02 closed)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -370,6 +370,7 @@ Last activity: 2026-09-03 -- Phase 40 planning complete
 | Phase 40 P22 | 20min | 2 tasks | 2 files |
 | Phase 40 P27 | 10min | 2 tasks | 3 files |
 | Phase 40 P23 | 15m | 1 tasks | 1 files |
+| Phase 40 P28 | 50min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -924,6 +925,9 @@ Recent decisions affecting current work:
 - [Phase 40-22]: No storage-place history means place_id stays NULL after auto-return — deliberate non-regression for cartridges never logged into a storage place
 - [Phase 40]: 40-27: hoisted print-idempotency state (activePolisher/repeatTableHeadHandlerRegistered/printing) in PdfPreviewModal.svelte to component scope so LAN print cleanup runs at call-start, not only on afterprint
 - [Phase ?]: Разделили общий чек placeId в validate() install/to_refill: для to_refill место обязательно всегда (нет контекста принтера); для install — только для legacy-пути без принтера (effectivePrinterId === undefined), сервер уже резолвит/подставляет место при выбранном принтере (40-21/40-22).
+- [Phase 40]: CR-03: каскад места принтера на картриджи гейтится на after.place_id.is_some() — очистка места принтера не трогает картриджи
+- [Phase 40]: CR-02: last_known_storage_place_in_tx — трёхступенчатая цепочка fallback (to_place_id ИЛИ from_place_id складского места, затем собственное место картриджа)
+- [Phase 40]: Rule 3 auto-fix: DevicePatch.place_id стал Option<Option<i64>> — COALESCE не мог отличить 'поле не передано' от 'поле явно NULL', очистка места устройства была невозможна
 
 ### Pending Todos
 
@@ -1112,8 +1116,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T01:46:55.277Z
-Stopped at: Completed 40-23-PLAN.md
+Last session: 2026-09-03T03:22:57.560Z
+Stopped at: Completed 40-28-PLAN.md
 Resume file: 
 
 None
