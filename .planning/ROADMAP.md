@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 24/27 | In Progress|  |
+| 40. История перемещений | v1.4 | 25/27 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -425,7 +425,7 @@ Plans:
 
 **Wave 7 (gap-closure wave 2, blocked on 40-21 и/или 40-25)**
 
-- [ ] 40-22-PLAN.md — return-to-stock-empty-place-field: автоподстановка последнего складского места из place_movements (blocked on 40-21 — общий файл cartridges_sqlite.rs)
+- [x] 40-22-PLAN.md — return-to-stock-empty-place-field: автоподстановка последнего складского места из place_movements (blocked on 40-21 — общий файл cartridges_sqlite.rs)
 - [ ] 40-27-PLAN.md — lan-print-duplicate-first-page: идемпотентный printViaTopLevel + re-entrancy guard + гейт check-print-idempotency.mjs (blocked on 40-25 — обе правки дописывают в одну строку "lint" ui/package.json)
 
 **Wave 8 (gap-closure wave 3, blocked on 40-21/40-22)**

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T01:11:04.187Z"
+last_updated: "2026-09-03T01:28:13.371Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 64
-  completed_plans: 61
+  completed_plans: 62
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 5 of 27
+Plan: 6 of 27
 Status: Ready to execute
 Last activity: 2026-09-03
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -367,6 +367,7 @@ Last activity: 2026-09-03
 | Phase 40 P24 | 12min | 3 tasks | 4 files |
 | Phase 40 P25 | 15min | 2 tasks | 3 files |
 | Phase 40 P26 | 5min | 4 tasks | 6 files |
+| Phase 40 P22 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -917,6 +918,8 @@ Recent decisions affecting current work:
 - [Phase 40]: 40-25: гейт check-report-type-parity.mjs проверяет INV-1 (reportType на ReportTable читает reportTypeKey()) и INV-2 (литерал в showDeletedBadge — return-значение reportTypeKey())
 - [Phase 40-26]: Sentinel для place_distinct_count = -1 (не ' ' как у condition_distinct_count) — place_id целочисленный FK, NULL-места считаются отдельным бакетом (WR-04 прецедент)
 - [Phase 40-26]: Гейтинг ячейки места на фронтенде — инлайн-тернарник в разметке, не именованная $derived-переменная, чтобы удовлетворить check-place-path-short.mjs (INV-1/2/3)
+- [Phase 40-22]: Auto-return fallback only considers movements into is_storage=1 places, matching the user's decision to restore last known WAREHOUSE location, not any arbitrary prior place
+- [Phase 40-22]: No storage-place history means place_id stays NULL after auto-return — deliberate non-regression for cartridges never logged into a storage place
 
 ### Pending Todos
 
@@ -1105,8 +1108,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T01:11:04.177Z
-Stopped at: Completed 40-26-PLAN.md
+Last session: 2026-09-03T01:28:13.361Z
+Stopped at: Completed 40-22-PLAN.md
 Resume file: 
 
 None
