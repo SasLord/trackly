@@ -663,8 +663,6 @@ impl SqliteCartridgeRepository {
             ..
         } = op
         {
-            let resolved_place_id = *previous_cartridge_place_id;
-
             let previous: Option<(i64, i64)> = tx
                 .query_row(
                     "SELECT id, version FROM cartridges \
@@ -680,6 +678,21 @@ impl SqliteCartridgeRepository {
             if let Some((prev_id, prev_version)) = previous {
                 // Snapshot before mutating, for the auto-return's audit before_json.
                 let prev_current = self.fetch_in_tx(tx, prev_id)?;
+
+                // Phase 40-22 (UAT-40 gap "return-to-stock-empty-place-field",
+                // see .planning/debug/return-to-stock-empty-place-field.md):
+                // an explicit previous_cartridge_place_id from the operator is
+                // used as-is (no change to existing override behavior). When
+                // the field is left empty, fall back to the returned
+                // cartridge's own last known STORAGE place from its
+                // place_movements history — mirroring the kind-aware
+                // resolved_state_id fallback just below — instead of silently
+                // clearing place_id to NULL. If the cartridge has no such
+                // history, the previous behavior (NULL) is unchanged.
+                let resolved_place_id = match previous_cartridge_place_id {
+                    Some(explicit) => Some(*explicit),
+                    None => self.last_known_storage_place_in_tx(tx, prev_id)?,
+                };
 
                 // R7 (13-SPEC.md): kind-aware default — фотобарабан (kind_id=2)
                 // возвращается в state 5 «Изношенный», обычный картридж
@@ -898,6 +911,35 @@ impl SqliteCartridgeRepository {
             },
             other => map_rusqlite(other),
         })
+    }
+
+    /// Найти последнее известное СКЛАДСКОЕ место картриджа по истории
+    /// `place_movements` (Phase 40-22, UAT-40 gap
+    /// «return-to-stock-empty-place-field», см.
+    /// `.planning/debug/return-to-stock-empty-place-field.md`).
+    ///
+    /// Используется как fallback в auto-return ветке `transition_in_tx`,
+    /// когда оператор оставил поле «Место (предыдущий картридж)» пустым —
+    /// решение пользователя: подставить последнее место складского типа
+    /// (`places.is_storage = 1`), а не молча стирать место в NULL.
+    /// `Ok(None)`, если у картриджа нет ни одной записи перемещения в
+    /// складское место — вызывающий код обязан в этом случае сохранить
+    /// прежнее поведение (NULL).
+    fn last_known_storage_place_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        cartridge_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        tx.query_row(
+            "SELECT pm.to_place_id FROM place_movements pm \
+             JOIN places p ON p.id = pm.to_place_id \
+             WHERE pm.entity_type = 'cartridge' AND pm.entity_id = ?1 AND p.is_storage = 1 \
+             ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1",
+            params![cartridge_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
     }
 
     /// Каскадировать место принтера на все прикреплённые к нему картриджи
