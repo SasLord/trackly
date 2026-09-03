@@ -559,7 +559,18 @@
         givenToError = 'Заполните это поле';
         valid = false;
       }
-      if (placeId === null) {
+      // GAP-40-23: to_refill has no printer context at all — place stays
+      // mandatory unconditionally. install is only mandatory for the legacy
+      // cartridge-centric path (no printer selected, effectivePrinterId ===
+      // undefined) where PlacePicker is the sole source of place; when a
+      // printer IS selected, the server resolves/backfills place_id itself
+      // (Plan 40-21 step 5a + D-13), so the client must not block submit.
+      if (op === 'to_refill') {
+        if (placeId === null) {
+          placeError = 'Заполните это поле';
+          valid = false;
+        }
+      } else if (op === 'install' && effectivePrinterId === undefined && placeId === null) {
         placeError = 'Заполните это поле';
         valid = false;
       }
@@ -715,6 +726,14 @@
             id="op-prev-place"
             onChange={(id) => (previousCartridgePlaceId = id)}
           />
+          <!-- GAP-40-23 (test 16): explain the Plan 40-22 auto-return
+               fallback — an empty field is NOT a silent clear, it derives
+               the cartridge's last known storage place from its movement
+               history when one exists. -->
+          <span class="field-hint"
+            >Если оставить пустым — картриджу подставится его последнее известное складское место;
+            если истории нет, место останется не указано</span
+          >
         </div>
       {/if}
       <!-- Дата -->
@@ -770,7 +789,18 @@
         {#if placeError}
           <span class="field-error">{placeError}</span>
         {:else if op === 'install'}
-          <span class="field-hint">Укажите рабочее место или кабинет (не склад)</span>
+          {#if effectivePrinterId !== undefined && placeId === null}
+            <!-- GAP-40-23 (test 5): printer selected, printer itself has no
+                 place yet (D-13 auto-resolve has nothing to backfill from)
+                 — explain that the field is now optional and that filling
+                 it here writes back to the printer (Plan 40-21 Task 2). -->
+            <span class="field-hint"
+              >Необязательно: у принтера пока не указано место. Если укажете здесь — оно будет
+              проставлено и принтеру</span
+            >
+          {:else}
+            <span class="field-hint">Укажите рабочее место или кабинет (не склад)</span>
+          {/if}
         {/if}
       </div>
     {:else if op === 'return_to_stock' || op === 'from_refill'}
