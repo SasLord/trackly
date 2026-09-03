@@ -257,6 +257,12 @@ impl SqliteDeviceRepository {
     ) -> Result<DeviceRow, AppError> {
         let affected = tx
             .execute(
+                // Phase 40-28 (CR-03 test-blocker): place_id использует CASE
+                // вместо COALESCE — patch.place_id это Option<Option<i64>>,
+                // COALESCE(?, place_id) не может отличить "поле не передано"
+                // от "поле передано явно как NULL" (оба уплощаются в SQL NULL
+                // -> COALESCE молча сохраняет старое значение, очистка места
+                // невозможна). ?8 — булев флаг "поле передано", ?9 — значение.
                 "UPDATE devices SET
                    name             = COALESCE(?1, name),
                    type_id          = COALESCE(?2, type_id),
@@ -265,12 +271,12 @@ impl SqliteDeviceRepository {
                    model            = COALESCE(?5, model),
                    condition        = COALESCE(?6, condition),
                    complectation    = COALESCE(?7, complectation),
-                   place_id         = COALESCE(?8, place_id),
-                   status_id        = COALESCE(?9, status_id),
-                   notes            = COALESCE(?10, notes),
+                   place_id         = CASE WHEN ?8 = 1 THEN ?9 ELSE place_id END,
+                   status_id        = COALESCE(?10, status_id),
+                   notes            = COALESCE(?11, notes),
                    version          = version + 1,
-                   updated_at_utc   = ?11
-                 WHERE id = ?12 AND version = ?13 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?12
+                 WHERE id = ?13 AND version = ?14 AND deleted_at_utc IS NULL",
                 rusqlite::params![
                     patch.name.as_deref(),
                     patch.type_id,
@@ -279,7 +285,8 @@ impl SqliteDeviceRepository {
                     patch.model.as_deref(),
                     patch.state.as_deref(),
                     patch.kit.as_deref(),
-                    patch.place_id,
+                    patch.place_id.is_some() as i64,
+                    patch.place_id.flatten(),
                     patch.status_id,
                     patch.specs.as_deref(),
                     now_utc,
@@ -672,6 +679,12 @@ impl DeviceRepository for SqliteDeviceRepository {
     ) -> Result<DeviceRow, AppError> {
         let affected = conn
             .execute(
+                // Phase 40-28 (CR-03 test-blocker): place_id использует CASE
+                // вместо COALESCE — patch.place_id это Option<Option<i64>>,
+                // COALESCE(?, place_id) не может отличить "поле не передано"
+                // от "поле передано явно как NULL" (оба уплощаются в SQL NULL
+                // -> COALESCE молча сохраняет старое значение, очистка места
+                // невозможна). ?8 — булев флаг "поле передано", ?9 — значение.
                 "UPDATE devices SET
                    name             = COALESCE(?1, name),
                    type_id          = COALESCE(?2, type_id),
@@ -680,12 +693,12 @@ impl DeviceRepository for SqliteDeviceRepository {
                    model            = COALESCE(?5, model),
                    condition        = COALESCE(?6, condition),
                    complectation    = COALESCE(?7, complectation),
-                   place_id         = COALESCE(?8, place_id),
-                   status_id        = COALESCE(?9, status_id),
-                   notes            = COALESCE(?10, notes),
+                   place_id         = CASE WHEN ?8 = 1 THEN ?9 ELSE place_id END,
+                   status_id        = COALESCE(?10, status_id),
+                   notes            = COALESCE(?11, notes),
                    version          = version + 1,
-                   updated_at_utc   = ?11
-                 WHERE id = ?12 AND version = ?13 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?12
+                 WHERE id = ?13 AND version = ?14 AND deleted_at_utc IS NULL",
                 rusqlite::params![
                     patch.name.as_deref(),
                     patch.type_id,
@@ -694,7 +707,8 @@ impl DeviceRepository for SqliteDeviceRepository {
                     patch.model.as_deref(),
                     patch.state.as_deref(),
                     patch.kit.as_deref(),
-                    patch.place_id,
+                    patch.place_id.is_some() as i64,
+                    patch.place_id.flatten(),
                     patch.status_id,
                     patch.specs.as_deref(),
                     now_utc,

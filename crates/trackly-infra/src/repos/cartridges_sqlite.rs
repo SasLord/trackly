@@ -952,6 +952,12 @@ impl SqliteCartridgeRepository {
     /// состояния (место следует за принтером), а не пользовательское редактирование;
     /// конкурентный `transition()` картриджа перезапишет `place_id` своим следующим
     /// шагом естественным образом.
+    ///
+    /// **Caller MUST NOT call this with `new_place_id: None`** — Phase 40
+    /// gap-closure CR-03: an unconditional `Some -> None` cascade silently wipes
+    /// every attached cartridge's place with no movement/audit row. The ONLY call
+    /// site (`device_service.rs::update`) gates on `after.place_id.is_some()`
+    /// before calling; this function does not re-check it.
     #[allow(clippy::too_many_arguments)]
     pub fn cascade_place_for_printer_in_tx(
         &self,

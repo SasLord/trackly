@@ -38,7 +38,14 @@ pub struct DevicePatch {
     pub specs: Option<String>,
     pub kit: Option<String>,
     pub state: Option<String>,
-    pub place_id: Option<i64>,
+    /// Двойной `Option`: `None` — поле не передано, значение места не
+    /// меняется; `Some(None)` — поле передано явно с намерением очистить
+    /// место (place_id -> NULL); `Some(Some(id))` — поле передано с новым
+    /// местом. Уплощение в одинарный `Option<i64>` (как раньше) делает
+    /// "не передано" и "передано явно как NULL" неразличимыми на уровне SQL
+    /// COALESCE — Phase 40-28 (CR-03 test-blocker): очистка места принтера
+    /// через `DeviceService::update` молча не срабатывала.
+    pub place_id: Option<Option<i64>>,
     pub status_id: Option<i64>,
 }
 

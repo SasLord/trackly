@@ -180,7 +180,11 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
             p.state = inner;
         }
         if let Some(inner) = dto.place_id {
-            p.place_id = inner;
+            // Phase 40-28: сохраняем различие "поле не передано" (внешний
+            // None, ветка if не выполняется) vs "поле передано явно, значение
+            // NULL" (inner = None, p.place_id = Some(None)) — уплощение до
+            // одинарного Option ранее делало оба случая неразличимыми.
+            p.place_id = Some(inner);
         }
         if let Some(v) = dto.status_id {
             p.status_id = Some(v);

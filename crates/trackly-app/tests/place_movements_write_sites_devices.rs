@@ -523,3 +523,73 @@ async fn update_with_no_place_change_does_not_touch_cartridges() {
     .await
     .expect("update_with_no_place_change_does_not_touch_cartridges exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// Plan 40-28 (CR-03, 40-VERIFICATION.md gap 1): clearing a printer's place
+// (Some -> None) must NOT touch attached cartridges' places.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_clearing_printer_place_does_not_touch_cartridges() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let place_a = seed_place(&svc.writer, "Каб. 601").await;
+        let manager = seed_manager_caller(&svc.writer).await;
+        let (printer_id, printer_version) =
+            seed_printer_device(&svc.writer, "Xerox Phaser 3320").await;
+
+        // Принтер сеется без места (place_id = NULL). Первое присвоение места
+        // (NULL -> place_a) — обычный переезд принтера на A, version становится 2.
+        let dto = svc
+            .update(
+                &manager,
+                printer_id,
+                printer_version,
+                DevicePatch {
+                    place_id: Some(Some(place_a)),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update printer NULL -> place A");
+
+        // Картридж сеется уже прикреплённым к принтеру с местом = A — имитирует
+        // состояние ПОСЛЕ реального каскада (which the first update above did not
+        // itself trigger, since no cartridge was attached yet).
+        let cartridge_id =
+            seed_cartridge_attached_to_printer(&svc.writer, printer_id, place_a).await;
+
+        // Очищаем место принтера: place A -> None. `after.place_id == None`.
+        svc.update(
+            &manager,
+            printer_id,
+            dto.version,
+            DevicePatch {
+                place_id: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update printer place A -> None (clear)");
+
+        let (cart_place, cart_version) =
+            cartridge_place_and_version(&svc.writer, cartridge_id).await;
+        assert_eq!(
+            cart_place,
+            Some(place_a),
+            "CR-03: очистка места принтера НЕ должна трогать место картриджа"
+        );
+        assert_eq!(
+            cart_version, 1,
+            "CR-03: version картриджа НЕ должна увеличиваться при очистке места принтера"
+        );
+
+        let count = count_cartridge_movements(svc.readers.clone(), cartridge_id).await;
+        assert_eq!(
+            count, 0,
+            "CR-03: очистка места принтера не должна писать place_movements для картриджа, получили {count}"
+        );
+    })
+    .await
+    .expect("update_clearing_printer_place_does_not_touch_cartridges exceeded 30 s budget");
+}
