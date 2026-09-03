@@ -31,9 +31,12 @@ pub struct SqliteDeviceRepository;
 /// LEFT JOIN place_full_paths добавляет `pfp.full_path` как столбец с индексом 15;
 /// LEFT JOIN place_effective_variant добавляет `pev.effective_variant` как индекс 16
 /// (Phase 39.1 Plan 03). `from_row` НИКОГДА не читает индекс 16 — он используется
-/// только `from_row_with_short_path`, вызываемым из `list`/`search_fts` (D-19: `get`/
-/// `get_in_tx`/`list_by_ids`/`restore_from_snapshot_in_tx` продолжают использовать
-/// голый `from_row` и всегда получают `place_path_short: None`).
+/// только `from_row_with_short_path`, вызываемым из `list`/`search_fts`/`list_by_ids`
+/// (Phase 40 Plan 26 — `list_by_ids` питает раскрытые группы списка устройств, поэтому
+/// сокращённый путь ему нужен так же, как `list`/`search_fts`; D-19 по-прежнему верно
+/// для `get`/`get_in_tx`/`restore_from_snapshot_in_tx` — это ДЕТАЛЬНЫЕ, не списочные
+/// экраны, они продолжают использовать голый `from_row` и получают
+/// `place_path_short: None`).
 const SELECT_DEVICES: &str = "
     SELECT d.id, d.type_id, d.name, d.inventory_number, d.serial_number, d.model,
            d.condition, d.complectation, d.place_id, d.status_id, d.notes,
@@ -72,7 +75,8 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
 /// Wraps `from_row`, additionally reading `place_effective_variant.effective_variant`
 /// (column index 16, present only when the query joins `place_effective_variant` —
 /// see `SELECT_DEVICES`) and computing `place_path_short` via `shorten_place_path`.
-/// Used ONLY by `list()`/`search_fts()` (D-17).
+/// Used by `list()`/`search_fts()` (D-17) and `list_by_ids()` (Phase 40 Plan 26 —
+/// раскрытая группа списка устройств тоже список, ей нужен тот же сокращённый путь).
 ///
 /// Деградация (WR-01, фаза 39.2). `place_path_short: None` означает ровно одно —
 /// **у устройства нет места** (`place_id IS NULL` → нет `full_path`, а LEFT JOIN
@@ -1379,8 +1383,12 @@ impl DeviceRepository for SqliteDeviceRepository {
         use rusqlite::types::ToSql;
         let params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
 
+        let (sep_ends, sep_last_two) = read_path_display_separators(conn);
         let rows = stmt
-            .query_map(params.as_slice(), from_row)
+            .query_map(
+                params.as_slice(),
+                from_row_with_short_path(&sep_ends, &sep_last_two),
+            )
             .map_err(map_rusqlite)?;
 
         let mut devices = Vec::new();
