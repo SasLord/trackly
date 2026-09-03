@@ -122,3 +122,7 @@ None - no external service configuration required.
 ---
 *Phase: 40-movement-history*
 *Completed: 2026-09-03*
+
+## Self-Check: PASSED
+
+All files created/modified verified present; all task/deviation commits (`a9df9347`, `1145eda7`, `fa006236`, `dd67bcb5`, `824ec722`) verified in `git log`.
