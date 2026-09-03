@@ -27,6 +27,7 @@
   import Spinner from '$lib/components/Spinner.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import PlaceEntityViewModal from './PlaceEntityViewModal.svelte';
   import type { PlaceContentDto, PlaceDto } from '../../bindings';
 
@@ -273,6 +274,10 @@
         targetPlaceId: moveTargetId,
         note: null,
       });
+      // UAT3-03: invalidate PlaceTree's content counters for source +
+      // target — PlaceTree's own ancestorsAndSelf() extends this to their
+      // full parent_id ancestor chains.
+      notifyPlaceContentChanged([place.id, moveTargetId]);
       pushToast('success', 'Содержимое перенесено');
       moveModalOpen = false;
       reloadToken += 1;
