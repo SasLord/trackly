@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T00:06:36.909Z"
+last_updated: "2026-09-03T00:13:09.399Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 64
-  completed_plans: 58
+  completed_plans: 59
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 2 of 27
+Plan: 3 of 27
 Status: Ready to execute
 Last activity: 2026-09-03
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -364,6 +364,7 @@ Last activity: 2026-09-03
 | Phase 40 P16 | 20min | 2 tasks | 3 files |
 | Phase 40 P17 | 20min | 2 tasks | 2 files |
 | Phase 40 P21 | 35min | 3 tasks | 4 files |
+| Phase 40 P24 | 12min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -908,6 +909,9 @@ Recent decisions affecting current work:
 - [Phase 40]: DeviceContextMenu reuses its existing onDelete prop as the generic list-reload signal after the view-modal's edit-save, avoiding new prop threading through DeviceList/DeviceGroupRow
 - [Phase 40]: CartridgeDetail/PrinterDetail use MovementTimeline's own scoped loadError (not a shared page-level error) for the new timeline sections, opposite of Plan 40-16's modal — neither component had an existing single fetch to fold the new call into
 - [Phase 40]: 40-21: cascade места принтера на картриджи без optimistic-lock — Синхронизация производного состояния (место следует за принтером), не пользовательское редактирование; обратная запись места принтеру гейтится WHERE place_id IS NULL как race-guard
+- [Phase 40]: 40-24: Deep-link tab derivation runs once per mount (initialTabDerived), gated on id === initialFocusId
+- [Phase 40]: 40-24: act_number resolution mirrors SqliteActRepository::SELECT_ACTS query shape rather than a second formula
+- [Phase 40]: 40-24: D-06 explanation duplicated as static text in empty and short timeline states, no length threshold introduced
 
 ### Pending Todos
 
@@ -1096,7 +1100,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T00:06:36.899Z
+Last session: 2026-09-03T00:12:08.073Z
 Stopped at: Completed 40-21-PLAN.md
 Resume file: 
 
