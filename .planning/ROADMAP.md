@@ -376,7 +376,7 @@ Plans:
   4. Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу
      устройства.
 
-**Plans**: 29 plans in 9 waves (20 initial + 9 gap-closure, UAT 2026-09-03 + re-verification 2026-09-03)
+**Plans**: 32 plans in 10 waves (20 initial + 12 gap-closure, UAT 2026-09-03 + re-verification 2026-09-03 + live UAT re-run round 3 2026-09-03)
 
 Plans:
 **Wave 1**
@@ -438,6 +438,18 @@ Plans:
 
 - [x] 40-28-PLAN.md — cascade Some->None не трогает место картриджей (CR-03) + полная fallback-цепочка last_known_storage_place_in_tx через реальный поток (CR-02)
 - [x] 40-29-PLAN.md — устранение вложенного ReaderPool.acquire() в get_timeline/query_movements_inner (CR-01) + acquire_timeout defense-in-depth + единый resolve_movement_act_number для таймлайна и отчёта (WR-10)
+
+**Gap closure round 3 (живой UAT на Windows 2026-09-03, 2 gaps — см. 40-HUMAN-UAT.md; третий gap
+UAT3-02 закрыт вне планов отладочной сессией, коммит 08e56c25)**
+
+**Wave 10 (gap-closure wave 5)**
+
+- [ ] 40-30-PLAN.md — UAT3-01 backend: last_known_storage_place_in_tx обобщена на &Connection (переиспользована для дефолта from_refill) + новая most_common_to_refill_destination + оба транспорта + role-матрица
+- [ ] 40-32-PLAN.md — UAT3-03: инвалидация statsCache в дереве «Места» после bulk-переноса содержимого (общий store + PlaceTree/PlaceContents)
+
+**Wave 11 (gap-closure wave 6, blocked on 40-30)**
+
+- [ ] 40-31-PLAN.md — UAT3-01 frontend: OperationModal.svelte подключает cartridges_operation_default_place к обоим диалогам (to_refill/from_refill)
 
 **UI hint**: yes
 
