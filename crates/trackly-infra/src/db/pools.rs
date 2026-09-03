@@ -24,6 +24,7 @@
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::sync::{Condvar, Mutex};
+use std::time::{Duration, Instant};
 use trackly_core::error::AppError;
 
 use crate::db::pragmas::apply_reader_pragmas;
@@ -94,6 +95,50 @@ impl ReaderPool {
     /// Размер пула (число соединений, открытых на старте).
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    /// Bounded-вариант [`ReaderPool::acquire`] — defense-in-depth (Phase 40
+    /// gap-closure CR-01) на случай будущего вложенного `acquire()`, который
+    /// эта же фаза устраняет как root cause в текущих известных call site'ах
+    /// (`PlaceMovementService::get_timeline`,
+    /// `report_service.rs::query_movements_inner`). Ни один существующий
+    /// вызывающий код сегодня не переключён на этот метод — он добавлен как
+    /// доступная возможность, а не обязательная миграция всех `.acquire()`.
+    ///
+    /// Возвращает `None`, если ни одно соединение не освободилось за
+    /// `timeout`, вместо того чтобы ждать на `Condvar` бесконечно, как
+    /// делает untimed `acquire()`.
+    pub fn acquire_timeout(&self, timeout: Duration) -> Option<ReaderHandle<'_>> {
+        let mut conns = self
+            .conns
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(conn) = conns.pop() {
+                return Some(ReaderHandle {
+                    pool: self,
+                    conn: Some(conn),
+                });
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return None;
+            }
+            let (guard, timeout_result) = self
+                .available
+                .wait_timeout(conns, deadline - now)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            conns = guard;
+            if timeout_result.timed_out() {
+                // Одна финальная попытка — гонка "соединение вернулось ровно
+                // в момент таймаута" не должна давать ложный None.
+                return conns.pop().map(|conn| ReaderHandle {
+                    pool: self,
+                    conn: Some(conn),
+                });
+            }
+        }
     }
 }
 
@@ -300,5 +345,72 @@ mod tests {
             .query_row("SELECT v FROM t WHERE id = 1", [], |r| r.get(0))
             .expect("pool still healthy after contention");
         assert_eq!(v, "seed");
+    }
+
+    #[test]
+    fn acquire_timeout_returns_none_when_pool_exhausted() {
+        use std::time::{Duration, Instant};
+
+        let dir = seed_db();
+        let path = dir.path().join("reader-pool-test.db");
+        let pool = ReaderPool::new(&path, 1).expect("new pool");
+
+        // Hold the only connection for the whole test.
+        let _held = pool.acquire();
+
+        let start = Instant::now();
+        let result = pool.acquire_timeout(Duration::from_millis(100));
+        let elapsed = start.elapsed();
+
+        assert!(
+            result.is_none(),
+            "acquire_timeout must return None when the pool stays exhausted"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(90),
+            "acquire_timeout must actually wait close to the requested timeout, not return \
+             instantly — elapsed: {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn acquire_timeout_succeeds_once_a_connection_is_returned() {
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::Duration;
+
+        let dir = seed_db();
+        let path = dir.path().join("reader-pool-test.db");
+        let pool = Arc::new(ReaderPool::new(&path, 1).expect("new pool"));
+
+        // Hold the only connection from a SEPARATE thread (each thread
+        // acquires within itself via its own Arc clone) — a `ReaderHandle`
+        // borrows `&ReaderPool`, so it cannot be moved into another thread
+        // directly. A channel makes the handoff deterministic: the main
+        // thread blocks on `acquired_rx.recv()` until the holder thread has
+        // genuinely taken the only connection, so `acquire_timeout` below is
+        // guaranteed to actually wait rather than racing the holder.
+        let (acquired_tx, acquired_rx) = mpsc::channel::<()>();
+        let pool_for_holder = pool.clone();
+        let holder = thread::spawn(move || {
+            let guard = pool_for_holder.acquire();
+            acquired_tx.send(()).expect("signal acquired");
+            thread::sleep(Duration::from_millis(50));
+            drop(guard);
+        });
+        acquired_rx
+            .recv()
+            .expect("holder acquired the only connection");
+
+        let guard = pool
+            .acquire_timeout(Duration::from_secs(2))
+            .expect("acquire_timeout must succeed once the held connection is released");
+        let v: String = guard
+            .query_row("SELECT v FROM t WHERE id = 1", [], |r| r.get(0))
+            .expect("query through acquire_timeout-returned connection");
+        assert_eq!(v, "seed");
+
+        holder.join().expect("holder thread must not panic");
     }
 }

@@ -8,5 +8,5 @@
 pub mod test_app_ctx;
 pub mod test_db;
 
-pub use test_app_ctx::test_writer_and_readers;
+pub use test_app_ctx::{test_writer_and_readers, test_writer_and_readers_sized};
 pub use test_db::test_db;

@@ -22,7 +22,7 @@ use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::writer_worker::WriterHandle;
-use trackly_infra::test_support::test_writer_and_readers;
+use trackly_infra::test_support::{test_writer_and_readers, test_writer_and_readers_sized};
 
 /// Сеет реальную строку `users` (FK-цель для `place_movements.user_id`) и
 /// возвращает `Identity` менеджера. Вымышленное имя — privacy gate (CLAUDE.md).
@@ -489,4 +489,100 @@ async fn place_movements_act_number_resolves_return_act() {
         Some("777в2".to_string()),
         "second sibling return must keep its sub-number suffix"
     );
+}
+
+// ---------------------------------------------------------------------------
+// get_timeline_does_not_deadlock_with_single_reader_slot (Phase 40-29, CR-01)
+// ---------------------------------------------------------------------------
+
+/// CR-01 regression: `get_timeline` must not take a SECOND connection from
+/// the `ReaderPool` while it already holds one — with a pool sized to
+/// EXACTLY one connection, a nested `acquire()` would block forever on the
+/// untimed `Condvar` inside `ReaderPool::acquire()` (no other thread can ever
+/// return the second connection this call itself is holding).
+///
+/// Deliberately NOT a plain `#[tokio::test]` + `tokio::time::timeout`: that
+/// combination does not actually protect the test run against a genuine
+/// deadlock here. `get_timeline`'s nested `acquire()` parks a
+/// `tokio::task::spawn_blocking` worker thread forever on `Condvar::wait`
+/// (no timeout). An outer `tokio::time::timeout` DOES fire and the async
+/// task returns — but dropping the `#[tokio::test]`-generated `Runtime`
+/// afterwards blocks the whole process, because Tokio's `Runtime::drop`
+/// waits for every outstanding blocking-pool task to finish, and the leaked
+/// one never does. This was confirmed empirically while writing this test:
+/// with the pre-fix code temporarily restored, the `tokio::time::timeout`
+/// variant hung the entire `cargo test` invocation past the 5s test budget
+/// with no failure ever reported — the harness had to be killed manually.
+///
+/// Instead: run the fixture + `get_timeline` call on its own **std** thread
+/// (own `tokio::runtime::Runtime`, not the test-harness one) and hand the
+/// result back over an `mpsc` channel. `recv_timeout` on the main test
+/// thread bounds the wait WITHOUT taking ownership of (or needing to drop)
+/// the worker's runtime — if the worker thread deadlocks, it is simply
+/// leaked (parked, near-zero CPU) and the test still fails fast and cleanly;
+/// leaked `std::thread`s do not block process exit the way a leaked Tokio
+/// blocking-pool task blocks `Runtime::drop`.
+#[test]
+fn get_timeline_does_not_deadlock_with_single_reader_slot() {
+    let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<usize, String>>();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("build tokio runtime for worker thread");
+        let outcome = rt.block_on(async {
+            let (writer, readers, _dir) = test_writer_and_readers_sized(1);
+            let manager = seed_manager_caller(&writer).await;
+            let place_a = seed_place(&writer, "Здание А / Каб. 106").await;
+            let place_b = seed_place(&writer, "Здание Б / Каб. 206").await;
+            let device_id = seed_device(&writer, "Проектор инв.006", 1, place_b).await;
+
+            // Two rows for the same device — guarantees at least 2 loop
+            // iterations, i.e. at least 2x2 = 4 calls into
+            // `compute_place_path_short_with_conn` during one `get_timeline`.
+            seed_movement_row(
+                &writer,
+                "device",
+                device_id,
+                place_a,
+                "Здание А / Каб. 106",
+                place_b,
+                "Здание Б / Каб. 206",
+                "manual",
+                None,
+                None,
+                1_700_000_700,
+            )
+            .await;
+            seed_movement_row(
+                &writer,
+                "device",
+                device_id,
+                place_b,
+                "Здание Б / Каб. 206",
+                place_a,
+                "Здание А / Каб. 106",
+                "manual",
+                None,
+                None,
+                1_700_000_800,
+            )
+            .await;
+
+            let svc = PlaceMovementService::new(readers);
+            svc.get_timeline(&manager, "device", device_id)
+                .await
+                .map(|timeline| timeline.len())
+                .map_err(|e| format!("{e:?}"))
+        });
+        // Ignore send errors — if the receiver already gave up (timed out),
+        // there is nothing left to report to.
+        let _ = result_tx.send(outcome);
+    });
+
+    match result_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(Ok(len)) => assert_eq!(len, 2),
+        Ok(Err(e)) => panic!("get_timeline returned an error: {e}"),
+        Err(_) => panic!(
+            "get_timeline exceeded 5 s budget — nested reader-pool acquire regressed (CR-01)"
+        ),
+    }
 }

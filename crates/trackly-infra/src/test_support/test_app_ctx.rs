@@ -28,6 +28,17 @@ use crate::db::{migrations, pools::ReaderPool, pragmas, writer_worker::WriterHan
 /// Каждый вызов открывает СВЕЖИЙ DB (свой tempdir) — никаких пересечений
 /// между тестами.
 pub fn test_writer_and_readers() -> (Arc<WriterHandle>, Arc<ReaderPool>, TempDir) {
+    test_writer_and_readers_sized(4)
+}
+
+/// Same fixture as [`test_writer_and_readers`], but with a caller-chosen
+/// `ReaderPool` size instead of the fixed default of 4 (Phase 40 gap-closure
+/// CR-01) — needed by regression tests that must exercise a pool with EXACTLY
+/// one connection slot (e.g. `get_timeline_does_not_deadlock_with_single_reader_slot`)
+/// to prove a read path never takes a second connection mid-flight.
+pub fn test_writer_and_readers_sized(
+    pool_size: usize,
+) -> (Arc<WriterHandle>, Arc<ReaderPool>, TempDir) {
     let dir = TempDir::new().expect("create tempdir for test app ctx");
     let db_path: PathBuf = dir.path().join("test.db");
 
@@ -39,8 +50,9 @@ pub fn test_writer_and_readers() -> (Arc<WriterHandle>, Arc<ReaderPool>, TempDir
     // Spawn writer worker (takes ownership of the conn).
     let writer = Arc::new(WriterHandle::spawn(writer_conn));
 
-    // Open reader pool on the same file (size = 4 per Plan 04 D-WriterChannel-01).
-    let readers = Arc::new(ReaderPool::new(&db_path, 4).expect("new reader pool"));
+    // Open reader pool on the same file (size = 4 per Plan 04 D-WriterChannel-01,
+    // unless the caller asked for a different size).
+    let readers = Arc::new(ReaderPool::new(&db_path, pool_size).expect("new reader pool"));
 
     (writer, readers, dir)
 }
