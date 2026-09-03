@@ -763,34 +763,40 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
 
         // Install A into the printer first.
         let a_installed = svc
-            .transition(&admin_caller(), CartridgeTransitionPayload::Install {
-                cartridge_id: cart_a.id,
-                version: cart_a.version,
-                date_utc: 1_700_000_000,
-                given_by_name: "Иванов".into(),
-                given_to_name: "Петров".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install A");
         assert_eq!(a_installed.status_id, 2);
 
         // Install B into the SAME printer — must auto-return A.
         let b_installed = svc
-            .transition(&admin_caller(), CartridgeTransitionPayload::Install {
-                cartridge_id: cart_b.id,
-                version: cart_b.version,
-                date_utc: 1_700_000_100,
-                given_by_name: "Сидоров".into(),
-                given_to_name: "Кузнецов".into(),
-                place_id: None,
-                printer_device_id: Some(printer_id),
-                previous_cartridge_state_id: None,
-                previous_cartridge_place_id: None,
-            })
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
             .await
             .expect("install B into same printer");
 

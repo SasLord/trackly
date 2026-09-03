@@ -394,7 +394,12 @@ async fn place_movements_act_number_resolves() {
 /// Seed a real `acts` return row (parent_act_id + act_type='return' +
 /// sub_number) and return its id. Invented giver/receiver names only
 /// (CLAUDE.md privacy gate).
-async fn seed_return_act(writer: &WriterHandle, parent_act_id: i64, number: i64, sub_number: i64) -> i64 {
+async fn seed_return_act(
+    writer: &WriterHandle,
+    parent_act_id: i64,
+    number: i64,
+    sub_number: i64,
+) -> i64 {
     writer
         .execute(move |conn| {
             conn.execute(
@@ -485,4 +490,3 @@ async fn place_movements_act_number_resolves_return_act() {
         "second sibling return must keep its sub-number suffix"
     );
 }
-
