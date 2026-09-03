@@ -28,6 +28,7 @@ use crate::dto::reports::{
     ReportRow,
 };
 use crate::pdf::PdfRenderer;
+use crate::services::act_number_display::resolve_movement_act_number;
 use crate::services::organization_service::OrganizationService;
 use crate::services::place_path_display::compute_place_path_short_with_conn as compute_movement_place_path_short;
 
@@ -1356,7 +1357,7 @@ fn movement_reason(
     source: &str,
     note: Option<&str>,
     act_id: Option<i64>,
-    act_number: Option<i64>,
+    act_number: Option<&str>,
 ) -> String {
     if act_id.is_some() {
         if let Some(number) = act_number {
@@ -1474,7 +1475,7 @@ fn query_movements_inner(
                CASE pm.entity_type WHEN 'device' THEN 'Устройство' \
                                    WHEN 'cartridge' THEN 'Картридж' \
                                    ELSE pm.entity_type END AS entity_type_label, \
-               pm.source, pm.note, pm.act_id, a.number AS act_number, \
+               pm.source, pm.note, pm.act_id, \
                COALESCE(pm.actor_name_snapshot, u.login) AS actor_name, \
                CASE WHEN d.deleted_at_utc IS NOT NULL OR c.deleted_at_utc IS NOT NULL \
                     THEN 1 ELSE 0 END AS is_deleted, \
@@ -1482,7 +1483,6 @@ fn query_movements_inner(
          FROM place_movements pm \
          LEFT JOIN devices d ON pm.entity_type = 'device' AND pm.entity_id = d.id \
          LEFT JOIN cartridges c ON pm.entity_type = 'cartridge' AND pm.entity_id = c.id \
-         LEFT JOIN acts a ON a.id = pm.act_id \
          LEFT JOIN users u ON u.id = pm.user_id \
          WHERE {where_clause} \
          ORDER BY pm.created_at_utc ASC, pm.id ASC \
@@ -1500,10 +1500,9 @@ fn query_movements_inner(
             let source: String = r.get(8)?;
             let note: Option<String> = r.get(9)?;
             let act_id: Option<i64> = r.get(10)?;
-            let act_number: Option<i64> = r.get(11)?;
-            let actor_name: Option<String> = r.get(12)?;
-            let is_deleted: i64 = r.get(13)?;
-            let created_at_utc: i64 = r.get(14)?;
+            let actor_name: Option<String> = r.get(11)?;
+            let is_deleted: i64 = r.get(12)?;
+            let created_at_utc: i64 = r.get(13)?;
 
             Ok((
                 r.get::<_, i64>(0)?,
@@ -1517,7 +1516,6 @@ fn query_movements_inner(
                 source,
                 note,
                 act_id,
-                act_number,
                 actor_name,
                 is_deleted,
                 created_at_utc,
@@ -1539,7 +1537,6 @@ fn query_movements_inner(
             source,
             note,
             act_id,
-            act_number,
             actor_name,
             is_deleted,
             created_at_utc,
@@ -1553,7 +1550,12 @@ fn query_movements_inner(
         let place_path_short =
             compute_movement_place_path_short(conn, Some(to_place_id), to_place_path.clone());
 
-        let reason = movement_reason(&source, note.as_deref(), act_id, act_number);
+        // Phase 40-29 gap-closure (WR-10): route through the SAME
+        // `resolve_movement_act_number` the timeline uses — a canonical
+        // return number ("20в"), not the bare parent number a raw column
+        // select straight off `acts` used to surface here previously.
+        let act_number = resolve_movement_act_number(conn, act_id);
+        let reason = movement_reason(&source, note.as_deref(), act_id, act_number.as_deref());
         let actor_name = actor_name.unwrap_or_else(|| "система".to_string());
 
         rows.push(ReportRow {

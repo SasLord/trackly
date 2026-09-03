@@ -255,6 +255,83 @@ async fn seed_movement(
         .expect("seed test movement")
 }
 
+/// Seed a real `acts` handover row (minimal columns) and return its id.
+/// Invented giver/receiver names only (CLAUDE.md privacy gate). Mirrors
+/// `place_movements_timeline.rs::seed_act`.
+async fn seed_act(ctx: &AppCtx, number: i64) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO acts                  (number, act_type, giver_name, receiver_name, created_at_utc, updated_at_utc)                  VALUES (?1, 'handover', 'Кузнецов К.К.', 'Смирнов С.С.', 1700000000, 1700000000)",
+                rusqlite::params![number],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed test handover act")
+}
+
+/// Seed a real `acts` return row (parent_act_id + act_type='return' +
+/// sub_number) and return its id. Mirrors
+/// `place_movements_timeline.rs::seed_return_act`.
+async fn seed_return_act(ctx: &AppCtx, parent_act_id: i64, number: i64, sub_number: i64) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO acts                  (number, sub_number, parent_act_id, act_type, giver_name, receiver_name,                   created_at_utc, updated_at_utc)                  VALUES (?1, ?2, ?3, 'return', 'Кузнецов К.К.', 'Смирнов С.С.', 1700000000, 1700000000)",
+                rusqlite::params![number, sub_number, parent_act_id],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed test return act")
+}
+
+/// Same shape as `seed_movement`, but with a real `act_id` set (that
+/// function hardcodes `act_id = NULL`) — needed to exercise
+/// `resolve_movement_act_number` in the movements report.
+#[allow(clippy::too_many_arguments)]
+async fn seed_movement_with_act(
+    ctx: &AppCtx,
+    entity_type: &str,
+    entity_id: i64,
+    from_place_id: i64,
+    from_place_path: &str,
+    to_place_id: i64,
+    to_place_path: &str,
+    source: &str,
+    act_id: i64,
+    created_at_utc: i64,
+) -> i64 {
+    let entity_type = entity_type.to_string();
+    let from_place_path = from_place_path.to_string();
+    let to_place_path = to_place_path.to_string();
+    let source = source.to_string();
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO place_movements                  (entity_type, entity_id, from_place_id, from_place_path, to_place_id,                   to_place_path, source, act_id, created_at_utc)                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                rusqlite::params![
+                    entity_type,
+                    entity_id,
+                    from_place_id,
+                    from_place_path,
+                    to_place_id,
+                    to_place_path,
+                    source,
+                    act_id,
+                    created_at_utc,
+                ],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed test movement with act_id")
+}
+
 /// D-24: both «Откуда»/«Куда» filters set → AND semantics, subtree-inclusive
 /// on both sides — the canonical "со склада в Здание Б" example from
 /// CONTEXT.md, exercised THROUGH `build_reports_list_movements` (the
@@ -754,5 +831,68 @@ async fn report_movements_get_report_counts_respects_place_filter() {
     assert_eq!(
         counts.counts[0].count, 1,
         "EX-01: the count must apply the SAME to_place_id filter as the list, not the unfiltered total"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// report_movements_return_act_shows_canonical_number (Phase 40-29, WR-10)
+// ---------------------------------------------------------------------------
+
+/// WR-10 gap closure: a movement caused by a RETURN act must show the same
+/// canonical number the timeline already shows ("20в" for a solo return),
+/// not the bare parent handover number ("20", indistinguishable from the
+/// handover itself). Before this plan, `query_movements_inner` selected
+/// `a.number AS act_number` directly off `acts` and never ran it through
+/// `format_act_number` — this test fails on that code (asserts the reason
+/// contains the exact suffixed string, not just a substring of the bare
+/// number).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_return_act_shows_canonical_number() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let place_a = seed_place(&ctx, None, "Здание А").await;
+    let place_b = seed_place(&ctx, None, "Здание Б").await;
+    let device = seed_device(&ctx, "Ноутбук возврат-тест").await;
+
+    let handover_id = seed_act(&ctx, 20).await;
+    // Solo return (sibling_return_count == 1) — canonical display drops the
+    // sub-number suffix, "20в".
+    let return_id = seed_return_act(&ctx, handover_id, 20, 1).await;
+
+    seed_movement_with_act(
+        &ctx,
+        "device",
+        device,
+        place_b,
+        "Здание Б",
+        place_a,
+        "Здание А",
+        "act",
+        return_id,
+        1_700_000_100,
+    )
+    .await;
+
+    let result =
+        build_reports_list_movements(&ctx, &manager, ReportFilter::default(), wide_period())
+            .await
+            .expect("manager can list movements");
+
+    assert_eq!(result.rows.len(), 1, "sanity: exactly one movement row");
+    let reason = result.rows[0]
+        .reason
+        .as_deref()
+        .expect("reason must be present for an act-caused movement");
+    assert!(
+        reason.contains("№20в"),
+        "WR-10: report must show the canonical return number \"20в\", got reason: {reason:?}"
+    );
+    assert!(
+        !reason.contains("№20 ") && !reason.ends_with("№20"),
+        "WR-10: report must NOT show the bare parent handover number, got reason: {reason:?}"
     );
 }
