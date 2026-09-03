@@ -152,8 +152,10 @@
   <!-- groupColspan={4} merges Наименование + Инв.№ + Серийный № + Модель columns;
        TableRow's own group-mode chevron + merged name cell replace the hand-rolled
        ones this migration removes. -->
-  <td class="cell cell-truncate" title={group.repr.full_path ?? ''}
-    >{group.repr.place_path_short ?? '—'}</td
+  <td
+    class="cell cell-truncate"
+    title={group.place_distinct_count > 1 ? '' : (group.repr.full_path ?? '')}
+    >{group.place_distinct_count > 1 ? '—' : (group.repr.place_path_short ?? '—')}</td
   >
   <td class="cell cell-truncate" title={conditionDisplay}>{conditionDisplay}</td>
   {#if showStatus}
