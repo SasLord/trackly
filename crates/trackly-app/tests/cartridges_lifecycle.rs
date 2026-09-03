@@ -1349,3 +1349,119 @@ async fn transition_stores_real_caller_user_id_on_auto_return_audit_log() {
     .await
     .expect("transition_stores_real_caller_user_id_on_auto_return_audit_log budget")
 }
+
+// ---------------------------------------------------------------------------
+// Plan 40-21: explicit cartridge place backfills printer's place
+// ---------------------------------------------------------------------------
+
+/// Read `devices.place_id` directly — used by the backfill assertions below.
+async fn device_place_id(svc: &CartridgeService, device_id: i64) -> Option<i64> {
+    svc.writer
+        .execute(move |conn| {
+            conn.query_row(
+                "SELECT place_id FROM devices WHERE id = ?1",
+                params![device_id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .map_err(map_rusqlite)
+        })
+        .await
+        .expect("read device place_id")
+}
+
+/// Test 3 (Phase 40-21, gap item 4): Install with an explicit cartridge place
+/// into a printer that has no place yet backfills `devices.place_id` for that
+/// printer from the cartridge's explicit place.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_with_explicit_place_backfills_printer_without_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Pantum BM5100ADN").await;
+        let place_id = seed_place(&svc, "Каб. 601").await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        assert_eq!(
+            device_place_id(&svc, printer_id).await,
+            None,
+            "precondition: printer has no place yet"
+        );
+
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::Install {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                place_id: Some(place_id),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_place_id: None,
+            },
+        )
+        .await
+        .expect("install with explicit place into placeless printer");
+
+        assert_eq!(
+            device_place_id(&svc, printer_id).await,
+            Some(place_id),
+            "printer's place должен быть заполнен по месту установленного картриджа"
+        );
+    })
+    .await
+    .expect("install_with_explicit_place_backfills_printer_without_place budget")
+}
+
+/// Test 4 (Phase 40-21, gap item 4): Install with an explicit cartridge place
+/// into a printer that ALREADY has a place does NOT overwrite the printer's
+/// existing place.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_with_explicit_place_does_not_override_printer_with_existing_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Kyocera ECOSYS").await;
+        let place_x = seed_place(&svc, "Каб. 701").await;
+        let place_y = seed_place(&svc, "Каб. 702").await;
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        // Printer already has place X.
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET place_id = ?1 WHERE id = ?2",
+                    params![place_x, printer_id],
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("seed printer place X");
+
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::Install {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов".into(),
+                given_to_name: "Петров".into(),
+                place_id: Some(place_y),
+                printer_device_id: Some(printer_id),
+                previous_cartridge_state_id: None,
+                previous_cartridge_place_id: None,
+            },
+        )
+        .await
+        .expect("install with explicit place Y into printer already at X");
+
+        assert_eq!(
+            device_place_id(&svc, printer_id).await,
+            Some(place_x),
+            "обратная запись не должна перезаписывать уже существующее место принтера"
+        );
+    })
+    .await
+    .expect("install_with_explicit_place_does_not_override_printer_with_existing_place budget")
+}
