@@ -739,7 +739,11 @@ async fn report_movements_get_report_counts_respects_place_filter() {
     let listed = build_reports_list_movements(&ctx, &manager, filter.clone(), wide_period())
         .await
         .expect("list_movements with to_place_id filter");
-    assert_eq!(listed.rows.len(), 1, "sanity: filter narrows the list to 1 row");
+    assert_eq!(
+        listed.rows.len(),
+        1,
+        "sanity: filter narrows the list to 1 row"
+    );
 
     let counts = ctx
         .reports

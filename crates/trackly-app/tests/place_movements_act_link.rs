@@ -464,9 +464,12 @@ async fn place_movements_act_edit_remove_records_reversion() {
         let (svc, _dir) = make_acts_service();
         let place_a = seed_place(&svc.writer, "Каб. 501").await;
         let place_b = seed_place(&svc.writer, "Склад №5").await;
-        let device_ids =
-            seed_devices_at_place(&svc.writer, &["Ноутбук HP", "Ноутбук Lenovo"], Some(place_a))
-                .await;
+        let device_ids = seed_devices_at_place(
+            &svc.writer,
+            &["Ноутбук HP", "Ноутбук Lenovo"],
+            Some(place_a),
+        )
+        .await;
         let dev_id = device_ids[0];
         let kept_id = device_ids[1];
 
@@ -532,8 +535,14 @@ async fn place_movements_act_edit_remove_records_reversion() {
         let (source, from_place_id, to_place_id, act_id) =
             latest_movement_for_device(svc.readers.clone(), dev_id).await;
         assert_eq!(source, "act");
-        assert_eq!(from_place_id, place_b, "reversion starts where the device was IN the act");
-        assert_eq!(to_place_id, place_a, "reversion lands back at the pre-act place");
+        assert_eq!(
+            from_place_id, place_b,
+            "reversion starts where the device was IN the act"
+        );
+        assert_eq!(
+            to_place_id, place_a,
+            "reversion lands back at the pre-act place"
+        );
         assert_eq!(act_id, Some(handover.id));
     })
     .await
@@ -557,9 +566,12 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
         let (svc, _dir) = make_acts_service();
         let place_a = seed_place(&svc.writer, "Склад №6").await;
         let place_b = seed_place(&svc.writer, "Каб. 601").await;
-        let device_ids =
-            seed_devices_at_place(&svc.writer, &["Монитор Dell", "Монитор Samsung"], Some(place_a))
-                .await;
+        let device_ids = seed_devices_at_place(
+            &svc.writer,
+            &["Монитор Dell", "Монитор Samsung"],
+            Some(place_a),
+        )
+        .await;
         let dev_id = device_ids[0];
         let kept_id = device_ids[1];
 
@@ -660,8 +672,14 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
         let (source, from_place_id, to_place_id, act_id) =
             latest_movement_for_device(svc.readers.clone(), dev_id).await;
         assert_eq!(source, "act");
-        assert_eq!(from_place_id, place_b, "reversion starts at the returned-to place");
-        assert_eq!(to_place_id, place_a, "reversion lands back at the pre-return place");
+        assert_eq!(
+            from_place_id, place_b,
+            "reversion starts at the returned-to place"
+        );
+        assert_eq!(
+            to_place_id, place_a,
+            "reversion lands back at the pre-return place"
+        );
         assert_eq!(act_id, Some(ret.id));
     })
     .await
