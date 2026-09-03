@@ -376,7 +376,7 @@ Plans:
   4. Пользователь может получить отчёт о перемещениях за период с фильтром по месту и типу
      устройства.
 
-**Plans**: 27 plans in 8 waves (20 initial + 7 gap-closure, UAT 2026-09-03)
+**Plans**: 29 plans in 9 waves (20 initial + 9 gap-closure, UAT 2026-09-03 + re-verification 2026-09-03)
 
 Plans:
 **Wave 1**
@@ -431,6 +431,13 @@ Plans:
 **Wave 8 (gap-closure wave 3, blocked on 40-21/40-22)**
 
 - [x] 40-23-PLAN.md — OperationModal: место необязательно при установке в принтер + подсказка автоподстановки
+
+**Gap closure round 2 (re-verification 2026-09-03T22:30, 4 gaps — см. 40-VERIFICATION.md)**
+
+**Wave 9 (gap-closure wave 4, независимая от 40-21..27 — новые файлы/новые находки)**
+
+- [ ] 40-28-PLAN.md — cascade Some->None не трогает место картриджей (CR-03) + полная fallback-цепочка last_known_storage_place_in_tx через реальный поток (CR-02)
+- [ ] 40-29-PLAN.md — устранение вложенного ReaderPool.acquire() в get_timeline/query_movements_inner (CR-01) + acquire_timeout defense-in-depth + единый resolve_movement_act_number для таймлайна и отчёта (WR-10)
 
 **UI hint**: yes
 
