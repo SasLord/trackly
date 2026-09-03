@@ -1009,6 +1009,13 @@ impl SqliteCartridgeRepository {
         user_id: Option<i64>,
         now_utc: i64,
     ) -> Result<(), AppError> {
+        debug_assert!(
+            new_place_id.is_some(),
+            "cascade_place_for_printer_in_tx must not be called with new_place_id: None \
+             — Phase 40 CR-03: an unconditional Some -> None cascade silently wipes every \
+             attached cartridge's place with no movement/audit row; caller must gate on \
+             after.place_id.is_some() first"
+        );
         let attached: Vec<(i64, Option<i64>)> = {
             let mut stmt = tx
                 .prepare(
