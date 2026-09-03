@@ -118,7 +118,7 @@
 | 39. Дерево мест | v1.4 | 22/22 | Complete    | 2026-08-26 |
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
-| 40. История перемещений | v1.4 | 29/29 | Complete   | 2026-09-03 |
+| 40. История перемещений | v1.4 | 30/32 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -444,7 +444,7 @@ UAT3-02 закрыт вне планов отладочной сессией, к
 
 **Wave 10 (gap-closure wave 5)**
 
-- [ ] 40-30-PLAN.md — UAT3-01 backend: last_known_storage_place_in_tx обобщена на &Connection (переиспользована для дефолта from_refill) + новая most_common_to_refill_destination + оба транспорта + role-матрица
+- [x] 40-30-PLAN.md — UAT3-01 backend: last_known_storage_place_in_tx обобщена на &Connection (переиспользована для дефолта from_refill) + новая most_common_to_refill_destination + оба транспорта + role-матрица
 - [ ] 40-32-PLAN.md — UAT3-03: инвалидация statsCache в дереве «Места» после bulk-переноса содержимого (общий store + PlaceTree/PlaceContents)
 
 **Wave 11 (gap-closure wave 6, blocked on 40-30)**

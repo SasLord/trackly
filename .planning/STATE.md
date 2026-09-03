@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-03T06:36:01.915Z"
-last_activity: 2026-09-03
+status: "Гап-клозур раунд 3 в процессе: 40-30 (UAT3-01 backend) выполнен и закоммичен; 40-31 (frontend), 40-32 (UAT3-03) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md."
+last_updated: "2026-09-03T15:47:00.000Z"
+last_activity: 2026-09-03 -- Плана 40-30 (HST-01, UAT3-01 backend: cartridges_operation_default_place на обоих транспортах) выполнен, 3/3 задачи, полный пакет trackly-app 866 passed / 0 failed
 progress:
   total_phases: 9
-  completed_phases: 4
-  total_plans: 66
-  completed_plans: 66
-  percent: 44
+  completed_phases: 3
+  total_plans: 72
+  completed_plans: 68
+  percent: 33
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40 (movement-history) — 29/29 plans executed
-Plan: 40-29 (gap-closure round 2: CR-01, WR-10) executed
-Status: Верификация пройдена код-уровнево (16/16 must-haves, все 4 гэпа закрыты), но status: human_needed — фаза НЕ закрыта до живого UAT. См. 40-HUMAN-UAT.md (3 пункта). Также не пройден /gsd-secure-phase 40.
-Last activity: 2026-09-03 -- Гап-клозур раунд 2 завершён (40-28, 40-29), код-ревью раунда 2 (0 critical), WR-01/WR-02 исправлены, полный воркспейс 1172 passed / 0 failed
+Phase: 40 (movement-history) — 30/32 plans executed (gap-closure round 3: 40-30 done, 40-31/40-32 pending)
+Plan: 40-30 (gap-closure round 3: UAT3-01 backend — cartridges_operation_default_place) executed
+Status: Гап-клозур раунд 3 в процессе. 40-30 закрывает backend-часть UAT3-01 (дефолт места для диалогов заправки картриджа). 40-31 (frontend OperationModal.svelte) и 40-32 (UAT3-03, place-tree subtree-stats) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md.
+Last activity: 2026-09-03 -- План 40-30 выполнен (HST-01, UAT3-01 backend), 3/3 задачи, полный пакет trackly-app 866 passed / 0 failed
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -372,6 +372,7 @@ Last activity: 2026-09-03 -- Гап-клозур раунд 2 завершён (
 | Phase 40 P23 | 15m | 1 tasks | 1 files |
 | Phase 40 P28 | 50min | 2 tasks | 7 files |
 | Phase 40 P29 | 70min | 3 tasks | 10 files |
+| Phase 40 P30 | ~40min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -1120,9 +1121,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T06:36:01.905Z
-Stopped at: Completed 40-29-PLAN.md
-Resume file: 
+Last session: 2026-09-03T15:47:00.000Z
+Stopped at: Completed 40-30-PLAN.md
+Resume file: .planning/phases/40-movement-history/40-31-PLAN.md
 
 None
 
