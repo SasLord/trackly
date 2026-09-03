@@ -8,7 +8,7 @@
   // round-trips once loaded, so there is no per-branch "expand" fetch (unlike
   // PlacePicker's genuinely lazy children, which this component does not
   // share code with).
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
@@ -325,6 +325,16 @@
   let statsCache = $state<Record<number, number>>({});
   const statsInFlight = new Set<number>();
 
+  // This effect reads `statsCache` reactively (via `statsCache[id]`) AND
+  // writes it (`statsCache = { ...statsCache, [id]: ... }`), which looks
+  // like the same self-referential shape as the UAT3-03a bug fixed below —
+  // but it is safe BECAUSE of the `statsCache[id] !== undefined` gate: a
+  // write only ever adds a key that was previously absent, so re-running the
+  // effect after a write finds that key now defined and skips it. The loop
+  // converges to a fixed point (one request per not-yet-cached visible id)
+  // instead of oscillating. Do NOT remove that gate, and do NOT make the
+  // write unconditional — either change reintroduces an infinite
+  // effect_update_depth_exceeded loop.
   $effect(() => {
     for (const row of visibleNodes) {
       const id = row.place.id;
@@ -348,6 +358,20 @@
   // re-requests places_subtree_stats for any evicted id the next time it
   // reappears in visibleNodes, so nodes hidden inside a collapsed branch
   // don't waste a request until actually shown.
+  //
+  // UAT3-03a fix (live UAT 2026-09-04): this effect used to read
+  // `statsCache` reactively (`{ ...statsCache }`) and then unconditionally
+  // write it back (`statsCache = next`) on every run. Each write produced a
+  // NEW object reference, which this same effect depends on, so it
+  // immediately re-ran itself — forever — until Svelte 5 aborted with
+  // `effect_update_depth_exceeded` and froze the page's reactivity. Fixed
+  // two ways: (1) `untrack` reads the CURRENT `statsCache` without
+  // subscribing to it, so this effect's only reactive dependencies are
+  // `placeContentEventsStore.seq`/`placeIds`; (2) the write is now
+  // conditional on at least one key actually being deleted, so a run that
+  // changes nothing never creates a new object reference in the first
+  // place. Either change alone would have broken the cycle; both are kept
+  // as defense in depth.
   $effect(() => {
     if (placeContentEventsStore.seq === 0) return; // initial value — nothing invalidated yet
     const affected = new Set<number>();
@@ -355,9 +379,18 @@
       for (const a of ancestorsAndSelf(id)) affected.add(a);
     }
     if (affected.size === 0) return;
-    const next = { ...statsCache };
-    for (const id of affected) delete next[id];
-    statsCache = next;
+    untrack(() => {
+      const current = statsCache;
+      let changed = false;
+      const next = { ...current };
+      for (const id of affected) {
+        if (id in next) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      if (changed) statsCache = next;
+    });
   });
 
   // --- Search mode (§8.1/§8.5) ---
