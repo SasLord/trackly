@@ -1749,3 +1749,85 @@ async fn install_with_explicit_place_does_not_override_printer_with_existing_pla
     .await
     .expect("install_with_explicit_place_does_not_override_printer_with_existing_place budget")
 }
+
+// ---------------------------------------------------------------------------
+// operation_default_place — Plan 40-30 (HST-01, UAT3-01)
+// ---------------------------------------------------------------------------
+
+/// Регрессионный тест на ФАКТИЧЕСКОЕ (не идеализированное) поведение
+/// `from_refill`-ветки `operation_default_place`: она переиспользует
+/// `last_known_storage_place_in_tx` (CR-02, план 40-28), а этот резолвер
+/// смотрит на самое СВЕЖЕЕ движение, затрагивающее складское место — не
+/// обязательно место "до отправки на заправку". Поле «Место» картриджа
+/// редактируется через `CartridgeService::update` без гейта по статусу, и
+/// пункт меню «Редактировать» доступен во всех статусах
+/// (`CartridgeContextMenu.svelte`), включая «На заправке». Если оператор
+/// вручную поменяет место, пока картридж числится на заправке, дефолт
+/// должен отразить эту правку, а НЕ исходное место.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_reflects_manual_edit_during_refill() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        let place_b = seed_storage_place(&svc, "Склад Б").await;
+        let place_r = seed_place(&svc, "Заправка").await;
+
+        let cart = create_stock_cartridge(&svc, model_id).await;
+
+        // 1. Место картриджа -> A (обычный ручной edit, картридж на складе).
+        let after_a = svc
+            .update(&admin_caller(), cart.id, cart.version, Some(place_a), None)
+            .await
+            .expect("update place to A");
+
+        // 2. Отправить на заправку с местом заправки R — статус становится
+        //    3 «На заправке», место R.
+        let after_to_refill = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: after_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: Some(place_r),
+                },
+            )
+            .await
+            .expect("transition to_refill");
+        assert_eq!(after_to_refill.status_id, 3, "картридж должен быть На заправке");
+        assert_eq!(after_to_refill.place_id, Some(place_r));
+
+        // 3. Картридж ВСЁ ЕЩЁ «На заправке» (никакого перехода статуса) —
+        //    ручное редактирование места через ту же форму, что доступна из
+        //    «Редактировать» в любом статусе. Место становится B.
+        let after_manual_edit = svc
+            .update(
+                &admin_caller(),
+                cart.id,
+                after_to_refill.version,
+                Some(place_b),
+                None,
+            )
+            .await
+            .expect("manual place edit while On Refill");
+        assert_eq!(after_manual_edit.status_id, 3, "статус не должен меняться от update()");
+        assert_eq!(after_manual_edit.place_id, Some(place_b));
+
+        // 4. Дефолт from_refill должен отразить B (правку), а НЕ A (место до
+        //    отправки на заправку).
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_b),
+            "дефолт должен отражать более свежий ручной edit (B), а не исходное место до заправки (A)"
+        );
+    })
+    .await
+    .expect("operation_default_place_from_refill_reflects_manual_edit_during_refill budget")
+}

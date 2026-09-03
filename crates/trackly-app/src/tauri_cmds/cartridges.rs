@@ -213,6 +213,21 @@ pub async fn build_cartridge_storage_place_ids(
     ctx.cartridges.storage_place_ids().await
 }
 
+/// Дефолт места для диалогов «Отправка на заправку»/«Получение с заправки»
+/// (Plan 40-30, HST-01, UAT3-01). Тот же гейт, что и `storage_place_ids` —
+/// read-side поддержка того же диалога, что и мутация `transition`.
+pub async fn build_cartridges_operation_default_place(
+    ctx: &AppCtx,
+    caller: &Identity,
+    op: String,
+    cartridge_id: Option<i64>,
+) -> Result<Option<i64>, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.cartridges
+        .operation_default_place(&op, cartridge_id)
+        .await
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri wrappers
 // ---------------------------------------------------------------------------
@@ -418,4 +433,22 @@ pub async fn cartridge_storage_place_ids(
     let caller = resolve_tauri_identity(state.inner()).await?;
     let ids = build_cartridge_storage_place_ids(state.inner(), &caller).await?;
     Ok(ids.into_iter().map(|v| v as i32).collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cartridges_operation_default_place(
+    state: tauri::State<'_, AppCtx>,
+    op: String,
+    cartridge_id: Option<i32>,
+) -> Result<Option<i32>, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    let place_id = build_cartridges_operation_default_place(
+        state.inner(),
+        &caller,
+        op,
+        cartridge_id.map(|v| v as i64),
+    )
+    .await?;
+    Ok(place_id.map(|v| v as i32))
 }

@@ -22,7 +22,8 @@ use crate::tauri_cmds::cartridges::{
     build_cartridge_models_list, build_cartridge_models_update, build_cartridge_storage_place_ids,
     build_cartridges_create, build_cartridges_delete, build_cartridges_get,
     build_cartridges_get_history, build_cartridges_list, build_cartridges_low_stock,
-    build_cartridges_search, build_cartridges_status_counts, build_cartridges_suggest_brand,
+    build_cartridges_operation_default_place, build_cartridges_search,
+    build_cartridges_status_counts, build_cartridges_suggest_brand,
     build_cartridges_suggest_compat_printer, build_cartridges_suggest_model,
     build_cartridges_transition, build_cartridges_update,
 };
@@ -111,6 +112,13 @@ pub struct SuggestModelPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SuggestCompatPayload {
     pub prefix: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationDefaultPlacePayload {
+    pub op: String,
+    pub cartridge_id: Option<i64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +410,20 @@ pub async fn handler_cartridge_storage_place_ids(
     Ok(Json(ids.into_iter().map(|v| v as i32).collect()))
 }
 
+pub async fn handler_operation_default_place(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(p): Json<OperationDefaultPlacePayload>,
+) -> Result<Json<Option<i64>>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let place_id = build_cartridges_operation_default_place(&ctx, &identity, p.op, p.cartridge_id)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(place_id))
+}
+
 // ---------------------------------------------------------------------------
 // Router (built but NOT bound — Phase 5 wires it to the listener)
 // ---------------------------------------------------------------------------
@@ -450,5 +472,9 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/cartridge_storage_place_ids",
             post(handler_cartridge_storage_place_ids),
+        )
+        .route(
+            "/api/v1/cartridges_operation_default_place",
+            post(handler_operation_default_place),
         )
 }

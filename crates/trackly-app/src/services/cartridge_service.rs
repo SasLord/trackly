@@ -946,4 +946,70 @@ impl CartridgeService {
             source_chain: format!("spawn_blocking: {e}"),
         })?
     }
+
+    /// Дефолт места для двух диалогов картриджа (Plan 40-30, HST-01,
+    /// UAT3-01):
+    /// - `"to_refill"` — самое частое историческое место назначения ВСЕЙ
+    ///   истории отправок на заправку (`cart_repo.most_common_to_refill_destination`);
+    ///   `cartridge_id` игнорируется — это не картридж-специфичный дефолт.
+    /// - `"from_refill"` — переиспользует `cart_repo.last_known_storage_place_in_tx`
+    ///   (тот же резолвер, что и авто-возврат при установке нового картриджа,
+    ///   Plan 40-28/CR-02) для id САМОГО картриджа, а не второй параллельный
+    ///   источник правды. `cartridge_id` обязателен.
+    ///
+    ///   ФАКТИЧЕСКОЕ поведение (не идеализированное): функция возвращает
+    ///   складское место из самого СВЕЖЕГО движения картриджа, где одна из
+    ///   сторон помечена `is_storage=1` ("самое свежее первым"). На типичном
+    ///   пути это движение — ToRefill (место, откуда картридж отправили на
+    ///   заправку), но это НЕ гарантированный инвариант: поле «Место»
+    ///   картриджа редактируется без гейта по статусу
+    ///   (`CartridgeService::update` выше — нет проверки `status_id`), и
+    ///   пункт меню «Редактировать» доступен во всех статусах, включая 3 «На
+    ///   заправке» (`ui/src/features/cartridges/CartridgeContextMenu.svelte`).
+    ///   Если оператор вручную поменяет место картриджа, пока тот числится
+    ///   на заправке, указав ДРУГОЕ складское место — `record_movement_if_applicable`
+    ///   (вызывается из `update`) запишет ещё одно движение Some→Some, и этот
+    ///   более свежий ручной edit станет новым "последним известным
+    ///   складским местом", вытеснив исходное место "до заправки". Это
+    ///   поведение закреплено регрессионным тестом
+    ///   `operation_default_place_from_refill_reflects_manual_edit_during_refill`
+    ///   в `crates/trackly-app/tests/cartridges_lifecycle.rs`.
+    ///
+    /// Любой другой `op` (включая пустую строку) → `AppError::Validation`.
+    pub async fn operation_default_place(
+        &self,
+        op: &str,
+        cartridge_id: Option<i64>,
+    ) -> Result<Option<i64>, AppError> {
+        let readers = self.readers.clone();
+        let cart_repo = self.cart_repo.clone();
+        match op {
+            "to_refill" => tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
+                let conn = readers.acquire();
+                cart_repo.most_common_to_refill_destination(&conn)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })?,
+            "from_refill" => {
+                let cartridge_id = cartridge_id.ok_or_else(|| AppError::Validation {
+                    field: "cartridge_id".to_string(),
+                    message: "cartridge_id обязателен для from_refill".to_string(),
+                })?;
+                tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
+                    let conn = readers.acquire();
+                    cart_repo.last_known_storage_place_in_tx(&conn, cartridge_id)
+                })
+                .await
+                .map_err(|e| AppError::Internal {
+                    source_chain: format!("spawn_blocking: {e}"),
+                })?
+            }
+            other => Err(AppError::Validation {
+                field: "op".to_string(),
+                message: format!("Неизвестная операция «{other}» для дефолта места"),
+            }),
+        }
+    }
 }
