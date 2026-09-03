@@ -597,6 +597,58 @@ impl SqliteCartridgeRepository {
             now_utc,
         )?;
 
+        // 5a. Phase 40-21 (UAT-40 gap, item 4): if Install specifies an explicit
+        // cartridge place AND the target printer has no place of its own yet,
+        // backfill the printer's place from the cartridge's — the operator just
+        // told us where this printer physically is by placing its cartridge there.
+        // `WHERE place_id IS NULL` in the UPDATE is a race guard: if someone else
+        // already set the printer's place concurrently, we silently skip instead
+        // of overwriting. Note: this is DISTINCT from `cartridge_service::transition`
+        // auto-resolving `place_id` FROM an already-placed printer (device_service.rs
+        // has that read-path) — if the printer already has a place, `new_place_id`
+        // here came from the printer via the service, `printer_place` below will be
+        // `Some`, and this block is a correct no-op.
+        if let CartridgeTransitionOp::Install {
+            printer_device_id: Some(pid),
+            ..
+        } = op
+        {
+            if let Some(explicit) = new_place_id {
+                let printer_place: Option<i64> = tx
+                    .query_row(
+                        "SELECT place_id FROM devices WHERE id = ?1",
+                        params![pid],
+                        |r| r.get(0),
+                    )
+                    .optional()
+                    .map_err(map_rusqlite)?
+                    .flatten();
+
+                if printer_place.is_none() {
+                    tx.execute(
+                        "UPDATE devices SET place_id=?1, updated_at_utc=?2, version=version+1 \
+                         WHERE id=?3 AND place_id IS NULL",
+                        params![explicit, now_utc, pid],
+                    )
+                    .map_err(map_rusqlite)?;
+
+                    place_movements_repo.record_movement_if_applicable(
+                        tx,
+                        &SqlitePlaceRepository,
+                        MovementEntityKind::Device,
+                        *pid,
+                        None,
+                        Some(explicit),
+                        MovementSource::Manual,
+                        Some("заполнено по месту установленного картриджа"),
+                        None,
+                        caller_user_id,
+                        now_utc,
+                    )?;
+                }
+            }
+        }
+
         // 5b. D-16/D-17: if installing into a printer that already has another
         // cartridge "В работе", auto-return that previous cartridge to stock in
         // the SAME transaction (DISC-06) — records an INVERTED actor from the
