@@ -85,6 +85,30 @@ async fn seed_printer_device(svc: &CartridgeService, name: &str) -> i64 {
         .expect("seed printer device")
 }
 
+/// Same as `seed_printer_device`, but the printer is seeded WITH its own
+/// `place_id` set (Plan 40-28, CR-02 real-flow regression test) — mirrors a
+/// printer whose physical location is already known, as opposed to
+/// `seed_printer_device`'s NULL default.
+async fn seed_printer_device_with_place(svc: &CartridgeService, name: &str, place_id: i64) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            let tx = conn.transaction().map_err(map_rusqlite)?;
+            tx.execute(
+                "INSERT INTO devices \
+                 (type_id, name, status_id, place_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (2, ?1, 2, ?2, 1, ?3, ?3)",
+                params![name, place_id, 1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            let id = tx.last_insert_rowid();
+            tx.commit().map_err(map_rusqlite)?;
+            Ok(id)
+        })
+        .await
+        .expect("seed printer device with place")
+}
+
 /// Seed a real `places` row — FK-valid `place_id` for tests that assert an
 /// actual place value (`places.id` carries a `REFERENCES places(id)` FK,
 /// V038, enforced in the test harness). Mirrors the `seed_place()` precedent
@@ -1325,6 +1349,119 @@ async fn install_auto_return_falls_back_to_last_known_storage_place() {
     })
     .await
     .expect("install_auto_return_falls_back_to_last_known_storage_place budget")
+}
+
+/// Test 4 (Plan 40-28, CR-02 / 40-VERIFICATION.md gap 2): the SAME positive
+/// fallback as `install_auto_return_falls_back_to_last_known_storage_place`
+/// above, but driven ENTIRELY through `CartridgeService` — NO raw SQL seed of
+/// `place_movements`. This is the exact real lifecycle the old single-query
+/// fallback (`to_place_id` only) could never satisfy: a cartridge's FIRST
+/// place assignment (create at storage, D-06) never produces a movement row,
+/// so the only row the real flow below ever writes for A is the Install
+/// S(storage) -> Q(printer's own, non-storage place) — a `from_place_id`
+/// hit, not a `to_place_id` hit. Before the fix this test reproduces the
+/// UAT-16 defect (A's place_id resolves to `None` instead of the storage
+/// place); after the fix it passes via the `from_place_id`/`p_from.is_storage`
+/// branch of `last_known_storage_place_in_tx`'s first query.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_auto_return_falls_back_via_real_service_flow_no_hand_seed() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+
+        // Склад (is_storage=1) — where both cartridges are created — and a
+        // normal, non-storage place standing in for the printer's own
+        // physical location (Каб. 210, say) — D-13 resolves Install's
+        // place_id from THIS place, never from the storage place.
+        let storage_place_id = seed_storage_place(&svc, "Склад расходников 2").await;
+        let printer_place_id = seed_place(&svc, "Каб. 210").await;
+        let printer_id =
+            seed_printer_device_with_place(&svc, "Brother HL-2240", printer_place_id).await;
+
+        // (4) A created directly AT the storage place — D-06: first
+        // assignment never writes a place_movements row, so A has ZERO
+        // history entering this test.
+        let cart_a = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(storage_place_id),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge A at storage");
+
+        // (5) Install A into the printer with NO explicit place_id — D-13
+        // resolves it from the printer's own (non-storage) place. This is
+        // the ONLY place_movements row A ever gets: from_place_id=storage
+        // (is_storage=1), to_place_id=printer_place (is_storage=0).
+        let a_installed = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install A (D-13 resolves place from printer)");
+
+        // (6) B created at the same storage place.
+        let cart_b = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(storage_place_id),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge B at storage");
+
+        // (7) Install B into the SAME printer, again with no explicit
+        // previous_cartridge_place_id — triggers A's auto-return with no
+        // override, exercising the fallback chain end-to-end.
+        let b_installed = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install B into same printer, no explicit previous_cartridge_place_id");
+
+        assert_eq!(b_installed.status_id, 2, "B must be В работе (2)");
+
+        let (a_status, _a_state, a_place_id, _a_holder, _a_printer) =
+            cartridge_snapshot(&svc, a_installed.id).await;
+        assert_eq!(a_status, 1, "A must be На складе (1) after auto-return");
+        assert_eq!(
+            a_place_id,
+            Some(storage_place_id),
+            "A's place_id must resolve to its last known STORAGE place via the \
+             from_place_id branch of the real S->Q install movement — driven entirely \
+             through CartridgeService, no hand-seeded place_movements row"
+        );
+    })
+    .await
+    .expect("install_auto_return_falls_back_via_real_service_flow_no_hand_seed budget")
 }
 
 // ---------------------------------------------------------------------------

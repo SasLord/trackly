@@ -913,28 +913,68 @@ impl SqliteCartridgeRepository {
         })
     }
 
-    /// Найти последнее известное СКЛАДСКОЕ место картриджа по истории
-    /// `place_movements` (Phase 40-22, UAT-40 gap
+    /// Найти последнее известное СКЛАДСКОЕ место картриджа — трёхступенчатая
+    /// цепочка fallback (Phase 40-22, UAT-40 gap
     /// «return-to-stock-empty-place-field», см.
-    /// `.planning/debug/return-to-stock-empty-place-field.md`).
+    /// `.planning/debug/return-to-stock-empty-place-field.md`; расширено
+    /// Phase 40-28, CR-02 / 40-VERIFICATION.md gap 2).
     ///
     /// Используется как fallback в auto-return ветке `transition_in_tx`,
     /// когда оператор оставил поле «Место (предыдущий картридж)» пустым —
     /// решение пользователя: подставить последнее место складского типа
     /// (`places.is_storage = 1`), а не молча стирать место в NULL.
-    /// `Ok(None)`, если у картриджа нет ни одной записи перемещения в
-    /// складское место — вызывающий код обязан в этом случае сохранить
-    /// прежнее поведение (NULL).
+    ///
+    /// Цепочка (первый непустой результат побеждает):
+    /// 1. Самая свежая строка `place_movements` картриджа, где ЛИБО
+    ///    `to_place_id` — складское место (картридж ПРИБЫЛ на склад), ЛИБО
+    ///    `from_place_id` — складское место (картридж УБЫЛ со склада). Второй
+    ///    случай — это САМЫЙ ОБЫЧНЫЙ реальный сценарий: D-06 никогда не пишет
+    ///    строку для первого назначения места (создание на складе), так что
+    ///    единственная строка истории картриджа часто и есть Install
+    ///    `S(склад) -> Q(принтер)`, где `to_place_id` не складское, а
+    ///    `from_place_id` — складское. Прежняя версия проверяла только
+    ///    `to_place_id` и пропускала этот случай, из-за чего фикс UAT-16
+    ///    не работал на самом частом install-затем-replace цикле.
+    /// 2. Если строк не нашлось — собственное текущее `place_id` картриджа,
+    ///    если оно САМО указывает на складское место.
+    /// 3. Иначе `Ok(None)` — вызывающий код сохраняет прежнее поведение
+    ///    (NULL).
+    ///
+    /// Кандидаты на обеих ступенях фильтруются на `archived_at_utc IS NULL
+    /// AND deleted_at_utc IS NULL` (WR-07) — fallback не должен указывать на
+    /// архивное/удалённое место.
     fn last_known_storage_place_in_tx(
         &self,
         tx: &Transaction<'_>,
         cartridge_id: i64,
     ) -> Result<Option<i64>, AppError> {
+        let from_history: Option<i64> = tx
+            .query_row(
+                "SELECT CASE WHEN p_to.is_storage = 1 THEN pm.to_place_id \
+                             ELSE pm.from_place_id END \
+                 FROM place_movements pm \
+                 LEFT JOIN places p_to ON p_to.id = pm.to_place_id \
+                     AND p_to.archived_at_utc IS NULL AND p_to.deleted_at_utc IS NULL \
+                 LEFT JOIN places p_from ON p_from.id = pm.from_place_id \
+                     AND p_from.archived_at_utc IS NULL AND p_from.deleted_at_utc IS NULL \
+                 WHERE pm.entity_type = 'cartridge' AND pm.entity_id = ?1 \
+                   AND (p_to.is_storage = 1 OR p_from.is_storage = 1) \
+                 ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1",
+                params![cartridge_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(map_rusqlite)?;
+
+        if from_history.is_some() {
+            return Ok(from_history);
+        }
+
         tx.query_row(
-            "SELECT pm.to_place_id FROM place_movements pm \
-             JOIN places p ON p.id = pm.to_place_id \
-             WHERE pm.entity_type = 'cartridge' AND pm.entity_id = ?1 AND p.is_storage = 1 \
-             ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1",
+            "SELECT c.place_id FROM cartridges c \
+             JOIN places p ON p.id = c.place_id \
+             WHERE c.id = ?1 AND p.is_storage = 1 \
+               AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL",
             params![cartridge_id],
             |r| r.get(0),
         )
