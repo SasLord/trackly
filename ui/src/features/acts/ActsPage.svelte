@@ -94,8 +94,19 @@
   // Skip exactly that first run; every REAL tab change after mount still
   // resets as before.
   let isFirstTabEffectRun = true;
+  // Plan 40-24 (HST-03 gap closure): a deep-link from the movement timeline
+  // (`#/acts?id=N`) may programmatically switch `activeTab` once, right after
+  // the target act's data resolves below, so the deep-linked act lands on its
+  // OWN correct subsection (Акты/Возвраты/Архив). Without this guard that
+  // programmatic switch would immediately fall into the branch below and null
+  // out the very `selectedActId`/`selectedAct` the deep link just set.
+  let isDeepLinkTabSwitch = false;
   $effect(() => {
     void activeTab;
+    if (isDeepLinkTabSwitch) {
+      isDeepLinkTabSwitch = false;
+      return;
+    }
     if (isFirstTabEffectRun) {
       isFirstTabEffectRun = false;
       return;
@@ -111,6 +122,11 @@
     refreshCounts();
   });
 
+  // Plan 40-24 (HST-03 gap closure): one-time flag so the deep-link tab
+  // derivation below runs only for the very first resolution of
+  // `initialFocusId` — subsequent normal detail loads (user clicking rows)
+  // must never re-derive/override `activeTab`.
+  let initialTabDerived = false;
   $effect(() => {
     const id = selectedActId;
     if (id === null) {
@@ -122,6 +138,17 @@
       .get(id)
       .then((a) => {
         selectedAct = a;
+        if (id === initialFocusId && !initialTabDerived) {
+          initialTabDerived = true;
+          // act_type==='return' -> 'returns' (baseFilter doesn't filter
+          // archived for returns); else archived -> 'archive'; else 'handover'.
+          const targetTab: TabKey =
+            a.act_type === 'return' ? 'returns' : a.archived ? 'archive' : 'handover';
+          if (targetTab !== activeTab) {
+            isDeepLinkTabSwitch = true;
+            activeTab = targetTab;
+          }
+        }
       })
       .catch((e: unknown) => {
         const msg =
