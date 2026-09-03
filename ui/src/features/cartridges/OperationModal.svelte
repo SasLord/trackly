@@ -151,6 +151,40 @@
     }
   });
 
+  // Plan 40-31 (UAT3-01 frontend): server-computed place default for
+  // «Отправка на заправку»/«Получение с заправки» — mirrors the
+  // install-printer-place autofill effect below (D-13/WR-01 pattern) but
+  // sources the value from cartridges.operationDefaultPlace (plan 40-30)
+  // instead of a printer lookup. Runs AFTER the reset effect above, same
+  // ordering the install-autofill effect relies on. `effectiveCartridge` is
+  // always non-null here — to_refill/from_refill are never opened with
+  // cartridge={null} (only install's request-centric flow does that).
+  $effect(() => {
+    if (!(open && (op === 'to_refill' || op === 'from_refill') && effectiveCartridge)) {
+      return;
+    }
+    let cancelled = false;
+    cartridges
+      .operationDefaultPlace(op, op === 'from_refill' ? effectiveCartridge.id : null)
+      .then((defaultPlaceId) => {
+        if (cancelled) return;
+        // WR-01: never clobber a manual selection — only fill while the
+        // field is still empty (fail-safe: no history/no default just
+        // leaves the field empty, as before).
+        if (defaultPlaceId !== null && placeId === null) {
+          placeId = defaultPlaceId;
+          placeAutofilled = true;
+        }
+      })
+      .catch(() => {
+        // Fail-safe: a failed lookup just means no default is shown — the
+        // form still works, operator picks the place manually.
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
   // GAP-12-05/A2 (Plan 12-12): the target printer's full DTO (deviceName +
   // ipAddress), populated by the lookup $effect below. Drives
   // printerContextHint so the hint shows the physical printer's name+IP
@@ -821,7 +855,14 @@
           value={placeId}
           id="op-place"
           invalid={!!placeError}
-          onChange={(id) => (placeId = id)}
+          onChange={(id) => {
+            placeId = id;
+            // WR-01: symmetric with the to_refill/install block above — a
+            // manual selection unmarks the auto-fill (relevant to
+            // from_refill's new default; return_to_stock has no default so
+            // this is a no-op there).
+            placeAutofilled = false;
+          }}
         />
         {#if placeError}
           <span class="field-error">{placeError}</span>

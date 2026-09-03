@@ -44,6 +44,13 @@ export const cartridges = {
 
   lowStock: () => apiCall<LowStockItemDto[]>('cartridges_low_stock'),
 
+  // Plan 40-31 (UAT3-01 frontend): server-computed place default for the
+  // «Отправка на заправку»/«Получение с заправки» dialogs — mirrors the
+  // Tauri command from plan 40-30. `cartridgeId` is ignored server-side for
+  // `to_refill` (global aggregate) and required for `from_refill`.
+  operationDefaultPlace: (op: 'to_refill' | 'from_refill', cartridgeId: number | null) =>
+    apiCall<number | null>('cartridges_operation_default_place', { op, cartridgeId }),
+
   // Models CRUD
   modelsList: () => apiCall<CartridgeModelDto[]>('cartridge_models_list'),
 
