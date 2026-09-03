@@ -1763,9 +1763,25 @@ async fn install_with_explicit_place_does_not_override_printer_with_existing_pla
 /// пункт меню «Редактировать» доступен во всех статусах
 /// (`CartridgeContextMenu.svelte`), включая «На заправке». Если оператор
 /// вручную поменяет место, пока картридж числится на заправке, дефолт
-/// должен отразить эту правку, а НЕ исходное место.
+/// НЕ должен отразить эту правку — дефолт `from_refill` привязан к движению
+/// `ToRefill` (UAT3-01a, gap-closure round 3), а ручное редактирование места
+/// пишет отдельное движение без `TO_REFILL_MOVEMENT_NOTE`, значит на дефолт
+/// не влияет.
+///
+/// Раунд 2 (план 40-30) закреплял ПРОТИВОПОЛОЖНОЕ поведение этим же тестом
+/// (тогда — `..._reflects_manual_edit_during_refill`, дефолт совпадал с
+/// правкой B), потому что резолвер `from_refill` тогда переиспользовал
+/// `last_known_storage_place_in_tx` — "последнее известное складское место"
+/// вообще, без привязки к конкретному переходу `ToRefill`. Живой UAT
+/// (UAT3-01a) показал, что это была не просто другая, а НЕВЕРНАЯ трактовка
+/// вопроса «место до отправки на заправку»: тот же резолвер на месте
+/// заправки, помеченном `is_storage = 1`, возвращал саму заправку. Новый
+/// резолвер `place_before_last_to_refill` отвечает только на вопрос "куда
+/// был отправлен ПОСЛЕДНИЙ ToRefill" и потому игнорирует более поздние
+/// ручные правки места, не связанные с самой отправкой на заправку — это
+/// осознанно более узкое и корректное поведение для этого дефолта.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn operation_default_place_from_refill_reflects_manual_edit_during_refill() {
+async fn operation_default_place_from_refill_ignores_manual_edit_during_refill() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_cartridge_service();
         let model_id = seed_model(&svc).await;
@@ -1797,7 +1813,10 @@ async fn operation_default_place_from_refill_reflects_manual_edit_during_refill(
             )
             .await
             .expect("transition to_refill");
-        assert_eq!(after_to_refill.status_id, 3, "картридж должен быть На заправке");
+        assert_eq!(
+            after_to_refill.status_id, 3,
+            "картридж должен быть На заправке"
+        );
         assert_eq!(after_to_refill.place_id, Some(place_r));
 
         // 3. Картридж ВСЁ ЕЩЁ «На заправке» (никакого перехода статуса) —
@@ -1813,23 +1832,28 @@ async fn operation_default_place_from_refill_reflects_manual_edit_during_refill(
             )
             .await
             .expect("manual place edit while On Refill");
-        assert_eq!(after_manual_edit.status_id, 3, "статус не должен меняться от update()");
+        assert_eq!(
+            after_manual_edit.status_id, 3,
+            "статус не должен меняться от update()"
+        );
         assert_eq!(after_manual_edit.place_id, Some(place_b));
 
-        // 4. Дефолт from_refill должен отразить B (правку), а НЕ A (место до
-        //    отправки на заправку).
+        // 4. Дефолт from_refill должен вернуть A (место до отправки на
+        //    заправку, зафиксированное самим движением ToRefill), а НЕ B
+        //    (более поздний ручной edit места, не связанный с ToRefill).
         let default_place = svc
             .operation_default_place("from_refill", Some(cart.id))
             .await
             .expect("operation_default_place from_refill");
         assert_eq!(
             default_place,
-            Some(place_b),
-            "дефолт должен отражать более свежий ручной edit (B), а не исходное место до заправки (A)"
+            Some(place_a),
+            "дефолт должен отражать место до отправки на заправку (A) из движения ToRefill, \
+             а не более поздний несвязанный ручной edit (B)"
         );
     })
     .await
-    .expect("operation_default_place_from_refill_reflects_manual_edit_during_refill budget")
+    .expect("operation_default_place_from_refill_ignores_manual_edit_during_refill budget")
 }
 
 /// `from_refill` дефолт через реальный поток `CartridgeService` — без
@@ -1883,6 +1907,70 @@ async fn operation_default_place_from_refill_resolves_via_real_service_flow() {
     })
     .await
     .expect("operation_default_place_from_refill_resolves_via_real_service_flow budget")
+}
+
+/// UAT3-01a (gap-closure round 3, живой UAT): регрессия ровно на сценарии,
+/// который провалился вживую — место заправки САМО помечено `is_storage = 1`
+/// (естественно, если картриджи физически лежат в пункте заправки; ничем в
+/// UI не запрещено). Картридж лежит на складе A, отправляется на заправку R
+/// (тоже складское место), дефолт `from_refill` обязан вернуть A (место ДО
+/// отправки), а НЕ R (саму заправку). Через реальный поток
+/// `CartridgeService`, без ручного посева `place_movements` сырым SQL —
+/// раунд 1 этой фазы провалился ровно на таком посеве: тест был зелёный, а
+/// дефект жил.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_prefers_pre_refill_place_when_refill_place_is_storage_too(
+) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        // Место заправки помечено is_storage = 1 — ровно ветка, которая
+        // провалилась вживую (UAT3-01a).
+        let refill_place = seed_storage_place(&svc, "Заправка (склад)").await;
+
+        let cart = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge at storage A");
+
+        let after_to_refill = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: Some(refill_place),
+                },
+            )
+            .await
+            .expect("transition to_refill");
+        assert_eq!(after_to_refill.place_id, Some(refill_place));
+
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_a),
+            "дефолт должен вернуть место ДО отправки на заправку (A), а не саму заправку (R), \
+             даже если место заправки тоже помечено is_storage = 1 (UAT3-01a)"
+        );
+    })
+    .await
+    .expect(
+        "operation_default_place_from_refill_prefers_pre_refill_place_when_refill_place_is_storage_too budget",
+    )
 }
 
 /// `to_refill` дефолт через реальный поток `CartridgeService` — без ручного

@@ -30,8 +30,8 @@ use crate::repos::places_sqlite::SqlitePlaceRepository;
 /// Единственный источник литерала `note`, которым `transition_in_tx` помечает
 /// движение «отправлено на заправку» (Plan 40-30, HST-01). Используется и на
 /// записи (арм `CartridgeTransitionOp::ToRefill` ниже), и на чтении
-/// (`most_common_to_refill_destination`) — рассинхронизация строки между
-/// write- и read-путём структурно невозможна.
+/// (`most_common_to_refill_destination`, `place_before_last_to_refill`) —
+/// рассинхронизация строки между write- и read-путём структурно невозможна.
 pub(crate) const TO_REFILL_MOVEMENT_NOTE: &str = "автоматически при отправке на заправку";
 
 /// SQLite-backed cartridge repository adapter (zero-sized).
@@ -954,11 +954,18 @@ impl SqliteCartridgeRepository {
     /// Обобщена с `&Transaction<'_>` на `&Connection` (Plan 40-30, HST-01) —
     /// тело только читает, никогда не пишет, так что читаема и через
     /// транзакцию (существующие auto-return вызовы внутри `transition_in_tx`,
-    /// работают через deref-coercion `Transaction: Deref<Target = Connection>`),
-    /// и через обычное reader-pool соединение (новый вызов из
-    /// `CartridgeService::operation_default_place`, "from_refill" ветка —
-    /// переиспользование резолвера CR-02, а не второй параллельный источник
-    /// правды).
+    /// работают через deref-coercion `Transaction: Deref<Target = Connection>`).
+    ///
+    /// **НЕ используется** для дефолта `from_refill` диалога «Получение с
+    /// заправки» (UAT3-01a, gap-closure round 3): план 40-30 изначально
+    /// переиспользовал эту функцию для того дефолта, но «последнее известное
+    /// СКЛАДСКОЕ место» и «место, где картридж был ДО отправки на заправку»
+    /// — разные вопросы, и живой UAT показал дефект (если само место
+    /// заправки помечено `is_storage = 1`, ступень 1 берёт саму заправку).
+    /// Дефолт `from_refill` теперь зовёт отдельный резолвер
+    /// `place_before_last_to_refill` — эта функция остаётся единственным
+    /// владельцем вопроса auto-return (Plan 40-28/CR-02), поведение не
+    /// менялось.
     pub fn last_known_storage_place_in_tx(
         &self,
         conn: &Connection,
@@ -1019,6 +1026,53 @@ impl SqliteCartridgeRepository {
              GROUP BY pm.to_place_id \
              ORDER BY COUNT(*) DESC, pm.to_place_id ASC LIMIT 1",
             params![TO_REFILL_MOVEMENT_NOTE],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
+    /// Дефолт места для диалога «Получение с заправки» (UAT3-01a,
+    /// gap-closure round 3) — место, где картридж находился ДО отправки на
+    /// заправку, а НЕ «последнее известное складское место».
+    ///
+    /// Это осознанно СВОЙ резолвер, а не переиспользование
+    /// `last_known_storage_place_in_tx`. Разбор ошибки (UAT3-01a): план 40-30
+    /// переиспользовал `last_known_storage_place_in_tx` для этого дефолта,
+    /// решив, что «последнее известное складское место» и «место до отправки
+    /// на заправку» — один и тот же вопрос. Это неверно всякий раз, когда
+    /// само место заправки ТОЖЕ помечено `is_storage = 1` (ничем в UI не
+    /// запрещено и естественно, если картриджи физически лежат в пункте
+    /// заправки): `last_known_storage_place_in_tx` в этом случае берёт
+    /// `to_place_id` самого свежего движения — то есть саму заправку — вместо
+    /// места «до отправки».
+    ///
+    /// Запрос: `from_place_id` самого свежего движения этого картриджа,
+    /// помеченного `TO_REFILL_MOVEMENT_NOTE` (переход `ToRefill`), БЕЗ
+    /// какого-либо фильтра по `is_storage` у места назначения — тип места
+    /// заправки к вопросу не относится. Кандидат фильтруется на
+    /// `archived_at_utc IS NULL AND deleted_at_utc IS NULL`, тем же
+    /// соглашением, что и `last_known_storage_place_in_tx` — дефолт не
+    /// должен указывать на архивное/удалённое место.
+    ///
+    /// `last_known_storage_place_in_tx` НЕ меняется и продолжает отвечать на
+    /// свой прежний вопрос (авто-возврат картриджа при установке нового,
+    /// Plan 40-28/CR-02) — эти два вопроса разные, и авто-возврат
+    /// сознательно расширяется fallback'ом на текущее место картриджа
+    /// (ступень 2 функции), что для дефолта `from_refill` было бы неверно.
+    pub fn place_before_last_to_refill(
+        &self,
+        conn: &Connection,
+        cartridge_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        conn.query_row(
+            "SELECT pm.from_place_id FROM place_movements pm \
+             JOIN places p_from ON p_from.id = pm.from_place_id \
+                 AND p_from.archived_at_utc IS NULL AND p_from.deleted_at_utc IS NULL \
+             WHERE pm.entity_type = 'cartridge' AND pm.entity_id = ?1 \
+               AND pm.note = ?2 \
+             ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1",
+            params![cartridge_id, TO_REFILL_MOVEMENT_NOTE],
             |r| r.get(0),
         )
         .optional()
@@ -3035,6 +3089,92 @@ mod tests {
             result,
             Some(place_a),
             "tie on frequency -> deterministic tie-break picks smaller to_place_id"
+        );
+    }
+
+    /// UAT3-01a (gap-closure round 3): SQL-level regression for the same
+    /// defect the integration test in `cartridges_lifecycle.rs` proves via a
+    /// real `CartridgeService` flow. Here we only pin down the query's own
+    /// contract in isolation — the destination place of the `ToRefill`
+    /// movement is marked `is_storage = 1`, and the result must still be the
+    /// `from_place_id`, never the destination.
+    #[test]
+    fn place_before_last_to_refill_ignores_is_storage_of_destination() {
+        let (mut conn, _g) = fresh_conn();
+        let storage_a = seed_place_with_storage(&mut conn, "Склад А", 1);
+        // Refill place is ALSO marked storage — the exact branch that failed
+        // live (UAT3-01a).
+        let refill_storage = seed_place_with_storage(&mut conn, "Заправка (склад)", 1);
+
+        seed_cartridge_movement(
+            &mut conn,
+            1,
+            storage_a,
+            refill_storage,
+            TO_REFILL_MOVEMENT_NOTE,
+            1_700_000_001,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        let result = repo
+            .place_before_last_to_refill(&conn, 1)
+            .expect("query ok");
+        assert_eq!(
+            result,
+            Some(storage_a),
+            "must return the place BEFORE the refill trip (A), not the refill place itself, \
+             even though the refill place is also marked is_storage = 1"
+        );
+    }
+
+    #[test]
+    fn place_before_last_to_refill_none_when_no_history() {
+        let (conn, _g) = fresh_conn();
+        let repo = SqliteCartridgeRepository;
+        let result = repo
+            .place_before_last_to_refill(&conn, 1)
+            .expect("query ok");
+        assert_eq!(result, None, "no place_movements rows -> None");
+    }
+
+    #[test]
+    fn place_before_last_to_refill_ignores_unrelated_manual_movement() {
+        // A manual (non-ToRefill) movement recorded AFTER the ToRefill trip
+        // must not shadow the ToRefill origin — mirrors the real-service
+        // regression `operation_default_place_from_refill_ignores_manual_edit_during_refill`
+        // in `cartridges_lifecycle.rs`.
+        let (mut conn, _g) = fresh_conn();
+        let storage_a = seed_place_with_storage(&mut conn, "Склад А", 1);
+        let storage_b = seed_place_with_storage(&mut conn, "Склад Б", 1);
+        let refill_place = seed_place_with_storage(&mut conn, "Заправка", 0);
+
+        seed_cartridge_movement(
+            &mut conn,
+            1,
+            storage_a,
+            refill_place,
+            TO_REFILL_MOVEMENT_NOTE,
+            1_700_000_001,
+        );
+        // Later, unrelated manual place edit while cartridge is On Refill.
+        seed_cartridge_movement(
+            &mut conn,
+            1,
+            refill_place,
+            storage_b,
+            "manual edit, not a refill note",
+            1_700_000_002,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        let result = repo
+            .place_before_last_to_refill(&conn, 1)
+            .expect("query ok");
+        assert_eq!(
+            result,
+            Some(storage_a),
+            "must still resolve via the ToRefill movement's from_place_id, ignoring the later \
+             unrelated manual movement"
         );
     }
 }
