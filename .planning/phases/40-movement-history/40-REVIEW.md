@@ -1,601 +1,283 @@
 ---
 phase: 40-movement-history
-reviewed: 2026-09-03T00:00:00Z
+reviewed: 2026-09-03T06:46:01Z
 depth: standard
-files_reviewed: 20
+scope: "gap-closure round 2 ONLY — commits b5e9b55f..c78d0377 (plans 40-28, 40-29). Plans 40-01..40-27 were reviewed in a prior round; that round's REVIEW.md is superseded by this file and is preserved in git history at the parent of commit 27bf19f0."
+files_reviewed: 17
 files_reviewed_list:
-  - crates/trackly-app/src/dto/device.rs
   - crates/trackly-app/src/services/device_service.rs
+  - crates/trackly-app/src/services/act_number_display.rs
   - crates/trackly-app/src/services/place_movement_service.rs
-  - crates/trackly-app/tests/cartridges_lifecycle.rs
-  - crates/trackly-app/tests/devices_grouping.rs
-  - crates/trackly-app/tests/place_movements_timeline.rs
-  - crates/trackly-app/tests/place_movements_write_sites_devices.rs
+  - crates/trackly-app/src/services/place_path_display.rs
+  - crates/trackly-app/src/services/report_service.rs
+  - crates/trackly-app/src/services/mod.rs
+  - crates/trackly-app/src/dto/device.rs
   - crates/trackly-core/src/domain/devices.rs
+  - crates/trackly-infra/src/db/pools.rs
   - crates/trackly-infra/src/repos/cartridges_sqlite.rs
   - crates/trackly-infra/src/repos/devices_sqlite.rs
-  - ui/package.json
-  - ui/scripts/check-print-idempotency.mjs
-  - ui/scripts/check-report-type-parity.mjs
-  - ui/src/features/acts/ActsPage.svelte
-  - ui/src/features/acts/PdfPreviewModal.svelte
-  - ui/src/features/cartridges/OperationModal.svelte
-  - ui/src/features/devices/DeviceGroupRow.svelte
-  - ui/src/features/reports/ReportsPage.svelte
-  - ui/src/lib/components/MovementTimeline.svelte
+  - crates/trackly-infra/src/test_support/mod.rs
+  - crates/trackly-infra/src/test_support/test_app_ctx.rs
+  - crates/trackly-app/tests/cartridges_lifecycle.rs
+  - crates/trackly-app/tests/place_movements_timeline.rs
+  - crates/trackly-app/tests/place_movements_write_sites_devices.rs
+  - crates/trackly-app/tests/report_movements.rs
 findings:
-  critical: 4
-  warning: 14
-  info: 5
-  total: 23
+  critical: 0
+  warning: 3
+  info: 2
+  total: 5
 status: issues_found
 ---
 
-# Phase 40 (gap closure 40-21..40-27): Code Review Report
+# Phase 40: Code Review Report — Gap-Closure Round 2
 
-**Reviewed:** 2026-09-03
+**Scope:** commits `b5e9b55f..c78d0377` only (Plan 40-28: CR-03, CR-02; Plan 40-29: CR-01,
+WR-10). This replaces the prior round's `40-REVIEW.md`; the prior review is preserved in git
+history at the parent commit of `27bf19f0`. Plans 40-01..40-27 were NOT re-reviewed here.
+
+**Reviewed:** 2026-09-03T06:46:01Z
 **Depth:** standard
-**Files Reviewed:** 20 (diff base `9b64b04f`..`HEAD`)
-**Status:** issues_found
+**Files Reviewed:** 17
+**Status:** issues_found (0 Critical, 3 Warning, 2 Info)
 
 ## Summary
 
-Reviewed the seven gap-closure plans of phase 40: the printer→cartridge place cascade
-(40-21), the auto-return storage-place fallback (40-22), the optional-place install
-(40-23), the timeline act-number/deep-link fix (40-24), the report-type parity fix
-(40-25), the grouped-device place inversion fix (40-26), and the LAN print idempotency
-fix (40-27), plus the two new structural gates.
+This round closes all 4 gaps left open by the prior verification pass (`40-VERIFICATION.md`):
+CR-03 (unconditional printer-place-clear cascade wiping cartridge places), CR-02 (auto-return
+fallback missing the `from_place_id` branch, the exact UAT-16 defect), CR-01 (nested
+`ReaderPool::acquire()` deadlock risk in `get_timeline`/`query_movements_inner`), and WR-10
+(report showing a bare act number instead of the canonical "20в" form).
 
-The transactional composition asked about in the review brief is *mostly* sound: the
-40-21 cascade does run inside the device's own transaction, the 40-21 backfill and the
-40-22 fallback cannot double-write a `place_movements` row for the same entity, and the
-`COUNT(DISTINCT COALESCE(d.place_id, -1))` column is identical and correctly positioned
-in all three `list_grouped` SQL branches (the `-1` sentinel cannot collide because
-`places.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`).
+I traced the full diff line-by-line, re-derived the SQL semantics for
+`last_known_storage_place_in_tx`'s new fallback chain, and — going beyond static reading —
+**empirically mutated the fixed code back to its pre-fix shape three times** (the CR-03 gate,
+the CR-02 `from_place_id`/`p_from.is_storage` branch, confirmed via direct test runs) to verify
+the new regression tests are genuinely red on unfixed code and green on the shipped fix. All
+three mutations reproduced the exact panic messages documented in the plan's own
+"Verification Evidence" section, then were reverted and the tree confirmed clean
+(`git status --short crates/` empty, `cargo build`/`cargo clippy -D warnings` clean). Unlike the
+round-1 defect this gap-closure round explicitly exists to fix, **none of the new tests in this
+round are hand-seeded around the code path they claim to prove** — both `cartridges_lifecycle.rs`
+and `place_movements_write_sites_devices.rs`'s new tests drive the real
+`CartridgeService`/`DeviceService` flow end-to-end and read back real DB state.
 
-What the review found instead:
+The CR-01 nested-acquire fix is structurally sound (exactly one `readers.acquire()` remains in
+`get_timeline`, and `query_movements_inner` no longer takes a `&ReaderPool` parameter at all —
+confirmed by `grep`). `ReaderPool::acquire_timeout`'s `Condvar` loop correctly recomputes the
+remaining wait duration against a fixed deadline on every iteration and re-checks the deadline
+after a spurious/lost-race wakeup, so it is not vulnerable to the classic
+recompute-from-full-timeout bug.
 
-- a **reader-pool deadlock** in the timeline read path (nested `acquire()` while holding
-  a pooled connection, on a fixed-size pool that blocks on a `Condvar` with no timeout);
-- the **40-22 fallback does not cover the scenario it was written for** — and its
-  regression test hides that by seeding the DB state the real flow never produces;
-- the **40-21 cascade silently wipes** every attached cartridge's place, unlogged, when
-  a printer's place is cleared;
-- `cargo fmt --check` is **red on this phase's own new test code**, which (per the
-  project's own CI history) skips every later gate in the sequential `ci-fast` job;
-- **both new structural gates can be satisfied by a comment** — proven by mutation, with
-  the exact pre-fix defect shape passing all three print-idempotency invariants.
-
-No secrets, injection vectors, or real organization/personal data were found in the
-changed files; all test fixtures use invented names.
-
-## Critical Issues
-
-### CR-01: Reader-pool deadlock — nested `acquire()` while holding a pooled connection
-
-**File:** `crates/trackly-app/src/services/place_movement_service.rs:64,145-154`
-(and `crates/trackly-infra/src/db/pools.rs:76-95`, `crates/trackly-app/src/services/place_path_display.rs:48`)
-
-**Issue:** `get_timeline` acquires a reader (`let conn = readers.acquire();`, line 64) and
-holds it for the entire row loop. Inside that loop it calls
-`compute_place_path_short(&readers, ...)` **twice per row** (lines 145 and 150), and that
-function opens a *second* connection from the *same* pool (`place_path_display.rs:48`).
-
-`ReaderPool::acquire()` **blocks on a `Condvar` with no timeout** when the pool is
-exhausted (documented in `pools.rs` as "queue-on-exhaust"). Production pool size is 8
-(`context.rs:196`). If 8 tasks each hold their outer connection and then each try to take
-a second one, every one of them parks forever — a permanent, unrecoverable hang of all DB
-reads, not a slow request. On a 20-user LAN deployment that is reachable.
-
-Even short of a deadlock, a 20-row timeline performs 41 pool acquisitions instead of 1
-and holds 2 of 8 connections for its whole duration, starving every other reader.
-
-The same pattern exists in the movements *report* (`report_service.rs:1495-1559`, up to
-`LIMIT 1000` rows → up to 2000 nested acquisitions per render) — same class, same pool.
-
-**Fix:** never acquire from the pool while holding one. Either pass the already-held
-connection down, or hoist the two settings reads out of the loop:
-
-```rust
-// place_movement_service.rs — inside spawn_blocking, ONE connection total
-let conn = readers.acquire();
-let rows = repo.get_history(&conn, &entity_type, entity_id)?;
-// read variant/separator settings ONCE from the connection we already hold
-let (sep_ends, sep_last_two) = read_path_display_separators(&conn);
-let org_default = read_org_default_variant_token(&conn);
-for row in rows {
-    // resolve effective_variant via `conn`, then call the pure
-    // `shorten_place_path(...)` — no second `readers.acquire()` anywhere
-}
-```
-
-i.e. add a `&Connection`-taking sibling of `compute_place_path_short` in
-`place_path_display.rs` (keeping the formula single-owner) and make the `&ReaderPool`
-variant a thin wrapper for callers that hold no connection.
-
----
-
-### CR-02: 40-22 storage-place fallback misses the primary scenario; its test masks the miss
-
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:928-953` (used at line 694)
-**Test:** `crates/trackly-app/tests/cartridges_lifecycle.rs::install_auto_return_falls_back_to_last_known_storage_place`
-
-**Issue:** `last_known_storage_place_in_tx` derives the fallback exclusively from
-`place_movements.to_place_id` where `places.is_storage = 1`. But phase 40's own D-06 rule
-(`is_reportable_place_change`, `place_movements.rs:100-102`) means a first assignment
-`NULL -> place` **never produces a movement row**. Trace the normal life of a cartridge:
-
-1. Cartridge is created at the warehouse (`place_id = S` set on INSERT) — D-06: no
-   movement row.
-2. It is installed into a printer at room `Q` — one movement row is written, `S -> Q`
-   (`to_place_id = Q`, not a storage place).
-3. Another cartridge is installed into the same printer → auto-return of ours with the
-   place field left empty → `last_known_storage_place_in_tx` finds **no row whose
-   `to_place_id` is a storage place** → returns `None` → `place_id` is set to `NULL`.
-
-That is exactly the UAT defect "return-to-stock-empty-place-field" the plan claims to
-close, and it still happens on the first (most common) install/auto-return cycle.
-
-The new test does not catch this because it does not exercise the flow: it hand-writes a
-`place_movements` row *into* the storage place via raw SQL
-(`cartridges_lifecycle.rs`, "Imitate A having previously sat in the storage place") —
-DB state the real code path never creates on its own. The test therefore passes while the
-user-visible defect survives.
-
-**Fix:** stop treating "arrived at a storage place" as the only evidence. Prefer, in
-order: (1) the explicit override, (2) `from_place_id` of the movement that took the
-cartridge *out* of a storage place, (3) the cartridge's own `place_id` if it is a storage
-place — and only then `NULL`:
-
-```sql
-SELECT COALESCE(
-  (SELECT pm.to_place_id FROM place_movements pm
-     JOIN places p ON p.id = pm.to_place_id
-    WHERE pm.entity_type='cartridge' AND pm.entity_id=?1
-      AND p.is_storage=1 AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL
-    ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1),
-  (SELECT pm.from_place_id FROM place_movements pm
-     JOIN places p ON p.id = pm.from_place_id
-    WHERE pm.entity_type='cartridge' AND pm.entity_id=?1
-      AND p.is_storage=1 AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL
-    ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1)
-)
-```
-
-and add a test that drives the whole flow through `CartridgeService` (create at storage →
-install → install second → assert the auto-returned place) with **no hand-seeded
-`place_movements` row**.
-
----
-
-### CR-03: Clearing a printer's place silently wipes every attached cartridge's place, unlogged
-
-**File:** `crates/trackly-app/src/services/device_service.rs:338-348`,
-`crates/trackly-infra/src/repos/cartridges_sqlite.rs:956-1030`
-
-**Issue:** the cascade fires on `before_place_id != after.place_id`, which includes
-`Some(P) -> None`. `cascade_place_for_printer_in_tx` then runs
-`UPDATE cartridges SET place_id = NULL, version = version + 1` for **every** attached
-cartridge, and the paired `record_movement_if_applicable(old_place, None)` is skipped by
-D-06 (`Some -> None` is not reportable). The cascade writes no `audit_log` row either.
-
-Net result: an operator who clears one field on a printer destroys the recorded location
-of every cartridge in it, with **no `place_movements` row, no `audit_log` row, and no
-confirmation** — the information is unrecoverable from the app. The cartridge versions
-are bumped too, so any open cartridge editor fails its next save with an optimistic-lock
-error whose cause is invisible.
-
-Neither of the two new cascade tests covers `Some -> None`
-(`place_movements_write_sites_devices.rs` tests only `A -> B` and "no change").
-
-**Fix:** do not cascade a clear — a printer with an unknown place says nothing about
-where its cartridges are:
-
-```rust
-// device_service.rs
-if before_place_id != after.place_id {
-    if let Some(target) = after.place_id {
-        cartridge_repo.cascade_place_for_printer_in_tx(
-            &tx, id, Some(target), MovementSource::Manual,
-            "вместе с принтером", user_id_opt, now,
-        )?;
-    }
-    // Some(P) -> None: leave attached cartridges where they are.
-}
-```
-
-and add a regression test asserting the cartridge keeps `place_a` and `version == 1` when
-the printer's place is cleared.
-
----
-
-### CR-04: `cargo fmt --check` is red on this phase's own new code — first CI gate fails
-
-**File:** `crates/trackly-app/tests/place_movements_timeline.rs:394` (and trailing blank
-line at EOF)
-
-**Issue:** verified locally with the pinned toolchain (`rustfmt 1.8.0-stable`, `rustfmt.toml`
-= defaults):
-
-```
-Diff in .../tests/place_movements_timeline.rs:394:
--async fn seed_return_act(writer: &WriterHandle, parent_act_id: i64, number: i64, sub_number: i64) -> i64 {
-+async fn seed_return_act(
-+    writer: &WriterHandle,
-...
-Diff in .../tests/place_movements_timeline.rs:485:   (trailing newline)
-```
-
-`cargo fmt` is a declared CI gate (`-D warnings` class), and this project's `ci-fast` is a
-single sequential job in which the first red step **skips every later gate** — so a
-formatting failure here silently disables the clippy/test/gate steps that would otherwise
-protect the rest of this phase.
-
-`crates/trackly-app/tests/cartridges_lifecycle.rs:763,780` is also unformatted; that drift
-is pre-existing (blames to `feat(12-06)`), but commit `592268dc` claimed to "absorb
-pre-existing cargo fmt drift in movement test files" while this phase edited that very
-file and left it red.
-
-**Fix:** run `cargo fmt --all` and commit; add the check to the plan's own self-check
-step so it cannot be re-introduced.
+No Critical/Blocker findings. Three Warnings worth fixing before this is considered fully closed
+— two are pre-existing gaps this round's own fixes made *more* likely to bite (a widened
+attack surface for a documented but now more discoverable bug, and a reader-pool behavior
+regression introduced by the very refactor meant to reduce reader-pool pressure), and one is an
+unenforced precondition on a function whose rustdoc explicitly warns about the exact bug this
+round just fixed. No real organization/personal data found in any new or modified file
+(`node scripts/check-privacy.mjs` run against the working tree: 0 violations).
 
 ## Warnings
 
-### WR-01: `check-print-idempotency` INV-1 is anchored on a code comment — proven bypass
+### WR-01: `cascade_place_for_printer_in_tx`'s `Some -> None` precondition is documentation-only, not enforced
 
-**File:** `ui/scripts/check-print-idempotency.mjs:81-101`
+**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:996-1010` (rustdoc), function body
+at `:1002-1050`
 
-**Issue:** INV-1 splits the function body at `body.indexOf('await previewer.preview(')`.
-That literal appears in a **comment** inside `printViaTopLevel`
-(`PdfPreviewModal.svelte:~410`, "…the `await previewer.preview(...)` call immediately
-below needs real geometry…") ~4000 characters before the real call, and `indexOf` finds
-the comment first (measured: comment at body offset 1892, real clear at 6021).
+**Issue:** The CR-03 fix moved the guard (`after.place_id.is_some() && before_place_id !=
+after.place_id`) to the ONLY call site, `device_service.rs:347`. The rustdoc added over
+`cascade_place_for_printer_in_tx` explicitly says:
 
-Proven by mutation in a scratch copy: (1) delete the start-of-run clear, (2) put
-`printRoot.innerHTML = ''` back inside the `afterprint` `cleanup` closure — i.e. exactly
-the pre-fix defect shape — and (3) reword that one comment. Result:
-`[check-print-idempotency] PASS — 0 нарушений`.
+> **Caller MUST NOT call this with `new_place_id: None`** — ... this function does not
+> re-check it.
 
-The gate's verdict therefore depends on comment prose, not on code behaviour.
+That sentence is accurate today, but the function itself contains no runtime check of its own —
+`new_place_id: Option<i64>` is accepted and, if `None`, the function will happily execute the
+exact unconditional `UPDATE cartridges SET place_id=NULL ...` for every attached cartridge that
+CR-03 was written to eliminate. The review brief for this round specifically asked whether the
+precondition is enforceable if a second call site is ever added: it is not — a future
+call site that skips the gate (or a refactor that inlines/duplicates the caller-side check
+incorrectly) reintroduces CR-03 silently, with no compiler or test signal until someone notices
+missing `place_movements` rows in production.
 
-**Fix:** anchor on the real call, and require the clear to be a top-level statement of the
-function rather than merely textually earlier:
+**Why it matters:** This is precisely the failure mode CR-03 itself was: an implicit,
+undocumented-in-code invariant that only held because there happened to be exactly one caller.
+Rustdoc is not load-bearing at runtime.
 
-```js
-// strip comments before scanning, and take the LAST occurrence of the call
-const stripped = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-const previewIdx = stripped.lastIndexOf('await previewer.preview(');
-const beforePreview = stripped.slice(0, previewIdx);
-// and assert the clear is NOT inside a nested function/arrow body
+**Fix:** Add a cheap `debug_assert!` at the top of the function body, which costs nothing in
+release builds but turns any future violation into an immediate, loud dev/test-time failure:
+
+```rust
+pub fn cascade_place_for_printer_in_tx(
+    &self,
+    tx: &Transaction<'_>,
+    printer_device_id: i64,
+    new_place_id: Option<i64>,
+    source: MovementSource,
+    note: &str,
+    user_id: Option<i64>,
+    now_utc: i64,
+) -> Result<(), AppError> {
+    debug_assert!(
+        new_place_id.is_some(),
+        "cascade_place_for_printer_in_tx must not be called with new_place_id: None \
+         (CR-03) — caller must gate on after.place_id.is_some() first"
+    );
+    ...
 ```
 
 ---
 
-### WR-02: `check-print-idempotency` INV-2 is satisfied by a comment — proven bypass
+### WR-02: `compute_place_path_short` now always acquires a reader-pool connection, even when it will return `None` — a regression introduced by the very refactor meant to reduce reader-pool pressure
 
-**File:** `ui/scripts/check-print-idempotency.mjs:104-137`
+**File:** `crates/trackly-app/src/services/place_path_display.rs:42-49`
 
-**Issue:** INV-2 checks only that the **last non-empty line before** the
-`registerHandlers(RepeatTableHeadHandler)` call contains the substrings `if` and
-`repeatTableHeadHandlerRegistered`. A comment satisfies both.
+**Issue:** Before this round:
 
-Proven by mutation: replacing the guard with
-
-```js
-// if repeatTableHeadHandlerRegistered — guard removed
-registerHandlers(RepeatTableHeadHandler);
+```rust
+pub fn compute_place_path_short(readers: &ReaderPool, place_id: Option<i64>, snapshot: Option<String>) -> Option<String> {
+    let snapshot = snapshot?;          // early return BEFORE acquiring
+    let conn = readers.acquire();
+    ...
 ```
 
-yields `PASS — 0 нарушений` with the guard fully deleted.
+After this round:
 
-**Fix:** strip comments before the preceding-line lookup, and assert the call sits inside
-an `if (…repeatTableHeadHandlerRegistered…) { … }` block by brace-matching, the same way
-`functionBody()` already does.
-
----
-
-### WR-03: `check-report-type-parity` INV-1 is satisfied by a comment — proven bypass
-
-**File:** `ui/scripts/check-report-type-parity.mjs:170-197`
-
-**Issue:** INV-1 rejects only the exact string `activeReport` (after `trim()`), then
-accepts anything whose text `includes('reportTypeKey()')`. A comment defeats both checks.
-
-Proven by mutation: changing the prop to
-`reportType={activeReport /* was reportTypeKey() */}` — the literal D-25 regression —
-yields `PASS — 0 нарушений`.
-
-Two further holes in the same file: `reportTypePropExpression` scans only the **first**
-`<ReportTable` occurrence (`src.match(/<ReportTable[\s>]/)`), and INV-2 only requires the
-`showDeletedBadge` literal to appear *somewhere* in `reportTypeKey`'s body — comparing
-against `'device_acts'` (a real return value, wrong semantics) would pass.
-
-**Fix:** strip comments from the extracted expression before comparing; require the
-trimmed expression to be exactly `reportTypeKey()`; iterate over all `<ReportTable`
-occurrences.
-
----
-
-### WR-04: Stale `afterprint` listener from the previous print run is never removed
-
-**File:** `ui/src/features/acts/PdfPreviewModal.svelte:485-492` (registration),
-`366-395` (start-of-run cleanup)
-
-**Issue:** the start-of-run cleanup destroys the previous `activePolisher` and clears
-`printRoot`, but the previous run's `cleanup` closure is still registered on
-`window`'s `afterprint` (it only removes itself when it fires). `printing` is released in
-`handlePrint`'s `finally`, i.e. as soon as `window.print()` returns — which in several
-engines is *before* `afterprint` fires.
-
-Sequence: run 1 prints → `printing = false` → user clicks again → run 2 starts and is
-`await`ing `import('pagedjs')` / `previewer.preview(...)` → run 1's delayed `afterprint`
-fires → `cleanup1` runs `printRoot.innerHTML = ''` and `activePolisher.destroy()` on
-**run 2's** in-flight render → blank or half-paginated print.
-
-**Fix:** track the listener at component scope and detach it at the start of every run:
-
-```ts
-let activeAfterPrint: (() => void) | null = null;
-// …at the start of printViaTopLevel, next to the existing cleanup:
-if (activeAfterPrint) window.removeEventListener('afterprint', activeAfterPrint);
-activeAfterPrint = null;
-// …after defining cleanup:
-activeAfterPrint = cleanup;
-window.addEventListener('afterprint', cleanup, { once: true });
+```rust
+pub fn compute_place_path_short(readers: &ReaderPool, place_id: Option<i64>, snapshot: Option<String>) -> Option<String> {
+    let conn = readers.acquire();      // now unconditional
+    compute_place_path_short_with_conn(&conn, place_id, snapshot)
+}
+pub fn compute_place_path_short_with_conn(conn: &Connection, place_id: Option<i64>, snapshot: Option<String>) -> Option<String> {
+    let snapshot = snapshot?;          // early return moved INSIDE, after acquire already happened
+    ...
 ```
 
-Also consider releasing `printing` on `afterprint` rather than in `finally`.
+The early-return-on-`None`-snapshot check moved from before the `acquire()` to after it, in the
+wrapper's only remaining caller path. 40-29's own plan text asserts "Публичная сигнатура и
+поведение `compute_place_path_short` не меняются" ("public signature and behavior unchanged") —
+that claim is false for this specific case: every call with `snapshot: None` now needlessly
+takes and holds a pool slot (how ever briefly) where it previously took none at all.
 
----
+**Why it matters:** The sole remaining caller of the `&ReaderPool`-taking wrapper is
+`act_service.rs:2867` (one call per printed act, not a per-row loop), so the practical blast
+radius today is small. But this is the exact plan whose entire premise is "reduce needless
+`ReaderPool` acquisitions to avoid a whole-app read deadlock under LAN concurrency" (CR-01) —
+introducing a new, avoidable acquisition in the sibling wrapper it left behind is a step in the
+wrong direction for the same risk class this round exists to close, and it silently breaks the
+plan's own "no behavior change" acceptance criterion.
 
-### WR-05: `repeatTableHeadHandlerRegistered` is per-component-instance; pagedjs's registry is global
+**Fix:** Keep the early return in the thin wrapper, before acquiring:
 
-**File:** `ui/src/features/acts/PdfPreviewModal.svelte:292,519-531`
-
-**Issue:** `registerHandlers` writes to pagedjs's **module-level** registry, which lives as
-long as the dynamically imported module (i.e. the page session). The new flag is a
-component-instance variable, so it resets whenever `PdfPreviewModal` is re-created — e.g.
-navigating away from Акты and back — and there are two independent instances
-(`ActsPage.svelte:377` and `ReportsPage.svelte:612`), each with its own flag. Registrations
-therefore still accumulate across navigations and across the two instances.
-
-The comment claiming "the handler class itself is still redeclared/reconstructed per call
-(it needs a fresh `savedThead` snapshot each print)" is also misleading: after the first
-registration the freshly declared class is never registered and is dead work; freshness is
-provided by pagedjs constructing a new *instance* of the already-registered class per
-chunker (its constructor re-queries the DOM), not by the redeclaration.
-
-**Fix:** hoist the flag to module scope in a small `pagedjsHandlers.ts` helper (shared by
-every component that prints), and drop the per-call class declaration in favour of a
-module-level class.
-
----
-
-### WR-06: Printer place backfill writes a device mutation with no movement row and no audit row
-
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:600-650`
-
-**Issue:** the 40-21 backfill (step 5a) updates `devices.place_id` and bumps
-`devices.version`, then calls
-`record_movement_if_applicable(..., None, Some(explicit), ..., Some("заполнено по месту установленного картриджа"), ...)`.
-That call is **unconditionally dead**: `is_reportable_place_change(None, Some(_))` is
-`false` by D-06 (`place_movements.rs:100-102`), so the note string can never reach the
-database and the printer's timeline never shows the backfill.
-
-The mutation is therefore completely untraceable: no `place_movements` row, and (unlike
-`device_service::update`) no `audit_log` row either. The version bump will also break any
-concurrently open printer editor with an optimistic-lock error nobody can explain, and
-the UI explicitly promises this write-back to the operator (see WR-09).
-
-**Fix:** either delete the dead call and add an `audit_log` entry for the backfill (with
-`before_json`/`after_json` like the device update path), or, if this event should appear
-in the timeline, call `insert_in_tx` directly with an explicit `from_place_id` semantics
-decision — do **not** leave a call site that reads as if it logs something it never logs.
-
----
-
-### WR-07: Auto-return fallback can place a cartridge into an archived place
-
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:938-950`
-
-**Issue:** `last_known_storage_place_in_tx` filters only on `p.is_storage = 1`. `places`
-carries `archived_at_utc` (V037, D-15: archived places are hidden from `PlacePicker` —
-`places_sqlite.rs:383` filters them out of `list_all`). The fallback can therefore assign
-a cartridge to a place the operator can no longer select or see in the picker, silently.
-
-**Fix:** add `AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL` to the query
-(see the SQL in CR-02's fix, which already includes it).
-
----
-
-### WR-08: "cartridge follows printer" holds only on the manual device-edit path
-
-**File:** `crates/trackly-app/src/services/device_service.rs:338-348` (only call site)
-
-**Issue:** `cascade_place_for_printer_in_tx` has exactly one caller. Every other write site
-that moves a device's `place_id` skips it:
-
-- `place_service.rs:722` (`move_subtree_contents`, D-28 bulk move)
-- `act_service.rs:501,784,955,1533,2025,2112,2198` (handover/return/edit/undo)
-
-So handing a printer over by act, or bulk-moving a room's contents, moves the printer and
-leaves its cartridges behind — the exact UAT defect 40-21 set out to fix, on the paths
-users are most likely to use for a real relocation. (`move_subtree_contents` accidentally
-covers *some* cases because a co-located cartridge is itself in the subtree, but not a
-cartridge whose `place_id` is `NULL`.)
-
-**Fix:** call the cascade from every device-place write site, or move the cascade into a
-shared `move_device_place_in_tx` helper that all four call sites go through.
-
----
-
-### WR-09: Install hint claims a printer write-back that the server will refuse
-
-**File:** `ui/src/features/cartridges/OperationModal.svelte:789-803` (hint),
-`crates/trackly-infra/src/repos/cartridges_sqlite.rs:627-634` (`WHERE place_id IS NULL`)
-
-**Issue:** the hint «Необязательно: у принтера пока не указано место. Если укажете здесь —
-оно будет проставлено и принтеру» renders whenever
-`effectivePrinterId !== undefined && placeId === null`. Two of those states are wrong:
-
-1. **While the `printers.getByDeviceId` round-trip is in flight** (`OperationModal.svelte:230-296`)
-   `placeId` is still `null` even for a printer that *does* have a place — the hint
-   transiently asserts the opposite.
-2. **After the operator clears or overrides the auto-filled place**, the hint reappears and
-   promises the value will be written to the printer. It will not: the backfill runs only
-   `if printer_place.is_none()`, guarded again by `WHERE ... AND place_id IS NULL`. The
-   operator ends up with the cartridge at `Q` and the printer still at `P`, i.e. the
-   40-21 invariant violated at the moment of install, with no reconciliation.
-
-**Fix:** gate the hint on the resolved printer context rather than on `placeId`:
-
-```svelte
-{#if printerContext !== null && printerContext.devicePlaceId === null}
-  <span class="field-hint">Необязательно: у принтера пока не указано место…</span>
-{:else}
-  <span class="field-hint">Укажите рабочее место или кабинет (не склад)</span>
-{/if}
+```rust
+pub fn compute_place_path_short(
+    readers: &ReaderPool,
+    place_id: Option<i64>,
+    snapshot: Option<String>,
+) -> Option<String> {
+    let snapshot = snapshot?;
+    let conn = readers.acquire();
+    compute_place_path_short_with_conn(&conn, place_id, Some(snapshot))
+}
 ```
 
-and decide explicitly what an override means when the printer already has a place (either
-move the printer too, or warn about the divergence).
+(and drop the redundant `snapshot?` from `compute_place_path_short_with_conn`, or leave it as a
+defensive no-op for direct callers — either is fine as long as the wrapper does not pay for an
+acquire it doesn't need).
 
 ---
 
-### WR-10: Movements report still renders return acts with the bare parent number
+### WR-03: `DevicePatch`'s tri-state (`Option<Option<T>>`) contract is now internally inconsistent — the DTO docstring claims uniform null-clearing semantics that only `place_id` actually honors
 
-**File:** `crates/trackly-app/src/services/report_service.rs:1472,1505` (`a.number AS act_number`,
-read as `Option<i64>`), vs. the fix in
-`crates/trackly-app/src/services/place_movement_service.rs:104-140`
+**Files:** `crates/trackly-app/src/dto/device.rs:133-135` (docstring, unchanged by this round),
+`crates/trackly-app/src/dto/device.rs:176-183` (conversion, changed for `place_id` only, lines
+165-172 for `inventory_no`/`serial_no`/`model`/`specs`/`kit`/`state` unchanged),
+`crates/trackly-core/src/domain/devices.rs:32-48`
 
-**Issue:** 40-24 correctly routed the **timeline** through `format_act_number`
-(D-Numbering-01's single owner), but its sibling surface — the «Перемещения» report, which
-this same phase also touched (40-25) — still selects `a.number` raw. A return act now
-shows as `20в` in the timeline and `20` in the report/CSV/PDF, i.e. the phase created the
-screen-vs-export divergence class it added a structural gate against for a different
-column.
+**Issue:** This round's own SUMMARY documents this as a deliberately narrow, "logged as a
+deferred item" fix — that part is fine and transparent. What is not fine: the pre-existing
+docstring above `DevicePatch` (untouched by this diff) reads:
 
-**Fix:** reuse the same query shape and `format_act_number` call in
-`report_service.rs`'s movements SQL/mapping, or extract the shared "resolve display act
-number for an `act_id`" helper so there is one owner rather than two copies.
+> `Option<Option<T>>` — None означает «не менять», Some(None) — «установить NULL»,
+> Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
 
----
+This describes the CORRECT tri-state contract, and it is written at the top of the struct as if
+it applies uniformly to every field. After this round, exactly ONE field (`place_id`) actually
+implements it end-to-end (DTO → domain → SQL `CASE WHEN`). The other six nullable fields
+(`inventory_no`, `serial_no`, `model`, `specs`, `kit`, `state`) still flatten
+`Some(inner) -> inner` in the `From<DevicePatch>` conversion
+(`crates/trackly-app/src/dto/device.rs:165-172`) into a plain `Option<T>` on the domain struct,
+and the domain-level SQL still uses `COALESCE(?, col)` for all of them
+(`crates/trackly-infra/src/repos/devices_sqlite.rs:266,271-274` /
+`:688,693-696`) — the exact bug class CR-03's investigation discovered for `place_id`.
+Concretely: `DeviceService::update(..., DevicePatch { inventory_no: Some(None), ..Default::default() })`
+looks, from the docstring and the type signature, like a legitimate "clear the inventory
+number" call — it compiles, it returns `Ok`, and it silently does nothing.
 
-### WR-11: `list_grouped`'s place-path subqueries ignore the FTS filter that defines the group
+**Why it matters:** This round's fix makes the inconsistency MORE dangerous, not less, because
+now the codebase contains a proof-of-concept, working example of the tri-state pattern
+(`place_id`) sitting right next to six fields that look identical at the type level but are
+silently broken. A future caller (or a future executor extending this pattern to another entity)
+has every reason to trust the docstring and no code-level signal that six of seven fields don't
+honor it.
 
-**File:** `crates/trackly-infra/src/repos/devices_sqlite.rs:1120-1170`
-(`sql_grouped_by_model_with_query`)
-
-**Issue:** in the FTS branch the outer query is filtered by `devices_fts MATCH ?4`, but the
-two correlated subqueries that pick the joined path
-(`LEFT JOIN place_full_paths pfp ON pfp.place_id = (SELECT MAX(d2.place_id) FROM devices d2 WHERE …)`)
-are **not** — they scan every non-deleted device with the same `(type_id, name, model)`.
-`MAX(d.place_id)` in the SELECT list *is* filtered. So `repr.place_id` and
-`repr.full_path`/`place_path_short` can describe different places, and
-`place_distinct_count` (also filtered) can be `1` while the displayed path belongs to a
-device outside the group. That is precisely the value Фикс B relies on to decide whether
-the displayed place is trustworthy.
-
-**Fix:** add the same `MATCH`/status predicates to both correlated subqueries, or replace
-the subquery join with a `LEFT JOIN place_full_paths pfp ON pfp.place_id = MAX(d.place_id)`
-computed from the grouped set.
-
----
-
-### WR-12: `list_grouped` silently ignores `place_id`, `state` and `include_deleted` filters
-
-**File:** `crates/trackly-infra/src/repos/devices_sqlite.rs:1026-1250`
-
-**Issue:** only `status_id` (`?1`), `limit`, `offset` and the optional `match_expr` are
-bound; `filter.place_id`, `filter.state` and `filter.include_deleted` never reach any of the
-three SQL branches (`deleted_at_utc IS NULL` is hardcoded). `DeviceService::list_grouped`
-faithfully copies all three into `domain_filter` (`device_service.rs:532-540`), so a caller
-has no way to know they are dropped. This is pre-existing, but phase 40 has just made the
-grouped view place-aware, which makes "filter by place" the obvious next user expectation.
-
-**Fix:** either bind the missing predicates, or narrow `DeviceFilter` at this call site so
-the type makes the unsupported fields unrepresentable.
-
----
-
-### WR-13: Place hard-delete pre-check does not count `place_movements` references
-
-**File:** `crates/trackly-infra/src/repos/places_sqlite.rs:548-573` (`subtree_stats` gate),
-`migrations/V040__place_movements.sql` (`from_place_id`/`to_place_id … ON DELETE RESTRICT`)
-
-**Issue:** V040 added two `ON DELETE RESTRICT` FKs from `place_movements` to `places`, but
-the D-14 pre-check counts only nested places, devices, cartridges and referencing acts. A
-place that is now empty but has movement history passes the pre-check and then fails on the
-raw `DELETE`, leaking an English SQLite FK error into the Russian-only «Удалить место?»
-dialog — the identical defect already fixed as CR-01 for acts (see the comment at
-`places_sqlite.rs:552-557`). Phase 40's own `last_known_storage_place_in_tx` increases the
-number of places carrying movement history.
-
-**Fix:** add a `referencing_movement_count` to `SubtreeStats` and include it in both the
-service pre-check and `build_delete_blocked_message`.
-
----
-
-### WR-14: `check-print-idempotency` INV-3 regex breaks on any parenthesised condition
-
-**File:** `ui/scripts/check-print-idempotency.mjs:150`
-
-**Issue:** `body.match(/if\s*\(([^)]*)\)\s*return;/)` cannot match a condition containing
-parentheses, and only inspects the **first** `if (…) return;` in `handlePrint`. A
-legitimate refactor such as
-`if (!ready || (htmlContent === null && !isReport) || printing) return;` makes the gate
-report a false violation and fail the build; conversely a meaningless
-`if (printing === undefined) return;` satisfies it.
-
-**Fix:** balance parentheses the way `functionBody` balances braces, scan **all** early
-returns in the function, and additionally require `printing = true;` to be assigned before
-the first `await` in the same body.
+**Fix:** Either (a) narrow the docstring to explicitly call out that only `place_id` currently
+implements the tri-state contract and the rest are `Some(inner) -> inner` best-effort (linking to
+the deferred-item note), or — better, and consistent with the SUMMARY's own suggested follow-up
+— apply the same `Option<Option<T>>` + `CASE WHEN <flag>` pattern to the remaining six fields in
+a dedicated follow-up plan, since the SUMMARY already identifies the mechanical fix is "applicable
+to all at once."
 
 ## Info
 
-### IN-01: Timeline act-number SQL collapsed onto one line
+### IN-01: Deadlock regression test can misattribute an unrelated setup panic to "CR-01 regression"
 
-**File:** `crates/trackly-app/src/services/place_movement_service.rs:106`
-**Issue:** the query is a single string literal with long runs of spaces where the newlines
-used to be, so it no longer visually mirrors `SELECT_ACTS` (`acts_sqlite.rs:34-49`) that the
-comment above it says it must match, and any future diff of the two is unreadable.
-**Fix:** restore it as a multi-line `\`-continued literal (or a shared `const`) in the same
-shape as `SELECT_ACTS`.
+**File:** `crates/trackly-app/tests/place_movements_timeline.rs:658-721`
+(`get_timeline_does_not_deadlock_with_single_reader_slot`)
 
-### IN-02: Duplicate `use DeviceRepository` inside `export_csv`
+**Issue:** The test spawns a bare `std::thread::spawn(move || { ... })` whose `JoinHandle` is
+discarded (never `.join()`'d), and forwards only the `get_timeline` outcome through an `mpsc`
+channel. If any of the fixture helpers inside the worker thread panics for an unrelated reason
+(e.g. `seed_manager_caller`/`seed_place`/`seed_device`/`seed_movement_row`'s `.expect(...)` calls,
+all of which can panic on a genuine — if unlikely — DB error), the panic happens inside the
+detached thread, is printed to stderr by the default panic hook, and the channel never receives a
+message. The main test thread's `result_rx.recv_timeout(Duration::from_secs(5))` then times out
+for a completely different reason and reports:
 
-**File:** `crates/trackly-app/src/services/device_service.rs:30,906`
-**Issue:** `trackly_core::ports::devices::DeviceRepository` is imported at module scope and
-re-imported inside `export_csv`.
-**Fix:** drop the inner `use`.
+```
+"get_timeline exceeded 5 s budget — nested reader-pool acquire regressed (CR-01)"
+```
 
-### IN-03: `COALESCE(d.place_id, -1)` sentinel is undocumented
+— a misleading diagnosis for whoever has to debug a future red run of this test, who would look
+for a reader-pool regression instead of noticing the real panic buried in stderr output above the
+test-framework summary.
 
-**File:** `crates/trackly-infra/src/repos/devices_sqlite.rs:1088,1133,1180`
-**Issue:** the sibling `COALESCE(d.condition, ' ')` sentinel has a WR-04 comment proving it
-cannot collide with a real value; the new `-1` has none. (It is in fact safe —
-`places.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` — but that invariant is unwritten.)
-**Fix:** one comment line stating why `-1` cannot be a real `place_id`.
+**Fix:** Wrap the worker body in `std::panic::catch_unwind` and forward the panic payload through
+the channel as a distinct `Err` variant (or at minimum, add a comment on the test documenting that
+"exceeded 5s budget" can also mean "a fixture helper panicked — check stderr above this failure
+for the real panic message" so a maintainer isn't misled the first time this fires for the wrong
+reason).
 
-### IN-04: `last_known_storage_place_in_tx` takes `&self` it never uses
+### IN-02: New SQL string literals in `report_movements.rs` test helpers collapse onto single physical lines with irregular whitespace
 
-**File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:928-932`
-**Issue:** the repository is a zero-sized unit struct and the method ignores `self`;
-`model_kind_in_tx`/`assign_code_in_tx` in the same file are associated functions.
-**Fix:** make it an associated `fn` for consistency.
+**File:** `crates/trackly-app/tests/report_movements.rs:264 (seed_act), 281 (seed_return_act), 311
+(seed_movement_with_act)`
 
-### IN-05: `MovementTimeline` duplicates a paragraph and reuses an "empty" class for a non-empty footer
+**Issue:** The rest of the codebase's SQL string literals (e.g.
+`crates/trackly-infra/src/repos/cartridges_sqlite.rs`, `crates/trackly-app/src/services/report_service.rs`)
+consistently use `\`-continued multi-line strings, one clause per line, for readability. The three
+new helpers added in this round instead have their `INSERT INTO ...` SQL as a single physical Rust
+source line containing large runs of literal whitespace where line breaks would normally be
+(e.g. `"INSERT INTO acts                  (number, act_type, ...) ...`). This is harmless — SQL
+ignores the extra whitespace and the tests pass — but it is a readability regression versus the
+established convention in this same codebase and makes the SQL harder to diff/review in the
+future.
 
-**File:** `ui/src/lib/components/MovementTimeline.svelte:87-90,134-137`
-**Issue:** the same two-line note is pasted into both the empty and non-empty branches, and
-in the non-empty branch it is rendered with `class="timeline-empty-body"` outside the
-`.timeline-empty` container. The rule has `margin: 0`, so the footnote sits flush against
-the last timeline row (whose `border-bottom` is removed by `:last-child`).
-**Fix:** hoist the text to a single `const` (or a small snippet) and give the footer variant
-its own class with a top margin.
+**Fix:** Reformat to the codebase's usual `\`-continued multi-line style (one clause/columns list
+per line), matching the sibling helper `seed_movement` a few lines above in the same file.
 
 ---
 
-_Reviewed: 2026-09-03_
+_Reviewed: 2026-09-03T06:46:01Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
