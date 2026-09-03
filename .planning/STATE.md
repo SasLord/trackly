@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T01:33:16.571Z"
+last_updated: "2026-09-03T01:46:55.287Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 64
-  completed_plans: 63
-  percent: 33
+  completed_plans: 64
+  percent: 44
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 7 of 27
+Plan: 8 of 27
 Status: Ready to execute
 Last activity: 2026-09-03
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -369,6 +369,7 @@ Last activity: 2026-09-03
 | Phase 40 P26 | 5min | 4 tasks | 6 files |
 | Phase 40 P22 | 20min | 2 tasks | 2 files |
 | Phase 40 P27 | 10min | 2 tasks | 3 files |
+| Phase 40 P23 | 15m | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -922,6 +923,7 @@ Recent decisions affecting current work:
 - [Phase 40-22]: Auto-return fallback only considers movements into is_storage=1 places, matching the user's decision to restore last known WAREHOUSE location, not any arbitrary prior place
 - [Phase 40-22]: No storage-place history means place_id stays NULL after auto-return — deliberate non-regression for cartridges never logged into a storage place
 - [Phase 40]: 40-27: hoisted print-idempotency state (activePolisher/repeatTableHeadHandlerRegistered/printing) in PdfPreviewModal.svelte to component scope so LAN print cleanup runs at call-start, not only on afterprint
+- [Phase ?]: Разделили общий чек placeId в validate() install/to_refill: для to_refill место обязательно всегда (нет контекста принтера); для install — только для legacy-пути без принтера (effectivePrinterId === undefined), сервер уже резолвит/подставляет место при выбранном принтере (40-21/40-22).
 
 ### Pending Todos
 
@@ -1110,8 +1112,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T01:32:26.092Z
-Stopped at: Completed 40-22-PLAN.md
+Last session: 2026-09-03T01:46:55.277Z
+Stopped at: Completed 40-23-PLAN.md
 Resume file: 
 
 None
