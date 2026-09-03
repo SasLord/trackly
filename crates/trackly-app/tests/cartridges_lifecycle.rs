@@ -1831,3 +1831,110 @@ async fn operation_default_place_from_refill_reflects_manual_edit_during_refill(
     .await
     .expect("operation_default_place_from_refill_reflects_manual_edit_during_refill budget")
 }
+
+/// `from_refill` дефолт через реальный поток `CartridgeService` — без
+/// ручного посева `place_movements`. Картридж создаётся на складском месте
+/// A, отправляется на заправку в НЕ-складское место, затем дефолт должен
+/// вернуть A (единственное складское место в истории картриджа).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_resolves_via_real_service_flow() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        let cart = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge at storage A");
+
+        let after_to_refill = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: Some(refill_place),
+                },
+            )
+            .await
+            .expect("transition to_refill");
+        assert_eq!(after_to_refill.place_id, Some(refill_place));
+
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_a),
+            "должен вернуться единственный кандидат — складское место A, откуда отправили на заправку"
+        );
+    })
+    .await
+    .expect("operation_default_place_from_refill_resolves_via_real_service_flow budget")
+}
+
+/// `to_refill` дефолт через реальный поток `CartridgeService` — без ручного
+/// посева `place_movements`. Два картриджа отправлены на заправку с целевым
+/// местом B, третий — с целевым местом C; самое частое место (B, 2>1)
+/// должно победить.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_to_refill_resolves_via_real_service_flow() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_source = seed_storage_place(&svc, "Склад источник").await;
+        let place_b = seed_place(&svc, "Заправка Б").await;
+        let place_c = seed_place(&svc, "Заправка В").await;
+
+        for target in [place_b, place_b, place_c] {
+            let cart = svc
+                .create(CartridgeCreateDto {
+                    model_id,
+                    code_override: None,
+                    state_id: Some(1),
+                    place_id: Some(place_source),
+                    notes: None,
+                })
+                .await
+                .expect("create cartridge at source storage");
+
+            svc.transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: Some(target),
+                },
+            )
+            .await
+            .expect("transition to_refill");
+        }
+
+        let default_place = svc
+            .operation_default_place("to_refill", None)
+            .await
+            .expect("operation_default_place to_refill");
+        assert_eq!(
+            default_place,
+            Some(place_b),
+            "B получил 2 отправки против 1 у C — B должен победить"
+        );
+    })
+    .await
+    .expect("operation_default_place_to_refill_resolves_via_real_service_flow budget")
+}

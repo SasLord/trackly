@@ -489,6 +489,13 @@ async fn role_endpoint_matrix_test() {
             "pagination": { "offset": 0, "limit": 20 }
         });
 
+        // Case 60/61 (Plan 40-30, HST-01): cartridges_operation_default_place —
+        // OperationDefaultPlacePayload (camelCase rename_all).
+        let operation_default_place_payload = json!({
+            "op": "to_refill",
+            "cartridgeId": null
+        });
+
         // Case 15/16: printers_list — PrinterFilter (camelCase rename_all) + Pagination.
         let printers_list_payload = json!({
             "filter": {
@@ -2335,6 +2342,43 @@ async fn role_endpoint_matrix_test() {
                 matches!(result, Err(AppError::Forbidden)),
                 "Case 59: Employee (Tauri path) → build_places_move_subtree_contents → \
                  expected Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 60: Employee session → POST /api/v1/cartridges_operation_default_place
+        // → 403 Forbidden (Plan 40-30, HST-01)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_operation_default_place",
+                operation_default_place_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 60: Employee → cartridges_operation_default_place → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 61: Manager session → POST /api/v1/cartridges_operation_default_place
+        // → not 401/403 (200)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_operation_default_place",
+                operation_default_place_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 61: Manager → cartridges_operation_default_place → expected not 401/403, got {status}"
             );
         }
 
