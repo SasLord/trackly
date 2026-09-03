@@ -129,9 +129,10 @@ pub struct DeviceGroupRow {
     /// (D-07), it does not reflect variation within the group key itself.
     pub condition_distinct_count: i64,
     /// Number of distinct place values in this group (Phase 40 Plan 26 — Фикс B).
-    /// > 1 means the group's members are spread across different places; the
-    /// frontend must suppress `repr.place_path_short` (show «—») instead of
-    /// showing a place belonging to an arbitrary member (`MAX(d2.place_id)`).
+    /// A value greater than 1 means the group's members are spread across
+    /// different places; the frontend must suppress `repr.place_path_short`
+    /// (show «—») instead of showing a place belonging to an arbitrary
+    /// member (`MAX(d2.place_id)`).
     pub place_distinct_count: i64,
 }
 
