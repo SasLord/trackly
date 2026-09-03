@@ -105,6 +105,26 @@ async fn seed_place(svc: &CartridgeService, name: &str) -> i64 {
         .expect("seed place")
 }
 
+/// Seed a real `places` row with `is_storage=1` — a складское place, as
+/// opposed to `seed_place()` above which always writes `is_storage=0`
+/// (Plan 40-22, UAT-40 gap "return-to-stock-empty-place-field": the
+/// last-known-storage-place fallback only considers `is_storage=1` places).
+async fn seed_storage_place(svc: &CartridgeService, name: &str) -> i64 {
+    let name = name.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO places (kind, name, is_storage, created_at_utc, updated_at_utc, version) \
+                 VALUES ('room', ?1, 1, ?2, ?2, 1)",
+                params![name, 1_700_000_000_i64],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed storage place")
+}
+
 /// Read `current_printer_device_id` for a cartridge directly — `CartridgeDto`
 /// does not expose this field yet (Plan 12-06 is backend-only; frontend wiring
 /// is a future plan).
@@ -786,7 +806,10 @@ async fn install_auto_returns_previous_cartridge_in_same_printer() {
         assert_eq!(a_state, Some(3), "A's state must default to Пустой (3)");
         assert_eq!(
             a_place_id, None,
-            "A's place_id must be cleared to NULL (no previous_cartridge_place_id override supplied)"
+            "A's place_id must be cleared to NULL when the cartridge has no prior \
+             storage-place movement history (create_stock_cartridge seeds place_id=None \
+             and A was never moved into a storage place before this install, so the \
+             Plan 40-22 last-known-storage-place fallback has nothing to derive)"
         );
         assert_eq!(a_holder, None, "A's holder_name must be cleared");
         assert_eq!(
@@ -1113,8 +1136,14 @@ async fn install_auto_return_uses_previous_cartridge_overrides_when_present() {
 
 /// Test 2 (D-16 backward-compat): when `previous_cartridge_state_id`/
 /// `previous_cartridge_place_id` are both `None`, the auto-return falls back
-/// to 12-06's original hardcoded defaults (state_id=3 Пустой, place_id=NULL) —
-/// proves this widening does not regress 12-06's own behavior.
+/// to 12-06's original hardcoded defaults (state_id=3 Пустой, place_id=NULL)
+/// when the cartridge has no prior storage-place movement history —
+/// proves this widening does not regress 12-06's own behavior. A's
+/// `place_id` stays `None` here because `create_stock_cartridge` seeds
+/// place_id=None and the printer in this test also has no place, so there
+/// is nothing for the Plan 40-22 last-known-storage-place fallback to
+/// derive (see `install_auto_return_falls_back_to_last_known_storage_place`
+/// below for the fallback's positive case).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn install_auto_return_falls_back_to_defaults_when_overrides_absent() {
     tokio::time::timeout(Duration::from_secs(30), async {
@@ -1173,11 +1202,123 @@ async fn install_auto_return_falls_back_to_defaults_when_overrides_absent() {
         );
         assert_eq!(
             a_place_id, None,
-            "A's place_id must fall back to the default NULL when no override given"
+            "A's place_id must fall back to the default NULL when no override given \
+             and the cartridge has no prior storage-place movement history"
         );
     })
     .await
     .expect("install_auto_return_falls_back_to_defaults_when_overrides_absent budget")
+}
+
+/// Test 3 (Plan 40-22, UAT-40 gap "return-to-stock-empty-place-field"): when
+/// `previous_cartridge_place_id` is `None` AND the returned cartridge DOES
+/// have prior storage-place movement history, the auto-return derives its
+/// `place_id` from that history instead of clearing it to NULL — the
+/// positive case for `last_known_storage_place_in_tx`, complementing the
+/// no-history case covered by
+/// `install_auto_return_falls_back_to_defaults_when_overrides_absent` above.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn install_auto_return_falls_back_to_last_known_storage_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let printer_id = seed_printer_device(&svc, "Kyocera ECOSYS").await;
+
+        // A складское place (is_storage=1) — the place the fallback must
+        // derive — and a second, non-storage place used only as the
+        // synthetic movement's `from_place_id` (FK-valid, arbitrary origin).
+        let storage_place_id = seed_storage_place(&svc, "Склад расходников").await;
+        let other_place_id = seed_place(&svc, "Каб. 310").await;
+
+        let cart_a = create_stock_cartridge(&svc, model_id).await;
+        let cart_b = create_stock_cartridge(&svc, model_id).await;
+
+        // Imitate A having previously sat in the storage place, before
+        // either of this test's Install calls — a direct SQL insert into
+        // place_movements (not via the service), created_at_utc earlier
+        // than the first Install below.
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO place_movements \
+                     (entity_type, entity_id, from_place_id, from_place_path, \
+                      to_place_id, to_place_path, source, note, act_id, user_id, \
+                      actor_name_snapshot, created_at_utc) \
+                     VALUES ('cartridge', ?1, ?2, 'Каб. 310', ?3, 'Склад расходников', \
+                             'manual', 'seeded for test', NULL, NULL, NULL, ?4)",
+                    params![
+                        cart_a.id,
+                        other_place_id,
+                        storage_place_id,
+                        1_699_999_000_i64
+                    ],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("seed prior storage-place movement for A");
+
+        // Install A into the printer — place_id stays whatever create_stock_cartridge
+        // seeded (None); the synthetic movement above is A's ONLY place_movements row.
+        let a_installed = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_a.id,
+                    version: cart_a.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов".into(),
+                    given_to_name: "Петров".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install A");
+
+        // Install B into the SAME printer, again without an explicit
+        // previous_cartridge_place_id override — must auto-return A using
+        // the last known storage place, not NULL.
+        let b_installed = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart_b.id,
+                    version: cart_b.version,
+                    date_utc: 1_700_000_100,
+                    given_by_name: "Сидоров".into(),
+                    given_to_name: "Кузнецов".into(),
+                    place_id: None,
+                    printer_device_id: Some(printer_id),
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install B into same printer without overrides");
+
+        assert_eq!(b_installed.status_id, 2, "B must be В работе (2)");
+
+        let (a_status, a_state, a_place_id, _a_holder, _a_printer) =
+            cartridge_snapshot(&svc, a_installed.id).await;
+        assert_eq!(a_status, 1, "A must be На складе (1) after auto-return");
+        assert_eq!(
+            a_state,
+            Some(3),
+            "A's state must still default to Пустой (3) — this test only covers place_id"
+        );
+        assert_eq!(
+            a_place_id,
+            Some(storage_place_id),
+            "A's place_id must fall back to its last known storage place, not NULL, \
+             when the cartridge has prior place_movements history into an is_storage=1 place"
+        );
+    })
+    .await
+    .expect("install_auto_return_falls_back_to_last_known_storage_place budget")
 }
 
 // ---------------------------------------------------------------------------
