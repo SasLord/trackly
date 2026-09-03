@@ -81,6 +81,8 @@ round just fixed. No real organization/personal data found in any new or modifie
 
 ### WR-01: `cascade_place_for_printer_in_tx`'s `Some -> None` precondition is documentation-only, not enforced
 
+**Fixed:** 2026-09-03, commit `022c7543` — added `debug_assert!` inside `cascade_place_for_printer_in_tx` naming the CR-03 hazard, so the precondition is now self-enforcing (dev/test builds only, per fix scope).
+
 **File:** `crates/trackly-infra/src/repos/cartridges_sqlite.rs:996-1010` (rustdoc), function body
 at `:1002-1050`
 
@@ -129,6 +131,8 @@ pub fn cascade_place_for_printer_in_tx(
 ---
 
 ### WR-02: `compute_place_path_short` now always acquires a reader-pool connection, even when it will return `None` — a regression introduced by the very refactor meant to reduce reader-pool pressure
+
+**Fixed:** 2026-09-03, commit `bde665fa` — restored the `snapshot?` early return in the thin wrapper before `readers.acquire()`; `compute_place_path_short_with_conn` unchanged for its own direct callers.
 
 **File:** `crates/trackly-app/src/services/place_path_display.rs:42-49`
 
