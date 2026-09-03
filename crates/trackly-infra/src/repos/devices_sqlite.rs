@@ -131,6 +131,7 @@ type GroupRowTuple = (
     Option<String>, // kit (complectation)
     Option<String>, // state (condition)
     i64,            // condition_distinct_count
+    i64,            // place_distinct_count
     Option<i64>,    // place_id
     i64,            // status_id
     i64,            // version
@@ -165,6 +166,7 @@ fn group_row_tuple(row: &rusqlite::Row<'_>) -> rusqlite::Result<GroupRowTuple> {
         row.get(16)?,
         row.get(17)?,
         row.get(18)?,
+        row.get(19)?,
     ))
 }
 
@@ -1083,6 +1085,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.place_id, -1)) AS place_distinct_count,
                    MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
@@ -1127,6 +1130,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.place_id, -1)) AS place_distinct_count,
                    MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
@@ -1173,6 +1177,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                    MAX(d.complectation)                 AS complectation,
                    MAX(d.condition)                     AS condition,
                    COUNT(DISTINCT COALESCE(d.condition, ' ')) AS condition_distinct_count,
+                   COUNT(DISTINCT COALESCE(d.place_id, -1)) AS place_distinct_count,
                    MAX(d.place_id)                      AS place_id,
                    MAX(d.status_id)                     AS status_id,
                    MAX(d.version)                       AS version,
@@ -1262,6 +1267,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 kit,
                 state,
                 condition_distinct_count,
+                place_distinct_count,
                 place_id_val,
                 status_id,
                 version,
@@ -1321,6 +1327,7 @@ impl DeviceRepository for SqliteDeviceRepository {
                 ids,
                 count,
                 condition_distinct_count,
+                place_distinct_count,
             });
         }
 

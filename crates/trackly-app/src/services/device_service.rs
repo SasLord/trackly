@@ -559,6 +559,7 @@ impl DeviceService {
                 count: g.count as u64,
                 ids: g.ids.into_iter().map(|id| id as i32).collect(),
                 condition_distinct_count: g.condition_distinct_count,
+                place_distinct_count: g.place_distinct_count,
             })
             .collect();
 

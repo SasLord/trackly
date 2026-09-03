@@ -259,6 +259,12 @@ pub struct DeviceGroup {
     /// фронтенду о необходимости drill-in подгруппировки по condition (D-07).
     #[specta(type = i32)]
     pub condition_distinct_count: i64,
+    /// Количество различных значений place в группе (Phase 40 Plan 26 — Фикс B).
+    /// > 1 означает, что члены группы расположены в разных местах — фронтенд
+    /// должен погасить `repr.place_path_short` (показать «—») вместо места
+    /// произвольного члена группы.
+    #[specta(type = i32)]
+    pub place_distinct_count: i64,
 }
 
 /// Счётчик устройств по статусу.

@@ -128,6 +128,11 @@ pub struct DeviceGroupRow {
     /// signals to the frontend that a drill-in sub-grouping by condition is needed
     /// (D-07), it does not reflect variation within the group key itself.
     pub condition_distinct_count: i64,
+    /// Number of distinct place values in this group (Phase 40 Plan 26 — Фикс B).
+    /// > 1 means the group's members are spread across different places; the
+    /// frontend must suppress `repr.place_path_short` (show «—») instead of
+    /// showing a place belonging to an arbitrary member (`MAX(d2.place_id)`).
+    pub place_distinct_count: i64,
 }
 
 /// Whitelisted fields for autocomplete queries (D-AutocompleteEndpoint-01, T-02-04-02).
