@@ -18,10 +18,12 @@ use std::sync::Arc;
 use rusqlite::{params, OptionalExtension};
 
 use trackly_core::auth::{authorize, Action, Identity};
+use trackly_core::domain::acts::ActType;
 use trackly_core::error::AppError;
 use trackly_infra::db::pools::ReaderPool;
 use trackly_infra::repos::SqlitePlaceMovementsRepository;
 
+use crate::dto::act::format_act_number;
 use crate::dto::place_movements::MovementEntryDto;
 use crate::services::place_path_display::compute_place_path_short;
 
@@ -90,16 +92,51 @@ impl PlaceMovementService {
                 // so this was permanently `None`. The soft-degrade below is kept
                 // for a genuinely missing act row (`.optional()`/`.ok()`), not to
                 // mask a type mismatch.
+                //
+                // Plan 40-24 (gap closure): route the raw columns through the
+                // SAME query shape as `SqliteActRepository::SELECT_ACTS`
+                // (acts_sqlite.rs) — `act_type`, `sub_number`, the parent's
+                // `number` via a self-join, and a correlated `sibling_return_count`
+                // subquery — then hand them to `format_act_number`, the single
+                // owner of the display rule (D-Numbering-01). Before this change
+                // a return act rendered as its bare parent number ("20" instead
+                // of "20в"), indistinguishable from the handover act itself.
                 let act_number: Option<String> = row.act_id.and_then(|act_id| {
                     conn.query_row(
-                        "SELECT number FROM acts WHERE id = ?1",
+                        "SELECT a.number, a.sub_number, a.act_type, p.number AS parent_number,                          (SELECT COUNT(*) FROM acts r                             WHERE r.parent_act_id = COALESCE(a.parent_act_id, a.id)                               AND r.deleted_at_utc IS NULL) AS sibling_return_count                            FROM acts a                            LEFT JOIN acts p ON p.id = a.parent_act_id                           WHERE a.id = ?1",
                         params![act_id],
-                        |r| r.get::<_, i64>(0),
+                        |r| {
+                            let number: i64 = r.get(0)?;
+                            let sub_number: Option<i64> = r.get(1)?;
+                            let act_type_sql: String = r.get(2)?;
+                            let parent_number: Option<i64> = r.get(3)?;
+                            let sibling_return_count: Option<i64> = r.get(4)?;
+                            // Same soft-degrade contract as `acts_sqlite.rs::from_row`:
+                            // an unexpected value is an `Err` here, absorbed into
+                            // `None` by `.optional().ok()` below — never `?`/`.expect()`.
+                            let act_type = match act_type_sql.as_str() {
+                                "handover" => ActType::Handover,
+                                "return" => ActType::Return,
+                                other => {
+                                    return Err(rusqlite::Error::FromSqlConversionFailure(
+                                        2,
+                                        rusqlite::types::Type::Text,
+                                        format!("invalid act_type in DB: {other}").into(),
+                                    ));
+                                }
+                            };
+                            Ok(format_act_number(
+                                act_type,
+                                number,
+                                sub_number,
+                                parent_number,
+                                sibling_return_count,
+                            ))
+                        },
                     )
                     .optional()
                     .ok()
                     .flatten()
-                    .map(|n| n.to_string())
                 });
 
                 // Shortening formula: single owner is
