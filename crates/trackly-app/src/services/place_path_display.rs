@@ -44,8 +44,9 @@ pub fn compute_place_path_short(
     place_id: Option<i64>,
     snapshot: Option<String>,
 ) -> Option<String> {
+    let snapshot = snapshot?;
     let conn = readers.acquire();
-    compute_place_path_short_with_conn(&conn, place_id, snapshot)
+    compute_place_path_short_with_conn(&conn, place_id, Some(snapshot))
 }
 
 /// `&Connection` sibling of [`compute_place_path_short`] — for callers that
