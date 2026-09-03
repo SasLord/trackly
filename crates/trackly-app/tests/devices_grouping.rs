@@ -1103,3 +1103,176 @@ async fn grouping_true_branch_query_sanitizes_special_chars() {
     .await
     .expect("grouping_true_branch_query_sanitizes_special_chars exceeded 30s");
 }
+
+// ---------------------------------------------------------------------------
+// list_by_ids_returns_place_path_short_for_device_with_place (Phase 40 Plan 26, Фикс A)
+// ---------------------------------------------------------------------------
+// Regression: list_by_ids previously mapped rows via the bare `from_row`
+// (place_path_short: None всегда), из-за чего дети развёрнутой группы
+// показывали прочерк вместо собственного места.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn list_by_ids_returns_place_path_short_for_device_with_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let place_id = create_place(&svc, "Комната 101").await;
+
+        let mut new = non_unique_device("Ноутбук", 1);
+        new.place_id = Some(place_id);
+        let created = svc.create(new).await.expect("create with place");
+
+        let result = svc
+            .list_by_ids(vec![created.id])
+            .await
+            .expect("list_by_ids");
+
+        assert_eq!(result.len(), 1, "должно вернуть 1 устройство");
+        assert!(
+            result[0].place_path_short.is_some(),
+            "Фикс A: list_by_ids должен отдавать place_path_short для устройства с местом, получено None"
+        );
+    })
+    .await
+    .expect("list_by_ids_returns_place_path_short_for_device_with_place exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_place_distinct_count_mixed (Phase 40 Plan 26, Фикс B)
+// ---------------------------------------------------------------------------
+// group_by_condition=false + два устройства с одинаковым именем/моделью, но
+// разными местами → place_distinct_count > 1 (строка-группы должна гасить
+// место, а не показывать место произвольного члена — MAX(d2.place_id)).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_place_distinct_count_mixed() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let place_a = create_place(&svc, "Место A").await;
+        let place_b = create_place(&svc, "Место B").await;
+
+        let mut d1 = non_unique_device("Сканер", 1);
+        d1.place_id = Some(place_a);
+        svc.create(d1).await.expect("create with place A");
+
+        let mut d2 = non_unique_device("Сканер", 1);
+        d2.place_id = Some(place_b);
+        svc.create(d2).await.expect("create with place B");
+
+        let filter = DeviceFilter {
+            group_by_condition: false,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "одинаковый name+model, разные места → ОДНА группа, получили {} групп",
+            groups.len()
+        );
+        assert!(
+            groups[0].place_distinct_count > 1,
+            "Фикс B: place_distinct_count должен быть > 1 для группы с разными местами, получено {}",
+            groups[0].place_distinct_count
+        );
+    })
+    .await
+    .expect("grouping_place_distinct_count_mixed exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_place_distinct_count_uniform (Phase 40 Plan 26, Фикс B)
+// ---------------------------------------------------------------------------
+// Два устройства с одинаковым именем/моделью И одинаковым местом →
+// place_distinct_count == 1 (строка-группы обязана показывать это место).
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_place_distinct_count_uniform() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let place_a = create_place(&svc, "Место A").await;
+
+        let mut d1 = non_unique_device("Сканер", 1);
+        d1.place_id = Some(place_a);
+        svc.create(d1).await.expect("create device 1");
+
+        let mut d2 = non_unique_device("Сканер", 1);
+        d2.place_id = Some(place_a);
+        svc.create(d2).await.expect("create device 2");
+
+        let filter = DeviceFilter {
+            group_by_condition: false,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(groups.len(), 1, "должна быть 1 группа");
+        assert_eq!(
+            groups[0].place_distinct_count, 1,
+            "Фикс B: place_distinct_count должен быть 1 для однородной по месту группы, получено {}",
+            groups[0].place_distinct_count
+        );
+    })
+    .await
+    .expect("grouping_place_distinct_count_uniform exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// grouping_place_distinct_count_true_branch (Phase 40 Plan 26, Фикс B)
+// ---------------------------------------------------------------------------
+// Тот же неоднородный по месту сценарий, но с group_by_condition=true —
+// проверяет обе model-ветки SQL (`sql_grouped_by_model_no_query` при
+// отсутствии текстового фильтра), а не только `sql_without_condition`.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn grouping_place_distinct_count_true_branch() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let place_a = create_place(&svc, "Место A").await;
+        let place_b = create_place(&svc, "Место B").await;
+
+        let mut d1 = non_unique_device("Принтер", 1);
+        d1.place_id = Some(place_a);
+        svc.create(d1).await.expect("create with place A");
+
+        let mut d2 = non_unique_device("Принтер", 1);
+        d2.place_id = Some(place_b);
+        svc.create(d2).await.expect("create with place B");
+
+        let filter = DeviceFilter {
+            group_by_condition: true,
+            ..Default::default()
+        };
+        let page = Pagination {
+            offset: 0,
+            limit: 50,
+        };
+        let groups = svc.list_grouped(filter, page).await.expect("list_grouped");
+
+        assert_eq!(
+            groups.len(),
+            1,
+            "одинаковый name+model (true-branch), разные места → ОДНА группа, получили {} групп",
+            groups.len()
+        );
+        assert!(
+            groups[0].place_distinct_count > 1,
+            "Фикс B (true-branch): place_distinct_count должен быть > 1, получено {}",
+            groups[0].place_distinct_count
+        );
+    })
+    .await
+    .expect("grouping_place_distinct_count_true_branch exceeded 30s");
+}
