@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-03T01:28:13.371Z"
+last_updated: "2026-09-03T01:33:16.571Z"
 last_activity: 2026-09-03
 progress:
   total_phases: 9
   completed_phases: 3
   total_plans: 64
-  completed_plans: 62
+  completed_plans: 63
   percent: 33
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — EXECUTING
-Plan: 6 of 27
+Plan: 7 of 27
 Status: Ready to execute
 Last activity: 2026-09-03
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
@@ -368,6 +368,7 @@ Last activity: 2026-09-03
 | Phase 40 P25 | 15min | 2 tasks | 3 files |
 | Phase 40 P26 | 5min | 4 tasks | 6 files |
 | Phase 40 P22 | 20min | 2 tasks | 2 files |
+| Phase 40 P27 | 10min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -920,6 +921,7 @@ Recent decisions affecting current work:
 - [Phase 40-26]: Гейтинг ячейки места на фронтенде — инлайн-тернарник в разметке, не именованная $derived-переменная, чтобы удовлетворить check-place-path-short.mjs (INV-1/2/3)
 - [Phase 40-22]: Auto-return fallback only considers movements into is_storage=1 places, matching the user's decision to restore last known WAREHOUSE location, not any arbitrary prior place
 - [Phase 40-22]: No storage-place history means place_id stays NULL after auto-return — deliberate non-regression for cartridges never logged into a storage place
+- [Phase 40]: 40-27: hoisted print-idempotency state (activePolisher/repeatTableHeadHandlerRegistered/printing) in PdfPreviewModal.svelte to component scope so LAN print cleanup runs at call-start, not only on afterprint
 
 ### Pending Todos
 
@@ -1108,7 +1110,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-03T01:28:13.361Z
+Last session: 2026-09-03T01:32:26.092Z
 Stopped at: Completed 40-22-PLAN.md
 Resume file: 
 
