@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: "Гап-клозур раунд 3 в процессе: 40-30 (UAT3-01 backend) выполнен и закоммичен; 40-31 (frontend), 40-32 (UAT3-03) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md."
-last_updated: "2026-09-03T15:47:00.000Z"
-last_activity: 2026-09-03 -- Плана 40-30 (HST-01, UAT3-01 backend: cartridges_operation_default_place на обоих транспортах) выполнен, 3/3 задачи, полный пакет trackly-app 866 passed / 0 failed
+status: "Гап-клозур раунд 3 в процессе. 40-30 закрывает backend-часть UAT3-01 (дефолт места для диалогов заправки картриджа). 40-31 (frontend OperationModal.svelte) и 40-32 (UAT3-03, place-tree subtree-stats) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md."
+last_updated: "2026-09-04T05:09:41.527Z"
+last_activity: 2026-09-03 -- План 40-30 выполнен (HST-01, UAT3-01 backend), 3/3 задачи, полный пакет trackly-app 866 passed / 0 failed
 progress:
   total_phases: 9
   completed_phases: 3
