@@ -187,13 +187,29 @@
   // hot re-open after prior submits is broken" symptom exactly, with no
   // timing/race component at all. Fixed at the source below (install-effect
   // now scoped to `op === 'install'`), not here.
+  //
+  // Plan 40-35 (UAT4-02/UAT4-03) SPLIT this single combined effect into two,
+  // one per op, because the backend contract diverged: 40-33 removed the
+  // `to_refill` branch from `operation_default_place` entirely (it now
+  // returns AppError::Validation) and replaced it with a purpose-built
+  // endpoint, `toRefillLastSend()`, that answers all THREE fields («Кто
+  // выдал»/«Кому выдал»/«Место») from a single audit_log row (the most
+  // recent «Отправка на заправку» of any cartridge — user decision
+  // 2026-09-04, 40-HUMAN-UAT.md UAT4-02: "от предыдущей отправки", not
+  // "самое частое"). The DEC-B cleanup in the install-printer-place effect
+  // below still does not interact with either of these two effects — its
+  // gate (`op === 'install'`) excludes both `to_refill` and `from_refill`
+  // unchanged since the round-3 fix; nothing about the split changes that.
+  //
+  // (a) from_refill — unchanged behavior, only the call signature narrowed
+  // (no `op` argument — the wrapper always sends 'from_refill' now).
   $effect(() => {
-    if (!(open && (op === 'to_refill' || op === 'from_refill') && effectiveCartridge)) {
+    if (!(open && op === 'from_refill' && effectiveCartridge)) {
       return;
     }
     let cancelled = false;
     cartridges
-      .operationDefaultPlace(op, op === 'from_refill' ? effectiveCartridge.id : null)
+      .operationDefaultPlace(effectiveCartridge.id)
       .then((defaultPlaceId) => {
         if (cancelled) return;
         // WR-01: never clobber a manual selection — only fill while the
@@ -207,6 +223,46 @@
       .catch(() => {
         // Fail-safe: a failed lookup just means no default is shown — the
         // form still works, operator picks the place manually.
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  // (b) to_refill — NEW: all three fields from ONE record (toRefillLastSend,
+  // plan 40-33), not the old place-only aggregate. `cartridgeId` does not
+  // participate — this is a global lookup (the most recent «Отправка на
+  // заправку» of any cartridge in the system), so the call takes no
+  // arguments. Each of the three fields is gated independently at
+  // promise-resolution time (givenByName === '' / givenToName === '' /
+  // placeId === null) — three separate WR-01 guards, not one combined
+  // guard, so a partial manual edit made while the request was still in
+  // flight is respected field-by-field (e.g. the operator already typed
+  // «Кому выдал» before the response arrives — that field is left alone,
+  // the other two still get filled).
+  $effect(() => {
+    if (!(open && op === 'to_refill' && effectiveCartridge)) {
+      return;
+    }
+    let cancelled = false;
+    cartridges
+      .toRefillLastSend()
+      .then((last) => {
+        if (cancelled) return;
+        if (last.given_by_name !== null && givenByName === '') {
+          givenByName = last.given_by_name;
+        }
+        if (last.given_to_name !== null && givenToName === '') {
+          givenToName = last.given_to_name;
+        }
+        if (last.place_id !== null && placeId === null) {
+          placeId = last.place_id;
+          placeAutofilled = true;
+        }
+      })
+      .catch(() => {
+        // Fail-safe: a failed lookup just means no defaults are shown — the
+        // form still works, operator fills all three fields manually.
       });
     return () => {
       cancelled = true;

@@ -17,6 +17,7 @@ import type {
   CartridgeTransitionPayload,
   LowStockItemDto,
   Pagination,
+  ToRefillLastSendDto,
 } from '../../bindings';
 
 export const cartridges = {
@@ -45,11 +46,26 @@ export const cartridges = {
   lowStock: () => apiCall<LowStockItemDto[]>('cartridges_low_stock'),
 
   // Plan 40-31 (UAT3-01 frontend): server-computed place default for the
-  // «Отправка на заправку»/«Получение с заправки» dialogs — mirrors the
-  // Tauri command from plan 40-30. `cartridgeId` is ignored server-side for
-  // `to_refill` (global aggregate) and required for `from_refill`.
-  operationDefaultPlace: (op: 'to_refill' | 'from_refill', cartridgeId: number | null) =>
-    apiCall<number | null>('cartridges_operation_default_place', { op, cartridgeId }),
+  // «Получение с заправки» dialog — mirrors the Tauri command from plan
+  // 40-30. Narrowed by plan 40-35 (UAT4-02/UAT4-03): `op` is always
+  // 'from_refill' now — plan 40-33 removed the backend's 'to_refill'
+  // branch entirely (it now falls into AppError::Validation), because that
+  // question is answered by the purpose-built `toRefillLastSend()` below
+  // instead. `cartridgeId` is required (not nullable) — `from_refill` is
+  // only ever opened with an effective cartridge.
+  operationDefaultPlace: (cartridgeId: number) =>
+    apiCall<number | null>('cartridges_operation_default_place', {
+      op: 'from_refill',
+      cartridgeId,
+    }),
+
+  // Plan 40-35 (UAT4-02/UAT4-03): the single most recent «Отправка на
+  // заправку» record in the whole system (any cartridge) — feeds all three
+  // fields («Кто выдал», «Кому выдал», «Место») of the «Отправка на
+  // заправку» dialog from ONE record, per user decision 2026-09-04
+  // (40-HUMAN-UAT.md, UAT4-02: "от предыдущей отправки", not "самое
+  // частое"). No arguments — mirrors lowStock()'s shape.
+  toRefillLastSend: () => apiCall<ToRefillLastSendDto>('cartridges_to_refill_last_send'),
 
   // Models CRUD
   modelsList: () => apiCall<CartridgeModelDto[]>('cartridge_models_list'),
