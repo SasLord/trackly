@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: "Гап-клозур раунд 4 в процессе. 40-33 (UAT4-02/UAT4-03 backend) и 40-34 (UAT4-01, given_to_name_arm) выполнены. 40-31/40-32 (раунд 3, frontend/place-tree) и 40-35 (frontend подключение latest_to_refill_send) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md."
-last_updated: "2026-09-04T11:42:06.351Z"
-last_activity: 2026-09-04 -- План 40-34 выполнен (HST-01, UAT4-01 given_to_name_arm), 2/2 задачи, полный пакет trackly-app 107 test-групп / 0 провалов
+status: executing
+last_updated: "2026-09-04T12:03:46.827Z"
+last_activity: 2026-09-04
 progress:
   total_phases: 9
   completed_phases: 3
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40 (movement-history) — 32/35 plans executed (gap-closure round 4: 40-33/40-34 done; round 3: 40-31/40-32 pending; 40-35 pending)
-Plan: 34 of 35 — 40-34 executed (раунд 4: UAT4-01, given_to_name_arm в suggest_person); осталcя 40-35
-Status: Гап-клозур раунд 4 в процессе. 40-33 закрывает backend-часть UAT4-02/UAT4-03 (latest_to_refill_send). 40-34 закрывает UAT4-01 (автокомплит «Кому выдал» видит историю заправок). 40-31/40-32 (раунд 3, frontend OperationModal.svelte / place-tree subtree-stats) и 40-35 (frontend подключение latest_to_refill_send) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md.
-Last activity: 2026-09-04 -- План 40-34 выполнен (HST-01, UAT4-01 given_to_name_arm), 2/2 задачи, полный пакет trackly-app 107 test-групп / 0 провалов
+Phase: 40 (movement-history) — 33/35 plans executed (gap-closure round 4: 40-33/40-34/40-35 done; round 3: 40-31/40-32 pending)
+Plan: 35 of 35 — 40-35 executed (раунд 4: UAT4-02/UAT4-03 frontend, toRefillLastSend в OperationModal.svelte), checkpoint подтверждён живой проверкой
+Status: Гап-клозур раунд 4 завершён (40-33/40-34/40-35). 40-31/40-32 (раунд 3, frontend OperationModal.svelte / place-tree subtree-stats) остаются pending — проверить их фактический статус перед закрытием фазы. См. 40-HUMAN-UAT.md.
+Last activity: 2026-09-04 -- План 40-35 выполнен (HST-01, UAT4-02/UAT4-03 frontend), 2/2 задачи (Task 1 код + Task 2 checkpoint подтверждён живой проверкой независимым агентом)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -374,6 +374,7 @@ Last activity: 2026-09-04 -- План 40-34 выполнен (HST-01, UAT4-01 gi
 | Phase 40 P29 | 70min | 3 tasks | 10 files |
 | Phase 40 P30 | ~40min | 3 tasks | 7 files |
 | Phase 40 P34 | 20min | 2 tasks | 2 files |
+| Phase 40 P35 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -935,6 +936,7 @@ Recent decisions affecting current work:
 - [Phase 40]: WR-10: resolve_movement_act_number вынесен в общий act_number_display.rs — таймлайн и отчёт «Перемещения» теперь показывают один и тот же канонический номер акта ("20в", не голое "20")
 - [Phase 40]: Deadlock regression-тесты на ReaderPool: #[tokio::test]+tokio::time::timeout НЕ защищает прогон (Runtime::drop блокируется на утёкшей spawn_blocking-задаче) — использовать std::thread + собственный Runtime + mpsc::recv_timeout
 - [Phase 40]: given_to_name_arm симметрична given_by_name_arm в suggest_person; action-фильтр install/to_refill не расширен на GAP-12-12 auto-return (UAT4-01, план 40-34)
+- [Phase 40]: 40-35: operationDefaultPlace сужен до единственного потребителя from_refill (cartridgeId: number, op больше не параметр); toRefillLastSend() подставляет все три поля диалога «Отправка на заправку» из одной записи
 
 ### Pending Todos
 
@@ -1123,9 +1125,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-04T11:42:06.341Z
-Stopped at: Completed 40-34-PLAN.md
-Resume file: .planning/phases/40-movement-history/40-31-PLAN.md
+Last session: 2026-09-04T12:03:46.817Z
+Stopped at: Completed 40-35-PLAN.md (checkpoint подтверждён живой проверкой)
+Resume file: None
 
 None
 
