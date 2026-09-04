@@ -315,6 +315,142 @@ async fn override_number_already_exists_returns_conflict() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 3b: deleted act's number is free to reuse via number_override
+// (260904-x7s)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn override_number_reuses_deleted_act_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 2).await;
+
+        let p1 = ActCreateDto {
+            number_override: Some(20),
+            giver_name: "А".into(),
+            receiver_name: "Б".into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: ids[0],
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let act1 = svc
+            .create(&Identity::trusted_admin(), p1)
+            .await
+            .expect("create act #20");
+
+        svc.delete_soft(act1.id, act1.version)
+            .await
+            .expect("soft-delete act #20");
+
+        let p2 = ActCreateDto {
+            number_override: Some(20),
+            giver_name: "В".into(),
+            receiver_name: "Г".into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: ids[1],
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let act2 = svc
+            .create(&Identity::trusted_admin(), p2)
+            .await
+            .expect("reuse freed number 20");
+        assert_eq!(act2.number_raw, 20);
+    })
+    .await
+    .expect("reuse-number budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 3c: peek_next_number frees the number of the last-deleted act
+// (260904-x7s)
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn peek_next_number_frees_on_delete_of_last_act() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+
+        assert_eq!(
+            svc.peek_next_number().await.expect("peek empty"),
+            1,
+            "empty table → next number is 1"
+        );
+
+        let ids = seed_devices(&svc.writer, 2).await;
+
+        let p1 = ActCreateDto {
+            number_override: None,
+            giver_name: "А".into(),
+            receiver_name: "Б".into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: ids[0],
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let act1 = svc
+            .create(&Identity::trusted_admin(), p1)
+            .await
+            .expect("create act 1");
+        assert_eq!(act1.number_raw, 1);
+
+        let p2 = ActCreateDto {
+            number_override: None,
+            giver_name: "В".into(),
+            receiver_name: "Г".into(),
+            place_id: None,
+            notes: None,
+            deadline_utc: None,
+            handover_date_utc: None,
+            items: vec![ActItemNewDto {
+                device_id: ids[1],
+                device_ids: Vec::new(),
+                quantity: 1,
+            }],
+        };
+        let act2 = svc
+            .create(&Identity::trusted_admin(), p2)
+            .await
+            .expect("create act 2");
+        assert_eq!(act2.number_raw, 2);
+
+        assert_eq!(
+            svc.peek_next_number().await.expect("peek after two"),
+            3,
+            "next number after 2 live acts is 3"
+        );
+
+        svc.delete_soft(act2.id, act2.version)
+            .await
+            .expect("soft-delete act 2");
+
+        assert_eq!(
+            svc.peek_next_number().await.expect("peek after delete"),
+            2,
+            "deleting the last (highest) act number frees it for the hint"
+        );
+    })
+    .await
+    .expect("peek-frees budget");
+}
+
+// ---------------------------------------------------------------------------
 // Test 4: rollback on invalid device id (counter stays put, no orphans)
 // ---------------------------------------------------------------------------
 

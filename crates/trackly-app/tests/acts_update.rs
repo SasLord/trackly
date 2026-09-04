@@ -844,6 +844,77 @@ async fn number_change_rejects_duplicate() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 9b (260904-x7s): update_number_reuses_deleted_act_number — a deleted
+// act's number is free to reuse via update (rename), not just via create.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_number_reuses_deleted_act_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let device_ids_a = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let device_ids_b = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+
+        let act_a = svc
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: Some(9010),
+                    giver_name: "А".into(),
+                    receiver_name: "Б".into(),
+                    place_id: Some(loc_a),
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: device_ids_a[0],
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
+            .await
+            .expect("create act A #9010");
+
+        svc.delete_soft(act_a.id, act_a.version)
+            .await
+            .expect("soft-delete act A #9010");
+
+        let act_b = svc
+            .create(
+                &Identity::trusted_admin(),
+                ActCreateDto {
+                    number_override: Some(9011),
+                    giver_name: "В".into(),
+                    receiver_name: "Г".into(),
+                    place_id: Some(loc_a),
+                    notes: None,
+                    deadline_utc: None,
+                    handover_date_utc: None,
+                    items: vec![ActItemNewDto {
+                        device_id: device_ids_b[0],
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    }],
+                },
+            )
+            .await
+            .expect("create act B #9011");
+
+        let mut update = update_dto_from(&act_b, &device_ids_b);
+        update.number_override = Some(9010);
+        let updated = svc
+            .update(&Identity::trusted_admin(), update)
+            .await
+            .expect("rename to freed number 9010");
+        assert_eq!(updated.number_raw, 9010);
+    })
+    .await
+    .expect("update_number_reuses_deleted_act_number budget");
+}
+
+// ---------------------------------------------------------------------------
 // Test 10 (CR-01 gap closure): remove_last_outstanding_archives_act
 // ---------------------------------------------------------------------------
 //
