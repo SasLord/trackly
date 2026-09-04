@@ -30,7 +30,7 @@ use crate::repos::places_sqlite::SqlitePlaceRepository;
 /// Единственный источник литерала `note`, которым `transition_in_tx` помечает
 /// движение «отправлено на заправку» (Plan 40-30, HST-01). Используется и на
 /// записи (арм `CartridgeTransitionOp::ToRefill` ниже), и на чтении
-/// (`most_common_to_refill_destination`, `place_before_last_to_refill`) —
+/// (`latest_to_refill_send`, `place_before_last_to_refill`) —
 /// рассинхронизация строки между write- и read-путём структурно невозможна.
 pub(crate) const TO_REFILL_MOVEMENT_NOTE: &str = "автоматически при отправке на заправку";
 
@@ -51,6 +51,19 @@ pub struct AuditEntryRow {
     pub after_json: Option<String>,
     pub payload_json: Option<String>,
     pub created_at_utc: i64,
+}
+
+/// Данные ОДНОЙ, самой свежей отправки на заправку ЛЮБОГО картриджа
+/// (Plan 40-33, HST-01) — результат `latest_to_refill_send`. `from_place_id`
+/// — место-источник (откуда картридж отправили), `to_place_id` — место
+/// назначения (куда его отправили). Оба поля `None`, если соответствующее
+/// место с тех пор архивировано/удалено; имена при этом остаются `Some`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LatestToRefillSend {
+    pub given_by_name: Option<String>,
+    pub given_to_name: Option<String>,
+    pub from_place_id: Option<i64>,
+    pub to_place_id: Option<i64>,
 }
 
 /// SELECT with the column order expected by `map_row`.
@@ -1005,33 +1018,6 @@ impl SqliteCartridgeRepository {
         .map_err(map_rusqlite)
     }
 
-    /// Дефолт места для диалога «Отправка на заправку» (Plan 40-30, HST-01,
-    /// UAT3-01) — самое частое историческое место назначения ВСЕХ движений
-    /// картриджей, помеченных `TO_REFILL_MOVEMENT_NOTE`, по ВСЕЙ истории (без
-    /// окна времени, без разбивки по пользователю/модели — пользовательское
-    /// решение, `40-HUMAN-UAT.md`). Детерминированный tie-break: при равной
-    /// частоте побеждает меньший `to_place_id` — так тесты не зависят от
-    /// порядка, "как повезёт" `GROUP BY`. `is_storage` места здесь не имеет
-    /// значения (в отличие от `last_known_storage_place_in_tx`) — цель чисто
-    /// "куда чаще всего отправляли", без ограничения на тип места.
-    pub fn most_common_to_refill_destination(
-        &self,
-        conn: &Connection,
-    ) -> Result<Option<i64>, AppError> {
-        conn.query_row(
-            "SELECT pm.to_place_id FROM place_movements pm \
-             JOIN places p ON p.id = pm.to_place_id \
-                 AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL \
-             WHERE pm.entity_type = 'cartridge' AND pm.note = ?1 \
-             GROUP BY pm.to_place_id \
-             ORDER BY COUNT(*) DESC, pm.to_place_id ASC LIMIT 1",
-            params![TO_REFILL_MOVEMENT_NOTE],
-            |r| r.get(0),
-        )
-        .optional()
-        .map_err(map_rusqlite)
-    }
-
     /// Дефолт места для диалога «Получение с заправки» (UAT3-01a,
     /// gap-closure round 3) — место, где картридж находился ДО отправки на
     /// заправку, а НЕ «последнее известное складское место».
@@ -1074,6 +1060,57 @@ impl SqliteCartridgeRepository {
              ORDER BY pm.created_at_utc DESC, pm.id DESC LIMIT 1",
             params![cartridge_id, TO_REFILL_MOVEMENT_NOTE],
             |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
+    /// Данные ОДНОЙ, самой свежей отправки на заправку ЛЮБОГО картриджа
+    /// (Plan 40-33, HST-01, UAT4-02/UAT4-03) — единственный владелец вопроса
+    /// «место для отправки на заправку», заменяет удалённый
+    /// `most_common_to_refill_destination` («самое частое» → «самое свежее»,
+    /// решение пользователя от 2026-09-04).
+    ///
+    /// Источник — `audit_log`, НЕ `place_movements` (в отличие от
+    /// `place_before_last_to_refill`), потому что `given_by_name`/
+    /// `given_to_name` физически существуют только в
+    /// `audit_log.payload_json` — их негде взять из `place_movements`.
+    /// `before_json`/`payload_json` ОДНОЙ строки `audit_log` уже содержат
+    /// оба `place_id` (источник в `before_json.place_id`, назначение в
+    /// `payload_json.place_id`) для ТОЙ ЖЕ транзакции ToRefill — поэтому не
+    /// нужен join с `place_movements` по временной метке, который был бы
+    /// хрупким при двух отправках в одну секунду.
+    ///
+    /// Место-подзапросы возвращают `NULL`, если место с тех пор
+    /// архивировано/удалено (мягкая деградация ТОЛЬКО для конкретного
+    /// места — имена остаются валидными, даже если место с тех пор
+    /// архивировали).
+    pub fn latest_to_refill_send(
+        &self,
+        conn: &Connection,
+    ) -> Result<Option<LatestToRefillSend>, AppError> {
+        conn.query_row(
+            "SELECT \
+                 json_extract(payload_json, '$.given_by_name'), \
+                 json_extract(payload_json, '$.given_to_name'), \
+                 (SELECT p.id FROM places p \
+                    WHERE p.id = json_extract(before_json, '$.place_id') \
+                      AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL), \
+                 (SELECT p.id FROM places p \
+                    WHERE p.id = json_extract(payload_json, '$.place_id') \
+                      AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL) \
+             FROM audit_log \
+             WHERE entity_type = 'cartridge' AND action = 'custom:to_refill' \
+             ORDER BY created_at_utc DESC, id DESC LIMIT 1",
+            params![],
+            |r| {
+                Ok(LatestToRefillSend {
+                    given_by_name: r.get(0)?,
+                    given_to_name: r.get(1)?,
+                    from_place_id: r.get(2)?,
+                    to_place_id: r.get(3)?,
+                })
+            },
         )
         .optional()
         .map_err(map_rusqlite)
@@ -2869,7 +2906,8 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Plan 40-30 (HST-01, UAT3-01): last_known_storage_place_in_tx widened to
-    // &Connection + most_common_to_refill_destination.
+    // &Connection. Plan 40-33 (HST-01, UAT4-02/UAT4-03): latest_to_refill_send
+    // (audit_log-based) replaces most_common_to_refill_destination.
     // -----------------------------------------------------------------------
 
     /// Сид места (places) с явным `is_storage` — вариант `seed_place()` выше,
@@ -2886,7 +2924,8 @@ mod tests {
     }
 
     /// Сид архивного склада — `archived_at_utc` установлен, для тестов
-    /// исключения архивных мест из `most_common_to_refill_destination`.
+    /// исключения архивных мест (использует `latest_to_refill_send` и
+    /// `place_before_last_to_refill`).
     fn seed_archived_storage_place(conn: &mut Connection, name: &str) -> i64 {
         let now = 1_700_000_000_i64;
         conn.execute(
@@ -2898,10 +2937,10 @@ mod tests {
         conn.last_insert_rowid()
     }
 
-    /// Сеет строку `place_movements` напрямую (тестируется ТОЛЬКО SQL-агрегат
-    /// `most_common_to_refill_destination`, не write-путь — write-путь через
-    /// реальный `CartridgeService` проверяется интеграционными тестами Task 3
-    /// плана 40-30 в `crates/trackly-app/tests/cartridges_lifecycle.rs`).
+    /// Сеет строку `place_movements` напрямую (используется
+    /// `place_before_last_to_refill`-тестами; не write-путь — write-путь через
+    /// реальный `CartridgeService` проверяется интеграционными тестами
+    /// `cartridges_lifecycle.rs`).
     #[allow(clippy::too_many_arguments)]
     fn seed_cartridge_movement(
         conn: &mut Connection,
@@ -2957,139 +2996,165 @@ mod tests {
         );
     }
 
+    /// Сеет строку `audit_log` напрямую для `custom:to_refill` (тестируется
+    /// ТОЛЬКО SQL-агрегат `latest_to_refill_send`, не write-путь — write-путь
+    /// через реальный `CartridgeService` проверяется интеграционными тестами
+    /// Task 3 плана 40-33 в `crates/trackly-app/tests/cartridges_lifecycle.rs`).
+    /// `before_json`/`payload_json` зеркалят реальную форму
+    /// `op_payload_json`/`transition_in_tx` буквально (ключи `place_id`,
+    /// `given_by_name`, `given_to_name`).
+    #[allow(clippy::too_many_arguments)]
+    fn seed_to_refill_audit_row(
+        conn: &mut Connection,
+        action: &str,
+        from_place_id: i64,
+        to_place_id: i64,
+        given_by_name: &str,
+        given_to_name: &str,
+        created_at_utc: i64,
+    ) {
+        let before_json = json!({ "place_id": from_place_id }).to_string();
+        let payload_json = json!({
+            "op": "to_refill",
+            "given_by_name": given_by_name,
+            "given_to_name": given_to_name,
+            "place_id": to_place_id,
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO audit_log \
+             (entity_type, entity_id, action, before_json, payload_json, created_at_utc) \
+             VALUES ('cartridge', 1, ?1, ?2, ?3, ?4)",
+            params![action, before_json, payload_json, created_at_utc],
+        )
+        .expect("seed audit_log row");
+    }
+
     #[test]
-    fn most_common_to_refill_destination_none_when_no_history() {
+    fn latest_to_refill_send_none_when_no_history() {
         let (conn, _g) = fresh_conn();
         let repo = SqliteCartridgeRepository;
-        let result = repo
-            .most_common_to_refill_destination(&conn)
-            .expect("query ok");
-        assert_eq!(result, None, "no place_movements rows -> None");
+        let result = repo.latest_to_refill_send(&conn).expect("query ok");
+        assert_eq!(result, None, "no audit_log rows -> None");
     }
 
     #[test]
-    fn most_common_to_refill_destination_picks_most_frequent() {
+    fn latest_to_refill_send_picks_most_recent_not_most_frequent() {
         let (mut conn, _g) = fresh_conn();
         let place_a = seed_place_with_storage(&mut conn, "A", 1);
         let place_b = seed_place_with_storage(&mut conn, "B", 1);
         let source = seed_place_with_storage(&mut conn, "Источник", 0);
 
-        // A: two ToRefill movements, B: one.
-        seed_cartridge_movement(
+        // Row 1 (older): destination B.
+        seed_to_refill_audit_row(
             &mut conn,
-            1,
-            source,
-            place_a,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_001,
-        );
-        seed_cartridge_movement(
-            &mut conn,
-            2,
-            source,
-            place_a,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_002,
-        );
-        seed_cartridge_movement(
-            &mut conn,
-            3,
+            "custom:to_refill",
             source,
             place_b,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_003,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+        // Row 2 (newer): destination A.
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            source,
+            place_a,
+            "Сидоров С.С.",
+            "Кузнецов К.К.",
+            1_700_000_002,
         );
 
         let repo = SqliteCartridgeRepository;
         let result = repo
-            .most_common_to_refill_destination(&conn)
-            .expect("query ok");
+            .latest_to_refill_send(&conn)
+            .expect("query ok")
+            .expect("row present");
         assert_eq!(
-            result,
+            result.to_place_id,
             Some(place_a),
-            "A has 2 movements vs B's 1 -> A wins"
+            "the MORE RECENT row wins, not the more frequent/first one"
         );
     }
 
     #[test]
-    fn most_common_to_refill_destination_excludes_archived_place() {
+    fn latest_to_refill_send_includes_given_by_and_given_to_names() {
+        let (mut conn, _g) = fresh_conn();
+        let place_a = seed_place_with_storage(&mut conn, "A", 1);
+        let source = seed_place_with_storage(&mut conn, "Источник", 0);
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            source,
+            place_a,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        let result = repo
+            .latest_to_refill_send(&conn)
+            .expect("query ok")
+            .expect("row present");
+        assert_eq!(result.given_by_name.as_deref(), Some("Иванов И.И."));
+        assert_eq!(result.given_to_name.as_deref(), Some("Петров П.П."));
+    }
+
+    #[test]
+    fn latest_to_refill_send_ignores_non_to_refill_actions() {
+        let (mut conn, _g) = fresh_conn();
+        let place_a = seed_place_with_storage(&mut conn, "A", 1);
+        let source = seed_place_with_storage(&mut conn, "Источник", 0);
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:install",
+            source,
+            place_a,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        let result = repo.latest_to_refill_send(&conn).expect("query ok");
+        assert_eq!(
+            result, None,
+            "non-'custom:to_refill' audit actions must not match"
+        );
+    }
+
+    #[test]
+    fn latest_to_refill_send_nulls_out_archived_destination_place_but_keeps_names() {
         let (mut conn, _g) = fresh_conn();
         let archived = seed_archived_storage_place(&mut conn, "Архивный склад");
-        let active = seed_place_with_storage(&mut conn, "Активный склад", 1);
         let source = seed_place_with_storage(&mut conn, "Источник", 0);
-
-        // Archived place has MORE movements but must be excluded.
-        seed_cartridge_movement(
+        seed_to_refill_audit_row(
             &mut conn,
-            1,
+            "custom:to_refill",
             source,
             archived,
-            TO_REFILL_MOVEMENT_NOTE,
+            "Иванов И.И.",
+            "Петров П.П.",
             1_700_000_001,
-        );
-        seed_cartridge_movement(
-            &mut conn,
-            2,
-            source,
-            archived,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_002,
-        );
-        seed_cartridge_movement(
-            &mut conn,
-            3,
-            source,
-            active,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_003,
         );
 
         let repo = SqliteCartridgeRepository;
         let result = repo
-            .most_common_to_refill_destination(&conn)
-            .expect("query ok");
+            .latest_to_refill_send(&conn)
+            .expect("query ok")
+            .expect("row present");
         assert_eq!(
-            result,
-            Some(active),
-            "archived place excluded despite higher frequency -> next most frequent active place wins"
+            result.to_place_id, None,
+            "archived destination place must resolve to None"
         );
-    }
-
-    #[test]
-    fn most_common_to_refill_destination_tie_break_picks_smaller_id() {
-        let (mut conn, _g) = fresh_conn();
-        let place_a = seed_place_with_storage(&mut conn, "A", 1);
-        let place_b = seed_place_with_storage(&mut conn, "B", 1);
-        let source = seed_place_with_storage(&mut conn, "Источник", 0);
-        assert!(place_a < place_b, "seed order guarantees A's id is smaller");
-
-        // Exactly one movement each -> tie on frequency.
-        seed_cartridge_movement(
-            &mut conn,
-            1,
-            source,
-            place_b,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_001,
-        );
-        seed_cartridge_movement(
-            &mut conn,
-            2,
-            source,
-            place_a,
-            TO_REFILL_MOVEMENT_NOTE,
-            1_700_000_002,
-        );
-
-        let repo = SqliteCartridgeRepository;
-        let result = repo
-            .most_common_to_refill_destination(&conn)
-            .expect("query ok");
         assert_eq!(
-            result,
-            Some(place_a),
-            "tie on frequency -> deterministic tie-break picks smaller to_place_id"
+            result.given_by_name.as_deref(),
+            Some("Иванов И.И."),
+            "names remain valid even though the destination place was archived since"
         );
+        assert_eq!(result.given_to_name.as_deref(), Some("Петров П.П."));
     }
 
     /// UAT3-01a (gap-closure round 3): SQL-level regression for the same
