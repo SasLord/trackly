@@ -14,6 +14,7 @@ use std::time::Duration;
 use rusqlite::params;
 use serde_json::Value;
 use trackly_core::auth::{Identity, Role};
+use trackly_core::error::AppError;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -1973,20 +1974,66 @@ async fn operation_default_place_from_refill_prefers_pre_refill_place_when_refil
     )
 }
 
-/// `to_refill` дефолт через реальный поток `CartridgeService` — без ручного
-/// посева `place_movements`. Два картриджа отправлены на заправку с целевым
-/// местом B, третий — с целевым местом C; самое частое место (B, 2>1)
-/// должно победить.
+/// Plan 40-33 (HST-01, UAT4-02): регрессионная защита решения удалить ветку
+/// `"to_refill"` из `operation_default_place`. Вопрос «место для отправки на
+/// заправку» теперь отвечает `to_refill_last_send()` (новый эндпоинт,
+/// правило «от последней отправки», не «самое частое»). Если ветку случайно
+/// вернут, этот тест начнёт падать вместо молчаливого пропуска.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn operation_default_place_to_refill_resolves_via_real_service_flow() {
+async fn operation_default_place_to_refill_now_returns_validation_error() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+
+        let result = svc.operation_default_place("to_refill", None).await;
+        assert!(
+            matches!(result, Err(AppError::Validation { .. })),
+            "\"to_refill\" больше не обслуживается operation_default_place (Plan 40-33) — \
+             ожидалась AppError::Validation, получено: {result:?}"
+        );
+    })
+    .await
+    .expect("operation_default_place_to_refill_now_returns_validation_error budget")
+}
+
+// ---------------------------------------------------------------------------
+// to_refill_last_send / from_refill global fallback — Plan 40-33 (HST-01,
+// UAT4-02, UAT4-03)
+// ---------------------------------------------------------------------------
+
+/// Пустая история — все три поля `None`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn to_refill_last_send_empty_when_no_history() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+
+        let dto = svc
+            .to_refill_last_send()
+            .await
+            .expect("to_refill_last_send");
+        assert_eq!(dto.given_by_name, None);
+        assert_eq!(dto.given_to_name, None);
+        assert_eq!(dto.place_id, None);
+    })
+    .await
+    .expect("to_refill_last_send_empty_when_no_history budget")
+}
+
+/// UAT4-02: правило «от последней отправки», а не «самое частое» — прямая
+/// регрессионная защита именно правила раунда 4, отличающегося от правила
+/// раунда 3 (со старым «самое частое» победило бы место B, у него 2 отправки
+/// против 1 у A). Три картриджа: два отправлены В БОЛЕЕ РАННИЕ моменты
+/// времени в место B, третий — ПОСЛЕДНИМ по времени в место A.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn to_refill_last_send_returns_latest_not_most_frequent() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_cartridge_service();
         let model_id = seed_model(&svc).await;
         let place_source = seed_storage_place(&svc, "Склад источник").await;
+        let place_a = seed_place(&svc, "Заправка А").await;
         let place_b = seed_place(&svc, "Заправка Б").await;
-        let place_c = seed_place(&svc, "Заправка В").await;
 
-        for target in [place_b, place_b, place_c] {
+        // Two earlier sends to B.
+        for _ in 0..2 {
             let cart = svc
                 .create(CartridgeCreateDto {
                     model_id,
@@ -1997,32 +2044,244 @@ async fn operation_default_place_to_refill_resolves_via_real_service_flow() {
                 })
                 .await
                 .expect("create cartridge at source storage");
-
             svc.transition(
                 &admin_caller(),
                 CartridgeTransitionPayload::ToRefill {
                     cartridge_id: cart.id,
                     version: cart.version,
                     date_utc: 1_700_000_000,
-                    given_by_name: "Иванов".into(),
-                    given_to_name: "Петров".into(),
-                    place_id: Some(target),
+                    given_by_name: "Иванов И.И.".into(),
+                    given_to_name: "Петров П.П.".into(),
+                    place_id: Some(place_b),
                 },
             )
             .await
-            .expect("transition to_refill");
+            .expect("transition to_refill to B");
         }
 
-        let default_place = svc
-            .operation_default_place("to_refill", None)
+        // Third, LATEST call sends to A.
+        let cart_last = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_source),
+                notes: None,
+            })
             .await
-            .expect("operation_default_place to_refill");
+            .expect("create cartridge at source storage");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_last.id,
+                version: cart_last.version,
+                date_utc: 1_700_000_001,
+                given_by_name: "Сидоров С.С.".into(),
+                given_to_name: "Кузнецов К.К.".into(),
+                place_id: Some(place_a),
+            },
+        )
+        .await
+        .expect("transition to_refill to A");
+
+        let dto = svc
+            .to_refill_last_send()
+            .await
+            .expect("to_refill_last_send");
         assert_eq!(
-            default_place,
-            Some(place_b),
-            "B получил 2 отправки против 1 у C — B должен победить"
+            dto.place_id,
+            Some(place_a),
+            "самая свежая отправка (в A) должна победить, несмотря на то что B получил 2 \
+             отправки против 1 у A"
         );
     })
     .await
-    .expect("operation_default_place_to_refill_resolves_via_real_service_flow budget")
+    .expect("to_refill_last_send_returns_latest_not_most_frequent budget")
+}
+
+/// Одна ToRefill-транзакция с именами — оба поля результата совпадают
+/// буквально.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn to_refill_last_send_includes_given_by_and_given_to_names() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_source = seed_storage_place(&svc, "Склад источник").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        let cart = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_source),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge at source storage");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart.id,
+                version: cart.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов И.И.".into(),
+                given_to_name: "Петров П.П.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition to_refill");
+
+        let dto = svc
+            .to_refill_last_send()
+            .await
+            .expect("to_refill_last_send");
+        assert_eq!(dto.given_by_name.as_deref(), Some("Иванов И.И."));
+        assert_eq!(dto.given_to_name.as_deref(), Some("Петров П.П."));
+        assert_eq!(dto.place_id, Some(refill_place));
+    })
+    .await
+    .expect("to_refill_last_send_includes_given_by_and_given_to_names budget")
+}
+
+/// UAT4-03: картридж C создан и НИКОГДА не отправлялся на заправку (нет
+/// своей истории ToRefill), но ДРУГОЙ картридж D недавно отправлен на
+/// заправку с места A — `operation_default_place("from_refill", Some(C))`
+/// должен вернуть A (глобальный fallback — шаг 2 цепочки).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_falls_back_to_latest_send_of_any_cartridge_when_own_history_absent(
+) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        // D: created at storage A, sent to refill — establishes the global
+        // "latest send" record with from_place_id == A.
+        let cart_d = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge D at storage A");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_d.id,
+                version: cart_d.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов И.И.".into(),
+                given_to_name: "Петров П.П.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition D to_refill");
+
+        // C: never sent to refill — no own ToRefill history.
+        let cart_c = create_stock_cartridge(&svc, model_id).await;
+
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart_c.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_a),
+            "у C нет собственной истории ToRefill — дефолт должен взять место-источник \
+             последней отправки ЛЮБОГО картриджа (D, место A)"
+        );
+    })
+    .await
+    .expect(
+        "operation_default_place_from_refill_falls_back_to_latest_send_of_any_cartridge_when_own_history_absent budget",
+    )
+}
+
+/// UAT4-03: картридж C имеет СОБСТВЕННУЮ историю ToRefill из места X (более
+/// раннее время), картридж D отправлен на заправку ПОЗЖЕ из места Y (более
+/// свежая ГЛОБАЛЬНАЯ запись). Собственная история C побеждает глобальный
+/// fallback — короткое замыкание, не сравнение времени между C и D: шаг 1
+/// использует ТОЛЬКО картридж C, шаг 2 не вызывается вовсе, если шаг 1
+/// успешен.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_prefers_own_history_over_global_fallback() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_x = seed_storage_place(&svc, "Склад X").await;
+        let place_y = seed_storage_place(&svc, "Склад Y").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        // C: sent to refill FIRST, from X.
+        let cart_c = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_x),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge C at storage X");
+        let cart_c_after = svc
+            .transition(
+                &admin_caller(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart_c.id,
+                    version: cart_c.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Иванов И.И.".into(),
+                    given_to_name: "Петров П.П.".into(),
+                    place_id: Some(refill_place),
+                },
+            )
+            .await
+            .expect("transition C to_refill");
+        assert_eq!(cart_c_after.place_id, Some(refill_place));
+
+        // D: sent to refill LATER (more recent global record), from Y.
+        let cart_d = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_y),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge D at storage Y");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_d.id,
+                version: cart_d.version,
+                date_utc: 1_700_000_001,
+                given_by_name: "Сидоров С.С.".into(),
+                given_to_name: "Кузнецов К.К.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition D to_refill");
+
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart_c.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_x),
+            "собственная история C (X) должна победить более свежую глобальную запись (Y от D) \
+             — это короткое замыкание, не сравнение времени"
+        );
+    })
+    .await
+    .expect("operation_default_place_from_refill_prefers_own_history_over_global_fallback budget")
 }

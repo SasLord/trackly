@@ -490,9 +490,13 @@ async fn role_endpoint_matrix_test() {
         });
 
         // Case 60/61 (Plan 40-30, HST-01): cartridges_operation_default_place —
-        // OperationDefaultPlacePayload (camelCase rename_all).
+        // OperationDefaultPlacePayload (camelCase rename_all). Plan 40-33: op is
+        // now "from_refill" — "to_refill" is no longer served by this endpoint
+        // (superseded by cartridges_to_refill_last_send, UAT4-02). Authorization
+        // is checked BEFORE op/cartridge_id validation, so the 403/not-403
+        // asymmetry does not depend on payload validity.
         let operation_default_place_payload = json!({
-            "op": "to_refill",
+            "op": "from_refill",
             "cartridgeId": null
         });
 
@@ -2379,6 +2383,43 @@ async fn role_endpoint_matrix_test() {
             assert!(
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
                 "Case 61: Manager → cartridges_operation_default_place → expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 62: Employee session → POST /api/v1/cartridges_to_refill_last_send
+        // → 403 Forbidden (Plan 40-33, HST-01, UAT4-02)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_to_refill_last_send",
+                json!({}),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 62: Employee → cartridges_to_refill_last_send → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 63: Manager session → POST /api/v1/cartridges_to_refill_last_send
+        // → not 401/403 (200)
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/cartridges_to_refill_last_send",
+                json!({}),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 63: Manager → cartridges_to_refill_last_send → expected not 401/403, got {status}"
             );
         }
 
