@@ -664,3 +664,142 @@ async fn suggest_person_given_by_name_does_not_leak_into_receiver_field() {
     .await
     .expect("budget");
 }
+
+// ---------------------------------------------------------------------------
+// UAT4-01 (Plan 40-34): suggest_person must also source `given_to_name`
+// ("Кому выдал") from audit_log.payload_json for cartridge install/to_refill
+// operations — symmetric to `given_by_name_arm` above (GAP-12-06). Without
+// this arm, a person entered as "Кому выдал" when sending a cartridge to
+// refill vanished from suggestions the moment cartridges.holder_name of the
+// SAME cartridge was overwritten by a later operation — holder_name only
+// ever reflects the CURRENT value, not history.
+//
+// `seed_audit_log_given_by_name` (above) is reused unmodified — its fixed
+// payload_json literal already carries `given_to_name: "Кому Выдал"`
+// alongside `given_by_name`, which is exactly what these tests assert on.
+// ---------------------------------------------------------------------------
+
+/// Test 15 (UAT4-01): `custom:install` audit row's `given_to_name` surfaces
+/// in `Receiver`-field suggestions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_finds_given_to_name_from_install_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:install",
+            "Иванов И.И.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Receiver, "Кому", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Кому Выдал".to_string()],
+            "given_to_name from custom:install audit_log must surface in Receiver suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 16 (UAT4-01): `custom:to_refill` audit row's `given_to_name` also
+/// surfaces (the operation the original UAT4-01 symptom was reported
+/// against — «Отправка на заправку»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_finds_given_to_name_from_to_refill_audit_log() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:to_refill",
+            "Сидоров С.С.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Receiver, "Кому", 20)
+            .await
+            .expect("suggest_person");
+        assert_eq!(
+            result,
+            vec!["Кому Выдал".to_string()],
+            "given_to_name from custom:to_refill audit_log must surface in Receiver suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 17 (UAT4-01): irrelevant actions (e.g. `custom:return_to_stock`)
+/// must NOT contribute their `given_to_name` payload field — mirrors the
+/// `given_by_name` action filter guard (Test 13).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_excludes_given_to_name_from_irrelevant_action() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:return_to_stock",
+            "Петров П.П.",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Receiver, "Кому", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.is_empty(),
+            "given_to_name from a non install/to_refill action must not surface, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+/// Test 18 (UAT4-01 regression guard): the new `given_to_name` arm only
+/// applies to the `Receiver` field — `Giver` suggestions must not pick it up
+/// (given_to_name is semantically "Кому выдал", not "Кто выдал").
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_given_to_name_does_not_leak_into_giver_field() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let now = 1_700_000_000_i64;
+
+        seed_audit_log_given_by_name(
+            &svc.writer,
+            "cartridge",
+            "custom:install",
+            "ТолькоРесивер источник",
+            now,
+        )
+        .await;
+
+        let result = svc
+            .suggest_person(SuggestPersonField::Giver, "Кому", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.is_empty(),
+            "given_to_name must not surface in Giver-field suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}

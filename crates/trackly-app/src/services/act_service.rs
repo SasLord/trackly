@@ -2469,25 +2469,37 @@ impl ActService {
     /// операции, `OperationModal`) — единый backend-источник подсказок для
     /// `PersonAutocomplete.svelte` во всех формах.
     ///
-    /// Источник — UNION ALL до трёх арм:
+    /// Источник — UNION ALL до четырёх арм:
     ///   1. `acts.{giver_name|receiver_name}` (soft-deleted акты исключены)
     ///   2. `cartridges.holder_name` (soft-deleted картриджи исключены) —
     ///      обе enum-ветки (`Giver`/`Receiver`) читают `holder_name`
     ///      одинаково: у cartridges нет различия giver/receiver, это
-    ///      единственная person-name колонка на этой таблице.
+    ///      единственная person-name колонка на этой таблице. ВАЖНО:
+    ///      `holder_name` хранит только ТЕКУЩЕЕ значение картриджа и
+    ///      перезаписывается КАЖДОЙ новой install/to_refill операцией — эта
+    ///      арка НЕ покрывает историю, более ранние получатели/сдатчики
+    ///      структурно теряются как только holder_name перезаписан (UAT4-01,
+    ///      `40-HUMAN-UAT.md`). Полную историю дают арки 3 и 4 ниже.
     ///   3. (только `Giver`) `audit_log.payload_json->given_by_name` для
     ///      картриджных операций `custom:install`/`custom:to_refill`
     ///      (GAP-12-06, A3, часть «а») — значение поля «Кто выдал» сейчас
     ///      пишется ТОЛЬКО в JSON-payload (в отличие от «Кому выдал», у
     ///      которого есть queryable-колонка `cartridges.holder_name`), без
     ///      этой арки имя «Кто выдал» никогда не попадало в подсказки.
+    ///   4. (только `Receiver`) `audit_log.payload_json->given_to_name` для
+    ///      тех же операций `custom:install`/`custom:to_refill` (UAT4-01,
+    ///      Plan 40-34) — симметрична арке 3, но по факту важнее: без неё
+    ///      человек, впервые введённый как «Кому выдал» при отправке на
+    ///      заправку, исчезал из подсказок сразу же, как только holder_name
+    ///      того же картриджа перезаписывался следующей операцией (арка 2
+    ///      этого не спасает — она видит только текущее значение).
     ///
     /// Имена дедуплицируются и агрегируются по сумме frequency между всеми
     /// арками (CTE с `GROUP BY name, SUM(freq)` в внешнем запросе),
     /// отсортированы по frequency DESC (alpha ASC tiebreak). LIKE-prefix
     /// match с `escape_like` защитой от SQL injection через `%` / `_` / `\`.
     ///
-    /// Phase 5 (future): четвёртая UNION ALL арка с AD displayName —
+    /// Phase 5 (future): пятая UNION ALL арка с AD displayName —
     /// расширение в SQL без изменения сигнатуры / UI contract.
     pub async fn suggest_person(
         &self,
@@ -2526,6 +2538,23 @@ impl ActService {
             }
             SuggestPersonField::Receiver => "",
         };
+        // given_to_name арка — только для контекста «Кому выдал» (Receiver),
+        // симметрична given_by_name_arm выше, но инвертирована по полю
+        // enum'а и по JSON-ключу (UAT4-01, Plan 40-34).
+        let given_to_name_arm = match field {
+            SuggestPersonField::Giver => "",
+            SuggestPersonField::Receiver => {
+                " UNION ALL \
+                 SELECT json_extract(payload_json, '$.given_to_name') AS name, COUNT(*) AS freq \
+                   FROM audit_log \
+                  WHERE entity_type = 'cartridge' \
+                    AND action IN ('custom:install', 'custom:to_refill') \
+                    AND json_extract(payload_json, '$.given_to_name') IS NOT NULL \
+                    AND json_extract(payload_json, '$.given_to_name') != '' \
+                    AND json_extract(payload_json, '$.given_to_name') LIKE ?1 ESCAPE '\\' \
+                  GROUP BY json_extract(payload_json, '$.given_to_name')"
+            }
+        };
         let sql = format!(
             "SELECT name, SUM(freq) AS total_freq FROM ( \
                  SELECT {col} AS name, COUNT(*) AS freq \
@@ -2539,12 +2568,14 @@ impl ActService {
                     AND deleted_at_utc IS NULL \
                   GROUP BY holder_name \
                  {given_by_name_arm} \
+                 {given_to_name_arm} \
              ) \
               GROUP BY name \
               ORDER BY total_freq DESC, name ASC \
               LIMIT ?2",
             col = column,
-            given_by_name_arm = given_by_name_arm
+            given_by_name_arm = given_by_name_arm,
+            given_to_name_arm = given_to_name_arm
         );
 
         let readers = self.readers.clone();
