@@ -2285,3 +2285,165 @@ async fn operation_default_place_from_refill_prefers_own_history_over_global_fal
     .await
     .expect("operation_default_place_from_refill_prefers_own_history_over_global_fallback budget")
 }
+
+/// UAT5-02 debug-follow-up
+/// (`.planning/debug/from-refill-place-looks-filled.md`): the freshest
+/// global `custom:to_refill` send has NO source (cartridge D had no place
+/// before being sent to refill — D-06 "first assignment" legitimately omits
+/// a `place_movements` row and `before_json.place_id` is `null`), but an
+/// OLDER global send (cartridge E, from storage A) DOES have a source. A
+/// third cartridge F with no own ToRefill history must still resolve to A —
+/// not `None` — because the fallback now searches past sourceless sends
+/// instead of stopping at the single freshest row.
+///
+/// Driven entirely through `CartridgeService` (create + transition), no
+/// hand-seeded `audit_log`/`place_movements` rows — Phase 40 round 1 already
+/// failed exactly this way (green test, live defect) by seeding raw SQL
+/// instead of exercising the real write path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn operation_default_place_from_refill_falls_back_past_sourceless_freshest_send_to_older_source(
+) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        // E: created at storage A, sent to refill FIRST (older global send,
+        // HAS a source: A).
+        let cart_e = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge E at storage A");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_e.id,
+                version: cart_e.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов И.И.".into(),
+                given_to_name: "Петров П.П.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition E to_refill");
+
+        // D: created WITHOUT a place, sent to refill LATER (freshest global
+        // send, NO source — D-06 first-assignment, before_json.place_id is
+        // null).
+        let cart_d = create_stock_cartridge(&svc, model_id).await;
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_d.id,
+                version: cart_d.version,
+                date_utc: 1_700_000_001,
+                given_by_name: "Сидоров С.С.".into(),
+                given_to_name: "Кузнецов К.К.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition D to_refill (no source place)");
+
+        // F: never sent to refill — no own ToRefill history at all.
+        let cart_f = create_stock_cartridge(&svc, model_id).await;
+
+        let default_place = svc
+            .operation_default_place("from_refill", Some(cart_f.id))
+            .await
+            .expect("operation_default_place from_refill");
+        assert_eq!(
+            default_place,
+            Some(place_a),
+            "freshest global send (D) has no source — the fallback must skip past it and \
+             return the older global send's source (E, place A), not None"
+        );
+    })
+    .await
+    .expect(
+        "operation_default_place_from_refill_falls_back_past_sourceless_freshest_send_to_older_source budget",
+    )
+}
+
+/// Companion to the scenario above: pins down that
+/// `CartridgeService::to_refill_last_send` (which reads
+/// `latest_to_refill_send`, NOT `latest_to_refill_source_place`) is
+/// untouched by the UAT5-02 fix — it must still surface the single freshest
+/// send's OWN fields (destination place + names), even when that freshest
+/// send has no source place, because all three "Отправка на заправку"
+/// dialog fields come from ONE record (Plan 40-33/UAT4-02 contract).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn to_refill_last_send_still_reflects_freshest_send_even_when_it_has_no_source_place() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc).await;
+        let place_a = seed_storage_place(&svc, "Склад А").await;
+        let refill_place = seed_place(&svc, "Заправка").await;
+
+        // Older send: has a source (A).
+        let cart_e = svc
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1),
+                place_id: Some(place_a),
+                notes: None,
+            })
+            .await
+            .expect("create cartridge E at storage A");
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_e.id,
+                version: cart_e.version,
+                date_utc: 1_700_000_000,
+                given_by_name: "Иванов И.И.".into(),
+                given_to_name: "Петров П.П.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition E to_refill");
+
+        // Freshest send: no source, but its OWN names/destination must win.
+        let cart_d = create_stock_cartridge(&svc, model_id).await;
+        svc.transition(
+            &admin_caller(),
+            CartridgeTransitionPayload::ToRefill {
+                cartridge_id: cart_d.id,
+                version: cart_d.version,
+                date_utc: 1_700_000_001,
+                given_by_name: "Сидоров С.С.".into(),
+                given_to_name: "Кузнецов К.К.".into(),
+                place_id: Some(refill_place),
+            },
+        )
+        .await
+        .expect("transition D to_refill (no source place)");
+
+        let dto = svc
+            .to_refill_last_send()
+            .await
+            .expect("to_refill_last_send");
+        assert_eq!(
+            dto.given_by_name.as_deref(),
+            Some("Сидоров С.С."),
+            "to_refill_last_send must reflect the freshest send's OWN fields, not fall back \
+             to an older send just because the freshest one lacks a source place"
+        );
+        assert_eq!(dto.given_to_name.as_deref(), Some("Кузнецов К.К."));
+        assert_eq!(dto.place_id, Some(refill_place));
+    })
+    .await
+    .expect(
+        "to_refill_last_send_still_reflects_freshest_send_even_when_it_has_no_source_place budget",
+    )
+}

@@ -1116,6 +1116,55 @@ impl SqliteCartridgeRepository {
         .map_err(map_rusqlite)
     }
 
+    /// Место-источник САМОЙ СВЕЖЕЙ отправки на заправку ЛЮБОГО картриджа, У
+    /// КОТОРОЙ ЭТОТ ИСТОЧНИК ВООБЩЕ ИЗВЕСТЕН (UAT5-02 debug-follow-up,
+    /// `.planning/debug/from-refill-place-looks-filled.md`) — усиленный шаг
+    /// 2 запасного варианта дефолта `from_refill` в
+    /// `CartridgeService::operation_default_place`.
+    ///
+    /// **Осознанно ОТДЕЛЬНЫЙ резолвер, а не правка `latest_to_refill_send`.**
+    /// Эта фаза уже дважды пострадала от попытки подогнать одну функцию под
+    /// два разных вопроса (см. doc-комментарий `place_before_last_to_refill`
+    /// про UAT3-01a) — здесь тот же класс ошибки, только зеркально:
+    /// `latest_to_refill_send` обязана и дальше отдавать ровно ОДНУ самую
+    /// свежую запись ЦЕЛИКОМ (все три поля диалога «Отправка на заправку» —
+    /// кто выдал/кому выдал/место назначения — из ОДНОЙ отправки, решение
+    /// пользователя от Plan 40-33/UAT4-02), даже если у этой записи
+    /// `from_place_id` пуст. Эта функция отвечает на ДРУГОЙ вопрос — «откуда
+    /// картридж уезжал в последний раз, когда это вообще было
+    /// зафиксировано» — и должна пропускать записи без источника, а не
+    /// останавливаться на первой (самой свежей) из них.
+    ///
+    /// Кандидат — запись `audit_log` (`action = 'custom:to_refill'`), у
+    /// которой `before_json.place_id` НЕ `NULL` И место, на которое он
+    /// указывает, не архивировано и не удалено. Оба условия выражены одним
+    /// `INNER JOIN` с `places` по `json_extract(before_json, '$.place_id')`:
+    /// если `place_id` в JSON отсутствует/`NULL`, join не находит строку;
+    /// если место с тех пор архивировано/удалено — join тоже не находит
+    /// строку (мест с одинаковым `id` в таблице ровно одно). Из
+    /// прошедших фильтр записей берётся самая свежая
+    /// (`ORDER BY created_at_utc DESC, id DESC LIMIT 1`) — то есть запись
+    /// без известного источника не «съедает» шаг, а просто не считается
+    /// кандидатом, и запрос продолжает смотреть на более ранние записи, пока
+    /// не найдёт (или не переберёт всё и вернёт `None`).
+    pub fn latest_to_refill_source_place(
+        &self,
+        conn: &Connection,
+    ) -> Result<Option<i64>, AppError> {
+        conn.query_row(
+            "SELECT p.id \
+             FROM audit_log a \
+             JOIN places p ON p.id = json_extract(a.before_json, '$.place_id') \
+                 AND p.archived_at_utc IS NULL AND p.deleted_at_utc IS NULL \
+             WHERE a.entity_type = 'cartridge' AND a.action = 'custom:to_refill' \
+             ORDER BY a.created_at_utc DESC, a.id DESC LIMIT 1",
+            params![],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(map_rusqlite)
+    }
+
     /// Каскадировать место принтера на все прикреплённые к нему картриджи
     /// (Phase 40-21, UAT-40 gap «cartridge-does-not-follow-printer», вариант B).
     ///
@@ -3030,6 +3079,37 @@ mod tests {
         .expect("seed audit_log row");
     }
 
+    /// Тот же shape, что `seed_to_refill_audit_row`, но `before_json.place_id`
+    /// сериализован как `null` — зеркалит РЕАЛЬНУЮ форму, которую пишет
+    /// `transition_in_tx` для картриджа без места ДО отправки на заправку
+    /// (D-06 «первое присвоение» не пишет `place_movements`, но `before_json`
+    /// всё равно строится из `current.place_id`, которое в этом случае
+    /// `None` → `json!({"place_id": null})`). Нужна для UAT5-02
+    /// debug-follow-up тестов `latest_to_refill_source_place`.
+    fn seed_to_refill_audit_row_no_source(
+        conn: &mut Connection,
+        to_place_id: i64,
+        given_by_name: &str,
+        given_to_name: &str,
+        created_at_utc: i64,
+    ) {
+        let before_json = json!({ "place_id": serde_json::Value::Null }).to_string();
+        let payload_json = json!({
+            "op": "to_refill",
+            "given_by_name": given_by_name,
+            "given_to_name": given_to_name,
+            "place_id": to_place_id,
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO audit_log \
+             (entity_type, entity_id, action, before_json, payload_json, created_at_utc) \
+             VALUES ('cartridge', 1, 'custom:to_refill', ?1, ?2, ?3)",
+            params![before_json, payload_json, created_at_utc],
+        )
+        .expect("seed audit_log row without a source place");
+    }
+
     #[test]
     fn latest_to_refill_send_none_when_no_history() {
         let (conn, _g) = fresh_conn();
@@ -3155,6 +3235,149 @@ mod tests {
             "names remain valid even though the destination place was archived since"
         );
         assert_eq!(result.given_to_name.as_deref(), Some("Петров П.П."));
+    }
+
+    /// UAT5-02 debug-follow-up: `latest_to_refill_send` must keep returning
+    /// the single freshest `custom:to_refill` row WHOLE — even when its own
+    /// `from_place_id` is empty — because all three dialog fields ("Отправка
+    /// на заправку") come from that one record (Plan 40-33/UAT4-02 contract,
+    /// deliberately NOT touched by the `latest_to_refill_source_place`
+    /// fix). Seeds a freshest row with no source (given_by/given_to still
+    /// present) plus an OLDER row that does have a source, to prove the
+    /// "whole row" contract does not silently start skipping to the older
+    /// row's names/destination either.
+    #[test]
+    fn latest_to_refill_send_still_returns_freshest_row_whole_even_without_source() {
+        let (mut conn, _g) = fresh_conn();
+        let place_a = seed_place_with_storage(&mut conn, "A", 1);
+        let refill = seed_place_with_storage(&mut conn, "Заправка", 0);
+
+        // Older row: has a source (A).
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            place_a,
+            refill,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+        // Freshest row: no source (D-06 first assignment / legacy data), but
+        // its own given_by/given_to/destination must still win as a WHOLE
+        // record.
+        seed_to_refill_audit_row_no_source(
+            &mut conn,
+            refill,
+            "Сидоров С.С.",
+            "Кузнецов К.К.",
+            1_700_000_002,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        let result = repo
+            .latest_to_refill_send(&conn)
+            .expect("query ok")
+            .expect("row present");
+        assert_eq!(
+            result.from_place_id, None,
+            "the freshest row's own source is empty — latest_to_refill_send must not \
+             substitute the older row's source"
+        );
+        assert_eq!(
+            result.given_by_name.as_deref(),
+            Some("Сидоров С.С."),
+            "latest_to_refill_send must still pick the freshest row's OWN fields, not mix in \
+             the older row's names"
+        );
+        assert_eq!(result.given_to_name.as_deref(), Some("Кузнецов К.К."));
+    }
+
+    #[test]
+    fn latest_to_refill_source_place_none_when_no_history() {
+        let (conn, _g) = fresh_conn();
+        let repo = SqliteCartridgeRepository;
+        assert_eq!(
+            repo.latest_to_refill_source_place(&conn).expect("query ok"),
+            None,
+            "no audit_log rows -> None"
+        );
+    }
+
+    /// The key UAT5-02 scenario at the SQL-query level: the freshest
+    /// `custom:to_refill` row has no source, but an OLDER row does — the
+    /// resolver must skip the sourceless freshest row and return the older
+    /// row's source, not stop at the first (freshest) row like
+    /// `latest_to_refill_send` correctly does for its own (different)
+    /// question.
+    #[test]
+    fn latest_to_refill_source_place_skips_freshest_row_without_source() {
+        let (mut conn, _g) = fresh_conn();
+        let place_a = seed_place_with_storage(&mut conn, "A", 1);
+        let refill = seed_place_with_storage(&mut conn, "Заправка", 0);
+
+        // Older row: has a source (A).
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            place_a,
+            refill,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+        // Freshest row: no source.
+        seed_to_refill_audit_row_no_source(
+            &mut conn,
+            refill,
+            "Сидоров С.С.",
+            "Кузнецов К.К.",
+            1_700_000_002,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        assert_eq!(
+            repo.latest_to_refill_source_place(&conn).expect("query ok"),
+            Some(place_a),
+            "freshest row has no source -> must fall through to the older row's source, not None"
+        );
+    }
+
+    #[test]
+    fn latest_to_refill_source_place_treats_archived_source_as_no_source() {
+        let (mut conn, _g) = fresh_conn();
+        let archived = seed_archived_storage_place(&mut conn, "Архивный склад");
+        let place_b = seed_place_with_storage(&mut conn, "B", 1);
+        let refill = seed_place_with_storage(&mut conn, "Заправка", 0);
+
+        // Older row: source B (still valid).
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            place_b,
+            refill,
+            "Иванов И.И.",
+            "Петров П.П.",
+            1_700_000_001,
+        );
+        // Freshest row: source is set but has since been archived — must be
+        // treated the same as "no source", not surfaced as a stale/invalid id.
+        seed_to_refill_audit_row(
+            &mut conn,
+            "custom:to_refill",
+            archived,
+            refill,
+            "Сидоров С.С.",
+            "Кузнецов К.К.",
+            1_700_000_002,
+        );
+
+        let repo = SqliteCartridgeRepository;
+        assert_eq!(
+            repo.latest_to_refill_source_place(&conn).expect("query ok"),
+            Some(place_b),
+            "freshest row's source is archived -> must fall through to the older row's valid \
+             source, never return an archived place id"
+        );
     }
 
     /// UAT3-01a (gap-closure round 3): SQL-level regression for the same
