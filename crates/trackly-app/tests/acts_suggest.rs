@@ -10,8 +10,11 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::cartridge::{
+    CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
+};
 use trackly_app::dto::suggest::SuggestPersonField;
-use trackly_app::services::ActService;
+use trackly_app::services::{ActService, CartridgeService};
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
@@ -798,6 +801,141 @@ async fn suggest_person_given_to_name_does_not_leak_into_giver_field() {
         assert!(
             result.is_empty(),
             "given_to_name must not surface in Giver-field suggestions, got {result:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}
+
+// ---------------------------------------------------------------------------
+// UAT4-01 end-to-end regression: proves the ACTUAL reported symptom, not just
+// SQL syntax — a name entered as "Кому выдал" when sending a cartridge to
+// refill must survive a LATER operation on the SAME cartridge overwriting
+// cartridges.holder_name with a different value. Goes through the real
+// CartridgeService.transition() flow (no raw-SQL audit_log seeding) so the
+// end-to-end path "OperationModal form -> transition -> audit_log ->
+// suggest_person" is actually exercised, not just the isolated SQL
+// aggregate covered by Tests 15-18 above.
+// ---------------------------------------------------------------------------
+
+/// Builds an `ActService` and a `CartridgeService` sharing the SAME
+/// writer/reader pool (and therefore the same SQLite file) — needed because
+/// the regression below writes cartridge history via `CartridgeService` and
+/// then reads suggestions via `ActService::suggest_person`.
+fn make_acts_and_cartridge_services() -> (ActService, CartridgeService, tempfile::TempDir) {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let acts = ActService::new(writer.clone(), readers.clone(), clock.clone());
+    let carts = CartridgeService::new(writer, readers, clock);
+    (acts, carts, dir)
+}
+
+async fn seed_cartridge_model_via_service(carts: &CartridgeService) -> i64 {
+    carts
+        .model_create(CartridgeModelCreateDto {
+            brand: "Pantum".into(),
+            model: "TL-5120X".into(),
+            kind_id: 1,
+            color: Some("Чёрный".into()),
+            notes: None,
+            compatibility: vec![],
+        })
+        .await
+        .expect("seed cartridge model via service")
+        .id
+}
+
+/// Test 19 (UAT4-01, key regression): `holder_name` перезаписан следующей
+/// операцией того же картриджа, но имя из более ранней отправки на заправку
+/// остаётся видимым в подсказках — доказывает, что `given_to_name_arm`
+/// (Task 1) действительно читает из `audit_log`, а не транзитивно зависит от
+/// текущего значения `cartridges.holder_name`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn suggest_person_receiver_survives_holder_name_overwrite_by_later_transition() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (acts, carts, _dir) = make_acts_and_cartridge_services();
+        let model_id = seed_cartridge_model_via_service(&carts).await;
+
+        let cart = carts
+            .create(CartridgeCreateDto {
+                model_id,
+                code_override: None,
+                state_id: Some(1), // Полный
+                place_id: None,
+                notes: None,
+            })
+            .await
+            .expect("create stock cartridge");
+
+        // 1. Отправка на заправку: На складе (1) -> На заправке (3).
+        //    given_to_name = "Смирнов С.С." -> cartridges.holder_name становится
+        //    "Смирнов С.С.".
+        let at_refill = carts
+            .transition(
+                &Identity::trusted_admin(),
+                CartridgeTransitionPayload::ToRefill {
+                    cartridge_id: cart.id,
+                    version: cart.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Кузнецов К.К.".into(),
+                    given_to_name: "Смирнов С.С.".into(),
+                    place_id: None,
+                },
+            )
+            .await
+            .expect("to_refill");
+
+        // 2. Возврат с заправки: На заправке (3) -> На складе (1). FromRefill
+        //    не несёт given_to_name — это промежуточный шаг перед install,
+        //    чтобы holder_name действительно ПЕРЕЗАПИСАЛСЯ install'ом ниже, а
+        //    не остался прежним из-за недопустимого перехода 3->2.
+        let back_in_stock = carts
+            .transition(
+                &Identity::trusted_admin(),
+                CartridgeTransitionPayload::FromRefill {
+                    cartridge_id: cart.id,
+                    version: at_refill.version,
+                    state_id: 1, // Полный
+                    place_id: None,
+                    notes: None,
+                },
+            )
+            .await
+            .expect("from_refill");
+
+        // 3. Установка в принтер: На складе (1) -> В работе (2). given_to_name
+        //    = "Иной Получатель" -> cartridges.holder_name перезаписывается,
+        //    "Смирнов С.С." на самой карточке картриджа больше не видно.
+        carts
+            .transition(
+                &Identity::trusted_admin(),
+                CartridgeTransitionPayload::Install {
+                    cartridge_id: cart.id,
+                    version: back_in_stock.version,
+                    date_utc: 1_700_000_000,
+                    given_by_name: "Петров П.П.".into(),
+                    given_to_name: "Иной Получатель".into(),
+                    place_id: None,
+                    printer_device_id: None,
+                    previous_cartridge_state_id: None,
+                    previous_cartridge_place_id: None,
+                },
+            )
+            .await
+            .expect("install");
+
+        // Эта проверка и доказывает UAT4-01 закрытым: несмотря на то, что
+        // cartridges.holder_name сейчас указывает на "Иной Получатель",
+        // given_to_name_arm видит "Смирнов С.С." из audit_log независимо от
+        // текущего состояния holder_name.
+        let result = acts
+            .suggest_person(SuggestPersonField::Receiver, "Смирнов", 20)
+            .await
+            .expect("suggest_person");
+        assert!(
+            result.contains(&"Смирнов С.С.".to_string()),
+            "given_to_name from an earlier to_refill must survive a later \
+             holder_name overwrite by install, got {result:?}"
         );
     })
     .await
