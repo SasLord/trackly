@@ -8,12 +8,18 @@
   //   - dropdown closes on select (G-4 pre-emptive).
   //   - bindable value (Svelte 5 $bindable).
   //
-  // Edit-mode pre-fill suppression: при mount если value non-empty, считаем что
-  // оно уже выбрано (lastSelected=value, suppressDropdown=true) — dropdown не
-  // открывается на programmatic re-render. Идентичный подход c
-  // DeviceAutocompleteField.
+  // Edit-mode pre-fill suppression: если внешний код (bindable prop) меняет
+  // value НЕ через handleInput/select этого компонента, считаем что значение
+  // уже выбрано (lastSelected=value, suppressDropdown=true) — dropdown не
+  // открывается на programmatic re-render. Это касается не только начального
+  // mount-значения, но и АСИНХРОННЫХ программных подстановок, приходящих уже
+  // после mount (UAT5-01, фаза 40 раунд 5: toRefillLastSend приходит из
+  // ответа API уже после монтирования, когда прежняя onMount-only проверка
+  // больше не действовала). Различаем «свой» и «чужой» апдейт через плоский
+  // флаг internalUpdate, который handleInput/select выставляют в true
+  // синхронно ПЕРЕД присвоением value — эффект ниже читает и сбрасывает его.
 
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { acts } from '$lib/api/acts';
   import { portal } from '$lib/utils/portal';
   import { dropdownAnchor } from '$lib/utils/dropdownAnchor';
@@ -54,12 +60,28 @@
   let lastSelected: string | null = $state<string | null>(null);
   let suppressDropdown = $state(false);
 
-  onMount(() => {
-    if (value.length > 0) {
-      lastSelected = value;
-      suppressDropdown = true;
-    }
-  });
+  // Плоская (не $state) метка «следующее изменение value — это МОЁ собственное
+  // присвоение (handleInput/select), а не programmatic апдейт снаружи».
+  // Выставляется синхронно перед `value = …` в handleInput/select и читается +
+  // сбрасывается на старте $effect ниже, в том же тике. Первый прогон эффекта
+  // (аналог mount) видит флаг = false и корректно трактуется как «внешнее»
+  // значение — так же, как раньше отдельно делал onMount.
+  let internalUpdate = false;
+
+  // Совпадают ли строки без учёта регистра и обрамляющих пробелов —
+  // используется правилом «не открывать список, когда подсказок нет ИЛИ
+  // единственная совпадает со значением поля» (требование 2, UAT5-01).
+  function namesMatch(a: string, b: string): boolean {
+    return a.trim().toLowerCase() === b.trim().toLowerCase();
+  }
+
+  // Есть ли смысл открывать список: подсказки не пустые и не сводятся к
+  // единственному варианту, равному уже введённому значению.
+  function hasOpenableSuggestions(sugg: string[], current: string): boolean {
+    if (sugg.length === 0) return false;
+    if (sugg.length === 1 && namesMatch(sugg[0], current)) return false;
+    return true;
+  }
 
   // WR-05: и fetch $effect ниже, и handleFocus() планируют debounce-таймер в
   // одну и ту же переменную debounceTimer, но ни один из путей не отменял
@@ -72,6 +94,21 @@
 
   $effect(() => {
     const v = value;
+
+    // Читаем и СРАЗУ сбрасываем флаг — следующий прогон эффекта по
+    // умолчанию снова считается «внешним», пока handleInput/select не
+    // пометят его явно.
+    const isInternalChange = internalUpdate;
+    internalUpdate = false;
+
+    if (!isInternalChange) {
+      // Programmatic-апдейт value (bindable проп поменял родитель — включая
+      // самый первый прогон эффекта при mount, где это тоже верно): считаем,
+      // что значение уже «выбрано», список открываться не должен.
+      lastSelected = v;
+      suppressDropdown = true;
+    }
+
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     if (v.length < 1) {
       suggestions = [];
@@ -85,7 +122,7 @@
         loading = true;
         suggestions = await acts.suggestPerson(field, v);
         if (!suppressDropdown) {
-          open = suggestions.length > 0;
+          open = hasOpenableSuggestions(suggestions, v);
         }
         activeIndex = -1;
       } catch {
@@ -100,6 +137,7 @@
   function select(s: string) {
     lastSelected = s;
     suppressDropdown = true;
+    internalUpdate = true;
     value = s;
     onChange?.(s);
     onSelect?.(s);
@@ -114,6 +152,7 @@
       suppressDropdown = false;
       lastSelected = null;
     }
+    internalUpdate = true;
     value = newValue;
     onChange?.(newValue);
   }
@@ -129,7 +168,7 @@
         loading = true;
         suggestions = await acts.suggestPerson(field, value);
         if (!suppressDropdown) {
-          open = suggestions.length > 0;
+          open = hasOpenableSuggestions(suggestions, value);
         }
         activeIndex = -1;
       } catch {
