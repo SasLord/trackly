@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40 (movement-history) — 32/35 plans executed (gap-closure round 4: 40-33/40-34 done; round 3: 40-31/40-32 pending; 40-35 pending)
-Plan: 40-34 (gap-closure round 4: UAT4-01 — given_to_name_arm в suggest_person) executed
+Plan: 34 of 35 — 40-34 executed (раунд 4: UAT4-01, given_to_name_arm в suggest_person); осталcя 40-35
 Status: Гап-клозур раунд 4 в процессе. 40-33 закрывает backend-часть UAT4-02/UAT4-03 (latest_to_refill_send). 40-34 закрывает UAT4-01 (автокомплит «Кому выдал» видит историю заправок). 40-31/40-32 (раунд 3, frontend OperationModal.svelte / place-tree subtree-stats) и 40-35 (frontend подключение latest_to_refill_send) ещё не выполнены. status: human_needed сохраняется до живого UAT. См. 40-HUMAN-UAT.md.
 Last activity: 2026-09-04 -- План 40-34 выполнен (HST-01, UAT4-01 given_to_name_arm), 2/2 задачи, полный пакет trackly-app 107 test-групп / 0 провалов
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
