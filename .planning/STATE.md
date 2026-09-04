@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40 (movement-history) — 33/35 plans executed (gap-closure round 4: 40-33/40-34/40-35 done; round 3: 40-31/40-32 pending)
-Plan: 35 of 35 — 40-35 executed (раунд 4: UAT4-02/UAT4-03 frontend, toRefillLastSend в OperationModal.svelte), checkpoint подтверждён живой проверкой
-Status: Гап-клозур раунд 4 завершён (40-33/40-34/40-35). 40-31/40-32 (раунд 3, frontend OperationModal.svelte / place-tree subtree-stats) остаются pending — проверить их фактический статус перед закрытием фазы. См. 40-HUMAN-UAT.md.
-Last activity: 2026-09-04 -- План 40-35 выполнен (HST-01, UAT4-02/UAT4-03 frontend), 2/2 задачи (Task 1 код + Task 2 checkpoint подтверждён живой проверкой независимым агентом)
+Phase: 40 (movement-history) — 35/35 планов выполнены, все с SUMMARY
+Plan: 35 of 35 — все планы выполнены
+Status: ФАЗА ЗАВЕРШЕНА — верификация passed (11/11 observable truths, 4/4 success criteria, 4/4 требования). Живой UAT подтверждён пользователем 2026-09-04 на сборке 1.4.0-phase40. Не пройден только /gsd-secure-phase 40.
+Last activity: 2026-09-04 -- фаза 40 закрыта: раунды 3-5 живого UAT пройдены, 1201 тест зелёный
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
