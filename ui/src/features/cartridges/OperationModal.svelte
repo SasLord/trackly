@@ -967,6 +967,20 @@
           <span class="field-error">{placeError}</span>
         {:else if op === 'return_to_stock'}
           <span class="field-hint">Укажите склад или место хранения</span>
+        {:else if op === 'from_refill'}
+          <!-- UAT5-02 (debug from-refill-place-looks-filled): place_before_last_to_refill
+               / latest_to_refill_send (Plan 40-31/40-33) legitimately return null when this
+               cartridge has no own refill history AND no other cartridge in the system has
+               ever been sent to refill with a recorded place (e.g. data older than that
+               feature). Before this hint, an empty field gave the operator zero indication
+               that autofill was even attempted — the ONLY signal was the «Заполните это
+               поле» validation error at submit time. Mirrors the existing pattern for
+               previousCartridgePlaceId (install's «Предыдущий картридж» block above) and
+               op-place's own return_to_stock hint just above. -->
+          <span class="field-hint"
+            >Место подставляется автоматически по истории заправок; если поле осталось
+            пустым — истории нет, укажите место вручную</span
+          >
         {/if}
       </div>
 
