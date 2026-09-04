@@ -566,6 +566,33 @@ pub fn peek_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppEr
     })
 }
 
+/// Source of truth for the act auto-number / "Следующий" hint (квик-задача
+/// 260904-x7s, replaces `counters.act_number` on the acts-numbering path).
+///
+/// `MAX(number) + 1` among LIVE acts only (`deleted_at_utc IS NULL`), with a
+/// fallback of `1` for an empty/all-deleted table. Deleting the
+/// highest-numbered act frees its number for reuse — the monotonic
+/// `counters` table intentionally never applied here again.
+///
+/// The `counters` table and `increment_counter_in_tx` / `peek_counter` /
+/// `peek_counter_in_tx` are NOT removed — other counters (e.g.
+/// `cartridge_seq`) still rely on them.
+///
+/// `Transaction` derefs to `Connection` (rusqlite), so a single
+/// `fn(conn: &Connection)` transparently accepts both `&conn` (readers,
+/// `peek_next_number`) and `&tx` (write path). Callers on the auto-number
+/// path in `ActService::create` that need race-freedom for the following
+/// `INSERT` MUST call this with `&tx` from the SAME write transaction as the
+/// insert — never with a reader connection.
+pub fn next_act_number_from_max(conn: &Connection) -> Result<i64, AppError> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(number), 0) + 1 FROM acts WHERE deleted_at_utc IS NULL",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
+    .map_err(map_rusqlite)
+}
+
 impl ActRepository for SqliteActRepository {
     type Conn = Connection;
 
@@ -650,8 +677,7 @@ impl ActRepository for SqliteActRepository {
     }
 
     fn peek_next_number(&self, conn: &Self::Conn) -> Result<i64, AppError> {
-        let current = peek_counter(conn, "act_number")?;
-        Ok(current + 1)
+        next_act_number_from_max(conn)
     }
 
     fn counts(&self, conn: &Self::Conn) -> Result<ActCounts, AppError> {
@@ -806,5 +832,61 @@ mod tests {
         // peek does not increment
         let peeked = peek_counter(&conn, "act_number").expect("peek");
         assert_eq!(peeked, 2);
+    }
+
+    #[test]
+    fn next_act_number_from_max_empty_table_is_one() {
+        let (conn, _g) = fresh_conn();
+        let next = next_act_number_from_max(&conn).expect("next");
+        assert_eq!(next, 1);
+    }
+
+    #[test]
+    fn next_act_number_from_max_ignores_soft_deleted() {
+        let (mut conn, _g) = fresh_conn();
+        let now = 1_700_000_000_i64;
+        let repo = SqliteActRepository;
+
+        let mk_row = |number: i64| ActRow {
+            id: 0,
+            number,
+            sub_number: None,
+            parent_act_id: None,
+            act_type: ActType::Handover,
+            giver_name: "Иванов".into(),
+            receiver_name: "Петров".into(),
+            place_id: None,
+            full_path: None,
+            place_path_snapshot: None,
+            notes: None,
+            deadline_utc: None,
+            archived: false,
+            created_at_utc: now,
+            updated_at_utc: now,
+            deleted_at_utc: None,
+            version: 1,
+            handover_date_utc: now,
+            parent_number: None,
+            sibling_return_count: None,
+        };
+
+        {
+            let tx = conn.transaction().expect("tx");
+            repo.insert_act_in_tx(&tx, &mk_row(5)).expect("insert 5");
+            repo.insert_act_in_tx(&tx, &mk_row(9)).expect("insert 9");
+            tx.commit().expect("commit");
+        }
+
+        let next = next_act_number_from_max(&conn).expect("next after inserts");
+        assert_eq!(next, 10);
+
+        conn.execute(
+            "UPDATE acts SET deleted_at_utc = ?1 WHERE number = 9",
+            params![now],
+        )
+        .expect("soft-delete number 9");
+
+        let next_after_delete = next_act_number_from_max(&conn).expect("next after soft-delete");
+        assert_eq!(next_after_delete, 6);
     }
 }

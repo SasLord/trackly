@@ -7,8 +7,10 @@
 //!
 //! Single-writer discipline: every mutation goes through
 //! `WriterHandle::execute(closure)` with a `BEGIN IMMEDIATE` transaction.
-//! `counters.act_number` is incremented atomically via
-//! `increment_counter_in_tx` (UPDATE ... RETURNING — D-Counter-Acts-01).
+//! The act auto-number / "Следующий" hint is `MAX(number) + 1` among live
+//! (not soft-deleted) acts via `next_act_number_from_max` — deleting the
+//! highest-numbered act frees its number for reuse (квик-задача 260904-x7s,
+//! supersedes the `counters.act_number`-based scheme for acts numbering).
 
 use std::sync::Arc;
 
@@ -24,8 +26,7 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::acts_sqlite::{
-    increment_counter_in_tx, next_sub_number_for_parent, peek_counter, peek_counter_in_tx,
-    recompute_parent_archived,
+    next_act_number_from_max, next_sub_number_for_parent, recompute_parent_archived,
 };
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
@@ -267,12 +268,20 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
-                // 1. Resolve number: override (with uniqueness check) OR atomic counter inc.
+                // 1. Resolve number: override (with uniqueness check) OR auto MAX(live)+1.
+                // next_auto_would_be computed BEFORE INSERT — reused both for the
+                // auto-number branch below and for the override-audit payload in
+                // step 3 (recomputing after INSERT would include the just-inserted
+                // row and skew the hint).
+                let next_auto_would_be = next_act_number_from_max(&tx)?;
                 let number = if let Some(custom) = payload.number_override {
-                    // Uniqueness check INCLUDING soft-deleted (D-Soft-vs-Hard-Acts-01).
+                    // Uniqueness among LIVE acts only — a soft-deleted act's number
+                    // is free to reuse (квик-задача 260904-x7s supersedes the
+                    // include-soft-deleted rule from D-Soft-vs-Hard-Acts-01; the
+                    // soft-delete of the act itself is unchanged).
                     let exists: bool = tx
                         .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 LIMIT 1)",
+                            "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 AND deleted_at_utc IS NULL LIMIT 1)",
                             params![custom],
                             |r| r.get(0),
                         )
@@ -284,7 +293,7 @@ impl ActService {
                     }
                     custom
                 } else {
-                    increment_counter_in_tx(&tx, "act_number")?
+                    next_auto_would_be
                 };
 
                 // 2. INSERT acts.
@@ -327,10 +336,9 @@ impl ActService {
 
                 // 3. If override path — audit override AFTER we know act_id.
                 if let Some(custom) = payload.number_override {
-                    let next_auto = peek_counter_in_tx(&tx, "act_number")? + 1;
                     let payload_json = serde_json::json!({
                         "requested": custom,
-                        "next_auto_would_be": next_auto,
+                        "next_auto_would_be": next_auto_would_be,
                     })
                     .to_string();
                     audit_repo.insert(
@@ -893,7 +901,7 @@ impl ActService {
                     if n != act.number {
                         let exists: bool = tx
                             .query_row(
-                                "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 LIMIT 1)",
+                                "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 AND deleted_at_utc IS NULL LIMIT 1)",
                                 params![n],
                                 |r| r.get(0),
                             )
@@ -2601,8 +2609,7 @@ impl ActService {
         let readers = self.readers.clone();
         tokio::task::spawn_blocking(move || {
             let conn = readers.acquire();
-            let current = peek_counter(&conn, "act_number")?;
-            Ok::<i64, AppError>(current + 1)
+            next_act_number_from_max(&conn)
         })
         .await
         .map_err(|e| AppError::Internal {

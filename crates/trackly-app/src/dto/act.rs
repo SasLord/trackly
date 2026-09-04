@@ -211,8 +211,10 @@ pub struct ActReturnItemDto {
 /// Payload sent by the UI when creating a handover act.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActCreateDto {
-    /// `None` → service increments `counters.act_number`.
-    /// `Some(n)` → service uses `n` (audited as `custom:act_number_override`).
+    /// `None` → service uses `MAX(number) + 1` among live (not soft-deleted) acts.
+    /// `Some(n)` → service checks uniqueness among live acts only (a deleted
+    /// act's number is free to reuse — квик-задача 260904-x7s) and uses `n`
+    /// (audited as `custom:act_number_override`).
     #[specta(type = Option<i32>)]
     pub number_override: Option<i64>,
     pub giver_name: String,

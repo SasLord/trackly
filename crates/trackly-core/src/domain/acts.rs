@@ -48,10 +48,12 @@ impl ActType {
 
 /// Data needed to create a new act.
 ///
-/// `number_override = None` → service инкрементирует `counters.act_number`
-/// и использует свежий номер. `number_override = Some(n)` → service проверяет
-/// уникальность (включая soft-deleted, D-Soft-vs-Hard-Acts-01) и фиксирует
-/// override в audit_log (D-Counter-Acts-01).
+/// `number_override = None` → service берёт `MAX(number) + 1` среди живых
+/// (не soft-deleted) актов. `number_override = Some(n)` → service проверяет
+/// уникальность СРЕДИ ЖИВЫХ актов (номер удалённого акта свободен для
+/// переиспользования — квик-задача 260904-x7s отменяет часть
+/// D-Soft-vs-Hard-Acts-01 про блокировку номера) и фиксирует override в
+/// audit_log (D-Counter-Acts-01).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActNew {
     pub act_type: ActType,
