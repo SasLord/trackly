@@ -15,7 +15,7 @@ use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -213,9 +213,10 @@ pub async fn build_cartridge_storage_place_ids(
     ctx.cartridges.storage_place_ids().await
 }
 
-/// Дефолт места для диалогов «Отправка на заправку»/«Получение с заправки»
-/// (Plan 40-30, HST-01, UAT3-01). Тот же гейт, что и `storage_place_ids` —
+/// Дефолт места для диалога «Получение с заправки» (Plan 40-30/40-33,
+/// HST-01, UAT3-01, UAT4-03). Тот же гейт, что и `storage_place_ids` —
 /// read-side поддержка того же диалога, что и мутация `transition`.
+/// `op = "to_refill"` больше не обслуживается — см. `cartridges_to_refill_last_send`.
 pub async fn build_cartridges_operation_default_place(
     ctx: &AppCtx,
     caller: &Identity,
@@ -226,6 +227,18 @@ pub async fn build_cartridges_operation_default_place(
     ctx.cartridges
         .operation_default_place(&op, cartridge_id)
         .await
+}
+
+/// Данные ОДНОЙ, самой свежей отправки на заправку ЛЮБОГО картриджа (Plan
+/// 40-33, HST-01, UAT4-02). Тот же гейт, что и `storage_place_ids`/
+/// `operation_default_place` — read-side поддержка диалога «Отправка на
+/// заправку», без параметров (глобальный lookup).
+pub async fn build_cartridges_to_refill_last_send(
+    ctx: &AppCtx,
+    caller: &Identity,
+) -> Result<ToRefillLastSendDto, AppError> {
+    authorize(caller, &Action::ReadData)?;
+    ctx.cartridges.to_refill_last_send().await
 }
 
 // ---------------------------------------------------------------------------
@@ -451,4 +464,13 @@ pub async fn cartridges_operation_default_place(
     )
     .await?;
     Ok(place_id.map(|v| v as i32))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cartridges_to_refill_last_send(
+    state: tauri::State<'_, AppCtx>,
+) -> Result<ToRefillLastSendDto, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_cartridges_to_refill_last_send(state.inner(), &caller).await
 }

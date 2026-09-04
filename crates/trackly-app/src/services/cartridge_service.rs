@@ -31,7 +31,7 @@ use trackly_infra::repos::{
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
 };
 
 /// Application service for cartridge lifecycle. `Arc`-fields keep `Clone` O(1).
@@ -947,35 +947,47 @@ impl CartridgeService {
         })?
     }
 
-    /// Дефолт места для двух диалогов картриджа (Plan 40-30/40-31, HST-01,
-    /// UAT3-01, UAT3-01a):
-    /// - `"to_refill"` — самое частое историческое место назначения ВСЕЙ
-    ///   истории отправок на заправку (`cart_repo.most_common_to_refill_destination`);
-    ///   `cartridge_id` игнорируется — это не картридж-специфичный дефолт.
-    /// - `"from_refill"` — зовёт СВОЙ резолвер `cart_repo.place_before_last_to_refill`
-    ///   (UAT3-01a gap-closure round 3), а НЕ `last_known_storage_place_in_tx`.
-    ///   Это два разных вопроса: «последнее известное СКЛАДСКОЕ место»
-    ///   (нужно авто-возврату при установке нового картриджа, Plan 40-28/CR-02)
-    ///   и «место, где картридж был ДО отправки на заправку» (нужно этому
-    ///   дефолту). План 40-30 изначально переиспользовал первый резолвер для
-    ///   второго вопроса — живой UAT показал дефект: если само место
-    ///   заправки тоже помечено `is_storage = 1`, старый резолвер
-    ///   возвращал саму заправку вместо места «до отправки». `cartridge_id`
-    ///   обязателен.
+    /// Дефолт места для диалога «Получение с заправки» (Plan 40-30/40-31/
+    /// 40-33, HST-01, UAT3-01a, UAT4-03).
     ///
-    ///   `place_before_last_to_refill` берёт `from_place_id` самого свежего
-    ///   движения `ToRefill` этого картриджа — без фильтра по `is_storage`
-    ///   у места заправки. Поведение при ручном редактировании места
-    ///   картриджа, пока тот числится на заправке (пункт меню
-    ///   «Редактировать» доступен во всех статусах, включая «На заправке»):
-    ///   такое редактирование пишет ОТДЕЛЬНОЕ движение без
-    ///   `TO_REFILL_MOVEMENT_NOTE`, значит на дефолт `from_refill` НЕ влияет —
-    ///   он по-прежнему видит место «до отправки» из движения `ToRefill`, а
-    ///   не более свежий ручной edit. Это осознанное изменение поведения
-    ///   относительно раунда 2 (см. `operation_default_place_from_refill_ignores_manual_edit_during_refill`
-    ///   в `crates/trackly-app/tests/cartridges_lifecycle.rs`).
+    /// Вопрос «место для отправки на заправку» (бывший `op = "to_refill"`)
+    /// теперь отвечает [`Self::to_refill_last_send`] (Plan 40-33, UAT4-02) —
+    /// правило «от последней отправки», а не «самое частое», и все три поля
+    /// диалога (кто выдал/кому выдал/место) приходят из ОДНОЙ записи, не из
+    /// трёх независимых агрегатов. `"to_refill"` больше не обслуживается
+    /// этим методом и падает в `other` ниже как `AppError::Validation`.
     ///
-    /// Любой другой `op` (включая пустую строку) → `AppError::Validation`.
+    /// `"from_refill"` — двухступенчатая цепочка (UAT4-03):
+    /// 1. `cart_repo.place_before_last_to_refill` — собственная история
+    ///    картриджа (UAT3-01a gap-closure round 3): `from_place_id` самого
+    ///    свежего движения `ToRefill` ЭТОГО картриджа. Это осознанно СВОЙ
+    ///    резолвер, а не `last_known_storage_place_in_tx` — «последнее
+    ///    известное СКЛАДСКОЕ место» (нужно авто-возврату при установке
+    ///    нового картриджа, Plan 40-28/CR-02) и «место, где картридж был ДО
+    ///    отправки на заправку» — разные вопросы; план 40-30 изначально
+    ///    перепутал их, живой UAT показал дефект.
+    /// 2. Если шаг 1 вернул `None` — `cart_repo.latest_to_refill_send(&conn)`
+    ///    (тот же conn, тот же `spawn_blocking`, один reader-acquire на обе
+    ///    попытки, не два), `from_place_id` этой записи — место-ИСТОЧНИК
+    ///    самой свежей отправки на заправку ЛЮБОГО картриджа (не
+    ///    `to_place_id`, это другое поле той же структуры). Если шаг 1
+    ///    вернул `Some`, шаг 2 не вызывается вовсе — короткое замыкание,
+    ///    собственная история побеждает даже если глобальная запись свежее
+    ///    по времени в абсолютном выражении.
+    /// 3. Иначе — `None`, поле остаётся пустым.
+    ///
+    ///   Поведение при ручном редактировании места картриджа, пока тот
+    ///   числится на заправке (пункт меню «Редактировать» доступен во всех
+    ///   статусах, включая «На заправке»): такое редактирование пишет
+    ///   ОТДЕЛЬНОЕ движение без `TO_REFILL_MOVEMENT_NOTE`, значит на шаг 1
+    ///   НЕ влияет — он по-прежнему видит место «до отправки» из движения
+    ///   `ToRefill`, а не более свежий ручной edit (см.
+    ///   `operation_default_place_from_refill_ignores_manual_edit_during_refill`
+    ///   в `crates/trackly-app/tests/cartridges_lifecycle.rs`). `cartridge_id`
+    ///   обязателен для `"from_refill"`.
+    ///
+    /// Любой другой `op` (включая `"to_refill"` и пустую строку) →
+    /// `AppError::Validation`.
     pub async fn operation_default_place(
         &self,
         op: &str,
@@ -984,14 +996,6 @@ impl CartridgeService {
         let readers = self.readers.clone();
         let cart_repo = self.cart_repo.clone();
         match op {
-            "to_refill" => tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
-                let conn = readers.acquire();
-                cart_repo.most_common_to_refill_destination(&conn)
-            })
-            .await
-            .map_err(|e| AppError::Internal {
-                source_chain: format!("spawn_blocking: {e}"),
-            })?,
             "from_refill" => {
                 let cartridge_id = cartridge_id.ok_or_else(|| AppError::Validation {
                     field: "cartridge_id".to_string(),
@@ -999,7 +1003,12 @@ impl CartridgeService {
                 })?;
                 tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
                     let conn = readers.acquire();
-                    cart_repo.place_before_last_to_refill(&conn, cartridge_id)
+                    if let Some(own) = cart_repo.place_before_last_to_refill(&conn, cartridge_id)? {
+                        return Ok(Some(own));
+                    }
+                    Ok(cart_repo
+                        .latest_to_refill_send(&conn)?
+                        .and_then(|s| s.from_place_id))
                 })
                 .await
                 .map_err(|e| AppError::Internal {
@@ -1008,8 +1017,41 @@ impl CartridgeService {
             }
             other => Err(AppError::Validation {
                 field: "op".to_string(),
-                message: format!("Неизвестная операция «{other}» для дефолта места"),
+                message: format!(
+                    "Неизвестная операция «{other}» для дефолта места (место для отправки на \
+                     заправку теперь отвечает to_refill_last_send)"
+                ),
             }),
         }
+    }
+
+    /// Данные ОДНОЙ, самой свежей отправки на заправку ЛЮБОГО картриджа
+    /// (Plan 40-33, HST-01, UAT4-02) — все три поля диалога «Отправка на
+    /// заправку» (кто выдал/кому выдал/место назначения) из одной записи
+    /// `cart_repo.latest_to_refill_send`, не три независимых агрегата. Пустая
+    /// история → все три поля `None` (форма просто ничего не подставляет,
+    /// тот же fail-safe принцип, что у остальных дефолтов этой фазы).
+    pub async fn to_refill_last_send(&self) -> Result<ToRefillLastSendDto, AppError> {
+        let readers = self.readers.clone();
+        let cart_repo = self.cart_repo.clone();
+        tokio::task::spawn_blocking(move || -> Result<ToRefillLastSendDto, AppError> {
+            let conn = readers.acquire();
+            Ok(match cart_repo.latest_to_refill_send(&conn)? {
+                Some(row) => ToRefillLastSendDto {
+                    given_by_name: row.given_by_name,
+                    given_to_name: row.given_to_name,
+                    place_id: row.to_place_id,
+                },
+                None => ToRefillLastSendDto {
+                    given_by_name: None,
+                    given_to_name: None,
+                    place_id: None,
+                },
+            })
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
     }
 }

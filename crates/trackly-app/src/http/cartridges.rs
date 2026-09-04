@@ -13,7 +13,7 @@ use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -25,7 +25,7 @@ use crate::tauri_cmds::cartridges::{
     build_cartridges_operation_default_place, build_cartridges_search,
     build_cartridges_status_counts, build_cartridges_suggest_brand,
     build_cartridges_suggest_compat_printer, build_cartridges_suggest_model,
-    build_cartridges_transition, build_cartridges_update,
+    build_cartridges_to_refill_last_send, build_cartridges_transition, build_cartridges_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -424,6 +424,19 @@ pub async fn handler_operation_default_place(
     Ok(Json(place_id))
 }
 
+pub async fn handler_to_refill_last_send(
+    State(ctx): State<AppCtx>,
+    session: Session,
+) -> Result<Json<ToRefillLastSendDto>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    let dto = build_cartridges_to_refill_last_send(&ctx, &identity)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(dto))
+}
+
 // ---------------------------------------------------------------------------
 // Router (built but NOT bound — Phase 5 wires it to the listener)
 // ---------------------------------------------------------------------------
@@ -476,5 +489,9 @@ pub fn router() -> Router<AppCtx> {
         .route(
             "/api/v1/cartridges_operation_default_place",
             post(handler_operation_default_place),
+        )
+        .route(
+            "/api/v1/cartridges_to_refill_last_send",
+            post(handler_to_refill_last_send),
         )
 }

@@ -82,6 +82,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::cartridges::cartridges_suggest_compat_printer,
         crate::tauri_cmds::cartridges::cartridge_storage_place_ids,
         crate::tauri_cmds::cartridges::cartridges_operation_default_place,
+        crate::tauri_cmds::cartridges::cartridges_to_refill_last_send,
         // Phase 5 — Auth (Plan 03)
         crate::tauri_cmds::auth::auth_login,
         crate::tauri_cmds::auth::auth_logout,

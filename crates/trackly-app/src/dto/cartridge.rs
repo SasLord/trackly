@@ -493,6 +493,18 @@ impl From<LowStockItem> for LowStockItemDto {
     }
 }
 
+/// UAT4-02 (Plan 40-33) — данные ОДНОЙ, самой свежей отправки на заправку
+/// (любого картриджа). `place_id` — место НАЗНАЧЕНИЯ этой отправки. Все три
+/// поля из одной записи `latest_to_refill_send`, не три независимых
+/// агрегата.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ToRefillLastSendDto {
+    pub given_by_name: Option<String>,
+    pub given_to_name: Option<String>,
+    #[specta(type = Option<i32>)]
+    pub place_id: Option<i64>,
+}
+
 /// A single row from the cartridge audit history.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct AuditEntryDto {
