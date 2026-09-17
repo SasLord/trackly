@@ -37,6 +37,20 @@
 //           и записывает `placeIds`. Без инкремента `seq` повторное событие с
 //           тем же списком id не разбудит подписчика (эффект отсекает `seq === 0`
 //           и просыпается именно на изменение `seq`).
+//   INV-7 (40.1, аудит 2026-09-17, WARNING-1) — ПРОДЮСЕРЫ `notifyPlaceContentChanged`
+//           покрывают все клиентские write-site смены места, а не только массовый
+//           перенос (`PlaceContents.svelte`'s `handleMoveConfirm`). WR-01 из
+//           аудита 2026-08-27 уже закрывался «наполовину» — новый write-site
+//           тихо не звал функцию, и ничего в проекте это не ловило. Проверка
+//           ТРИ write-site РАЗДЕЛЬНО, а не «хотя бы один вызов где-то в
+//           репозитории»: после этого плана `PlaceContents.svelte` содержит ДВА
+//           разных вызова (bulk-move и правка через `PlaceEntityViewModal`) —
+//           файл-уровневая проверка не отличила бы удаление нового вызова от
+//           присутствия старого (mutation_test_anchor_must_be_unique). Поэтому
+//           для `PlaceContents.svelte` проверка локализована на блок разметки
+//           `<PlaceEntityViewModal ...>`; для `CartridgesPage.svelte` и
+//           `DevicesPage.svelte` файл-уровневая проверка достаточна — в каждом
+//           ровно один вызов, введённый этим же планом.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -59,6 +73,11 @@ const TAG = '[check-place-tree-invalidation]';
 
 const TREE = 'src/features/places/PlaceTree.svelte';
 const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
+// INV-7 producer write-sites (WARNING-1, audit 2026-09-17).
+const CONTENTS = 'src/features/places/PlaceContents.svelte';
+const CARTRIDGES_PAGE = 'src/features/cartridges/CartridgesPage.svelte';
+const DEVICES_PAGE = 'src/features/devices/DevicesPage.svelte';
+const NOTIFY = 'notifyPlaceContentChanged(';
 
 // ---------------------------------------------------------------------------
 // Хелперы разбора
@@ -105,6 +124,27 @@ function balancedParens(src, openIdx) {
       depth--;
       if (depth === 0) return { text: src.slice(openIdx + 1, i), start: openIdx, end: i };
     }
+  }
+  return null;
+}
+
+/**
+ * INV-7: срез разметки Svelte-тега `<${tagName} ... />` или `<${tagName} ...>`,
+ * от `<tagName` до закрывающего `>` тега (включая self-closing `/>`).
+ * Балансирует ФИГУРНЫЕ скобки, не круглые — атрибуты Svelte-тега вида
+ * `onChanged={() => { ... }}` сами содержат вложенные `{}`, и наивный поиск
+ * первого `>` попал бы внутрь `{() => {...}}`. Возвращает `null`, если тег не
+ * найден (компонент удалён/переименован — гейт должен явно упасть на этом,
+ * не молча пройти).
+ */
+function tagBlock(src, tagName) {
+  const start = src.indexOf(`<${tagName}`);
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') depth--;
+    else if (src[i] === '>' && depth === 0) return src.slice(start, i + 1);
   }
   return null;
 }
@@ -389,6 +429,72 @@ function checkStore(storeSrc, violations) {
   }
 }
 
+/**
+ * INV-7 — продюсеры `notifyPlaceContentChanged` покрывают все три клиентских
+ * write-site (WARNING-1, аудит 2026-09-17). Две РАЗНЫЕ стратегии проверки
+ * внутри одной функции, намеренно — это НЕ недосмотр/асимметрия по
+ * забывчивости:
+ *
+ *   1. `PlaceContents.svelte` содержит ДВА разных вызова `notifyPlaceContentChanged`
+ *      после этого плана (bulk-move в `handleMoveConfirm` и правка через
+ *      `<PlaceEntityViewModal ...>`) — файл-уровневая проверка не отличила бы
+ *      удаление нового вызова от присутствия старого. Проверка ЛОКАЛИЗОВАНА
+ *      на блок разметки тега `<PlaceEntityViewModal ...>` через `tagBlock`.
+ *   2. `CartridgesPage.svelte`/`DevicesPage.svelte` содержат РОВНО ОДИН вызов
+ *      каждый (введён этим же планом; до него — ноль вхождений в файле), так
+ *      что файл-уровневая проверка (`indicesOf(code, NOTIFY).length === 0`)
+ *      однозначно указывает на конкретный write-site — локализация до блока
+ *      здесь не нужна.
+ */
+function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations) {
+  // Write-site 1 — правка предмета через PlaceEntityViewModal (PlaceContents.svelte).
+  const contentsCode = stripComments(contentsSrc);
+  const viewModalTag = tagBlock(contentsCode, 'PlaceEntityViewModal');
+  if (viewModalTag === null) {
+    violations.push({
+      file: CONTENTS,
+      inv: 'INV-7',
+      message: 'тег <PlaceEntityViewModal ...> не найден',
+      hint:
+        'Компонент удалён/переименован/перенесён — обнови гейт вместе с рефакторингом осознанно, ' +
+        'не удаляй проверку write-site 1 (правка предмета со страницы «Места», WARNING-1).',
+    });
+  } else if (!viewModalTag.includes(NOTIFY)) {
+    violations.push({
+      file: CONTENTS,
+      inv: 'INV-7',
+      message:
+        'блок <PlaceEntityViewModal ...> не вызывает notifyPlaceContentChanged( — правка предмета ' +
+        'со страницы «Места» больше не инвалидирует дерево',
+      hint:
+        'WR-01 (аудит 2026-08-27) уже закрывался «наполовину» — только массовый перенос ' +
+        '(handleMoveConfirm) остаётся нетронутым, но этого НЕ достаточно: правка одного предмета ' +
+        'через «Просмотр» → «Редактировать» тоже обязана звать notifyPlaceContentChanged, иначе ' +
+        'счётчики дерева останутся устаревшими до перезагрузки страницы.',
+    });
+  }
+
+  // Write-site 2 и 3 — списки «Картриджи»/«Устройства» (файл-уровневая проверка,
+  // см. doc-комментарий функции выше: в каждом файле ровно один вызов).
+  for (const [file, src] of [
+    [CARTRIDGES_PAGE, cartridgesSrc],
+    [DEVICES_PAGE, devicesSrc],
+  ]) {
+    const code = stripComments(src);
+    if (indicesOf(code, NOTIFY).length === 0) {
+      violations.push({
+        file,
+        inv: 'INV-7',
+        message: 'notifyPlaceContentChanged( не вызывается нигде в файле',
+        hint:
+          'D-14 (аудит 2026-09-17) называет оба списка дословно — «Устройства»/«Картриджи»: правка ' +
+          'места предмета из этого списка обязана инвалидировать счётчики дерева «Места», передавая ' +
+          'и старое, и новое место (D-15), иначе счётчик места-источника останется завышенным.',
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 function main() {
@@ -413,10 +519,14 @@ function main() {
 
   const treeSrc = read(TREE);
   const storeSrc = read(STORE);
+  const contentsSrc = read(CONTENTS);
+  const cartridgesSrc = read(CARTRIDGES_PAGE);
+  const devicesSrc = read(DEVICES_PAGE);
 
   const violations = [];
   checkTree(treeSrc, violations);
   checkStore(storeSrc, violations);
+  checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations);
 
   for (const v of violations) {
     console.error(`${TAG} ${v.file} — ${v.inv}: ${v.message}`);
