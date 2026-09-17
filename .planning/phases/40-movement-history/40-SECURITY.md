@@ -184,6 +184,37 @@ Tauri невозможно без правки самой `build_*`. Прове�
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-09-05 | 72 | 72 | 0 | gsd-security-auditor (/gsd-secure-phase 40) |
+| 2026-09-17 | 72 | 72 | 0 | повторный прогон /gsd-secure-phase 40 — проверка дрейфа |
+
+### Повторный прогон 2026-09-17 — проверка дрейфа
+
+Реестр пересчитан независимо от текста этого документа: 35/35 PLAN-файлов
+содержат разбираемый блок `<threat_model>`, суммарно 72 строки `T-40-*`,
+41 `mitigate` + 31 `accept` — совпадает с зафиксированным реестром, значит
+`register_authored_at_plan_time: true` и короткое замыкание (threats_open: 0)
+применимо законно.
+
+Изменения кода с момента аудита (`git diff 39a2e39e..HEAD -- crates/ ui/`):
+единственный коммит `96310cef` — prettier-перенос строки внутри текста подсказки
+в `OperationModal.svelte`. Поведения и гейтов не касается.
+
+Перепроверены по коду, а не по документу, два ключевых утверждения:
+
+- **WARNING-01 остаётся точным и остаётся открытым.** `authorize(caller,
+  &Action::ReadData)` по-прежнему стоит внутри
+  `build_cartridges_operation_default_place` и `build_cartridges_to_refill_last_send`
+  (`tauri_cmds/cartridges.rs`), Tauri-обёртки делают только
+  `resolve_tauri_identity` + делегирование — обхода нет. Case 64/65 в
+  `role_endpoint_matrix.rs` так и не добавлены (в файле 189 кейсов, последние
+  Case 60-63 — только HTTP). Риск регрессионный, зафиксирован в
+  `deferred-items.md`, статус не меняется.
+- **Граница `place_movements.source` закрыта по конструкции.** Все write-site
+  подставляют жёсткий вариант перечисления (`MovementSource::Manual` в
+  `device_service`/`place_service`/`cartridge_service`, `MovementSource::Act` в
+  `act_service`); ни один DTO не десериализует `source` из тела запроса.
+
+Открытых угроз: 0. Блокеров: 0. Предупреждений: 1 (WARNING-01, отложено осознанно).
+Файлы реализации в ходе повторного аудита не изменялись.
 
 ---
 
