@@ -1,6 +1,10 @@
 //! Интеграционные тесты `PlaceService::delete_hard` (Phase 39 Plan 05, Task 2):
 //! D-14 — удаление непустого узла блокируется с точными счётчиками (UI-SPEC
 //! §11.5/§14.3), удаление пустого листа проходит успешно.
+//!
+//! BLOCKER-1 (milestone v1.4 audit, 2026-09-17): also covers `place_movements`
+//! (V040, `ON DELETE RESTRICT` on `from_place_id`/`to_place_id`) — the same
+//! class of defect as the CR-01 `acts`-reference tests below.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,6 +126,43 @@ async fn insert_act_with_item_override(
         })
         .await
         .expect("insert fixture act+item override");
+}
+
+/// Inserts a minimal `place_movements` row directly, referencing `place_id`
+/// through the given `column` (`"from_place_id"` or `"to_place_id"`) —
+/// BLOCKER-1 (milestone v1.4 audit, 2026-09-17) regression fixture, mirroring
+/// `insert_act_referencing_place`'s form. The opposite FK column is filled
+/// with `other_place_id` (a distinct, valid place) — V040's schema requires
+/// both `from_place_id`/`to_place_id` `NOT NULL`. Only fictional data, per
+/// the project's hard privacy constraint (CLAUDE.md).
+async fn insert_movement_referencing_place(
+    svc: &PlaceService,
+    column: &'static str,
+    place_id: i64,
+    entity_id: i64,
+    other_place_id: i64,
+) {
+    svc.writer
+        .execute(move |conn| {
+            let (from_place_id, to_place_id) = if column == "from_place_id" {
+                (place_id, other_place_id)
+            } else {
+                (other_place_id, place_id)
+            };
+            conn.execute(
+                "INSERT INTO place_movements \
+                 (entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
+                  to_place_path, source, note, act_id, user_id, actor_name_snapshot, \
+                  created_at_utc) \
+                 VALUES ('device', ?1, ?2, 'Вымышленный путь А', ?3, 'Вымышленный путь Б', \
+                  'manual', NULL, NULL, NULL, NULL, 0)",
+                rusqlite::params![entity_id, from_place_id, to_place_id],
+            )
+            .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("insert fixture movement");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -408,6 +449,151 @@ async fn act_referencing_same_place_through_two_columns_counts_once() {
             }
             other => panic!("ожидали AppError::Conflict, получили {other:?}"),
         }
+    })
+    .await
+    .expect("test timed out");
+}
+
+// ---------------------------------------------------------------------------
+// BLOCKER-1 (milestone v1.4 audit, 2026-09-17): a place with ZERO child
+// places, ZERO devices, ZERO cartridges and ZERO referencing acts —
+// otherwise "empty" — but that was once a `place_movements` row's source or
+// destination must be blocked by the pre-flight check with a correct
+// Russian message, NOT allowed through to a raw SQLite FK error. Before the
+// fix, `subtree_stats_impl` never counted `place_movements`, so
+// `delete_hard`'s pre-check reported "safe to delete" and the writer's
+// `DELETE` hit V040's `ON DELETE RESTRICT`, surfacing the raw English
+// SQLite message verbatim as the Conflict reason. Both FK directions
+// (`from_place_id` / `to_place_id`) are covered (D-06).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_blocked_by_movement_from_place_id_even_when_otherwise_empty() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "410", None))
+            .await
+            .expect("create room");
+        let other = svc
+            .create(&admin, new_place(PlaceKind::Room, "411", None))
+            .await
+            .expect("create other end of the FK");
+
+        // Room is otherwise completely empty. Only a `place_movements` row's
+        // `from_place_id` references it (the room was once a device's
+        // movement SOURCE — the device has since moved elsewhere).
+        insert_movement_referencing_place(&svc, "from_place_id", room.id, 9001, other.id).await;
+
+        let err = svc
+            .delete_hard(&admin, room.id, room.version)
+            .await
+            .expect_err(
+                "otherwise-empty место — источник перемещения — всё равно должно блокироваться",
+            );
+
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(
+                    reason.contains("перемещен"),
+                    "должен сообщать про перемещение по-русски, а не пропускать проверку: {reason}"
+                );
+                assert!(
+                    !reason.contains("FOREIGN KEY"),
+                    "не должен протекать сырое английское сообщение SQLite в диалог: {reason}"
+                );
+                assert!(
+                    reason.starts_with("Место нельзя удалить:"),
+                    "должен использовать литеральный шаблон UI-SPEC §11.5/§14.3: {reason}"
+                );
+            }
+            other => panic!("ожидали AppError::Conflict, получили {other:?}"),
+        }
+
+        // The place must still exist — the pre-flight check should have
+        // stopped this BEFORE the writer ever ran a DELETE.
+        let readers = svc.readers.clone();
+        let id = room.id;
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM places WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("join")
+        .expect("query places");
+        assert_eq!(count, 1, "заблокированное место не должно быть удалено");
+    })
+    .await
+    .expect("test timed out");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_blocked_by_movement_to_place_id_even_when_otherwise_empty() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "412", None))
+            .await
+            .expect("create room");
+        let other = svc
+            .create(&admin, new_place(PlaceKind::Room, "413", None))
+            .await
+            .expect("create other end of the FK");
+
+        // Room is otherwise completely empty. Only a `place_movements` row's
+        // `to_place_id` references it (the room was once a device's
+        // movement DESTINATION — the device has since moved elsewhere).
+        insert_movement_referencing_place(&svc, "to_place_id", room.id, 9002, other.id).await;
+
+        let err = svc
+            .delete_hard(&admin, room.id, room.version)
+            .await
+            .expect_err(
+                "otherwise-empty место — приёмник перемещения — всё равно должно блокироваться",
+            );
+
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(
+                    reason.contains("перемещен"),
+                    "должен сообщать про перемещение по-русски, а не пропускать проверку: {reason}"
+                );
+                assert!(
+                    !reason.contains("FOREIGN KEY"),
+                    "не должен протекать сырое английское сообщение SQLite в диалог: {reason}"
+                );
+                assert!(
+                    reason.starts_with("Место нельзя удалить:"),
+                    "должен использовать литеральный шаблон UI-SPEC §11.5/§14.3: {reason}"
+                );
+            }
+            other => panic!("ожидали AppError::Conflict, получили {other:?}"),
+        }
+
+        // The place must still exist — the pre-flight check should have
+        // stopped this BEFORE the writer ever ran a DELETE.
+        let readers = svc.readers.clone();
+        let id = room.id;
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM places WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("join")
+        .expect("query places");
+        assert_eq!(count, 1, "заблокированное место не должно быть удалено");
     })
     .await
     .expect("test timed out");
