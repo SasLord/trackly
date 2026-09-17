@@ -351,7 +351,8 @@ pub async fn build_reports_export_csv(
     authorize_report_export(caller, &report_type)?;
     let rows = fetch_report(ctx, caller, &report_type, filter, period).await?;
     let cols = columns_for(&report_type);
-    ctx.reports.export_csv(&rows, &cols).await
+    let labels = column_labels_for(&report_type);
+    ctx.reports.export_csv(&rows, &cols, &labels).await
 }
 
 /// Export report as an HTML string (Phase 17: migrated off krilla/DocSpec).
@@ -733,6 +734,11 @@ mod tests {
     /// as many labels as `columns_for` returns keys for every known
     /// report_type, so `ctx["columns"]` (labels) and `row_field(row, col)`
     /// (keys) stay index-aligned in `ReportService::export_pdf`.
+    ///
+    /// WARNING-4 (audit v1.4, 2026-09-17, D-20): this same alignment now
+    /// also backs `ReportService::export_csv`'s `columns`/`column_labels`
+    /// parameters via `build_reports_export_csv` — no separate CSV-specific
+    /// index-alignment test is added; this one test covers both exports.
     #[test]
     fn column_labels_for_is_index_aligned_with_columns_for() {
         for report_type in [
