@@ -46,10 +46,27 @@
   interface Props {
     row: PlaceContentDto;
     onClose: () => void;
-    /** Fired after a successful save from the «Редактировать» edit modal so
-     *  the caller (PlaceContents) can reload its table — the row's
-     *  name/place/status may have just changed. */
-    onChanged?: () => void;
+    /**
+     * Fired after a successful save from the «Редактировать» edit modal so
+     * the caller (PlaceContents) can reload its table — the row's
+     * name/place/status may have just changed.
+     *
+     * WARNING-1 gap-closure round 2 (live UAT, 2026-09-18): the first fix
+     * (`onChanged?: () => void`, no arguments) invalidated only the
+     * currently VIEWED root (`PlaceContents`'s own `place.id`) — safe for
+     * that node's own counter, but the row's ACTUAL old/new place (e.g. a
+     * device moved between two floors under the viewed building) sits on a
+     * different tree branch and never got evicted, matching exactly what
+     * live UAT reported ("only the currently open section updates").
+     * `deviceDto`/`cartridgeDto` (loaded BEFORE the edit, unchanged while
+     * `editOpen`) already hold the row's OLD `place_id`; `DeviceFormModal`'s
+     * `onSaved` result / `CartridgeFormModal`'s `onSuccess` entity already
+     * carry the NEW one (same values `DevicesPage`/`CartridgesPage` already
+     * use for their own producers, Task 1/Task 2 of this plan) — no extra
+     * request needed. `onChanged` now forwards that array so the caller can
+     * invalidate BOTH the exact old and new place, not just the viewed root.
+     */
+    onChanged?: (changedPlaceIds: number[]) => void;
   }
 
   const { row, onClose, onChanged }: Props = $props();
@@ -173,9 +190,30 @@
     viewOpen = true;
   }
 
-  function handleEditSaved() {
+  // Two separate handlers (not one shared `handleEditSaved`) because the two
+  // edit modals report the row's NEW place differently: `CartridgeFormModal`'s
+  // `onSuccess` hands back the full saved `CartridgeDto` (new `place_id` is a
+  // field on it); `DeviceFormModal`'s `onSaved` hands back only the fields it
+  // was explicitly extended with (`{ typeId, placeId }`, Task 2 of this plan) —
+  // same asymmetry `CartridgesPage.svelte`/`DevicesPage.svelte` already live
+  // with for their own producers.
+  function handleDeviceEditSaved(result?: { typeId: number; placeId: number | null }) {
+    const oldPlaceId = deviceDto?.place_id ?? null;
+    const newPlaceId = result?.placeId ?? null;
     editOpen = false;
-    onChanged?.();
+    onChanged?.(
+      Array.from(new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null))),
+    );
+    onClose();
+  }
+
+  function handleCartridgeEditSaved(cart: CartridgeDto) {
+    const oldPlaceId = cartridgeDto?.place_id ?? null;
+    const newPlaceId = cart.place_id ?? null;
+    editOpen = false;
+    onChanged?.(
+      Array.from(new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null))),
+    );
     onClose();
   }
 </script>
@@ -246,14 +284,14 @@
     target={cartridgeDto}
     models={cartridgeModels}
     onClose={handleEditClose}
-    onSuccess={handleEditSaved}
+    onSuccess={handleCartridgeEditSaved}
   />
 {:else}
   <DeviceFormModal
     open={editOpen}
     target={deviceDto}
     onClose={handleEditClose}
-    onSaved={handleEditSaved}
+    onSaved={handleDeviceEditSaved}
   />
 {/if}
 

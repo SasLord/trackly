@@ -400,21 +400,19 @@
   <PlaceEntityViewModal
     row={viewRow}
     onClose={() => (viewRow = null)}
-    onChanged={() => {
-      // WARNING-1 (audit 2026-09-17, D-14/D-17): invalidate the currently
-      // viewed root's tree counters on every edit-modal save from here,
-      // not just the bulk move below. `PlaceContentDto`/`onChanged`/
-      // `DeviceFormModal`'s `onSaved` result carry no place_id, so the
-      // exact old/new place of the edited row is not available without
-      // extending PlaceEntityViewModal's own contract (out of scope for
-      // this write-site — see Task 2 for DevicesPage, where the
-      // signature IS extended for a different consumer). Invalidating
-      // `place.id` (the currently viewed root) is safe-but-imprecise:
-      // PlaceTree's own ancestorsAndSelf() walk means over-invalidating
-      // the root never produces a wrong (stale) counter, only an extra
-      // refetch — acceptable for a nested-place edit whose exact
-      // destination we don't know here.
-      notifyPlaceContentChanged([place.id]);
+    onChanged={(changedPlaceIds) => {
+      // WARNING-1 gap-closure round 2 (live UAT, 2026-09-18): the first fix
+      // only invalidated the currently VIEWED root (`place.id`) — over-
+      // invalidating the root is safe for THAT node (PlaceTree's own
+      // ancestorsAndSelf() walk never produces a wrong/stale counter there),
+      // but it does NOT reach the row's actual old/new place when that place
+      // is a different node (a sibling branch, or a nested sub-place under
+      // this root whose OWN counter also needs evicting) — exactly the "only
+      // the currently open section updates" symptom UAT reported.
+      // `PlaceEntityViewModal` now forwards the row's exact old+new place ids
+      // (already known to `DeviceFormBody`/the saved `CartridgeDto`, no extra
+      // request) — invalidate the viewed root AND those, deduplicated.
+      notifyPlaceContentChanged(Array.from(new Set([place.id, ...changedPlaceIds])));
       reloadToken += 1;
     }}
   />
