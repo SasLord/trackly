@@ -122,6 +122,7 @@ async fn html_report_single_row_renders_columns_and_month() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -183,6 +184,7 @@ async fn html_report_multi_month_groups_render_separately() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -222,6 +224,7 @@ async fn html_report_empty_response_shows_no_data_message() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -264,6 +267,7 @@ async fn html_report_org_header_present() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -310,6 +314,7 @@ async fn html_report_org_header_shows_address_line2() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -356,6 +361,7 @@ async fn html_report_no_krilla_artifacts() {
                 None,
                 &columns,
                 &labels,
+                None,
             )
             .await
             .expect("export_pdf ok");
@@ -410,6 +416,7 @@ async fn html_report_header_uses_russian_labels_not_raw_keys() {
             None,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");
@@ -454,6 +461,7 @@ async fn html_report_disallowed_logo_mime_drops_logo() {
             Some("text/html".to_string()),
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf ok");

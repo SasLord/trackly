@@ -10,6 +10,7 @@ use crate::context::AppCtx;
 use crate::dto::reports::{PeriodDto, ReportCountsDto, ReportFilter, ReportResponse};
 use crate::services::report_service::format_period_label;
 use crate::tauri_cmds::users::resolve_tauri_identity;
+use rusqlite::OptionalExtension;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
@@ -17,7 +18,13 @@ use trackly_core::error::AppError;
 // Columns per report type (used for CSV/PDF header rows)
 // ---------------------------------------------------------------------------
 
-fn columns_for(report_type: &str) -> Vec<&'static str> {
+/// `omit_type_column` (user-requested deviation, plan 40.1-02, live UAT
+/// 2026-09-18): when the `movements` report is filtered to a single device
+/// type (`filter.type_id.is_some()`), the resulting «Тип» column is
+/// redundant — every row shares the same value. Only `"movements"` ever sets
+/// this `true`; every other `report_type` ignores the flag (see
+/// `other_report_types_ignore_omit_type_column_flag`).
+fn columns_for(report_type: &str, omit_type_column: bool) -> Vec<&'static str> {
     match report_type {
         "device_acts" | "device_returns" => {
             vec![
@@ -55,15 +62,21 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
         // `"handover_date_utc"`. Using `"created_at_utc"` here would compile
         // fine but silently render an empty «Дата» column in both the table
         // and CSV/PDF export — see Deviations in the plan Summary.
-        "movements" => vec![
-            "handover_date_utc",
-            "device_name",
-            "entity_type_label",
-            "from_place_path",
-            "place_path",
-            "actor_name",
-            "reason",
-        ],
+        "movements" => {
+            let mut cols = vec![
+                "handover_date_utc",
+                "device_name",
+                "entity_type_label",
+                "from_place_path",
+                "place_path",
+                "actor_name",
+                "reason",
+            ];
+            if omit_type_column {
+                cols.retain(|c| *c != "entity_type_label");
+            }
+            cols
+        }
         _ => vec!["id"],
     }
 }
@@ -77,7 +90,7 @@ fn columns_for(report_type: &str) -> Vec<&'static str> {
 /// the user (`ctx["columns"]` in `ReportService::export_pdf`). Labels are
 /// sourced from `ui/src/features/reports/ReportsPage.svelte`'s
 /// `COLUMNS_MAP` so printed headers match the on-screen report table.
-fn column_labels_for(report_type: &str) -> Vec<&'static str> {
+fn column_labels_for(report_type: &str, omit_type_column: bool) -> Vec<&'static str> {
     match report_type {
         "device_acts" | "device_returns" => {
             vec!["Номер", "Устройства", "Сдал", "Принял", "Место"]
@@ -95,7 +108,13 @@ fn column_labels_for(report_type: &str) -> Vec<&'static str> {
             vec!["№", "Дата", "Тип", "Статус", "Заявитель", "Место"]
         }
         // HST-04 (D-23) — index-aligned with columns_for("movements") above.
-        "movements" => vec!["Дата", "Предмет", "Тип", "Откуда", "Куда", "Кем", "Причина"],
+        "movements" => {
+            let mut labels = vec!["Дата", "Предмет", "Тип", "Откуда", "Куда", "Кем", "Причина"];
+            if omit_type_column {
+                labels.retain(|l| *l != "Тип");
+            }
+            labels
+        }
         _ => vec!["ID"],
     }
 }
@@ -349,9 +368,14 @@ pub async fn build_reports_export_csv(
     period: Option<PeriodDto>,
 ) -> Result<Vec<u8>, AppError> {
     authorize_report_export(caller, &report_type)?;
+    // User-requested deviation (plan 40.1-02, live UAT 2026-09-18): CSV
+    // shares columns_for/column_labels_for with the PDF export (WARNING-4's
+    // shared point, D-20/D-21), so the same «Тип» column omission applies
+    // here too when the movements report is filtered to a single type.
+    let omit_type_column = report_type == "movements" && filter.type_id.is_some();
     let rows = fetch_report(ctx, caller, &report_type, filter, period).await?;
-    let cols = columns_for(&report_type);
-    let labels = column_labels_for(&report_type);
+    let cols = columns_for(&report_type, omit_type_column);
+    let labels = column_labels_for(&report_type, omit_type_column);
     ctx.reports.export_csv(&rows, &cols, &labels).await
 }
 
@@ -364,6 +388,13 @@ pub async fn build_reports_export_pdf(
     period: Option<PeriodDto>,
 ) -> Result<String, AppError> {
     authorize_report_export(caller, &report_type)?;
+    // User-requested deviation (plan 40.1-02, live UAT 2026-09-18): same
+    // omission decision as build_reports_export_csv (WARNING-4's shared
+    // columns_for/column_labels_for point).
+    let omit_type_column = report_type == "movements" && filter.type_id.is_some();
+    // Resolved BEFORE `filter` is moved into `fetch_report` below — needs
+    // read access to filter.from_place_id/to_place_id/type_id.
+    let filter_summary = build_movements_filter_summary(ctx, caller, &report_type, &filter).await?;
     let rows = fetch_report(ctx, caller, &report_type, filter, period.clone()).await?;
     let org = ctx.org_db.get().await?;
     let logo_bytes = ctx.org_db.get_logo_bytes().await?;
@@ -384,8 +415,8 @@ pub async fn build_reports_export_pdf(
     } else {
         None
     };
-    let cols = columns_for(&report_type);
-    let labels = column_labels_for(&report_type);
+    let cols = columns_for(&report_type, omit_type_column);
+    let labels = column_labels_for(&report_type, omit_type_column);
     let report_name = report_display_name(&report_type);
     let period_label = period.as_ref().map(format_period_label).unwrap_or_default();
     ctx.reports
@@ -398,8 +429,74 @@ pub async fn build_reports_export_pdf(
             logo_mime,
             &cols,
             &labels,
+            filter_summary.as_deref(),
         )
         .await
+}
+
+/// Device type name lookup for `build_movements_filter_summary` — `device_types`
+/// is a tiny seeded lookup table (V001). `None` if the id has since been
+/// removed (should not happen — `type_id` always originates from the same
+/// `deviceTypes` dropdown the UI queries — but degrades gracefully rather
+/// than failing the whole export over a stale filter value).
+async fn device_type_name(ctx: &AppCtx, type_id: i64) -> Result<Option<String>, AppError> {
+    let readers = ctx.readers.clone();
+    tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
+        let conn = readers.acquire();
+        conn.query_row(
+            "SELECT name FROM device_types WHERE id = ?1",
+            [type_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(trackly_infra::error_conversions::map_rusqlite)
+    })
+    .await
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("spawn_blocking device_type_name: {e}"),
+    })?
+}
+
+/// User-requested deviation (live UAT of BLOCKER-2's «Тип устройства»
+/// filter, plan 40.1-02, 2026-09-18): builds the human-readable summary of
+/// active `movements` filters (Откуда/Куда/Тип устройства) shown in the
+/// print/PDF export, below `period_label` and above the table — see
+/// `40.1-02-SUMMARY.md`'s Deviations section.
+///
+/// Names, never raw ids: from/to place full paths come from
+/// `ctx.places.full_path` (same authorization gate, `Action::ReadPlaces`,
+/// the caller already passed to reach this function), device type name from
+/// `device_type_name` above. `None` when `report_type != "movements"` or no
+/// movements filter is active — the template's `{% if filter_summary %}`
+/// guard then renders nothing.
+async fn build_movements_filter_summary(
+    ctx: &AppCtx,
+    caller: &Identity,
+    report_type: &str,
+    filter: &ReportFilter,
+) -> Result<Option<String>, AppError> {
+    if report_type != "movements" {
+        return Ok(None);
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(from_id) = filter.from_place_id {
+        let path = ctx.places.full_path(caller, from_id).await?;
+        parts.push(format!("Откуда: {path}"));
+    }
+    if let Some(to_id) = filter.to_place_id {
+        let path = ctx.places.full_path(caller, to_id).await?;
+        parts.push(format!("Куда: {path}"));
+    }
+    if let Some(type_id) = filter.type_id {
+        if let Some(name) = device_type_name(ctx, type_id).await? {
+            parts.push(format!("Тип устройства: {name}"));
+        }
+    }
+    if parts.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(parts.join("; ")))
+    }
 }
 
 /// Report types whose query is period-scoped. For these, `period` is
@@ -756,14 +853,75 @@ mod tests {
             "requests_completed",
             "movements",
         ] {
-            let cols = columns_for(report_type);
-            let labels = column_labels_for(report_type);
+            // User-requested deviation (plan 40.1-02): index alignment must
+            // hold for BOTH values of omit_type_column, not just the
+            // pre-existing `false` (type column present) case.
+            for omit_type_column in [false, true] {
+                let cols = columns_for(report_type, omit_type_column);
+                let labels = column_labels_for(report_type, omit_type_column);
+                assert_eq!(
+                    cols.len(),
+                    labels.len(),
+                    "columns_for({report_type:?}, {omit_type_column}) has {} keys but \
+                     column_labels_for({report_type:?}, {omit_type_column}) has {} labels",
+                    cols.len(),
+                    labels.len()
+                );
+            }
+        }
+    }
+
+    /// User-requested deviation (plan 40.1-02, live UAT 2026-09-18): the
+    /// «Тип»/`entity_type_label` column must actually be absent — not just
+    /// index-aligned — when `omit_type_column` is set for `"movements"`.
+    #[test]
+    fn movements_columns_omit_type_column_when_flag_set() {
+        let cols = columns_for("movements", true);
+        let labels = column_labels_for("movements", true);
+        assert!(
+            !cols.contains(&"entity_type_label"),
+            "entity_type_label must be omitted: {cols:?}"
+        );
+        assert!(
+            !labels.contains(&"Тип"),
+            "Тип label must be omitted: {labels:?}"
+        );
+        assert_eq!(cols.len(), 6);
+        assert_eq!(labels.len(), 6);
+    }
+
+    /// Mirror of the test above: the flag unset (default, no type filter
+    /// active) must keep the «Тип» column exactly as before this plan.
+    #[test]
+    fn movements_columns_keep_type_column_when_flag_unset() {
+        let cols = columns_for("movements", false);
+        let labels = column_labels_for("movements", false);
+        assert!(cols.contains(&"entity_type_label"));
+        assert!(labels.contains(&"Тип"));
+        assert_eq!(cols.len(), 7);
+        assert_eq!(labels.len(), 7);
+    }
+
+    /// `omit_type_column` is meaningful only for `"movements"` — every other
+    /// report_type must ignore it entirely (D-12-style scope discipline: this
+    /// deviation must not leak into unrelated report domains).
+    #[test]
+    fn other_report_types_ignore_omit_type_column_flag() {
+        for report_type in [
+            "device_acts",
+            "device_in_use",
+            "cartridge_consumption",
+            "requests_all",
+        ] {
             assert_eq!(
-                cols.len(),
-                labels.len(),
-                "columns_for({report_type:?}) has {} keys but column_labels_for({report_type:?}) has {} labels",
-                cols.len(),
-                labels.len()
+                columns_for(report_type, false),
+                columns_for(report_type, true),
+                "{report_type} columns must not change with omit_type_column"
+            );
+            assert_eq!(
+                column_labels_for(report_type, false),
+                column_labels_for(report_type, true),
+                "{report_type} labels must not change with omit_type_column"
             );
         }
     }

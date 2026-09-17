@@ -377,7 +377,18 @@
     // Movements domain: own COLUMNS_MAP key, not keyed by activeReport (see
     // COLUMNS_MAP.movements comment for why 'all' would collide with Заявки).
     if (activeDomain === 'movements') {
-      return COLUMNS_MAP.movements ?? [];
+      const cols = COLUMNS_MAP.movements ?? [];
+      // User-requested deviation (live UAT of the «Тип устройства» filter,
+      // plan 40.1-02, 2026-09-18): when the type filter narrows the report
+      // to a single device type, the «Тип» column is redundant — every row
+      // shares the same value. Mirrors the same omission decision the
+      // backend makes in tauri_cmds/reports.rs's columns_for/
+      // column_labels_for (omit_type_column) for CSV/PDF export — screen
+      // and export stay consistent.
+      if (filter.type_id != null) {
+        return cols.filter((c) => c.key !== 'entity_type_label');
+      }
+      return cols;
     }
     // For cartridge domain, use prefixed keys to differentiate from device in_use/in_stock
     if (

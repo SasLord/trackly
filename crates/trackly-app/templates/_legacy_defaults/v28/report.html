@@ -13,14 +13,6 @@
     org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
     report_name (string) — human-readable report title
     period_label (string) — human-readable period description
-    filter_summary (string, nullable — user-requested deviation, plan
-      40.1-02, 2026-09-18): a one-line human-readable summary of active
-      `movements` filters (e.g. "Откуда: Склад №1; Тип устройства: Принтер"),
-      built server-side from already-resolved names, never raw ids. `null`
-      for every other report type and whenever no movements filter is
-      active — MUST be present in every render context even when null
-      (strict-undefined engine, T-17-01-XX/build_safe_html_env), including
-      TemplateService's `demo_context_for_kind("report")` preview sample.
     columns (list of Russian column-label strings, D-03 — Rust-supplied,
       this template never hardcodes labels)
     groups (list of { month_label: string, rows: list of cell-value lists
@@ -64,13 +56,7 @@
     text-align: center;
     font-size: 10.5pt;
     color: #555;
-    margin: 4pt 0 8pt 0;
-  }
-  .filter-summary {
-    text-align: center;
-    font-size: 8.5pt;
-    color: #666;
-    margin: 0 0 14pt 0;
+    margin: 4pt 0 16pt 0;
   }
   h3.month-separator {
     font-size: 11.5pt;
@@ -127,9 +113,6 @@
 
   <div class="title">{{ report_name }}</div>
   <div class="subtitle">{{ period_label }}</div>
-  {%- if filter_summary %}
-  <div class="filter-summary">{{ filter_summary }}</div>
-  {%- endif %}
 
   {%- if groups is not defined or groups | length == 0 %}
   <p class="empty-state">Нет данных за указанный период.</p>

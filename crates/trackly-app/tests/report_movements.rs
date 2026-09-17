@@ -200,6 +200,27 @@ async fn seed_device(ctx: &AppCtx, name: &str) -> i64 {
         .expect("seed test device")
 }
 
+/// Same as `seed_device` but with an explicit `type_id` (V001 seed: 1 =
+/// «Устройство», 2 = «Принтер») — needed to exercise the «Тип устройства»
+/// filter's column-omission and filter-summary behavior (plan 40.1-02, user
+/// deviation, live UAT 2026-09-18).
+async fn seed_device_with_type(ctx: &AppCtx, name: &str, type_id: i64) -> i64 {
+    let name = name.to_string();
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO devices \
+                 (type_id, name, status_id, version, created_at_utc, updated_at_utc) \
+                 VALUES (?1, ?2, 1, 1, 1700000000, 1700000000)",
+                rusqlite::params![type_id, name],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed test device with explicit type_id")
+}
+
 async fn soft_delete_device(ctx: &AppCtx, device_id: i64) {
     ctx.writer
         .execute(move |conn| {
@@ -540,15 +561,8 @@ async fn report_movements_export_csv_has_russian_headers() {
     // Values are still read by `row_field(row, col)` off the raw column keys
     // (`handover_date_utc`, `device_name`, …) — unchanged by this fix, only
     // the header source changed.
-    for label in [
-        "Дата",
-        "Предмет",
-        "Тип",
-        "Откуда",
-        "Куда",
-        "Кем",
-        "Причина",
-    ] {
+    for label in ["Дата", "Предмет", "Тип", "Откуда", "Куда", "Кем", "Причина"]
+    {
         assert!(
             text.contains(label),
             "CSV export missing Russian column label {label:?}: {text}"
@@ -899,5 +913,262 @@ async fn report_movements_return_act_shows_canonical_number() {
     assert!(
         !reason.contains("№20 ") && !reason.ends_with("№20"),
         "WR-10: report must NOT show the bare parent handover number, got reason: {reason:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Plan 40.1-02 (user-requested deviation, live UAT of the «Тип устройства»
+// filter, 2026-09-18): the movements report's CSV/PDF exports omit the
+// redundant «Тип» column when `filter.type_id` is set, and the PDF export
+// shows a human-readable summary line of active filters (Откуда/Куда/Тип
+// устройства) — names, never raw ids.
+// ---------------------------------------------------------------------------
+
+/// CSV header row must NOT contain the «Тип» column when the report is
+/// filtered to a single device type — every row would share the same value.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_csv_omits_type_column_when_type_filter_set() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад-Тип-CSV").await;
+    let office = seed_place(&ctx, None, "Офис-Тип-CSV").await;
+    // device_types seed (V001): 2 = «Принтер».
+    let printer = seed_device_with_type(&ctx, "Принтер CSV-тип-тест", 2).await;
+    seed_movement(
+        &ctx,
+        "device",
+        printer,
+        warehouse,
+        "Склад-Тип-CSV",
+        office,
+        "Офис-Тип-CSV",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+
+    let filter = ReportFilter {
+        type_id: Some(2),
+        ..ReportFilter::default()
+    };
+    let bytes = build_reports_export_csv(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        filter,
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements CSV with a type filter");
+
+    let text = String::from_utf8_lossy(&bytes);
+    let header_line = text.lines().next().expect("csv has a header line");
+    assert!(
+        !header_line.contains("Тип"),
+        "«Тип» column must be omitted from the CSV header when type_id filter is set: {header_line:?}"
+    );
+    for label in ["Дата", "Предмет", "Откуда", "Куда", "Кем", "Причина"]
+    {
+        assert!(
+            header_line.contains(label),
+            "expected {label:?} to remain in the CSV header: {header_line:?}"
+        );
+    }
+}
+
+/// Same omission decision, PDF/HTML export: the header `<th>` cell for «Тип»
+/// must be absent while every other column header survives.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_pdf_omits_type_column_when_type_filter_set() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад-Тип-PDF").await;
+    let office = seed_place(&ctx, None, "Офис-Тип-PDF").await;
+    let printer = seed_device_with_type(&ctx, "Принтер PDF-тип-тест", 2).await;
+    seed_movement(
+        &ctx,
+        "device",
+        printer,
+        warehouse,
+        "Склад-Тип-PDF",
+        office,
+        "Офис-Тип-PDF",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+
+    let filter = ReportFilter {
+        type_id: Some(2),
+        ..ReportFilter::default()
+    };
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        filter,
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements PDF/HTML with a type filter");
+
+    assert!(
+        !html.contains("<th>Тип</th>"),
+        "«Тип» column header must be omitted when type_id filter is set: {html}"
+    );
+    for label in ["Дата", "Предмет", "Откуда", "Куда", "Кем", "Причина"]
+    {
+        assert!(
+            html.contains(&format!("<th>{label}</th>")),
+            "expected <th>{label}</th> to remain: {html}"
+        );
+    }
+}
+
+/// The PDF export's filter-summary line shows human-readable NAMES (place
+/// full paths, device type name) for every active movements filter —
+/// Откуда/Куда/Тип устройства — never raw numeric ids.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_pdf_shows_filter_summary_with_names_not_ids() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад-Сводка").await;
+    let office = seed_place(&ctx, None, "Офис-Сводка").await;
+    let printer = seed_device_with_type(&ctx, "Принтер сводка-тест", 2).await;
+    seed_movement(
+        &ctx,
+        "device",
+        printer,
+        warehouse,
+        "Склад-Сводка",
+        office,
+        "Офис-Сводка",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+
+    let filter = ReportFilter {
+        from_place_id: Some(warehouse),
+        to_place_id: Some(office),
+        type_id: Some(2),
+        ..ReportFilter::default()
+    };
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        filter,
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements PDF/HTML with from/to/type filters");
+
+    assert!(
+        html.contains("Откуда: Склад-Сводка"),
+        "expected the «Откуда» filter name in the summary line: {html}"
+    );
+    assert!(
+        html.contains("Куда: Офис-Сводка"),
+        "expected the «Куда» filter name in the summary line: {html}"
+    );
+    assert!(
+        html.contains("Тип устройства: Принтер"),
+        "expected the «Тип устройства» filter name in the summary line: {html}"
+    );
+    assert!(
+        !html.contains(&format!("Откуда: {warehouse}")),
+        "the raw from_place_id must never leak as bare text: {html}"
+    );
+    assert!(
+        !html.contains(&format!("Куда: {office}")),
+        "the raw to_place_id must never leak as bare text: {html}"
+    );
+}
+
+/// No active movements filter → no `.filter-summary` block at all (not an
+/// empty one) — the template's `{% if filter_summary %}` guard against a
+/// `null` value.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_pdf_omits_filter_summary_when_no_filter_active() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад-Пусто").await;
+    let office = seed_place(&ctx, None, "Офис-Пусто").await;
+    let device = seed_device(&ctx, "Ноутбук без фильтра").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device,
+        warehouse,
+        "Склад-Пусто",
+        office,
+        "Офис-Пусто",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        ReportFilter::default(),
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export movements PDF/HTML without any filter");
+
+    assert!(
+        !html.contains("<div class=\"filter-summary\">"),
+        "no active movements filter — the .filter-summary block must not render: {html}"
+    );
+}
+
+/// Scope discipline (D-12-style): the filter-summary line is movements-only.
+/// Even if `type_id` happens to be set on a `device_acts` export (a
+/// perfectly legal filter for that domain), no `.filter-summary` block must
+/// ever render there.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_device_acts_export_pdf_never_renders_filter_summary() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let filter = ReportFilter {
+        type_id: Some(1),
+        ..ReportFilter::default()
+    };
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "device_acts".to_string(),
+        filter,
+        Some(wide_period()),
+    )
+    .await
+    .expect("manager can export device_acts PDF/HTML");
+
+    assert!(
+        !html.contains("<div class=\"filter-summary\">"),
+        "filter_summary is movements-only (D-12-style scope discipline): {html}"
     );
 }

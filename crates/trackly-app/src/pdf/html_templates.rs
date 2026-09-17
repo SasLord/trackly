@@ -109,6 +109,13 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
         &[
             include_str!("../../templates/_legacy_defaults/v20/report.html"),
             include_str!("../../templates/_legacy_defaults/v21/report.html"),
+            // Plan 40.1-02 (user-requested deviation, live UAT 2026-09-18):
+            // pre-change snapshot captured immediately before adding the
+            // filter_summary block below period_label — without this entry,
+            // any install that materialized the pre-40.1-02 body would be
+            // misclassified as user-customized and never receive the
+            // filter-summary upgrade.
+            include_str!("../../templates/_legacy_defaults/v28/report.html"),
         ],
     ),
     // Phase 34 introduced `_header.html`; its CURRENT body is the first one

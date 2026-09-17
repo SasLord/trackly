@@ -282,6 +282,7 @@ async fn render_header_fragments_for_org(
             logo_mime,
             &columns,
             &labels,
+            None,
         )
         .await
         .expect("export_pdf");

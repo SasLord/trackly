@@ -483,6 +483,13 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
             "org": org,
             "report_name": "Демо-отчёт: Акты приёма-передачи",
             "period_label": "Сентябрь 2026",
+            // Plan 40.1-02 (user-requested deviation, live UAT 2026-09-18):
+            // report.html now reads filter_summary under strict-undefined
+            // (build_safe_html_env) — the demo context MUST supply it even
+            // though the template guards it with {% if filter_summary %};
+            // a non-null sample also lets the admin see the block's layout
+            // while editing report.html.
+            "filter_summary": "Откуда: Склад №1; Тип устройства: Принтер",
             "columns": ["Номер", "Устройство", "Сдал", "Принял", "Расположение"],
             "groups": [
                 {

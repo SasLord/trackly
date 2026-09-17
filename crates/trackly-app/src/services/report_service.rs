@@ -977,6 +977,15 @@ impl ReportService {
     /// the header row (`ctx["columns"]`); `columns_for`/`column_labels_for`
     /// in `tauri_cmds/reports.rs` are index-aligned so `columns[i]` and
     /// `column_labels[i]` refer to the same logical column.
+    ///
+    /// `filter_summary` — user-requested deviation (live UAT of BLOCKER-2's
+    /// «Тип устройства» filter, plan 40.1-02, 2026-09-18): a human-readable
+    /// one-line summary of active `movements` filters (Откуда/Куда/Тип
+    /// устройства), built by `build_movements_filter_summary` in
+    /// `tauri_cmds/reports.rs` from ALREADY-resolved names (never raw ids).
+    /// `None` for every other report type and whenever no movements filter is
+    /// active. Rendered by `report.html`'s `{% if filter_summary %}` guard
+    /// below `period_label` and above the table.
     #[allow(clippy::too_many_arguments)]
     pub async fn export_pdf(
         &self,
@@ -988,6 +997,7 @@ impl ReportService {
         logo_mime: Option<String>,
         columns: &[&str],
         column_labels: &[&str],
+        filter_summary: Option<&str>,
     ) -> Result<String, AppError> {
         let organization = self
             .organization
@@ -1087,6 +1097,7 @@ impl ReportService {
             },
             "report_name": report_name,
             "period_label": period_label,
+            "filter_summary": filter_summary,
             "columns": column_labels,
             "groups": groups,
         });
@@ -3166,6 +3177,7 @@ mod tests {
                 None,
                 &columns,
                 &labels,
+                None,
             )
             .await
             .expect("export_pdf ok");
@@ -3208,6 +3220,7 @@ mod tests {
                 None,
                 &columns,
                 &labels,
+                None,
             )
             .await
             .expect("export_pdf ok");
@@ -3240,6 +3253,7 @@ mod tests {
                 None,
                 &columns,
                 &labels,
+                None,
             )
             .await
             .expect("export_pdf ok");
@@ -3247,6 +3261,72 @@ mod tests {
         assert!(
             html.contains("ООО «Ромашка»"),
             "expected org name in HTML header: {html}"
+        );
+    }
+
+    /// User-requested deviation (plan 40.1-02, live UAT 2026-09-18): when
+    /// `filter_summary` is `Some`, the rendered HTML shows the summary line.
+    #[tokio::test]
+    async fn export_pdf_renders_filter_summary_when_present() {
+        let (svc, _dir) = make_test_service();
+        let rows = ReportResponse {
+            rows: vec![make_row("2026-09", "Принтер", "Петров П.П.")],
+            total: 1,
+        };
+        let columns = ["device_name"];
+        let labels = ["Устройства"];
+
+        let html = svc
+            .export_pdf(
+                &rows,
+                "Перемещения",
+                "Сентябрь 2026",
+                &empty_org(),
+                None,
+                None,
+                &columns,
+                &labels,
+                Some("Откуда: Склад №1; Тип устройства: Принтер"),
+            )
+            .await
+            .expect("export_pdf ok");
+
+        assert!(
+            html.contains("Откуда: Склад №1; Тип устройства: Принтер"),
+            "expected filter summary line in HTML: {html}"
+        );
+    }
+
+    /// Mirror of the test above: `filter_summary: None` must render nothing
+    /// (no empty `.filter-summary` div, no stray "None"/"null" text).
+    #[tokio::test]
+    async fn export_pdf_omits_filter_summary_when_absent() {
+        let (svc, _dir) = make_test_service();
+        let rows = ReportResponse {
+            rows: vec![make_row("2026-09", "Принтер", "Петров П.П.")],
+            total: 1,
+        };
+        let columns = ["device_name"];
+        let labels = ["Устройства"];
+
+        let html = svc
+            .export_pdf(
+                &rows,
+                "Перемещения",
+                "Сентябрь 2026",
+                &empty_org(),
+                None,
+                None,
+                &columns,
+                &labels,
+                None,
+            )
+            .await
+            .expect("export_pdf ok");
+
+        assert!(
+            !html.contains("<div class=\"filter-summary\">"),
+            "no filter_summary supplied — the .filter-summary block must not render: {html}"
         );
     }
 
