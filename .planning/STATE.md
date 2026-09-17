@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-17T16:16:01.786Z"
-last_activity: 2026-09-17 -- Phase 40.1 planning complete
+last_updated: "2026-09-17T16:31:06.512Z"
+last_activity: 2026-09-17
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 76
-  completed_plans: 72
+  completed_plans: 73
   percent: 40
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.1 — пробелы аудита v1.4, далее Phase 41 — АРМ
+**Current focus:** Phase 40.1 — audit-gap-closure
 
 ## Current Position
 
-Phase: 40.1 (audit-gap-closure) — вставлена 2026-09-17 по результатам аудита вехи
-Plan: —
+Phase: 40.1 (audit-gap-closure) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
 Последнее действие: /gsd-audit-milestone v1.4 (2026-09-17) — аудит поставленной части (Фазы 39, 39.1, 39.2, 40). Вердикт gaps_found: два блокера на межфазных стыках, оба невидимы пофазной верификации — BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite: V040 добавил FK ON DELETE RESTRICT, предполётная проверка их не считает) и BLOCKER-2 (фильтр «по типу устройства» в отчёте «Перемещения» есть на бэкенде, но не отрисован в ReportFilters.svelte — HST-04 выполнен наполовину). Подробности и весь техдолг — .planning/v1.4-MILESTONE-AUDIT.md.
 Следующий шаг: /gsd-plan-phase 40.1, затем Фаза 41 (АРМ).
-Last activity: 2026-09-17 -- Phase 40.1 planning complete
+Last activity: 2026-09-17
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -377,6 +377,7 @@ Last activity: 2026-09-17 -- Phase 40.1 planning complete
 | Phase 40 P30 | ~40min | 3 tasks | 7 files |
 | Phase 40 P34 | 20min | 2 tasks | 2 files |
 | Phase 40 P35 | 25min | 2 tasks | 2 files |
+| Phase 40.1 P01 | 20min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -940,6 +941,7 @@ Recent decisions affecting current work:
 - [Phase 40]: Deadlock regression-тесты на ReaderPool: #[tokio::test]+tokio::time::timeout НЕ защищает прогон (Runtime::drop блокируется на утёкшей spawn_blocking-задаче) — использовать std::thread + собственный Runtime + mpsc::recv_timeout
 - [Phase 40]: given_to_name_arm симметрична given_by_name_arm в suggest_person; action-фильтр install/to_refill не расширен на GAP-12-12 auto-return (UAT4-01, план 40-34)
 - [Phase 40]: 40-35: operationDefaultPlace сужен до единственного потребителя from_refill (cartridgeId: number, op больше не параметр); toRefillLastSend() подставляет все три поля диалога «Отправка на заправку» из одной записи
+- [Phase 40.1-01]: referencing_movement_count считает строки place_movements (from_place_id OR to_place_id), не уникальные сущности (D-01)
 
 ### Pending Todos
 
@@ -1129,7 +1131,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-04T12:03:46.817Z
+Last session: 2026-09-17T16:26:40.834Z
 Stopped at: Completed 40-35-PLAN.md (checkpoint подтверждён живой проверкой)
 Resume file: None
 
