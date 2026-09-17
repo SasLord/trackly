@@ -6,6 +6,8 @@ nyquist_compliant: true
 wave_0_complete: true
 created: 2026-09-01
 verified: 2026-09-02
+validation_audit: 2026-09-17
+validation_audit_result: compliant
 ---
 
 # Phase 40 — Validation Strategy
@@ -71,6 +73,9 @@ Requirement -> test mapping the planner must honor:
 | HST-04 | Soft-deleted item still appears, marked «удалено» (D-25) | integration | `cargo test -p trackly-app report_movements_deleted_item_marker` | W0 |
 | HST-04 | `columns_for` / `column_labels_for` index alignment holds for the new report type | unit | `cargo test -p trackly-app column_labels_for_is_index_aligned_with_columns_for` | extend existing |
 | HST-01..04 | Role matrix: Manager allowed / Employee 403 on BOTH transports for every new endpoint | integration | `cargo test -p trackly-app role_endpoint_matrix` | extend (Case 45-48 shape) |
+| HST-01 / UAT3-01 | `OperationModal.validate()` — «Место» для install обязательно только на легаси-пути (`effectivePrinterId === undefined`); для to_refill — безусловно | structural gate | `node ui/scripts/check-operation-modal-validate.mjs` | audit 2026-09-17 |
+| UAT3-01, UAT4-02/03, UAT5-01 | Автозаполнение: раздельные `$effect` на op, per-field WR-01 guard в момент разрешения промиса, сброс `placeAutofilled` при ручном выборе, install-очистка гейтована `op === 'install'` | structural gate | `node ui/scripts/check-operation-modal-autofill.mjs` | audit 2026-09-17 |
+| UAT3-03 | Инвалидация `statsCache` в `PlaceTree`: чтение через `untrack()`, УСЛОВНАЯ обратная запись, охват предков | structural gate | `node ui/scripts/check-place-tree-invalidation.mjs` | audit 2026-09-17 |
 | Privacy | New fixtures use invented ФИО only; gate stays green | gate | `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` | existing |
 
 ---
@@ -127,3 +132,52 @@ Requirement -> test mapping the planner must honor:
 **Approval:** approved 2026-09-02 — `gsd-plan-checker` iteration 2/3 returned VERIFICATION PASSED
 (0 blockers) and confirmed every test-function name in the Per-Task Verification Map is created by
 a plan and traced verbatim in that plan's grep-based acceptance criteria.
+
+---
+
+## Validation Audit 2026-09-17
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 3 |
+| Resolved | 3 |
+| Escalated | 0 |
+
+**Scope of this audit.** This document was approved 2026-09-02 against the phase's first 20 plans;
+the phase then grew to 35. The audit re-checked every row of the Per-Task Verification Map against
+HEAD and swept plans 21-35 for uncovered work.
+
+**Backend: no gaps.** Every test-function name in the map above resolves to a real, green test at
+HEAD (`place_movements_write_sites_devices.rs`, `place_movements_write_sites_cartridges.rs`,
+`place_movements_act_link.rs`, `place_movements_timeline.rs`, `place_movements_bulk_move.rs`,
+`report_movements.rs`, `place_movements_migration.rs`, `place_movements_repo.rs`,
+`role_endpoint_matrix.rs` Cases 52-55, 60-63). Plans 21-22, 24, 26, 28-30, 33-34 each landed
+additional Rust tests of their own.
+
+**Frontend: 3 gaps, all closed.** Plans 40-23, 40-31, 40-32 and 40-35 changed interlocking Svelte 5
+rune logic and were verified only by a one-time live browser check — three of the four had shipped a
+live defect (UAT3-01b/UAT5-01 cross-effect clobber, UAT3-03a infinite effect loop) that no compile
+gate could see. This project has no UI test runner; the established closure pattern is a structural
+gate in `ui/scripts/` wired into `pnpm lint` (the pattern plans 40-25 and 40-27 used in this very
+phase). Three gates added:
+
+| Gate | Locks | Mutations caught |
+|------|-------|------------------|
+| `check-operation-modal-validate.mjs` | install place requirement scoped to the legacy path; to_refill unconditional | 3/3 |
+| `check-operation-modal-autofill.mjs` | split effects per op; distinct per-field WR-01 guards inside `.then` (no hoist, no combined guard); manual pick resets `placeAutofilled`; install-cleanup gated on `op === 'install'` | 7/7 |
+| `check-place-tree-invalidation.mjs` | `untrack()`-ed reads; conditional write-back; ancestor expansion; store reads stay reactive; neighbouring lazy-fetch gate intact; producer bumps `seq` | 7/7 |
+
+Each anchor was verified unique (`grep -c` = 1) before trusting its mutation result — a non-unique
+anchor silently disarms a neighbouring gate and makes the mutation "pass" in a vacuum.
+Three mutations were additionally re-run independently by the orchestrator on a fresh scratch copy.
+
+**Limit of the guarantee — stated plainly.** These gates are structural: they prove the invariant's
+shape survives refactoring, not that the runes behave correctly at runtime. They execute no Svelte.
+Runtime behavior (no infinite loop, no cross-effect clobber, correct prefill) stays a live-verification
+item under § Manual-Only Verifications — the gates shorten the feedback loop for regressions, they do
+not replace that check.
+
+**Verified this audit:** `pnpm --dir ui lint` — full 14-gate chain green. `pnpm --dir ui svelte-check`
+— 285 files, 0 errors. `node scripts/check-privacy.mjs --hashes scripts/privacy-tokens.sha256` — 0
+violations. No implementation file was modified; only `ui/package.json`'s `lint` script was extended,
+additively, with every pre-existing entry preserved verbatim.
