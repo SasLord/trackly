@@ -1172,3 +1172,86 @@ async fn report_device_acts_export_pdf_never_renders_filter_summary() {
         "filter_summary is movements-only (D-12-style scope discipline): {html}"
     );
 }
+
+/// Hard-deletes a place row directly (bypassing `PlaceService::delete_hard`'s
+/// pre-flight checks) — simulates a place that was legal to delete (no
+/// `place_movements` reference of its own, per BLOCKER-1) but still lingers
+/// in an already-open report filter, since a filter is not itself a DB
+/// reference.
+async fn hard_delete_place_row(ctx: &AppCtx, place_id: i64) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute("DELETE FROM places WHERE id = ?1", rusqlite::params![place_id])
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("hard-delete test place");
+}
+
+/// WR-02 (40.1-audit-gap-closure gap closure, 2026-09-18): a place referenced
+/// by an active `from_place_id`/`to_place_id` report filter — but deleted
+/// between filter selection and export — must not hard-fail the whole PDF
+/// export. Reproduces the exact scenario from `40.1-REVIEW.md` WR-02: the
+/// manager sets an «Откуда» filter, another user deletes that place (legal —
+/// it has no `place_movements` row of its own), the manager clicks
+/// «Печать». Before the fix, `ctx.places.full_path` propagated
+/// `AppError::NotFound` via `?` and the export failed outright; now it
+/// degrades the same way the sibling `device_type_name` lookup already does
+/// — omit that one summary segment, keep exporting.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_export_pdf_omits_deleted_place_from_filter_summary_instead_of_failing() {
+    let (ctx, _dir) = minimal_ctx();
+    let manager = Identity {
+        user_id: None,
+        role: Role::Manager,
+    };
+
+    let warehouse = seed_place(&ctx, None, "Склад-Живой").await;
+    let office = seed_place(&ctx, None, "Офис-Живой").await;
+    let device = seed_device(&ctx, "Ноутбук WR-02").await;
+    seed_movement(
+        &ctx,
+        "device",
+        device,
+        warehouse,
+        "Склад-Живой",
+        office,
+        "Офис-Живой",
+        "manual",
+        1_700_000_100,
+    )
+    .await;
+
+    // A place with no movements of its own — legal to hard-delete per
+    // BLOCKER-1 — that only lingers in the (about-to-be-built) report filter.
+    let ghost = seed_place(&ctx, None, "Склад-Удалённый").await;
+    hard_delete_place_row(&ctx, ghost).await;
+
+    let filter = ReportFilter {
+        from_place_id: Some(ghost),
+        to_place_id: Some(office),
+        ..ReportFilter::default()
+    };
+
+    let html = build_reports_export_pdf(
+        &ctx,
+        &manager,
+        "movements".to_string(),
+        filter,
+        Some(wide_period()),
+    )
+    .await
+    .expect(
+        "a deleted from_place_id filter must degrade gracefully, not hard-fail the export (WR-02)",
+    );
+
+    assert!(
+        !html.contains("Откуда:"),
+        "the deleted place's segment must be omitted entirely, not rendered with a stale/empty name: {html}"
+    );
+    assert!(
+        html.contains("Куда: Офис-Живой"),
+        "the still-valid «Куда» filter segment must still render: {html}"
+    );
+}

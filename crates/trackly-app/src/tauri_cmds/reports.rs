@@ -480,12 +480,14 @@ async fn build_movements_filter_summary(
     }
     let mut parts: Vec<String> = Vec::new();
     if let Some(from_id) = filter.from_place_id {
-        let path = ctx.places.full_path(caller, from_id).await?;
-        parts.push(format!("Откуда: {path}"));
+        if let Some(path) = place_full_path_or_none(ctx, caller, from_id).await? {
+            parts.push(format!("Откуда: {path}"));
+        }
     }
     if let Some(to_id) = filter.to_place_id {
-        let path = ctx.places.full_path(caller, to_id).await?;
-        parts.push(format!("Куда: {path}"));
+        if let Some(path) = place_full_path_or_none(ctx, caller, to_id).await? {
+            parts.push(format!("Куда: {path}"));
+        }
     }
     if let Some(type_id) = filter.type_id {
         if let Some(name) = device_type_name(ctx, type_id).await? {
@@ -496,6 +498,26 @@ async fn build_movements_filter_summary(
         Ok(None)
     } else {
         Ok(Some(parts.join("; ")))
+    }
+}
+
+/// WR-02 (40.1 gap closure, 2026-09-18): place full-path lookup for
+/// `build_movements_filter_summary`, degrading the same way
+/// `device_type_name` above already does — `None` if the place was deleted
+/// between filter selection and export (legal: `BLOCKER-1`'s pre-flight only
+/// blocks deleting a place that is itself referenced by a `place_movements`
+/// row, not a place that merely appears in someone's currently-open report
+/// filter). Any other error (auth, I/O) still propagates via `?` — only the
+/// "place no longer exists" case is expected and swallowed here.
+async fn place_full_path_or_none(
+    ctx: &AppCtx,
+    caller: &Identity,
+    place_id: i64,
+) -> Result<Option<String>, AppError> {
+    match ctx.places.full_path(caller, place_id).await {
+        Ok(path) => Ok(Some(path)),
+        Err(AppError::NotFound { .. }) => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
