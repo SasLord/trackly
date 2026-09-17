@@ -177,7 +177,18 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
             WHERE (a.place_id IN (SELECT id FROM subtree)
                 OR a.bulk_place_id IN (SELECT id FROM subtree)
                 OR ai.place_id_override IN (SELECT id FROM subtree))
-              AND a.deleted_at_utc IS NULL) AS referencing_act_count",
+              AND a.deleted_at_utc IS NULL) AS referencing_act_count,
+           -- BLOCKER-1 (milestone v1.4 audit 2026-09-17): place_movements rows
+           -- referencing this subtree through EITHER `from_place_id` OR
+           -- `to_place_id` (V040, `ON DELETE RESTRICT` on both columns) — same
+           -- class of defect as referencing_act_count above (CR-01), a place
+           -- can be otherwise-empty yet still undeletable. Deliberately a row
+           -- count, not `COUNT(DISTINCT ...)` of an entity id — D-01: a
+           -- movement whose from/to are both inside the subtree still counts
+           -- once, since `OR` already dedupes at the row level.
+           (SELECT COUNT(*) FROM place_movements
+            WHERE from_place_id IN (SELECT id FROM subtree)
+               OR to_place_id IN (SELECT id FROM subtree)) AS referencing_movement_count",
         rusqlite::params![root_id],
         |row| {
             Ok(SubtreeStats {
@@ -186,6 +197,7 @@ fn subtree_stats_impl(conn: &Connection, root_id: i64) -> Result<SubtreeStats, A
                 device_count: row.get(2)?,
                 cartridge_count: row.get(3)?,
                 referencing_act_count: row.get(4)?,
+                referencing_movement_count: row.get(5)?,
             })
         },
     )
@@ -552,15 +564,20 @@ impl PlaceRepository for SqlitePlaceRepository {
         // CR-01: `referencing_act_count` тоже блокирует удаление — D-16 замораживает
         // ссылку акта на место даже после того, как все устройства уехали, так что
         // место с нулевыми остальными счётчиками всё ещё может быть undeletable.
+        // BLOCKER-1 (аудит вехи v1.4, 2026-09-17): та же форма дефекта для
+        // `place_movements.from_place_id`/`to_place_id` (V040, `ON DELETE
+        // RESTRICT`) — без этого слагаемого предполётная проверка считает
+        // место безопасным для удаления, а реальный DELETE падает на FK.
         let total = stats.nested_places
             + stats.device_count
             + stats.cartridge_count
-            + stats.referencing_act_count;
+            + stats.referencing_act_count
+            + stats.referencing_movement_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: format!(
-                    "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей, {} актов.",
-                    stats.nested_places, stats.device_count, stats.cartridge_count, stats.referencing_act_count,
+                    "Нельзя удалить место: содержит {} вложенных мест, {} устройств, {} картриджей, {} актов, {} перемещений.",
+                    stats.nested_places, stats.device_count, stats.cartridge_count, stats.referencing_act_count, stats.referencing_movement_count,
                 ),
             });
         }

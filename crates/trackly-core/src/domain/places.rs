@@ -144,6 +144,16 @@ pub struct SubtreeStats {
     /// undeletable — `ON DELETE RESTRICT` on all three columns enforces this at
     /// the schema level (V038), this counter surfaces it in the pre-flight check.
     pub referencing_act_count: i64,
+    /// Rows of `place_movements` referencing any place in the subtree through
+    /// EITHER `from_place_id` OR `to_place_id` (BLOCKER-1, milestone v1.4 audit
+    /// 2026-09-17): the same class of defect as `referencing_act_count`
+    /// (CR-01) — V040 added `ON DELETE RESTRICT` on both columns, so a place
+    /// that was ever a movement's source or destination stays undeletable even
+    /// after becoming otherwise empty. This counts **rows**, not distinct
+    /// entities — a single movement whose `from_place_id` and `to_place_id`
+    /// both fall inside the same subtree is intentionally counted once, not
+    /// twice (D-01).
+    pub referencing_movement_count: i64,
 }
 
 /// A single row in the "content of place" listing (PLC-06 / D-23 — one table, column
