@@ -492,10 +492,14 @@ async fn report_movements_gate_denies_employee() {
 }
 
 /// D-26: CSV export for `report_type: "movements"` succeeds through the
-/// existing, unmodified `export_csv` pipeline and its header row is the 7
-/// D-23 column labels — zero new export code.
+/// `export_csv` pipeline and its header row is the 7 `column_labels_for`
+/// Russian labels — WARNING-4 (audit v1.4, 2026-09-17, D-19/D-22): the CSV
+/// header used to be the raw column keys (`handover_date_utc`, …), matching
+/// only the PDF/HTML export's `column_labels`; this test now proves the
+/// opposite — CSV and PDF/HTML headers are the same Russian labels, read
+/// off the screen and off the printed form alike.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn report_movements_export_csv_has_d23_headers() {
+async fn report_movements_export_csv_has_russian_headers() {
     let (ctx, _dir) = minimal_ctx();
     let manager = Identity {
         user_id: None,
@@ -531,22 +535,23 @@ async fn report_movements_export_csv_has_d23_headers() {
     // UTF-8 BOM prefix (existing pipeline convention).
     assert_eq!(&bytes[0..3], &[0xEF, 0xBB, 0xBF]);
     let text = String::from_utf8_lossy(&bytes);
-    // CSV export writes RAW column keys as the header row (existing pipeline
-    // convention — see `report_csv_export.rs`'s own header assertions), NOT
-    // the Russian labels; the Russian labels are used by the PDF/HTML export
-    // only (`export_pdf`'s `column_labels` parameter).
-    for key in [
-        "handover_date_utc",
-        "device_name",
-        "entity_type_label",
-        "from_place_path",
-        "place_path",
-        "actor_name",
-        "reason",
+    // CSV export writes the Russian `column_labels_for("movements")` labels
+    // as the header row — same as the PDF/HTML export (WARNING-4, D-19).
+    // Values are still read by `row_field(row, col)` off the raw column keys
+    // (`handover_date_utc`, `device_name`, …) — unchanged by this fix, only
+    // the header source changed.
+    for label in [
+        "Дата",
+        "Предмет",
+        "Тип",
+        "Откуда",
+        "Куда",
+        "Кем",
+        "Причина",
     ] {
         assert!(
-            text.contains(key),
-            "CSV export missing D-23 column key {key:?}: {text}"
+            text.contains(label),
+            "CSV export missing Russian column label {label:?}: {text}"
         );
     }
 
