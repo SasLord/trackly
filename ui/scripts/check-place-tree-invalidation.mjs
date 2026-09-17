@@ -42,15 +42,18 @@
 //           перенос (`PlaceContents.svelte`'s `handleMoveConfirm`). WR-01 из
 //           аудита 2026-08-27 уже закрывался «наполовину» — новый write-site
 //           тихо не звал функцию, и ничего в проекте это не ловило. Проверка
-//           ТРИ write-site РАЗДЕЛЬНО, а не «хотя бы один вызов где-то в
-//           репозитории»: после этого плана `PlaceContents.svelte` содержит ДВА
-//           разных вызова (bulk-move и правка через `PlaceEntityViewModal`) —
-//           файл-уровневая проверка не отличила бы удаление нового вызова от
-//           присутствия старого (mutation_test_anchor_must_be_unique). Поэтому
+//           КАЖДЫЙ write-site РАЗДЕЛЬНО, а не «хотя бы один вызов где-то в
+//           репозитории»: `PlaceContents.svelte` и (с 40.1, gap closure WR-01)
+//           `CartridgesPage.svelte` содержат ПО ДВА разных вызова каждый —
+//           файл-уровневая проверка не отличила бы удаление одного из них от
+//           присутствия другого (mutation_test_anchor_must_be_unique). Поэтому
 //           для `PlaceContents.svelte` проверка локализована на блок разметки
-//           `<PlaceEntityViewModal ...>`; для `CartridgesPage.svelte` и
-//           `DevicesPage.svelte` файл-уровневая проверка достаточна — в каждом
-//           ровно один вызов, введённый этим же планом.
+//           `<PlaceEntityViewModal ...>` (правка через «Просмотр»), а для
+//           `CartridgesPage.svelte` — на ТЕЛА функций `handleFormSuccess`
+//           (форма «Редактировать») и `handleOperationSuccess` (lifecycle-
+//           операции install/return_to_stock/to_refill/from_refill/write_off,
+//           WR-01 gap closure 2026-09-18) РАЗДЕЛЬНО; `DevicesPage.svelte`
+//           остаётся файл-уровневой проверкой — в нём ровно один вызов.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -430,21 +433,28 @@ function checkStore(storeSrc, violations) {
 }
 
 /**
- * INV-7 — продюсеры `notifyPlaceContentChanged` покрывают все три клиентских
- * write-site (WARNING-1, аудит 2026-09-17). Две РАЗНЫЕ стратегии проверки
- * внутри одной функции, намеренно — это НЕ недосмотр/асимметрия по
- * забывчивости:
+ * INV-7 — продюсеры `notifyPlaceContentChanged` покрывают все клиентские
+ * write-site смены места (WARNING-1, аудит 2026-09-17; расширено WR-01 gap
+ * closure 2026-09-18). Стратегия проверки различается по файлу, намеренно —
+ * это НЕ недосмотр/асимметрия по забывчивости:
  *
  *   1. `PlaceContents.svelte` содержит ДВА разных вызова `notifyPlaceContentChanged`
- *      после этого плана (bulk-move в `handleMoveConfirm` и правка через
- *      `<PlaceEntityViewModal ...>`) — файл-уровневая проверка не отличила бы
- *      удаление нового вызова от присутствия старого. Проверка ЛОКАЛИЗОВАНА
- *      на блок разметки тега `<PlaceEntityViewModal ...>` через `tagBlock`.
- *   2. `CartridgesPage.svelte`/`DevicesPage.svelte` содержат РОВНО ОДИН вызов
- *      каждый (введён этим же планом; до него — ноль вхождений в файле), так
- *      что файл-уровневая проверка (`indicesOf(code, NOTIFY).length === 0`)
- *      однозначно указывает на конкретный write-site — локализация до блока
- *      здесь не нужна.
+ *      (bulk-move в `handleMoveConfirm` и правка через `<PlaceEntityViewModal ...>`)
+ *      — файл-уровневая проверка не отличила бы удаление одного от присутствия
+ *      другого. Проверка ЛОКАЛИЗОВАНА на блок разметки тега
+ *      `<PlaceEntityViewModal ...>` через `tagBlock`.
+ *   2. `CartridgesPage.svelte` СТАЛА такой же после WR-01 gap closure: она
+ *      теперь тоже содержит ДВА разных вызова — форма «Редактировать»
+ *      (`handleFormSuccess`) и lifecycle-операции (`handleOperationSuccess`,
+ *      install/return_to_stock/to_refill/from_refill/write_off). Файл-уровневая
+ *      проверка (как раньше) больше не различила бы удаление вызова из
+ *      `handleOperationSuccess`, пока `handleFormSuccess`'s вызов ещё цел —
+ *      ровно класс дефекта mutation_test_anchor_must_be_unique. Проверка
+ *      ЛОКАЛИЗОВАНА на ТЕЛО каждой функции через `functionBody`.
+ *   3. `DevicesPage.svelte` содержит РОВНО ОДИН вызов (введён планом 40.1-03;
+ *      до него — ноль вхождений в файле), так что файл-уровневая проверка
+ *      (`indicesOf(code, NOTIFY).length === 0`) однозначно указывает на
+ *      конкретный write-site — локализация до блока здесь не нужна.
  */
 function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations) {
   // Write-site 1 — правка предмета через PlaceEntityViewModal (PlaceContents.svelte).
@@ -474,24 +484,52 @@ function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations) {
     });
   }
 
-  // Write-site 2 и 3 — списки «Картриджи»/«Устройства» (файл-уровневая проверка,
-  // см. doc-комментарий функции выше: в каждом файле ровно один вызов).
-  for (const [file, src] of [
-    [CARTRIDGES_PAGE, cartridgesSrc],
-    [DEVICES_PAGE, devicesSrc],
-  ]) {
-    const code = stripComments(src);
-    if (indicesOf(code, NOTIFY).length === 0) {
+  // Write-site 2 и 3 — CartridgesPage.svelte содержит ДВА разных write-site,
+  // каждый проверяется отдельно по телу своей функции (WR-01 gap closure,
+  // 40.1-audit-gap-closure, 2026-09-18).
+  const cartridgesCode = stripComments(cartridgesSrc);
+  for (const fnName of ['handleFormSuccess', 'handleOperationSuccess']) {
+    const body = functionBody(cartridgesCode, fnName);
+    if (body === null) {
       violations.push({
-        file,
+        file: CARTRIDGES_PAGE,
         inv: 'INV-7',
-        message: 'notifyPlaceContentChanged( не вызывается нигде в файле',
+        message: `функция ${fnName} не найдена`,
         hint:
-          'D-14 (аудит 2026-09-17) называет оба списка дословно — «Устройства»/«Картриджи»: правка ' +
-          'места предмета из этого списка обязана инвалидировать счётчики дерева «Места», передавая ' +
-          'и старое, и новое место (D-15), иначе счётчик места-источника останется завышенным.',
+          'Переименована/удалена — обнови гейт вместе с рефакторингом осознанно, не удаляй ' +
+          `проверку write-site (${fnName === 'handleFormSuccess' ? 'форма «Редактировать»' : 'lifecycle-операции install/return_to_stock/to_refill/from_refill/write_off'}, WARNING-1).`,
+      });
+    } else if (!body.includes(NOTIFY)) {
+      violations.push({
+        file: CARTRIDGES_PAGE,
+        inv: 'INV-7',
+        message: `${fnName} не вызывает notifyPlaceContentChanged(`,
+        hint:
+          fnName === 'handleOperationSuccess'
+            ? 'WR-01 (аудит 40.1, 2026-09-18): lifecycle-операции (установка в принтер, возврат на ' +
+              'склад, отправка/приём из заправки, списание) меняют place_id картриджа на сервере не ' +
+              'реже (и чаще), чем форма «Редактировать» — без этого вызова счётчики дерева «Места» ' +
+              'останутся устаревшими до перезагрузки страницы именно после самой частой операции.'
+            : 'Правка места картриджа из формы «Редактировать» обязана инвалидировать счётчики ' +
+              'дерева «Места», передавая и старое, и новое место (D-15), иначе счётчик ' +
+              'места-источника останется завышенным.',
       });
     }
+  }
+
+  // Write-site 4 — DevicesPage.svelte (файл-уровневая проверка, см. doc-
+  // комментарий функции выше: в файле ровно один вызов).
+  const devicesCode = stripComments(devicesSrc);
+  if (indicesOf(devicesCode, NOTIFY).length === 0) {
+    violations.push({
+      file: DEVICES_PAGE,
+      inv: 'INV-7',
+      message: 'notifyPlaceContentChanged( не вызывается нигде в файле',
+      hint:
+        'D-14 (аудит 2026-09-17) называет оба списка дословно — «Устройства»/«Картриджи»: правка ' +
+        'места предмета из этого списка обязана инвалидировать счётчики дерева «Места», передавая ' +
+        'и старое, и новое место (D-15), иначе счётчик места-источника останется завышенным.',
+    });
   }
 }
 

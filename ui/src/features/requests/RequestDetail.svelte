@@ -33,6 +33,7 @@
   import type { CurrentUser } from '$lib/stores/auth.svelte';
   import type { RequestHistoryEntry } from './api';
   import type { AdSettingsDto, ApproveAdRegisterDto } from '../../bindings-phase9';
+  import type { CartridgeDto } from '../../bindings';
 
   interface Props {
     request: RequestDto | null;
@@ -394,7 +395,7 @@
   // failure so that modal-level toast is suppressed — the user only sees
   // this handler's own (more specific) error toast, not a false-positive
   // success alongside it.
-  async function handleInstallSuccess(cartridgeId: number) {
+  async function handleInstallSuccess(cartridge: CartridgeDto) {
     if (!request) return;
     operationModalOpen = false;
     const requestId = request.id;
@@ -413,7 +414,7 @@
         requestId,
         version: current.version,
         notes: null,
-        linkedCartridgeId: cartridgeId,
+        linkedCartridgeId: cartridge.id,
       });
       pushToast('success', 'Заявка выполнена');
       onTransition();

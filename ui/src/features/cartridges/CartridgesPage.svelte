@@ -260,7 +260,26 @@
     }
   }
 
-  function handleOperationSuccess() {
+  function handleOperationSuccess(updated: CartridgeDto) {
+    // WR-01 (40.1 gap closure, 2026-09-18): the lifecycle-operation modal
+    // (install/return_to_stock/to_refill/from_refill/write_off, reached via
+    // handleMenuAction) also changes a cartridge's place_id server-side
+    // (CartridgeService transition), so it must invalidate the tree
+    // counters the same way handleFormSuccess does — this was the more
+    // frequent write-site left unwired when WARNING-1 was first closed.
+    // The old place is what `operationModalCartridge` held BEFORE the
+    // modal opened; the new place is on the transition response itself
+    // (`updated`, now threaded through by OperationModal's onSuccess
+    // contract — see OperationModal.svelte). write_off has no destination
+    // place (place_id stays whatever it was, typically null already), so
+    // this naturally reduces to invalidating just the old place for that op.
+    const oldPlaceId = operationModalCartridge?.place_id ?? null;
+    const newPlaceId = updated.place_id ?? null;
+    const changedPlaceIds = Array.from(
+      new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
+    );
+    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+
     // Refresh list + counts + low_stock after lifecycle operation (Task 2 §6).
     loadAll();
     // Re-load selected cartridge detail if relevant.

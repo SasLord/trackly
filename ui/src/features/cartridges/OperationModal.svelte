@@ -55,8 +55,14 @@
      * showing the modal-level success toast, so a rejected follow-up never
      * produces a false-positive "Операция выполнена успешно." alongside the
      * caller's own error toast.
+     *
+     * WR-01 (40.1 gap closure, 2026-09-18): passes the full post-transition
+     * `CartridgeDto` (the `cartridges.transition()` response), not just the
+     * id — callers that need to know the resulting `place_id` (e.g.
+     * `CartridgesPage`'s tree-invalidation producer) would otherwise have to
+     * issue a redundant `cartridges.get()` fetch to learn it.
      */
-    onSuccess: (_cartridgeId: number) => void | Promise<void>;
+    onSuccess: (_cartridge: CartridgeDto) => void | Promise<void>;
   }
 
   const {
@@ -723,8 +729,9 @@
     if (!validate()) return;
 
     submitting = true;
+    let transitioned: CartridgeDto;
     try {
-      await cartridges.transition(buildPayload());
+      transitioned = await cartridges.transition(buildPayload());
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
@@ -748,7 +755,7 @@
     // выполнена») and a second toast here would be a duplicate notification
     // for the same event.
     try {
-      await onSuccess(effectiveCartridge.id);
+      await onSuccess(transitioned);
       onClose();
       if (!suppressSuccessToast) {
         pushToast('success', `Операция выполнена успешно.`);
