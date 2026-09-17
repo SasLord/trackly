@@ -476,10 +476,15 @@ impl PlaceService {
         // the pre-check reports "safe to delete", the writer's `DELETE` hits the
         // FK constraint, and a raw English SQLite error leaks into the
         // Russian-only «Удалить место?» dialog.
+        // BLOCKER-1 (v1.4 milestone audit, 2026-09-17): same class of defect for
+        // `referencing_movement_count` — `place_movements.from_place_id`/
+        // `to_place_id` (V040, `ON DELETE RESTRICT`) freeze a movement's place
+        // reference the same way an act's does.
         let total = stats.device_count
             + stats.nested_places
             + stats.cartridge_count
-            + stats.referencing_act_count;
+            + stats.referencing_act_count
+            + stats.referencing_movement_count;
         if total > 0 {
             return Err(AppError::Conflict {
                 reason: build_delete_blocked_message(&stats),
@@ -887,6 +892,11 @@ fn join_with_and(parts: &[String]) -> String {
 /// history — there is no user action that clears this reference (an act's
 /// frozen `place_id` isn't reachable from any UI mutation), but it must
 /// still be surfaced instead of falling through to a raw FK error.
+/// `referencing_movement_count` (BLOCKER-1, v1.4 milestone audit 2026-09-17)
+/// is included the same way: a place that was ever a movement's source or
+/// destination (`place_movements.from_place_id`/`to_place_id`, V040,
+/// `ON DELETE RESTRICT`) stays undeletable even after becoming otherwise
+/// empty.
 fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
     let mut parts = Vec::new();
     if stats.device_count > 0 {
@@ -920,6 +930,18 @@ fn build_delete_blocked_message(stats: &SubtreeStats) -> String {
             "{} {}",
             stats.referencing_act_count,
             ru_plural(stats.referencing_act_count, "акт", "акта", "актов")
+        ));
+    }
+    if stats.referencing_movement_count > 0 {
+        parts.push(format!(
+            "{} {}",
+            stats.referencing_movement_count,
+            ru_plural(
+                stats.referencing_movement_count,
+                "перемещение",
+                "перемещения",
+                "перемещений"
+            )
         ));
     }
     format!(
@@ -1117,6 +1139,7 @@ mod tests {
             device_count: 12,
             cartridge_count: 0,
             referencing_act_count: 0,
+            referencing_movement_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1134,6 +1157,7 @@ mod tests {
             device_count: 1,
             cartridge_count: 0,
             referencing_act_count: 0,
+            referencing_movement_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1150,6 +1174,7 @@ mod tests {
             device_count: 0,
             cartridge_count: 3,
             referencing_act_count: 0,
+            referencing_movement_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1170,6 +1195,7 @@ mod tests {
             device_count: 0,
             cartridge_count: 0,
             referencing_act_count: 1,
+            referencing_movement_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
@@ -1183,6 +1209,7 @@ mod tests {
             device_count: 0,
             cartridge_count: 0,
             referencing_act_count: 5,
+            referencing_movement_count: 0,
         };
         let msg_many = build_delete_blocked_message(&stats_many);
         assert_eq!(
@@ -1199,6 +1226,7 @@ mod tests {
             device_count: 2,
             cartridge_count: 0,
             referencing_act_count: 1,
+            referencing_movement_count: 0,
         };
         let msg = build_delete_blocked_message(&stats);
         assert_eq!(
