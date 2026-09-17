@@ -26,6 +26,7 @@
   import DetailSection from '$lib/components/DetailSection.svelte';
   import DetailField from '$lib/components/DetailField.svelte';
   import OperationModal from '../cartridges/OperationModal.svelte';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
   import { requests } from './api';
@@ -395,8 +396,30 @@
   // failure so that modal-level toast is suppressed — the user only sees
   // this handler's own (more specific) error toast, not a false-positive
   // success alongside it.
-  async function handleInstallSuccess(cartridge: CartridgeDto) {
+  //
+  // WR-05 (40.1 round-2 gap closure, 2026-09-18): the server-side install
+  // transition changes `cartridges.place_id` to the target printer's place —
+  // same underlying CartridgeService transition CartridgesPage's
+  // handleOperationSuccess already covers (WR-01) — so this handler must
+  // invalidate the place-tree counters too, mirroring that pattern exactly:
+  // old+new place, deduped, nulls dropped. Unlike CartridgesPage, this
+  // screen never held the cartridge before the operation (`cartridge={null}`
+  // is passed to OperationModal — the operator picks one from the
+  // request-centric picker INSIDE the modal), so the old place cannot be
+  // read from a locally-held DTO the way CartridgesPage reads
+  // `operationModalCartridge?.place_id`. OperationModal now forwards it as
+  // `previousPlaceId` (its own pre-transition snapshot of
+  // `effectiveCartridge.place_id`) — see OperationModal.svelte's onSuccess
+  // contract.
+  async function handleInstallSuccess(cartridge: CartridgeDto, previousPlaceId?: number | null) {
     if (!request) return;
+    const oldPlaceId = previousPlaceId ?? null;
+    const newPlaceId = cartridge.place_id ?? null;
+    const changedPlaceIds = Array.from(
+      new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
+    );
+    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+
     operationModalOpen = false;
     const requestId = request.id;
     // Complete the request after cartridge install.

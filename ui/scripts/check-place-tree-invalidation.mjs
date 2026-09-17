@@ -54,6 +54,17 @@
 //           операции install/return_to_stock/to_refill/from_refill/write_off,
 //           WR-01 gap closure 2026-09-18) РАЗДЕЛЬНО; `DevicesPage.svelte`
 //           остаётся файл-уровневой проверкой — в нём ровно один вызов.
+//           WR-05 (40.1 round-2 gap closure, 2026-09-18) добавляет ПЯТЫЙ
+//           write-site — `RequestDetail.svelte`'s `handleInstallSuccess`
+//           (установка картриджа при утверждении заявки на замену, REQ-05,
+//           тот же `OperationModal` с `op="install"`, тот же серверный
+//           `CartridgeService` transition). Файл-уровневая проверка достаточна
+//           (в файле ровно один вызов, как у `DevicesPage.svelte`), но
+//           локализована на ТЕЛО `handleInstallSuccess` (`functionBody`) —
+//           не файл целиком — потому что в файле есть НЕСКОЛЬКО других
+//           lifecycle-обработчиков (`handleAccept`/`handleReject`/`handleComplete`
+//           и т.д.), и файл-уровневая проверка не отличила бы удаление вызова
+//           из `handleInstallSuccess` от случайного вызова в одном из них.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -80,6 +91,8 @@ const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
 const CONTENTS = 'src/features/places/PlaceContents.svelte';
 const CARTRIDGES_PAGE = 'src/features/cartridges/CartridgesPage.svelte';
 const DEVICES_PAGE = 'src/features/devices/DevicesPage.svelte';
+// WR-05 (40.1 round-2 gap closure) — fifth write-site.
+const REQUEST_DETAIL = 'src/features/requests/RequestDetail.svelte';
 const NOTIFY = 'notifyPlaceContentChanged(';
 
 // ---------------------------------------------------------------------------
@@ -455,8 +468,16 @@ function checkStore(storeSrc, violations) {
  *      до него — ноль вхождений в файле), так что файл-уровневая проверка
  *      (`indicesOf(code, NOTIFY).length === 0`) однозначно указывает на
  *      конкретный write-site — локализация до блока здесь не нужна.
+ *   4. `RequestDetail.svelte` (WR-05, 40.1 round-2 gap closure, 2026-09-18)
+ *      содержит РОВНО ОДИН вызов, но файл-уровневая проверка была бы
+ *      недостаточно точной — файл держит НЕСКОЛЬКО других lifecycle-
+ *      обработчиков заявки (`handleAccept`/`handleReject`/`handleComplete`
+ *      и т.д.), и удаление вызова именно из `handleInstallSuccess` при
+ *      случайном вызове где-то ещё в файле осталось бы незамеченным.
+ *      Проверка ЛОКАЛИЗОВАНА на ТЕЛО `handleInstallSuccess` через
+ *      `functionBody`, по аналогии с write-site 2/3.
  */
-function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations) {
+function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, requestDetailSrc, violations) {
   // Write-site 1 — правка предмета через PlaceEntityViewModal (PlaceContents.svelte).
   const contentsCode = stripComments(contentsSrc);
   const viewModalTag = tagBlock(contentsCode, 'PlaceEntityViewModal');
@@ -531,6 +552,35 @@ function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations) {
         'и старое, и новое место (D-15), иначе счётчик места-источника останется завышенным.',
     });
   }
+
+  // Write-site 5 — RequestDetail.svelte's handleInstallSuccess (WR-05, 40.1
+  // round-2 gap closure, 2026-09-18): установка картриджа при утверждении
+  // заявки на замену (REQ-05) идёт через тот же OperationModal/op="install",
+  // ту же серверную CartridgeService-транзицию, что меняет place_id —
+  // локализовано на тело функции (см. doc-комментарий выше).
+  const requestDetailCode = stripComments(requestDetailSrc);
+  const installBody = functionBody(requestDetailCode, 'handleInstallSuccess');
+  if (installBody === null) {
+    violations.push({
+      file: REQUEST_DETAIL,
+      inv: 'INV-7',
+      message: 'функция handleInstallSuccess не найдена',
+      hint:
+        'Переименована/удалена — обнови гейт вместе с рефакторингом осознанно, не удаляй проверку ' +
+        'write-site 5 (установка картриджа через утверждение заявки, REQ-05, WR-05).',
+    });
+  } else if (!installBody.includes(NOTIFY)) {
+    violations.push({
+      file: REQUEST_DETAIL,
+      inv: 'INV-7',
+      message: 'handleInstallSuccess не вызывает notifyPlaceContentChanged(',
+      hint:
+        'WR-05 (аудит 40.1 раунд 2, 2026-09-18): установка картриджа при утверждении заявки на ' +
+        'замену меняет place_id картриджа на сервере (та же CartridgeService-транзиция, что и ' +
+        'lifecycle-операции CartridgesPage, WR-01) — без этого вызова счётчики дерева «Места» ' +
+        'останутся устаревшими после самого частого способа установить картридж в принтер.',
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -560,11 +610,12 @@ function main() {
   const contentsSrc = read(CONTENTS);
   const cartridgesSrc = read(CARTRIDGES_PAGE);
   const devicesSrc = read(DEVICES_PAGE);
+  const requestDetailSrc = read(REQUEST_DETAIL);
 
   const violations = [];
   checkTree(treeSrc, violations);
   checkStore(storeSrc, violations);
-  checkProducers(contentsSrc, cartridgesSrc, devicesSrc, violations);
+  checkProducers(contentsSrc, cartridgesSrc, devicesSrc, requestDetailSrc, violations);
 
   for (const v of violations) {
     console.error(`${TAG} ${v.file} — ${v.inv}: ${v.message}`);

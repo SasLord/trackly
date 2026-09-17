@@ -61,8 +61,20 @@
      * id — callers that need to know the resulting `place_id` (e.g.
      * `CartridgesPage`'s tree-invalidation producer) would otherwise have to
      * issue a redundant `cartridges.get()` fetch to learn it.
+     *
+     * WR-05 (40.1 round-2 gap closure, 2026-09-18): second, optional
+     * argument — `effectiveCartridge`'s `place_id` as it was IMMEDIATELY
+     * BEFORE this submit's `transition()` call. Exists for callers that
+     * never held the cartridge before the operation (RequestDetail's
+     * request-centric install: `cartridge={null}`, the operator picks one
+     * from `CartridgeSelect` INSIDE this modal) — they have no other way to
+     * learn the cartridge's prior place for a tree-invalidation call
+     * mirroring `CartridgesPage`'s (old+new place) pattern.
+     * `CartridgesPage`'s `handleOperationSuccess` already tracks its own old
+     * place via `operationModalCartridge` (captured before the modal even
+     * opens) and ignores this parameter — backward compatible.
      */
-    onSuccess: (_cartridge: CartridgeDto) => void | Promise<void>;
+    onSuccess: (_cartridge: CartridgeDto, _previousPlaceId?: number | null) => void | Promise<void>;
   }
 
   const {
@@ -729,6 +741,11 @@
     if (!validate()) return;
 
     submitting = true;
+    // WR-05: capture the cartridge's place_id BEFORE it is overwritten by
+    // the transition response below — effectiveCartridge is still the
+    // pre-operation snapshot at this point (the null-check above guarantees
+    // it is non-null here).
+    const previousPlaceId = effectiveCartridge!.place_id ?? null;
     let transitioned: CartridgeDto;
     try {
       transitioned = await cartridges.transition(buildPayload());
@@ -755,7 +772,7 @@
     // выполнена») and a second toast here would be a duplicate notification
     // for the same event.
     try {
-      await onSuccess(transitioned);
+      await onSuccess(transitioned, previousPlaceId);
       onClose();
       if (!suppressSuccessToast) {
         pushToast('success', `Операция выполнена успешно.`);
