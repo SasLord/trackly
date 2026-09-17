@@ -82,11 +82,11 @@
     fromPlaceId = null,
     toPlaceId = null,
     statusId: _statusId,
-    typeId: _typeId,
+    typeId,
     modelId: _modelId,
     color: _color,
     search: _search,
-    deviceTypes: _deviceTypes,
+    deviceTypes,
     cartridgeModels: _cartridgeModels,
     cartridgeStatuses: _cartridgeStatuses,
     cartridgeColors: _cartridgeColors,
@@ -108,6 +108,16 @@
   function handleStorageChange(id: string) {
     onFilterChange?.({ is_storage: id === 'null' ? null : id === 'true' });
   }
+
+  // BLOCKER-2 (D-08…D-13): фильтр «Тип устройства» для домена movements —
+  // бэкенд (report_service.rs:1449-1455) уже применяет filter.type_id, здесь
+  // только контрол. Пустой выбор = «Все типы» (D-11), null-значение фильтра.
+  const TYPE_OPTIONS = $derived<StorageOption[]>([
+    { id: '', label: 'Все типы' },
+    ...(deviceTypes ?? []).map((t) => ({ id: String(t.id), label: t.name })),
+  ]);
+  const typeValue = $derived(typeId !== null && typeId !== undefined ? String(typeId) : '');
+  const typeLabel = $derived(TYPE_OPTIONS.find((o) => o.id === typeValue)?.label ?? 'Все типы');
 </script>
 
 <div class="report-filters">
@@ -136,6 +146,36 @@
           id="report-to-place-filter"
           value={toPlaceId}
           onChange={(id) => onFilterChange?.({ to_place_id: id })}
+        />
+      </div>
+    </div>
+
+    <div class="place-filter-group">
+      <label class="filter-label" for="report-type-filter">
+        <span class="filter-name">Тип устройства</span>
+      </label>
+      <div class="filter-dropdown">
+        <Dropdown
+          id="report-type-filter"
+          variant="select"
+          flat={true}
+          searchable={false}
+          value={typeLabel}
+          placeholder="Все типы"
+          searchPlaceholder="Поиск"
+          loading={false}
+          groups={TYPE_OPTIONS}
+          getGroupId={(o) => o.id}
+          getGroupName={(o) => o.label}
+          getGroupCount={() => 0}
+          isGroupExpandable={() => false}
+          isGroupSelected={(o) => o.id === typeValue}
+          onExpandGroup={noExpand}
+          getMemberId={(o) => o.id}
+          getMemberName={(o) => o.label}
+          onSearch={() => {}}
+          onPickGroup={(o) => onFilterChange?.({ type_id: o.id === '' ? null : Number(o.id) })}
+          onPickMember={() => {}}
         />
       </div>
     </div>
