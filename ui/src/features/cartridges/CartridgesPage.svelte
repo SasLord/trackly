@@ -9,6 +9,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseIdFromHash } from '$lib/utils/hashId';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import CartridgesSearchAndTabs from './CartridgesSearchAndTabs.svelte';
   import CartridgesMasterDetail from './CartridgesMasterDetail.svelte';
   import CartridgeFilters from './CartridgeFilters.svelte';
@@ -277,6 +278,20 @@
   }
 
   function handleFormSuccess(cart: CartridgeDto) {
+    // WARNING-1 (audit 2026-09-17, D-14/D-15): this is the most precise of
+    // the three new write-sites — the old place is what `formModalTarget`
+    // held BEFORE the form opened (handleMenuAction, op === 'edit'); the
+    // new place is on the just-saved `cart` itself, no extra request
+    // needed. Both may be the same (unchanged place), null (create, or a
+    // place-less cartridge), or absent from the store's dedupe if equal —
+    // `notifyPlaceContentChanged` itself no-ops on an empty array.
+    const oldPlaceId = formModalTarget?.place_id ?? null;
+    const newPlaceId = cart.place_id ?? null;
+    const changedPlaceIds = Array.from(
+      new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
+    );
+    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+
     loadAll();
     refreshModels();
     // Auto-select the created/updated cartridge.

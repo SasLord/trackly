@@ -400,7 +400,23 @@
   <PlaceEntityViewModal
     row={viewRow}
     onClose={() => (viewRow = null)}
-    onChanged={() => (reloadToken += 1)}
+    onChanged={() => {
+      // WARNING-1 (audit 2026-09-17, D-14/D-17): invalidate the currently
+      // viewed root's tree counters on every edit-modal save from here,
+      // not just the bulk move below. `PlaceContentDto`/`onChanged`/
+      // `DeviceFormModal`'s `onSaved` result carry no place_id, so the
+      // exact old/new place of the edited row is not available without
+      // extending PlaceEntityViewModal's own contract (out of scope for
+      // this write-site — see Task 2 for DevicesPage, where the
+      // signature IS extended for a different consumer). Invalidating
+      // `place.id` (the currently viewed root) is safe-but-imprecise:
+      // PlaceTree's own ancestorsAndSelf() walk means over-invalidating
+      // the root never produces a wrong (stale) counter, only an extra
+      // refetch — acceptable for a nested-place edit whose exact
+      // destination we don't know here.
+      notifyPlaceContentChanged([place.id]);
+      reloadToken += 1;
+    }}
   />
 {/if}
 
