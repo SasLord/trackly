@@ -906,19 +906,31 @@ impl ReportService {
     // -----------------------------------------------------------------------
 
     /// Export ReportResponse as UTF-8 BOM + semicolon-delimited CSV bytes.
+    ///
+    /// `columns` (keys, e.g. `"device_name"`) remains the sole source of cell
+    /// values via `row_field(row, col, tz, false)` — unchanged by the WARNING-4
+    /// fix (audit v1.4, 2026-09-17). `column_labels` (Russian labels, e.g.
+    /// `"Устройство"`) is the source of the header row — mirrors `export_pdf`'s
+    /// already-existing `column_labels` parameter (D-19). `columns` and
+    /// `column_labels` are assumed index-aligned; `columns_for`/
+    /// `column_labels_for` in `tauri_cmds/reports.rs` are covered by the
+    /// existing `column_labels_for_is_index_aligned_with_columns_for` test —
+    /// no duplicate check is added here (D-20).
     pub async fn export_csv(
         &self,
         rows: &ReportResponse,
         columns: &[&str],
+        column_labels: &[&str],
     ) -> Result<Vec<u8>, AppError> {
         let tz = self.get_tz_offset();
         let mut wtr = csv::WriterBuilder::new()
             .delimiter(b';')
             .from_writer(Vec::new());
 
-        wtr.write_record(columns).map_err(|e| AppError::Internal {
-            source_chain: format!("csv header: {e}"),
-        })?;
+        wtr.write_record(column_labels)
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("csv header: {e}"),
+            })?;
 
         for row in &rows.rows {
             let record: Vec<String> = columns

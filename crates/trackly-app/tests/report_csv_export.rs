@@ -75,7 +75,14 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
         "place_path",
         "device_name",
     ];
-    let bytes = svc.export_csv(&response, columns).await.unwrap();
+    // WARNING-4 (audit v1.4, 2026-09-17, D-19): header row is written from
+    // column_labels, not from the raw column keys — mirrors column_labels_for's
+    // Russian labels for the same keys elsewhere in the report pipeline.
+    let column_labels = &["Номер", "Сдал", "Принял", "Место", "Устройство"];
+    let bytes = svc
+        .export_csv(&response, columns, column_labels)
+        .await
+        .unwrap();
 
     // UTF-8 BOM must be the first 3 bytes: EF BB BF.
     assert!(
@@ -90,8 +97,11 @@ async fn csv_export_has_utf8_bom_and_semicolon() {
         "CSV must use semicolon delimiter, got: {body:?}"
     );
 
-    // Header row must contain column names.
-    assert!(body.contains("number"), "header row must contain 'number'");
+    // Header row must contain the Russian label 'Номер' (D-19 — labels, not raw keys).
+    assert!(
+        body.contains("Номер"),
+        "header row must contain the Russian label 'Номер' (D-19 — labels, not raw keys)"
+    );
 }
 
 /// Verify that cells starting with '=' are escaped to prevent formula injection.
@@ -149,7 +159,13 @@ async fn csv_export_guards_formula_injection() {
         }],
     };
     let columns = &["device_name", "model_label"];
-    let bytes = svc.export_csv(&response, columns).await.unwrap();
+    // This test only checks cell-value escaping, not the header row — labels
+    // are functionally irrelevant here, so they simply repeat the keys.
+    let column_labels = columns;
+    let bytes = svc
+        .export_csv(&response, columns, column_labels)
+        .await
+        .unwrap();
     let body = std::str::from_utf8(&bytes[3..]).unwrap(); // skip BOM
 
     // The formula injection payload must be escaped with a leading single-quote.
