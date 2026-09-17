@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-05T00:00:00.000Z"
-last_activity: 2026-09-05
+last_updated: "2026-09-17T00:00:00.000Z"
+last_activity: 2026-09-17
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 72
-  completed_plans: 70
-  percent: 33
+  completed_plans: 72
+  percent: 44
 ---
 
 # Project State
@@ -20,13 +20,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40 — movement-history
+**Current focus:** закрытие блокеров аудита v1.4, далее Phase 41 — АРМ
 
 ## Current Position
 
-Phase: 40 (movement-history) — 35/35 планов выполнены, все с SUMMARY
-Plan: 35 of 35 — все планы выполнены
-Status: ФАЗА ЗАВЕРШЕНА — верификация passed (11/11 observable truths, 4/4 success criteria, 4/4 требования). Живой UAT подтверждён пользователем 2026-09-04 на сборке 1.4.0-phase40. Не пройден только /gsd-secure-phase 40.
+Phase: 40 (movement-history) — ЗАВЕРШЕНА И ЗАКРЫТА (35/35 планов, все с SUMMARY)
+Plan: —
+Status: Фаза 40 закрыта: верификация passed (11/11 observable truths, 4/4 success criteria, 4/4 требования), живой UAT подтверждён пользователем 2026-09-04 на сборке 1.4.0-phase40, /gsd-secure-phase 40 пройден (40-SECURITY.md, status: verified, 72/72 угрозы закрыты), Nyquist-аудит 2026-09-17 — compliant.
+Последнее действие: /gsd-audit-milestone v1.4 (2026-09-17) — аудит поставленной части (Фазы 39, 39.1, 39.2, 40). Вердикт gaps_found: два блокера на межфазных стыках, оба невидимы пофазной верификации — BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite: V040 добавил FK ON DELETE RESTRICT, предполётная проверка их не считает) и BLOCKER-2 (фильтр «по типу устройства» в отчёте «Перемещения» есть на бэкенде, но не отрисован в ReportFilters.svelte — HST-04 выполнен наполовину). Подробности и весь техдолг — .planning/v1.4-MILESTONE-AUDIT.md.
+Следующий шаг: закрыть оба блокера (вставная фаза или /gsd-quick), затем Фаза 41 (АРМ).
 Last activity: 2026-09-05 -- quick 260904-x7s: удаление акта освобождает его номер (авто и вручную)
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 

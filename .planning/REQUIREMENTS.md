@@ -152,10 +152,10 @@
 | PLC-06 | Phase 39 | Complete |
 | PLC-07 | Phase 39.1 | Complete |
 | PLC-08 | Phase 39.1 | Complete |
-| HST-01 | Phase 40 | In Progress |
-| HST-02 | Phase 40 | In Progress |
-| HST-03 | Phase 40 | In Progress |
-| HST-04 | Phase 40 | In Progress |
+| HST-01 | Phase 40 | Complete |
+| HST-02 | Phase 40 | Complete |
+| HST-03 | Phase 40 | Complete |
+| HST-04 | Phase 40 | Complete |
 | WKS-01 | Phase 41 | Pending |
 | WKS-02 | Phase 41 | Pending |
 | WKS-03 | Phase 41 | Pending |
@@ -186,4 +186,4 @@
 
 ---
 *Requirements defined: 2026-08-22*
-*Last updated: 2026-08-22 after roadmap creation — all 32 v1.4 requirements mapped to Phases 39–45, 100% coverage, no orphans.*
+*Last updated: 2026-09-17 after milestone audit — HST-01..04 переведены в Complete (Фаза 40 верифицирована 2026-09-04, живой UAT на Windows). HST-04 закрыт с оговоркой: фильтр по типу устройства реализован на бэкенде, но не отрисован в UI — см. BLOCKER-2 в `v1.4-MILESTONE-AUDIT.md`.*
