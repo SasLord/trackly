@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-17T16:39:16.910Z"
+last_updated: "2026-09-17T17:52:16.947Z"
 last_activity: 2026-09-17
 progress:
   total_phases: 10
   completed_phases: 4
   total_plans: 76
-  completed_plans: 74
+  completed_plans: 75
   percent: 40
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.1 (audit-gap-closure) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Последнее действие: /gsd-audit-milestone v1.4 (2026-09-17) — аудит поставленной части (Фазы 39, 39.1, 39.2, 40). Вердикт gaps_found: два блокера на межфазных стыках, оба невидимы пофазной верификации — BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite: V040 добавил FK ON DELETE RESTRICT, предполётная проверка их не считает) и BLOCKER-2 (фильтр «по типу устройства» в отчёте «Перемещения» есть на бэкенде, но не отрисован в ReportFilters.svelte — HST-04 выполнен наполовину). Подробности и весь техдолг — .planning/v1.4-MILESTONE-AUDIT.md.
 Следующий шаг: /gsd-plan-phase 40.1, затем Фаза 41 (АРМ).
@@ -379,6 +379,7 @@ Last activity: 2026-09-17
 | Phase 40 P35 | 25min | 2 tasks | 2 files |
 | Phase 40.1 P01 | 20min | 3 tasks | 4 files |
 | Phase 40.1 P04 | 15min | 3 tasks | 4 files |
+| Phase 40.1 P02 | 59min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -944,6 +945,7 @@ Recent decisions affecting current work:
 - [Phase 40]: 40-35: operationDefaultPlace сужен до единственного потребителя from_refill (cartridgeId: number, op больше не параметр); toRefillLastSend() подставляет все три поля диалога «Отправка на заправку» из одной записи
 - [Phase 40.1-01]: referencing_movement_count считает строки place_movements (from_place_id OR to_place_id), не уникальные сущности (D-01)
 - [Phase 40.1]: D-19..D-22: export_csv параллелит export_pdf — column_labels отдельным параметром, columns остаётся источником значений строк; HTTP-транспорт получает фикс через общую точку build_reports_export_csv
+- [Phase 40.1]: 40.1-02: omit_type_column — единая точка ветвления columns_for/column_labels_for для CSV+PDF+экрана; filter_summary резолвится на бэкенде (places.full_path + device_types.name), не на клиенте
 
 ### Pending Todos
 
@@ -1133,8 +1135,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-17T16:39:12.563Z
-Stopped at: Completed 40.1-04-PLAN.md
+Last session: 2026-09-17T17:52:16.937Z
+Stopped at: Completed 40.1-02-PLAN.md
 Resume file: None
 
 None

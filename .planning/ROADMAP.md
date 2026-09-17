@@ -123,7 +123,7 @@
 | 39.1. Формат пути Места в UI | v1.4 | 10/10 | Complete    | 2026-08-31 |
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
-| 40.1. Пробелы аудита v1.4 | v1.4 | 2/4 | In Progress|  |
+| 40.1. Пробелы аудита v1.4 | v1.4 | 3/4 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -482,13 +482,13 @@ UAT3-02 закрыт вне планов отладочной сессией, к
 
   4. Заголовки CSV-экспорта отчётов совпадают с подписями на экране и в PDF.
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 40.1-01-PLAN.md — BLOCKER-1: referencing_movement_count в SubtreeStats + предполётная проверка + русское сообщение + регрессионный тест
-- [ ] 40.1-02-PLAN.md — BLOCKER-2: контрол «Тип устройства» в ReportFilters.svelte (ветка movements) + живая проверка
+- [x] 40.1-02-PLAN.md — BLOCKER-2: контрол «Тип устройства» в ReportFilters.svelte (ветка movements) + живая проверка
 - [ ] 40.1-03-PLAN.md — WARNING-1: два новых продюсера notifyPlaceContentChanged (PlaceContents, CartridgesPage) + INV-7 гейт + документирование каскада принтер-картридж (D-18) + живая проверка
 - [x] 40.1-04-PLAN.md — WARNING-4: export_csv принимает column_labels (русские заголовки) + build_reports_export_csv + переписанный тест report_movements.rs
 
