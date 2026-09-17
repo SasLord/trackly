@@ -39,8 +39,13 @@
      * (e.g. PrinterDetail/PrintersPage deciding whether the record is still a
      * printer) can read it; existing callers that ignore the argument (e.g.
      * DevicesPage's `onSaved={() => {...}}`) keep working unchanged.
+     * `result.placeId` is the FINAL place_id the record was saved with
+     * (WARNING-1, audit 2026-09-17, D-14/D-15) — added the same way as
+     * `typeId` above: an object with an extra field is assignable wherever
+     * the narrower type is expected, so existing callers with fewer-arg
+     * handlers stay valid without changes.
      */
-    onSaved: (result?: { typeId: number }) => void;
+    onSaved: (result?: { typeId: number; placeId: number | null }) => void;
   }
 
   const { open, target, onClose, onSaved }: Props = $props();
@@ -122,8 +127,10 @@
 
   // Forwarded to DeviceFormBody instead of the raw `onSaved` prop so the final
   // type_id (owned here, not by the dumb form body) reaches the caller.
-  function handleBodySaved() {
-    onSaved({ typeId });
+  // placeId is forwarded straight through from DeviceFormBody — it already
+  // knows the final saved value, no extra request needed (WARNING-1, D-14/D-15).
+  function handleBodySaved(placeId: number | null) {
+    onSaved({ typeId, placeId });
   }
 </script>
 

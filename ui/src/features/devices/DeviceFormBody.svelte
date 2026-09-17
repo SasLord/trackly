@@ -59,7 +59,12 @@
      *  file-header comment above. Defaults to false so every existing
      *  caller (DeviceFormModal) is unaffected. */
     readonly?: boolean;
-    onSaved: () => void;
+    /** WARNING-1 (audit 2026-09-17, D-14/D-15): forwards the just-saved
+     *  device's `place_id` to the caller so it can invalidate the «Места»
+     *  tree's content counters for the affected place(s) without an extra
+     *  request — this form already holds the final value in `placeId`
+     *  above (just persisted via `devices.update`/`devices.bulkCreate`). */
+    onSaved: (_placeId: number | null) => void;
     /** Expose submit-button state to parent's footer snippet. */
     onLoading: (_loading: boolean) => void;
     onCanSubmitChange: (_can: boolean) => void;
@@ -255,7 +260,7 @@
           pushToast('success', `Создано ${qty} устройств`);
         }
       }
-      onSaved();
+      onSaved(placeId);
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
         const err = e as { code?: string; message?: string; details?: { field?: string } };

@@ -5,6 +5,7 @@
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/stores/transport.svelte';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { apiCall } from '$lib/api/client';
   import { parseIdFromHash } from '$lib/utils/hashId';
   import DeviceList from './DeviceList.svelte';
@@ -164,7 +165,21 @@
     modalOpen = true;
   }
 
-  function onSaved() {
+  function onSaved(result?: { typeId: number; placeId: number | null }) {
+    // WARNING-1 (audit 2026-09-17, D-14/D-15): third and final write-site —
+    // D-14 names both lists literally («Устройства»/«Картриджи»), symmetric
+    // to CartridgesPage.handleFormSuccess (Task 1 of this plan). The old
+    // place comes from `editTarget` (captured by openEdit BEFORE the form
+    // opened, null on create — same role as CartridgesPage's separately
+    // named `formModalTarget`); it is not reset by onSaved, only by the
+    // next openEdit/openCreate call, so it is still valid here.
+    const oldPlaceId = editTarget?.place_id ?? null;
+    const newPlaceId = result?.placeId ?? null;
+    const changedPlaceIds = Array.from(
+      new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
+    );
+    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+
     modalOpen = false;
     refresh();
     refreshCounts();
