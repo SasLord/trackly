@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-17T00:00:00.000Z"
-last_activity: 2026-09-17
+last_updated: "2026-09-17T16:16:01.786Z"
+last_activity: 2026-09-17 -- Phase 40.1 planning complete
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 4
-  total_plans: 72
+  total_plans: 76
   completed_plans: 72
-  percent: 44
+  percent: 40
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** закрытие блокеров аудита v1.4, далее Phase 41 — АРМ
+**Current focus:** Phase 40.1 — пробелы аудита v1.4, далее Phase 41 — АРМ
 
 ## Current Position
 
-Phase: 40 (movement-history) — ЗАВЕРШЕНА И ЗАКРЫТА (35/35 планов, все с SUMMARY)
+Phase: 40.1 (audit-gap-closure) — вставлена 2026-09-17 по результатам аудита вехи
 Plan: —
-Status: Фаза 40 закрыта: верификация passed (11/11 observable truths, 4/4 success criteria, 4/4 требования), живой UAT подтверждён пользователем 2026-09-04 на сборке 1.4.0-phase40, /gsd-secure-phase 40 пройден (40-SECURITY.md, status: verified, 72/72 угрозы закрыты), Nyquist-аудит 2026-09-17 — compliant.
+Status: Ready to execute
 Последнее действие: /gsd-audit-milestone v1.4 (2026-09-17) — аудит поставленной части (Фазы 39, 39.1, 39.2, 40). Вердикт gaps_found: два блокера на межфазных стыках, оба невидимы пофазной верификации — BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite: V040 добавил FK ON DELETE RESTRICT, предполётная проверка их не считает) и BLOCKER-2 (фильтр «по типу устройства» в отчёте «Перемещения» есть на бэкенде, но не отрисован в ReportFilters.svelte — HST-04 выполнен наполовину). Подробности и весь техдолг — .planning/v1.4-MILESTONE-AUDIT.md.
-Следующий шаг: закрыть оба блокера (вставная фаза или /gsd-quick), затем Фаза 41 (АРМ).
-Last activity: 2026-09-05 -- quick 260904-x7s: удаление акта освобождает его номер (авто и вручную)
+Следующий шаг: /gsd-plan-phase 40.1, затем Фаза 41 (АРМ).
+Last activity: 2026-09-17 -- Phase 40.1 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -416,6 +416,7 @@ Last activity: 2026-09-05 -- quick 260904-x7s: удаление акта осв�
 - Phases 37+38 merged into one (2026-08-08, решение пользователя при утверждении роадмапа): чистка и гейт всё равно планируются и проверяются вместе, потому что гейт обязан проходить на уже очищенном HEAD. Прежняя Phase 39 (Nyquist) стала Phase 38. Итог: 5 фаз вместо 6, покрытие требований не изменилось.
 - Phase 39.1 inserted after Phase 39: Формат пути Места переезжает из trackly.config.toml в UI: умолчание организации + переопределение на месте с наследованием (URGENT)
 - Phase 39.2 inserted after Phase 39.1: Долг фазы 39.1: 6 Warning + 4 Info из 39.1-REVIEW.md (единый владелец дефолтов пути, транзакция на записи, робастность на битых данных, UI/a11y экрана Настроек) (URGENT)
+- Phase 40.1 inserted after Phase 40: Закрыть пробелы аудита v1.4: BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite) и BLOCKER-2 (фильтр по типу устройства в отчёте «Перемещения» недостижим из UI) (URGENT)
 
 ### Decisions
 
