@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-17T17:52:16.947Z"
+status: verifying
+last_updated: "2026-09-17T17:55:41.415Z"
 last_activity: 2026-09-17
 progress:
   total_phases: 10
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 76
-  completed_plans: 75
-  percent: 40
+  completed_plans: 76
+  percent: 50
 ---
 
 # Project State
@@ -24,12 +24,17 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40.1 (audit-gap-closure) — EXECUTING
+Phase: 40.1 (audit-gap-closure) — COMPLETE
 Plan: 4 of 4
-Status: Ready to execute
-Последнее действие: /gsd-audit-milestone v1.4 (2026-09-17) — аудит поставленной части (Фазы 39, 39.1, 39.2, 40). Вердикт gaps_found: два блокера на межфазных стыках, оба невидимы пофазной верификации — BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite: V040 добавил FK ON DELETE RESTRICT, предполётная проверка их не считает) и BLOCKER-2 (фильтр «по типу устройства» в отчёте «Перемещения» есть на бэкенде, но не отрисован в ReportFilters.svelte — HST-04 выполнен наполовину). Подробности и весь техдолг — .planning/v1.4-MILESTONE-AUDIT.md.
-Следующий шаг: /gsd-plan-phase 40.1, затем Фаза 41 (АРМ).
-Last activity: 2026-09-17
+Status: Phase complete — ready for verification
+Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
+три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
+раунд-2 фикс после провала живой UAT (PlaceEntityViewModal форвардит точное старое/новое место
+записи, а не только текущий просматриваемый корень), approved на повторной живой проверке
+2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
+v1.4 устранены.
+Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
+Last activity: 2026-09-18
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -380,6 +385,7 @@ Last activity: 2026-09-17
 | Phase 40.1 P01 | 20min | 3 tasks | 4 files |
 | Phase 40.1 P04 | 15min | 3 tasks | 4 files |
 | Phase 40.1 P02 | 59min | 2 tasks | 10 files |
+| Phase 40.1 P03 | 32min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -946,6 +952,7 @@ Recent decisions affecting current work:
 - [Phase 40.1-01]: referencing_movement_count считает строки place_movements (from_place_id OR to_place_id), не уникальные сущности (D-01)
 - [Phase 40.1]: D-19..D-22: export_csv параллелит export_pdf — column_labels отдельным параметром, columns остаётся источником значений строк; HTTP-транспорт получает фикс через общую точку build_reports_export_csv
 - [Phase 40.1]: 40.1-02: omit_type_column — единая точка ветвления columns_for/column_labels_for для CSV+PDF+экрана; filter_summary резолвится на бэкенде (places.full_path + device_types.name), не на клиенте
+- [Phase 40.1]: Раунд 2 фикс WARNING-1: PlaceEntityViewModal форвардит точное старое+новое место редактируемой записи вместо инвалидации только текущего просматриваемого корня — Живая UAT раунда 1 показала, что обновлялся счётчик только текущего открытого узла — назначение и вложенные подместа оставались устаревшими до навигации прочь и обратно
 
 ### Pending Todos
 
@@ -1135,8 +1142,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-17T17:52:16.937Z
-Stopped at: Completed 40.1-02-PLAN.md
+Last session: 2026-09-17T17:55:41.405Z
+Stopped at: Completed 40.1-03-PLAN.md
 Resume file: None
 
 None
