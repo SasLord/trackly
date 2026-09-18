@@ -8,6 +8,13 @@
     loading?: boolean;
     disabled?: boolean;
     type?: 'button' | 'submit';
+    /** Квадратная кнопка-иконка (width = высота варианта, padding: 0) —
+     *  UI-SPEC §1 "Кнопка-иконка". Без этого пропа разметка/стили не
+     *  меняются — существующие вызовы Button не передают iconOnly. */
+    iconOnly?: boolean;
+    /** Обязателен вместе с iconOnly (иконка без текста — UI-SPEC §8). */
+    ariaLabel?: string;
+    title?: string;
     onclick?: () => void;
     children?: Snippet;
   }
@@ -18,6 +25,9 @@
     loading = false,
     disabled = false,
     type = 'button',
+    iconOnly = false,
+    ariaLabel,
+    title,
     onclick,
     children,
   }: Props = $props();
@@ -25,7 +35,16 @@
   const isDisabled = $derived(disabled || loading);
 </script>
 
-<button {type} class="btn btn-{variant} btn-{size}" class:loading disabled={isDisabled} {onclick}>
+<button
+  {type}
+  class="btn btn-{variant} btn-{size}"
+  class:loading
+  class:btn-icon-only={iconOnly}
+  disabled={isDisabled}
+  aria-label={ariaLabel}
+  {title}
+  {onclick}
+>
   {#if loading}
     <Spinner size="sm" />
   {/if}
@@ -73,6 +92,19 @@
     height: 28px;
     padding: 0 12px;
     font-size: var(--tr-font-size-label);
+  }
+
+  // Icon-only: квадрат (width = height варианта), без внутреннего отступа
+  // (UI-SPEC §1 "Кнопка-иконка"). Условный класс — без него разметка кнопок
+  // не меняется.
+  .btn-icon-only {
+    padding: 0;
+  }
+  .btn-md.btn-icon-only {
+    width: 36px;
+  }
+  .btn-sm.btn-icon-only {
+    width: 28px;
   }
 
   // Variants
