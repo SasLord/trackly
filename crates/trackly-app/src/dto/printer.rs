@@ -267,6 +267,34 @@ pub enum WsEvent {
         printer_name: String,
         alert_type: String,
     },
+    /// A numbering template's physical space changed in a way that may
+    /// invalidate a client's live occupied-check/preview (D-14, Phase 40.2
+    /// Plan 05 — contract only, nothing sends this variant yet).
+    ///
+    /// `contexts` carries the READY list of affected
+    /// `TemplateContext::as_str()` values (`"device_create"` /
+    /// `"printer_create"` / `"act_create"` / `"cartridge_create"` /
+    /// `"drum_create"`) — NOT a "space"/template-type string the client
+    /// would have to map back to contexts itself (W6, memory
+    /// `js_rust_mirror_needs_fixture_gate`: a Rust↔JS mirrored mapping
+    /// function is exactly the duplicated-logic pattern this project
+    /// forbids). The SENDER (Plans 06/07/08, inside
+    /// `act_service`/`cartridge_service`/`device_service`) knows its own
+    /// "table → contexts" mapping directly — acts affect only
+    /// `["act_create"]`; devices affect `["device_create",
+    /// "printer_create"]` (both read `devices.inventory_number`);
+    /// cartridges/drums affect `["cartridge_create", "drum_create"]` (both
+    /// read `cartridges.code`) — three literal cases, not a shared
+    /// helper function, so there is nothing to keep in sync across
+    /// languages. The client (Plan 12) does only
+    /// `event.contexts.includes(myContext)` — pure membership check, no
+    /// mapping logic.
+    ///
+    /// Real dispatch (`ctx.ws_broadcast(...)`) is added in Plans 06/07/08
+    /// after each mutation that touches a numbered column — this plan only
+    /// introduces the variant, its payload shape, and its visibility rule.
+    #[serde(rename_all = "camelCase")]
+    NumberSpaceChanged { contexts: Vec<String> },
 }
 
 impl WsEvent {
@@ -280,6 +308,9 @@ impl WsEvent {
     ///   (`identity.user_id == Some(requested_by_user_id)`) — split arm so the
     ///   author gets realtime status updates on their OWN request without
     ///   leaking other employees' request statuses (BOLA guard, T-11-03-I).
+    /// - `NumberSpaceChanged` (Phase 40.2 Plan 05) → Admin | Manager only —
+    ///   the same two roles that can ever open a "Вставка"/create popup that
+    ///   consumes a numbering template; Employee never opens those popups.
     pub fn is_visible_to(&self, identity: &Identity) -> bool {
         match self {
             WsEvent::PrinterAlert { .. } => {
@@ -294,6 +325,9 @@ impl WsEvent {
             } => {
                 matches!(identity.role, Role::Admin | Role::Manager)
                     || identity.user_id == Some(*requested_by_user_id)
+            }
+            WsEvent::NumberSpaceChanged { .. } => {
+                matches!(identity.role, Role::Admin | Role::Manager)
             }
         }
     }
@@ -391,6 +425,33 @@ mod tests {
                 "requestId": 1,
                 "requestType": "cartridge_replace",
                 "requesterName": "Иванов И.И."
+            })
+        );
+    }
+
+    // NumberSpaceChanged (Phase 40.2 Plan 05, D-14) — visibility + serialization.
+
+    #[test]
+    fn number_space_changed_visible_to_admin_and_manager_only() {
+        let event = WsEvent::NumberSpaceChanged {
+            contexts: vec!["act_create".to_string()],
+        };
+        assert!(event.is_visible_to(&identity(None, Role::Admin)));
+        assert!(event.is_visible_to(&identity(Some(99), Role::Manager)));
+        assert!(!event.is_visible_to(&identity(Some(42), Role::Employee)));
+    }
+
+    #[test]
+    fn number_space_changed_serializes_contexts_as_string_array() {
+        let event = WsEvent::NumberSpaceChanged {
+            contexts: vec!["act_create".to_string()],
+        };
+        let value = serde_json::to_value(&event).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "number_space_changed",
+                "contexts": ["act_create"]
             })
         );
     }
