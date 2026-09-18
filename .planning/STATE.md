@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-09-18T14:19:53.847Z"
-last_activity: 2026-09-18
+status: executing
+last_updated: "2026-09-18T17:42:37.648Z"
+last_activity: 2026-09-18 -- Phase 40.2 planning complete
 progress:
   total_phases: 11
   completed_phases: 5
-  total_plans: 76
+  total_plans: 91
   completed_plans: 76
   percent: 45
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.2
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
 раунд-2 фикс после провала живой UAT (PlaceEntityViewModal форвардит точное старое/новое место
@@ -34,7 +34,7 @@ Status: Ready to plan
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-18
+Last activity: 2026-09-18 -- Phase 40.2 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
