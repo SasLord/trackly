@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T18:51:21.369Z"
+last_updated: "2026-09-18T22:26:45.497Z"
 last_activity: 2026-09-18
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 81
+  completed_plans: 82
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 6 of 15
+Plan: 7 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -392,6 +392,7 @@ Last activity: 2026-09-18
 | Phase 40.2 P09 | 35m | 2 tasks | 5 files |
 | Phase 40.2 P11 | 25min | 2 tasks | 4 files |
 | Phase 40.2 P03 | 40min | 3 tasks | 3 files |
+| Phase 40.2 P04 | 55m | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -971,6 +972,8 @@ Recent decisions affecting current work:
 - [Phase 40.2]: 40.2-11: NUM-10/11/12 НЕ отмечены complete в REQUIREMENTS.md — попапы презентационные, оркестрация цепочки D-01 и серверные вызовы подключаются в планах 13-15
 - [Phase 40.2]: Task 1/Task 2 code implementation collapsed into one commit (trait requires fetch_matching_values to exist); tests split honestly across Task 2/3 commits
 - [Phase 40.2]: Repo-level integration tests reuse V041's seeded templates via repo.list() instead of insert_in_tx where the scenario doesn't need a custom mask, to avoid UNIQUE(type, mask) collision
+- [Phase 40.2]: NumberTemplateService is_occupied/detect_warnings are async self-methods (readers+spawn_blocking), called as pre-checks before Wave 5 services open their own writer tx — Mirrors existing cartridge_service.rs::model_delete pre-check pattern; accepts the same small TOCTOU window already accepted elsewhere in the codebase
+- [Phase 40.2]: trackly-infra counters-table baseline updated from 16 to 25 known failures — 9 new failures found in cartridges_place_path_short.rs/cartridges_place_search.rs/seed_data.rs, pre-existing from earlier phases, not touched by this plan, all rooted in the same missing counters table resolved by Plans 06/07
 
 ### Pending Todos
 
@@ -1162,8 +1165,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T18:51:13.030Z
-Stopped at: Completed 40.2-02-PLAN.md
+Last session: 2026-09-18T22:26:45.486Z
+Stopped at: Completed 40.2-04-PLAN.md
 Resume file: None
 
 None
