@@ -37,34 +37,25 @@
 //           и записывает `placeIds`. Без инкремента `seq` повторное событие с
 //           тем же списком id не разбудит подписчика (эффект отсекает `seq === 0`
 //           и просыпается именно на изменение `seq`).
-//   INV-7 (40.1, аудит 2026-09-17, WARNING-1) — ПРОДЮСЕРЫ `notifyPlaceContentChanged`
-//           покрывают все клиентские write-site смены места, а не только массовый
-//           перенос (`PlaceContents.svelte`'s `handleMoveConfirm`). WR-01 из
-//           аудита 2026-08-27 уже закрывался «наполовину» — новый write-site
-//           тихо не звал функцию, и ничего в проекте это не ловило. Проверка
-//           КАЖДЫЙ write-site РАЗДЕЛЬНО, а не «хотя бы один вызов где-то в
-//           репозитории»: `PlaceContents.svelte` и (с 40.1, gap closure WR-01)
-//           `CartridgesPage.svelte` содержат ПО ДВА разных вызова каждый —
-//           файл-уровневая проверка не отличила бы удаление одного из них от
-//           присутствия другого (mutation_test_anchor_must_be_unique). Поэтому
-//           для `PlaceContents.svelte` проверка локализована на блок разметки
-//           `<PlaceEntityViewModal ...>` (правка через «Просмотр»), а для
-//           `CartridgesPage.svelte` — на ТЕЛА функций `handleFormSuccess`
-//           (форма «Редактировать») и `handleOperationSuccess` (lifecycle-
-//           операции install/return_to_stock/to_refill/from_refill/write_off,
-//           WR-01 gap closure 2026-09-18) РАЗДЕЛЬНО; `DevicesPage.svelte`
-//           остаётся файл-уровневой проверкой — в нём ровно один вызов.
-//           WR-05 (40.1 round-2 gap closure, 2026-09-18) добавляет ПЯТЫЙ
-//           write-site — `RequestDetail.svelte`'s `handleInstallSuccess`
-//           (установка картриджа при утверждении заявки на замену, REQ-05,
-//           тот же `OperationModal` с `op="install"`, тот же серверный
-//           `CartridgeService` transition). Файл-уровневая проверка достаточна
-//           (в файле ровно один вызов, как у `DevicesPage.svelte`), но
-//           локализована на ТЕЛО `handleInstallSuccess` (`functionBody`) —
-//           не файл целиком — потому что в файле есть НЕСКОЛЬКО других
-//           lifecycle-обработчиков (`handleAccept`/`handleReject`/`handleComplete`
-//           и т.д.), и файл-уровневая проверка не отличила бы удаление вызова
-//           из `handleInstallSuccess` от случайного вызова в одном из них.
+//   INV-7 (40.1, аудит 2026-09-17, WARNING-1; REGISTRY-DRIVEN с 2026-09-18,
+//           40.1-audit-gap-closure exhaustive sweep) — ПРОДЮСЕРЫ
+//           `notifyPlaceContentChanged` покрывают ВСЕ клиентские write-site
+//           смены места. Три раунда верификации подряд каждый нашёл ЕЩЁ ОДИН
+//           непокрытый экран (WR-01 CartridgesPage, WR-05 RequestDetail,
+//           затем целый класс «Акты» — ActsPage) — во всех трёх случаях
+//           write-site тихо не звал функцию, и ничего в гейте это не ловило,
+//           потому что гейт проверял фиксированный СПИСОК файлов/функций, а
+//           не «какие вообще экраны меняют место». С этого коммита INV-7 —
+//           РЕЕСТР place-mutating компонентов/прямых вызовов
+//           (`MUTATING_COMPONENTS`/`FORWARDING_COMPONENTS`/
+//           `DIRECT_CALL_MARKERS`, см. доккомментарий над `checkCompleteness`
+//           ниже) + скан ВСЕГО дерева `ui/src/features` на каждое использование
+//           зарегистрированного компонента/вызова — так что НОВЫЙ экран,
+//           который рендерит уже известный компонент без инвалидации, ловится
+//           автоматически, без ручного добавления в список. Полный перечень
+//           write-site (12 на момент этого коммита, локализация на каждое
+//           ИСПОЛЬЗОВАНИЕ отдельно — не на файл) и явные blind spot'ы этого
+//           подхода — в доккомментарии над `checkCompleteness`.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -87,12 +78,9 @@ const TAG = '[check-place-tree-invalidation]';
 
 const TREE = 'src/features/places/PlaceTree.svelte';
 const STORE = 'src/lib/stores/placeContentEvents.svelte.ts';
-// INV-7 producer write-sites (WARNING-1, audit 2026-09-17).
-const CONTENTS = 'src/features/places/PlaceContents.svelte';
-const CARTRIDGES_PAGE = 'src/features/cartridges/CartridgesPage.svelte';
-const DEVICES_PAGE = 'src/features/devices/DevicesPage.svelte';
-// WR-05 (40.1 round-2 gap closure) — fifth write-site.
-const REQUEST_DETAIL = 'src/features/requests/RequestDetail.svelte';
+// INV-7 (registry-driven, 40.1 exhaustive sweep) scans this whole subtree —
+// see `checkCompleteness` below — instead of a fixed file list.
+const FEATURES_DIR = 'src/features';
 const NOTIFY = 'notifyPlaceContentChanged(';
 
 // ---------------------------------------------------------------------------
@@ -146,16 +134,13 @@ function balancedParens(src, openIdx) {
 
 /**
  * INV-7: срез разметки Svelte-тега `<${tagName} ... />` или `<${tagName} ...>`,
- * от `<tagName` до закрывающего `>` тега (включая self-closing `/>`).
- * Балансирует ФИГУРНЫЕ скобки, не круглые — атрибуты Svelte-тега вида
- * `onChanged={() => { ... }}` сами содержат вложенные `{}`, и наивный поиск
- * первого `>` попал бы внутрь `{() => {...}}`. Возвращает `null`, если тег не
- * найден (компонент удалён/переименован — гейт должен явно упасть на этом,
- * не молча пройти).
+ * от явно заданного индекса начала (`<tagName`) до закрывающего `>` тега
+ * (включая self-closing `/>`). Балансирует ФИГУРНЫЕ скобки, не круглые —
+ * атрибуты Svelte-тега вида `onChanged={() => { ... }}` сами содержат
+ * вложенные `{}`, и наивный поиск первого `>` попал бы внутрь `{() => {...}}`.
+ * Возвращает `null`, если баланс не закрылся до конца файла.
  */
-function tagBlock(src, tagName) {
-  const start = src.indexOf(`<${tagName}`);
-  if (start < 0) return null;
+function tagBlockAt(src, start) {
   let depth = 0;
   for (let i = start; i < src.length; i++) {
     if (src[i] === '{') depth++;
@@ -163,6 +148,158 @@ function tagBlock(src, tagName) {
     else if (src[i] === '>' && depth === 0) return src.slice(start, i + 1);
   }
   return null;
+}
+
+/**
+ * INV-7 (registry-driven): EVERY `<tagName ...>`/`<tagName ... />` usage in
+ * `src`, not just the first — a page can (and does, e.g. `ActsPage.svelte`'s
+ * two `<ActFormModal>` usages) render the same component more than once.
+ * Word-boundary safe via a lookahead on whitespace/`/`/`>` so `<Foo` does not
+ * spuriously match `<FooBar`.
+ */
+function allTagBlocks(src, tagName) {
+  const out = [];
+  const re = new RegExp(`<${tagName}(?=[\\s/>])`, 'g');
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const block = tagBlockAt(src, m.index);
+    if (block !== null) out.push(block);
+  }
+  return out;
+}
+
+/**
+ * INV-7 (registry-driven): extracts a Svelte attribute's raw value text from
+ * a tag-block string. Handles both `name={value}` (balanced-brace extraction
+ * — `value` can itself be an inline arrow function with nested `{}`) and the
+ * Svelte shorthand `{name}` (value === name, used by e.g. `DevicesPage.svelte`'s
+ * `{onSaved}`). Returns `null` if the attribute is absent from this usage.
+ */
+function attrValue(tagText, attrName) {
+  const eqMatch = new RegExp(`(?:^|[\\s])${attrName}=\\{`).exec(tagText);
+  if (eqMatch !== null) {
+    const openIdx = eqMatch.index + eqMatch[0].length - 1;
+    const braces = balancedBraces(tagText, openIdx);
+    if (braces !== null) return braces.text.trim();
+  }
+  if (new RegExp(`(?:^|[\\s])\\{${attrName}\\}`).test(tagText)) return attrName;
+  return null;
+}
+
+/** Balanced `{...}` content, mirrors `balancedParens` but for curly braces —
+ * needed for `attrValue`'s `name={...}` extraction (the value itself may
+ * contain nested `{}`, e.g. an inline arrow function body). */
+function balancedBraces(src, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return { text: src.slice(openIdx + 1, i), start: openIdx, end: i };
+    }
+  }
+  return null;
+}
+
+/**
+ * INV-7 (registry-driven): `const NAME = (...) => { ... }` fallback for
+ * `functionBody` (below) — every handler in this codebase today is declared
+ * `function NAME(...) {}`, but resolving the arrow-const form too means a
+ * future handler written that way doesn't silently fall through to a
+ * "could not resolve" violation for a benign reason.
+ */
+function constArrowBody(src, name) {
+  const m = src.match(
+    new RegExp(`const\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)[^=]*=>\\s*\\{`),
+  );
+  if (!m) return null;
+  const open = m.index + m[0].length - 1;
+  const braces = balancedBraces(src, open);
+  return braces === null ? null : braces.text;
+}
+
+/**
+ * INV-7 (registry-driven): resolves a callback prop's VALUE TEXT (as
+ * returned by `attrValue`) into a checkable body:
+ *   - a bare identifier (`handleFoo`, incl. the shorthand's synthesized
+ *     `attrName`) -> the same-file `function`/const-arrow declaration body.
+ *   - an inline function/arrow expression (`(x) => {...}`) -> the expression
+ *     text itself.
+ * Returns `null` when resolution fails (member expression, imported/bound
+ * handler, etc.) — callers MUST treat `null` as a VIOLATION, never a silent
+ * skip (blind spot #2 in the doc-comment above `checkCompleteness`).
+ */
+function resolveCallbackBody(fileCode, valueText) {
+  const trimmed = valueText.trim();
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(trimmed)) {
+    const body = functionBody(fileCode, trimmed) ?? constArrowBody(fileCode, trimmed);
+    return body === null ? null : { kind: 'named', name: trimmed, body };
+  }
+  if (/=>/.test(trimmed) || /^(?:async\s+)?function\b/.test(trimmed)) {
+    return { kind: 'inline', name: null, body: trimmed };
+  }
+  return null;
+}
+
+/**
+ * INV-7 (registry-driven): start index of the `{` innermost-enclosing `idx`,
+ * scanning backward with brace-depth tracking — same technique as
+ * `enclosingIfCondition` below, generalized to "any enclosing block" rather
+ * than specifically an `if`. Returns `-1` if `idx` is at top level.
+ */
+function nearestEnclosingBraceStart(src, idx) {
+  let depth = 0;
+  for (let i = idx - 1; i >= 0; i--) {
+    const c = src[i];
+    if (c === '}') depth++;
+    else if (c === '{') {
+      if (depth === 0) return i;
+      depth--;
+    }
+  }
+  return -1;
+}
+
+/**
+ * INV-7 (registry-driven, `DIRECT_CALL_MARKERS`): walks outward from `idx`
+ * through enclosing `{...}` blocks (capped at 50 hops — generous, no
+ * realistic file nests that deep) until it finds one immediately preceded by
+ * a `function NAME(...)` header, then returns that function's FULL body via
+ * `functionBody`. A marker matched at an arbitrary point inside a handler
+ * must resolve to the ENCLOSING NAMED function, not just the nearest `{}`
+ * (which could be an `if`/`.then()` callback/etc nested inside it).
+ */
+function enclosingFunction(src, idx) {
+  let cursor = idx;
+  for (let hop = 0; hop < 50; hop++) {
+    const braceStart = nearestEnclosingBraceStart(src, cursor);
+    if (braceStart < 0) return null;
+    const header = src.slice(0, braceStart);
+    const m = header.match(
+      /(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?::[^{]*)?\s*$/,
+    );
+    if (m) {
+      const body = functionBody(src, m[1]);
+      return body === null ? null : { name: m[1], body };
+    }
+    cursor = braceStart;
+  }
+  return null;
+}
+
+/**
+ * INV-7 (registry-driven): every `.svelte` file under `dir`, recursively —
+ * the scan surface for `checkCompleteness` (all of `ui/src/features`, not a
+ * fixed file list).
+ */
+function walkSvelteFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSvelteFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('.svelte')) out.push(full);
+  }
+  return out;
 }
 
 /** Тексты всех блоков `$effect(...)`. */
@@ -202,11 +339,28 @@ function indicesOf(src, needle) {
   return out;
 }
 
-/** Тело функции по имени (учитывает вложенные `{}`). */
+/**
+ * Тело функции по имени (учитывает вложенные `{}`).
+ *
+ * INV-7 fix (registry-driven sweep, 2026-09-18): the naive "first `{` after
+ * the match" approach breaks when the parameter list itself contains an
+ * inline TS object-type annotation with its OWN `{}` — e.g.
+ * `function onSaved(result?: { typeId: number; placeId: number | null }) {`
+ * (`DevicesPage.svelte`, `PlaceEntityViewModal.svelte`'s `handleDeviceEditSaved`)
+ * — the old code would stop at the param-list's own `{`, slicing out the
+ * TYPE ANNOTATION as if it were the function body and silently reporting
+ * "no `notifyPlaceContentChanged(`" even though the real body (past the
+ * closing `)`) has it. Fixed by first balancing the PARAMETER LIST's own
+ * parens (`balancedParens`) and only then searching for the body's `{`
+ * AFTER that closing `)` — skips any return-type annotation too.
+ */
 function functionBody(src, fnName) {
   const m = src.match(new RegExp(`(?:async\\s+)?function\\s+${fnName}\\s*\\(`));
   if (!m) return null;
-  const open = src.indexOf('{', m.index + m[0].length);
+  const parenOpen = m.index + m[0].length - 1;
+  const params = balancedParens(src, parenOpen);
+  if (params === null) return null;
+  const open = src.indexOf('{', params.end + 1);
   if (open < 0) return null;
   let depth = 0;
   for (let i = open; i < src.length; i++) {
@@ -446,140 +600,214 @@ function checkStore(storeSrc, violations) {
 }
 
 /**
- * INV-7 — продюсеры `notifyPlaceContentChanged` покрывают все клиентские
- * write-site смены места (WARNING-1, аудит 2026-09-17; расширено WR-01 gap
- * closure 2026-09-18). Стратегия проверки различается по файлу, намеренно —
- * это НЕ недосмотр/асимметрия по забывчивости:
+ * INV-7 (registry-driven, 40.1-audit-gap-closure exhaustive sweep,
+ * 2026-09-18) — продюсеры `notifyPlaceContentChanged` покрывают ВСЕ
+ * клиентские write-site смены места. Три раунда верификации подряд нашли
+ * ЕЩЁ ОДИН непокрытый write-site (WR-01 CartridgesPage's lifecycle-операции,
+ * WR-05 RequestDetail, затем целый класс «Акты» — ActsPage), и КАЖДЫЙ раз
+ * root cause был один и тот же: гейт проверял фиксированный СПИСОК файлов/
+ * функций, поэтому экран, которого не было в списке, был для гейта
+ * невидим — не ложноотрицательный результат самой проверки, а дыра в том,
+ * НА ЧТО она вообще смотрела.
  *
- *   1. `PlaceContents.svelte` содержит ДВА разных вызова `notifyPlaceContentChanged`
- *      (bulk-move в `handleMoveConfirm` и правка через `<PlaceEntityViewModal ...>`)
- *      — файл-уровневая проверка не отличила бы удаление одного от присутствия
- *      другого. Проверка ЛОКАЛИЗОВАНА на блок разметки тега
- *      `<PlaceEntityViewModal ...>` через `tagBlock`.
- *   2. `CartridgesPage.svelte` СТАЛА такой же после WR-01 gap closure: она
- *      теперь тоже содержит ДВА разных вызова — форма «Редактировать»
- *      (`handleFormSuccess`) и lifecycle-операции (`handleOperationSuccess`,
- *      install/return_to_stock/to_refill/from_refill/write_off). Файл-уровневая
- *      проверка (как раньше) больше не различила бы удаление вызова из
- *      `handleOperationSuccess`, пока `handleFormSuccess`'s вызов ещё цел —
- *      ровно класс дефекта mutation_test_anchor_must_be_unique. Проверка
- *      ЛОКАЛИЗОВАНА на ТЕЛО каждой функции через `functionBody`.
- *   3. `DevicesPage.svelte` содержит РОВНО ОДИН вызов (введён планом 40.1-03;
- *      до него — ноль вхождений в файле), так что файл-уровневая проверка
- *      (`indicesOf(code, NOTIFY).length === 0`) однозначно указывает на
- *      конкретный write-site — локализация до блока здесь не нужна.
- *   4. `RequestDetail.svelte` (WR-05, 40.1 round-2 gap closure, 2026-09-18)
- *      содержит РОВНО ОДИН вызов, но файл-уровневая проверка была бы
- *      недостаточно точной — файл держит НЕСКОЛЬКО других lifecycle-
- *      обработчиков заявки (`handleAccept`/`handleReject`/`handleComplete`
- *      и т.д.), и удаление вызова именно из `handleInstallSuccess` при
- *      случайном вызове где-то ещё в файле осталось бы незамеченным.
- *      Проверка ЛОКАЛИЗОВАНА на ТЕЛО `handleInstallSuccess` через
- *      `functionBody`, по аналогии с write-site 2/3.
+ * Эта секция заменяет список файлов РЕЕСТРОМ place-mutating «поверхностей»
+ * и сканирует ВСЁ дерево `ui/src/features` на каждое использование
+ * зарегистрированной поверхности — так НОВЫЙ экран, рендерящий уже известный
+ * компонент без инвалидации, ловится автоматически, без ручного добавления
+ * в список.
+ *
+ * ---- Реестр ----
+ *   `MUTATING_COMPONENTS` — компоненты, чей success-колбэк стреляет DTO
+ *     ПОСЛЕ серверной мутации места (OperationModal/CartridgeFormModal/
+ *     DeviceFormModal/ActFormModal/ReturnModal). Резолвленный обработчик
+ *     обязан звать `notifyPlaceContentChanged(` НАПРЯМУЮ — ЛИБО, если сам
+ *     файл — это компонент из `FORWARDING_COMPONENTS` (см. ниже), может
+ *     вместо этого форвардить через СВОЙ собственный проп (тот самый один
+ *     хоп D-17's "consumer forwards up via callback").
+ *   `FORWARDING_COMPONENTS` — компоненты, которые сами форвардят результат
+ *     мутации через СВОЙ проп вместо прямого вызова (сегодня единственный:
+ *     `PlaceEntityViewModal`'s `onChanged`). Каждое ИСПОЛЬЗОВАНИЕ такого
+ *     компонента (в любом файле) обязано резолвить `forwardProp` в тело,
+ *     которое ЗВОНИТ `notifyPlaceContentChanged(` — проверяется идентично
+ *     `MUTATING_COMPONENTS`, просто под другим именем пропа.
+ *   `DIRECT_CALL_MARKERS` — прямые (не через компонент) вызовы, меняющие
+ *     place_id без обёртки `MUTATING_COMPONENTS` (bulk-move,
+ *     `acts.delete`/soft-delete+undo). Функция, ОБРАМЛЯЮЩАЯ маркер, обязана
+ *     звать `notifyPlaceContentChanged(`.
+ *
+ * ---- Полный перечень write-site на момент этого коммита (12) ----
+ *   1. PlaceContents.svelte — `<PlaceEntityViewModal onChanged={...}>`
+ *      (правка предмета через «Просмотр» со страницы «Места»).
+ *   2. CartridgesPage.svelte — `handleFormSuccess` (форма «Редактировать»).
+ *   3. CartridgesPage.svelte — `handleOperationSuccess` (lifecycle-операции,
+ *      WR-01).
+ *   4. DevicesPage.svelte — `onSaved` (создание/редактирование устройства).
+ *   5. RequestDetail.svelte — `handleInstallSuccess` (установка картриджа
+ *      через заявку, WR-05).
+ *   6. ActsPage.svelte — `handleSaved` (создание акта, WR-06).
+ *   7. ActsPage.svelte — `handleEditSaved` (редактирование акта, WR-06).
+ *   8. ActsPage.svelte — `handleReturnSuccess` (создание/редактирование
+ *      возврата, WR-06).
+ *   9. ActsPage.svelte — `handleDelete` (мягкое удаление + undo-каскад,
+ *      DIRECT_CALL_MARKERS, WR-06).
+ *  10. PrinterDetail.svelte — `<DeviceFormModal onSaved={...}>` (правка
+ *      «Данные устройства» со страницы принтера, WR-07 — найден ЭТИМ
+ *      гейтом при построении реестра, ни одним из трёх раундов
+ *      верификации).
+ *  11. DeviceContextMenu.svelte — `<PlaceEntityViewModal onChanged=
+ *      {handleViewChanged}>` (правка через «Просмотр» из кебаб-меню списка
+ *      «Устройства», WR-08 — тоже найден ЭТИМ гейтом, не раундами
+ *      верификации; `handleViewChanged` буквально отбрасывал аргумент).
+ *  12. PlaceContents.svelte — `handleMoveConfirm` (массовый перенос,
+ *      DIRECT_CALL_MARKERS, покрыт с Phase 40).
+ *
+ * ---- Что гейт ловит АВТОМАТИЧЕСКИ (без правки самого гейта) ----
+ *   - Новый `.svelte`-файл под `ui/src/features`, рендерящий любой
+ *     `MUTATING_COMPONENTS`/`FORWARDING_COMPONENTS` компонент с колбэком,
+ *     не зовущим `notifyPlaceContentChanged(` (ни напрямую, ни — для
+ *     forwarding-компонентов — через свой форвардящий проп).
+ *   - Новое использование УЖЕ известного компонента в УЖЕ известном файле
+ *     (второй `<ActFormModal>`, третий `<OperationModal>` и т.д.) —
+ *     `allTagBlocks` находит КАЖДОЕ вхождение, не только первое.
+ *   - Новый прямой вызов одного из `DIRECT_CALL_MARKERS` где угодно в
+ *     дереве, чья обрамляющая именованная функция не зовёт notify.
+ *
+ * ---- Blind spot'ы (явно, без переоценки покрытия) ----
+ *   1. Новый серверный мутирующий путь, НЕ заведённый через
+ *      зарегистрированный компонент/маркер, невидим гейту, пока человек не
+ *      добавит его в реестр — тот же класс пропуска, что и раньше, просто
+ *      перенесённый на уровень выше: с «по UI-файлу» (меняется постоянно)
+ *      на «по серверной мутирующей поверхности» (исчерпывающе
+ *      перечислена в этом самом sweep'е, `40.1-03-SUMMARY.md`, и меняется
+ *      НАМНОГО реже — новые экраны добавляются часто, новые
+ *      place-мутирующие серверные точки — редко).
+ *   2. Резолюция колбэка — ТОЛЬКО в пределах одного файла: обработчик,
+ *      импортированный из другого модуля, bound-метод (`this.handleX`),
+ *      member-expression (`obj.method`) или условно выбранный обработчик
+ *      (`cond ? a : b`) не резолвятся — `resolveCallbackBody` вернёт
+ *      `null`, и это ВСЕГДА нарушение (громкий fail), никогда молчаливый
+ *      skip. Если это сработает на легитимном новом паттерне — расширяй
+ *      `resolveCallbackBody`, не глуши проверку.
+ *   3. Рекурсия `FORWARDING_COMPONENTS` захардкожена на ОДИН хоп (ровно тот
+ *      единственный хоп, что реально существует в этой кодовой базе —
+ *      `PlaceEntityViewModal` → его собственный потребитель). Второй
+ *      уровень форвардинга потребует явного расширения этой секции, не
+ *      пройдёт молча.
+ *   4. Гейт СТРУКТУРНЫЙ/текстовый, как и весь остальной файл (см.
+ *      заголовок) — доказывает, что ПРОВОДКА существует, не что аргументы
+ *      `notifyPlaceContentChanged` — ПРАВИЛЬНЫЕ старое/новое место. Это
+ *      по-прежнему требует живой проверки `cargo tauri dev` на каждый
+ *      write-site, как и во всех раундах до этого.
  */
-function checkProducers(contentsSrc, cartridgesSrc, devicesSrc, requestDetailSrc, violations) {
-  // Write-site 1 — правка предмета через PlaceEntityViewModal (PlaceContents.svelte).
-  const contentsCode = stripComments(contentsSrc);
-  const viewModalTag = tagBlock(contentsCode, 'PlaceEntityViewModal');
-  if (viewModalTag === null) {
-    violations.push({
-      file: CONTENTS,
-      inv: 'INV-7',
-      message: 'тег <PlaceEntityViewModal ...> не найден',
-      hint:
-        'Компонент удалён/переименован/перенесён — обнови гейт вместе с рефакторингом осознанно, ' +
-        'не удаляй проверку write-site 1 (правка предмета со страницы «Места», WARNING-1).',
-    });
-  } else if (!viewModalTag.includes(NOTIFY)) {
-    violations.push({
-      file: CONTENTS,
-      inv: 'INV-7',
-      message:
-        'блок <PlaceEntityViewModal ...> не вызывает notifyPlaceContentChanged( — правка предмета ' +
-        'со страницы «Места» больше не инвалидирует дерево',
-      hint:
-        'WR-01 (аудит 2026-08-27) уже закрывался «наполовину» — только массовый перенос ' +
-        '(handleMoveConfirm) остаётся нетронутым, но этого НЕ достаточно: правка одного предмета ' +
-        'через «Просмотр» → «Редактировать» тоже обязана звать notifyPlaceContentChanged, иначе ' +
-        'счётчики дерева останутся устаревшими до перезагрузки страницы.',
-    });
-  }
 
-  // Write-site 2 и 3 — CartridgesPage.svelte содержит ДВА разных write-site,
-  // каждый проверяется отдельно по телу своей функции (WR-01 gap closure,
-  // 40.1-audit-gap-closure, 2026-09-18).
-  const cartridgesCode = stripComments(cartridgesSrc);
-  for (const fnName of ['handleFormSuccess', 'handleOperationSuccess']) {
-    const body = functionBody(cartridgesCode, fnName);
-    if (body === null) {
-      violations.push({
-        file: CARTRIDGES_PAGE,
-        inv: 'INV-7',
-        message: `функция ${fnName} не найдена`,
-        hint:
-          'Переименована/удалена — обнови гейт вместе с рефакторингом осознанно, не удаляй ' +
-          `проверку write-site (${fnName === 'handleFormSuccess' ? 'форма «Редактировать»' : 'lifecycle-операции install/return_to_stock/to_refill/from_refill/write_off'}, WARNING-1).`,
-      });
-    } else if (!body.includes(NOTIFY)) {
-      violations.push({
-        file: CARTRIDGES_PAGE,
-        inv: 'INV-7',
-        message: `${fnName} не вызывает notifyPlaceContentChanged(`,
-        hint:
-          fnName === 'handleOperationSuccess'
-            ? 'WR-01 (аудит 40.1, 2026-09-18): lifecycle-операции (установка в принтер, возврат на ' +
-              'склад, отправка/приём из заправки, списание) меняют place_id картриджа на сервере не ' +
-              'реже (и чаще), чем форма «Редактировать» — без этого вызова счётчики дерева «Места» ' +
-              'останутся устаревшими до перезагрузки страницы именно после самой частой операции.'
-            : 'Правка места картриджа из формы «Редактировать» обязана инвалидировать счётчики ' +
-              'дерева «Места», передавая и старое, и новое место (D-15), иначе счётчик ' +
-              'места-источника останется завышенным.',
-      });
+/** Компоненты, чей success-колбэк стреляет DTO после серверной мутации
+ * места — резолвленный обработчик обязан звать `notifyPlaceContentChanged(`
+ * напрямую (или форвардить, см. `FORWARDING_COMPONENTS`/`checkCompleteness`). */
+const MUTATING_COMPONENTS = [
+  { component: 'OperationModal', props: ['onSuccess'] },
+  { component: 'CartridgeFormModal', props: ['onSuccess'] },
+  { component: 'DeviceFormModal', props: ['onSaved'] },
+  { component: 'ActFormModal', props: ['onSaved'] },
+  { component: 'ReturnModal', props: ['onSuccess'] },
+];
+
+/** Компоненты, форвардящие результат мутации через СВОЙ проп вместо
+ * прямого вызова (D-17). Каждое ИХ использование где угодно тоже
+ * проверяется — `forwardProp`'s handler обязан звать
+ * `notifyPlaceContentChanged(`. */
+const FORWARDING_COMPONENTS = [{ component: 'PlaceEntityViewModal', forwardProp: 'onChanged' }];
+
+/** Прямые (не через компонент) маркеры вызова, меняющие place_id — их
+ * ОБРАМЛЯЮЩАЯ именованная функция обязана звать
+ * `notifyPlaceContentChanged(`. */
+const DIRECT_CALL_MARKERS = [
+  {
+    marker: "'places_move_subtree_contents'",
+    label: 'массовый перенос (places_move_subtree_contents)',
+  },
+  { marker: 'acts.delete(', label: 'мягкое удаление/undo акта (acts.delete)' },
+];
+
+function checkCompleteness(files, violations) {
+  for (const filePath of files) {
+    const relPath = path.relative(UI_ROOT, filePath).split(path.sep).join('/');
+    const baseName = path.basename(filePath, '.svelte');
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const code = stripComments(raw);
+    // Grants "may forward instead of calling notifyPlaceContentChanged
+    // directly" — ONLY inside the file that itself implements a
+    // FORWARDING_COMPONENTS contract (e.g. PlaceEntityViewModal.svelte).
+    const selfForward = FORWARDING_COMPONENTS.find((f) => f.component === baseName);
+
+    const componentEntries = [
+      ...MUTATING_COMPONENTS,
+      ...FORWARDING_COMPONENTS.map((f) => ({ component: f.component, props: [f.forwardProp] })),
+    ];
+
+    for (const { component, props } of componentEntries) {
+      for (const tag of allTagBlocks(code, component)) {
+        const propName = props.find((p) => attrValue(tag, p) !== null);
+        if (propName === undefined) {
+          violations.push({
+            file: relPath,
+            inv: 'INV-7',
+            message: `<${component} ...> usage не подключает ни один из [${props.join(', ')}] — невозможно проверить инвалидацию дерева мест`,
+            hint: `Каждое использование <${component}> обязано подключить один из [${props.join(', ')}] к обработчику, инвалидирующему дерево мест — см. доккомментарий INV-7 выше.`,
+          });
+          continue;
+        }
+        const value = attrValue(tag, propName);
+        const resolved = resolveCallbackBody(code, value);
+        if (resolved === null) {
+          violations.push({
+            file: relPath,
+            inv: 'INV-7',
+            message: `<${component} ${propName}={${value}}> — не удалось резолвить тело обработчика (не inline-функция, не same-file объявление function/const-arrow)`,
+            hint: 'Blind spot #2 в доккомментарии INV-7 выше: cross-file/bound/member-expression обработчики не резолвятся. Сделай обработчик inline, объяви его функцией в этом же файле, или расширь resolveCallbackBody в этом гейте.',
+          });
+          continue;
+        }
+        const callsNotify = resolved.body.includes(NOTIFY);
+        // `?.()` optional-call syntax is common for prop-typed callbacks
+        // (`onChanged?.(...)`, since the prop may be undefined) — a plain
+        // `.includes(prop + '(')` substring check misses it (there's a `?.`
+        // in between), so this is a small regex instead.
+        const callsSelfForward =
+          selfForward !== undefined &&
+          new RegExp(`\\b${selfForward.forwardProp}\\s*(?:\\?\\.)?\\s*\\(`).test(resolved.body);
+        if (!callsNotify && !callsSelfForward) {
+          violations.push({
+            file: relPath,
+            inv: 'INV-7',
+            message: `<${component} ${propName}={${value}}> — резолвленный обработчик не вызывает notifyPlaceContentChanged(${selfForward ? ` (и не форвардит через ${selfForward.forwardProp}()` : ''})`,
+            hint: 'Success-колбэк этого компонента стреляет ПОСЛЕ серверной мутации места (см. реестр в доккомментарии выше) — обработчик обязан инвалидировать счётчики дерева мест (старое+новое место, дедуп, null отброшены), по образцу CartridgesPage.svelte handleOperationSuccess/handleFormSuccess.',
+          });
+        }
+      }
     }
-  }
 
-  // Write-site 4 — DevicesPage.svelte (файл-уровневая проверка, см. doc-
-  // комментарий функции выше: в файле ровно один вызов).
-  const devicesCode = stripComments(devicesSrc);
-  if (indicesOf(devicesCode, NOTIFY).length === 0) {
-    violations.push({
-      file: DEVICES_PAGE,
-      inv: 'INV-7',
-      message: 'notifyPlaceContentChanged( не вызывается нигде в файле',
-      hint:
-        'D-14 (аудит 2026-09-17) называет оба списка дословно — «Устройства»/«Картриджи»: правка ' +
-        'места предмета из этого списка обязана инвалидировать счётчики дерева «Места», передавая ' +
-        'и старое, и новое место (D-15), иначе счётчик места-источника останется завышенным.',
-    });
-  }
-
-  // Write-site 5 — RequestDetail.svelte's handleInstallSuccess (WR-05, 40.1
-  // round-2 gap closure, 2026-09-18): установка картриджа при утверждении
-  // заявки на замену (REQ-05) идёт через тот же OperationModal/op="install",
-  // ту же серверную CartridgeService-транзицию, что меняет place_id —
-  // локализовано на тело функции (см. doc-комментарий выше).
-  const requestDetailCode = stripComments(requestDetailSrc);
-  const installBody = functionBody(requestDetailCode, 'handleInstallSuccess');
-  if (installBody === null) {
-    violations.push({
-      file: REQUEST_DETAIL,
-      inv: 'INV-7',
-      message: 'функция handleInstallSuccess не найдена',
-      hint:
-        'Переименована/удалена — обнови гейт вместе с рефакторингом осознанно, не удаляй проверку ' +
-        'write-site 5 (установка картриджа через утверждение заявки, REQ-05, WR-05).',
-    });
-  } else if (!installBody.includes(NOTIFY)) {
-    violations.push({
-      file: REQUEST_DETAIL,
-      inv: 'INV-7',
-      message: 'handleInstallSuccess не вызывает notifyPlaceContentChanged(',
-      hint:
-        'WR-05 (аудит 40.1 раунд 2, 2026-09-18): установка картриджа при утверждении заявки на ' +
-        'замену меняет place_id картриджа на сервере (та же CartridgeService-транзиция, что и ' +
-        'lifecycle-операции CartridgesPage, WR-01) — без этого вызова счётчики дерева «Места» ' +
-        'останутся устаревшими после самого частого способа установить картридж в принтер.',
-    });
+    for (const { marker, label } of DIRECT_CALL_MARKERS) {
+      for (const idx of indicesOf(code, marker)) {
+        const enclosing = enclosingFunction(code, idx);
+        if (enclosing === null) {
+          violations.push({
+            file: relPath,
+            inv: 'INV-7',
+            message: `прямой вызов ${label} — не удалось резолвить обрамляющую именованную функцию`,
+            hint: 'DIRECT_CALL_MARKERS требует, чтобы маркер лежал внутри `function NAME(...) { ... }` — inline top-level/module-scope вызовы этим гейтом не поддерживаются; оберни вызов в именованный обработчик.',
+          });
+          continue;
+        }
+        if (!enclosing.body.includes(NOTIFY)) {
+          violations.push({
+            file: relPath,
+            inv: 'INV-7',
+            message: `${enclosing.name}() зовёт ${label}, но не вызывает notifyPlaceContentChanged(`,
+            hint: 'Это прямая серверная мутация place_id вне любой обёртки MUTATING_COMPONENTS — обрамляющий обработчик обязан сам инвалидировать счётчики дерева мест, по образцу PlaceContents.svelte handleMoveConfirm / ActsPage.svelte handleDelete.',
+          });
+        }
+      }
+    }
   }
 }
 
@@ -607,15 +835,22 @@ function main() {
 
   const treeSrc = read(TREE);
   const storeSrc = read(STORE);
-  const contentsSrc = read(CONTENTS);
-  const cartridgesSrc = read(CARTRIDGES_PAGE);
-  const devicesSrc = read(DEVICES_PAGE);
-  const requestDetailSrc = read(REQUEST_DETAIL);
 
   const violations = [];
   checkTree(treeSrc, violations);
   checkStore(storeSrc, violations);
-  checkProducers(contentsSrc, cartridgesSrc, devicesSrc, requestDetailSrc, violations);
+
+  const featuresDir = path.join(SRC_ROOT, FEATURES_DIR);
+  let files = [];
+  try {
+    files = walkSvelteFiles(featuresDir);
+  } catch {
+    console.error(
+      `${TAG} FAIL — не удалось обойти ${FEATURES_DIR}. Каталог переехал/удалён: обнови путь в гейте осознанно, а не удаляй проверку.`,
+    );
+    process.exit(1);
+  }
+  checkCompleteness(files, violations);
 
   for (const v of violations) {
     console.error(`${TAG} ${v.file} — ${v.inv}: ${v.message}`);
