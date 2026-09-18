@@ -171,11 +171,19 @@ pub struct NumberTemplateRow {
 /// mask (`[X]`, no width specifier) `overflowed` is always `false`, since
 /// the numeric space is not limited. This rule underlies NUM-04/NUM-05 in
 /// every subsequent plan of this phase.
+///
+/// `max_plus_one_fits_width` is `false` when `max_plus_one` itself does not
+/// fit the fixed digit width even though a free number still exists lower
+/// in the range (NUM-05: "разрыв есть, но max+1 не помещается") — the
+/// consumer uses this to decide whether to show the ↑/↓ gap toggle at all,
+/// separately from `overflowed` (no free numbers left at all). Always
+/// `true` for an unbounded mask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NextNumberResult {
     pub first_free: u64,
     pub max_plus_one: u64,
     pub has_gap: bool,
+    pub max_plus_one_fits_width: bool,
     pub overflowed: bool,
 }
 
@@ -283,6 +291,7 @@ mod tests {
             first_free: 5,
             max_plus_one: 5,
             has_gap: 5 != 5,
+            max_plus_one_fits_width: true,
             overflowed: false,
         };
         assert!(!r.has_gap);
@@ -295,6 +304,7 @@ mod tests {
             first_free: 3,
             max_plus_one: 6,
             has_gap,
+            max_plus_one_fits_width: true,
             overflowed: false,
         };
         assert!(r.has_gap);
