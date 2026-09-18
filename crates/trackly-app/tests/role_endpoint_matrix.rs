@@ -147,6 +147,39 @@
 //! 59. Manager Identity (Tauri path) → build_places_move_subtree_contents →
 //!     Ok; Employee Identity → same → Err(AppError::Forbidden).
 //!
+//! Phase 40.2 Plan 05 adds Cases 64-73: proves the Group A (CRUD, Admin-only
+//! `Action::ManageSettings`) vs Group B (usage, per-popup `Action::Mutate{
+//! Devices,Acts,Cartridges}` via `action_for_context`) split from RESEARCH
+//! Pitfall 3 — the single non-trivial RBAC decision of this plan.
+//! 64. Admin session (HTTP) → number_templates_create → 200, then
+//!     number_templates_update_mask/_delete on the created id → 200, then
+//!     number_templates_list → 200 (Group A, Admin allowed).
+//! 65. Admin Identity (Tauri path) → build_number_templates_create/
+//!     _update_mask/_delete/_list → Ok for all four, mirroring Case 64.
+//! 66. Manager session (HTTP) → number_templates_create/_update_mask/
+//!     _delete/_list → 403 Forbidden for all four — THE regression test for
+//!     Pitfall 3: Manager must NOT be able to touch template CRUD even
+//!     though Manager passes every other Mutate* gate in this matrix.
+//! 67. Manager Identity (Tauri path) → build_number_templates_create/
+//!     _update_mask/_delete/_list → Err(AppError::Forbidden) for all four,
+//!     mirroring Case 66.
+//! 68. Employee session (HTTP) → all 4 Group A endpoints AND all 5 Group B
+//!     endpoints (list_by_context/peek_next/contexts_get/contexts_set/
+//!     is_occupied, context=device_create) → 403 Forbidden for all nine.
+//! 69. Employee Identity (Tauri path) → build_number_templates_* for the
+//!     same nine → Err(AppError::Forbidden), mirroring Case 68.
+//! 70. Manager session (HTTP) → number_templates_list_by_context with
+//!     context=device_create / act_create / cartridge_create → not 401/403
+//!     for all three — proves each `action_for_context` branch
+//!     (MutateDevices/MutateActs/MutateCartridges) independently grants
+//!     Manager access to their own popup's template menu.
+//! 71. Manager Identity (Tauri path) → build_number_templates_list_by_context
+//!     for the same three contexts → Ok, mirroring Case 70.
+//! 72. Admin session (HTTP) → same three contexts → not 401/403 (Admin has
+//!     every Mutate* right too).
+//! 73. Admin Identity (Tauri path) → build_number_templates_list_by_context
+//!     for the same three contexts → Ok, mirroring Case 72.
+//!
 //! Session setup: sessions are created programmatically (bypassing /auth_login which
 //! has GovernorLayer that requires real TCP peer IP unavailable in unit tests).
 
@@ -160,12 +193,20 @@ use tower_sessions::SessionStore;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::number_template::{TemplateContextDto, TemplateTypeDto};
 use trackly_app::dto::place::PlaceNewDto;
 use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::number_templates::{
+    build_number_template_contexts_get, build_number_template_contexts_set,
+    build_number_templates_create, build_number_templates_delete,
+    build_number_templates_is_occupied, build_number_templates_list,
+    build_number_templates_list_by_context, build_number_templates_peek_next,
+    build_number_templates_update_mask,
+};
 use trackly_app::tauri_cmds::place_movements::build_place_movements_get_timeline;
 use trackly_app::tauri_cmds::places::{
     build_places_archive, build_places_create, build_places_delete, build_places_move,
@@ -540,6 +581,51 @@ async fn role_endpoint_matrix_test() {
             },
             "pagination": { "offset": 0, "limit": 20 }
         });
+
+        // Cases 64-73 (Phase 40.2 Plan 05): numbering-template payloads.
+        // Group A (CRUD, Action::ManageSettings, Admin-only).
+        let number_template_create_payload = json!({
+            "templateType": "device_inventory",
+            "mask": "RBAC64-[XXXX]"
+        });
+        let number_template_list_payload = json!({ "templateType": null });
+        // update_mask/delete payloads with a dummy id — RBAC denial (Manager/
+        // Employee) fires in authorize() BEFORE any DB lookup, so a
+        // nonexistent id is fine for those; the Admin-success case (64/65)
+        // rewrites `id` to the real id returned by number_templates_create.
+        let number_template_update_mask_dummy_payload = json!({
+            "id": 999999,
+            "mask": "RBAC64-UPD-[XXXX]",
+            "version": 1
+        });
+        let number_template_delete_dummy_payload = json!({ "id": 999999 });
+
+        // Group B (usage, gate derived from `context` via action_for_context).
+        // device_create → Action::MutateDevices.
+        let number_template_list_by_context_device_payload = json!({
+            "context": "device_create"
+        });
+        let number_template_peek_next_device_payload = json!({
+            "templateId": 999999,
+            "context": "device_create"
+        });
+        let number_template_contexts_get_device_payload = json!({
+            "context": "device_create"
+        });
+        let number_template_contexts_set_device_payload = json!({
+            "context": "device_create",
+            "templateId": null
+        });
+        let number_template_is_occupied_device_payload = json!({
+            "context": "device_create",
+            "candidate": "RBAC-64-CANDIDATE",
+            "excludeId": null
+        });
+        // act_create → Action::MutateActs.
+        let number_template_list_by_context_act_payload = json!({ "context": "act_create" });
+        // cartridge_create → Action::MutateCartridges.
+        let number_template_list_by_context_cartridge_payload =
+            json!({ "context": "cartridge_create" });
 
         // Макрос для создания нового router + store на каждый тест (oneshot потребляет роутер).
         macro_rules! new_app {
@@ -2421,6 +2507,540 @@ async fn role_endpoint_matrix_test() {
                 status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
                 "Case 63: Manager → cartridges_to_refill_last_send → expected not 401/403, got {status}"
             );
+        }
+
+        // =====================================================================
+        // Case 64 (Phase 40.2 Plan 05, T-40.2-09): Admin session (HTTP) →
+        // number_templates_create → 200 OK; number_templates_update_mask /
+        // number_templates_delete on the just-created id → 200 OK;
+        // number_templates_list → 200 OK. Group A, Admin allowed on all four.
+        // =====================================================================
+        {
+            let (status, body) = post_with_cookie_json(
+                new_app!(),
+                "/api/v1/number_templates_create",
+                number_template_create_payload.clone(),
+                Some(&admin_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 64: Admin → number_templates_create → expected 200, got {status}"
+            );
+            let created_id = body["id"].as_i64().expect("created template id");
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_update_mask",
+                json!({ "id": created_id, "mask": "RBAC64-UPD-[XXXX]", "version": 1 }),
+                Some(&admin_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 64: Admin → number_templates_update_mask → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_delete",
+                json!({ "id": created_id }),
+                Some(&admin_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 64: Admin → number_templates_delete → expected 200, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_list",
+                number_template_list_payload.clone(),
+                Some(&admin_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "Case 64: Admin → number_templates_list → expected 200, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 65 (mirrors Case 64 on the Tauri path): Admin Identity →
+        // build_number_templates_create/_update_mask/_delete/_list → Ok for
+        // all four.
+        // =====================================================================
+        {
+            let admin_id = Identity {
+                user_id: Some(admin_dto.id),
+                role: Role::Admin,
+            };
+
+            let created = build_number_templates_create(
+                &ctx,
+                &admin_id,
+                TemplateTypeDto::DeviceInventory,
+                "RBAC65-[XXXX]".to_string(),
+            )
+            .await
+            .expect("Case 65: Admin (Tauri path) → build_number_templates_create → expected Ok");
+
+            let updated = build_number_templates_update_mask(
+                &ctx,
+                &admin_id,
+                created.id,
+                "RBAC65-UPD-[XXXX]".to_string(),
+                created.version,
+            )
+            .await;
+            assert!(
+                updated.is_ok(),
+                "Case 65: Admin (Tauri path) → build_number_templates_update_mask → \
+                 expected Ok, got {updated:?}"
+            );
+
+            let deleted = build_number_templates_delete(&ctx, &admin_id, created.id).await;
+            assert!(
+                deleted.is_ok(),
+                "Case 65: Admin (Tauri path) → build_number_templates_delete → \
+                 expected Ok, got {deleted:?}"
+            );
+
+            let listed = build_number_templates_list(&ctx, &admin_id, None).await;
+            assert!(
+                listed.is_ok(),
+                "Case 65: Admin (Tauri path) → build_number_templates_list → \
+                 expected Ok, got {listed:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 66 (Phase 40.2 Plan 05, T-40.2-09 — THE Pitfall 3 regression
+        // test): Manager session (HTTP) → number_templates_create/
+        // _update_mask/_delete/_list → 403 Forbidden for all four. Manager
+        // passes every other Mutate* gate in this matrix — this is the ONE
+        // family where Manager must be denied (Action::ManageSettings,
+        // Admin-only).
+        // =====================================================================
+        {
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_create",
+                number_template_create_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 66: Manager → number_templates_create → expected 403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_update_mask",
+                number_template_update_mask_dummy_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 66: Manager → number_templates_update_mask → expected 403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_delete",
+                number_template_delete_dummy_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 66: Manager → number_templates_delete → expected 403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/number_templates_list",
+                number_template_list_payload.clone(),
+                Some(&manager_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 66: Manager → number_templates_list → expected 403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 67 (mirrors Case 66 on the Tauri path): Manager Identity →
+        // build_number_templates_create/_update_mask/_delete/_list →
+        // Err(AppError::Forbidden) for all four.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+
+            let result = build_number_templates_create(
+                &ctx,
+                &manager_id,
+                TemplateTypeDto::DeviceInventory,
+                "RBAC67-[XXXX]".to_string(),
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 67: Manager (Tauri path) → build_number_templates_create → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_update_mask(
+                &ctx,
+                &manager_id,
+                999999,
+                "RBAC67-UPD-[XXXX]".to_string(),
+                1,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 67: Manager (Tauri path) → build_number_templates_update_mask → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_delete(&ctx, &manager_id, 999999).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 67: Manager (Tauri path) → build_number_templates_delete → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_list(&ctx, &manager_id, None).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 67: Manager (Tauri path) → build_number_templates_list → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 68 (Phase 40.2 Plan 05): Employee session (HTTP) → all 4
+        // Group A endpoints AND all 5 Group B endpoints (context=
+        // device_create) → 403 Forbidden for all nine.
+        // =====================================================================
+        {
+            let group_a: &[(&str, serde_json::Value)] = &[
+                (
+                    "/api/v1/number_templates_create",
+                    number_template_create_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_templates_update_mask",
+                    number_template_update_mask_dummy_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_templates_delete",
+                    number_template_delete_dummy_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_templates_list",
+                    number_template_list_payload.clone(),
+                ),
+            ];
+            for (uri, payload) in group_a {
+                let status =
+                    post_with_cookie(new_app!(), uri, payload.clone(), Some(&employee_cookie))
+                        .await;
+                assert_eq!(
+                    status,
+                    StatusCode::FORBIDDEN,
+                    "Case 68: Employee → {uri} (Group A) → expected 403, got {status}"
+                );
+            }
+
+            let group_b: &[(&str, serde_json::Value)] = &[
+                (
+                    "/api/v1/number_templates_list_by_context",
+                    number_template_list_by_context_device_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_templates_peek_next",
+                    number_template_peek_next_device_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_template_contexts_get",
+                    number_template_contexts_get_device_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_template_contexts_set",
+                    number_template_contexts_set_device_payload.clone(),
+                ),
+                (
+                    "/api/v1/number_templates_is_occupied",
+                    number_template_is_occupied_device_payload.clone(),
+                ),
+            ];
+            for (uri, payload) in group_b {
+                let status =
+                    post_with_cookie(new_app!(), uri, payload.clone(), Some(&employee_cookie))
+                        .await;
+                assert_eq!(
+                    status,
+                    StatusCode::FORBIDDEN,
+                    "Case 68: Employee → {uri} (Group B, context=device_create) → \
+                     expected 403, got {status}"
+                );
+            }
+        }
+
+        // =====================================================================
+        // Case 69 (mirrors Case 68 on the Tauri path): Employee Identity →
+        // build_number_templates_* for the same nine → Err(AppError::Forbidden).
+        // =====================================================================
+        {
+            let employee_id = Identity {
+                user_id: Some(employee_dto.id),
+                role: Role::Employee,
+            };
+
+            let result = build_number_templates_create(
+                &ctx,
+                &employee_id,
+                TemplateTypeDto::DeviceInventory,
+                "RBAC69-[XXXX]".to_string(),
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_create → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_update_mask(
+                &ctx,
+                &employee_id,
+                999999,
+                "RBAC69-UPD-[XXXX]".to_string(),
+                1,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_update_mask → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_delete(&ctx, &employee_id, 999999).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_delete → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_list(&ctx, &employee_id, None).await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_list → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_list_by_context(
+                &ctx,
+                &employee_id,
+                TemplateContextDto::DeviceCreate,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_list_by_context → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_peek_next(
+                &ctx,
+                &employee_id,
+                999999,
+                TemplateContextDto::DeviceCreate,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_peek_next → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_template_contexts_get(
+                &ctx,
+                &employee_id,
+                TemplateContextDto::DeviceCreate,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_template_contexts_get → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_template_contexts_set(
+                &ctx,
+                &employee_id,
+                TemplateContextDto::DeviceCreate,
+                None,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_template_contexts_set → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+
+            let result = build_number_templates_is_occupied(
+                &ctx,
+                &employee_id,
+                TemplateContextDto::DeviceCreate,
+                "RBAC-69-CANDIDATE".to_string(),
+                None,
+            )
+            .await;
+            assert!(
+                matches!(result, Err(AppError::Forbidden)),
+                "Case 69: Employee (Tauri) → build_number_templates_is_occupied → \
+                 expected Err(AppError::Forbidden), got {result:?}"
+            );
+        }
+
+        // =====================================================================
+        // Case 70 (Phase 40.2 Plan 05): Manager session (HTTP) →
+        // number_templates_list_by_context with context=device_create /
+        // act_create / cartridge_create → not 401/403 for all three — proves
+        // each `action_for_context` branch independently grants Manager
+        // access to their own popup's template menu.
+        // =====================================================================
+        {
+            for (label, payload) in [
+                (
+                    "device_create",
+                    number_template_list_by_context_device_payload.clone(),
+                ),
+                (
+                    "act_create",
+                    number_template_list_by_context_act_payload.clone(),
+                ),
+                (
+                    "cartridge_create",
+                    number_template_list_by_context_cartridge_payload.clone(),
+                ),
+            ] {
+                let status = post_with_cookie(
+                    new_app!(),
+                    "/api/v1/number_templates_list_by_context",
+                    payload,
+                    Some(&manager_cookie),
+                )
+                .await;
+                assert!(
+                    status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                    "Case 70: Manager → number_templates_list_by_context (context={label}) \
+                     → expected not 401/403, got {status}"
+                );
+            }
+        }
+
+        // =====================================================================
+        // Case 71 (mirrors Case 70 on the Tauri path): Manager Identity →
+        // build_number_templates_list_by_context for the same three
+        // contexts → Ok.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+
+            for (label, context) in [
+                ("device_create", TemplateContextDto::DeviceCreate),
+                ("act_create", TemplateContextDto::ActCreate),
+                ("cartridge_create", TemplateContextDto::CartridgeCreate),
+            ] {
+                let result =
+                    build_number_templates_list_by_context(&ctx, &manager_id, context).await;
+                assert!(
+                    result.is_ok(),
+                    "Case 71: Manager (Tauri) → build_number_templates_list_by_context \
+                     (context={label}) → expected Ok, got {result:?}"
+                );
+            }
+        }
+
+        // =====================================================================
+        // Case 72 (Phase 40.2 Plan 05): Admin session (HTTP) → same three
+        // contexts → not 401/403 (Admin has every Mutate* right too).
+        // =====================================================================
+        {
+            for (label, payload) in [
+                (
+                    "device_create",
+                    number_template_list_by_context_device_payload.clone(),
+                ),
+                (
+                    "act_create",
+                    number_template_list_by_context_act_payload.clone(),
+                ),
+                (
+                    "cartridge_create",
+                    number_template_list_by_context_cartridge_payload.clone(),
+                ),
+            ] {
+                let status = post_with_cookie(
+                    new_app!(),
+                    "/api/v1/number_templates_list_by_context",
+                    payload,
+                    Some(&admin_cookie),
+                )
+                .await;
+                assert!(
+                    status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                    "Case 72: Admin → number_templates_list_by_context (context={label}) \
+                     → expected not 401/403, got {status}"
+                );
+            }
+        }
+
+        // =====================================================================
+        // Case 73 (mirrors Case 72 on the Tauri path): Admin Identity →
+        // build_number_templates_list_by_context for the same three
+        // contexts → Ok.
+        // =====================================================================
+        {
+            let admin_id = Identity {
+                user_id: Some(admin_dto.id),
+                role: Role::Admin,
+            };
+
+            for (label, context) in [
+                ("device_create", TemplateContextDto::DeviceCreate),
+                ("act_create", TemplateContextDto::ActCreate),
+                ("cartridge_create", TemplateContextDto::CartridgeCreate),
+            ] {
+                let result =
+                    build_number_templates_list_by_context(&ctx, &admin_id, context).await;
+                assert!(
+                    result.is_ok(),
+                    "Case 73: Admin (Tauri) → build_number_templates_list_by_context \
+                     (context={label}) → expected Ok, got {result:?}"
+                );
+            }
         }
 
         ctx.shutdown.cancel();
