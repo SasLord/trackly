@@ -200,5 +200,17 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::places::places_move_subtree_contents,
         // Phase 40 — Movement history timeline (Plan 10)
         crate::tauri_cmds::place_movements::place_movements_get_timeline,
+        // Phase 40.2 Plan 05 — Numbering templates: Group A (CRUD, ManageSettings)
+        crate::tauri_cmds::number_templates::number_templates_create,
+        crate::tauri_cmds::number_templates::number_templates_update_mask,
+        crate::tauri_cmds::number_templates::number_templates_delete,
+        crate::tauri_cmds::number_templates::number_templates_list,
+        crate::tauri_cmds::number_templates::number_templates_preview_mask,
+        // Phase 40.2 Plan 05 — Numbering templates: Group B (usage, per-popup gate)
+        crate::tauri_cmds::number_templates::number_templates_list_by_context,
+        crate::tauri_cmds::number_templates::number_templates_peek_next,
+        crate::tauri_cmds::number_templates::number_template_contexts_get,
+        crate::tauri_cmds::number_templates::number_template_contexts_set,
+        crate::tauri_cmds::number_templates::number_templates_is_occupied,
     ])
 }

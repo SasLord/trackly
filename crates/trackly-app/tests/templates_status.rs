@@ -144,11 +144,17 @@ fn minimal_ctx() -> (AppCtx, TempDir) {
     let place_movements = Arc::new(trackly_app::services::PlaceMovementService::new(
         readers.clone(),
     ));
+    let number_templates = Arc::new(trackly_app::services::NumberTemplateService::new(
+        writer.clone(),
+        readers.clone(),
+        clock.clone(),
+    ));
     let ctx = AppCtx {
         writer,
         readers,
         places,
         place_movements,
+        number_templates,
         paths: paths_arc,
         org_db,
         reports,

@@ -310,4 +310,70 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("device_place"),
         "bindings.ts missing ActItemDto.device_place field"
     );
+
+    // Phase 40.2 Plan 05 — Numbering templates: DTO types
+    assert!(
+        contents.contains("NumberTemplateDto"),
+        "bindings.ts missing NumberTemplateDto type"
+    );
+    assert!(
+        contents.contains("NextNumberDto"),
+        "bindings.ts missing NextNumberDto type"
+    );
+    assert!(
+        contents.contains("OccupyingRecordDto"),
+        "bindings.ts missing OccupyingRecordDto type"
+    );
+    assert!(
+        contents.contains("TemplateTypeDto"),
+        "bindings.ts missing TemplateTypeDto type"
+    );
+    assert!(
+        contents.contains("TemplateContextDto"),
+        "bindings.ts missing TemplateContextDto type"
+    );
+
+    // Phase 40.2 Plan 05 — Numbering templates: Group A (CRUD, ManageSettings)
+    assert!(
+        contents.contains("number_templates_create"),
+        "bindings.ts missing number_templates_create command"
+    );
+    assert!(
+        contents.contains("number_templates_update_mask"),
+        "bindings.ts missing number_templates_update_mask command"
+    );
+    assert!(
+        contents.contains("number_templates_delete"),
+        "bindings.ts missing number_templates_delete command"
+    );
+    assert!(
+        contents.contains("number_templates_list"),
+        "bindings.ts missing number_templates_list command"
+    );
+    assert!(
+        contents.contains("number_templates_preview_mask"),
+        "bindings.ts missing number_templates_preview_mask command"
+    );
+
+    // Phase 40.2 Plan 05 — Numbering templates: Group B (usage, per-popup gate)
+    assert!(
+        contents.contains("number_templates_list_by_context"),
+        "bindings.ts missing number_templates_list_by_context command"
+    );
+    assert!(
+        contents.contains("number_templates_peek_next"),
+        "bindings.ts missing number_templates_peek_next command"
+    );
+    assert!(
+        contents.contains("number_template_contexts_get"),
+        "bindings.ts missing number_template_contexts_get command"
+    );
+    assert!(
+        contents.contains("number_template_contexts_set"),
+        "bindings.ts missing number_template_contexts_set command"
+    );
+    assert!(
+        contents.contains("number_templates_is_occupied"),
+        "bindings.ts missing number_templates_is_occupied command"
+    );
 }

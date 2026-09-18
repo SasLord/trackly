@@ -14,6 +14,7 @@ pub mod dashboard;
 pub mod devices;
 pub mod fs_helpers;
 pub mod health;
+pub mod number_templates;
 pub mod organization;
 pub mod place_movements;
 pub mod places;
@@ -160,6 +161,7 @@ pub fn build_router(ctx: &AppCtx, session_store: RusqliteSessionStore) -> Router
         .merge(place_movements::router())
         .merge(acts::router())
         .merge(cartridges::router())
+        .merge(number_templates::router())
         .merge(organization::router())
         .merge(templates::router())
         .merge(fs_helpers::router())

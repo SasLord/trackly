@@ -35,8 +35,9 @@ use crate::pdf::PdfRenderer;
 use crate::server::ServerHandle;
 use crate::services::{
     run_poll_task, seed_supervisor_tasks, ActService, AuthService, BackupService, CartridgeService,
-    DashboardService, DeviceService, OrgDbService, OrganizationService, PlaceMovementService,
-    PlaceService, PrinterService, ReportService, RequestService, TemplateService,
+    DashboardService, DeviceService, NumberTemplateService, OrgDbService, OrganizationService,
+    PlaceMovementService, PlaceService, PrinterService, ReportService, RequestService,
+    TemplateService,
 };
 use trackly_infra::ad::{
     directory::RealAdDirectory, directory_mock::MockAdDirectory, mock::MockAdClient,
@@ -117,6 +118,12 @@ pub struct AppCtx {
     /// Place-movement timeline read service — HST-02, `ReadPlaces`-gated
     /// (Admin|Manager per D-12). Added in Phase 40 Plan 10.
     pub place_movements: Arc<PlaceMovementService>,
+    /// Numbering-template service — CRUD (`Action::ManageSettings`, Admin-only)
+    /// and per-context usage (`Action::Mutate{Devices,Acts,Cartridges}`, gated
+    /// by the popup that calls it — Plan 05's `action_for_context`). Added in
+    /// Phase 40.2 Plan 05 (the service itself was built in Plan 04 but not
+    /// yet wired into the composition root).
+    pub number_templates: Arc<NumberTemplateService>,
 }
 
 impl AppCtx {
@@ -304,6 +311,15 @@ impl AppCtx {
         // writer dependency — mirrors PlaceService's ordering-independence note.
         let place_movements = Arc::new(PlaceMovementService::new(readers.clone()));
 
+        // Phase 40.2 Plan 05: numbering-template service (built in Plan 04,
+        // wired into the composition root here). No cross-entity dependencies,
+        // same ordering-independence as PlaceService/PlaceMovementService.
+        let number_templates = Arc::new(NumberTemplateService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
+
         // Runtime AD mock switch (D-Mock-01, Phase 9 Plan 02):
         // config.ad.use_mock || TRACKLY_AD_MOCK env var → MockAdClient;
         // otherwise → RealAdClient (real LDAP bind, used on Windows/AD).
@@ -424,6 +440,7 @@ impl AppCtx {
             backup,
             places,
             place_movements,
+            number_templates,
         })
     }
 }
