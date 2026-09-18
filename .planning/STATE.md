@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T18:33:33.934Z"
+last_updated: "2026-09-18T18:51:21.369Z"
 last_activity: 2026-09-18
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 80
+  completed_plans: 81
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 5 of 15
+Plan: 6 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -391,6 +391,7 @@ Last activity: 2026-09-18
 | Phase 40.2 P02 | 15min | 3 tasks | 6 files |
 | Phase 40.2 P09 | 35m | 2 tasks | 5 files |
 | Phase 40.2 P11 | 25min | 2 tasks | 4 files |
+| Phase 40.2 P03 | 40min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -968,6 +969,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 40.2-11: карточка NumberTakenPopup для устройства/принтера/картриджа/фотобарабана — 4 строки (Вид/Модель/Место/Статус|Состояние), объединяет Наименование+Модель в одну строку «Модель», т.к. локальный интерфейс пропсов даёт только одно текстовое поле title
 - [Phase 40.2]: 40.2-11: попапы Mismatch/ScriptWarning — Modal onClose связан с onFix (Esc/× ведут себя как явная кнопка «Поправлю»), автофокус на «Поправлю» достигнут порядком кнопок в footer без доп. кода
 - [Phase 40.2]: 40.2-11: NUM-10/11/12 НЕ отмечены complete в REQUIREMENTS.md — попапы презентационные, оркестрация цепочки D-01 и серверные вызовы подключаются в планах 13-15
+- [Phase 40.2]: Task 1/Task 2 code implementation collapsed into one commit (trait requires fetch_matching_values to exist); tests split honestly across Task 2/3 commits
+- [Phase 40.2]: Repo-level integration tests reuse V041's seeded templates via repo.list() instead of insert_in_tx where the scenario doesn't need a custom mask, to avoid UNIQUE(type, mask) collision
 
 ### Pending Todos
 
@@ -1159,7 +1162,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T18:33:33.924Z
+Last session: 2026-09-18T18:51:13.030Z
 Stopped at: Completed 40.2-02-PLAN.md
 Resume file: None
 

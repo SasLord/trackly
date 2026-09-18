@@ -129,7 +129,7 @@
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
-| 40.2. Шаблоны инвентарных номеров | v1.4 | 4/15 | In Progress|  |
+| 40.2. Шаблоны инвентарных номеров | v1.4 | 5/15 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -516,7 +516,7 @@ WARNING-1, WARNING-4.
 
 **Requirements**: NUM-01, NUM-02, NUM-03, NUM-04, NUM-05, NUM-06, NUM-07, NUM-08, NUM-09, NUM-10, NUM-11, NUM-12, NUM-13, NUM-14, NUM-15, NUM-16
 
-**Plans:** 4/15 plans executed
+**Plans:** 5/15 plans executed
 
 Plans:
 **Wave 1**
@@ -528,7 +528,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 40.2-03-PLAN.md — SqliteNumberTemplateRepository (CRUD + compute_next по трём пространствам)
+- [x] 40.2-03-PLAN.md — SqliteNumberTemplateRepository (CRUD + compute_next по трём пространствам)
 
 **Wave 3** *(blocked on Wave 2)*
 
