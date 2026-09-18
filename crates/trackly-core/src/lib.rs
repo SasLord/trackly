@@ -16,6 +16,7 @@ pub mod domain;
 pub mod error;
 pub mod ports;
 pub mod primitives;
+pub mod text;
 
 pub use auth::{authorize, Action, Identity, Role};
 pub use error::AppError;
