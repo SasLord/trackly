@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-09-18T09:18:20.330Z
-last_activity: 2026-09-17
+status: planning
+last_updated: "2026-09-18T14:04:23.886Z"
+last_activity: 2026-09-18
 progress:
-  total_phases: 10
+  total_phases: 11
   completed_phases: 5
   total_plans: 76
-  completed_plans: 339
-  percent: 50
-stopped_at: Phase 40.1 complete (4/4) — ready to discuss Phase 41
+  completed_plans: 76
+  percent: 45
 ---
 
 # Project State
@@ -21,11 +20,11 @@ stopped_at: Phase 40.1 complete (4/4) — ready to discuss Phase 41
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41 — арм
+**Current focus:** Phase 40.2 — шаблоны инвентарных номеров
 
 ## Current Position
 
-Phase: 41
+Phase: 40.2
 Plan: Not started
 Status: Ready to plan
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
@@ -428,6 +427,7 @@ Last activity: 2026-09-18
 - Phase 39.1 inserted after Phase 39: Формат пути Места переезжает из trackly.config.toml в UI: умолчание организации + переопределение на месте с наследованием (URGENT)
 - Phase 39.2 inserted after Phase 39.1: Долг фазы 39.1: 6 Warning + 4 Info из 39.1-REVIEW.md (единый владелец дефолтов пути, транзакция на записи, робастность на битых данных, UI/a11y экрана Настроек) (URGENT)
 - Phase 40.1 inserted after Phase 40: Закрыть пробелы аудита v1.4: BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite) и BLOCKER-2 (фильтр по типу устройства в отчёте «Перемещения» недостижим из UI) (URGENT)
+- Phase 40.2 inserted after Phase 40.1: Шаблоны инвентарных номеров (срочно, до Фазы 41 АРМ) (URGENT)
 
 ### Decisions
 
@@ -1145,9 +1145,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-17T17:55:41.405Z
-Stopped at: Completed 40.1-03-PLAN.md
-Resume file: None
+Last session: 2026-09-18T14:04:23.876Z
+Stopped at: Phase 40.2 context gathered
+Resume file: .planning/phases/40.2-inventory-number-templates/40.2-CONTEXT.md
 
 None
 
