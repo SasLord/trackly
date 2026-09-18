@@ -97,6 +97,20 @@ pub struct ActDto {
     /// `ActDetail.svelte`'s single-act view needs to display it).
     #[specta(type = Option<i32>)]
     pub archived_at_utc: Option<i64>,
+    /// 40.1 exhaustive sweep (INV-7 completeness): every `place_id` (old ∪
+    /// new, deduped) actually touched by the mutation that produced this
+    /// response — devices moving in/out as part of a handover/edit/return/
+    /// un-return. Populated ONLY by the five act-mutation entry points
+    /// (`create`/`update`/`do_return`/`update_return`/`delete_soft`'s undo
+    /// cascade); `get()`/`list()`/`search()` always leave this `[]` — same
+    /// "populated only where it matters" convention as `archived_at_utc`
+    /// above. The UI's mutation-success handlers (`ActsPage.svelte`) forward
+    /// this list verbatim to `notifyPlaceContentChanged` so the place-tree
+    /// counters invalidate for every place an act's devices actually left or
+    /// arrived at — not just the act's own single `place_id` header field,
+    /// which cannot represent per-device source places in a batch operation.
+    #[specta(type = Vec<i32>)]
+    pub changed_place_ids: Vec<i64>,
 }
 
 /// Single item line on an act (resolved with the joined device fields).
@@ -470,6 +484,7 @@ pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64
         items,
         return_ids,
         archived_at_utc: None,
+        changed_place_ids: Vec::new(),
     }
 }
 

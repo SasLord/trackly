@@ -230,10 +230,16 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let act_id = self
+        // 40.1 exhaustive sweep (INV-7 completeness, `changed_place_ids`):
+        // accumulates every device's before/after place_id touched by this
+        // transaction, so the returned ActDto can tell the client exactly
+        // which place-tree nodes to invalidate — see doc-comment on
+        // `ActDto::changed_place_ids`.
+        let (act_id, touched_place_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // Resolve status_id for «В работе» via the V014 code column (B-1).
                 let in_work_status_id: i64 = tx
@@ -516,6 +522,8 @@ impl ActService {
                             user_id_opt,
                             now,
                         )?;
+                        touched_place_ids.push(before.place_id);
+                        touched_place_ids.push(after.place_id);
                     }
                 }
 
@@ -550,11 +558,15 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(act_id)
+                Ok((act_id, touched_place_ids))
             })
             .await?;
 
-        self.get(act_id).await
+        let dto = self.get(act_id).await?;
+        Ok(ActDto {
+            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            ..dto
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -638,10 +650,11 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let act_id = self
+        let (act_id, touched_place_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // 1. Load act (incl. soft-deleted flag).
                 let act = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
@@ -799,6 +812,8 @@ impl ActService {
                         user_id_opt,
                         now,
                     )?;
+                    touched_place_ids.push(before.place_id);
+                    touched_place_ids.push(after.place_id);
 
                     // INSERT act_items row for the newly added position.
                     // `complectation_at_time`: matching item's value if
@@ -970,6 +985,8 @@ impl ActService {
                         user_id_opt,
                         now,
                     )?;
+                    touched_place_ids.push(place_before_restore.place_id);
+                    touched_place_ids.push(restored.place_id);
 
                     audit_repo.insert(
                         &tx,
@@ -1120,11 +1137,15 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(payload.id)
+                Ok((payload.id, touched_place_ids))
             })
             .await?;
 
-        self.get(act_id).await
+        let dto = self.get(act_id).await?;
+        Ok(ActDto {
+            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            ..dto
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -1214,10 +1235,11 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let return_act_id = self
+        let (return_act_id, touched_place_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // 1. Load + validate parent.
                 let parent = acts_repo.fetch_full_in_tx(&tx, act_id)?;
@@ -1548,6 +1570,8 @@ impl ActService {
                             user_id_opt,
                             now,
                         )?;
+                        touched_place_ids.push(before.place_id);
+                        touched_place_ids.push(after.place_id);
                     }
                 }
 
@@ -1582,11 +1606,15 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(return_act_id)
+                Ok((return_act_id, touched_place_ids))
             })
             .await?;
 
-        self.get(return_act_id).await
+        let dto = self.get(return_act_id).await?;
+        Ok(ActDto {
+            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            ..dto
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -1681,10 +1709,11 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
 
-        let return_act_id = self
+        let (return_act_id, touched_place_ids) = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // 1. Load act (incl. soft-deleted flag).
                 let act = acts_repo.fetch_full_in_tx(&tx, payload.id)?;
@@ -2040,6 +2069,8 @@ impl ActService {
                         user_id_opt,
                         now,
                     )?;
+                    touched_place_ids.push(place_before_restore.place_id);
+                    touched_place_ids.push(restored.place_id);
 
                     audit_repo.insert(
                         &tx,
@@ -2127,6 +2158,8 @@ impl ActService {
                         user_id_opt,
                         now,
                     )?;
+                    touched_place_ids.push(before.place_id);
+                    touched_place_ids.push(after.place_id);
 
                     acts_repo.insert_act_item_in_tx(
                         &tx,
@@ -2213,6 +2246,8 @@ impl ActService {
                         user_id_opt,
                         now,
                     )?;
+                    touched_place_ids.push(before.place_id);
+                    touched_place_ids.push(after.place_id);
 
                     tx.execute(
                         "UPDATE act_items SET condition_at_time = ?1 \
@@ -2307,11 +2342,15 @@ impl ActService {
                 )?;
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(payload.id)
+                Ok((payload.id, touched_place_ids))
             })
             .await?;
 
-        self.get(return_act_id).await
+        let dto = self.get(return_act_id).await?;
+        Ok(ActDto {
+            changed_place_ids: dedupe_place_ids(touched_place_ids),
+            ..dto
+        })
     }
 
     // -----------------------------------------------------------------------
@@ -2627,7 +2666,13 @@ impl ActService {
     //     parent.archived (un-archive если был archived) + audit.
     // -----------------------------------------------------------------------
 
-    pub async fn delete_soft(&self, id: i64, version: i64) -> Result<(), AppError> {
+    /// 40.1 exhaustive sweep (INV-7 completeness): returns every place_id
+    /// (old ∪ new, deduped) that the undo cascade actually touched, so the
+    /// caller (`ActsPage.svelte`'s `handleDelete`) can invalidate the
+    /// place-tree counters — soft-deleting an act moves every one of its
+    /// devices back to a prior place just as surely as `create`/`update`/
+    /// `do_return`/`update_return` move them forward.
+    pub async fn delete_soft(&self, id: i64, version: i64) -> Result<Vec<i64>, AppError> {
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -2638,6 +2683,7 @@ impl ActService {
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
 
                 // Optimistic-lock check + load row (включая deleted_at_utc).
                 let act = acts_repo.fetch_full_in_tx(&tx, id)?;
@@ -2662,14 +2708,14 @@ impl ActService {
                         let returns = acts_repo.list_returns_for_parent_in_tx(&tx, id)?;
                         // Reverse order для LIFO.
                         for ret in returns.iter().rev() {
-                            undo_device_mutations_for_act(
+                            touched_place_ids.extend(undo_device_mutations_for_act(
                                 &tx,
                                 &devices_repo,
                                 &audit_repo,
                                 ret.id,
                                 user_id_opt,
                                 now,
-                            )?;
+                            )?);
                             // Soft-delete return-акт + DELETE items (CASCADE
                             // не сработает на soft-delete — делаем явно через
                             // helper repo).
@@ -2700,14 +2746,14 @@ impl ActService {
                         }
 
                         // Now undo handover's own device mutations.
-                        undo_device_mutations_for_act(
+                        touched_place_ids.extend(undo_device_mutations_for_act(
                             &tx,
                             &devices_repo,
                             &audit_repo,
                             id,
                             user_id_opt,
                             now,
-                        )?;
+                        )?);
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
                         // D-03/HST-03: the handover's own delete, at its own
                         // point in the flow, scoped to its own act_id.
@@ -2728,14 +2774,14 @@ impl ActService {
                     }
                     ActType::Return => {
                         // Undo own device mutations → soft-delete → recompute parent.
-                        undo_device_mutations_for_act(
+                        touched_place_ids.extend(undo_device_mutations_for_act(
                             &tx,
                             &devices_repo,
                             &audit_repo,
                             id,
                             user_id_opt,
                             now,
-                        )?;
+                        )?);
                         acts_repo.soft_delete_in_tx(&tx, id, version, now)?;
                         // D-03/HST-03: standalone return's own delete, scoped
                         // to its own act_id.
@@ -2760,7 +2806,7 @@ impl ActService {
                 }
 
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(dedupe_place_ids(touched_place_ids))
             })
             .await
     }
@@ -3239,6 +3285,13 @@ fn compute_suffix_from_display(display: &str, number_raw: i64) -> String {
 /// `audit_log` запись `action='custom:undo'`.
 ///
 /// Используется и для handover undo, и для return undo (single shared path).
+/// Returns every device's (current-before-undo, restored) `place_id` pair,
+/// flattened — 40.1 exhaustive sweep — so `delete_soft` can tell the client
+/// exactly which place-tree nodes to invalidate (`ActDto::changed_place_ids`).
+/// "Current" is captured explicitly BEFORE `restore_from_snapshot_in_tx`
+/// overwrites the row — using the snapshot's own place_id for both sides
+/// would be a no-op (same CR-01 reasoning as `update`/`update_return`'s
+/// removed-device branches: the snapshot IS what `restored.place_id` becomes).
 fn undo_device_mutations_for_act(
     tx: &rusqlite::Transaction<'_>,
     devices_repo: &SqliteDeviceRepository,
@@ -3246,14 +3299,18 @@ fn undo_device_mutations_for_act(
     act_id: i64,
     user_id_opt: Option<i64>,
     now: i64,
-) -> Result<(), AppError> {
+) -> Result<Vec<Option<i64>>, AppError> {
+    let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
     let rows = audit_repo.select_device_mutations_for_act(tx, act_id)?;
     for (device_id, before_json) in rows.into_iter().rev() {
         let snapshot: serde_json::Value =
             serde_json::from_str(&before_json).map_err(|e| AppError::Internal {
                 source_chain: format!("undo: corrupt before_json for device {device_id}: {e}"),
             })?;
+        let place_before_undo = devices_repo.get_in_tx(tx, device_id)?;
         let restored = devices_repo.restore_from_snapshot_in_tx(tx, device_id, &snapshot, now)?;
+        touched_place_ids.push(place_before_undo.place_id);
+        touched_place_ids.push(restored.place_id);
         let after_json = device_snapshot_json(&restored).map_err(|e| AppError::Internal {
             source_chain: format!("undo after_json: {e}"),
         })?;
@@ -3275,7 +3332,7 @@ fn undo_device_mutations_for_act(
             },
         )?;
     }
-    Ok(())
+    Ok(touched_place_ids)
 }
 
 /// Канонический snapshot device-row для записи в `audit_log.{before,after}_json`.
@@ -3292,6 +3349,19 @@ fn effective_device_ids(item: &ActReturnItemDto) -> Vec<i64> {
     } else {
         item.device_ids.clone()
     }
+}
+
+/// 40.1 exhaustive sweep — collapses the `Vec<Option<i64>>` accumulated by
+/// `create`/`update`/`do_return`/`update_return`/`delete_soft` (one push per
+/// before/after place_id touched) into the sorted, deduped, null-dropped
+/// `Vec<i64>` that becomes `ActDto::changed_place_ids`. Sorting is not load-
+/// bearing for correctness (the client dedupes/ignores order too) — it just
+/// makes the response deterministic for tests/debugging.
+fn dedupe_place_ids(ids: Vec<Option<i64>>) -> Vec<i64> {
+    let mut out: Vec<i64> = ids.into_iter().flatten().collect();
+    out.sort_unstable();
+    out.dedup();
+    out
 }
 
 fn device_snapshot_json(row: &DeviceRow) -> Result<String, serde_json::Error> {

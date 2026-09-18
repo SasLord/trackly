@@ -182,14 +182,15 @@ pub async fn handler_delete(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<DeletePayload>,
-) -> Result<Json<()>, AppErrorResponse> {
+) -> Result<Json<Vec<i64>>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
-    build_acts_delete(&ctx, &identity, p.id, p.version)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(()))
+    Ok(Json(
+        build_acts_delete(&ctx, &identity, p.id, p.version)
+            .await
+            .map_err(AppErrorResponse::from)?,
+    ))
 }
 
 pub async fn handler_update(

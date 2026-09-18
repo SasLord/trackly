@@ -73,12 +73,16 @@ pub async fn build_acts_return(
 }
 
 /// Мутация: требует `caller` с правом `MutateActs`.
+///
+/// 40.1 exhaustive sweep: returns `changed_place_ids` (old ∪ new place_id
+/// touched by the undo cascade) instead of `()` — see
+/// `ActService::delete_soft`'s doc-comment.
 pub async fn build_acts_delete(
     ctx: &AppCtx,
     caller: &Identity,
     id: i64,
     version: i64,
-) -> Result<(), AppError> {
+) -> Result<Vec<i64>, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.delete_soft(id, version).await
 }
@@ -221,9 +225,11 @@ pub async fn acts_delete(
     state: tauri::State<'_, AppCtx>,
     id: i32,
     version: i32,
-) -> Result<(), AppError> {
+) -> Result<Vec<i32>, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
-    build_acts_delete(state.inner(), &caller, id as i64, version as i64).await
+    let changed_place_ids =
+        build_acts_delete(state.inner(), &caller, id as i64, version as i64).await?;
+    Ok(changed_place_ids.into_iter().map(|v| v as i32).collect())
 }
 
 #[tauri::command]
