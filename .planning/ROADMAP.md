@@ -129,7 +129,7 @@
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
-| 40.2. Шаблоны инвентарных номеров | v1.4 | 0/TBD | Not started | - |
+| 40.2. Шаблоны инвентарных номеров | v1.4 | 0/15 | Planned | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -516,10 +516,41 @@ WARNING-1, WARNING-4.
 
 **Requirements**: NUM-01, NUM-02, NUM-03, NUM-04, NUM-05, NUM-06, NUM-07, NUM-08, NUM-09, NUM-10, NUM-11, NUM-12, NUM-13, NUM-14, NUM-15, NUM-16
 
-**Plans:** 0 plans
+**Plans:** 15 plans in 6 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 40.2)
+**Wave 1**
+
+- [ ] 40.2-01-PLAN.md — схема V041 (number_templates + number_template_contexts, засев, DROP counters) + контракты trackly-core
+- [ ] 40.2-02-PLAN.md — mask.rs/homoglyphs.rs/sequence.rs (грамматика маски, гомоглифы, первый свободный/max+1)
+- [ ] 40.2-09-PLAN.md — UI-примитивы: IconInsertTemplate, Button iconOnly, ActionMenu ghost-md + portal
+- [ ] 40.2-11-PLAN.md — попапы цепочки D-01: NumberTakenPopup/NumberMismatchPopup/NumberScriptWarningPopup
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 40.2-03-PLAN.md — SqliteNumberTemplateRepository (CRUD + compute_next по трём пространствам)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 40.2-04-PLAN.md — NumberTemplateService (CRUD, память контекстов, occupied, предупреждения)
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 40.2-05-PLAN.md — dual-transport для шаблонов (ManageSettings vs Mutate*), WsEvent::NumberSpaceChanged, role_endpoint_matrix
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 40.2-06-PLAN.md — Акты: V042 (number→TEXT), occupied по отображаемым номерам (D-06), отказ от counters
+- [ ] 40.2-07-PLAN.md — Картриджи/фотобарабаны: V043 (code unique среди живых), отказ от assign_code_in_tx
+- [ ] 40.2-08-PLAN.md — Устройства: V044 (дедуп ДУБЛЬ-NNNNNN + уникальный индекс), CSV within-file dedup
+- [ ] 40.2-10-PLAN.md — Блок «Шаблоны для инвентарных номеров» в Настройки/Организация + модалка + справка
+- [ ] 40.2-12-PLAN.md — NumberTemplateField.svelte (составное поле номера)
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 40.2-13-PLAN.md — Устройства/принтеры: подключение поля + цепочки попапов
+- [ ] 40.2-14-PLAN.md — Акты: подключение поля + цепочки попапов + финальная зачистка ActNumberField/acts_peek_next_number
+- [ ] 40.2-15-PLAN.md — Картриджи/фотобарабаны: подключение поля + переключение контекста по виду
 
 **UI hint**: yes
 
