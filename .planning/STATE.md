@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-17T17:55:41.415Z"
+status: ready_to_plan
+last_updated: 2026-09-18T09:18:20.330Z
 last_activity: 2026-09-17
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 76
-  completed_plans: 76
+  completed_plans: 339
   percent: 50
+stopped_at: Phase 40.1 complete (4/4) — ready to discuss Phase 41
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.1 — audit-gap-closure
+**Current focus:** Phase 41 — арм
 
 ## Current Position
 
-Phase: 40.1 (audit-gap-closure) — COMPLETE
-Plan: 4 of 4
-Status: Phase complete — ready for verification
+Phase: 41
+Plan: Not started
+Status: Ready to plan
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
 раунд-2 фикс после провала живой UAT (PlaceEntityViewModal форвардит точное старое/новое место
@@ -48,7 +49,7 @@ Last activity: 2026-09-18
 
 **Velocity:**
 
-- Total plans completed: 217
+- Total plans completed: 221
 - Average duration: —
 - Total execution time: —
 
@@ -86,6 +87,7 @@ Last activity: 2026-09-18
 | 39 | 22 | - | - |
 | 39.1 | 10 | - | - |
 | 39.2 | 1 | ~18 мин | ~18 мин |
+| 40.1 | 4 | - | - |
 
 **Recent Trend:**
 
