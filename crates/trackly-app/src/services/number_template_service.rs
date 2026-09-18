@@ -17,22 +17,39 @@
 //! service does not re-check the caller's role — callers (including Wave 5's
 //! `act_service`/`cartridge_service`/`device_service`) MUST NOT expose these
 //! methods to a transport boundary without gating them first.
+//!
+//! ## is_occupied/detect_warnings — Wave 5 extends, does not duplicate
+//!
+//! `is_occupied`/`detect_warnings` implement the BASE case only: a direct
+//! match against the physical column for a `TemplateType`'s space
+//! (`devices.inventory_number`, `acts.number`, `cartridges.code`). Plan 06
+//! (`act_service.rs`) wraps `is_occupied` in its own
+//! `is_act_number_occupied_including_returns` to ALSO match against
+//! displayed return-act numbers (D-06) — that formatting knowledge
+//! (`format_act_number`) is domain-specific to acts and does not belong in
+//! this generic service.
 
 use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use trackly_core::domain::number_templates::{NextNumberResult, NumberTemplateRow, TemplateType};
+use trackly_core::domain::number_templates::{
+    NextNumberResult, NumberTemplateRow, TemplateContext, TemplateType,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::number_templates::NumberTemplateRepository;
 use trackly_core::primitives::clock::Clock;
+use trackly_core::text::homoglyphs;
 use trackly_core::text::mask::{self, ParsedMask};
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{SqliteAuditLogRepository, SqliteNumberTemplateRepository};
 
-use crate::dto::number_template::{NextNumberDto, NumberTemplateDto, TemplateTypeDto};
+use crate::dto::number_template::{
+    NextNumberDto, NumberTemplateDto, NumberWarningDto, NumberWarningKind, OccupyingRecordDto,
+    TemplateContextDto, TemplateTypeDto,
+};
 
 /// Application service for numbering templates. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -372,4 +389,311 @@ impl NumberTemplateService {
             source_chain: format!("spawn_blocking: {e}"),
         })?
     }
+
+    // -----------------------------------------------------------------------
+    // Context memory (NUM-08)
+    // -----------------------------------------------------------------------
+
+    /// Remember which template was last used for `context` (one of the 5
+    /// "Вставка" popups). `None` means "remember: no template" (NUM-08 —
+    /// used after the user picks "Продолжить" past a mismatch warning).
+    pub async fn remember_context(
+        &self,
+        context: TemplateContextDto,
+        template_id: Option<i64>,
+    ) -> Result<(), AppError> {
+        let now = self.clock.unix_seconds();
+        let repo = self.repo.clone();
+        let core_context: TemplateContext = context.into();
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                repo.set_context_in_tx(&tx, core_context, template_id, now)?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+    }
+
+    pub async fn get_context(&self, context: TemplateContextDto) -> Result<Option<i64>, AppError> {
+        let readers = self.readers.clone();
+        let repo = self.repo.clone();
+        let core_context: TemplateContext = context.into();
+        tokio::task::spawn_blocking(move || -> Result<Option<i64>, AppError> {
+            let conn = readers.acquire();
+            repo.get_context_template_id(&conn, core_context)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    // -----------------------------------------------------------------------
+    // Occupied check (NUM-09) + warnings (NUM-11/NUM-12)
+    // -----------------------------------------------------------------------
+
+    /// Is `candidate` already taken by a LIVE record in `pool`'s physical
+    /// space? Comparison is `.trim()`ed and case-insensitive (NUM-09:
+    /// `"орг-00-000001 "` == `"ОРГ-00-000001"`). `exclude_id` lets editing a
+    /// record's own number skip self-conflict.
+    ///
+    /// BASE case only — see the module doc-comment for how Plan 06 extends
+    /// this for act return-numbers.
+    pub async fn is_occupied(
+        &self,
+        pool: TemplateType,
+        candidate: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<Option<OccupyingRecordDto>, AppError> {
+        let readers = self.readers.clone();
+        let candidate = candidate.to_string();
+        tokio::task::spawn_blocking(move || -> Result<Option<OccupyingRecordDto>, AppError> {
+            let conn = readers.acquire();
+            find_occupying_record(&conn, pool, &candidate, exclude_id)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
+    }
+
+    /// Detect the two non-blocking warnings (NUM-12): script mix
+    /// (Cyrillic+Latin look-alikes) and, if the candidate also collapses to
+    /// the same Latin skeleton as an existing LIVE record, the doppelganger
+    /// paragraph. Returns `None` when the candidate has no script mix at
+    /// all — a same-script duplicate is `is_occupied`'s concern, not this
+    /// one's.
+    pub async fn detect_warnings(
+        &self,
+        pool: TemplateType,
+        candidate: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<Option<NumberWarningDto>, AppError> {
+        if !homoglyphs::has_script_mix(candidate) {
+            return Ok(None);
+        }
+        let readers = self.readers.clone();
+        let candidate_owned = candidate.to_string();
+        let skeleton = homoglyphs::to_latin_skeleton(candidate);
+        let message = format!(
+            "В номере «{candidate_owned}» смешаны русские и латинские буквы. Внешне одинаковые \
+             буквы, например «О» и «O», считаются разными — такой номер легко перепутать."
+        );
+        let doppelganger =
+            tokio::task::spawn_blocking(move || -> Result<Option<OccupyingRecordDto>, AppError> {
+                let conn = readers.acquire();
+                find_doppelganger(&conn, pool, &skeleton, exclude_id)
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??;
+
+        let message = match &doppelganger {
+            Some(rec) => format!(
+                "{message} Он выглядит так же, как существующий номер «{candidate_owned}» ({} \
+                 «{}»), но записан другими буквами.",
+                rec.kind, rec.title
+            ),
+            None => message,
+        };
+
+        Ok(Some(NumberWarningDto {
+            kind: NumberWarningKind::ScriptMix,
+            message,
+            doppelganger,
+        }))
+    }
+
+    /// Does `candidate` fail to match `template`'s mask (NUM-11)? Pure
+    /// (no I/O) — `mask::extract_digits` returning `None` means the value
+    /// does not fit this mask's prefix/digit-width/suffix.
+    pub fn check_mismatch(template: &NumberTemplateRow, candidate: &str, today_utc: i64) -> bool {
+        match mask::parse_and_expand(&template.mask, today_utc) {
+            Ok(parsed) => mask::extract_digits(&parsed, candidate).is_none(),
+            // An invalid saved mask can never match anything → mismatch.
+            Err(_) => true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Space-specific SQL (module-private — one match arm per `TemplateType`)
+// ---------------------------------------------------------------------------
+
+/// Row shape shared by `find_occupying_record`/`find_doppelganger`: the raw
+/// text value being compared plus everything needed to build an
+/// [`OccupyingRecordDto`] if it turns out to be the match.
+struct CandidateRow {
+    id: i64,
+    raw_value: String,
+    record: OccupyingRecordDto,
+}
+
+/// Fetch every LIVE record in `pool`'s physical space, with the raw text
+/// value being compared (`inventory_number`/`number`/`code`) and a
+/// pre-built [`OccupyingRecordDto`] card. One query per `TemplateType`,
+/// joining only the lookup tables needed for that space's card fields (see
+/// `OccupyingRecordDto`'s doc-comment for the exact field mapping).
+fn fetch_candidate_rows(
+    conn: &Connection,
+    pool: TemplateType,
+) -> Result<Vec<CandidateRow>, AppError> {
+    let mut out = Vec::new();
+    match pool {
+        TemplateType::DeviceInventory => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT d.id, d.inventory_number, d.type_id, d.name, d.model, \
+                            p.name, ds.name \
+                       FROM devices d \
+                       LEFT JOIN places p ON p.id = d.place_id \
+                       LEFT JOIN device_statuses ds ON ds.id = d.status_id \
+                      WHERE d.deleted_at_utc IS NULL AND d.inventory_number IS NOT NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let raw_value: String = r.get(1)?;
+                    let type_id: i64 = r.get(2)?;
+                    let name: String = r.get(3)?;
+                    let model: Option<String> = r.get(4)?;
+                    let place: Option<String> = r.get(5)?;
+                    let status: Option<String> = r.get(6)?;
+                    Ok(CandidateRow {
+                        id,
+                        raw_value,
+                        record: OccupyingRecordDto {
+                            kind: if type_id == 2 { "printer" } else { "device" }.to_string(),
+                            title: name,
+                            subtitle: model,
+                            place,
+                            status,
+                        },
+                    })
+                })
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                out.push(row.map_err(map_rusqlite)?);
+            }
+        }
+        TemplateType::ActNumber => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, number, act_type, giver_name, receiver_name \
+                       FROM acts \
+                      WHERE deleted_at_utc IS NULL AND act_type = 'handover'",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let number: i64 = r.get(1)?;
+                    let act_type: String = r.get(2)?;
+                    let giver_name: String = r.get(3)?;
+                    let receiver_name: String = r.get(4)?;
+                    Ok(CandidateRow {
+                        id,
+                        raw_value: number.to_string(),
+                        record: OccupyingRecordDto {
+                            kind: "act".to_string(),
+                            title: if act_type == "return" {
+                                "Акт возврата".to_string()
+                            } else {
+                                "Акт передачи".to_string()
+                            },
+                            subtitle: Some(format!(
+                                "Передал: {giver_name} · Принял: {receiver_name}"
+                            )),
+                            place: None,
+                            status: None,
+                        },
+                    })
+                })
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                out.push(row.map_err(map_rusqlite)?);
+            }
+        }
+        TemplateType::CartridgeCode | TemplateType::DrumCode => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT c.id, c.code, cm.kind_id, cm.brand, cm.model, \
+                            p.name, cst.name \
+                       FROM cartridges c \
+                       JOIN cartridge_models cm ON cm.id = c.model_id \
+                       LEFT JOIN places p ON p.id = c.place_id \
+                       LEFT JOIN cartridge_states cst ON cst.id = c.state_id \
+                      WHERE c.deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let id: i64 = r.get(0)?;
+                    let raw_value: String = r.get(1)?;
+                    let kind_id: i64 = r.get(2)?;
+                    let brand: String = r.get(3)?;
+                    let model: String = r.get(4)?;
+                    let place: Option<String> = r.get(5)?;
+                    let status: Option<String> = r.get(6)?;
+                    Ok(CandidateRow {
+                        id,
+                        raw_value,
+                        record: OccupyingRecordDto {
+                            kind: if kind_id == 2 { "drum" } else { "cartridge" }.to_string(),
+                            title: format!("{brand} {model}"),
+                            subtitle: None,
+                            place,
+                            status,
+                        },
+                    })
+                })
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                out.push(row.map_err(map_rusqlite)?);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// `is_occupied`'s worker: `.trim()`ed, case-insensitive exact match against
+/// `candidate` (T-40.2-08 — `LOWER(TRIM(...))` semantics reproduced in Rust
+/// so the same comparison rule applies whether the value came from SQL or
+/// was normalised beforehand).
+fn find_occupying_record(
+    conn: &Connection,
+    pool: TemplateType,
+    candidate: &str,
+    exclude_id: Option<i64>,
+) -> Result<Option<OccupyingRecordDto>, AppError> {
+    let needle = candidate.trim().to_lowercase();
+    if needle.is_empty() {
+        return Ok(None);
+    }
+    let rows = fetch_candidate_rows(conn, pool)?;
+    Ok(rows
+        .into_iter()
+        .find(|row| Some(row.id) != exclude_id && row.raw_value.trim().to_lowercase() == needle)
+        .map(|row| row.record))
+}
+
+/// `detect_warnings`'s doppelganger worker: is there a LIVE record whose
+/// value collapses to the SAME Latin skeleton as `candidate`'s (NUM-12)?
+fn find_doppelganger(
+    conn: &Connection,
+    pool: TemplateType,
+    candidate_skeleton: &str,
+    exclude_id: Option<i64>,
+) -> Result<Option<OccupyingRecordDto>, AppError> {
+    let rows = fetch_candidate_rows(conn, pool)?;
+    Ok(rows
+        .into_iter()
+        .find(|row| {
+            Some(row.id) != exclude_id
+                && homoglyphs::to_latin_skeleton(row.raw_value.trim()) == candidate_skeleton
+        })
+        .map(|row| row.record))
 }
