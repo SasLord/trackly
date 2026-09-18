@@ -11,6 +11,7 @@ pub mod auth;
 pub mod cartridge;
 pub mod device;
 pub mod health;
+pub mod number_template;
 pub mod organization;
 pub mod place;
 pub mod place_movements;
