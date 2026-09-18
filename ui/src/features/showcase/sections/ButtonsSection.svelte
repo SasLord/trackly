@@ -1,5 +1,7 @@
 <script lang="ts">
   import Button from '$lib/components/Button.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import IconInsertTemplate from '$lib/components/icons/IconInsertTemplate.svelte';
 </script>
 
 <section class="buttons-section">
@@ -70,6 +72,47 @@
   </div>
 
   <div class="variant-row">
+    <!-- UI-SPEC §10 (вариант б): регрессионная проверка, что Button
+         variant="ghost" size="md" iconOnly и ActionMenu variant="ghost-md"
+         визуально совпадают попиксельно — оба используют общий класс
+         .tr-btn-ghost-icon (global.scss), совпадение гарантировано
+         конструкцией. Живая проверка (светлая/тёмная тема, hover/focus/
+         disabled) откладывается на план 12 (UI-SPEC verification), где
+         ActionMenu ghost-md реально используется в NumberTemplateField. -->
+    <h3 class="variant-label">Ghost — только иконка</h3>
+    <div class="size-group">
+      <span class="size-tag size-tag--wide">Button</span>
+      <Button
+        variant="ghost"
+        size="md"
+        iconOnly
+        ariaLabel="Вставить номер по шаблону"
+        title="Вставить номер по шаблону"
+      >
+        <IconInsertTemplate />
+      </Button>
+      <Button variant="ghost" size="md" iconOnly disabled ariaLabel="Вставить номер по шаблону">
+        <IconInsertTemplate />
+      </Button>
+    </div>
+    <div class="size-group">
+      <span class="size-tag size-tag--wide">ActionMenu</span>
+      <ActionMenu variant="ghost-md" label="Вставить номер по шаблону">
+        {#snippet icon()}
+          <IconInsertTemplate />
+        {/snippet}
+        <button type="button" role="menuitem">Заглушка для витрины</button>
+      </ActionMenu>
+      <ActionMenu variant="ghost-md" label="Вставить номер по шаблону" disabled>
+        {#snippet icon()}
+          <IconInsertTemplate />
+        {/snippet}
+        <button type="button" role="menuitem">Заглушка для витрины</button>
+      </ActionMenu>
+    </div>
+  </div>
+
+  <div class="variant-row">
     <h3 class="variant-label">Link</h3>
     <div class="size-group">
       <span class="size-tag">sm</span>
@@ -124,5 +167,10 @@
     width: 28px;
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
+  }
+
+  .size-tag--wide {
+    width: auto;
+    min-width: 76px;
   }
 </style>

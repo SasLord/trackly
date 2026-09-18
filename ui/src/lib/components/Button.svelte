@@ -40,6 +40,7 @@
   class="btn btn-{variant} btn-{size}"
   class:loading
   class:btn-icon-only={iconOnly}
+  class:tr-btn-ghost-icon={variant === 'ghost' && iconOnly}
   disabled={isDisabled}
   aria-label={ariaLabel}
   {title}

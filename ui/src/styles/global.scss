@@ -99,6 +99,38 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+// ── Ghost icon button (единственный источник стиля «GHOST 36×36, только
+// иконка», UI-SPEC §10 вариант б) ───────────────────────────────────────────
+// Используется и `Button.svelte` (.btn-ghost.btn-md.btn-icon-only), и
+// `ActionMenu.svelte` (.action-menu-trigger--ghost-md) — совпадение
+// гарантировано конструкцией (общий класс), а не проверкой на глаз.
+
+.tr-btn-ghost-icon {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  color: var(--tr-text-primary);
+  border-radius: var(--tr-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--tr-surface-sunken);
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--tr-focus-ring);
+    border-color: var(--tr-accent);
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
 // ── Scrollbar (Webkit) ────────────────────────────────────────────────────────
 
 ::-webkit-scrollbar {
