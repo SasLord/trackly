@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T18:11:15.406Z"
+last_updated: "2026-09-18T18:24:13.014Z"
 last_activity: 2026-09-18
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 78
+  completed_plans: 79
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 3 of 15
+Plan: 4 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -389,6 +389,7 @@ Last activity: 2026-09-18
 | Phase 40.1 P03 | 32min | 3 tasks | 8 files |
 | Phase 40.2 P01 | 35min | 3 tasks | 6 files |
 | Phase 40.2 P02 | 15min | 3 tasks | 6 files |
+| Phase 40.2 P09 | 35m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -960,6 +961,9 @@ Recent decisions affecting current work:
 - [Phase ?]: D-15 применён буквально: DROP TABLE counters — в той же миграции V041, что вводит number_templates/number_template_contexts, не отдельным шагом
 - [Phase ?]: D-16 подтверждена ширина 4: засеяны act_number=[X] (безразмерный), cartridge_code=C-[XXXX], drum_code=D-[XXXX] — воспроизводят текущую нумерацию
 - [Phase ?]: Plan 02: extended NextNumberResult (Plan 01) with max_plus_one_fits_width to distinguish 'gap free but max+1 too wide' from full overflow, per plan's own coordination note
+- [Phase ?]: 40.2-09: ghost-md триггер ActionMenu не получает scoped .action-menu-trigger — Svelte-скоупинг иначе перебивает общий .tr-btn-ghost-icon по специфичности
+- [Phase ?]: 40.2-09: max-width/max-height/overflow вынесены в .action-menu-panel--portal (не в базовый .action-menu-panel), чтобы не менять поведение существующих ActionMenu-вызовов
+- [Phase ?]: 40.2-09: ActionMenu получил новый проп disabled (Rule 2) — нужен для витрины и для readonly/disabled форм в плане 12 (UI-SPEC §2)
 
 ### Pending Todos
 
@@ -1151,7 +1155,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T18:11:15.395Z
+Last session: 2026-09-18T18:24:13.003Z
 Stopped at: Completed 40.2-02-PLAN.md
 Resume file: None
 
