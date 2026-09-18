@@ -1181,8 +1181,11 @@ async fn report_device_acts_export_pdf_never_renders_filter_summary() {
 async fn hard_delete_place_row(ctx: &AppCtx, place_id: i64) {
     ctx.writer
         .execute(move |conn| {
-            conn.execute("DELETE FROM places WHERE id = ?1", rusqlite::params![place_id])
-                .map_err(map_rusqlite)?;
+            conn.execute(
+                "DELETE FROM places WHERE id = ?1",
+                rusqlite::params![place_id],
+            )
+            .map_err(map_rusqlite)?;
             Ok(())
         })
         .await
@@ -1254,4 +1257,240 @@ async fn report_movements_export_pdf_omits_deleted_place_from_filter_summary_ins
         html.contains("Куда: Офис-Живой"),
         "the still-valid «Куда» filter segment must still render: {html}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Nyquist validation (phase 40.1, G1 / HST-04): `filter.type_id` must narrow
+// the ROWS of the «Перемещения» report — the tests above only assert that
+// the «Тип» header disappears, which a column-only change would also satisfy.
+// ---------------------------------------------------------------------------
+
+fn device_names(rows: &[trackly_app::dto::reports::ReportRow]) -> Vec<String> {
+    let mut names: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            r.device_name
+                .clone()
+                .unwrap_or_else(|| "<none>".to_string())
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// type_id=Some(2) keeps only movements of type-2 devices; type_id=Some(1)
+/// keeps only type-1; type_id=None keeps everything (incl. the cartridge
+/// movement). The cartridge movement deliberately reuses the printer's
+/// `entity_id` — a filter that joined `devices` without checking
+/// `entity_type` would wrongly let it through under type_id=Some(2).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_type_filter_narrows_rows() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = minimal_ctx();
+        let manager = Identity {
+            user_id: None,
+            role: Role::Manager,
+        };
+
+        let warehouse = seed_place(&ctx, None, "Склад А").await;
+        let office = seed_place(&ctx, None, "Офис Б").await;
+        // device_types seed (V001): 1 = «Устройство», 2 = «Принтер».
+        let laptop = seed_device_with_type(&ctx, "Ноутбук тест", 1).await;
+        let printer = seed_device_with_type(&ctx, "Принтер тест", 2).await;
+
+        seed_movement(
+            &ctx,
+            "device",
+            laptop,
+            warehouse,
+            "Склад А",
+            office,
+            "Офис Б",
+            "manual",
+            1_700_000_100,
+        )
+        .await;
+        seed_movement(
+            &ctx,
+            "device",
+            printer,
+            warehouse,
+            "Склад А",
+            office,
+            "Офис Б",
+            "manual",
+            1_700_000_200,
+        )
+        .await;
+        // Cartridge movement whose entity_id collides with the printer's id.
+        seed_movement(
+            &ctx,
+            "cartridge",
+            printer,
+            warehouse,
+            "Склад А",
+            office,
+            "Офис Б",
+            "manual",
+            1_700_000_300,
+        )
+        .await;
+
+        let all =
+            build_reports_list_movements(&ctx, &manager, ReportFilter::default(), wide_period())
+                .await
+                .expect("unfiltered movements");
+        assert_eq!(
+            all.rows.len(),
+            3,
+            "type_id=None must keep all rows: {all:?}"
+        );
+
+        let printers_only = build_reports_list_movements(
+            &ctx,
+            &manager,
+            ReportFilter {
+                type_id: Some(2),
+                ..ReportFilter::default()
+            },
+            wide_period(),
+        )
+        .await
+        .expect("type_id=2 movements");
+        assert_eq!(
+            device_names(&printers_only.rows),
+            vec!["Принтер тест".to_string()],
+            "type_id=2 must keep ONLY the type-2 device movement: {printers_only:?}"
+        );
+        assert!(
+            printers_only
+                .rows
+                .iter()
+                .all(|r| r.entity_type_label.as_deref() == Some("Устройство")),
+            "cartridge movements must be excluded under a device-type filter: {printers_only:?}"
+        );
+
+        let laptops_only = build_reports_list_movements(
+            &ctx,
+            &manager,
+            ReportFilter {
+                type_id: Some(1),
+                ..ReportFilter::default()
+            },
+            wide_period(),
+        )
+        .await
+        .expect("type_id=1 movements");
+        assert_eq!(
+            device_names(&laptops_only.rows),
+            vec!["Ноутбук тест".to_string()],
+            "type_id=1 must keep ONLY the type-1 device movement: {laptops_only:?}"
+        );
+    })
+    .await
+    .expect("test timed out");
+}
+
+/// HST-04 literally: place filter AND type filter simultaneously. Three
+/// movements, each failing exactly one dimension except the target row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn report_movements_place_and_type_filters_combine_with_and() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let (ctx, _dir) = minimal_ctx();
+        let manager = Identity {
+            user_id: None,
+            role: Role::Manager,
+        };
+
+        let warehouse = seed_place(&ctx, None, "Склад А").await;
+        let building = seed_place(&ctx, None, "Здание Б").await;
+        let room = seed_place(&ctx, Some(building), "Кабинет 1").await;
+        let other = seed_place(&ctx, None, "Здание В").await;
+
+        let target = seed_device_with_type(&ctx, "Принтер цель", 2).await;
+        let wrong_place = seed_device_with_type(&ctx, "Принтер не оттуда", 2).await;
+        let wrong_type = seed_device_with_type(&ctx, "Ноутбук тот же путь", 1).await;
+
+        // Match: type 2, Склад А -> Здание Б / Кабинет 1 (subtree).
+        seed_movement(
+            &ctx,
+            "device",
+            target,
+            warehouse,
+            "Склад А",
+            room,
+            "Здание Б / Кабинет 1",
+            "manual",
+            1_700_000_100,
+        )
+        .await;
+        // Type matches, «Откуда» does not.
+        seed_movement(
+            &ctx,
+            "device",
+            wrong_place,
+            other,
+            "Здание В",
+            room,
+            "Здание Б / Кабинет 1",
+            "manual",
+            1_700_000_200,
+        )
+        .await;
+        // Places match, type does not.
+        seed_movement(
+            &ctx,
+            "device",
+            wrong_type,
+            warehouse,
+            "Склад А",
+            room,
+            "Здание Б / Кабинет 1",
+            "manual",
+            1_700_000_300,
+        )
+        .await;
+
+        let place_only = build_reports_list_movements(
+            &ctx,
+            &manager,
+            ReportFilter {
+                from_place_id: Some(warehouse),
+                to_place_id: Some(building),
+                ..ReportFilter::default()
+            },
+            wide_period(),
+        )
+        .await
+        .expect("place-only filter");
+        assert_eq!(
+            device_names(&place_only.rows),
+            vec![
+                "Ноутбук тот же путь".to_string(),
+                "Принтер цель".to_string()
+            ],
+            "place-only filter baseline: {place_only:?}"
+        );
+
+        let combined = build_reports_list_movements(
+            &ctx,
+            &manager,
+            ReportFilter {
+                from_place_id: Some(warehouse),
+                to_place_id: Some(building),
+                type_id: Some(2),
+                ..ReportFilter::default()
+            },
+            wide_period(),
+        )
+        .await
+        .expect("place + type filter");
+        assert_eq!(
+            device_names(&combined.rows),
+            vec!["Принтер цель".to_string()],
+            "place AND type must both apply: {combined:?}"
+        );
+    })
+    .await
+    .expect("test timed out");
 }
