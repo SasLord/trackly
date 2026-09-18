@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T17:42:37.648Z"
-last_activity: 2026-09-18 -- Phase 40.2 planning complete
+last_updated: "2026-09-18T17:57:40.624Z"
+last_activity: 2026-09-18
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 76
+  completed_plans: 77
   percent: 45
 ---
 
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.2 — шаблоны инвентарных номеров
+**Current focus:** Phase 40.2 — inventory-number-templates
 
 ## Current Position
 
-Phase: 40.2
-Plan: Not started
+Phase: 40.2 (inventory-number-templates) — EXECUTING
+Plan: 2 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -34,7 +34,7 @@ Status: Ready to execute
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-18 -- Phase 40.2 planning complete
+Last activity: 2026-09-18
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -387,6 +387,7 @@ Last activity: 2026-09-18 -- Phase 40.2 planning complete
 | Phase 40.1 P04 | 15min | 3 tasks | 4 files |
 | Phase 40.1 P02 | 59min | 2 tasks | 10 files |
 | Phase 40.1 P03 | 32min | 3 tasks | 8 files |
+| Phase 40.2 P01 | 35min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -955,6 +956,8 @@ Recent decisions affecting current work:
 - [Phase 40.1]: D-19..D-22: export_csv параллелит export_pdf — column_labels отдельным параметром, columns остаётся источником значений строк; HTTP-транспорт получает фикс через общую точку build_reports_export_csv
 - [Phase 40.1]: 40.1-02: omit_type_column — единая точка ветвления columns_for/column_labels_for для CSV+PDF+экрана; filter_summary резолвится на бэкенде (places.full_path + device_types.name), не на клиенте
 - [Phase 40.1]: Раунд 2 фикс WARNING-1: PlaceEntityViewModal форвардит точное старое+новое место редактируемой записи вместо инвалидации только текущего просматриваемого корня — Живая UAT раунда 1 показала, что обновлялся счётчик только текущего открытого узла — назначение и вложенные подместа оставались устаревшими до навигации прочь и обратно
+- [Phase ?]: D-15 применён буквально: DROP TABLE counters — в той же миграции V041, что вводит number_templates/number_template_contexts, не отдельным шагом
+- [Phase ?]: D-16 подтверждена ширина 4: засеяны act_number=[X] (безразмерный), cartridge_code=C-[XXXX], drum_code=D-[XXXX] — воспроизводят текущую нумерацию
 
 ### Pending Todos
 
@@ -976,6 +979,7 @@ Spike-зоны, требующие внимания во время планир
 - **Phase 8:** валидация LDAP-bind против реального Windows Server 2022 с channel binding enforced (½ дня с реальным DC)
 - Phase 36: real-print, LAN-транспорт end-to-end, print-DOM isolation (SC#4), N=1 один лист (SC#1) — явно отложено пользователем 2026-08-13, НЕ пройдено. Нужна отдельная UAT-сессия перед закрытием фазы.
 - 39-11: cargo test -p trackly-app --lib fails to compile (missing 'places' field in AppCtx test fixtures in http/health.rs:126 and tauri_cmds/health.rs:142, introduced by Plan 39-05, never backfilled) — blocks unit tests, unrelated to 39-22's integration-test scope
+- 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
 
 ### Явные решения по приватности
 
@@ -1145,9 +1149,9 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T14:19:53.836Z
-Stopped at: Phase 40.2 UI-SPEC approved
-Resume file: .planning/phases/40.2-inventory-number-templates/40.2-UI-SPEC.md
+Last session: 2026-09-18T17:57:29.621Z
+Stopped at: Completed 40.2-01-PLAN.md
+Resume file: None
 
 None
 
