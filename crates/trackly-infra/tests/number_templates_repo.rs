@@ -257,3 +257,42 @@ fn soft_deleted_cartridge_frees_its_number() {
         "soft-deleting C-0002 frees number 2 back up"
     );
 }
+
+/// Scenario 5 (must_haves.truths of this plan): "Картриджи" и
+/// "Фотобарабаны" both read the SAME `cartridges.code` column, but two
+/// templates with DIFFERENT literal prefixes (`C-[XXXX]` vs `D-[XXXX]`) see
+/// DIFFERENT sequences — the isolation comes from the mask's literal
+/// prefix via `extract_digits`, not from any `kind_id` filter in SQL.
+#[test]
+fn cartridge_and_drum_templates_see_isolated_sequences_despite_shared_column() {
+    let dir = TempDir::new().expect("tempdir");
+    let conn = fresh_migrated_db(&dir, "cartridge-drum-isolation.db");
+    let repo = SqliteNumberTemplateRepository;
+
+    let model_id = ensure_cartridge_model(&conn, NOW);
+    insert_cartridge(&conn, model_id, "C-0001", NOW);
+    insert_cartridge(&conn, model_id, "C-0002", NOW);
+    insert_cartridge(&conn, model_id, "C-0003", NOW);
+    insert_cartridge(&conn, model_id, "D-0001", NOW);
+
+    // V041 already seeds both canonical templates (D-16) — reuse them
+    // rather than inserting colliding duplicates (`UNIQUE(type, mask)`).
+    let cartridge_template = seeded_template(&conn, &repo, TemplateType::CartridgeCode);
+    let drum_template = seeded_template(&conn, &repo, TemplateType::DrumCode);
+
+    let cartridge_next = repo
+        .compute_next_for_template(&conn, &cartridge_template, NOW)
+        .expect("compute next for cartridges");
+    let drum_next = repo
+        .compute_next_for_template(&conn, &drum_template, NOW)
+        .expect("compute next for drums");
+
+    assert_eq!(
+        cartridge_next.first_free, 4,
+        "C-0001..C-0003 taken -> next cartridge code is C-0004"
+    );
+    assert_eq!(
+        drum_next.first_free, 2,
+        "only D-0001 taken -> next drum code is D-0002, unaffected by the 3 cartridge rows"
+    );
+}
