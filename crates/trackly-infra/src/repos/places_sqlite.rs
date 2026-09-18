@@ -147,6 +147,35 @@ fn resolve_cas_failure(conn: &Connection, id: i64, expected: i64) -> AppError {
     }
 }
 
+/// Controlled Russian message for an FK violation on `DELETE FROM places`.
+const PLACE_DELETE_FK_REASON: &str = "Место нельзя удалить: на него ссылаются удалённые записи \
+     (устройства, картриджи, акты или вложенные места), которые сохраняются в истории. \
+     Архивируйте место.";
+
+/// Quick 260918-mtv (40.1-SECURITY): `subtree_stats_impl` counts only live rows,
+/// but the V038/V040 `ON DELETE RESTRICT` FKs also hold on soft-deleted
+/// devices/cartridges/acts/child places. A place referenced only by such rows
+/// passes the pre-check and the `DELETE` fails on the FK — map that to a
+/// controlled Russian `Conflict` instead of leaking SQLite's raw English text
+/// through `map_rusqlite`. Catch-all on purpose: the counters feed the UI and
+/// must keep ignoring deleted rows.
+///
+/// Matched on the constraint class + SQLite's fixed message text, not on
+/// `SQLITE_CONSTRAINT_FOREIGNKEY` (787): the bundled SQLite reports this
+/// statement-end FK check as extended code 1811 (`SQLITE_CONSTRAINT_TRIGGER`).
+fn map_place_delete_error(err: rusqlite::Error) -> AppError {
+    if let rusqlite::Error::SqliteFailure(e, Some(msg)) = &err {
+        if e.code == rusqlite::ErrorCode::ConstraintViolation
+            && msg.contains("FOREIGN KEY constraint failed")
+        {
+            return AppError::Conflict {
+                reason: PLACE_DELETE_FK_REASON.to_string(),
+            };
+        }
+    }
+    map_rusqlite(err)
+}
+
 /// Pattern 2 (39-RESEARCH.md): subtree counts under `root_id`, inclusive of the
 /// root itself. Shared verbatim by `subtree_stats` (D-25 tree counters / D-21
 /// consequences preview) and `delete_hard`'s pre-flight conflict check (D-14) —
@@ -587,7 +616,7 @@ impl PlaceRepository for SqlitePlaceRepository {
                 "DELETE FROM places WHERE id = ?1 AND version = ?2",
                 rusqlite::params![id, version],
             )
-            .map_err(map_rusqlite)?;
+            .map_err(map_place_delete_error)?;
 
         if affected == 0 {
             return Err(resolve_cas_failure(&tx, id, version));

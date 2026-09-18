@@ -598,3 +598,77 @@ async fn delete_blocked_by_movement_to_place_id_even_when_otherwise_empty() {
     .await
     .expect("test timed out");
 }
+
+// ---------------------------------------------------------------------------
+// Quick 260918-mtv (40.1-SECURITY): the pre-flight counts only live rows
+// (`deleted_at_utc IS NULL`), but V038's `ON DELETE RESTRICT` FKs still hold on
+// soft-deleted rows. A place referenced ONLY by a soft-deleted device passes
+// the pre-check and the writer's `DELETE` hits the FK — the reason must be a
+// controlled Russian message, not SQLite's raw `FOREIGN KEY constraint failed`.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn delete_blocked_by_soft_deleted_device_has_russian_reason() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let admin = admin_caller();
+
+        let room = svc
+            .create(&admin, new_place(PlaceKind::Room, "515", None))
+            .await
+            .expect("create room");
+
+        insert_device(&svc, room.id, "Ноутбук удалённый").await;
+        let room_id = room.id;
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET deleted_at_utc = 1 WHERE place_id = ?1",
+                    rusqlite::params![room_id],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("soft-delete fixture device");
+
+        let err = svc
+            .delete_hard(&admin, room.id, room.version)
+            .await
+            .expect_err("место со ссылкой от удалённого устройства должно блокироваться");
+
+        match err {
+            AppError::Conflict { reason } => {
+                assert!(
+                    !reason.contains("FOREIGN KEY"),
+                    "не должен протекать сырое английское сообщение SQLite: {reason}"
+                );
+                assert!(
+                    reason.starts_with("Место нельзя удалить:"),
+                    "должен использовать русский шаблон отказа: {reason}"
+                );
+                assert!(
+                    reason.contains("удалённые записи"),
+                    "должен объяснять, что мешают удалённые записи: {reason}"
+                );
+            }
+            other => panic!("ожидали AppError::Conflict, получили {other:?}"),
+        }
+
+        let readers = svc.readers.clone();
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM places WHERE id = ?1",
+                rusqlite::params![room_id],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("join")
+        .expect("query places");
+        assert_eq!(count, 1, "заблокированное место не должно быть удалено");
+    })
+    .await
+    .expect("test timed out");
+}
