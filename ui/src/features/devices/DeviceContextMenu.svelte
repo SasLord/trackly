@@ -12,6 +12,7 @@
   import { pushToast } from '$lib/stores/toast.svelte';
   import { devices } from './api';
   import { portal } from '$lib/utils/portal';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import PlaceEntityViewModal from '../places/PlaceEntityViewModal.svelte';
   import type { DeviceDto, PlaceContentDto } from '../../bindings';
 
@@ -69,8 +70,15 @@
   // `DevicesPage.svelte`'s own `onDelete={() => { refresh(); refreshCounts(); }}`)
   // rather than threading a brand-new `onChanged` prop through
   // DeviceList/DeviceGroupRow, which is out of this plan's file scope.
-  function handleViewChanged() {
+  // 40.1 exhaustive sweep (WR-08, found by the registry-driven completeness
+  // gate): `PlaceEntityViewModal.onChanged` forwards `(changedPlaceIds:
+  // number[]) => void` (see PlaceContents.svelte's own wiring of the exact
+  // same modal) — this handler was discarding that argument entirely, so
+  // editing a device's place from the device-list's kebab menu → «Просмотр»
+  // never invalidated the place-tree counters at all.
+  function handleViewChanged(changedPlaceIds: number[]) {
     viewRow = null;
+    if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
     onDelete();
   }
 

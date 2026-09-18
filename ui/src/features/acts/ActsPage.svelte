@@ -6,6 +6,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { parseIdFromHash } from '$lib/utils/hashId';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import ActsSearchAndTabs from './ActsSearchAndTabs.svelte';
   import ActsMasterDetail from './ActsMasterDetail.svelte';
   import ActsList from './ActsList.svelte';
@@ -172,6 +173,15 @@
     createModalOpen = true;
   }
   function handleSaved(act: ActDto) {
+    // 40.1 exhaustive sweep (WR-06, round-3 gap closure): creating a
+    // handover act moves every one of its devices to `act.place_id` on the
+    // server (`act_service.rs`'s `create`) — the same class of mutation
+    // already covered for cartridges/devices/requests (WR-01/WR-05).
+    // `changed_place_ids` is server-computed (old ∪ new place per device,
+    // deduped) because a single act can carry many devices, each arriving
+    // from a DIFFERENT prior place — the act's own `place_id` header field
+    // alone cannot represent that.
+    if (act.changed_place_ids.length > 0) notifyPlaceContentChanged(act.changed_place_ids);
     createModalOpen = false;
     selectedActId = act.id;
     refresh();
@@ -220,6 +230,11 @@
   }
 
   function handleEditSaved(act: ActDto) {
+    // 40.1 exhaustive sweep (WR-06): editing an act's item set can add
+    // and/or remove devices, each with its own before/after place — see
+    // `handleSaved`'s comment above for why this is server-computed rather
+    // than derived from a single locally-held "old place".
+    if (act.changed_place_ids.length > 0) notifyPlaceContentChanged(act.changed_place_ids);
     editModalOpen = false;
     editTargetAct = null;
     // D-11: selectedActId = act.id is a no-op when the edited act is already
@@ -239,6 +254,14 @@
   }
 
   function handleReturnSuccess(returnDto: ActDto, _parentArchived: boolean) {
+    // 40.1 exhaustive sweep (WR-06): create OR edit of a return act moves
+    // devices back to a warehouse place (or un-returns them) — per-row
+    // `place_id_override` means each returned device can land at a
+    // DIFFERENT place, so this is server-computed exactly like
+    // `handleSaved`/`handleEditSaved` above.
+    if (returnDto.changed_place_ids.length > 0) {
+      notifyPlaceContentChanged(returnDto.changed_place_ids);
+    }
     const wasEdit = returnMode === 'edit';
     returnModalOpen = false;
     returnTargetAct = null;
@@ -276,7 +299,13 @@
     const confirmed = window.confirm(`${heading}\n\n${body}`);
     if (!confirmed) return;
     try {
-      await acts.delete(act.id, act.version);
+      const changedPlaceIds = await acts.delete(act.id, act.version);
+      // 40.1 exhaustive sweep (WR-06): soft-deleting an act undoes its
+      // device mutations (devices move back to their pre-act place) just as
+      // surely as create/edit/return move them forward — server returns the
+      // touched place ids directly (`build_acts_delete`/`ActService::delete_soft`)
+      // since there is no local ActDto snapshot to diff against here.
+      if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
       pushToast(
         'success',
         isReturn

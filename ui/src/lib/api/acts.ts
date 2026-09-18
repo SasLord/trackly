@@ -38,7 +38,13 @@ export const acts = {
   doReturn: (actId: number, payload: ActReturnDto) =>
     apiCall<ActDto>('acts_return', { actId, payload }),
 
-  delete: (id: number, version: number) => apiCall<null>('acts_delete', { id, version }),
+  /**
+   * 40.1 exhaustive sweep: returns the `place_id`s the undo cascade actually
+   * touched (old ∪ new, deduped) — used by `ActsPage.svelte`'s `handleDelete`
+   * to invalidate place-tree counters, mirroring `changed_place_ids` on
+   * `ActDto` for create/update/return.
+   */
+  delete: (id: number, version: number) => apiCall<number[]>('acts_delete', { id, version }),
 
   counts: () => apiCall<ActsCountsDto>('acts_counts'),
 

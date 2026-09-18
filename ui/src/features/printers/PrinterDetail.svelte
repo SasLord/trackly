@@ -32,6 +32,7 @@
   import { cartridges } from '../cartridges/api';
   import { apiCall } from '$lib/api/client';
   import { push } from 'svelte-spa-router';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import DeviceFormModal from '../devices/DeviceFormModal.svelte';
   import type { PrinterDto, PrinterReadingDto } from '../../bindings-phase6';
   import type {
@@ -456,6 +457,21 @@
         target={deviceData}
         onClose={() => (deviceEditOpen = false)}
         onSaved={(result) => {
+          // 40.1 exhaustive sweep (WR-07, found by the registry-driven
+          // completeness gate, not by any of the 3 prior verification
+          // rounds): editing "Данные устройства" from a printer's own detail
+          // panel goes through the SAME DeviceFormModal/devices_update
+          // server path as DevicesPage's own producer — it was simply never
+          // wired here. Old place is `deviceData` (held from before the edit
+          // opened, mirrors DevicesPage's `editTarget?.place_id`); new place
+          // is `result?.placeId` (DeviceFormModal's onSaved contract, D-15).
+          const oldPlaceId = deviceData?.place_id ?? null;
+          const newPlaceId = result?.placeId ?? null;
+          const changedPlaceIds = Array.from(
+            new Set([oldPlaceId, newPlaceId].filter((id): id is number => id !== null)),
+          );
+          if (changedPlaceIds.length > 0) notifyPlaceContentChanged(changedPlaceIds);
+
           deviceEditOpen = false;
           onDeviceSaved?.(result);
           if (printer) {
