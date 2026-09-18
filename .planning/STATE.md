@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T17:57:40.624Z"
+last_updated: "2026-09-18T18:11:15.406Z"
 last_activity: 2026-09-18
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 77
+  completed_plans: 78
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 2 of 15
+Plan: 3 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -388,6 +388,7 @@ Last activity: 2026-09-18
 | Phase 40.1 P02 | 59min | 2 tasks | 10 files |
 | Phase 40.1 P03 | 32min | 3 tasks | 8 files |
 | Phase 40.2 P01 | 35min | 3 tasks | 6 files |
+| Phase 40.2 P02 | 15min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -958,6 +959,7 @@ Recent decisions affecting current work:
 - [Phase 40.1]: Раунд 2 фикс WARNING-1: PlaceEntityViewModal форвардит точное старое+новое место редактируемой записи вместо инвалидации только текущего просматриваемого корня — Живая UAT раунда 1 показала, что обновлялся счётчик только текущего открытого узла — назначение и вложенные подместа оставались устаревшими до навигации прочь и обратно
 - [Phase ?]: D-15 применён буквально: DROP TABLE counters — в той же миграции V041, что вводит number_templates/number_template_contexts, не отдельным шагом
 - [Phase ?]: D-16 подтверждена ширина 4: засеяны act_number=[X] (безразмерный), cartridge_code=C-[XXXX], drum_code=D-[XXXX] — воспроизводят текущую нумерацию
+- [Phase ?]: Plan 02: extended NextNumberResult (Plan 01) with max_plus_one_fits_width to distinguish 'gap free but max+1 too wide' from full overflow, per plan's own coordination note
 
 ### Pending Todos
 
@@ -1149,8 +1151,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T17:57:29.621Z
-Stopped at: Completed 40.2-01-PLAN.md
+Last session: 2026-09-18T18:11:15.395Z
+Stopped at: Completed 40.2-02-PLAN.md
 Resume file: None
 
 None
