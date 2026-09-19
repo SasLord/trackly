@@ -457,3 +457,76 @@ async fn create_single_with_number_check_full_chain() {
     .await
     .expect("create_single_with_number_check_full_chain exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// T-40.2-18 (Tampering — race on one inventory number): two concurrent
+// create_single_with_number_check() calls for the SAME number — the async
+// pre-check alone has a small TOCTOU window, `idx_devices_inventory_number_live`
+// (V044, Task 1) is the final DB-level backstop guaranteeing exactly one
+// success. Mirrors `acts_numbering.rs::concurrent_creates_same_number_exactly_one_succeeds`.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_creates_same_number_exactly_one_succeeds() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let svc = Arc::new(svc);
+
+        let svc1 = svc.clone();
+        let h1 = tokio::spawn(async move {
+            svc1.create_single_with_number_check(
+                minimal_new("Гонка 1", None),
+                number_input("ОРГ-00-000077"),
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+        });
+        let svc2 = svc.clone();
+        let h2 = tokio::spawn(async move {
+            svc2.create_single_with_number_check(
+                minimal_new("Гонка 2", None),
+                number_input("ОРГ-00-000077"),
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+        });
+
+        let r1 = h1.await.expect("join1");
+        let r2 = h2.await.expect("join2");
+
+        let ok_count = [&r1, &r2]
+            .iter()
+            .filter(|r| matches!(r, Ok(DeviceSaveOutcome::Created(_))))
+            .count();
+        let conflict_count = [&r1, &r2]
+            .iter()
+            .filter(|r| matches!(r, Err(trackly_core::error::AppError::Conflict { .. })))
+            .count();
+        assert_eq!(
+            ok_count, 1,
+            "exactly one of two concurrent same-number creates must succeed, got r1={r1:?} r2={r2:?}"
+        );
+        assert_eq!(
+            conflict_count, 1,
+            "the other must fail with Conflict (either pre-check or DB unique index), \
+             got r1={r1:?} r2={r2:?}"
+        );
+
+        let readers = svc.readers.clone();
+        let count: i64 = tokio::task::spawn_blocking(move || {
+            let conn = readers.acquire();
+            conn.query_row(
+                "SELECT COUNT(*) FROM devices WHERE inventory_number = 'ОРГ-00-000077' \
+                 AND deleted_at_utc IS NULL",
+                [],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .expect("spawn_blocking")
+        .expect("count devices");
+        assert_eq!(count, 1, "exactly one live device with the contested number");
+    })
+    .await
+    .expect("concurrent_creates_same_number_exactly_one_succeeds exceeded 30 s budget");
+}
