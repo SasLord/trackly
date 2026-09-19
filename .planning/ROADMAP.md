@@ -129,7 +129,7 @@
 | 39.2. Долг фазы 39.1 | v1.4 | 5/5 | Complete   | 2026-09-01 |
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
-| 40.2. Шаблоны инвентарных номеров | v1.4 | 10/15 | In Progress|  |
+| 40.2. Шаблоны инвентарных номеров | v1.4 | 11/15 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -516,7 +516,7 @@ WARNING-1, WARNING-4.
 
 **Requirements**: NUM-01, NUM-02, NUM-03, NUM-04, NUM-05, NUM-06, NUM-07, NUM-08, NUM-09, NUM-10, NUM-11, NUM-12, NUM-13, NUM-14, NUM-15, NUM-16
 
-**Plans:** 10/15 plans executed
+**Plans:** 11/15 plans executed
 
 Plans:
 **Wave 1**
@@ -543,7 +543,7 @@ Plans:
 - [x] 40.2-06-PLAN.md — Акты: V042 (number→TEXT), occupied по отображаемым номерам (D-06), отказ от counters
 - [x] 40.2-07-PLAN.md — Картриджи/фотобарабаны: V043 (code unique среди живых), отказ от assign_code_in_tx
 - [x] 40.2-08-PLAN.md — Устройства: V044 (дедуп ДУБЛЬ-NNNNNN + уникальный индекс), CSV within-file dedup
-- [ ] 40.2-10-PLAN.md — Блок «Шаблоны для инвентарных номеров» в Настройки/Организация + модалка + справка
+- [x] 40.2-10-PLAN.md — Блок «Шаблоны для инвентарных номеров» в Настройки/Организация + модалка + справка
 - [ ] 40.2-12-PLAN.md — NumberTemplateField.svelte (составное поле номера)
 
 **Wave 6** *(blocked on Wave 5)*
