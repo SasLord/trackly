@@ -111,13 +111,7 @@ fn create_pre_v043_cartridges_table(conn: &Connection) {
     .expect("create pre-V043 cartridges table + fts");
 }
 
-fn insert_cartridge(
-    conn: &Connection,
-    id: i64,
-    code: &str,
-    deleted_at_utc: Option<i64>,
-    now: i64,
-) {
+fn insert_cartridge(conn: &Connection, id: i64, code: &str, deleted_at_utc: Option<i64>, now: i64) {
     conn.execute(
         "INSERT INTO cartridges (id, code, model_id, status_id, created_at_utc, \
          updated_at_utc, deleted_at_utc, version) \

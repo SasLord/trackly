@@ -152,36 +152,6 @@ fn map_row_with_short_path<'a>(
     }
 }
 
-/// Atomically increment a named counter and return its new value.
-///
-/// MUST be called inside a `BEGIN IMMEDIATE` transaction (which
-/// `Connection::transaction` supplies by default in rusqlite). Combined with
-/// the single-writer pattern (D-WriterChannel-01) this guarantees no two
-/// callers see the same number.
-///
-/// Phase 40.2 Plan 06 (NUM-13): this function used to live in
-/// `acts_sqlite.rs` alongside `increment_counter_in_tx`'s two `counters`
-/// siblings (`peek_counter`/`peek_counter_in_tx`, both now deleted — acts no
-/// longer use the `counters` table at all). It was moved HERE because
-/// `cartridge_seq`/`drum_seq` (this file's `assign_code_in_tx`) are its only
-/// remaining callers — acts numbering is fully migrated to
-/// `NumberTemplateService`. Plan 07 (cartridges) is expected to retire this
-/// function too once cartridges/drums migrate off `counters` the same way.
-pub fn increment_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
-    tx.query_row(
-        "UPDATE counters SET current_value = current_value + 1 \
-         WHERE name = ?1 RETURNING current_value",
-        params![name],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-            source_chain: format!("counter '{name}' not seeded"),
-        },
-        other => map_rusqlite(other),
-    })
-}
-
 impl SqliteCartridgeRepository {
     // -----------------------------------------------------------------------
     // Tx-helpers used by CartridgeService
@@ -205,61 +175,59 @@ impl SqliteCartridgeRepository {
         })
     }
 
-    /// Assign a code to a new cartridge/drum inside a transaction.
+    /// Assign an explicit code to a new cartridge/drum inside a transaction.
     ///
-    /// - `code_override = Some(s)`: validate UNIQUE; return `(s, false)` or
-    ///   `AppError::Conflict` on collision (D-Code-Override-01).
-    /// - `code_override = None`: increment the kind-specific counter
-    ///   (`cartridge_seq`→`C-NNNN` / `drum_seq`→`D-NNNN`) in a retry loop
-    ///   until a unique code is found (D-Code-01). The counter is never lost.
+    /// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation via the
+    /// two per-kind sequence counters this project used before is RETIRED
+    /// — a code is always explicit now, either typed by hand or produced by
+    /// `NumberTemplateService` (the caller, `CartridgeService::create`,
+    /// resolves that before this function is reached; Plan 07 Task 3 in
+    /// fact stopped calling this function from production code entirely,
+    /// since the occupied-check now happens via `NumberTemplateService
+    /// ::is_occupied` before the writer transaction opens — this function
+    /// remains as a thin, still-useful explicit-code-with-conflict-check
+    /// primitive for direct repository-level tests).
     ///
-    /// Returns `(code, was_auto)`.
+    /// - `code_override = Some(s)`: validate UNIQUE among LIVE rows only
+    ///   (matches `idx_cartridges_code_live`, Plan 07 Task 1); return
+    ///   `(s, false)` or `AppError::Conflict` on collision
+    ///   (D-Code-Override-01).
+    /// - `code_override = None`: `AppError::Validation{field:"code"}` — no
+    ///   code to assign to auto-generate anymore.
+    ///
+    /// `kind_id` is accepted for call-site/API-shape stability (repository
+    /// tests seed both cartridges and drums through this same helper) but
+    /// no longer affects behavior — both kinds share one code column/space
+    /// (NUM-09 "в", see plan doc-comment) and neither has a distinct prefix
+    /// rule to apply server-side anymore.
+    ///
+    /// Returns `(code, was_auto)` — `was_auto` is always `false` now; kept
+    /// for the same call-site-stability reason as `kind_id`.
     pub fn assign_code_in_tx(
         tx: &Transaction<'_>,
         code_override: Option<&str>,
-        kind_id: i64,
+        _kind_id: i64,
         _now_utc: i64,
     ) -> Result<(String, bool), AppError> {
-        if let Some(custom) = code_override {
-            let exists: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM cartridges WHERE code = ?1 LIMIT 1)",
-                    params![custom],
-                    |r| r.get(0),
-                )
-                .map_err(map_rusqlite)?;
-            if exists {
-                return Err(AppError::Conflict {
-                    reason: format!("Картридж с кодом «{}» уже существует", custom),
-                });
-            }
-            return Ok((custom.to_owned(), false));
-        }
-
-        // Префикс и счётчик зависят от вида расходника: фотобарабаны (kind 2) →
-        // D-NNNN из drum_seq; картриджи (kind 1) → C-NNNN из cartridge_seq.
-        let (counter_name, prefix) = if kind_id == 2 {
-            ("drum_seq", 'D')
-        } else {
-            ("cartridge_seq", 'C')
+        let Some(custom) = code_override else {
+            return Err(AppError::Validation {
+                field: "code".to_string(),
+                message: "Введите код или выберите шаблон.".to_string(),
+            });
         };
-
-        // Auto-code: increment counter + retry loop (counter never lost on collision).
-        loop {
-            let seq = increment_counter_in_tx(tx, counter_name)?;
-            let candidate = format!("{prefix}-{seq:04}");
-            let exists: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM cartridges WHERE code = ?1 LIMIT 1)",
-                    params![&candidate],
-                    |r| r.get(0),
-                )
-                .map_err(map_rusqlite)?;
-            if !exists {
-                return Ok((candidate, true));
-            }
-            // On collision — increment counter again, the slot is not lost.
+        let exists: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM cartridges WHERE code = ?1 AND deleted_at_utc IS NULL LIMIT 1)",
+                params![custom],
+                |r| r.get(0),
+            )
+            .map_err(map_rusqlite)?;
+        if exists {
+            return Err(AppError::Conflict {
+                reason: format!("Картридж с кодом «{}» уже существует", custom),
+            });
         }
+        Ok((custom.to_owned(), false))
     }
 
     /// INSERT a new cartridge row inside a transaction.
@@ -1928,20 +1896,6 @@ impl CartridgeRepository for SqliteCartridgeRepository {
         })
     }
 
-    fn peek_next_code(&self, conn: &Self::Conn) -> Result<i64, AppError> {
-        conn.query_row(
-            "SELECT current_value + 1 FROM counters WHERE name = 'cartridge_seq'",
-            [],
-            |r| r.get::<_, i64>(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-                source_chain: "counter 'cartridge_seq' not seeded".to_string(),
-            },
-            other => map_rusqlite(other),
-        })
-    }
-
     fn delete_soft(
         &self,
         conn: &mut Self::Conn,
@@ -2076,56 +2030,83 @@ mod tests {
         id
     }
 
-    #[test]
-    fn assign_code_auto_increments() {
-        let (mut conn, _g) = fresh_conn();
-        let tx = conn.transaction().expect("tx");
-        let now = 1_700_000_000_i64;
-        let (code1, was_auto) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code1");
-        assert!(was_auto);
-        assert_eq!(code1, "C-0001");
-        tx.commit().expect("commit");
-
-        let tx2 = conn.transaction().expect("tx2");
-        let (code2, _) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx2, None, 1, now).expect("code2");
-        assert_eq!(code2, "C-0002");
-        tx2.commit().expect("commit");
-    }
+    // `assign_code_auto_increments` / `assign_code_drum_uses_d_prefix_and_separate_counter`
+    // DELETED (Phase 40.2 Plan 07, NUM-13): both tested the now-fully-retired
+    // per-kind sequence-counter server-side auto-generation mechanism —
+    // nothing to adapt them to, the behavior they proved no longer exists in
+    // any form (matches Plan 06's precedent of deleting, not adapting, tests
+    // for a retired mechanism).
 
     #[test]
-    fn assign_code_drum_uses_d_prefix_and_separate_counter() {
-        // UAT round 3 №4: фотобарабаны (kind 2) получают код D-NNNN из
-        // отдельного счётчика drum_seq, не конфликтуя с C-NNNN картриджей.
-        let (mut conn, _g) = fresh_conn();
-        let now = 1_700_000_000_i64;
-
-        let tx = conn.transaction().expect("tx");
-        let (c_code, _) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("cartridge");
-        let (d_code, _) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("drum");
-        let (d_code2, _) =
-            SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("drum2");
-        tx.commit().expect("commit");
-
-        assert_eq!(c_code, "C-0001");
-        assert_eq!(d_code, "D-0001");
-        assert_eq!(d_code2, "D-0002");
-    }
-
-    #[test]
-    fn assign_code_custom_roundtrip() {
+    fn assign_code_explicit_roundtrip() {
         let (mut conn, _g) = fresh_conn();
         let tx = conn.transaction().expect("tx");
         let now = 1_700_000_000_i64;
         let (code, was_auto) =
             SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("BARCODE-42"), 1, now)
-                .expect("custom code");
+                .expect("explicit code");
         assert!(!was_auto);
         assert_eq!(code, "BARCODE-42");
         tx.commit().expect("commit");
+    }
+
+    #[test]
+    fn assign_code_none_returns_validation_error() {
+        // NUM-13: no code to assign auto-generate to anymore — a missing
+        // code is a validation error, not a fallback to a counter.
+        let (mut conn, _g) = fresh_conn();
+        let tx = conn.transaction().expect("tx");
+        let now = 1_700_000_000_i64;
+        let err = SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now)
+            .expect_err("should require an explicit code");
+        assert!(
+            matches!(err, AppError::Validation { ref field, .. } if field == "code"),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn assign_code_live_duplicate_rejected_soft_deleted_not_counted() {
+        // NUM-09 space "в": the conflict check only sees LIVE rows, matching
+        // `idx_cartridges_code_live` (Plan 07 Task 1).
+        let (mut conn, _g) = fresh_conn();
+        let model_id = seed_model(&mut conn, "Pantum", "TL-5120X");
+        let repo = SqliteCartridgeRepository;
+        let now = 1_700_000_000_i64;
+
+        let first_id = {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-0042"), 1, now)
+                    .expect("first code");
+            let id = repo
+                .insert_cartridge_in_tx(&tx, &code, model_id, 1, None, None, None, None, now)
+                .expect("insert first");
+            tx.commit().expect("commit");
+            id
+        };
+
+        {
+            let tx = conn.transaction().expect("tx");
+            let err = SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-0042"), 1, now)
+                .expect_err("live duplicate must be rejected");
+            assert!(matches!(err, AppError::Conflict { .. }), "got {err:?}");
+        }
+
+        conn.execute(
+            "UPDATE cartridges SET deleted_at_utc = ?1 WHERE id = ?2",
+            params![now, first_id],
+        )
+        .expect("soft delete first");
+
+        {
+            let tx = conn.transaction().expect("tx");
+            let (code, _) =
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-0042"), 1, now)
+                    .expect("reuse after soft-delete must succeed");
+            assert_eq!(code, "C-0042");
+            tx.commit().expect("commit");
+        }
     }
 
     #[test]
@@ -2139,7 +2120,8 @@ mod tests {
         let id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9001"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(
                     &tx,
@@ -2177,7 +2159,8 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9002"), 1, now)
+                    .expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_id, 1, None, None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");
@@ -2202,10 +2185,12 @@ mod tests {
 
         // 2 картриджа модели A (один потом soft-delete) + 1 модели B.
         let mut a_ids = Vec::new();
-        for _ in 0..2 {
+        for i in 0..2 {
             let tx = conn.transaction().expect("tx");
+            let code_str = format!("C-9003{i}");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some(&code_str), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_a, 1, None, None, None, None, now)
                 .expect("insert");
@@ -2215,7 +2200,8 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9004"), 1, now)
+                    .expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_b, 1, None, None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");
@@ -2251,7 +2237,8 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9005"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(
                     &tx,
@@ -2302,7 +2289,8 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9006"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert");
@@ -2352,7 +2340,8 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9007"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert");
@@ -2403,7 +2392,8 @@ mod tests {
         let prev_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9008"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert prev");
@@ -2429,7 +2419,8 @@ mod tests {
         let new_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code2");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9009"), 1, now)
+                    .expect("code2");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert new");
@@ -2492,7 +2483,8 @@ mod tests {
         let prev_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("D-9001"), 2, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, drum_model, 1, Some(4), None, None, None, now)
                 .expect("insert prev drum");
@@ -2520,7 +2512,8 @@ mod tests {
         let new_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 2, now).expect("code2");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("D-9002"), 2, now)
+                    .expect("code2");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, drum_model, 1, Some(4), None, None, None, now)
                 .expect("insert new drum");
@@ -2563,7 +2556,8 @@ mod tests {
         let prev_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9010"), 1, now)
+                    .expect("code");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert prev cartridge");
@@ -2589,7 +2583,8 @@ mod tests {
         let new_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code2");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9011"), 1, now)
+                    .expect("code2");
             let id = repo
                 .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert new cartridge");
@@ -2766,7 +2761,8 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9012"), 1, now)
+                    .expect("code");
             repo.insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), None, None, None, now)
                 .expect("insert");
             tx.commit().expect("commit");
@@ -2829,11 +2825,13 @@ mod tests {
         {
             let tx = conn.transaction().expect("tx");
             let (code_a, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code a");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9013"), 1, now)
+                    .expect("code a");
             repo.insert_cartridge_in_tx(&tx, &code_a, model_a, 1, Some(1), None, None, None, now)
                 .expect("insert a");
             let (code_b, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code b");
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9014"), 1, now)
+                    .expect("code b");
             repo.insert_cartridge_in_tx(&tx, &code_b, model_b, 1, Some(1), None, None, None, now)
                 .expect("insert b");
             tx.commit().expect("commit");
@@ -2924,9 +2922,11 @@ mod tests {
         // rows — must never leak into any printer group in printer_model mode.
         {
             let tx = conn.transaction().expect("tx");
-            for _ in 0..3 {
+            for i in 0..3 {
+                let code_str = format!("C-9015{i}");
                 let (code, _) =
-                    SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, now).expect("code");
+                    SqliteCartridgeRepository::assign_code_in_tx(&tx, Some(&code_str), 1, now)
+                        .expect("code");
                 repo.insert_cartridge_in_tx(
                     &tx,
                     &code,
@@ -3049,7 +3049,7 @@ mod tests {
         let cart_id = {
             let tx = conn.transaction().expect("tx");
             let (code, _) =
-                SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, 1_700_000_000)
+                SqliteCartridgeRepository::assign_code_in_tx(&tx, Some("C-9016"), 1, 1_700_000_000)
                     .expect("assign code");
             tx.execute(
                 "INSERT INTO cartridges \

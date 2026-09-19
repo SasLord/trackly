@@ -5,6 +5,7 @@
 //! Only invented place/cartridge data ("Здание А", "1 этаж", "1-05") — never
 //! real organization data, per the project's hard privacy constraint.
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -56,9 +57,19 @@ fn seed_model(conn: &mut Connection) -> i64 {
     id
 }
 
+/// NUM-13 (Phase 40.2 Plan 07): server-side auto-generation is retired — an
+/// explicit, unique-per-process code must be supplied. This test file only
+/// cares about place-path shortening, not the code's value.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+
 fn create_cartridge(conn: &mut Connection, model_id: i64, place_id: Option<i64>) -> i64 {
+    let code_str = format!(
+        "C-TEST-{:04}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    );
     let tx = conn.transaction().expect("tx");
-    let (code, _) = SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, NOW).expect("code");
+    let (code, _) =
+        SqliteCartridgeRepository::assign_code_in_tx(&tx, Some(&code_str), 1, NOW).expect("code");
     let repo = SqliteCartridgeRepository;
     let id = repo
         .insert_cartridge_in_tx(&tx, &code, model_id, 1, Some(1), place_id, None, None, NOW)

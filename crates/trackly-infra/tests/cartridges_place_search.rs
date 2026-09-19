@@ -11,6 +11,7 @@
 //! Only invented place/cartridge data ("Здание А", "Корпус Б", "2 этаж") —
 //! never real organization data, per the project's hard privacy constraint.
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -34,6 +35,11 @@ fn new_place(parent_id: Option<i64>, kind: PlaceKind, name: &str) -> PlaceNew {
     }
 }
 
+/// NUM-13 (Phase 40.2 Plan 07): server-side auto-generation is retired — an
+/// explicit, unique-per-process code must be supplied. This test file only
+/// cares about place-path substring matching, not the code's value.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+
 /// Seed a cartridge model + one cartridge instance located at `place_id`
 /// (or unplaced when `None`). Returns the new cartridge's id.
 fn seed_cartridge(conn: &mut Connection, place_id: Option<i64>) -> i64 {
@@ -52,8 +58,12 @@ fn seed_cartridge(conn: &mut Connection, place_id: Option<i64>) -> i64 {
             NOW,
         )
         .expect("insert model");
-    let (code, _) =
-        SqliteCartridgeRepository::assign_code_in_tx(&tx, None, 1, NOW).expect("assign code");
+    let code_str = format!(
+        "C-TEST-{:04}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    );
+    let (code, _) = SqliteCartridgeRepository::assign_code_in_tx(&tx, Some(&code_str), 1, NOW)
+        .expect("assign code");
     let cart_id = repo
         .insert_cartridge_in_tx(&tx, &code, model_id, 1, None, place_id, None, None, NOW)
         .expect("insert cartridge");

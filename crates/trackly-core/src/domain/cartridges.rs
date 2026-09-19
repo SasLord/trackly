@@ -3,9 +3,11 @@
 //! NO serde::Serialize/Deserialize or specta::Type derives here — those live
 //! in the DTO layer in trackly-app. Only `#[derive(Debug, Clone, PartialEq, Eq)]`.
 //!
-//! See D-Code-01 (auto-code C-NNNNNN from cartridge_seq counter),
 //! D-Op-Transitions-01 (lifecycle transitions by status),
-//! D-LowStock-01 (low stock threshold from app_settings).
+//! D-LowStock-01 (low stock threshold from app_settings). Codes are always
+//! explicit (manual or `NumberTemplateService`-driven) since Phase 40.2
+//! Plan 07 (NUM-13) — the D-Code-01 server-side auto-numbering scheme this
+//! module used to reference was retired.
 
 use crate::error::AppError;
 
@@ -15,7 +17,8 @@ use crate::error::AppError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartridgeRow {
     pub id: i64,
-    /// Human-visible code in format C-NNNNNN (from cartridge_seq counter).
+    /// Human-visible code (e.g. "C-0042"/"D-0007") — always explicit
+    /// (manual entry or `NumberTemplateService`-produced), Phase 40.2 Plan 07.
     pub code: String,
     pub model_id: i64,
     /// Joined: cartridge_models.brand
@@ -69,12 +72,16 @@ pub struct CartridgeModelRow {
 
 /// Data needed to create a new cartridge instance.
 ///
-/// `code_override = None` → service increments cartridge_seq and formats C-NNNNNN.
-/// `code_override = Some(s)` → custom code (barcode from packaging), counter NOT incremented.
+/// Currently unused (dead code) — `CartridgeService::create` builds a
+/// cartridge row directly rather than through this struct. Phase 40.2 Plan
+/// 07 (NUM-13): `code_override = None` no longer means "auto-generate" (that
+/// server-side scheme was retired) — a code must always be explicit (manual
+/// entry or `NumberTemplateService`-produced).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CartridgeNew {
     pub model_id: i64,
-    /// None → auto-code from cartridge_seq; Some → custom code (conflict checked by repo).
+    /// Explicit code (manual or `NumberTemplateService`-produced); conflict
+    /// checked by the repo among LIVE rows only (NUM-09).
     pub code_override: Option<String>,
     /// Initial charge state (1=Полный, 2=Частичный, 3=Пустой); None = unset.
     pub state_id: Option<i64>,

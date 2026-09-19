@@ -10,7 +10,9 @@
 //! layer (`CartridgeService`) inside a single `WriterHandle::execute` closure.
 //!
 //! This trait covers the read-only port surface plus the simple soft-delete
-//! and counter peek operations.
+//! operation. Phase 40.2 Plan 07 (NUM-13) removed `peek_next_code` — codes
+//! are now always explicit (manual or template-driven, via
+//! `NumberTemplateService`), no server-side counter to peek.
 
 use crate::domain::cartridges::{CartridgeCounts, CartridgeFilter, CartridgeRow, Pagination};
 use crate::error::AppError;
@@ -34,10 +36,6 @@ pub trait CartridgeRepository {
 
     /// Aggregate counts for the status switch-bar (Все/На складе/В работе/На заправке/Списано).
     fn counts(&self, conn: &Self::Conn) -> Result<CartridgeCounts, AppError>;
-
-    /// Read-only peek at the next auto-code sequence value — `current_value + 1` of
-    /// `counters.cartridge_seq`. Does NOT increment. Used for UI preview only.
-    fn peek_next_code(&self, conn: &Self::Conn) -> Result<i64, AppError>;
 
     /// Soft-delete a cartridge with optimistic-lock via `version`.
     /// Sets `deleted_at_utc` and increments `version`. The service layer

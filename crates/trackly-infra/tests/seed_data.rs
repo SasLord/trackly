@@ -81,7 +81,9 @@ fn cartridge_statuses_seed_matches_d_migrations_01() {
 // is fully superseded by `number_templates_migration.rs::v041_drops_counters_table`
 // (asserts the table is gone) and `number_templates_migration.rs::v041_seeds_expected_templates_and_contexts`
 // (asserts the replacement `number_templates`/`number_template_contexts` seed
-// rows). The cartridge_seq/drum_seq half remains a real, tracked gap — those
-// two counters are still read via `cartridges_sqlite.rs::assign_code_in_tx`
-// (`increment_counter_in_tx`) against the same now-nonexistent table, which
-// is Plan 07's migration to fix (see that plan's own baseline notes).
+// rows). The cartridge_seq/drum_seq half — Plan 06's own tracked gap, since
+// those two counters were still read via `cartridges_sqlite.rs
+// ::assign_code_in_tx` against the same now-nonexistent table — is now
+// CLOSED by Plan 07 (NUM-13): `assign_code_in_tx` no longer reads/increments
+// any `counters` row at all (explicit code only); `increment_counter_in_tx`
+// itself was deleted as part of that same change.
