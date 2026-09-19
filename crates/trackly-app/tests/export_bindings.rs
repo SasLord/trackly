@@ -245,10 +245,6 @@ fn export_bindings_to_ui_writes_health_dto_and_app_error() {
         contents.contains("acts_counts"),
         "bindings.ts missing acts_counts command"
     );
-    assert!(
-        contents.contains("acts_peek_next_number"),
-        "bindings.ts missing acts_peek_next_number command"
-    );
 
     // Phase 3 Plan 04 — PDF + Organization + Templates
     assert!(

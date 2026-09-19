@@ -21,9 +21,8 @@ use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
 use crate::tauri_cmds::acts::{
     build_acts_counts, build_acts_create, build_acts_delete, build_acts_get, build_acts_list,
-    build_acts_peek_next_number, build_acts_render_pdf, build_acts_return, build_acts_search,
-    build_acts_suggest_person, build_acts_update, build_acts_update_return,
-    build_devices_render_acceptance_pdf,
+    build_acts_render_pdf, build_acts_return, build_acts_search, build_acts_suggest_person,
+    build_acts_update, build_acts_update_return, build_devices_render_acceptance_pdf,
 };
 
 #[derive(serde::Deserialize)]
@@ -237,20 +236,6 @@ pub async fn handler_counts(
     ))
 }
 
-pub async fn handler_peek_next_number(
-    State(ctx): State<AppCtx>,
-    session: Session,
-) -> Result<Json<i64>, AppErrorResponse> {
-    let identity = session_identity(&session)
-        .await
-        .map_err(AppErrorResponse::from)?;
-    Ok(Json(
-        build_acts_peek_next_number(&ctx, &identity)
-            .await
-            .map_err(AppErrorResponse::from)?,
-    ))
-}
-
 // Phase 16 (D-09/D-10): both handlers return the HTML string produced by
 // ActService::render_pdf/render_acceptance_pdf as `text/html; charset=utf-8`.
 // Printing/saving happens via the browser's print dialog (srcdoc iframe +
@@ -324,10 +309,6 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/acts_update", post(handler_update))
         .route("/api/v1/acts_update_return", post(handler_update_return))
         .route("/api/v1/acts_counts", post(handler_counts))
-        .route(
-            "/api/v1/acts_peek_next_number",
-            post(handler_peek_next_number),
-        )
         .route("/api/v1/acts_render_pdf", post(handler_render_pdf))
         .route(
             "/api/v1/devices_render_acceptance_pdf",

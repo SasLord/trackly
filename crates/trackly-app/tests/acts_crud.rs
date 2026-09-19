@@ -322,117 +322,20 @@ async fn number_of_deleted_act_is_free_to_reuse() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3c: peek_next_number (Phase 40.2 Plan 06 shim over NumberTemplateService)
-//
-// `act_service.rs::peek_next_number`'s doc-comment explains this is a
-// temporary compat shim resolving the CURRENTLY-REMEMBERED template for the
-// `act_create` context (NUM-08) — NOT a plain `MAX(number)+1` scan
-// independent of any template choice. Explicitly passing `template_id` on
-// every create (mirroring a UI user who keeps the same template selected)
-// keeps the context wired to it throughout — a create WITHOUT a
-// `template_id` would reset the context to "no template" (NUM-08), which
-// this test deliberately avoids so it can still assert the
-// gap-fill/free-on-delete behaviour end-to-end.
+// Test 3c (peek_next_number_frees_on_delete_of_last_act) REMOVED — Phase
+// 40.2 Plan 14 (NUM-13 final cleanup for acts): `act_service.rs::
+// peek_next_number()` was a temporary backward-compat shim for the act
+// number-field UI component that predated `NumberTemplateField`,
+// doc-commented in Plan 06 as removed once Plan 14 switches the UI to
+// `NumberTemplateField` + `number_templates_peek_next` directly. Now that
+// the switch has happened,
+// the shim method itself was deleted — this test exercised ONLY that shim
+// (`svc.peek_next_number()`), not any behaviour that still exists. The
+// underlying gap-fill/free-on-delete behaviour it asserted is still fully
+// covered by `NumberTemplateService`'s own test suite
+// (`number_template_service.rs`/`crates/trackly-app/tests/*numbering*.rs`),
+// which this shim always delegated to.
 // ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn peek_next_number_frees_on_delete_of_last_act() {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, _dir) = make_acts_service();
-
-        assert_eq!(
-            svc.peek_next_number().await.expect("peek empty"),
-            1,
-            "empty table → next number is 1 (V041-seeded '[X]' act_number template)"
-        );
-
-        // `ActService::number_templates` is `pub(crate)` — this test is an
-        // external integration crate, so it stands up its own
-        // `NumberTemplateService` against the SAME writer/readers (`svc`'s
-        // public fields) to fetch the V041-seeded `act_number` template id.
-        let number_templates = trackly_app::services::NumberTemplateService::new(
-            svc.writer.clone(),
-            svc.readers.clone(),
-            Arc::new(SystemClock),
-        );
-        let seeded = number_templates
-            .list(Some(
-                trackly_app::dto::number_template::TemplateTypeDto::ActNumber,
-            ))
-            .await
-            .expect("list act_number templates");
-        let template_id = seeded
-            .first()
-            .expect("V041 seeds one act_number template")
-            .id;
-
-        let ids = seed_devices(&svc.writer, 2).await;
-
-        let mut with_template = number_input("1");
-        with_template.template_id = Some(template_id);
-        let p1 = ActCreateDto {
-            number_input: with_template,
-            giver_name: "А".into(),
-            receiver_name: "Б".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id: ids[0],
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        };
-        let act1 = svc
-            .create(&Identity::trusted_admin(), p1)
-            .await
-            .expect("create act 1")
-            .expect_created("create act 1");
-        assert_eq!(act1.number_raw, "1");
-
-        let mut with_template2 = number_input("2");
-        with_template2.template_id = Some(template_id);
-        let p2 = ActCreateDto {
-            number_input: with_template2,
-            giver_name: "В".into(),
-            receiver_name: "Г".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id: ids[1],
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        };
-        let act2 = svc
-            .create(&Identity::trusted_admin(), p2)
-            .await
-            .expect("create act 2")
-            .expect_created("create act 2");
-        assert_eq!(act2.number_raw, "2");
-
-        assert_eq!(
-            svc.peek_next_number().await.expect("peek after two"),
-            3,
-            "next number after 2 live acts is 3"
-        );
-
-        svc.delete_soft(act2.id, act2.version)
-            .await
-            .expect("soft-delete act 2");
-
-        assert_eq!(
-            svc.peek_next_number().await.expect("peek after delete"),
-            2,
-            "deleting the last (highest) act number frees it for the hint"
-        );
-    })
-    .await
-    .expect("peek-frees budget");
-}
 
 // ---------------------------------------------------------------------------
 // Test 4: rollback on invalid device id (no orphaned acts/items/audit rows)

@@ -54,7 +54,6 @@ pub fn builder() -> Builder<tauri::Wry> {
         // Phase 22 Plan 03 — ACT-03 return-act edit (delta reconciliation)
         crate::tauri_cmds::acts::acts_update_return,
         crate::tauri_cmds::acts::acts_counts,
-        crate::tauri_cmds::acts::acts_peek_next_number,
         // Phase 3 Plan 04 — PDF render + Organization + Templates
         crate::tauri_cmds::acts::acts_render_pdf,
         crate::tauri_cmds::acts::devices_render_acceptance_pdf,

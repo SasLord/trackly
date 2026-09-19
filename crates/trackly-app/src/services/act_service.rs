@@ -2,7 +2,7 @@
 //!
 //! Phase 3 plan 02 scope:
 //!   - `create` — handover only (return lifecycle is plan 03)
-//!   - `get` / `list` / `counts` / `peek_next_number`
+//!   - `get` / `list` / `counts`
 //!   - `delete_soft` — minimal stub (full undo via audit_log lives in plan 03)
 //!
 //! Single-writer discipline: every mutation goes through
@@ -2863,41 +2863,6 @@ impl ActService {
         .map_err(|e| AppError::Internal {
             source_chain: format!("spawn_blocking: {e}"),
         })?
-    }
-
-    /// Temporary backward-compatibility shim (Phase 40.2 Plan 06) for the
-    /// not-yet-replaced `ActNumberField.svelte` (Plan 14 removes both this
-    /// method and the `acts_peek_next_number` command entirely, switching
-    /// the UI to the Group B `number_templates_peek_next` command
-    /// directly). Same public name/return type (`Result<i64, AppError>`) as
-    /// before the migration, but the computation now goes through
-    /// `NumberTemplateService` instead of the removed
-    /// `counters`/`next_act_number_from_max` scheme.
-    ///
-    /// `get_context(ActCreate)` resolves the currently-remembered template
-    /// (NUM-08; V041 seeds a default `act_number` template for this
-    /// context, so `None` only happens if an admin explicitly deletes it).
-    /// `peek_next`'s `rendered` string is parsed back into an `i64` — this
-    /// only succeeds for a plain numeric mask like the seeded `[X]`
-    /// default; ANY templated mask with a prefix/suffix (e.g.
-    /// `"2026/[XXXX]"`) degrades to `0`, same as the no-template case. `0`
-    /// is a deliberately "clearly unavailable" sentinel the not-yet-updated
-    /// UI already renders as just one more integer, never a hard error —
-    /// this shim exists ONLY to keep the pre-Plan-14 UI compiling, not as a
-    /// long-term contract (doc-commented per the plan's explicit
-    /// instruction to record this choice).
-    pub async fn peek_next_number(&self) -> Result<i64, AppError> {
-        match self
-            .number_templates
-            .get_context(TemplateContextDto::ActCreate)
-            .await?
-        {
-            Some(template_id) => {
-                let next = self.number_templates.peek_next(template_id).await?;
-                Ok(next.rendered.parse::<i64>().unwrap_or(0))
-            }
-            None => Ok(0),
-        }
     }
 
     // -----------------------------------------------------------------------

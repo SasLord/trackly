@@ -14,6 +14,7 @@ import type {
   ActFilter,
   ActListResponse,
   ActReturnDto,
+  ActSaveOutcome,
   ActsCountsDto,
   ActUpdateDto,
   ActUpdateReturnDto,
@@ -26,10 +27,16 @@ export const acts = {
 
   get: (id: number) => apiCall<ActDto>('acts_get', { id }),
 
-  create: (payload: ActCreateDto) => apiCall<ActDto>('acts_create', { payload }),
+  // Phase 40.2 Plan 06/14 (NUM-06..14): `acts_create`'s real return type has
+  // been `ActSaveOutcome` since Plan 06 (D-01 confirmation chain —
+  // occupied/mismatch/script-mix); Plan 14 widens this wrapper to match now
+  // that ActFormBody.svelte actually handles `NeedsConfirmation`.
+  create: (payload: ActCreateDto) => apiCall<ActSaveOutcome>('acts_create', { payload }),
 
-  /** Phase 19 Plan 04 — редактирование существующего акта (ACT-02). */
-  update: (payload: ActUpdateDto) => apiCall<ActDto>('acts_update', { payload }),
+  /** Phase 19 Plan 04 — редактирование существующего акта (ACT-02).
+   *  Phase 40.2 Plan 06/14: return type widened to `ActSaveOutcome`
+   *  (occupied/script-mix chain, D-05 — never mismatch on edit). */
+  update: (payload: ActUpdateDto) => apiCall<ActSaveOutcome>('acts_update', { payload }),
 
   /** Phase 22 — редактирование существующего возврата (ACT-03). */
   updateReturn: (payload: ActUpdateReturnDto) => apiCall<ActDto>('acts_update_return', { payload }),
@@ -47,8 +54,6 @@ export const acts = {
   delete: (id: number, version: number) => apiCall<number[]>('acts_delete', { id, version }),
 
   counts: () => apiCall<ActsCountsDto>('acts_counts'),
-
-  peekNextNumber: () => apiCall<number>('acts_peek_next_number'),
 
   /** Phase 16 — render handover акта, возвращает HTML-документ строкой. */
   renderPdf: (actId: number): Promise<string> => apiCall<string>('acts_render_pdf', { actId }),

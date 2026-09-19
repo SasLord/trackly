@@ -117,11 +117,6 @@ pub async fn build_acts_counts(ctx: &AppCtx, caller: &Identity) -> Result<ActsCo
     ctx.acts.counts().await
 }
 
-pub async fn build_acts_peek_next_number(ctx: &AppCtx, caller: &Identity) -> Result<i64, AppError> {
-    authorize(caller, &Action::ReadData)?;
-    ctx.acts.peek_next_number().await
-}
-
 /// Мутация (PDF generation tied to act): требует `caller` с правом `MutateActs`.
 ///
 /// Phase 16 (D-09/D-10): возвращает HTML-строку, не PDF bytes —
@@ -257,14 +252,6 @@ pub async fn acts_update_return(
 pub async fn acts_counts(state: tauri::State<'_, AppCtx>) -> Result<ActsCountsDto, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_counts(state.inner(), &caller).await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn acts_peek_next_number(state: tauri::State<'_, AppCtx>) -> Result<i32, AppError> {
-    let caller = resolve_tauri_identity(state.inner()).await?;
-    let next = build_acts_peek_next_number(state.inner(), &caller).await?;
-    Ok(next as i32)
 }
 
 #[tauri::command]
