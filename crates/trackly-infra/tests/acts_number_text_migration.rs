@@ -125,13 +125,14 @@ fn migrates_integer_number_to_text_preserving_ids_and_unique_index() {
 
     // (a) + (b): number is now TEXT storage holding the exact original
     // digits; id / sub_number / parent_act_id survive unchanged.
+    type ActNumberRow = (i64, String, String, Option<i64>, Option<i64>);
     let mut stmt = conn
         .prepare(
             "SELECT id, typeof(number), number, sub_number, parent_act_id \
              FROM acts ORDER BY id",
         )
         .expect("prepare");
-    let rows: Vec<(i64, String, String, Option<i64>, Option<i64>)> = stmt
+    let rows: Vec<ActNumberRow> = stmt
         .query_map([], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
         })

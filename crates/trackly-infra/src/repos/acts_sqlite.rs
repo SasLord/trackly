@@ -66,6 +66,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
     };
     Ok(ActRow {
         id: row.get(0)?,
+        // Phase 40.2 (NUM-14): `number` is TEXT (V042) — read as String.
         number: row.get(1)?,
         sub_number: row.get(2)?,
         parent_act_id: row.get(3)?,
@@ -81,6 +82,7 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
         deleted_at_utc: row.get(13)?,
         version: row.get(14)?,
         full_path: row.get(15)?,
+        // Phase 40.2 (NUM-14): parent's `number` is also TEXT now.
         parent_number: row.get(16)?,
         sibling_return_count: row.get(17)?,
         handover_date_utc: row.get(18)?,
@@ -439,41 +441,6 @@ impl SqliteActRepository {
     }
 }
 
-/// Atomically increment a named counter and return its new value.
-///
-/// MUST be called inside a `BEGIN IMMEDIATE` transaction (which `Connection::transaction`
-/// supplies by default in rusqlite). Combined with the single-writer pattern
-/// (D-WriterChannel-01) this guarantees no two callers see the same number.
-pub fn increment_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
-    tx.query_row(
-        "UPDATE counters SET current_value = current_value + 1 \
-         WHERE name = ?1 RETURNING current_value",
-        params![name],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-            source_chain: format!("counter '{name}' not seeded"),
-        },
-        other => map_rusqlite(other),
-    })
-}
-
-/// Read-only peek at a named counter's current value. Does NOT increment.
-pub fn peek_counter(conn: &Connection, name: &str) -> Result<i64, AppError> {
-    conn.query_row(
-        "SELECT current_value FROM counters WHERE name = ?1",
-        params![name],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-            source_chain: format!("counter '{name}' not seeded"),
-        },
-        other => map_rusqlite(other),
-    })
-}
-
 /// `SELECT COALESCE(MAX(sub_number), 0) + 1` для возврат-актов того же
 /// родителя. Используется в `do_return` per D-Numbering-01:
 /// первый возврат получает sub_number=1, второй — 2, и т.д.
@@ -549,48 +516,6 @@ pub fn recompute_parent_archived(
     )
     .map_err(map_rusqlite)?;
     Ok(archived == 1)
-}
-
-/// Peek a named counter inside an open transaction.
-pub fn peek_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
-    tx.query_row(
-        "SELECT current_value FROM counters WHERE name = ?1",
-        params![name],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
-            source_chain: format!("counter '{name}' not seeded"),
-        },
-        other => map_rusqlite(other),
-    })
-}
-
-/// Source of truth for the act auto-number / "Следующий" hint (квик-задача
-/// 260904-x7s, replaces `counters.act_number` on the acts-numbering path).
-///
-/// `MAX(number) + 1` among LIVE acts only (`deleted_at_utc IS NULL`), with a
-/// fallback of `1` for an empty/all-deleted table. Deleting the
-/// highest-numbered act frees its number for reuse — the monotonic
-/// `counters` table intentionally never applied here again.
-///
-/// The `counters` table and `increment_counter_in_tx` / `peek_counter` /
-/// `peek_counter_in_tx` are NOT removed — other counters (e.g.
-/// `cartridge_seq`) still rely on them.
-///
-/// `Transaction` derefs to `Connection` (rusqlite), so a single
-/// `fn(conn: &Connection)` transparently accepts both `&conn` (readers,
-/// `peek_next_number`) and `&tx` (write path). Callers on the auto-number
-/// path in `ActService::create` that need race-freedom for the following
-/// `INSERT` MUST call this with `&tx` from the SAME write transaction as the
-/// insert — never with a reader connection.
-pub fn next_act_number_from_max(conn: &Connection) -> Result<i64, AppError> {
-    conn.query_row(
-        "SELECT COALESCE(MAX(number), 0) + 1 FROM acts WHERE deleted_at_utc IS NULL",
-        [],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(map_rusqlite)
 }
 
 impl ActRepository for SqliteActRepository {
@@ -674,10 +599,6 @@ impl ActRepository for SqliteActRepository {
         self.soft_delete_in_tx(&tx, id, version, now_utc)?;
         tx.commit().map_err(map_rusqlite)?;
         Ok(())
-    }
-
-    fn peek_next_number(&self, conn: &Self::Conn) -> Result<i64, AppError> {
-        next_act_number_from_max(conn)
     }
 
     fn counts(&self, conn: &Self::Conn) -> Result<ActCounts, AppError> {
@@ -785,7 +706,7 @@ mod tests {
 
         let row = ActRow {
             id: 0,
-            number: 1,
+            number: "1".to_string(),
             sub_number: None,
             parent_act_id: None,
             act_type: ActType::Handover,
@@ -818,75 +739,5 @@ mod tests {
         assert_eq!(back.notes.as_deref(), Some("test"));
         assert_eq!(back.deadline_utc, Some(now + 86_400));
         assert!(!back.archived);
-    }
-
-    #[test]
-    fn increment_counter_returns_one_first() {
-        let (mut conn, _g) = fresh_conn();
-        let tx = conn.transaction().expect("tx");
-        let n = increment_counter_in_tx(&tx, "act_number").expect("inc");
-        assert_eq!(n, 1);
-        let n2 = increment_counter_in_tx(&tx, "act_number").expect("inc2");
-        assert_eq!(n2, 2);
-        tx.commit().expect("commit");
-        // peek does not increment
-        let peeked = peek_counter(&conn, "act_number").expect("peek");
-        assert_eq!(peeked, 2);
-    }
-
-    #[test]
-    fn next_act_number_from_max_empty_table_is_one() {
-        let (conn, _g) = fresh_conn();
-        let next = next_act_number_from_max(&conn).expect("next");
-        assert_eq!(next, 1);
-    }
-
-    #[test]
-    fn next_act_number_from_max_ignores_soft_deleted() {
-        let (mut conn, _g) = fresh_conn();
-        let now = 1_700_000_000_i64;
-        let repo = SqliteActRepository;
-
-        let mk_row = |number: i64| ActRow {
-            id: 0,
-            number,
-            sub_number: None,
-            parent_act_id: None,
-            act_type: ActType::Handover,
-            giver_name: "Иванов".into(),
-            receiver_name: "Петров".into(),
-            place_id: None,
-            full_path: None,
-            place_path_snapshot: None,
-            notes: None,
-            deadline_utc: None,
-            archived: false,
-            created_at_utc: now,
-            updated_at_utc: now,
-            deleted_at_utc: None,
-            version: 1,
-            handover_date_utc: now,
-            parent_number: None,
-            sibling_return_count: None,
-        };
-
-        {
-            let tx = conn.transaction().expect("tx");
-            repo.insert_act_in_tx(&tx, &mk_row(5)).expect("insert 5");
-            repo.insert_act_in_tx(&tx, &mk_row(9)).expect("insert 9");
-            tx.commit().expect("commit");
-        }
-
-        let next = next_act_number_from_max(&conn).expect("next after inserts");
-        assert_eq!(next, 10);
-
-        conn.execute(
-            "UPDATE acts SET deleted_at_utc = ?1 WHERE number = 9",
-            params![now],
-        )
-        .expect("soft-delete number 9");
-
-        let next_after_delete = next_act_number_from_max(&conn).expect("next after soft-delete");
-        assert_eq!(next_after_delete, 6);
     }
 }

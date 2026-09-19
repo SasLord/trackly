@@ -10,7 +10,9 @@
 //! layer (`ActService`) inside a single `WriterHandle::execute` closure.
 //!
 //! This trait covers the read-only port surface plus the simple soft-delete
-//! and counter peek operations.
+//! operation. Phase 40.2 (NUM-13): the old `peek_next_number`
+//! counter-peek method was removed — act numbers are now free TEXT values
+//! resolved via `NumberTemplateService`, not a `counters` row.
 
 use crate::domain::acts::{ActCounts, ActFilter, ActRow, Pagination};
 use crate::error::AppError;
@@ -44,10 +46,6 @@ pub trait ActRepository {
         version: i64,
         now_utc: i64,
     ) -> Result<(), AppError>;
-
-    /// Read-only peek at the next auto-number — `current_value + 1` of
-    /// `counters.act_number`. Does NOT increment.
-    fn peek_next_number(&self, conn: &Self::Conn) -> Result<i64, AppError>;
 
     /// Counts for the switch-bar tabs (Акты / Возвраты / Архив).
     fn counts(&self, conn: &Self::Conn) -> Result<ActCounts, AppError>;

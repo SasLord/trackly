@@ -590,13 +590,16 @@ fn fetch_candidate_rows(
             let rows = stmt
                 .query_map([], |r| {
                     let id: i64 = r.get(0)?;
-                    let number: i64 = r.get(1)?;
+                    // Phase 40.2 Plan 06 (NUM-14): `acts.number` is TEXT
+                    // (V042) — read directly as String, no `.to_string()`
+                    // conversion needed.
+                    let number: String = r.get(1)?;
                     let act_type: String = r.get(2)?;
                     let giver_name: String = r.get(3)?;
                     let receiver_name: String = r.get(4)?;
                     Ok(CandidateRow {
                         id,
-                        raw_value: number.to_string(),
+                        raw_value: number,
                         record: OccupyingRecordDto {
                             kind: "act".to_string(),
                             title: if act_type == "return" {

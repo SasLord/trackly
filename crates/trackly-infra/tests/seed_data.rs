@@ -72,41 +72,16 @@ fn cartridge_statuses_seed_matches_d_migrations_01() {
     );
 }
 
-#[test]
-fn counters_seeded_with_act_number_and_cartridge_seq() {
-    let (conn, _guard) = test_db();
-    let mut stmt = conn
-        .prepare("SELECT name FROM counters ORDER BY name")
-        .expect("prepare");
-    let names: Vec<String> = stmt
-        .query_map([], |r| r.get::<_, String>(0))
-        .expect("query_map")
-        .collect::<Result<Vec<_>, _>>()
-        .expect("collect");
-    assert_eq!(
-        names,
-        vec![
-            "act_number".to_string(),
-            "cartridge_seq".to_string(),
-            "drum_seq".to_string(), // V017: фотобарабаны (D-NNNNNN)
-        ]
-    );
-
-    // Both counters start at 0.
-    let act_value: i64 = conn
-        .query_row(
-            "SELECT current_value FROM counters WHERE name = 'act_number'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("read act_number");
-    assert_eq!(act_value, 0);
-    let cart_value: i64 = conn
-        .query_row(
-            "SELECT current_value FROM counters WHERE name = 'cartridge_seq'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("read cartridge_seq");
-    assert_eq!(cart_value, 0);
-}
+// `counters_seeded_with_act_number_and_cartridge_seq` (asserted the
+// `counters` table was seeded with `act_number`/`cartridge_seq`/`drum_seq`)
+// was removed here (Phase 40.2 Plan 06, NUM-13/NUM-14): `V041__number_templates.sql`
+// (Plan 01) already unconditionally `DROP TABLE counters` — the table this
+// test queried has not existed since V041, for ANY of its three counters,
+// not just `act_number`. The act-numbering half of this obsolete assertion
+// is fully superseded by `number_templates_migration.rs::v041_drops_counters_table`
+// (asserts the table is gone) and `number_templates_migration.rs::v041_seeds_expected_templates_and_contexts`
+// (asserts the replacement `number_templates`/`number_template_contexts` seed
+// rows). The cartridge_seq/drum_seq half remains a real, tracked gap — those
+// two counters are still read via `cartridges_sqlite.rs::assign_code_in_tx`
+// (`increment_counter_in_tx`) against the same now-nonexistent table, which
+// is Plan 07's migration to fix (see that plan's own baseline notes).

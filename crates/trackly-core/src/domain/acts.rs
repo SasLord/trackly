@@ -57,7 +57,7 @@ impl ActType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActNew {
     pub act_type: ActType,
-    pub number_override: Option<i64>,
+    pub number_override: Option<String>,
     /// Только для `ActType::Return`. Должно быть `None` для handover.
     pub parent_act_id: Option<i64>,
     pub giver_name: String,
@@ -123,8 +123,10 @@ pub struct ActPatch {
     /// Phase 19 (D-01/D-04): explicit override of the act's handover date
     /// («Когда отдали»). `None` = no change requested.
     pub handover_date_utc: Option<i64>,
-    /// Phase 19 (D-04): explicit № override. `None` = no rename requested.
-    pub number: Option<i64>,
+    /// Phase 19 (D-04); Phase 40.2 (NUM-14): explicit № override, now a free
+    /// TEXT value (templated/hand-typed numbers, not just integers).
+    /// `None` = no rename requested.
+    pub number: Option<String>,
     /// CAS token — always required (mirrors `soft_delete_in_tx`'s `version`
     /// argument), never `Option`. Compared against `acts.version` in
     /// `update_act_header_in_tx`'s `WHERE` clause.
@@ -135,7 +137,9 @@ pub struct ActPatch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActRow {
     pub id: i64,
-    pub number: i64,
+    /// Phase 40.2 (NUM-14): free TEXT value — templated/hand-typed numbers,
+    /// no longer a plain incrementing integer (V042 migration).
+    pub number: String,
     pub sub_number: Option<i64>,
     pub parent_act_id: Option<i64>,
     pub act_type: ActType,
@@ -160,7 +164,7 @@ pub struct ActRow {
     pub handover_date_utc: i64,
     /// Parent act's `number` joined via LEFT JOIN acts p ON p.id = a.parent_act_id.
     /// `None` for handover. Used by display-rule «в»/«в1»/«в2».
-    pub parent_number: Option<i64>,
+    pub parent_number: Option<String>,
     /// Count of sibling return acts (same parent_act_id, not deleted).
     /// Used by display-rule to decide whether to suppress `sub_number`
     /// suffix («42в» vs «42в1»).

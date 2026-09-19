@@ -21,7 +21,6 @@ use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
 
 use crate::error_conversions::map_rusqlite;
-use crate::repos::acts_sqlite::increment_counter_in_tx;
 use crate::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use crate::repos::place_movements_sqlite::SqlitePlaceMovementsRepository;
 use crate::repos::place_path_settings::read_path_display_separators;
@@ -151,6 +150,36 @@ fn map_row_with_short_path<'a>(
         });
         Ok(cartridge)
     }
+}
+
+/// Atomically increment a named counter and return its new value.
+///
+/// MUST be called inside a `BEGIN IMMEDIATE` transaction (which
+/// `Connection::transaction` supplies by default in rusqlite). Combined with
+/// the single-writer pattern (D-WriterChannel-01) this guarantees no two
+/// callers see the same number.
+///
+/// Phase 40.2 Plan 06 (NUM-13): this function used to live in
+/// `acts_sqlite.rs` alongside `increment_counter_in_tx`'s two `counters`
+/// siblings (`peek_counter`/`peek_counter_in_tx`, both now deleted — acts no
+/// longer use the `counters` table at all). It was moved HERE because
+/// `cartridge_seq`/`drum_seq` (this file's `assign_code_in_tx`) are its only
+/// remaining callers — acts numbering is fully migrated to
+/// `NumberTemplateService`. Plan 07 (cartridges) is expected to retire this
+/// function too once cartridges/drums migrate off `counters` the same way.
+pub fn increment_counter_in_tx(tx: &Transaction<'_>, name: &str) -> Result<i64, AppError> {
+    tx.query_row(
+        "UPDATE counters SET current_value = current_value + 1 \
+         WHERE name = ?1 RETURNING current_value",
+        params![name],
+        |r| r.get::<_, i64>(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => AppError::Internal {
+            source_chain: format!("counter '{name}' not seeded"),
+        },
+        other => map_rusqlite(other),
+    })
 }
 
 impl SqliteCartridgeRepository {

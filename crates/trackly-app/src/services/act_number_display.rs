@@ -19,12 +19,12 @@ use crate::dto::act::format_act_number;
 /// Soft-degraded act_number resolution (never `.expect()`/`?` — an act row
 /// being gone must not crash the whole timeline/report read).
 ///
-/// CR-02: `acts.number` is `INTEGER NOT NULL` (V004__acts.sql) — read as
-/// `i64` and format afterward. Reading it as `String` failed with
-/// `InvalidColumnType` on every single row (never just a missing act), and
-/// `.ok()` silently swallowed that real error, so this was permanently
-/// `None`. The soft-degrade below is kept for a genuinely missing act row
-/// (`.optional()`/`.ok()`), not to mask a type mismatch.
+/// Phase 40.2 (NUM-14, Plan 06): `acts.number` is now `TEXT NOT NULL` (V042
+/// rebuild) — read directly as `String`. Historically (CR-02, pre-Plan-06)
+/// the column was `INTEGER NOT NULL` and had to be read as `i64` first;
+/// that distinction no longer applies. The soft-degrade below is kept for a
+/// genuinely missing act row (`.optional()`/`.ok()`), not to mask a type
+/// mismatch.
 ///
 /// Routes the raw columns through the SAME query shape as
 /// `SqliteActRepository::SELECT_ACTS` (acts_sqlite.rs) — `act_type`,
@@ -46,10 +46,10 @@ pub fn resolve_movement_act_number(
               WHERE a.id = ?1",
             params![act_id],
             |r| {
-                let number: i64 = r.get(0)?;
+                let number: String = r.get(0)?;
                 let sub_number: Option<i64> = r.get(1)?;
                 let act_type_sql: String = r.get(2)?;
-                let parent_number: Option<i64> = r.get(3)?;
+                let parent_number: Option<String> = r.get(3)?;
                 let sibling_return_count: Option<i64> = r.get(4)?;
                 // Same soft-degrade contract as `acts_sqlite.rs::from_row`:
                 // an unexpected value is an `Err` here, absorbed into `None`
@@ -67,9 +67,9 @@ pub fn resolve_movement_act_number(
                 };
                 Ok(format_act_number(
                     act_type,
-                    number,
+                    &number,
                     sub_number,
-                    parent_number,
+                    parent_number.as_deref(),
                     sibling_return_count,
                 ))
             },
