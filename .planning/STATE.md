@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-19T09:58:57.241Z"
+last_updated: "2026-09-19T10:11:20.398Z"
 last_activity: 2026-09-19
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 87
+  completed_plans: 88
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 11 of 15
+Plan: 12 of 15
 Status: Ready to execute
 Последнее действие: 40.2-08-PLAN.md (устройства/принтеры на NumberTemplateService) завершён —
 V044 миграция (дедуп + Cyrillic-aware partial unique index), occupied+script-mix цепочка в
@@ -405,6 +405,7 @@ Last activity: 2026-09-19
 | Phase 40.2 P07 | 55min | 3 tasks | 23 files |
 | Phase 40.2 P08 | ~3h | 3 tasks | 23 files |
 | Phase 40.2 P10 | 65min | 2 tasks | 4 files |
+| Phase 40.2 P12 | 90min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -999,6 +1000,7 @@ Recent decisions affecting current work:
 - [Phase ?]: AppError.details (not the Display-prefixed .message) is the correct source for exact server error text in number-templates UI
 - [Phase ?]: Number-template settings screen forces autofocus onto the Маска field via post-mount setTimeout(0), overriding Modal's own first-focusable-element behavior
 - [Phase ?]: Delete-template confirmation aggregates 5 number_template_contexts_get calls client-side (D-12) before opening the confirm dialog, no new backend endpoint
+- [Phase 40.2]: Plan 12: Task1+Task2 объединены в один коммит; showingAlt — derived, не отдельный $state; occupiedLineText для акта использует title вместо отсутствующей в DTO даты
 
 ### Pending Todos
 
@@ -1190,8 +1192,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-19T09:58:57.231Z
-Stopped at: Completed 40.2-08-PLAN.md
+Last session: 2026-09-19T10:11:20.388Z
+Stopped at: Completed 40.2-12-PLAN.md
 Resume file: None
 
 None
