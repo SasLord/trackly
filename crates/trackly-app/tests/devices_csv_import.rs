@@ -376,6 +376,87 @@ async fn import_commit_double_take_fails() {
     .expect("timeout");
 }
 
+/// Phase 40.2 Plan 08 (NUM-16, RESEARCH Pitfall 5) — SPEC's literal
+/// acceptance scenario: 5-row file, row 3 duplicates a number already in
+/// the DB, row 5 duplicates row 1's number (an in-FILE duplicate, not a DB
+/// one). Expected: rows 1/2/4 inserted (3 successes), exactly 2 errors with
+/// TWO DIFFERENT texts — row 3 gets the plain "занят в БД" text (no
+/// "повтор" suffix), row 5 gets the "повтор строки N" suffix pointing at
+/// the EARLIEST file row that used the number, never at the DB.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_num16_db_duplicate_vs_in_file_duplicate() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        // Fictional inventory number already occupied in the DB (privacy —
+        // CLAUDE.md: no real organization data).
+        svc.create(trackly_app::dto::device::DeviceNew {
+            type_id: 1,
+            name: "Уже в базе".to_string(),
+            inventory_no: Some("ОРГ-00-000005".to_string()),
+            serial_no: None,
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            place_id: None,
+            status_id: 1,
+        })
+        .await
+        .expect("seed DB occupant")
+        .expect_created("seed DB occupant");
+
+        let csv = "Наименование,Инвентарный №\n\
+                    Устройство 1,ОРГ-00-000001\n\
+                    Устройство 2,ОРГ-00-000002\n\
+                    Устройство 3,ОРГ-00-000005\n\
+                    Устройство 4,ОРГ-00-000004\n\
+                    Устройство 5,ОРГ-00-000001\n";
+        let bytes = csv.as_bytes().to_vec();
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should not fail entirely");
+
+        assert_eq!(
+            report.inserted, 3,
+            "rows 1/2/4 must be inserted, got {} (failed: {:?})",
+            report.inserted, report.failed
+        );
+        assert_eq!(
+            report.failed.len(),
+            2,
+            "exactly 2 rows must fail: {:?}",
+            report.failed
+        );
+
+        let row3 = report
+            .failed
+            .iter()
+            .find(|e| e.row_index == 3)
+            .unwrap_or_else(|| panic!("row 3 must be in failed: {:?}", report.failed));
+        assert_eq!(
+            row3.error_message, "номер уже занят — ОРГ-00-000005",
+            "row 3 (DB duplicate) must NOT have a 'повтор строки' suffix"
+        );
+
+        let row5 = report
+            .failed
+            .iter()
+            .find(|e| e.row_index == 5)
+            .unwrap_or_else(|| panic!("row 5 must be in failed: {:?}", report.failed));
+        assert_eq!(
+            row5.error_message, "номер уже занят — ОРГ-00-000001 (повтор строки 1)",
+            "row 5 (in-file duplicate of row 1) must point at row 1, not the DB"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn import_cyrillic_round_trip() {
     tokio::time::timeout(Duration::from_secs(30), async {
