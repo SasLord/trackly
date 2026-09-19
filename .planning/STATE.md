@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-19T04:57:26.164Z"
+last_updated: "2026-09-19T09:38:20.998Z"
 last_activity: 2026-09-19
 progress:
   total_phases: 11
@@ -27,7 +27,14 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 Phase: 40.2 (inventory-number-templates) — EXECUTING
 Plan: 10 of 15
 Status: Ready to execute
-Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
+Последнее действие: 40.2-08-PLAN.md (устройства/принтеры на NumberTemplateService) завершён —
+V044 миграция (дедуп + Cyrillic-aware partial unique index), occupied+script-mix цепочка в
+create/bulk_create/update, create_single_with_number_check (новый интерактивный create),
+CSV-импорт различает «занят в БД» vs «повтор строки» (NUM-16). NUM-09/NUM-15/NUM-16 закрыты
+end-to-end. Plan 08 выполнен вне очереди (волна 5, параллельно с уже завершёнными 09/11) —
+план 10 остаётся следующим невыполненным по номеру (авто-инкремент state.advance-plan скорректирован
+вручную с 11 на 10, т.к. 09/11 уже были готовы до этого плана).
+Последнее действие (до 08): 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
 раунд-2 фикс после провала живой UAT (PlaceEntityViewModal форвардит точное старое/новое место
 записи, а не только текущий просматриваемый корень), approved на повторной живой проверке
@@ -396,6 +403,7 @@ Last activity: 2026-09-19
 | Phase 40.2 P05 | 50min | 3 tasks | 15 files |
 | Phase 40.2 P06 | ~5h | 4 tasks | 42 files |
 | Phase 40.2 P07 | 55min | 3 tasks | 23 files |
+| Phase 40.2 P08 | ~3h | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -985,6 +993,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 40.2-06: ActUpdateDto.number_input uses a narrower ActNumberEditInput type (no template_id/confirm_mismatch) to make D-05 structural
 - [Phase ?]: 40.2-07: occupied-check pool всегда TemplateType::CartridgeCode для обоих kind (картридж/фотобарабан) — общий физический столбец cartridges.code (NUM-09 'в'); только NUM-08 context-memory (remember_context) различает CartridgeCreate/DrumCreate по kind_id
 - [Phase ?]: 40.2-07: NUM-13 отмечена завершённой в REQUIREMENTS.md (акты+картриджи+фотобарабаны — все три счётчика из формулировки требования retired); NUM-09 оставлена Pending — пространство устройства+принтеры ещё не закрыто (План 08)
+- [Phase 40.2]: V044: pure-SQL Cyrillic case-fold (LOWER + 33 REPLACE pairs), not a Rust migration or custom SQLite scalar function — SQLite built-in LOWER() only folds ASCII (empirically verified); a custom function would need registration on every connection before migrations run — pure SQL is safer for a one-time data-critical migration
+- [Phase 40.2]: devices/printers script-mix confirmation only on update()/create_single_with_number_check(); create()/bulk_create() enforce occupied unconditionally but silently accept script-mix (no interactive UI on those call sites)
 
 ### Pending Todos
 
@@ -1176,8 +1186,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-19T04:57:26.154Z
-Stopped at: Completed 40.2-07-PLAN.md
+Last session: 2026-09-19T09:38:10.604Z
+Stopped at: Completed 40.2-08-PLAN.md
 Resume file: None
 
 None
