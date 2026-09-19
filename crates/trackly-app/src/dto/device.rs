@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use trackly_core::domain::devices::DeviceRow;
 
+use crate::dto::number_template::NumberWarningDto;
+
 /// Quick-pick hints for the device "Состояние" (condition/state) field.
 ///
 /// Static UI affordances — not database-driven.
@@ -126,18 +128,77 @@ impl From<DeviceNew> for trackly_core::domain::devices::DeviceNew {
     }
 }
 
+/// Narrower number-edit input for `DevicePatch.number_input` (Phase 40.2
+/// Plan 08, D-05) — mirrors `dto::act::ActNumberEditInput` exactly: editing
+/// an existing device/printer's inventory number offers occupied + script-
+/// mix checks, but NEVER a template picker or mismatch confirmation (there
+/// is no "selected template" concept in an edit). Outer
+/// `DevicePatch.number_input: Option<...>` carries the "don't touch the
+/// number at all" semantics (`None`) — this inner type has no `Option` on
+/// `value` itself, matching `ActNumberEditInput`'s own shape.
+///
+/// Plain snake_case fields (no `rename_all`) — this module's own convention
+/// (see module doc-comment), unlike `NumberFieldInput` (`dto::
+/// number_template`), which is camelCase for its own, separate reasons.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct DeviceNumberEditInput {
+    pub value: String,
+    #[serde(default)]
+    pub confirm_script_mix: bool,
+}
+
+/// Outcome of `DeviceService::create`/`create_single_with_number_check`/
+/// `update` (Phase 40.2 Plan 08, D-01 confirmation chain) — follows the
+/// `*SaveOutcome` convention fixed by `dto::number_template`'s module
+/// doc-comment (see `ActSaveOutcome`/`CartridgeSaveOutcome` precedent).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum DeviceSaveOutcome {
+    /// `Box`ed per `clippy::large_enum_variant`, matching `ActSaveOutcome`'s
+    /// precedent — `NumberWarningDto`'s optional `OccupyingRecordDto`
+    /// payload would otherwise force every `DeviceSaveOutcome` to reserve
+    /// the larger variant's size regardless of which is active.
+    Created(Box<DeviceDto>),
+    NeedsConfirmation(NumberWarningDto),
+}
+
+impl DeviceSaveOutcome {
+    /// Test-only convenience: unwrap the `Created` variant, panicking with a
+    /// descriptive message if the save instead needed confirmation. NOT
+    /// used by production code. Mirrors `ActSaveOutcome::expect_created`/
+    /// `CartridgeSaveOutcome::expect_created`.
+    #[track_caller]
+    pub fn expect_created(self, msg: &str) -> DeviceDto {
+        match self {
+            DeviceSaveOutcome::Created(dto) => *dto,
+            DeviceSaveOutcome::NeedsConfirmation(warning) => {
+                panic!("{msg}: expected Created, got NeedsConfirmation({warning:?})")
+            }
+        }
+    }
+}
+
 /// DTO для частичного обновления устройства.
 /// `Option<Option<T>>` — None означает «не менять», Some(None) — «установить NULL»,
 /// Some(Some(v)) — «установить v». Для обязательных полей: None = «не менять».
 ///
 /// `place_id` — уже разрешённый caller'ом ID места (PlacePicker); создание
 /// нового места по имени на этом пути не поддерживается (D-18).
+///
+/// Phase 40.2 Plan 08 (D-05/D-08/NUM-09): `inventory_no: Option<Option<String>>`
+/// (raw, unchecked passthrough) is REPLACED by `number_input:
+/// Option<DeviceNumberEditInput>` — outer `None` = "don't touch the number"
+/// (same as before), `Some(input)` routes through the SAME occupied +
+/// script-mix chain `create()`/`create_single_with_number_check()` use,
+/// mirroring `dto::act::ActUpdateDto`'s `number_input: ActNumberEditInput`
+/// precedent (this field stays `Option<...>` rather than required, because
+/// unlike acts every device edit does NOT necessarily touch the number).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct DevicePatch {
     #[specta(type = Option<i32>)]
     pub type_id: Option<i64>,
     pub name: Option<String>,
-    pub inventory_no: Option<Option<String>>,
+    pub number_input: Option<DeviceNumberEditInput>,
     pub serial_no: Option<Option<String>>,
     pub model: Option<Option<String>>,
     pub specs: Option<Option<String>>,
@@ -161,9 +222,12 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
         if let Some(v) = dto.name {
             p.name = Some(v);
         }
-        if let Some(inner) = dto.inventory_no {
-            p.inventory_no = inner;
-        }
+        // `inventory_no` is intentionally NOT set here — Phase 40.2 Plan 08
+        // (D-05/D-08): the service layer resolves `number_input` through the
+        // occupied/script-mix chain BEFORE the domain patch's `inventory_no`
+        // is set explicitly (mirrors `ActService::update`'s pre-check
+        // pattern) — setting it here from a raw, unchecked string would
+        // bypass that entirely.
         if let Some(inner) = dto.serial_no {
             p.serial_no = inner;
         }

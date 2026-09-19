@@ -204,11 +204,24 @@ impl AppCtx {
 
         // Step 11: build clock and Phase 2 services (D-AppCtx-Extension-01).
         let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
-        let devices = Arc::new(DeviceService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+
+        // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
+        // Hoisted here (was originally created right before AuthService,
+        // then further hoisted by Phase 40.2 Plan 06 for ActService) so
+        // `DeviceService` (Phase 40.2 Plan 08, D-14) can ALSO be wired with
+        // it via `.with_ws_tx(...)` — nothing between here and its original
+        // spot depends on it, this is purely a hoist.
+        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
+        let ws_broadcast = Arc::new(ws_tx);
+
+        // Phase 40.2 Plan 08 (D-14): `with_ws_tx` wires the SAME shared
+        // broadcast sender every other service below uses, so
+        // `WsEvent::NumberSpaceChanged` (device_create/printer_create
+        // contexts) reaches subscribed clients.
+        let devices = Arc::new(
+            DeviceService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Step 12: Phase 3 Plan 04 PDF pipeline services.
         let paths_arc = Arc::new(paths);
@@ -280,14 +293,6 @@ impl AppCtx {
         seed_supervisor_tasks(&writer, now_ts)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-        // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
-        // Moved here (was originally created right before AuthService below)
-        // so `ActService` (Phase 40.2 Plan 06, D-14) can be wired with it via
-        // `.with_ws_tx(...)` — nothing between here and its original spot
-        // depends on it, this is purely a hoist.
-        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
-        let ws_broadcast = Arc::new(ws_tx);
 
         // ActService с подключённым PDF pipeline.
         // D-05 (Phase 14 plan 03): org_db прокинут отдельным builder-методом

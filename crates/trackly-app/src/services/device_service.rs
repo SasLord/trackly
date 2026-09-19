@@ -25,6 +25,7 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
+use trackly_core::domain::number_templates::TemplateType;
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::PrinterNew;
 use trackly_core::ports::devices::DeviceRepository;
@@ -42,8 +43,12 @@ use crate::csv::session_store::ImportSessionStore;
 use crate::csv::{decode_to_string, detect, parse_rows, ImportSession};
 use crate::dto::device::{
     CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, Pagination, RowError, StatusCount, STATE_HINTS,
+    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError,
+    StatusCount, STATE_HINTS,
 };
+use crate::dto::number_template::{NumberFieldInput, NumberWarningDto, TemplateContextDto};
+use crate::dto::printer::WsEvent;
+use crate::services::number_template_service::NumberTemplateService;
 
 /// Application service for device management.
 ///
@@ -60,6 +65,20 @@ pub struct DeviceService {
     pub(crate) cartridge_repo: Arc<SqliteCartridgeRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
+    /// Phase 40.2 Plan 08 (NUM-09): the single owner of occupied/script-mix
+    /// checks + NUM-08 context memory for the `device_create`/
+    /// `printer_create` numbering space. Constructed INTERNALLY from the
+    /// SAME `writer`/`readers`/`clock` triple this service already
+    /// receives — mirrors `ActService`/`CartridgeService`'s identical
+    /// precedent (Plans 06/07), keeping every existing
+    /// `DeviceService::new(writer, readers, clock)` call site across the
+    /// test suite compiling unchanged.
+    pub(crate) number_templates: Arc<NumberTemplateService>,
+    /// D-14 invalidation broadcast (`WsEvent::NumberSpaceChanged`) — `None`
+    /// in most test fixtures; `AppCtx::build` wires the real shared sender
+    /// via `with_ws_tx`. Optional builder field, mirrors `ActService`/
+    /// `CartridgeService`'s own `ws_tx` field.
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 impl DeviceService {
@@ -71,6 +90,11 @@ impl DeviceService {
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
     ) -> Self {
+        let number_templates = Arc::new(NumberTemplateService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         Self {
             writer,
             readers,
@@ -81,6 +105,80 @@ impl DeviceService {
             place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
             cartridge_repo: Arc::new(SqliteCartridgeRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
+            number_templates,
+            ws_tx: None,
+        }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (D-14). Used by
+    /// `AppCtx::build` (production runtime); test fixtures that never
+    /// subscribe to a WS channel simply skip calling this (`ws_tx` stays
+    /// `None`, broadcasting is silently skipped).
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
+    }
+
+    // -----------------------------------------------------------------------
+    // Numbering (Phase 40.2 Plan 08, NUM-09/D-05/D-08)
+    // -----------------------------------------------------------------------
+
+    /// Is `trimmed` already taken by a LIVE device/printer other than
+    /// `exclude_id`? Empty strings are never checked (SPEC NUM-09 — the
+    /// device/printer inventory number is the one number field in this
+    /// entire phase that stays optional, D-16).
+    async fn reject_if_occupied(
+        &self,
+        trimmed: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<(), AppError> {
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+        if self
+            .number_templates
+            .is_occupied(TemplateType::DeviceInventory, trimmed, exclude_id)
+            .await?
+            .is_some()
+        {
+            return Err(AppError::Conflict {
+                reason: format!("номер уже занят — {trimmed}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Script-mix warning (NUM-12) — only meaningful on the two paths that
+    /// actually carry a `confirm_script_mix` flag to skip re-showing an
+    /// already-seen warning (`update()`/`create_single_with_number_check()`).
+    /// `create()`/`bulk_create()`'s callers (CSV import, the legacy
+    /// two-step printer-create modal) have no interactive confirmation UI
+    /// at their call sites — occupied is still unconditionally enforced for
+    /// them via `reject_if_occupied` alone, but a non-blocking warning is
+    /// silently accepted rather than surfaced.
+    async fn script_mix_warning(
+        &self,
+        trimmed: &str,
+        exclude_id: Option<i64>,
+        confirm_script_mix: bool,
+    ) -> Result<Option<NumberWarningDto>, AppError> {
+        if trimmed.is_empty() || confirm_script_mix {
+            return Ok(None);
+        }
+        self.number_templates
+            .detect_warnings(TemplateType::DeviceInventory, trimmed, exclude_id)
+            .await
+    }
+
+    /// D-14: best-effort invalidation broadcast — a device/printer
+    /// inventory number was just written. Both contexts are always sent
+    /// together since they read the same physical `inventory_number` column
+    /// (mirrors `cartridge_create`/`drum_create`'s shared-column broadcast).
+    fn broadcast_number_space_changed(&self) {
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["device_create".to_string(), "printer_create".to_string()],
+            });
         }
     }
 
@@ -156,15 +254,18 @@ impl DeviceService {
     // CRUD
     // -----------------------------------------------------------------------
 
-    /// Создать новое устройство.
+    /// Shared writer-transaction body: INSERT device + sync printer row +
+    /// audit_log, then re-fetch as `DeviceDto`. Factored out of `create()`
+    /// so `create_single_with_number_check()` (Phase 40.2 Plan 08) can reuse
+    /// it after running its OWN number-resolution chain — the only
+    /// difference between the two callers is what happens BEFORE this runs
+    /// (occupied/script-mix checks), never what happens inside the
+    /// transaction itself.
     ///
-    /// Валидирует обязательные поля, затем вставляет устройство и запись audit_log
-    /// в одной транзакции (RESEARCH §Pattern 2, T-02-03-03).
-    /// `new.place_id` — уже разрешённый caller'ом ID места (PlacePicker); ни один
-    /// путь записи устройства больше не создаёт место неявно по строке (D-18).
-    pub async fn create(&self, new: DeviceNew) -> Result<DeviceDto, AppError> {
-        Self::validate_new(&new)?;
-
+    /// `new.inventory_no` is expected to be ALREADY resolved (trimmed,
+    /// empty converted to `None`) by the caller — this method does no
+    /// number validation of its own.
+    async fn insert_new_and_get(&self, new: DeviceNew) -> Result<DeviceDto, AppError> {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
@@ -199,6 +300,92 @@ impl DeviceService {
             .await?;
 
         self.get(id).await
+    }
+
+    /// Создать новое устройство.
+    ///
+    /// Валидирует обязательные поля, затем вставляет устройство и запись audit_log
+    /// в одной транзакции (RESEARCH §Pattern 2, T-02-03-03).
+    /// `new.place_id` — уже разрешённый caller'ом ID места (PlacePicker); ни один
+    /// путь записи устройства больше не создаёт место неявно по строке (D-18).
+    ///
+    /// Phase 40.2 Plan 08 (D-08/NUM-09): the ONLY current callers of this
+    /// method (CSV import's `import_csv_commit`, and the legacy two-step
+    /// `PrinterCreateModal.svelte` create flow) have no interactive UI to
+    /// confirm a script-mix warning — occupied uniqueness is still
+    /// unconditionally enforced (D-08 explicit `.trim()`, NOT
+    /// `normalize_str` — RESEARCH Pitfall 4), but a script-mix warning is
+    /// silently accepted rather than surfaced. See
+    /// `create_single_with_number_check` for the interactive equivalent
+    /// Plan 13 will wire the real single-device create FORM to.
+    pub async fn create(&self, new: DeviceNew) -> Result<DeviceSaveOutcome, AppError> {
+        Self::validate_new(&new)?;
+
+        let trimmed = new.inventory_no.as_deref().map(|v| v.trim().to_string());
+        if let Some(t) = trimmed.as_deref().filter(|s| !s.is_empty()) {
+            self.reject_if_occupied(t, None).await?;
+        }
+        let mut new = new;
+        new.inventory_no = trimmed.filter(|s| !s.is_empty());
+        let number_set = new.inventory_no.is_some();
+
+        let dto = self.insert_new_and_get(new).await?;
+        if number_set {
+            self.broadcast_number_space_changed();
+        }
+        Ok(DeviceSaveOutcome::Created(Box::new(dto)))
+    }
+
+    /// The REAL interactive single-device/printer create path (Phase 40.2
+    /// Plan 08, NUM-09/D-01) — Plan 13 wires `DeviceFormBody.svelte` to call
+    /// this INSTEAD OF `bulk_create(new, 1)` once the UI carries a
+    /// `NumberFieldInput` (template picker + confirm flags). Full D-01
+    /// chain for devices: occupied -> script-mix (devices never check
+    /// template mismatch — SPEC/D-01 scopes that check to acts/cartridges
+    /// only; this service's own `<behavior>` never mentions it). NUM-08
+    /// context memory (`remember_context`) only happens here, never in
+    /// `create()`/`bulk_create()` — those two have no `NumberFieldInput` at
+    /// all (`DeviceNew` carries no `template_id`), so there is nothing to
+    /// remember on those paths.
+    pub async fn create_single_with_number_check(
+        &self,
+        new: DeviceNew,
+        number_input: NumberFieldInput,
+        context: TemplateContextDto,
+    ) -> Result<DeviceSaveOutcome, AppError> {
+        Self::validate_new(&new)?;
+
+        let trimmed = number_input.value.trim().to_string();
+        let trimmed_opt = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.clone())
+        };
+        if !trimmed.is_empty() {
+            self.reject_if_occupied(&trimmed, None).await?;
+            if let Some(warning) = self
+                .script_mix_warning(&trimmed, None, number_input.confirm_script_mix)
+                .await?
+            {
+                return Ok(DeviceSaveOutcome::NeedsConfirmation(warning));
+            }
+        }
+
+        let mut new = new;
+        new.inventory_no = trimmed_opt;
+
+        let dto = self.insert_new_and_get(new).await?;
+
+        // NUM-08: remember the template used for this context. Devices
+        // never check template mismatch (see module doc-comment above), so
+        // there is no "confirmed mismatch resets memory" case here —
+        // remember whenever a template_id was supplied at all.
+        self.number_templates
+            .remember_context(context, number_input.template_id)
+            .await?;
+        self.broadcast_number_space_changed();
+
+        Ok(DeviceSaveOutcome::Created(Box::new(dto)))
     }
 
     /// Получить устройство по ID.
@@ -263,20 +450,67 @@ impl DeviceService {
 
     /// Обновить устройство с optimistic-lock.
     /// `patch.place_id` — уже разрешённый caller'ом ID места (PlacePicker); D-18.
+    ///
+    /// Phase 40.2 Plan 08 (D-05/D-08/NUM-09): `patch.number_input` runs
+    /// through the SAME occupied + script-mix chain as
+    /// `create_single_with_number_check()` — mirrors
+    /// `ActService::update()`'s pre-check pattern (resolved BEFORE the
+    /// writer transaction opens). D-05: update NEVER checks template
+    /// mismatch (`DeviceNumberEditInput` structurally has no `template_id`
+    /// field at all) and NEVER calls `remember_context` (NUM-08 context
+    /// memory is a create-only concept). Editing unrelated fields (name,
+    /// place, etc.) without touching `number_input` skips the whole chain
+    /// entirely — the number is only re-validated when it actually changes.
     pub async fn update(
         &self,
         caller: &Identity,
         id: i64,
         version: i64,
         patch: DevicePatch,
-    ) -> Result<DeviceDto, AppError> {
+    ) -> Result<DeviceSaveOutcome, AppError> {
+        let mut resolved_number: Option<String> = None; // Some(trimmed) => number actually changes
+        if let Some(number_input) = &patch.number_input {
+            let trimmed = number_input.value.trim().to_string();
+            let current = self.get(id).await?;
+            let current_trimmed = current
+                .inventory_no
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if trimmed != current_trimmed {
+                if !trimmed.is_empty() {
+                    self.reject_if_occupied(&trimmed, Some(id)).await?;
+                    if let Some(warning) = self
+                        .script_mix_warning(&trimmed, Some(id), number_input.confirm_script_mix)
+                        .await?
+                    {
+                        return Ok(DeviceSaveOutcome::NeedsConfirmation(warning));
+                    }
+                }
+                resolved_number = Some(trimmed);
+            }
+        }
+        let number_changed = resolved_number.is_some();
+
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
         let place_repo = self.place_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
         let cartridge_repo = self.cartridge_repo.clone();
-        let domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
+        let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
+        if let Some(number) = resolved_number {
+            // Outer `Some` = "field touched"; inner `None`/`Some(v)` decide
+            // whether this is a clear-to-NULL or a real value (D-08 — the
+            // value here is ALREADY trimmed and occupied/script-mix-checked
+            // above, `devices_sqlite.rs::update_in_tx` writes it verbatim).
+            domain_patch.inventory_no = Some(if number.is_empty() {
+                None
+            } else {
+                Some(number)
+            });
+        }
         // Извлекаем ДО перемещения в writer-closure — `Identity` не `Send` через эту
         // границу (Plan 40-03, аналог `place_service::create`).
         let user_id_opt: Option<i64> = caller.user_id;
@@ -375,7 +609,13 @@ impl DeviceService {
             })
             .await?;
 
-        Ok(DeviceDto::from(updated_row))
+        if number_changed {
+            self.broadcast_number_space_changed();
+        }
+
+        Ok(DeviceSaveOutcome::Created(Box::new(DeviceDto::from(
+            updated_row,
+        ))))
     }
 
     /// Мягкое удаление устройства (soft-delete) с optimistic-lock.
@@ -721,6 +961,19 @@ impl DeviceService {
             failed: Vec::new(),
         };
 
+        // Phase 40.2 Plan 08 (NUM-16, RESEARCH Pitfall 5): tracks inventory
+        // numbers already seen EARLIER in THIS SAME file (key = trimmed +
+        // lowercased, value = the 1-based row_index of the FIRST row that
+        // used it) — `self.create(...)`'s own occupied check runs against
+        // the DB one row at a time, so by the time a same-file duplicate's
+        // SECOND row is processed, the first row is already committed and
+        // the DB check alone would report "занят в БД" instead of the more
+        // useful "повтор строки N". Populated BEFORE `self.create(...)` is
+        // ever called for a row (independent of whether that row's `create`
+        // call itself succeeds) so a later duplicate always points at the
+        // correct earliest row.
+        let mut seen_numbers: HashMap<String, u64> = HashMap::new();
+
         // Process each row individually (per-row error accumulation, D-CSV-01).
         for (row_offset, row) in session.all_rows.iter().enumerate() {
             let row_index = (row_offset + 1) as u64; // 1-based for user display
@@ -738,6 +991,27 @@ impl DeviceService {
                     continue;
                 }
             };
+
+            // NUM-16: in-file duplicate check — SEPARATE from, and checked
+            // BEFORE, the DB-level occupied check `self.create(...)` will
+            // run later for this same row.
+            if let Some(raw_number) = new_device.inventory_no.as_deref() {
+                let trimmed_number = raw_number.trim().to_string();
+                if !trimmed_number.is_empty() {
+                    let key = trimmed_number.to_lowercase();
+                    if let Some(&first_row_index) = seen_numbers.get(&key) {
+                        report.failed.push(RowError {
+                            row_index,
+                            error_code: "Validation".to_string(),
+                            error_message: format!(
+                                "номер уже занят — {trimmed_number} (повтор строки {first_row_index})"
+                            ),
+                        });
+                        continue;
+                    }
+                    seen_numbers.insert(key, row_index);
+                }
+            }
 
             // Resolve place-path text against the place tree (exact match only,
             // UI-SPEC §12). No text → place_id stays None (D-07: place optional).
@@ -779,8 +1053,19 @@ impl DeviceService {
 
             // Insert via service.create (audit_log; place_id already resolved above).
             match self.create(new_device).await {
-                Ok(_) => {
+                Ok(DeviceSaveOutcome::Created(_)) => {
                     report.inserted += 1;
+                }
+                Ok(DeviceSaveOutcome::NeedsConfirmation(warning)) => {
+                    // `create()` never triggers this today (it never calls
+                    // `script_mix_warning`, only `reject_if_occupied`) — but
+                    // handled defensively rather than silently miscounting
+                    // an unconfirmed row as inserted, in case that changes.
+                    report.failed.push(RowError {
+                        row_index,
+                        error_code: "Validation".to_string(),
+                        error_message: warning.message,
+                    });
                 }
                 Err(e) => {
                     let (code, msg) = match &e {
@@ -790,6 +1075,12 @@ impl DeviceService {
                         AppError::NotFound { entity, id } => {
                             ("NotFound".to_string(), format!("{entity} {id} не найден"))
                         }
+                        // NUM-16: occupied-in-DB (not this file) — `reason`
+                        // is ALREADY the exact UI-SPEC text ("номер уже
+                        // занят — {номер}", no "повтор" suffix) built by
+                        // `reject_if_occupied` — passed through verbatim,
+                        // not reassembled here.
+                        AppError::Conflict { reason } => ("Conflict".to_string(), reason.clone()),
                         _ => ("Internal".to_string(), e.to_string()),
                     };
                     report.failed.push(RowError {
@@ -1095,6 +1386,26 @@ impl DeviceService {
         // Validate required fields.
         Self::validate_new(&new)?;
 
+        // Phase 40.2 Plan 08 (NUM-09): `count==1` is the REAL "create a
+        // single device/printer" UI path today (`DeviceFormBody.svelte`
+        // calls `bulkCreate` even at qty=1 — Plan 13 migrates it to
+        // `create_single_with_number_check`, the interactive equivalent
+        // with script-mix confirmation support). `count>1` is unreachable
+        // past the validation above (`inventory_no` forced empty there), so
+        // trimming/checking is a no-op for it. `DeviceNew` carries no
+        // `confirm_script_mix` flag — a non-blocking warning is silently
+        // accepted here rather than surfaced, same as `create()`.
+        let trimmed = new.inventory_no.as_deref().map(|v| v.trim().to_string());
+        let trimmed_nonempty = trimmed
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        if let Some(t) = &trimmed_nonempty {
+            self.reject_if_occupied(t, None).await?;
+        }
+        let mut new = new;
+        new.inventory_no = trimmed_nonempty.clone();
+
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
@@ -1134,6 +1445,10 @@ impl DeviceService {
                 Ok(created_ids)
             })
             .await?;
+
+        if trimmed_nonempty.is_some() {
+            self.broadcast_number_space_changed();
+        }
 
         self.list_by_ids(ids).await
     }

@@ -293,15 +293,18 @@ async fn list_by_ids_returns_correct_devices() {
         let d1 = svc
             .create(non_unique_device("Устройство 1", 1))
             .await
-            .expect("create 1");
+            .expect("create 1")
+            .expect_created("create 1");
         let d2 = svc
             .create(non_unique_device("Устройство 2", 1))
             .await
-            .expect("create 2");
+            .expect("create 2")
+            .expect_created("create 2");
         let d3 = svc
             .create(non_unique_device("Устройство 3", 1))
             .await
-            .expect("create 3");
+            .expect("create 3")
+            .expect_created("create 3");
 
         let ids = vec![d1.id, d3.id]; // skip d2
         let result = svc.list_by_ids(ids).await.expect("list_by_ids");
@@ -1120,7 +1123,11 @@ async fn list_by_ids_returns_place_path_short_for_device_with_place() {
 
         let mut new = non_unique_device("Ноутбук", 1);
         new.place_id = Some(place_id);
-        let created = svc.create(new).await.expect("create with place");
+        let created = svc
+            .create(new)
+            .await
+            .expect("create with place")
+            .expect_created("create with place");
 
         let result = svc
             .list_by_ids(vec![created.id])

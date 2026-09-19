@@ -32,7 +32,16 @@ pub struct DeviceNew {
 pub struct DevicePatch {
     pub type_id: Option<i64>,
     pub name: Option<String>,
-    pub inventory_no: Option<String>,
+    /// Двойной `Option` (Phase 40.2 Plan 08, D-08/NUM-09): `None` — поле не
+    /// передано, номер не меняется; `Some(None)` — передано явно с
+    /// намерением очистить номер (-> NULL); `Some(Some(v))` — передано с
+    /// новым (уже `.trim()`-нутым, проверенным на occupied/script-mix)
+    /// значением. Тот же паттерн, что `place_id` ниже — плоский
+    /// `Option<String>` делал "не передано" и "передано явно как пустая
+    /// строка" неразличимыми на уровне SQL COALESCE, а с частичным
+    /// UNIQUE INDEX (V044) две записи, обе очищенные до `''` (а не NULL),
+    /// стали бы ложно конфликтовать друг с другом.
+    pub inventory_no: Option<Option<String>>,
     pub serial_no: Option<String>,
     pub model: Option<String>,
     pub specs: Option<String>,

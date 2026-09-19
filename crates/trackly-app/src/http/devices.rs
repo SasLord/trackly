@@ -17,15 +17,17 @@ use std::collections::HashMap;
 
 use crate::dto::device::{
     CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, Pagination, StatusCount,
+    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
+use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
     build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
-    build_devices_delete, build_devices_export_csv, build_devices_get,
-    build_devices_import_csv_commit, build_devices_import_csv_preview, build_devices_list,
-    build_devices_list_by_ids, build_devices_list_grouped, build_devices_search,
-    build_devices_state_hints, build_devices_status_counts, build_devices_update,
+    build_devices_create_single_with_number_check, build_devices_delete, build_devices_export_csv,
+    build_devices_get, build_devices_import_csv_commit, build_devices_import_csv_preview,
+    build_devices_list, build_devices_list_by_ids, build_devices_list_grouped,
+    build_devices_search, build_devices_state_hints, build_devices_status_counts,
+    build_devices_update,
 };
 
 // ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ pub async fn handler_create(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(payload): Json<CreatePayload>,
-) -> Result<Json<DeviceDto>, AppErrorResponse> {
+) -> Result<Json<DeviceSaveOutcome>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
@@ -177,7 +179,7 @@ pub async fn handler_update(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(payload): Json<UpdatePayload>,
-) -> Result<Json<DeviceDto>, AppErrorResponse> {
+) -> Result<Json<DeviceSaveOutcome>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
@@ -185,6 +187,35 @@ pub async fn handler_update(
         build_devices_update(&ctx, &identity, payload.id, payload.version, payload.patch)
             .await
             .map_err(AppErrorResponse::from)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSingleWithNumberCheckPayload {
+    pub device: DeviceNew,
+    pub number_input: NumberFieldInput,
+    pub context: TemplateContextDto,
+}
+
+pub async fn handler_create_single_with_number_check(
+    State(ctx): State<AppCtx>,
+    session: Session,
+    Json(payload): Json<CreateSingleWithNumberCheckPayload>,
+) -> Result<Json<DeviceSaveOutcome>, AppErrorResponse> {
+    let identity = session_identity(&session)
+        .await
+        .map_err(AppErrorResponse::from)?;
+    Ok(Json(
+        build_devices_create_single_with_number_check(
+            &ctx,
+            &identity,
+            payload.device,
+            payload.number_input,
+            payload.context,
+        )
+        .await
+        .map_err(AppErrorResponse::from)?,
     ))
 }
 
@@ -377,6 +408,10 @@ pub fn router() -> Router<AppCtx> {
         .route("/api/v1/devices_get", post(handler_get))
         .route("/api/v1/devices_create", post(handler_create))
         .route("/api/v1/devices_update", post(handler_update))
+        .route(
+            "/api/v1/devices_create_single_with_number_check",
+            post(handler_create_single_with_number_check),
+        )
         .route("/api/v1/devices_delete", post(handler_delete))
         .route("/api/v1/devices_state_hints", post(handler_state_hints))
         // Plan 04 Search/Autocomplete/Grouping

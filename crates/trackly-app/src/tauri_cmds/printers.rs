@@ -146,7 +146,12 @@ pub async fn build_printers_admit(
             .unwrap_or_else(|| format!("Принтер {ip}"));
 
         // --- Create device type=Принтер (type_id=2, status_id=1) ---
-        let device = ctx
+        // Phase 40.2 Plan 08: `create()` now returns `DeviceSaveOutcome` —
+        // `inventory_no: None` above means the occupied/script-mix chain is
+        // always skipped (SPEC NUM-09), so `NeedsConfirmation` is
+        // structurally unreachable here; handled defensively rather than
+        // panicking in production code.
+        let device_outcome = ctx
             .devices
             .create(DeviceNew {
                 type_id: 2,
@@ -166,6 +171,16 @@ pub async fn build_printers_admit(
                 status_id: 1,
             })
             .await?;
+        let device = match device_outcome {
+            crate::dto::device::DeviceSaveOutcome::Created(dto) => *dto,
+            crate::dto::device::DeviceSaveOutcome::NeedsConfirmation(warning) => {
+                return Err(AppError::Internal {
+                    source_chain: format!(
+                        "unexpected NeedsConfirmation from device create with no number: {warning:?}"
+                    ),
+                });
+            }
+        };
 
         // --- Create printer record linked to the new device ---
         let printer_dto = ctx

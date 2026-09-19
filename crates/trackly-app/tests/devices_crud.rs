@@ -85,7 +85,11 @@ async fn create_inserts_device_and_audit_log() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
         let new = minimal_new("Ноутбук Lenovo");
-        let dto = svc.create(new).await.expect("create device");
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device")
+            .expect_created("create device");
 
         assert!(dto.id > 0, "id должен быть > 0, получили {}", dto.id);
         assert_eq!(dto.version, 1);
@@ -179,7 +183,11 @@ async fn create_rejects_missing_type() {
 async fn update_succeeds_with_correct_version() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("Ноутбук Lenovo")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("Ноутбук Lenovo"))
+            .await
+            .expect("create")
+            .expect_created("create");
 
         let patch = DevicePatch {
             name: Some("Ноутбук Lenovo X1".to_string()),
@@ -188,7 +196,8 @@ async fn update_succeeds_with_correct_version() {
         let updated = svc
             .update(&admin_caller(), dto.id, dto.version, patch)
             .await
-            .expect("update");
+            .expect("update")
+            .expect_created("update");
         assert_eq!(updated.version, 2);
         assert_eq!(updated.name, "Ноутбук Lenovo X1");
 
@@ -220,7 +229,11 @@ async fn update_succeeds_with_correct_version() {
 async fn update_returns_optimistic_lock_mismatch_on_stale_version() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("Тест OLM")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("Тест OLM"))
+            .await
+            .expect("create")
+            .expect_created("create");
         assert_eq!(dto.version, 1);
 
         // Первый update — успешен, version становится 2.
@@ -231,6 +244,7 @@ async fn update_returns_optimistic_lock_mismatch_on_stale_version() {
         svc.update(&admin_caller(), dto.id, 1, patch.clone())
             .await
             .expect("first update");
+        // (result discarded — this test only needs the SECOND update's error)
 
         // Второй update со старой version=1 — должен вернуть OptimisticLockMismatch.
         let err = svc
@@ -264,7 +278,11 @@ async fn update_returns_optimistic_lock_mismatch_on_stale_version() {
 async fn delete_soft_marks_deleted_at_utc() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("На удаление")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("На удаление"))
+            .await
+            .expect("create")
+            .expect_created("create");
 
         svc.delete_soft(dto.id, dto.version).await.expect("delete_soft");
 
@@ -310,11 +328,13 @@ async fn list_returns_only_non_deleted() {
         let d1 = svc
             .create(minimal_new("Устройство 1"))
             .await
-            .expect("create 1");
+            .expect("create 1")
+            .expect_created("create 1");
         let d2 = svc
             .create(minimal_new("Устройство 2"))
             .await
-            .expect("create 2");
+            .expect("create 2")
+            .expect_created("create 2");
         svc.create(minimal_new("Устройство 3"))
             .await
             .expect("create 3");
@@ -395,13 +415,18 @@ async fn list_with_type_id_filter() {
         let d1 = svc
             .create(minimal_new("Ноутбук Lenovo"))
             .await
-            .expect("create type=1");
+            .expect("create type=1")
+            .expect_created("create type=1");
         assert_eq!(d1.type_id, 1);
 
         // Create one device with type_id=2 (Принтер, seeded in V001)
         let mut new2 = minimal_new("HP LaserJet Pro");
         new2.type_id = 2;
-        let d2 = svc.create(new2).await.expect("create type=2");
+        let d2 = svc
+            .create(new2)
+            .await
+            .expect("create type=2")
+            .expect_created("create type=2");
         assert_eq!(d2.type_id, 2);
 
         // Filter by type_id=1: only Ноутбук Lenovo returned
@@ -480,7 +505,11 @@ async fn create_persists_serial_number() {
             status_id: 1,
         };
 
-        let dto = svc.create(new).await.expect("create device with serial_no");
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device with serial_no")
+            .expect_created("create device with serial_no");
 
         // Round-trip: читаем только что созданное устройство
         let fetched = svc.get(dto.id).await.expect("get by id");
@@ -528,7 +557,8 @@ async fn create_persists_inventory_and_serial_together() {
         let dto = svc
             .create(new)
             .await
-            .expect("create device with both numbers");
+            .expect("create device with both numbers")
+            .expect_created("create device with both numbers");
 
         assert_eq!(
             dto.inventory_no,
@@ -570,7 +600,8 @@ async fn update_second_save_after_successful_first_uses_new_version() {
         let dto = svc
             .create(minimal_new("Тест версий"))
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
         assert_eq!(dto.version, 1);
 
         // First update: expected_version=1 → succeeds, returns v2.
@@ -581,7 +612,8 @@ async fn update_second_save_after_successful_first_uses_new_version() {
         let v2 = svc
             .update(&admin_caller(), dto.id, 1, patch1)
             .await
-            .expect("first update");
+            .expect("first update")
+            .expect_created("first update");
         assert_eq!(v2.version, 2, "first update must return version=2");
 
         // Second update using the REFRESHED version: expected_version=2 → succeeds, returns v3.
@@ -592,7 +624,8 @@ async fn update_second_save_after_successful_first_uses_new_version() {
         let v3 = svc
             .update(&admin_caller(), dto.id, v2.version, patch2)
             .await
-            .expect("second update must succeed when using refreshed version");
+            .expect("second update must succeed when using refreshed version")
+            .expect_created("second update must succeed when using refreshed version");
         assert_eq!(v3.version, 3, "second update must return version=3");
         assert_eq!(v3.name, "Тест версий v3");
     })
@@ -612,7 +645,11 @@ async fn update_second_save_after_successful_first_uses_new_version() {
 async fn update_stores_real_caller_user_id_in_audit_log() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("Принтер HP")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("Принтер HP"))
+            .await
+            .expect("create")
+            .expect_created("create");
 
         let manager_user_id = seed_manager_user(&svc.writer).await;
         let manager = Identity {
@@ -663,7 +700,11 @@ async fn update_stores_real_caller_user_id_in_audit_log() {
 async fn update_with_trusted_admin_caller_stores_null_user_id() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_service();
-        let dto = svc.create(minimal_new("Ноутбук Dell")).await.expect("create");
+        let dto = svc
+            .create(minimal_new("Ноутбук Dell"))
+            .await
+            .expect("create")
+            .expect_created("create");
 
         let admin = admin_caller();
         let patch = DevicePatch {

@@ -57,7 +57,7 @@ fn type_patch(type_id: Option<i64>) -> DevicePatch {
     DevicePatch {
         type_id,
         name: None,
-        inventory_no: None,
+        number_input: None,
         serial_no: None,
         model: None,
         specs: None,
@@ -176,7 +176,8 @@ async fn create_with_printer_type_creates_printers_row_with_defaults() {
         let dto = svc
             .create(minimal_new("Test Printer 1", PRINTER_TYPE_ID))
             .await
-            .expect("create printer-type device");
+            .expect("create printer-type device")
+            .expect_created("create printer-type device");
 
         let row = fetch_printer_row(&svc, dto.id)
             .await
@@ -200,7 +201,8 @@ async fn create_with_device_type_creates_no_printers_row() {
         let dto = svc
             .create(minimal_new("Test Device 1", DEVICE_TYPE_ID))
             .await
-            .expect("create device-type device");
+            .expect("create device-type device")
+            .expect_created("create device-type device");
 
         assert_eq!(
             printers_count_for_device(&svc, dto.id).await,
@@ -223,7 +225,8 @@ async fn update_upgrade_device_to_printer_creates_printers_row() {
         let dto = svc
             .create(minimal_new("Test Device 2", DEVICE_TYPE_ID))
             .await
-            .expect("create device-type device");
+            .expect("create device-type device")
+            .expect_created("create device-type device");
         assert_eq!(printers_count_for_device(&svc, dto.id).await, 0);
 
         let updated = svc
@@ -234,7 +237,8 @@ async fn update_upgrade_device_to_printer_creates_printers_row() {
                 type_patch(Some(PRINTER_TYPE_ID)),
             )
             .await
-            .expect("upgrade to printer");
+            .expect("upgrade to printer")
+            .expect_created("upgrade to printer");
 
         assert_eq!(updated.type_id, PRINTER_TYPE_ID);
         assert_eq!(
@@ -258,7 +262,8 @@ async fn update_downgrade_printer_to_device_cascades_monitoring_history() {
         let dto = svc
             .create(minimal_new("Test Printer 2", PRINTER_TYPE_ID))
             .await
-            .expect("create printer-type device");
+            .expect("create printer-type device")
+            .expect_created("create printer-type device");
 
         let printer_id = printer_id_for_device(&svc, dto.id).await;
         seed_monitoring_history(&svc, printer_id).await;
@@ -274,7 +279,8 @@ async fn update_downgrade_printer_to_device_cascades_monitoring_history() {
                 type_patch(Some(DEVICE_TYPE_ID)),
             )
             .await
-            .expect("downgrade to device");
+            .expect("downgrade to device")
+            .expect_created("downgrade to device");
 
         assert_eq!(updated.type_id, DEVICE_TYPE_ID);
         assert_eq!(
@@ -301,14 +307,16 @@ async fn update_without_type_change_called_twice_stays_idempotent() {
         let dto = svc
             .create(minimal_new("Test Printer 3", PRINTER_TYPE_ID))
             .await
-            .expect("create printer-type device");
+            .expect("create printer-type device")
+            .expect_created("create printer-type device");
         assert_eq!(printers_count_for_device(&svc, dto.id).await, 1);
 
         // Первый update() без смены типа (patch.type_id = None).
         let updated1 = svc
             .update(&admin_caller(), dto.id, dto.version, type_patch(None))
             .await
-            .expect("first no-op-type update");
+            .expect("first no-op-type update")
+            .expect_created("first no-op-type update");
         assert_eq!(updated1.type_id, PRINTER_TYPE_ID);
         assert_eq!(
             printers_count_for_device(&svc, dto.id).await,
@@ -325,7 +333,8 @@ async fn update_without_type_change_called_twice_stays_idempotent() {
                 type_patch(None),
             )
             .await
-            .expect("second no-op-type update");
+            .expect("second no-op-type update")
+            .expect_created("second no-op-type update");
         assert_eq!(updated2.type_id, PRINTER_TYPE_ID);
         assert_eq!(
             printers_count_for_device(&svc, dto.id).await,

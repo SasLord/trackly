@@ -130,7 +130,8 @@ async fn place_movements_manual_device() {
         let dto = svc
             .create(minimal_new("Ноутбук Dell", Some(place_a)))
             .await
-            .expect("create device at place A");
+            .expect("create device at place A")
+            .expect_created("create device at place A");
 
         svc.update(
             &manager,
@@ -139,7 +140,7 @@ async fn place_movements_manual_device() {
             DevicePatch {
                 type_id: None,
                 name: None,
-                inventory_no: None,
+                number_input: None,
                 serial_no: None,
                 model: None,
                 specs: None,
@@ -212,7 +213,8 @@ async fn place_movements_manual_device_status_only_noop() {
         let dto = svc
             .create(minimal_new("Принтер HP", Some(place_a)))
             .await
-            .expect("create device at place A");
+            .expect("create device at place A")
+            .expect_created("create device at place A");
 
         // Меняем только status_id — place_id не тронут (D-04: не движение).
         svc.update(
@@ -222,7 +224,7 @@ async fn place_movements_manual_device_status_only_noop() {
             DevicePatch {
                 type_id: None,
                 name: None,
-                inventory_no: None,
+                number_input: None,
                 serial_no: None,
                 model: None,
                 specs: None,
@@ -259,7 +261,8 @@ async fn place_movements_manual_device_first_assignment_noop() {
         let dto = svc
             .create(minimal_new("Монитор Samsung", None))
             .await
-            .expect("create device with no place");
+            .expect("create device with no place")
+            .expect_created("create device with no place");
 
         // Первое присвоение места (NULL -> place_a) — D-06: не движение.
         svc.update(
@@ -269,7 +272,7 @@ async fn place_movements_manual_device_first_assignment_noop() {
             DevicePatch {
                 type_id: None,
                 name: None,
-                inventory_no: None,
+                number_input: None,
                 serial_no: None,
                 model: None,
                 specs: None,
@@ -551,7 +554,8 @@ async fn update_clearing_printer_place_does_not_touch_cartridges() {
                 },
             )
             .await
-            .expect("update printer NULL -> place A");
+            .expect("update printer NULL -> place A")
+            .expect_created("update printer NULL -> place A");
 
         // Картридж сеется уже прикреплённым к принтеру с местом = A — имитирует
         // состояние ПОСЛЕ реального каскада (which the first update above did not

@@ -15,8 +15,9 @@ use std::collections::HashMap;
 
 use crate::dto::device::{
     CsvImportPreviewResponse, CsvImportReport, DeviceDto, DeviceFilter, DeviceGroup,
-    DeviceListResponse, DeviceNew, DevicePatch, Pagination, StatusCount,
+    DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
+use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
@@ -48,7 +49,7 @@ pub async fn build_devices_create(
     ctx: &AppCtx,
     caller: &Identity,
     new: DeviceNew,
-) -> Result<DeviceDto, AppError> {
+) -> Result<DeviceSaveOutcome, AppError> {
     authorize(caller, &Action::MutateDevices)?;
     ctx.devices.create(new).await
 }
@@ -60,9 +61,26 @@ pub async fn build_devices_update(
     id: i64,
     version: i64,
     patch: DevicePatch,
-) -> Result<DeviceDto, AppError> {
+) -> Result<DeviceSaveOutcome, AppError> {
     authorize(caller, &Action::MutateDevices)?;
     ctx.devices.update(caller, id, version, patch).await
+}
+
+/// Мутация (Phase 40.2 Plan 08, NUM-09): требует `caller` с правом
+/// `MutateDevices`. The REAL interactive single-device/printer create
+/// path — Plan 13 wires `DeviceFormBody.svelte` to call this INSTEAD OF
+/// `devices_bulk_create(device, 1)` once the UI carries a `NumberFieldInput`.
+pub async fn build_devices_create_single_with_number_check(
+    ctx: &AppCtx,
+    caller: &Identity,
+    device: DeviceNew,
+    number_input: NumberFieldInput,
+    context: TemplateContextDto,
+) -> Result<DeviceSaveOutcome, AppError> {
+    authorize(caller, &Action::MutateDevices)?;
+    ctx.devices
+        .create_single_with_number_check(device, number_input, context)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `MutateDevices`.
@@ -174,7 +192,7 @@ pub async fn devices_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<Dev
 pub async fn devices_create(
     state: tauri::State<'_, AppCtx>,
     device: DeviceNew,
-) -> Result<DeviceDto, AppError> {
+) -> Result<DeviceSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_create(state.inner(), &caller, device).await
 }
@@ -186,9 +204,31 @@ pub async fn devices_update(
     id: i32,
     version: i32,
     patch: DevicePatch,
-) -> Result<DeviceDto, AppError> {
+) -> Result<DeviceSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_update(state.inner(), &caller, id as i64, version as i64, patch).await
+}
+
+/// Phase 40.2 Plan 08 (NUM-09): the REAL interactive single-device/printer
+/// create command — Plan 13 wires the UI form to this INSTEAD OF
+/// `devices_bulk_create(device, 1)`.
+#[tauri::command]
+#[specta::specta]
+pub async fn devices_create_single_with_number_check(
+    state: tauri::State<'_, AppCtx>,
+    device: DeviceNew,
+    number_input: NumberFieldInput,
+    context: TemplateContextDto,
+) -> Result<DeviceSaveOutcome, AppError> {
+    let caller = resolve_tauri_identity(state.inner()).await?;
+    build_devices_create_single_with_number_check(
+        state.inner(),
+        &caller,
+        device,
+        number_input,
+        context,
+    )
+    .await
 }
 
 #[tauri::command]

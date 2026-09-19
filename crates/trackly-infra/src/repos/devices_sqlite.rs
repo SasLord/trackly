@@ -262,25 +262,37 @@ impl SqliteDeviceRepository {
                 // COALESCE(?, place_id) не может отличить "поле не передано"
                 // от "поле передано явно как NULL" (оба уплощаются в SQL NULL
                 // -> COALESCE молча сохраняет старое значение, очистка места
-                // невозможна). ?8 — булев флаг "поле передано", ?9 — значение.
+                // невозможна). ?9 — булев флаг "поле передано", ?10 — значение.
+                //
+                // Phase 40.2 Plan 08 (D-08/NUM-09): inventory_number получил
+                // тот же CASE-паттерн (было COALESCE) — теперь, когда сервис
+                // может явно захотеть очистить номер (пустая строка после
+                // .trim()) через `?3`/`?4`, COALESCE(?, inventory_number) с
+                // NULL-значением "поле не передано" молча сохранил бы старое
+                // значение вместо очистки; а запись буквальной пустой строки
+                // (COALESCE(?, ...) с ?='') конфликтовала бы с новым частичным
+                // UNIQUE INDEX V044 (`WHERE ... inventory_number IS NOT NULL`
+                // не отфильтровывает '' — два очищенных устройства ложно
+                // столкнулись бы друг с другом).
                 "UPDATE devices SET
                    name             = COALESCE(?1, name),
                    type_id          = COALESCE(?2, type_id),
-                   inventory_number = COALESCE(?3, inventory_number),
-                   serial_number    = COALESCE(?4, serial_number),
-                   model            = COALESCE(?5, model),
-                   condition        = COALESCE(?6, condition),
-                   complectation    = COALESCE(?7, complectation),
-                   place_id         = CASE WHEN ?8 = 1 THEN ?9 ELSE place_id END,
-                   status_id        = COALESCE(?10, status_id),
-                   notes            = COALESCE(?11, notes),
+                   inventory_number = CASE WHEN ?3 = 1 THEN ?4 ELSE inventory_number END,
+                   serial_number    = COALESCE(?5, serial_number),
+                   model            = COALESCE(?6, model),
+                   condition        = COALESCE(?7, condition),
+                   complectation    = COALESCE(?8, complectation),
+                   place_id         = CASE WHEN ?9 = 1 THEN ?10 ELSE place_id END,
+                   status_id        = COALESCE(?11, status_id),
+                   notes            = COALESCE(?12, notes),
                    version          = version + 1,
-                   updated_at_utc   = ?12
-                 WHERE id = ?13 AND version = ?14 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?13
+                 WHERE id = ?14 AND version = ?15 AND deleted_at_utc IS NULL",
                 rusqlite::params![
                     patch.name.as_deref(),
                     patch.type_id,
-                    patch.inventory_no.as_deref(),
+                    patch.inventory_no.is_some() as i64,
+                    patch.inventory_no.as_ref().and_then(|v| v.as_deref()),
                     patch.serial_no.as_deref(),
                     patch.model.as_deref(),
                     patch.state.as_deref(),
@@ -684,25 +696,29 @@ impl DeviceRepository for SqliteDeviceRepository {
                 // COALESCE(?, place_id) не может отличить "поле не передано"
                 // от "поле передано явно как NULL" (оба уплощаются в SQL NULL
                 // -> COALESCE молча сохраняет старое значение, очистка места
-                // невозможна). ?8 — булев флаг "поле передано", ?9 — значение.
+                // невозможна). ?9 — булев флаг "поле передано", ?10 — значение.
+                //
+                // Phase 40.2 Plan 08 (D-08/NUM-09): inventory_number — тот же
+                // CASE-паттерн, см. `update_in_tx` выше для полное обоснование.
                 "UPDATE devices SET
                    name             = COALESCE(?1, name),
                    type_id          = COALESCE(?2, type_id),
-                   inventory_number = COALESCE(?3, inventory_number),
-                   serial_number    = COALESCE(?4, serial_number),
-                   model            = COALESCE(?5, model),
-                   condition        = COALESCE(?6, condition),
-                   complectation    = COALESCE(?7, complectation),
-                   place_id         = CASE WHEN ?8 = 1 THEN ?9 ELSE place_id END,
-                   status_id        = COALESCE(?10, status_id),
-                   notes            = COALESCE(?11, notes),
+                   inventory_number = CASE WHEN ?3 = 1 THEN ?4 ELSE inventory_number END,
+                   serial_number    = COALESCE(?5, serial_number),
+                   model            = COALESCE(?6, model),
+                   condition        = COALESCE(?7, condition),
+                   complectation    = COALESCE(?8, complectation),
+                   place_id         = CASE WHEN ?9 = 1 THEN ?10 ELSE place_id END,
+                   status_id        = COALESCE(?11, status_id),
+                   notes            = COALESCE(?12, notes),
                    version          = version + 1,
-                   updated_at_utc   = ?12
-                 WHERE id = ?13 AND version = ?14 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?13
+                 WHERE id = ?14 AND version = ?15 AND deleted_at_utc IS NULL",
                 rusqlite::params![
                     patch.name.as_deref(),
                     patch.type_id,
-                    patch.inventory_no.as_deref(),
+                    patch.inventory_no.is_some() as i64,
+                    patch.inventory_no.as_ref().and_then(|v| v.as_deref()),
                     patch.serial_no.as_deref(),
                     patch.model.as_deref(),
                     patch.state.as_deref(),

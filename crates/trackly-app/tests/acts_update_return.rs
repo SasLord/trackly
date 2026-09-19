@@ -563,7 +563,7 @@ async fn reject_edit_after_manual_device_relocation() {
                 DevicePatch {
                     type_id: None,
                     name: None,
-                    inventory_no: None,
+                    number_input: None,
                     serial_no: None,
                     model: None,
                     specs: None,

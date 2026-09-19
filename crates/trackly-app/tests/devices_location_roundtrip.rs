@@ -83,7 +83,11 @@ async fn create_with_place_persists_round_trip() {
         let place_id = create_place(&svc, "Склад A").await;
 
         let new = new_with_place_id("Ноутбук Lenovo", Some(place_id));
-        let dto = svc.create(new).await.expect("create device");
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device")
+            .expect_created("create device");
 
         assert_eq!(dto.place_id, Some(place_id), "place_id должен сохраниться");
         assert_eq!(
@@ -119,7 +123,8 @@ async fn update_changes_place_id_round_trips() {
         let dto = svc
             .create(new_with_place_id("Ноутбук", Some(place_a)))
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
         assert_eq!(dto.place_id, Some(place_a));
 
         let patch = DevicePatch {
@@ -129,7 +134,8 @@ async fn update_changes_place_id_round_trips() {
         let updated = svc
             .update(&admin_caller(), dto.id, dto.version, patch)
             .await
-            .expect("update");
+            .expect("update")
+            .expect_created("update");
 
         assert_eq!(
             updated.place_id,
@@ -156,7 +162,11 @@ async fn create_with_no_place_keeps_null() {
         let (svc, _dir) = make_service();
 
         let new = new_with_place_id("Устройство без места", None);
-        let dto = svc.create(new).await.expect("create");
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create")
+            .expect_created("create");
 
         assert!(
             dto.place_id.is_none(),

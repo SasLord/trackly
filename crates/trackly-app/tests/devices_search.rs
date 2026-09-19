@@ -255,7 +255,8 @@ async fn search_excludes_soft_deleted() {
         let dto = svc
             .create(minimal_new("Удалённый принтер"))
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
         svc.delete_soft(dto.id, dto.version)
             .await
             .expect("delete_soft");

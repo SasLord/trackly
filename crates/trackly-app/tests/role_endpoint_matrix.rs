@@ -193,6 +193,7 @@ use tower_sessions::SessionStore;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::device::{DeviceNew, DeviceNumberEditInput, DevicePatch};
 use trackly_app::dto::number_template::{TemplateContextDto, TemplateTypeDto};
 use trackly_app::dto::place::PlaceNewDto;
 use trackly_app::dto::reports::{PeriodDto, ReportFilter};
@@ -200,6 +201,7 @@ use trackly_app::dto::request::RequestCreateDto;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
+use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_update};
 use trackly_app::tauri_cmds::number_templates::{
     build_number_template_contexts_get, build_number_template_contexts_set,
     build_number_templates_create, build_number_templates_delete,
@@ -3060,6 +3062,142 @@ async fn role_endpoint_matrix_test() {
                      (context={label}) → expected Ok, got {result:?}"
                 );
             }
+        }
+
+        // =====================================================================
+        // Case 74 (Phase 40.2 Plan 08, NUM-09): Manager → POST /api/v1/
+        // devices_create_single_with_number_check → not 401/403; Employee →
+        // 403. Continues this file's own numbering (last used: 73).
+        // =====================================================================
+        {
+            let create_single_payload = json!({
+                "device": {
+                    "type_id": 1,
+                    "name": "RBAC74 Device",
+                    "inventory_no": null,
+                    "serial_no": null,
+                    "model": null,
+                    "specs": null,
+                    "kit": null,
+                    "state": null,
+                    "place_id": null,
+                    "status_id": 1
+                },
+                "numberInput": {
+                    "value": "RBAC74-000001",
+                    "templateId": null,
+                    "confirmMismatch": false,
+                    "confirmScriptMix": false
+                },
+                "context": "device_create"
+            });
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create_single_with_number_check",
+                create_single_payload.clone(),
+                Some(&employee_cookie),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 74: Employee → devices_create_single_with_number_check → \
+                 expected 403, got {status}"
+            );
+
+            let status = post_with_cookie(
+                new_app!(),
+                "/api/v1/devices_create_single_with_number_check",
+                create_single_payload,
+                Some(&manager_cookie),
+            )
+            .await;
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "Case 74: Manager → devices_create_single_with_number_check → \
+                 expected not 401/403, got {status}"
+            );
+        }
+
+        // =====================================================================
+        // Case 75 (Phase 40.2 Plan 08, NUM-09): Manager → devices_update with
+        // a number already occupied by ANOTHER live device → rejected. This
+        // is NOT an RBAC gate — Manager legitimately has MutateDevices — it
+        // proves the occupied-number business rule applies regardless of
+        // role, mirroring this file's own Case 66's "Manager cannot bypass
+        // via role" precedent for a different endpoint family.
+        // =====================================================================
+        {
+            let manager_id = Identity {
+                user_id: Some(manager_dto.id),
+                role: Role::Manager,
+            };
+
+            let device1 = build_devices_create(
+                &ctx,
+                &manager_id,
+                DeviceNew {
+                    type_id: 1,
+                    name: "RBAC75 Device 1".to_string(),
+                    inventory_no: Some("RBAC75-000001".to_string()),
+                    serial_no: None,
+                    model: None,
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    place_id: None,
+                    status_id: 1,
+                },
+            )
+            .await
+            .expect("Case 75: create device 1")
+            .expect_created("Case 75: create device 1");
+
+            let device2 = build_devices_create(
+                &ctx,
+                &manager_id,
+                DeviceNew {
+                    type_id: 1,
+                    name: "RBAC75 Device 2".to_string(),
+                    inventory_no: Some("RBAC75-000002".to_string()),
+                    serial_no: None,
+                    model: None,
+                    specs: None,
+                    kit: None,
+                    state: None,
+                    place_id: None,
+                    status_id: 1,
+                },
+            )
+            .await
+            .expect("Case 75: create device 2")
+            .expect_created("Case 75: create device 2");
+
+            let result = build_devices_update(
+                &ctx,
+                &manager_id,
+                device2.id,
+                device2.version,
+                DevicePatch {
+                    number_input: Some(DeviceNumberEditInput {
+                        value: "RBAC75-000001".to_string(),
+                        confirm_script_mix: false,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await;
+            match result {
+                Err(AppError::Conflict { .. }) => {}
+                other => panic!(
+                    "Case 75: Manager → devices_update to an occupied number → \
+                     expected Err(Conflict), got {other:?}"
+                ),
+            }
+
+            // Self-check: device1 (the occupant) is unaffected by the rejected rename.
+            assert_eq!(device1.inventory_no.as_deref(), Some("RBAC75-000001"));
         }
 
         ctx.shutdown.cancel();

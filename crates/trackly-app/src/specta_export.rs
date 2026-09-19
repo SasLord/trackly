@@ -23,6 +23,8 @@ pub fn builder() -> Builder<tauri::Wry> {
         crate::tauri_cmds::devices::devices_get,
         crate::tauri_cmds::devices::devices_create,
         crate::tauri_cmds::devices::devices_update,
+        // Phase 40.2 Plan 08 — NUM-09 interactive single-create with occupied/warning chain
+        crate::tauri_cmds::devices::devices_create_single_with_number_check,
         crate::tauri_cmds::devices::devices_delete,
         crate::tauri_cmds::devices::devices_state_hints,
         // Phase 2 — Devices Search/Autocomplete/Grouping (Plan 04)

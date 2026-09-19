@@ -12,9 +12,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use trackly_app::dto::device::{
-    DeviceDto, DeviceFilter, DeviceListResponse, DeviceNew, Pagination,
-};
+use trackly_app::dto::device::{DeviceFilter, DeviceListResponse, DeviceNew, Pagination};
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
 use trackly_app::tauri_cmds::devices::{build_devices_create, build_devices_list};
@@ -44,7 +42,9 @@ async fn devices_http_smoke_create_and_list() -> anyhow::Result<()> {
 
         // Tauri-path: trusted_admin — всегда Ok в unlocked desktop mode.
         let caller = Identity::trusted_admin();
-        let dto_tauri: DeviceDto = build_devices_create(&ctx, &caller, new.clone()).await?;
+        let dto_tauri = build_devices_create(&ctx, &caller, new.clone())
+            .await?
+            .expect_created("Tauri path create");
         assert!(dto_tauri.id > 0, "Tauri path: id > 0");
         assert_eq!(dto_tauri.name, "Ноутбук HP Smoke");
 
