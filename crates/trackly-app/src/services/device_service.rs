@@ -25,7 +25,7 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
-use trackly_core::domain::number_templates::TemplateType;
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::PrinterNew;
 use trackly_core::ports::devices::DeviceRepository;
@@ -46,7 +46,9 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, RowError,
     StatusCount, STATE_HINTS,
 };
-use crate::dto::number_template::{NumberFieldInput, NumberWarningDto, TemplateContextDto};
+use crate::dto::number_template::{
+    NumberFieldInput, NumberWarningDto, NumberWarningKind, TemplateContextDto,
+};
 use crate::dto::printer::WsEvent;
 use crate::services::number_template_service::NumberTemplateService;
 
@@ -340,13 +342,17 @@ impl DeviceService {
     /// Plan 08, NUM-09/D-01) — Plan 13 wires `DeviceFormBody.svelte` to call
     /// this INSTEAD OF `bulk_create(new, 1)` once the UI carries a
     /// `NumberFieldInput` (template picker + confirm flags). Full D-01
-    /// chain for devices: occupied -> script-mix (devices never check
-    /// template mismatch — SPEC/D-01 scopes that check to acts/cartridges
-    /// only; this service's own `<behavior>` never mentions it). NUM-08
-    /// context memory (`remember_context`) only happens here, never in
-    /// `create()`/`bulk_create()` — those two have no `NumberFieldInput` at
-    /// all (`DeviceNew` carries no `template_id`), so there is nothing to
-    /// remember on those paths.
+    /// chain for devices: occupied -> template mismatch (NUM-11, create-only
+    /// — mirrors `ActService::create()`/`CartridgeService::create()`) ->
+    /// script-mix. Corrected post-Plan-13 (fix 40.2-13/NUM-11): an earlier
+    /// doc-comment here claimed devices/printers were scoped OUT of the
+    /// mismatch check — that was wrong. CONTEXT D-01 and SPEC NUM-11 apply
+    /// whenever a template is selected in the field, regardless of entity
+    /// family; this method's own `<action>` text in the fix simply hadn't
+    /// been implemented yet. NUM-08 context memory (`remember_context`) only
+    /// happens here, never in `create()`/`bulk_create()` — those two have no
+    /// `NumberFieldInput` at all (`DeviceNew` carries no `template_id`), so
+    /// there is nothing to remember on those paths.
     pub async fn create_single_with_number_check(
         &self,
         new: DeviceNew,
@@ -362,7 +368,42 @@ impl DeviceService {
             Some(trimmed.clone())
         };
         if !trimmed.is_empty() {
+            // D-01 order: occupied (blocking) -> template mismatch (NUM-11,
+            // create-only) -> script-mix (NUM-12). `confirm_mismatch`/
+            // `confirm_script_mix` only skip RE-SHOWING an already-seen
+            // warning — they never skip the occupied check.
             self.reject_if_occupied(&trimmed, None).await?;
+
+            if let Some(template_id) = number_input.template_id {
+                if !number_input.confirm_mismatch {
+                    let template_dto = self.number_templates.get(template_id).await?;
+                    let today_utc = self.clock.unix_seconds();
+                    let synthetic_row = NumberTemplateRow {
+                        id: template_dto.id,
+                        template_type: TemplateType::DeviceInventory,
+                        mask: template_dto.mask.clone(),
+                        created_at_utc: 0,
+                        updated_at_utc: 0,
+                        version: template_dto.version,
+                    };
+                    if NumberTemplateService::check_mismatch(&synthetic_row, &trimmed, today_utc) {
+                        let context_label = match context {
+                            TemplateContextDto::PrinterCreate => "Новый принтер",
+                            _ => "Новое устройство",
+                        };
+                        return Ok(DeviceSaveOutcome::NeedsConfirmation(NumberWarningDto {
+                            kind: NumberWarningKind::Mismatch,
+                            message: format!(
+                                "Номер «{trimmed}» не подходит под шаблон «{}». Сохранить как \
+                                 есть? Следующее окно «{context_label}» откроется без шаблона.",
+                                template_dto.mask
+                            ),
+                            doppelganger: None,
+                        }));
+                    }
+                }
+            }
+
             if let Some(warning) = self
                 .script_mix_warning(&trimmed, None, number_input.confirm_script_mix)
                 .await?
@@ -376,12 +417,18 @@ impl DeviceService {
 
         let dto = self.insert_new_and_get(new).await?;
 
-        // NUM-08: remember the template used for this context. Devices
-        // never check template mismatch (see module doc-comment above), so
-        // there is no "confirmed mismatch resets memory" case here —
-        // remember whenever a template_id was supplied at all.
+        // NUM-08: remember the template used for this context ONLY when it
+        // was actually used without a confirmed mismatch — a confirmed
+        // mismatch (or no template at all) resets the context to "no
+        // template" so the next popup for this context opens empty
+        // (mirrors `ActService::create()`/`CartridgeService::create()`).
+        let to_remember = if number_input.template_id.is_some() && !number_input.confirm_mismatch {
+            number_input.template_id
+        } else {
+            None
+        };
         self.number_templates
-            .remember_context(context, number_input.template_id)
+            .remember_context(context, to_remember)
             .await?;
         self.broadcast_number_space_changed();
 

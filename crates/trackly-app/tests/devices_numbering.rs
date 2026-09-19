@@ -28,7 +28,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceNew, DeviceNumberEditInput, DevicePatch, DeviceSaveOutcome};
-use trackly_app::dto::number_template::{NumberFieldInput, TemplateContextDto, TemplateTypeDto};
+use trackly_app::dto::number_template::{
+    NumberFieldInput, NumberWarningKind, TemplateContextDto, TemplateTypeDto,
+};
 use trackly_app::services::{DeviceService, NumberTemplateService};
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -420,10 +422,20 @@ async fn create_single_with_number_check_full_chain() {
             panic!("ожидали NeedsConfirmation для номера со смешанными буквами");
         };
 
-        // 3. Confirmed script-mix -> Created, remember_context called with
-        // the SUPPLIED template_id (NUM-08 — devices have no mismatch
-        // concept, so there is no "confirmed mismatch resets memory" case
-        // to also prove here, unlike acts).
+        // 3. Confirmed script-mix WITH a template selected -> Created.
+        // Fix 40.2-13 (NUM-11): `mixed` ("OPГ-00-000041") does not actually
+        // match "ОРГ-[XXXXXX]"'s mask (literal prefix "ОРГ-" + 6 digits, no
+        // "00-" in the middle, and check_mismatch is a literal/byte
+        // comparison — it does NOT normalise Latin/Cyrillic homoglyphs), so
+        // `create_single_with_number_check()` now ALSO needs
+        // `confirm_mismatch: true` to get past the mismatch gate (D-01
+        // order: occupied -> mismatch -> script-mix) before it can even
+        // reach the script-mix confirmation this step is meant to exercise.
+        // A confirmed mismatch resets NUM-08 memory to "без шаблона"
+        // (proven in detail by
+        // `create_single_with_number_check_mismatch_needs_confirmation_then_succeeds`)
+        // regardless of which `template_id` was supplied — this step's own
+        // `remember_context` assertion below reflects that.
         let template_id = number_templates
             .create(TemplateTypeDto::DeviceInventory, "ОРГ-[XXXXXX]".to_string())
             .await
@@ -435,7 +447,7 @@ async fn create_single_with_number_check_full_chain() {
                 NumberFieldInput {
                     value: mixed.to_string(),
                     template_id: Some(template_id),
-                    confirm_mismatch: false,
+                    confirm_mismatch: true,
                     confirm_script_mix: true,
                 },
                 TemplateContextDto::DeviceCreate,
@@ -450,8 +462,9 @@ async fn create_single_with_number_check_full_chain() {
                 .get_context(TemplateContextDto::DeviceCreate)
                 .await
                 .expect("get_context after create"),
-            Some(template_id),
-            "NUM-08: create_single_with_number_check must remember the template used"
+            None,
+            "NUM-08/NUM-11: a confirmed mismatch resets the context to «без шаблона», \
+             even though a template_id was supplied"
         );
     })
     .await
@@ -529,4 +542,287 @@ async fn concurrent_creates_same_number_exactly_one_succeeds() {
     })
     .await
     .expect("concurrent_creates_same_number_exactly_one_succeeds exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// Fix 40.2-13 (NUM-11): create_single_with_number_check() DOES check template
+// mismatch, contrary to Plan 08's original (wrong) doc-comment. SPEC NUM-11's
+// own acceptance example (template ОРГ-00-[XXXXXX], value ИНВ-7) applies
+// verbatim to devices/printers — this is exactly that scenario.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_single_with_number_check_mismatch_needs_confirmation_then_succeeds() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let number_templates = number_templates_for(&svc);
+
+        let template_id = number_templates
+            .create(TemplateTypeDto::DeviceInventory, "ОРГ-00-[XXXXXX]".to_string())
+            .await
+            .expect("create device_inventory template")
+            .id;
+
+        // SPEC NUM-11 acceptance example: active `ОРГ-00-[XXXXXX]`, value
+        // `ИНВ-7` -> mismatch popup.
+        let outcome = svc
+            .create_single_with_number_check(
+                minimal_new("Новое устройство", None),
+                NumberFieldInput {
+                    value: "ИНВ-7".to_string(),
+                    template_id: Some(template_id),
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+            .expect("create_single_with_number_check mismatch");
+        match outcome {
+            DeviceSaveOutcome::NeedsConfirmation(warning) => {
+                assert_eq!(warning.kind, NumberWarningKind::Mismatch);
+                assert!(
+                    warning.message.contains("ИНВ-7") && warning.message.contains("ОРГ-00-[XXXXXX]"),
+                    "message must name the candidate and the mask verbatim: {}",
+                    warning.message
+                );
+            }
+            DeviceSaveOutcome::Created(_) => {
+                panic!("ожидали NeedsConfirmation(mismatch) для «ИНВ-7» при активном шаблоне")
+            }
+        }
+
+        // Nothing was created by the mismatch preview.
+        let listed = svc
+            .list(
+                trackly_app::dto::device::DeviceFilter::default(),
+                trackly_app::dto::device::Pagination {
+                    offset: 0,
+                    limit: 200,
+                },
+            )
+            .await
+            .expect("list after mismatch preview");
+        assert!(
+            !listed.items.iter().any(|d| d.inventory_no.as_deref() == Some("ИНВ-7")),
+            "mismatch preview must NOT persist a device"
+        );
+
+        // «Продолжить» -> confirm_mismatch=true -> saves ИНВ-7 as-is, and per
+        // SPEC NUM-11 п.8 the context is remembered as "без шаблона" (None),
+        // so the next такой попап открывается с пустым полем.
+        let created = svc
+            .create_single_with_number_check(
+                minimal_new("Новое устройство", None),
+                NumberFieldInput {
+                    value: "ИНВ-7".to_string(),
+                    template_id: Some(template_id),
+                    confirm_mismatch: true,
+                    confirm_script_mix: false,
+                },
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+            .expect("create_single_with_number_check confirmed mismatch")
+            .expect_created("create_single_with_number_check confirmed mismatch");
+        assert_eq!(created.inventory_no.as_deref(), Some("ИНВ-7"));
+
+        assert_eq!(
+            number_templates
+                .get_context(TemplateContextDto::DeviceCreate)
+                .await
+                .expect("get_context after confirmed mismatch"),
+            None,
+            "NUM-08/NUM-11: a confirmed mismatch must reset the context to «без шаблона»"
+        );
+    })
+    .await
+    .expect(
+        "create_single_with_number_check_mismatch_needs_confirmation_then_succeeds exceeded 30 s budget",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// device_create/printer_create NUM-08 contexts stay isolated even though
+// both read the same physical TemplateType::DeviceInventory space — a
+// confirmed mismatch in ONE context must not touch the other's memory.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_single_with_number_check_printer_context_isolated_from_device_context() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let number_templates = number_templates_for(&svc);
+
+        let template_id = number_templates
+            .create(TemplateTypeDto::DeviceInventory, "ОРГ-00-[XXXXXX]".to_string())
+            .await
+            .expect("create device_inventory template")
+            .id;
+
+        // Establish device_create's remembered template first (matching
+        // value -> no mismatch -> template IS remembered).
+        svc.create_single_with_number_check(
+            minimal_new("Устройство по шаблону", None),
+            NumberFieldInput {
+                value: "ОРГ-00-000001".to_string(),
+                template_id: Some(template_id),
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
+            TemplateContextDto::DeviceCreate,
+        )
+        .await
+        .expect("device_create seed")
+        .expect_created("device_create seed");
+        assert_eq!(
+            number_templates
+                .get_context(TemplateContextDto::DeviceCreate)
+                .await
+                .expect("get_context device_create after seed"),
+            Some(template_id)
+        );
+
+        // Now a PRINTER create with a confirmed mismatch must reset ONLY
+        // printer_create's memory, leaving device_create's remembered
+        // template untouched.
+        svc.create_single_with_number_check(
+            minimal_new("Принтер вручную", None),
+            NumberFieldInput {
+                value: "ИНВ-9".to_string(),
+                template_id: Some(template_id),
+                confirm_mismatch: true,
+                confirm_script_mix: false,
+            },
+            TemplateContextDto::PrinterCreate,
+        )
+        .await
+        .expect("printer_create confirmed mismatch")
+        .expect_created("printer_create confirmed mismatch");
+
+        assert_eq!(
+            number_templates
+                .get_context(TemplateContextDto::PrinterCreate)
+                .await
+                .expect("get_context printer_create after confirmed mismatch"),
+            None,
+            "printer_create's own context must reset to «без шаблона»"
+        );
+        assert_eq!(
+            number_templates
+                .get_context(TemplateContextDto::DeviceCreate)
+                .await
+                .expect("get_context device_create must stay untouched"),
+            Some(template_id),
+            "device_create's remembered template must be UNAFFECTED by printer_create's mismatch"
+        );
+    })
+    .await
+    .expect(
+        "create_single_with_number_check_printer_context_isolated_from_device_context exceeded 30 s budget",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// D-01 order: occupied beats mismatch (a candidate that is BOTH occupied AND
+// mismatched must surface as Conflict, never as NeedsConfirmation(mismatch)).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_single_with_number_check_occupied_beats_mismatch() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let number_templates = number_templates_for(&svc);
+
+        let template_id = number_templates
+            .create(
+                TemplateTypeDto::DeviceInventory,
+                "ОРГ-00-[XXXXXX]".to_string(),
+            )
+            .await
+            .expect("create device_inventory template")
+            .id;
+
+        // Baseline occupant with a number that would ALSO mismatch the
+        // template above (does not matter for occupied — value is arbitrary).
+        svc.create(minimal_new("Занято", Some("ИНВ-7")))
+            .await
+            .expect("seed occupant")
+            .expect_created("seed occupant");
+
+        let err = svc
+            .create_single_with_number_check(
+                minimal_new("Новое устройство", None),
+                NumberFieldInput {
+                    value: "ИНВ-7".to_string(),
+                    template_id: Some(template_id),
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+            .expect_err("occupied must win over mismatch — D-01 order");
+        match err {
+            trackly_core::error::AppError::Conflict { .. } => {}
+            other => panic!("ожидали Conflict (occupied beats mismatch), получили {other:?}"),
+        }
+    })
+    .await
+    .expect("create_single_with_number_check_occupied_beats_mismatch exceeded 30 s budget");
+}
+
+// ---------------------------------------------------------------------------
+// D-01 order: mismatch is checked BEFORE script-mix — a candidate that is
+// simultaneously non-matching AND script-mixed must surface as
+// NeedsConfirmation(Mismatch), never NeedsConfirmation(ScriptMix).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_single_with_number_check_mismatch_beats_script_mix() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let number_templates = number_templates_for(&svc);
+
+        let template_id = number_templates
+            .create(
+                TemplateTypeDto::DeviceInventory,
+                "ОРГ-00-[XXXXXX]".to_string(),
+            )
+            .await
+            .expect("create device_inventory template")
+            .id;
+
+        // "OPГ-7": Latin O/P mixed with Cyrillic Г (script-mix-eligible) AND
+        // does not match the "ОРГ-00-XXXXXX" mask (mismatch-eligible).
+        let mixed_and_mismatched = "OPГ-7";
+        let outcome = svc
+            .create_single_with_number_check(
+                minimal_new("Новое устройство", None),
+                NumberFieldInput {
+                    value: mixed_and_mismatched.to_string(),
+                    template_id: Some(template_id),
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                TemplateContextDto::DeviceCreate,
+            )
+            .await
+            .expect("create_single_with_number_check mismatch+script-mix candidate");
+        match outcome {
+            DeviceSaveOutcome::NeedsConfirmation(warning) => {
+                assert_eq!(
+                    warning.kind,
+                    NumberWarningKind::Mismatch,
+                    "mismatch must be surfaced BEFORE script-mix (D-01 order), got: {:?}",
+                    warning.kind
+                );
+            }
+            DeviceSaveOutcome::Created(_) => {
+                panic!("ожидали NeedsConfirmation для несоответствующего смешанного номера")
+            }
+        }
+    })
+    .await
+    .expect("create_single_with_number_check_mismatch_beats_script_mix exceeded 30 s budget");
 }
