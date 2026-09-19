@@ -8,6 +8,7 @@
 //!   - write_off: any → Списано (status_id 4)
 //!   - all_transitions_write_audit_log: each op produces a row in audit_log
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,7 +25,28 @@ use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeFilter, CartridgeModelCreateDto, CartridgeTransitionPayload,
     Pagination,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
+
+/// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation retired — most
+/// lifecycle tests here don't care about the specific code value, only a
+/// unique-per-process one.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+fn next_test_code() -> String {
+    format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 /// `Identity::trusted_admin()` — unlocked-desktop identity (D-Desktop-01),
 /// `user_id: None`. Used for pre-existing call sites that don't assert on
@@ -216,13 +238,14 @@ async fn create_stock_cartridge(
 ) -> trackly_app::dto::cartridge::CartridgeDto {
     svc.create(CartridgeCreateDto {
         model_id,
-        code_override: None,
+        number_input: number_input(&next_test_code()),
         state_id: Some(1), // Полный
         place_id: None,
         notes: None,
     })
     .await
     .expect("create cartridge")
+    .expect_created("create cartridge")
 }
 
 /// Same as `create_stock_cartridge`, but with an explicit `state_id`
@@ -234,13 +257,14 @@ async fn create_stock_cartridge_with_state(
 ) -> trackly_app::dto::cartridge::CartridgeDto {
     svc.create(CartridgeCreateDto {
         model_id,
-        code_override: None,
+        number_input: number_input(&next_test_code()),
         state_id: Some(state_id),
         place_id: None,
         notes: None,
     })
     .await
     .expect("create cartridge with state")
+    .expect_created("create cartridge with state")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1385,13 +1409,14 @@ async fn install_auto_return_falls_back_via_real_service_flow_no_hand_seed() {
         let cart_a = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(storage_place_id),
                 notes: None,
             })
             .await
-            .expect("create cartridge A at storage");
+            .expect("create cartridge A at storage")
+            .expect_created("create cartridge A at storage");
 
         // (5) Install A into the printer with NO explicit place_id — D-13
         // resolves it from the printer's own (non-storage) place. This is
@@ -1419,13 +1444,14 @@ async fn install_auto_return_falls_back_via_real_service_flow_no_hand_seed() {
         let cart_b = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(storage_place_id),
                 notes: None,
             })
             .await
-            .expect("create cartridge B at storage");
+            .expect("create cartridge B at storage")
+            .expect_created("create cartridge B at storage");
 
         // (7) Install B into the SAME printer, again with no explicit
         // previous_cartridge_place_id — triggers A's auto-return with no
@@ -1872,13 +1898,14 @@ async fn operation_default_place_from_refill_resolves_via_real_service_flow() {
         let cart = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge at storage A");
+            .expect("create cartridge at storage A")
+            .expect_created("create cartridge at storage A");
 
         let after_to_refill = svc
             .transition(
@@ -1933,13 +1960,14 @@ async fn operation_default_place_from_refill_prefers_pre_refill_place_when_refil
         let cart = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge at storage A");
+            .expect("create cartridge at storage A")
+            .expect_created("create cartridge at storage A");
 
         let after_to_refill = svc
             .transition(
@@ -2037,13 +2065,14 @@ async fn to_refill_last_send_returns_latest_not_most_frequent() {
             let cart = svc
                 .create(CartridgeCreateDto {
                     model_id,
-                    code_override: None,
+                    number_input: number_input(&next_test_code()),
                     state_id: Some(1),
                     place_id: Some(place_source),
                     notes: None,
                 })
                 .await
-                .expect("create cartridge at source storage");
+                .expect("create cartridge at source storage")
+                .expect_created("create cartridge at source storage");
             svc.transition(
                 &admin_caller(),
                 CartridgeTransitionPayload::ToRefill {
@@ -2063,13 +2092,14 @@ async fn to_refill_last_send_returns_latest_not_most_frequent() {
         let cart_last = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_source),
                 notes: None,
             })
             .await
-            .expect("create cartridge at source storage");
+            .expect("create cartridge at source storage")
+            .expect_created("create cartridge at source storage");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {
@@ -2112,13 +2142,14 @@ async fn to_refill_last_send_includes_given_by_and_given_to_names() {
         let cart = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_source),
                 notes: None,
             })
             .await
-            .expect("create cartridge at source storage");
+            .expect("create cartridge at source storage")
+            .expect_created("create cartridge at source storage");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {
@@ -2163,13 +2194,14 @@ async fn operation_default_place_from_refill_falls_back_to_latest_send_of_any_ca
         let cart_d = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge D at storage A");
+            .expect("create cartridge D at storage A")
+            .expect_created("create cartridge D at storage A");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {
@@ -2223,13 +2255,14 @@ async fn operation_default_place_from_refill_prefers_own_history_over_global_fal
         let cart_c = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_x),
                 notes: None,
             })
             .await
-            .expect("create cartridge C at storage X");
+            .expect("create cartridge C at storage X")
+            .expect_created("create cartridge C at storage X");
         let cart_c_after = svc
             .transition(
                 &admin_caller(),
@@ -2250,13 +2283,14 @@ async fn operation_default_place_from_refill_prefers_own_history_over_global_fal
         let cart_d = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_y),
                 notes: None,
             })
             .await
-            .expect("create cartridge D at storage Y");
+            .expect("create cartridge D at storage Y")
+            .expect_created("create cartridge D at storage Y");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {
@@ -2314,13 +2348,14 @@ async fn operation_default_place_from_refill_falls_back_past_sourceless_freshest
         let cart_e = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge E at storage A");
+            .expect("create cartridge E at storage A")
+            .expect_created("create cartridge E at storage A");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {
@@ -2392,13 +2427,14 @@ async fn to_refill_last_send_still_reflects_freshest_send_even_when_it_has_no_so
         let cart_e = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge E at storage A");
+            .expect("create cartridge E at storage A")
+            .expect_created("create cartridge E at storage A");
         svc.transition(
             &admin_caller(),
             CartridgeTransitionPayload::ToRefill {

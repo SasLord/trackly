@@ -13,7 +13,8 @@ use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
+    CartridgeSaveOutcome, CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    ToRefillLastSendDto,
 };
 use crate::error_axum::AppErrorResponse;
 use crate::http::auth::session_identity;
@@ -159,7 +160,7 @@ pub async fn handler_create(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<CreatePayload>,
-) -> Result<Json<CartridgeDto>, AppErrorResponse> {
+) -> Result<Json<CartridgeSaveOutcome>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

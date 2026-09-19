@@ -16,7 +16,17 @@ use trackly_infra::test_support::test_writer_and_readers;
 use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
 
 /// `Identity::trusted_admin()` — unlocked-desktop identity (D-Desktop-01),
 /// `user_id: None`. Used here since these tests don't assert on
@@ -48,13 +58,14 @@ async fn seed_and_create(svc: &CartridgeService) -> trackly_app::dto::cartridge:
 
     svc.create(CartridgeCreateDto {
         model_id,
-        code_override: None,
+        number_input: number_input("C-HIST-0001"),
         state_id: Some(1),
         place_id: None,
         notes: None,
     })
     .await
     .expect("create cartridge")
+    .expect_created("create cartridge")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

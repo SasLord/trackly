@@ -881,13 +881,19 @@ async fn suggest_person_receiver_survives_holder_name_overwrite_by_later_transit
         let cart = carts
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: NumberFieldInput {
+                    value: "C-SUGGEST-0001".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
                 state_id: Some(1), // Полный
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create stock cartridge");
+            .expect("create stock cartridge")
+            .expect_created("create stock cartridge");
 
         // 1. Отправка на заправку: На складе (1) -> На заправке (3).
         //    given_to_name = "Смирнов С.С." -> cartridges.holder_name становится

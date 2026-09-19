@@ -14,6 +14,8 @@ use trackly_core::domain::cartridges::{
     CartridgeCounts, CartridgeModelRow as DomainModelRow, CartridgeRow, LowStockItem,
 };
 
+use crate::dto::number_template::{NumberFieldInput, NumberWarningDto};
+
 /// Public cartridge DTO — what the UI receives.
 ///
 /// All FK / counter fields that would become `bigint` in TypeScript carry
@@ -139,14 +141,46 @@ impl CartridgeModelDto {
 pub struct CartridgeCreateDto {
     #[specta(type = i32)]
     pub model_id: i64,
-    /// None → auto-code C-NNNNNN from `cartridge_seq` counter.
-    /// Some(s) → custom barcode / inventory code (validated 1-32 chars, no ctrl chars).
-    pub code_override: Option<String>,
+    /// Phase 40.2 Plan 07 (NUM-13/NUM-09): no more server-side auto-generate
+    /// — the user always supplies (or a template pre-fills)
+    /// `number_input.value`, a required non-empty string (validated 1-32
+    /// chars, no ctrl chars). The service checks uniqueness among LIVE
+    /// cartridges/drums (one shared code space, NUM-09 "в" — both kinds
+    /// share the physical `cartridges.code` column) and — when
+    /// `template_id` is set and `confirm_mismatch` is `false` — that the
+    /// value matches the template's mask (NUM-11).
+    pub number_input: NumberFieldInput,
     #[specta(type = Option<i32>)]
     pub state_id: Option<i64>,
     #[specta(type = Option<i32>)]
     pub place_id: Option<i64>,
     pub notes: Option<String>,
+}
+
+/// Outcome of `CartridgeService::create` (Phase 40.2 Plan 07, D-01
+/// confirmation chain) — follows the `*SaveOutcome` convention fixed by
+/// `dto::number_template`'s module doc-comment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum CartridgeSaveOutcome {
+    Created(Box<CartridgeDto>),
+    NeedsConfirmation(NumberWarningDto),
+}
+
+impl CartridgeSaveOutcome {
+    /// Test-only convenience: unwrap the `Created` variant, panicking with a
+    /// descriptive message if the save instead needed confirmation. Mirrors
+    /// `ActSaveOutcome::expect_created` (Plan 06) — NOT used by production
+    /// code.
+    #[track_caller]
+    pub fn expect_created(self, msg: &str) -> CartridgeDto {
+        match self {
+            CartridgeSaveOutcome::Created(dto) => *dto,
+            CartridgeSaveOutcome::NeedsConfirmation(warning) => {
+                panic!("{msg}: expected Created, got NeedsConfirmation({warning:?})")
+            }
+        }
+    }
 }
 
 /// Payload sent by the UI when creating a new cartridge model.

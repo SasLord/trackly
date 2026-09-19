@@ -17,6 +17,7 @@
 //! — real tempfile SQLite DB via `test_writer_and_readers`, invented place/printer
 //! names only (CLAUDE.md privacy gate).
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,6 +25,7 @@ use rusqlite::params;
 use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
 use trackly_core::auth::Identity;
 use trackly_infra::clock_impl::SystemClock;
@@ -31,6 +33,15 @@ use trackly_infra::db::pools::ReaderPool;
 use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
+
+/// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation retired.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+fn next_test_code() -> String {
+    format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 /// `Identity::trusted_admin()` — unlocked-desktop identity (D-Desktop-01),
 /// `user_id: None`. Mirrors `cartridges_lifecycle.rs::admin_caller()`.
@@ -107,13 +118,19 @@ async fn create_cartridge_at_place(
 ) -> trackly_app::dto::cartridge::CartridgeDto {
     svc.create(CartridgeCreateDto {
         model_id,
-        code_override: None,
+        number_input: NumberFieldInput {
+            value: next_test_code(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         state_id: Some(1), // Полный
         place_id,
         notes: None,
     })
     .await
     .expect("create cartridge")
+    .expect_created("create cartridge")
 }
 
 #[allow(clippy::type_complexity)]

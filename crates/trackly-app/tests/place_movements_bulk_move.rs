@@ -39,6 +39,7 @@ use tower_sessions::SessionStore;
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
@@ -183,17 +184,29 @@ async fn seed_cartridge_model(ctx: &AppCtx) -> i64 {
         .id
 }
 
+static NEXT_TEST_CODE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
 async fn seed_cartridge_at_place(ctx: &AppCtx, model_id: i64, place_id: i64) -> i64 {
+    let code = format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    );
     ctx.cartridges
         .create(CartridgeCreateDto {
             model_id,
-            code_override: None,
+            number_input: NumberFieldInput {
+                value: code,
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             state_id: Some(1),
             place_id: Some(place_id),
             notes: None,
         })
         .await
         .expect("seed cartridge")
+        .expect_created("seed cartridge")
         .id
 }
 

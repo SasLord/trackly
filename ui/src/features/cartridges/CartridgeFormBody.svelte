@@ -1,7 +1,8 @@
 <script lang="ts">
   // Plan 04-05: CartridgeFormBody — inner form state component for CartridgeFormModal.
   // Remounted on every {#key openInstanceCounter} — guarantees field reset.
-  // Поля (UI-SPEC §CartridgeFormModal): Код (авто/ручной) + Модель + Состояние заряда + Место (D-12) + Примечания.
+  // Поля (UI-SPEC §CartridgeFormModal): Код (обязателен при создании, NUM-13) +
+  // Модель + Состояние заряда + Место (D-12) + Примечания.
   //
   // GAP-8 (39-UAT.md, Прогон 3): `readonly` — read-only mode for
   // PlaceEntityViewModal.svelte's «Просмотр картриджа» popup. Mirrors
@@ -142,6 +143,18 @@
       valid = false;
     }
 
+    // Phase 40.2 Plan 07 (NUM-13): server-side auto-generation is retired —
+    // an empty code is now a hard validation error, not "auto-fill". This
+    // mirrors that rule client-side (only on create — an existing
+    // cartridge's code is not editable via this form) to avoid a round-trip
+    // just to learn the same thing the server already knows. The real
+    // template-picker UX (masks, "next code" preview, confirmation popups)
+    // is Plan 11/14/15's job — this is a minimal compat fix, not that UX.
+    if (!isEdit && code.trim() === '') {
+      codeError = 'Введите код или выберите шаблон.';
+      valid = false;
+    }
+
     return valid;
   }
 
@@ -167,10 +180,27 @@
         onClose();
         pushToast('success', `Картридж «${result.code}» обновлён.`);
       } else {
-        // Create
+        // Create. Phase 40.2 Plan 07 (NUM-13): `code_override` -> `number_input`
+        // — server-side auto-generation is retired, `code` is validated
+        // non-empty above. `template_id`/`confirm_*` stay at their inert
+        // defaults here (no template picker/confirmation popups yet — Plan
+        // 11/14/15's job); `cartridges.create`'s return type is still
+        // asserted as `CartridgeDto` (loosely-typed `apiCall<T>` cast, per
+        // `dto::cartridge::CartridgeSaveOutcome`'s internally-tagged JSON
+        // shape flattening `Created`'s fields to the top level) — a
+        // `NeedsConfirmation` response cannot happen while `confirm_*` are
+        // never set to `true` and no `template_id` is ever sent.
         const result = await cartridges.create({
           model_id: modelId!,
-          code_override: code.trim() || null, // пустая строка → авто-код
+          // `NumberFieldInput` (dto::number_template) has its OWN
+          // `#[serde(rename_all = "camelCase")]` — camelCase here is
+          // intentional, NOT a slip from the rest of this snake_case DTO.
+          number_input: {
+            value: code.trim(),
+            templateId: null,
+            confirmMismatch: false,
+            confirmScriptMix: false,
+          },
           state_id: stateId,
           place_id: placeId,
           notes: notes.trim() || null,
@@ -238,15 +268,16 @@
     </div>
   {/if}
 
-  <!-- Код (optional — авто, если пусто) -->
+  <!-- Код: обязателен при создании (NUM-13, Phase 40.2 Plan 07 — server-side
+       auto-generation retired); при редактировании не меняется через эту форму. -->
   <div class="field">
-    <label class="label" for="cart-code">Код</label>
+    <label class="label" for="cart-code">Код{isEdit ? '' : ' *'}</label>
     <Input
       value={code}
       placeholder={codePlaceholder}
       id="cart-code"
       invalid={!!codeError}
-      disabled={readonly}
+      disabled={readonly || isEdit}
       aria-describedby={codeError ? 'cart-code-error' : 'cart-code-hint'}
       oninput={(v) => {
         code = v;
@@ -255,9 +286,9 @@
     />
     {#if codeError}
       <span id="cart-code-error" class="field-error">{codeError}</span>
-    {:else}
+    {:else if !isEdit}
       <span id="cart-code-hint" class="field-hint"
-        >Будет присвоен автоматически. Введите свой код (например, штрих-код) при необходимости.</span
+        >Введите код или штрих-код вручную (например, «C-0001»).</span
       >
     {/if}
   </div>

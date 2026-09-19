@@ -470,9 +470,20 @@ async fn role_endpoint_matrix_test() {
             }
         });
 
+        // Phase 40.2 Plan 07 (NUM-13): `code_override: Option<String>` ->
+        // `number_input: NumberFieldInput` (required, own camelCase rename_all)
+        // — without it axum's `Json` extractor 422s before `authorize()` ever
+        // runs, silently breaking the Case 5 RBAC assertion below (matches
+        // Plan 06's identical acts_create fix).
         let cartridge_payload = json!({
             "payload": {
                 "model_id": 1,
+                "number_input": {
+                    "value": "TEST-1",
+                    "templateId": null,
+                    "confirmMismatch": false,
+                    "confirmScriptMix": false
+                },
                 "place_id": null,
                 "notes": null
             }

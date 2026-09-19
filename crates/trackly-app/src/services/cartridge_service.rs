@@ -2,20 +2,22 @@
 //!
 //! Single-writer discipline: every mutation goes through
 //! `WriterHandle::execute(closure)` with a `BEGIN IMMEDIATE` transaction.
-//! `counters.cartridge_seq` is incremented atomically via
-//! `assign_code_in_tx` (retry loop — D-Code-01).
+//! Phase 40.2 Plan 07 (NUM-13): server-side auto-numbering is retired —
+//! codes are always explicit (manual entry or `NumberTemplateService`).
 //!
 //! Validation rules (T-04-03-01):
 //!   - model_id == 0 → Validation
-//!   - code_override trimmed empty → Validation
-//!   - code_override trimmed > 32 chars → Validation
-//!   - code_override contains char < U+0020 (control chars) → Validation
+//!   - number_input.value trimmed empty → Validation (NUM-13, no auto-generate
+//!     fallback)
+//!   - number_input.value trimmed > 32 chars → Validation
+//!   - number_input.value contains char < U+0020 (control chars) → Validation
 
 use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
 use trackly_core::auth::Identity;
 use trackly_core::domain::cartridges::CartridgeModelNew;
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -31,8 +33,12 @@ use trackly_infra::repos::{
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
+    CartridgeSaveOutcome, CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    ToRefillLastSendDto,
 };
+use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
+use crate::dto::printer::WsEvent;
+use crate::services::number_template_service::NumberTemplateService;
 
 /// Application service for cartridge lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -49,6 +55,18 @@ pub struct CartridgeService {
     pub(crate) place_repo: Arc<SqlitePlaceRepository>,
     /// HST-01: place_movements write-side entry point (D-04/D-06 guard owner).
     pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
+    /// Phase 40.2 Plan 07 (NUM-13): the single owner of occupied/mismatch/
+    /// script-mix checks + the "last used template" memory (NUM-08) for the
+    /// `cartridge_create`/`drum_create` contexts. Constructed internally from
+    /// the SAME `writer`/`readers`/`clock` this service already receives —
+    /// same rationale as `ActService`'s own internal `NumberTemplateService`
+    /// (Plan 06): avoids threading a 4th constructor argument through every
+    /// existing `CartridgeService::new(writer, readers, clock)` test call site.
+    pub(crate) number_templates: Arc<NumberTemplateService>,
+    /// D-14 invalidation broadcast (`WsEvent::NumberSpaceChanged`) — `None`
+    /// in most test fixtures; `AppCtx::build` wires the real shared sender
+    /// via `with_ws_tx`. Mirrors `ActService`'s optional-builder field.
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 impl CartridgeService {
@@ -57,6 +75,11 @@ impl CartridgeService {
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
     ) -> Self {
+        let number_templates = Arc::new(NumberTemplateService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         Self {
             writer,
             readers,
@@ -66,7 +89,17 @@ impl CartridgeService {
             device_repo: Arc::new(SqliteDeviceRepository),
             place_repo: Arc::new(SqlitePlaceRepository),
             place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
+            number_templates,
+            ws_tx: None,
         }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (D-14). Mirrors
+    /// `ActService::with_ws_tx` — test fixtures that never subscribe to a WS
+    /// channel simply skip calling this.
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
     }
 
     // -----------------------------------------------------------------------
@@ -77,10 +110,10 @@ impl CartridgeService {
     ///
     /// Rules checked in order:
     ///   1. `model_id == 0` → field "model_id"
-    ///   2. `code_override == Some(s)`:
-    ///      a. `s.trim().is_empty()` → field "code_override"
-    ///      b. `s.trim().chars().count() > 32` → field "code_override"
-    ///      c. any char < U+0020 → field "code_override"
+    ///   2. `number_input.value` (after `.trim()`):
+    ///      a. empty → field "number" (NUM-13 — no auto-generate fallback)
+    ///      b. `> 32` chars → field "number"
+    ///      c. any char < U+0020 → field "number"
     fn validate_create(p: &CartridgeCreateDto) -> Result<(), AppError> {
         if p.model_id == 0 {
             return Err(AppError::Validation {
@@ -88,26 +121,24 @@ impl CartridgeService {
                 message: "Выберите модель картриджа".into(),
             });
         }
-        if let Some(ref code) = p.code_override {
-            let trimmed = code.trim();
-            if trimmed.is_empty() {
-                return Err(AppError::Validation {
-                    field: "code_override".into(),
-                    message: "Код не может быть пустым".into(),
-                });
-            }
-            if trimmed.chars().count() > 32 {
-                return Err(AppError::Validation {
-                    field: "code_override".into(),
-                    message: "Код не должен превышать 32 символа".into(),
-                });
-            }
-            if code.chars().any(|c| (c as u32) < 0x20) {
-                return Err(AppError::Validation {
-                    field: "code_override".into(),
-                    message: "Код содержит недопустимые символы".into(),
-                });
-            }
+        let trimmed = p.number_input.value.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation {
+                field: "number".into(),
+                message: "Введите код или выберите шаблон.".into(),
+            });
+        }
+        if trimmed.chars().count() > 32 {
+            return Err(AppError::Validation {
+                field: "number".into(),
+                message: "Код не должен превышать 32 символа".into(),
+            });
+        }
+        if p.number_input.value.chars().any(|c| (c as u32) < 0x20) {
+            return Err(AppError::Validation {
+                field: "number".into(),
+                message: "Код содержит недопустимые символы".into(),
+            });
         }
         Ok(())
     }
@@ -116,30 +147,126 @@ impl CartridgeService {
     // Create
     // -----------------------------------------------------------------------
 
-    pub async fn create(&self, payload: CartridgeCreateDto) -> Result<CartridgeDto, AppError> {
+    pub async fn create(
+        &self,
+        payload: CartridgeCreateDto,
+    ) -> Result<CartridgeSaveOutcome, AppError> {
         Self::validate_create(&payload)?;
+
+        // D-08-style explicit `.trim()` (matches ActService::create/D-08).
+        let trimmed = payload.number_input.value.trim().to_string();
+
+        // Вид расходника берём из модели ДО открытия writer-транзакции — он
+        // определяет, какой контекст памяти (NUM-08) и дефолтный шаблон
+        // использовать (kind_id=2 → фотобарабан → drum_create; иначе →
+        // cartridge_create). Пространство occupied-проверки ОДНО для обоих
+        // (NUM-09 "в" — оба kind читают общую физическую колонку
+        // cartridges.code), поэтому occupied/warnings всегда идут через
+        // `TemplateType::CartridgeCode` независимо от kind_id.
+        let kind_id = {
+            let readers = self.readers.clone();
+            let model_id = payload.model_id;
+            tokio::task::spawn_blocking(move || -> Result<i64, AppError> {
+                let conn = readers.acquire();
+                conn.query_row(
+                    "SELECT kind_id FROM cartridge_models WHERE id = ?1 AND deleted_at_utc IS NULL",
+                    params![model_id],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => AppError::NotFound {
+                        entity: "cartridge_model",
+                        id: model_id,
+                    },
+                    other => map_rusqlite(other),
+                })
+            })
+            .await
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("spawn_blocking: {e}"),
+            })??
+        };
+        let template_context = if kind_id == 2 {
+            TemplateContextDto::DrumCreate
+        } else {
+            TemplateContextDto::CartridgeCreate
+        };
+
+        // D-01 confirmation chain, run as async pre-checks BEFORE opening the
+        // writer transaction (mirrors ActService::create/Plan 06): occupied
+        // (NUM-09, live rows only per idx_cartridges_code_live) → template
+        // mismatch (create-only, NUM-11) → script-mix (NUM-12).
+        // `confirm_mismatch`/`confirm_script_mix` only skip RE-SHOWING an
+        // already-seen warning — they never skip the occupied check.
+        if self
+            .number_templates
+            .is_occupied(TemplateType::CartridgeCode, &trimmed, None)
+            .await?
+            .is_some()
+        {
+            return Err(AppError::Conflict {
+                reason: format!("Картридж с кодом «{trimmed}» уже существует"),
+            });
+        }
+
+        if let Some(template_id) = payload.number_input.template_id {
+            if !payload.number_input.confirm_mismatch {
+                let template_dto = self.number_templates.get(template_id).await?;
+                let today_utc = self.clock.unix_seconds();
+                let synthetic_row = NumberTemplateRow {
+                    id: template_dto.id,
+                    template_type: TemplateType::CartridgeCode,
+                    mask: template_dto.mask.clone(),
+                    created_at_utc: 0,
+                    updated_at_utc: 0,
+                    version: template_dto.version,
+                };
+                if NumberTemplateService::check_mismatch(&synthetic_row, &trimmed, today_utc) {
+                    let context_label = if kind_id == 2 {
+                        "Новый фотобарабан"
+                    } else {
+                        "Новый картридж"
+                    };
+                    return Ok(CartridgeSaveOutcome::NeedsConfirmation(NumberWarningDto {
+                        kind: NumberWarningKind::Mismatch,
+                        message: format!(
+                            "Номер «{trimmed}» не подходит под шаблон «{}». Сохранить как \
+                             есть? Следующее окно «{context_label}» откроется без шаблона.",
+                            template_dto.mask
+                        ),
+                        doppelganger: None,
+                    }));
+                }
+            }
+        }
+
+        if !payload.number_input.confirm_script_mix {
+            if let Some(warning) = self
+                .number_templates
+                .detect_warnings(TemplateType::CartridgeCode, &trimmed, None)
+                .await?
+            {
+                return Ok(CartridgeSaveOutcome::NeedsConfirmation(warning));
+            }
+        }
+
         let now = self.clock.unix_seconds();
         let cart_repo = self.cart_repo.clone();
         let audit_repo = self.audit_repo.clone();
+        let code = trimmed.clone();
 
         let cart_id = self
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
-                // Вид расходника берём из модели — он определяет префикс кода
-                // (C- картридж / D- фотобарабан).
-                let kind_id = SqliteCartridgeRepository::model_kind_in_tx(&tx, payload.model_id)?;
-
-                // Assign code (auto or custom).
-                let (code, was_auto) = SqliteCartridgeRepository::assign_code_in_tx(
-                    &tx,
-                    payload.code_override.as_deref(),
-                    kind_id,
-                    now,
-                )?;
-
-                // Insert cartridge row (initial status_id = 1 = На складе).
+                // Number already resolved + fully checked (occupied,
+                // mismatch, script-mix) by the async pre-checks above,
+                // BEFORE this transaction opened. `idx_cartridges_code_live`
+                // (Plan 07 Task 1) is the final DB-level backstop against the
+                // resulting small TOCTOU window (T-40.2-16) — a collision
+                // here surfaces as a raw SQLite UNIQUE violation, mapped to
+                // AppError by `map_rusqlite`/`insert_cartridge_in_tx`.
                 let cart_id = cart_repo.insert_cartridge_in_tx(
                     &tx,
                     &code,
@@ -152,12 +279,6 @@ impl CartridgeService {
                     now,
                 )?;
 
-                // Audit: create or custom:code_override
-                let action = if was_auto {
-                    "create"
-                } else {
-                    "custom:cartridge_code_override"
-                };
                 let payload_json = serde_json::json!({
                     "code": &code,
                     "model_id": payload.model_id,
@@ -168,7 +289,7 @@ impl CartridgeService {
                     AuditEntry {
                         entity_type: "cartridge",
                         entity_id: cart_id,
-                        action,
+                        action: "create",
                         user_id: None,
                         before_json: None,
                         after_json: None,
@@ -182,7 +303,32 @@ impl CartridgeService {
             })
             .await?;
 
-        self.get(cart_id).await
+        // NUM-08: remember the template ONLY when it was actually used
+        // without a confirmed mismatch — a confirmed mismatch (or no
+        // template at all) resets the context to "no template".
+        let to_remember = if payload.number_input.template_id.is_some()
+            && !payload.number_input.confirm_mismatch
+        {
+            payload.number_input.template_id
+        } else {
+            None
+        };
+        self.number_templates
+            .remember_context(template_context, to_remember)
+            .await?;
+
+        // D-14: best-effort invalidation broadcast — a new code was just
+        // written into the shared cartridge/drum code space. Both contexts
+        // are always sent together (module doc-comment): "Картриджи" and
+        // "Фотобарабаны" read the same physical `cartridges.code` column.
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["cartridge_create".to_string(), "drum_create".to_string()],
+            });
+        }
+
+        let dto = self.get(cart_id).await?;
+        Ok(CartridgeSaveOutcome::Created(Box::new(dto)))
     }
 
     // -----------------------------------------------------------------------

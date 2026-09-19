@@ -14,6 +14,7 @@
 //!   - low_stock_printer_model_excludes_model_without_compatibility_rows: a
 //!     model with zero compatibility rows never leaks into any printer group.
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,7 +24,26 @@ use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeModelCreateDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
+
+/// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation retired.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+fn next_test_code() -> String {
+    format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 fn make_cartridge_service() -> (CartridgeService, Arc<WriterHandle>, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -71,7 +91,7 @@ async fn create_full_stock(svc: &CartridgeService, model_id: i64, n: usize) {
     for _ in 0..n {
         svc.create(CartridgeCreateDto {
             model_id,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1), // Полный
             place_id: None,
             notes: None,
@@ -141,13 +161,14 @@ async fn threshold_read_from_app_settings() {
         let cart = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1), // Полный
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
 
         let items = svc.low_stock().await.expect("low_stock");
         let item = items.iter().find(|i| i.model_id == Some(model_id));

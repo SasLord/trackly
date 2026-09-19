@@ -8,6 +8,7 @@
 //!     `cartridges.location` column
 //!   - empty_query_returns_all: empty / whitespace-only query falls back to list
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,7 +17,26 @@ use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeFilter, CartridgeModelCreateDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
+
+/// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation retired.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+fn next_test_code() -> String {
+    format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 fn make_cartridge_service() -> (CartridgeService, tempfile::TempDir) {
     let (writer, readers, dir) = test_writer_and_readers();
@@ -65,13 +85,14 @@ async fn create_with_place(svc: &CartridgeService, model_id: i64, place_name: &s
     let place_id = seed_place(svc, place_name).await;
     svc.create(CartridgeCreateDto {
         model_id,
-        code_override: None,
+        number_input: number_input(&next_test_code()),
         state_id: None,
         place_id: Some(place_id),
         notes: None,
     })
     .await
     .expect("create")
+    .expect_created("create")
     .code
 }
 
@@ -85,13 +106,14 @@ async fn search_by_code() {
         let code = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: None,
                 notes: None,
             })
             .await
             .expect("create")
+            .expect_created("create")
             .code;
 
         // Search by the first 5 chars of the code (e.g. "C-000").
@@ -119,13 +141,14 @@ async fn search_by_model_brand() {
         let code = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: None,
                 notes: None,
             })
             .await
             .expect("create")
+            .expect_created("create")
             .code;
 
         // Search by brand prefix
@@ -176,7 +199,7 @@ async fn empty_query_returns_all() {
         for _ in 0..3 {
             svc.create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: None,
                 notes: None,

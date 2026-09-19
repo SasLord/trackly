@@ -305,11 +305,13 @@ impl AppCtx {
         );
 
         // Phase 4 Plan 03: cartridge service.
-        let cartridges = Arc::new(CartridgeService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+        // Phase 40.2 Plan 07 (D-14): `with_ws_tx` wires the SAME shared
+        // broadcast sender `acts` uses above, so `WsEvent::NumberSpaceChanged`
+        // (cartridge_create/drum_create contexts) reaches subscribed clients.
+        let cartridges = Arc::new(
+            CartridgeService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Phase 39 Plan 05: place-tree service. No cross-entity dependencies
         // (unlike DeviceService's printer_repo), so no ordering constraint

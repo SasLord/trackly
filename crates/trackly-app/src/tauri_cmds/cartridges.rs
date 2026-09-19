@@ -15,7 +15,8 @@ use crate::context::AppCtx;
 use crate::dto::cartridge::{
     AuditEntryDto, CartridgeCountsDto, CartridgeCreateDto, CartridgeDto, CartridgeFilter,
     CartridgeListResponse, CartridgeModelCreateDto, CartridgeModelDto, CartridgeModelPatchDto,
-    CartridgeTransitionPayload, LowStockItemDto, Pagination, ToRefillLastSendDto,
+    CartridgeSaveOutcome, CartridgeTransitionPayload, LowStockItemDto, Pagination,
+    ToRefillLastSendDto,
 };
 use crate::tauri_cmds::users::resolve_tauri_identity;
 use trackly_core::auth::{authorize, Action, Identity};
@@ -49,7 +50,7 @@ pub async fn build_cartridges_create(
     ctx: &AppCtx,
     caller: &Identity,
     payload: CartridgeCreateDto,
-) -> Result<CartridgeDto, AppError> {
+) -> Result<CartridgeSaveOutcome, AppError> {
     authorize(caller, &Action::MutateCartridges)?;
     ctx.cartridges.create(payload).await
 }
@@ -271,7 +272,7 @@ pub async fn cartridges_get(
 pub async fn cartridges_create(
     state: tauri::State<'_, AppCtx>,
     payload: CartridgeCreateDto,
-) -> Result<CartridgeDto, AppError> {
+) -> Result<CartridgeSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_cartridges_create(state.inner(), &caller, payload).await
 }

@@ -15,6 +15,7 @@
 //! `printer_compatib_case_insensitive_match`, covering the case/whitespace
 //! comparison semantics (D-03) the round-trip test never verified.
 
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,7 +27,28 @@ use trackly_infra::db::writer_worker::WriterHandle;
 use trackly_infra::test_support::test_writer_and_readers;
 
 use trackly_app::dto::cartridge::{CartridgeCreateDto, CartridgeFilter, Pagination};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::CartridgeService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
+
+/// Phase 40.2 Plan 07 (NUM-13): server-side auto-generation retired — tests
+/// that don't care about the specific code value (most CRUD/list tests here)
+/// need a unique-per-process explicit code instead.
+static NEXT_TEST_CODE: AtomicI64 = AtomicI64::new(1);
+fn next_test_code() -> String {
+    format!(
+        "C-TEST-{:05}",
+        NEXT_TEST_CODE.fetch_add(1, Ordering::SeqCst)
+    )
+}
 
 /// `Identity::trusted_admin()` — desktop unlocked mode (D-Desktop-01),
 /// `user_id: None`. Used for pre-existing call sites that don't assert on
@@ -132,13 +154,14 @@ async fn create_cartridge_assigns_auto_code() {
         let dto = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create auto");
+            .expect("create auto")
+            .expect_created("create auto");
 
         // Code must start with "C-" and be unique.
         assert!(
@@ -162,13 +185,14 @@ async fn create_cartridge_custom_code() {
         let dto = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: Some("BARCODE-42".into()),
+                number_input: number_input("BARCODE-42"),
                 state_id: None,
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create custom");
+            .expect("create custom")
+            .expect_created("create custom");
 
         assert_eq!(dto.code, "BARCODE-42");
     })
@@ -200,13 +224,14 @@ async fn soft_delete_hides_item() {
         let dto = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
 
         svc.delete(dto.id, dto.version).await.expect("delete");
 
@@ -232,7 +257,7 @@ async fn counts_by_status() {
         for _ in 0..2 {
             svc.create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: Some(1),
                 place_id: None,
                 notes: None,
@@ -250,25 +275,25 @@ async fn counts_by_status() {
     .expect("counts_by_status budget")
 }
 
-/// Verify that create with an empty code_override, one longer than 32 chars,
-/// or one containing a control character returns AppError::Validation.
+/// Verify that create with an empty `number_input.value`, one longer than 32
+/// chars, or one containing a control character returns AppError::Validation.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rejects_invalid_custom_code() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_cartridge_service();
         let model_id = seed_model(&svc).await;
 
-        // (a) empty string
+        // (a) empty string (NUM-13: no server-side auto-generate fallback)
         let result = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: Some("".into()),
+                number_input: number_input(""),
                 ..Default::default()
             })
             .await;
         assert!(
-            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "code_override"),
-            "empty string must return Validation(code_override), got: {:?}",
+            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "number"),
+            "empty string must return Validation(number), got: {:?}",
             result
         );
 
@@ -276,13 +301,13 @@ async fn rejects_invalid_custom_code() {
         let result = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: Some("x".repeat(33)),
+                number_input: number_input(&"x".repeat(33)),
                 ..Default::default()
             })
             .await;
         assert!(
-            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "code_override"),
-            ">32 chars must return Validation(code_override), got: {:?}",
+            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "number"),
+            ">32 chars must return Validation(number), got: {:?}",
             result
         );
 
@@ -290,13 +315,13 @@ async fn rejects_invalid_custom_code() {
         let result = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: Some("C\x09ode".into()),
+                number_input: number_input("C\x09ode"),
                 ..Default::default()
             })
             .await;
         assert!(
-            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "code_override"),
-            "ctrl char must return Validation(code_override), got: {:?}",
+            matches!(result, Err(AppError::Validation { ref field, .. }) if field == "number"),
+            "ctrl char must return Validation(number), got: {:?}",
             result
         );
     })
@@ -349,7 +374,7 @@ async fn printer_compatib_list_narrows_to_linked_model() {
         // In-stock, full-charge cartridges for both models.
         svc.create(CartridgeCreateDto {
             model_id: model_a,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1),
             place_id: None,
             notes: None,
@@ -358,7 +383,7 @@ async fn printer_compatib_list_narrows_to_linked_model() {
         .expect("create cartridge A");
         svc.create(CartridgeCreateDto {
             model_id: model_b,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1),
             place_id: None,
             notes: None,
@@ -416,7 +441,7 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
 
         svc.create(CartridgeCreateDto {
             model_id: model_a,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1),
             place_id: None,
             notes: None,
@@ -425,7 +450,7 @@ async fn printer_compatib_unconfigured_device_does_not_narrow() {
         .expect("create cartridge A");
         svc.create(CartridgeCreateDto {
             model_id: model_b,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1),
             place_id: None,
             notes: None,
@@ -503,7 +528,7 @@ async fn printer_compatib_case_insensitive_match() {
 
         svc.create(CartridgeCreateDto {
             model_id: model_a,
-            code_override: None,
+            number_input: number_input(&next_test_code()),
             state_id: Some(1),
             place_id: None,
             notes: None,
@@ -647,13 +672,14 @@ async fn update_stores_real_caller_user_id_in_audit_log() {
         let dto = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: Some(place_a),
                 notes: None,
             })
             .await
-            .expect("create cartridge");
+            .expect("create cartridge")
+            .expect_created("create cartridge");
 
         let manager_user_id = seed_manager_user(&svc.writer).await;
         let manager = Identity {
@@ -700,13 +726,14 @@ async fn update_with_trusted_admin_caller_stores_null_user_id() {
         let dto = svc
             .create(CartridgeCreateDto {
                 model_id,
-                code_override: None,
+                number_input: number_input(&next_test_code()),
                 state_id: None,
                 place_id: None,
                 notes: None,
             })
             .await
-            .expect("create cartridge");
+            .expect("create cartridge")
+            .expect_created("create cartridge");
 
         let admin = admin_caller();
         svc.update(&admin, dto.id, dto.version, None, Some("заметка".into()))
