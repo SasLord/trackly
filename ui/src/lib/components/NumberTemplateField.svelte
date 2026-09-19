@@ -51,8 +51,12 @@
     autofillOnMount?: boolean;
     /** Родитель должен знать активный шаблон для D-01/D-11 mismatch-проверки
      *  при сохранении — компонент вызывает это при каждом изменении
-     *  выбранного шаблона (включая null — «Без шаблона»). */
-    onSelectedTemplateChange?: (_templateId: number | null) => void;
+     *  выбранного шаблона (включая null — «Без шаблона»). Fix 40.2-13
+     *  (NUM-11): второй аргумент — маска выбранного шаблона (или `null`)
+     *  — родитель строит текст попапа «Не соответствует шаблону»
+     *  (mask+contextLabel), не имея собственного доступа к списку шаблонов
+     *  этого поля. */
+    onSelectedTemplateChange?: (_templateId: number | null, _mask: string | null) => void;
   }
 
   let {
@@ -125,7 +129,10 @@
     opts: { preserveManualEdits: boolean },
   ) {
     selectedTemplateId = templateId;
-    onSelectedTemplateChange?.(templateId);
+    onSelectedTemplateChange?.(
+      templateId,
+      templates.find((t) => t.id === templateId)?.mask ?? null,
+    );
     selectedOverflowed = dto.overflowed;
     if (dto.overflowed) {
       // Свободных номеров нет — ничего не подставляем, строка под полем
@@ -144,7 +151,7 @@
     const shouldClear = !opts.preserveManualEdits || isValueUnedited();
     selectedTemplateId = null;
     selectedOverflowed = false;
-    onSelectedTemplateChange?.(null);
+    onSelectedTemplateChange?.(null, null);
     lastSuggested = null;
     altSuggested = null;
     if (shouldClear) value = '';

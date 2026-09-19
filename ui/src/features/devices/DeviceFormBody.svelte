@@ -39,6 +39,16 @@
         onClose: () => void;
       }
     | {
+        // Fix 40.2-13 (NUM-11): create-mode ONLY (D-05 — edit never has an
+        // active template, so this variant never fires from submitEdit).
+        kind: 'mismatch';
+        number: string;
+        mask: string;
+        contextLabel: string;
+        onFix: () => void;
+        onContinue: () => void;
+      }
+    | {
         kind: 'scriptWarning';
         number: string;
         doppelganger: DeviceScriptWarningDoppelganger | null;
@@ -190,18 +200,33 @@
   // edit session never has a `selectedTemplateId` (D-05: no template concept
   // in edit), so it simply never gets set outside the create branch.
   // ---------------------------------------------------------------------------
-  let activePopup = $state<'taken' | 'scriptWarning' | null>(null);
-  let pendingConfirm = $state<{ scriptMix: boolean }>({ scriptMix: false });
+  // Fix 40.2-13 (NUM-11): 'mismatch' added — create-mode ONLY (D-05 excludes
+  // it from edit; `submitEdit()` never sets `activePopup = 'mismatch'`).
+  let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
+  let pendingConfirm = $state<{ mismatch: boolean; scriptMix: boolean }>({
+    mismatch: false,
+    scriptMix: false,
+  });
   // NUM-08: which template NumberTemplateField currently has selected — only
   // ever set by the create branch's NumberTemplateField instance (edit mode
   // renders a plain Input, never calls this).
   let selectedTemplateId = $state<number | null>(null);
+  // Fix 40.2-13 (NUM-11): the mask of `selectedTemplateId`, needed to render
+  // NumberMismatchPopup (which does not have access to NumberTemplateField's
+  // internal template list) — kept in lockstep with `selectedTemplateId` via
+  // the SAME `onSelectedTemplateChange` callback (see the field's own
+  // extended two-argument signature, Fix 40.2-13).
+  let selectedTemplateMask = $state<string | null>(null);
   let numberFieldRef: NumberTemplateField | null = $state(null);
 
   let takenNumber = $state('');
   let takenRecord = $state<NumberTakenRecordSummary | null>(null);
   let takenCanTakeNext = $state(false);
   let takeNextLoading = $state(false);
+
+  let mismatchNumber = $state('');
+  let mismatchMask = $state('');
+  let mismatchContextLabel = $state('');
 
   let scriptWarningNumber = $state('');
   let scriptWarningDoppelganger = $state<DeviceScriptWarningDoppelganger | null>(null);
@@ -302,6 +327,15 @@
         loadingTakeNext: takeNextLoading,
         onTakeNext: takenCanTakeNext ? handleTakeNext : undefined,
         onClose: closeTakenPopup,
+      });
+    } else if (activePopup === 'mismatch') {
+      onPopupChange({
+        kind: 'mismatch',
+        number: mismatchNumber,
+        mask: mismatchMask,
+        contextLabel: mismatchContextLabel,
+        onFix: closeMismatchPopup,
+        onContinue: continueMismatch,
       });
     } else if (activePopup === 'scriptWarning') {
       onPopupChange({
@@ -462,6 +496,32 @@
     }
   }
 
+  // Fix 40.2-13 (NUM-11): "Не соответствует шаблону" — create-mode only
+  // (D-05 excludes edit entirely, `submitEdit()` never calls this). `mask`
+  // comes from `selectedTemplateMask` (the field's OWN reactive callback,
+  // NOT re-derived here — this component has no access to
+  // NumberTemplateField's internal template list, per UI-SPEC/D-01: "client
+  // renders `message` verbatim" is the SERVER's contract for the toast/log
+  // text, but this popup's own props are number/mask/contextLabel per
+  // NumberMismatchPopup.svelte's Plan 11 interface).
+  function openMismatchPopup() {
+    mismatchNumber = inventoryNo;
+    mismatchMask = selectedTemplateMask ?? '';
+    mismatchContextLabel = typeId === PRINTER_TYPE_ID ? 'Новый принтер' : 'Новое устройство';
+    activePopup = 'mismatch';
+  }
+
+  function closeMismatchPopup() {
+    activePopup = null;
+    focusNumberField();
+  }
+
+  function continueMismatch() {
+    pendingConfirm = { ...pendingConfirm, mismatch: true };
+    activePopup = null;
+    void handleSubmit();
+  }
+
   function openScriptWarningPopup(warning: NumberWarningDto) {
     scriptWarningNumber = inventoryNo;
     // Homoglyph doppelganger: the double LOOKS identical to the candidate
@@ -485,7 +545,7 @@
   }
 
   function continueScriptWarning() {
-    pendingConfirm = { scriptMix: true };
+    pendingConfirm = { ...pendingConfirm, scriptMix: true };
     activePopup = null;
     void handleSubmit();
   }
@@ -510,7 +570,13 @@
     const numberInput: NumberFieldInput = {
       value: inventoryNo,
       templateId: selectedTemplateId,
-      confirmMismatch: false,
+      // Fix 40.2-13 (NUM-11): `create_single_with_number_check()` DOES check
+      // template mismatch for devices/printers (D-01 applies to every entity
+      // family whenever a template is active in the field — see
+      // `device_service.rs`'s corrected doc-comment) — `confirmMismatch` now
+      // actually carries the D-01 chain's mismatch confirmation, same as
+      // `confirmScriptMix` below.
+      confirmMismatch: pendingConfirm.mismatch,
       confirmScriptMix: pendingConfirm.scriptMix,
     };
 
@@ -526,22 +592,19 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { scriptMix: false };
+      pendingConfirm = { mismatch: false, scriptMix: false };
       pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
       onSaved(placeId);
+      return;
+    }
+    if (outcome.kind === 'mismatch') {
+      openMismatchPopup();
       return;
     }
     if (outcome.kind === 'script_mix') {
       openScriptWarningPopup(outcome);
       return;
     }
-    // `outcome.kind === 'mismatch'` is structurally unreachable here —
-    // `create_single_with_number_check()` never calls `check_mismatch` for
-    // devices/printers (see `device_service.rs`'s own module doc-comment:
-    // "Devices/printers deliberately have NO template-mismatch check
-    // anywhere"). Defensive fallback per this plan's own <action> text for
-    // the edit branch, applied symmetrically here: a generic toast, never a
-    // `NumberMismatchPopup` built from fabricated mask/contextLabel data.
     pushToast('error', 'Не удалось сохранить');
   }
 
@@ -571,7 +634,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { scriptMix: false };
+      pendingConfirm = { mismatch: false, scriptMix: false };
       // Refresh the local version counter so a subsequent edit in the same
       // modal session uses the correct (incremented) version.
       currentVersion = outcome.version;
@@ -705,7 +768,10 @@
           invalid={!!fieldErrors['inventory_no']}
           errorMessage={fieldErrors['inventory_no'] ?? null}
           canManageSettings={authStore.user?.role === 'admin'}
-          onSelectedTemplateChange={(id) => (selectedTemplateId = id)}
+          onSelectedTemplateChange={(id, mask) => {
+            selectedTemplateId = id;
+            selectedTemplateMask = mask;
+          }}
         />
       {/if}
     </div>

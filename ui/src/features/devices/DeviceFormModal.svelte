@@ -24,16 +24,21 @@
   //
   // Phase 40.2 Plan 13 (NUM-06/07/08/09/10/11/12, D-01/D-05): the same
   // containing-block reasoning applies to the D-01 save-chain popups
-  // («Номер занят»/«Проверьте буквы в номере») — DeviceFormBody OWNS their
-  // orchestration (occupied/script-mix chain, button behaviour) but reports
-  // it up via `onPopupChange`; THIS component renders the actual
-  // `<NumberTakenPopup>`/`<NumberScriptWarningPopup>` as top-level siblings,
-  // same pattern as the downgrade-confirm Modal above.
+  // («Номер занят»/«Не соответствует шаблону»/«Проверьте буквы в номере») —
+  // DeviceFormBody OWNS their orchestration (occupied/mismatch/script-mix
+  // chain, button behaviour) but reports it up via `onPopupChange`; THIS
+  // component renders the actual `<NumberTakenPopup>`/`<NumberMismatchPopup>`/
+  // `<NumberScriptWarningPopup>` as top-level siblings, same pattern as the
+  // downgrade-confirm Modal above. Fix 40.2-13 (NUM-11): `NumberMismatchPopup`
+  // added post-Plan-13 — devices/printers DO check template mismatch in
+  // `create_single_with_number_check()` (create-mode only, D-05 excludes
+  // edit), contrary to Plan 13's original assumption.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
   import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
+  import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';
   import NumberScriptWarningPopup from '$lib/components/NumberScriptWarningPopup.svelte';
   import DeviceFormBody from './DeviceFormBody.svelte';
   import type { DeviceNumberPopupState } from './DeviceFormBody.svelte';
@@ -229,6 +234,16 @@
     loadingTakeNext={numberPopup.loadingTakeNext}
     onTakeNext={numberPopup.onTakeNext}
     onClose={numberPopup.onClose}
+  />
+{:else if numberPopup?.kind === 'mismatch'}
+  <!-- Fix 40.2-13 (NUM-11): create-mode only (D-05 excludes edit — see
+       DeviceFormBody.svelte, submitEdit() never opens this popup). -->
+  <NumberMismatchPopup
+    number={numberPopup.number}
+    mask={numberPopup.mask}
+    contextLabel={numberPopup.contextLabel}
+    onFix={numberPopup.onFix}
+    onContinue={numberPopup.onContinue}
   />
 {:else if numberPopup?.kind === 'scriptWarning'}
   <NumberScriptWarningPopup

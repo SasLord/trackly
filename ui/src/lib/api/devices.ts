@@ -41,9 +41,10 @@ export const devices = {
     apiCall<DeviceSaveOutcome>('devices_update', { id, version, patch }),
 
   // Phase 40.2 Plan 13 (NUM-06/07/08/09/10/11/12): the REAL interactive
-  // single-device/printer create path — occupied -> script-mix -> NUM-08
-  // remember_context chain. Replaces `bulkCreate(new, 1)` for qty===1 in
-  // DeviceFormBody.svelte's create branch.
+  // single-device/printer create path — occupied -> mismatch -> script-mix
+  // -> NUM-08 remember_context chain (fix 40.2-13: mismatch checking was
+  // added post-Plan-13, see device_service.rs). Replaces `bulkCreate(new, 1)`
+  // for qty===1 in DeviceFormBody.svelte's create branch.
   createSingleWithNumberCheck: (
     newDevice: DeviceNew,
     numberInput: NumberFieldInput,
