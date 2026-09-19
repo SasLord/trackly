@@ -217,10 +217,20 @@
 
     try {
       if (isEdit && target) {
+        // Phase 40.2 Plan 08: `DevicePatch.inventory_no` (raw, unchecked
+        // string) was REPLACED by `number_input: DeviceNumberEditInput`
+        // (occupied + script-mix check, D-05) — `confirm_script_mix: false`
+        // here is a compat shim, not the real UX: if the backend ever
+        // returns `NeedsConfirmation` for a script-mixed number, this form
+        // does not yet render the confirmation popup (Plan 13's job,
+        // mirrors `ActFormBody.svelte`/`CartridgeFormBody.svelte`'s own
+        // documented Plan 06/07 gap for the same reason). The occupied
+        // check (D-01, always enforced regardless of confirm flags) already
+        // works end-to-end today.
         const patch: DevicePatch = {
           type_id: typeId,
           name: name.trim() || null,
-          inventory_no: inventoryNo.trim() || null,
+          number_input: { value: inventoryNo.trim(), confirm_script_mix: false },
           serial_no: serialNo.trim() || null,
           model: model.trim() || null,
           specs: specs.trim() || null,
