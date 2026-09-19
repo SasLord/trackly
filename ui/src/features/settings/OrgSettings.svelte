@@ -4,9 +4,19 @@
   import Input from '$lib/components/Input.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import Radio from '$lib/components/Radio.svelte';
+  import Modal from '$lib/components/Modal.svelte';
+  import Table from '$lib/components/Table.svelte';
+  import TableRow from '$lib/components/TableRow.svelte';
+  import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import Badge from '$lib/components/Badge.svelte';
+  import NumberTemplateModal from './NumberTemplateModal.svelte';
+  import NumberMaskHelp from './NumberMaskHelp.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
+  import { connectWs, onWsEvent } from '$lib/api/ws';
   import { previewShortenPath, monoReadout } from '$lib/utils/placePath';
+  import type { WsEvent } from '../../bindings-phase6';
+  import type { NumberTemplateDto, TemplateContextDto, TemplateTypeDto } from '../../bindings';
 
   // DTO from backend (settings_get_org)
   interface OrgSettingsDto {
@@ -164,6 +174,182 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Блок «Шаблоны для инвентарных номеров» (Phase 40.2 Plan 10, NUM-01/NUM-03)
+  // ---------------------------------------------------------------------
+  const TEMPLATE_TYPE_ORDER: TemplateTypeDto[] = [
+    'device_inventory',
+    'act_number',
+    'cartridge_code',
+    'drum_code',
+  ];
+  const TEMPLATE_TYPE_LABELS: Record<TemplateTypeDto, string> = {
+    device_inventory: 'Устройства и принтеры',
+    act_number: 'Акты',
+    cartridge_code: 'Картриджи',
+    drum_code: 'Фотобарабаны',
+  };
+  const ALL_CONTEXTS: TemplateContextDto[] = [
+    'device_create',
+    'printer_create',
+    'act_create',
+    'cartridge_create',
+    'drum_create',
+  ];
+  const CONTEXT_LABELS: Record<TemplateContextDto, string> = {
+    device_create: 'Новое устройство',
+    printer_create: 'Новый принтер',
+    act_create: 'Новый акт',
+    cartridge_create: 'Новый картридж',
+    drum_create: 'Новый фотобарабан',
+  };
+
+  let templates = $state<NumberTemplateDto[]>([]);
+  // D-14: скелетон показывается только на первой загрузке — последующие
+  // перезагрузки (после CRUD или WsEvent::NumberSpaceChanged) заменяют
+  // `templates` разом, без промежуточного скелетона/мигания.
+  let templatesInitialLoad = $state(true);
+  let templatesLoading = $state(false);
+  let templatesError = $state<string | null>(null);
+
+  const sortedTemplates = $derived(
+    [...templates].sort((a, b) => {
+      const ai = TEMPLATE_TYPE_ORDER.indexOf(a.templateType);
+      const bi = TEMPLATE_TYPE_ORDER.indexOf(b.templateType);
+      if (ai !== bi) return ai - bi;
+      return a.mask.localeCompare(b.mask, 'ru');
+    }),
+  );
+  const templatesShowSkeleton = $derived(templatesInitialLoad && templatesLoading);
+  const templatesEmpty = $derived(
+    !templatesShowSkeleton && templatesError === null && sortedTemplates.length === 0,
+  );
+
+  async function loadTemplates() {
+    templatesLoading = true;
+    if (!templatesInitialLoad) {
+      // Не первая загрузка — сбрасываем предыдущую ошибку (если была), но
+      // список НЕ очищаем, чтобы таблица не мигнула пустым/скелетоном.
+      templatesError = null;
+    }
+    try {
+      const list = await apiCall<NumberTemplateDto[]>('number_templates_list', {
+        templateType: null,
+      });
+      templates = list;
+      templatesError = null;
+    } catch {
+      templatesError =
+        'Не удалось загрузить шаблоны. Нажмите «Повторить» или откройте раздел заново.';
+    } finally {
+      templatesLoading = false;
+      templatesInitialLoad = false;
+    }
+  }
+
+  let templateModalOpen = $state(false);
+  let templateModalMode = $state<'create' | 'edit'>('create');
+  let editingTemplate = $state<NumberTemplateDto | null>(null);
+
+  function openCreateTemplate() {
+    templateModalMode = 'create';
+    editingTemplate = null;
+    templateModalOpen = true;
+  }
+
+  function openEditTemplate(t: NumberTemplateDto) {
+    templateModalMode = 'edit';
+    editingTemplate = t;
+    templateModalOpen = true;
+  }
+
+  function closeTemplateModal() {
+    templateModalOpen = false;
+    editingTemplate = null;
+  }
+
+  function handleTemplateSaved() {
+    pushToast('success', templateModalMode === 'create' ? 'Шаблон добавлен.' : 'Шаблон сохранён.');
+    void loadTemplates();
+  }
+
+  // Удаление с подтверждением и перечнем контекстов (D-12). Контексты
+  // получаем клиентской агрегацией пяти вызовов уже существующей команды
+  // группы B (`number_template_contexts_get`) — новый backend-эндпоинт не
+  // требуется (план 10, Task 2).
+  let deleteConfirmOpen = $state(false);
+  let deleteTarget = $state<NumberTemplateDto | null>(null);
+  let deleteContextNames = $state<string[]>([]);
+  let deleting = $state(false);
+
+  async function openDeleteConfirm(t: NumberTemplateDto) {
+    deleteTarget = t;
+    try {
+      const results = await Promise.all(
+        ALL_CONTEXTS.map((context) =>
+          apiCall<number | null>('number_template_contexts_get', { context }),
+        ),
+      );
+      deleteContextNames = ALL_CONTEXTS.filter((_, i) => results[i] === t.id).map(
+        (context) => CONTEXT_LABELS[context],
+      );
+    } catch {
+      // Best-effort: контексты не критичны для самого удаления — при сбое
+      // просто показываем подтверждение без перечня контекстов.
+      deleteContextNames = [];
+    }
+    deleteConfirmOpen = true;
+  }
+
+  function closeDeleteConfirm() {
+    deleteConfirmOpen = false;
+    deleteTarget = null;
+    deleteContextNames = [];
+  }
+
+  function joinContextNames(names: string[]): string {
+    const quoted = names.map((n) => `„${n}“`);
+    if (quoted.length <= 1) return quoted[0] ?? '';
+    return `${quoted.slice(0, -1).join(', ')} и ${quoted[quoted.length - 1]}`;
+  }
+
+  const deleteConfirmBody = $derived.by(() => {
+    if (!deleteTarget) return '';
+    const base = `Шаблон «${deleteTarget.mask}» (${TEMPLATE_TYPE_LABELS[deleteTarget.templateType]}) будет удалён. Уже присвоенные номера не изменятся.`;
+    if (deleteContextNames.length === 0) return base;
+    const suffix =
+      deleteContextNames.length === 1
+        ? `Шаблон используется по умолчанию в ${joinContextNames(deleteContextNames)} — после удаления поле будет пустым.`
+        : `Шаблон используется по умолчанию в ${joinContextNames(deleteContextNames)} — после удаления поля будут пустыми.`;
+    return `${base} ${suffix}`;
+  });
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    deleting = true;
+    try {
+      await apiCall<null>('number_templates_delete', { id: deleteTarget.id });
+      pushToast('success', 'Шаблон удалён.');
+      closeDeleteConfirm();
+      void loadTemplates();
+    } catch {
+      pushToast('error', 'Не удалось удалить шаблон. Попробуйте ещё раз.');
+    } finally {
+      deleting = false;
+    }
+  }
+
+  // D-14: инвалидация по WS — планы 06/07/08 рассылают WsEvent::NumberSpaceChanged
+  // при мутациях в устройствах/принтерах/актах/картриджах/фотобарабанах, которые
+  // затрагивают нумерованные колонки. Этот блок не фильтрует по `contexts` —
+  // любое изменение пространства номеров может сдвинуть «следующий номер»
+  // любого шаблона, поэтому таблица просто перезагружается целиком.
+  function handleTemplatesWsEvent(event: WsEvent) {
+    if (event.type === 'number_space_changed') {
+      void loadTemplates();
+    }
+  }
+
   async function loadOrg() {
     try {
       const dto = await apiCall<OrgSettingsDto>('settings_get_org', {});
@@ -216,6 +402,23 @@
   onMount(() => {
     loadOrg();
     loadPathDefaults();
+    loadTemplates();
+
+    let wsRelease: (() => void) | null = null;
+    connectWs()
+      .then((release) => {
+        wsRelease = release;
+      })
+      .catch(() => {
+        // WS-соединение необязательно — таблица шаблонов всё равно
+        // перезагружается по CRUD-операциям, без live-инвалидации по WS.
+      });
+    const unsubscribeWs = onWsEvent(handleTemplatesWsEvent);
+
+    return () => {
+      unsubscribeWs();
+      wsRelease?.();
+    };
   });
 
   async function saveOrg() {
@@ -572,7 +775,98 @@
       </Button>
     </div>
   </div>
+
+  <!-- Phase 40.2 Plan 10 (NUM-01/NUM-03): «Шаблоны для инвентарных номеров» —
+       единственный экран CRUD шаблонов; независим от NumberTemplateField
+       (план 12). UI-SPEC §4. -->
+  <div class="path-section">
+    <div class="templates-header-row">
+      <h3 class="subsection-title templates-title">Шаблоны для инвентарных номеров</h3>
+      <Button variant="secondary" size="sm" onclick={openCreateTemplate}>Добавить шаблон</Button>
+    </div>
+    <p class="path-lead">
+      Шаблон задаёт вид номера, который подставляется в окнах создания устройств, принтеров, актов,
+      картриджей и фотобарабанов. Следующий номер считается по уже существующим записям.
+    </p>
+
+    {#if templatesError}
+      <div class="templates-error">
+        <p class="templates-error-text">{templatesError}</p>
+        <Button variant="secondary" size="sm" onclick={loadTemplates}>Повторить</Button>
+      </div>
+    {:else}
+      {#snippet templatesHead()}
+        <th>Тип</th>
+        <th>Маска</th>
+        <th>Следующий номер</th>
+        <th><span class="sr-only">Действия</span></th>
+      {/snippet}
+      <Table
+        columns={4}
+        loading={templatesShowSkeleton}
+        empty={templatesEmpty}
+        emptyTitle="Шаблонов пока нет"
+        emptyBody="Добавьте шаблон — и в окнах создания номер будет подставляться сам."
+        skeletonRows={3}
+        head={templatesHead}
+      >
+        {#each sortedTemplates as t (t.id)}
+          <TableRow>
+            <td>{TEMPLATE_TYPE_LABELS[t.templateType]}</td>
+            <td class="tr-mono" title={t.mask}>{t.mask}</td>
+            <td class="tr-mono">
+              {#if t.overflowed}
+                <Badge variant="warning" size="sm">переполнен</Badge>
+              {:else}
+                {t.nextFirstFree}
+              {/if}
+            </td>
+            <td>
+              <ActionMenu variant="ghost-sm" label="Действия с шаблоном">
+                <button type="button" role="menuitem" onclick={() => openEditTemplate(t)}>
+                  Изменить
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="menu-danger"
+                  onclick={() => openDeleteConfirm(t)}
+                >
+                  Удалить
+                </button>
+              </ActionMenu>
+            </td>
+          </TableRow>
+        {/each}
+      </Table>
+    {/if}
+
+    <NumberMaskHelp />
+  </div>
 </section>
+
+{#if templateModalOpen}
+  <NumberTemplateModal
+    mode={templateModalMode}
+    template={editingTemplate}
+    onClose={closeTemplateModal}
+    onSaved={handleTemplateSaved}
+  />
+{/if}
+
+{#if deleteConfirmOpen && deleteTarget}
+  <Modal open={true} title="Удалить шаблон?" onClose={closeDeleteConfirm}>
+    {#snippet children()}
+      <p>{deleteConfirmBody}</p>
+    {/snippet}
+    {#snippet footer()}
+      <Button variant="secondary" disabled={deleting} onclick={closeDeleteConfirm}>Отмена</Button>
+      <Button variant="destructive" loading={deleting} onclick={confirmDelete}>
+        Удалить шаблон
+      </Button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style lang="scss">
   .settings-section {
@@ -754,5 +1048,33 @@
       color: var(--tr-text-secondary);
       font-weight: var(--tr-font-weight-medium);
     }
+  }
+
+  // Phase 40.2 Plan 10: блок «Шаблоны для инвентарных номеров».
+  .templates-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .templates-title {
+    margin: 0;
+  }
+
+  .templates-error {
+    display: flex;
+    align-items: center;
+    gap: var(--tr-space-xs);
+    flex-wrap: wrap;
+  }
+
+  .templates-error-text {
+    margin: 0;
+    font-size: var(--tr-font-size-body);
+    color: var(--tr-text-secondary);
+  }
+
+  .menu-danger {
+    color: var(--tr-danger-text);
   }
 </style>

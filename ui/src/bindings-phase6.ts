@@ -211,6 +211,13 @@ export type RequestCountsDto = {
  * WebSocket broadcast event — synced with Rust WsEvent enum.
  * `type` field is snake_case per serde tag = "type", rename_all = "snake_case".
  * NOTE: 'request_status_changed' — NOT 'request_updated'.
+ *
+ * Phase 40.2 Plan 05 added `WsEvent::NumberSpaceChanged { contexts }` to the
+ * Rust enum (`dto/printer.rs`) but this hand-maintained mirror was never
+ * updated — Plan 10 is the first frontend consumer (Settings templates
+ * table invalidation, D-14) and needs the variant to type-check. Visible to
+ * Admin|Manager only (server-side `is_visible_to`, mirrored nowhere here —
+ * this file only mirrors payload shape, not visibility).
  */
 export type WsEvent =
   | { type: 'new_request'; requestId: number; requestType: string; requesterName: string }
@@ -220,4 +227,5 @@ export type WsEvent =
       newStatus: string;
       requestedByUserId: number;
     }
-  | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string };
+  | { type: 'printer_alert'; printerId: number; printerName: string; alertType: string }
+  | { type: 'number_space_changed'; contexts: string[] };
