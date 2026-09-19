@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-18T23:07:23.519Z"
-last_activity: 2026-09-18
+last_updated: "2026-09-19T03:51:01.817Z"
+last_activity: 2026-09-19
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 83
+  completed_plans: 84
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 8 of 15
+Plan: 9 of 15
 Status: Ready to execute
 Последнее действие: 40.1-03-PLAN.md (WARNING-1, инвалидация счётчиков дерева мест) завершён —
 три новых продюсера notifyPlaceContentChanged, INV-7 гейт с тремя мутационными самотестами,
@@ -34,7 +34,7 @@ Status: Ready to execute
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-18
+Last activity: 2026-09-19
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -394,6 +394,7 @@ Last activity: 2026-09-18
 | Phase 40.2 P03 | 40min | 3 tasks | 3 files |
 | Phase 40.2 P04 | 55m | 3 tasks | 6 files |
 | Phase 40.2 P05 | 50min | 3 tasks | 15 files |
+| Phase 40.2 P06 | ~5h | 4 tasks | 42 files |
 
 ## Accumulated Context
 
@@ -978,6 +979,9 @@ Recent decisions affecting current work:
 - [Phase 40.2-05]: NumberTemplateService wired into AppCtx (Plan 04 built it but never connected it) — number_templates field added, 7 hand-built AppCtx literals updated
 - [Phase 40.2-05]: action_for_context single pure function maps TemplateContext -> Action, both transports import it; Group A CRUD endpoints accept no context param at all (T-40.2-09 structural mitigation)
 - [Phase 40.2-05]: WsEvent::NumberSpaceChanged carries ready contexts: Vec<String> (not a space string) to avoid a client-side Rust<->JS mirrored mapping; real dispatch deferred to Plans 06/07/08
+- [Phase ?]: 40.2-06: is_act_number_occupied_including_returns lives in act_service.rs as a plain SQL scan (D-06), not inside NumberTemplateService
+- [Phase ?]: 40.2-06: ActService constructs its own internal NumberTemplateService from the same (writer, readers, clock) it already receives, instead of a 4th constructor param
+- [Phase ?]: 40.2-06: ActUpdateDto.number_input uses a narrower ActNumberEditInput type (no template_id/confirm_mismatch) to make D-05 structural
 
 ### Pending Todos
 
@@ -1169,8 +1173,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-18T23:07:23.508Z
-Stopped at: Completed 40.2-05-PLAN.md
+Last session: 2026-09-19T03:51:01.807Z
+Stopped at: Completed 40.2-06-PLAN.md
 Resume file: None
 
 None
