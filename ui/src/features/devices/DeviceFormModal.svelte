@@ -21,11 +21,22 @@
   // trap for `position: fixed`) that would pin a nested backdrop to the wrong box.
   // DeviceFormBody goes back to being a "dumb" form with no knowledge of the
   // confirmation step.
+  //
+  // Phase 40.2 Plan 13 (NUM-06/07/08/09/10/11/12, D-01/D-05): the same
+  // containing-block reasoning applies to the D-01 save-chain popups
+  // («Номер занят»/«Проверьте буквы в номере») — DeviceFormBody OWNS their
+  // orchestration (occupied/script-mix chain, button behaviour) but reports
+  // it up via `onPopupChange`; THIS component renders the actual
+  // `<NumberTakenPopup>`/`<NumberScriptWarningPopup>` as top-level siblings,
+  // same pattern as the downgrade-confirm Modal above.
   import { onMount } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
   import ActionMenu from '$lib/components/ActionMenu.svelte';
+  import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
+  import NumberScriptWarningPopup from '$lib/components/NumberScriptWarningPopup.svelte';
   import DeviceFormBody from './DeviceFormBody.svelte';
+  import type { DeviceNumberPopupState } from './DeviceFormBody.svelte';
   import { devices } from './api';
   import type { DeviceDto } from '../../bindings';
 
@@ -96,6 +107,16 @@
   // The footer button calls this directly — no reactive trigger, no ordering race.
   let bodySubmitFn = $state<(() => void) | null>(null);
 
+  // Phase 40.2 Plan 13 (D-01/D-05): the current D-01 save-chain popup (or
+  // null) — owned/orchestrated by DeviceFormBody, but rendered here as a
+  // TOP-LEVEL sibling of the edit Modal, mirroring RDJ-05's own
+  // downgrade-confirm popup precedent below (see this file's header
+  // comment): a `<Modal>` nested inside DeviceFormBody would land its own
+  // `position: fixed` backdrop inside the edit Modal's `.modal-backdrop`
+  // (which has `backdrop-filter: blur(2px)`, a containing-block trap for
+  // `position: fixed`).
+  let numberPopup = $state<DeviceNumberPopupState>(null);
+
   // State hints loaded once on mount (non-fatal if fails).
   let stateHints = $state<string[]>([]);
 
@@ -144,6 +165,7 @@
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(can) => (formCanSubmit = can)}
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
+      onPopupChange={(popup) => (numberPopup = popup)}
     />
   {/key}
 
@@ -198,6 +220,24 @@
     </Button>
   {/snippet}
 </Modal>
+
+{#if numberPopup?.kind === 'taken'}
+  <NumberTakenPopup
+    number={numberPopup.number}
+    record={numberPopup.record}
+    canTakeNext={numberPopup.canTakeNext}
+    loadingTakeNext={numberPopup.loadingTakeNext}
+    onTakeNext={numberPopup.onTakeNext}
+    onClose={numberPopup.onClose}
+  />
+{:else if numberPopup?.kind === 'scriptWarning'}
+  <NumberScriptWarningPopup
+    number={numberPopup.number}
+    doppelganger={numberPopup.doppelganger}
+    onFix={numberPopup.onFix}
+    onContinue={numberPopup.onContinue}
+  />
+{/if}
 
 <style lang="scss">
   .type-menu-row {

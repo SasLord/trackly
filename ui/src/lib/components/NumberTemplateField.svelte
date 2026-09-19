@@ -274,6 +274,15 @@
     }
   }
 
+  // Phase 40.2 Plan 13 (minimal addition per its own <action> text): вызывающая
+  // форма (`DeviceFormBody.svelte` и т.д.) должна вернуть фокус в поле номера
+  // после закрытия попапа цепочки D-01 («Поправлю»/«Закрыть») — план 12 не
+  // предусматривал явного метода фокуса, поэтому он экспортируется здесь,
+  // переиспользуя тот же `focusInputAtEnd()`, что и меню «Вставка».
+  export function focus() {
+    focusInputAtEnd();
+  }
+
   async function selectTemplate(t: NumberTemplateDto) {
     if (t.overflowed) return;
     loadingNumber = true;

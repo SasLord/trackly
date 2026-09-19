@@ -1,3 +1,53 @@
+<script module lang="ts">
+  // Phase 40.2 Plan 13 (NUM-06/07/08/09/10/11/12): shared shape describing
+  // which of the D-01 save-chain popups DeviceFormModal.svelte should render
+  // right now (or `null` — none). Declared in a real `<script module>` block
+  // (not the instance `<script>`, unlike NumberTakenPopup.svelte's own
+  // `export interface`, which Plan 11 left untested for cross-file type
+  // import) so `import type { DeviceNumberPopupState } from
+  // './DeviceFormBody.svelte'` is guaranteed to resolve for svelte-check —
+  // module-level exports are real ES module exports, instance-script
+  // exports are not.
+  //
+  // Ownership split (RDJ-05 precedent, see DeviceFormModal.svelte's own
+  // header comment): DeviceFormBody OWNS the orchestration logic (when to
+  // open which popup, what each button does) but does NOT render the popups
+  // itself — nesting a `<Modal>` inside this component would put its
+  // `position: fixed` backdrop inside the OUTER edit-Modal's own
+  // `.modal-backdrop` (which has `backdrop-filter: blur(2px)`, a
+  // containing-block trap for `position: fixed`, exactly the reason RDJ-05's
+  // downgrade-confirm popup was pulled OUT of this component and rendered as
+  // a top-level sibling in DeviceFormModal.svelte instead). This component
+  // reports popup state up via `onPopupChange`; DeviceFormModal renders the
+  // real `<NumberTakenPopup>`/`<NumberScriptWarningPopup>` at its own
+  // top level.
+  import type { NumberTakenRecordSummary } from '$lib/components/NumberTakenPopup.svelte';
+
+  export interface DeviceScriptWarningDoppelganger {
+    number: string;
+    record: { kind: string; title: string };
+  }
+
+  export type DeviceNumberPopupState =
+    | {
+        kind: 'taken';
+        number: string;
+        record: NumberTakenRecordSummary;
+        canTakeNext: boolean;
+        loadingTakeNext: boolean;
+        onTakeNext?: () => void;
+        onClose: () => void;
+      }
+    | {
+        kind: 'scriptWarning';
+        number: string;
+        doppelganger: DeviceScriptWarningDoppelganger | null;
+        onFix: () => void;
+        onContinue: () => void;
+      }
+    | null;
+</script>
+
 <script lang="ts">
   // DeviceFormBody — the inner form component for DeviceFormModal.
   //
@@ -31,12 +81,24 @@
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
+  import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { apiCall } from '$lib/api/client';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
-  import type { DeviceDto, DeviceNew, DevicePatch } from '../../bindings';
+  import type {
+    DeviceDto,
+    DeviceNew,
+    DevicePatch,
+    DeviceSaveOutcome,
+    NextNumberDto,
+    NumberFieldInput,
+    NumberWarningDto,
+    OccupyingRecordDto,
+    TemplateContextDto,
+  } from '../../bindings';
 
   // Seed status ids (see STATUSES below / device_service.rs::resolve_status_id):
   // 1 = На складе, 2 = В работе, 3 = На ремонте, 4 = Списано.
@@ -75,6 +137,14 @@
      * a fresh function is provided each time — no stale closures, no side-channel races.
      */
     onRegisterSubmit: (_fn: () => void) => void;
+    /** Phase 40.2 Plan 13 (D-01/D-05): reports which D-01 save-chain popup
+     *  DeviceFormModal.svelte should render right now (`null` — none). See
+     *  the `<script module>` doc-comment above for why the popups themselves
+     *  are NOT rendered from inside this component. Optional with a no-op
+     *  default so PlaceEntityViewModal.svelte's `readonly` view instance
+     *  (which never submits, hence never opens a popup) doesn't need to pass
+     *  it. */
+    onPopupChange?: (_popup: DeviceNumberPopupState) => void;
   }
 
   const {
@@ -86,6 +156,7 @@
     onLoading,
     onCanSubmitChange,
     onRegisterSubmit,
+    onPopupChange = () => {},
   }: Props = $props();
 
   const PRINTER_TYPE_ID = 2;
@@ -112,6 +183,29 @@
   // successful update without requiring the parent to re-mount the form.
   let currentVersion = $state(target?.version ?? 1);
 
+  // ---------------------------------------------------------------------------
+  // Phase 40.2 Plan 13 — D-01/D-05 save-chain popup orchestration state.
+  // Shared between the create branch (Task 2) and the edit branch (Task 3):
+  // `activePopup`/`pendingConfirm` are ONE set of variables, not two — an
+  // edit session never has a `selectedTemplateId` (D-05: no template concept
+  // in edit), so it simply never gets set outside the create branch.
+  // ---------------------------------------------------------------------------
+  let activePopup = $state<'taken' | 'scriptWarning' | null>(null);
+  let pendingConfirm = $state<{ scriptMix: boolean }>({ scriptMix: false });
+  // NUM-08: which template NumberTemplateField currently has selected — only
+  // ever set by the create branch's NumberTemplateField instance (edit mode
+  // renders a plain Input, never calls this).
+  let selectedTemplateId = $state<number | null>(null);
+  let numberFieldRef: NumberTemplateField | null = $state(null);
+
+  let takenNumber = $state('');
+  let takenRecord = $state<NumberTakenRecordSummary | null>(null);
+  let takenCanTakeNext = $state(false);
+  let takeNextLoading = $state(false);
+
+  let scriptWarningNumber = $state('');
+  let scriptWarningDoppelganger = $state<DeviceScriptWarningDoppelganger | null>(null);
+
   // D-11.3: storage-place status suggestion. `storagePlaceIds` is fetched once
   // per form instance (this component is always freshly mounted per modal
   // open — {#key openInstanceCounter} in DeviceFormModal — so a plain onMount
@@ -129,6 +223,17 @@
   let storageStatusSuggested = $state(true);
 
   const isEdit = $derived(target !== null);
+
+  // Phase 40.2 Plan 13 (NUM-06/08): which of the 2 device/printer create
+  // contexts NumberTemplateField/the D-01 save chain uses — reactive to
+  // `typeId` so switching «Устройство»/«Принтер» via DeviceFormModal's
+  // titleExtra ActionMenu (while THIS instance stays mounted, no {#key}
+  // remount) immediately re-targets the field's remembered template
+  // (NumberTemplateField's own `$effect` already reacts to a `context` prop
+  // change — see plan 12's Discretion #8).
+  const numberContext = $derived<TemplateContextDto>(
+    typeId === PRINTER_TYPE_ID ? 'printer_create' : 'device_create',
+  );
 
   const quantityDisabled = $derived(isEdit || inventoryNo.trim() !== '' || serialNo.trim() !== '');
 
@@ -170,9 +275,64 @@
     onCanSubmitChange(canSubmit);
   });
 
-  // Propagate loading to parent.
+  // Propagate loading to parent. Phase 40.2 Plan 13 (UI-SPEC §6): "Пока идёт
+  // цепочка, существующая основная кнопка попапа создания... в состоянии
+  // loading" — an open D-01 popup counts as "chain in progress" even during
+  // the gap between two network requests (waiting on the user's
+  // Продолжить/Поправлю/Закрыть decision), so `activePopup !== null` is
+  // OR'd in here rather than only reflecting the narrower in-flight-request
+  // `loading` flag.
   $effect(() => {
-    onLoading(loading);
+    onLoading(loading || activePopup !== null);
+  });
+
+  // Phase 40.2 Plan 13 (D-01/D-05): propagate the current save-chain popup
+  // (or null) to the parent — see the `<script module>` doc-comment at the
+  // top of this file for why DeviceFormModal renders the popup, not this
+  // component. Runs whenever any of the underlying $state pieces change
+  // (including `takeNextLoading`, so clicking «Взять следующий свободный»
+  // re-renders the SAME open popup with its button in a loading state).
+  $effect(() => {
+    if (activePopup === 'taken' && takenRecord) {
+      onPopupChange({
+        kind: 'taken',
+        number: takenNumber,
+        record: takenRecord,
+        canTakeNext: takenCanTakeNext,
+        loadingTakeNext: takeNextLoading,
+        onTakeNext: takenCanTakeNext ? handleTakeNext : undefined,
+        onClose: closeTakenPopup,
+      });
+    } else if (activePopup === 'scriptWarning') {
+      onPopupChange({
+        kind: 'scriptWarning',
+        number: scriptWarningNumber,
+        doppelganger: scriptWarningDoppelganger,
+        onFix: closeScriptWarningPopup,
+        onContinue: continueScriptWarning,
+      });
+    } else {
+      onPopupChange(null);
+    }
+    // On teardown (modal closed / {#key} remount) make sure the parent never
+    // keeps a stale popup open for a component instance that no longer
+    // exists.
+    return () => onPopupChange(null);
+  });
+
+  // Phase 40.2 Plan 13 (UI-SPEC §6): «Номер уже занят.» stays under the
+  // field only «до следующей правки» — clear it the moment the value
+  // actually changes (manual edit, template pick, or «Взять следующий
+  // свободный»), regardless of which of those caused the change.
+  let previousInventoryNo = inventoryNo;
+  $effect(() => {
+    if (inventoryNo !== previousInventoryNo) {
+      previousInventoryNo = inventoryNo;
+      if (fieldErrors['inventory_no']) {
+        const { inventory_no: _removed, ...rest } = fieldErrors;
+        fieldErrors = rest;
+      }
+    }
   });
 
   // Register handleSubmit with the parent once on mount.
@@ -200,8 +360,236 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Phase 40.2 Plan 13 (D-01/D-05) — save-chain popup helpers.
+  // ---------------------------------------------------------------------------
+
+  // `AppError.code()` serialises as SCREAMING_SNAKE_CASE (see
+  // `crates/trackly-core/src/error.rs::code()`), so the occupied-conflict
+  // check below uses the correct 'CONFLICT' — unlike the pre-existing
+  // 'Validation'/'OptimisticLockMismatch' checks further down this file,
+  // which predate this plan and never actually match ('VALIDATION'/
+  // 'OPTIMISTIC_LOCK_MISMATCH' are the real values). That mismatch is a
+  // pre-existing bug outside this plan's scope (not caused by these
+  // changes) — left as-is per explicit coordinator instruction, noted in
+  // SUMMARY.md as a found issue.
+  function isConflictError(e: unknown): boolean {
+    return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
+  }
+
+  function toTakenRecordSummary(
+    record: OccupyingRecordDto | null,
+    fallbackTypeId: number,
+  ): NumberTakenRecordSummary {
+    if (record) {
+      return {
+        kind: record.kind as NumberTakenRecordSummary['kind'],
+        title: record.title,
+        subtitle: record.subtitle,
+        place: record.place,
+        status: record.status,
+      };
+    }
+    // Best-effort fallback (RESEARCH Security Domain note in the plan's own
+    // <action>: the create/update error itself doesn't have to carry the
+    // card — a race where the occupying record is deleted between the
+    // failed save and this follow-up `is_occupied` call is the only way
+    // `record` is null here). devices.inventory_number is its own number
+    // space (TemplateType::DeviceInventory) — only device/printer rows can
+    // occupy it, so the fallback kind is inferred from the CURRENT form's
+    // own type as the closest reasonable guess.
+    return {
+      kind: fallbackTypeId === PRINTER_TYPE_ID ? 'printer' : 'device',
+      title: '—',
+      subtitle: null,
+      place: null,
+      status: null,
+    };
+  }
+
+  function focusNumberField() {
+    if (isEdit) {
+      document.getElementById('f-inv')?.focus();
+    } else {
+      numberFieldRef?.focus();
+    }
+  }
+
+  async function openTakenPopup(excludeId: number | null, canTakeNextFlag: boolean) {
+    const candidate = inventoryNo.trim();
+    let record: OccupyingRecordDto | null;
+    try {
+      record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
+        context: numberContext,
+        candidate,
+        excludeId,
+      });
+    } catch {
+      record = null;
+    }
+    takenNumber = inventoryNo;
+    takenRecord = toTakenRecordSummary(record, typeId);
+    takenCanTakeNext = canTakeNextFlag;
+    takeNextLoading = false;
+    activePopup = 'taken';
+  }
+
+  function closeTakenPopup() {
+    activePopup = null;
+    fieldErrors = { ...fieldErrors, inventory_no: 'Номер уже занят.' };
+    focusNumberField();
+  }
+
+  async function handleTakeNext() {
+    // D-05: edit sessions always pass `canTakeNext=false`, so the button
+    // (and therefore this handler) never renders/fires from an edit popup.
+    if (selectedTemplateId === null) return;
+    takeNextLoading = true;
+    try {
+      const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
+        templateId: selectedTemplateId,
+        context: numberContext,
+      });
+      inventoryNo = dto.rendered;
+      activePopup = null;
+      focusNumberField();
+    } catch {
+      pushToast(
+        'error',
+        'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
+      );
+    } finally {
+      takeNextLoading = false;
+    }
+  }
+
+  function openScriptWarningPopup(warning: NumberWarningDto) {
+    scriptWarningNumber = inventoryNo;
+    // Homoglyph doppelganger: the double LOOKS identical to the candidate
+    // (that's the definition of a script-mix collision) — the server's
+    // `NumberWarningDto.doppelganger` (`OccupyingRecordDto`) intentionally
+    // carries no separate "number" field of its own (see
+    // `dto/number_template.rs`'s doc-comment), so the displayed
+    // "номер-двойник" text is the SAME candidate string the user typed.
+    scriptWarningDoppelganger = warning.doppelganger
+      ? {
+          number: inventoryNo,
+          record: { kind: warning.doppelganger.kind, title: warning.doppelganger.title },
+        }
+      : null;
+    activePopup = 'scriptWarning';
+  }
+
+  function closeScriptWarningPopup() {
+    activePopup = null;
+    focusNumberField();
+  }
+
+  function continueScriptWarning() {
+    pendingConfirm = { scriptMix: true };
+    activePopup = null;
+    void handleSubmit();
+  }
+
+  // ---------------------------------------------------------------------------
   // Submit
   // ---------------------------------------------------------------------------
+
+  async function submitSingleCreate() {
+    const newDevice: DeviceNew = {
+      type_id: typeId,
+      name: name.trim(),
+      inventory_no: null, // resolved server-side from `numberInput` below, not this field
+      serial_no: serialNo.trim() || null,
+      model: model.trim() || null,
+      specs: specs.trim() || null,
+      kit: kit.trim() || null,
+      state: stateField.trim() || null,
+      place_id: placeId,
+      status_id: parseInt(statusId, 10),
+    };
+    const numberInput: NumberFieldInput = {
+      value: inventoryNo,
+      templateId: selectedTemplateId,
+      confirmMismatch: false,
+      confirmScriptMix: pendingConfirm.scriptMix,
+    };
+
+    let outcome: DeviceSaveOutcome;
+    try {
+      outcome = await devices.createSingleWithNumberCheck(newDevice, numberInput, numberContext);
+    } catch (e) {
+      if (isConflictError(e)) {
+        await openTakenPopup(null, selectedTemplateId !== null);
+        return;
+      }
+      throw e;
+    }
+
+    if (outcome.outcome === 'created') {
+      pendingConfirm = { scriptMix: false };
+      pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
+      onSaved(placeId);
+      return;
+    }
+    if (outcome.kind === 'script_mix') {
+      openScriptWarningPopup(outcome);
+      return;
+    }
+    // `outcome.kind === 'mismatch'` is structurally unreachable here —
+    // `create_single_with_number_check()` never calls `check_mismatch` for
+    // devices/printers (see `device_service.rs`'s own module doc-comment:
+    // "Devices/printers deliberately have NO template-mismatch check
+    // anywhere"). Defensive fallback per this plan's own <action> text for
+    // the edit branch, applied symmetrically here: a generic toast, never a
+    // `NumberMismatchPopup` built from fabricated mask/contextLabel data.
+    pushToast('error', 'Не удалось сохранить');
+  }
+
+  async function submitEdit(currentTarget: DeviceDto) {
+    const patch: DevicePatch = {
+      type_id: typeId,
+      name: name.trim() || null,
+      number_input: { value: inventoryNo.trim(), confirm_script_mix: pendingConfirm.scriptMix },
+      serial_no: serialNo.trim() || null,
+      model: model.trim() || null,
+      specs: specs.trim() || null,
+      kit: kit.trim() || null,
+      state: stateField.trim() || null,
+      place_id: placeId,
+      status_id: parseInt(statusId, 10) || null,
+    };
+
+    let outcome: DeviceSaveOutcome;
+    try {
+      outcome = await devices.update(currentTarget.id, currentVersion, patch);
+    } catch (e) {
+      if (isConflictError(e)) {
+        await openTakenPopup(currentTarget.id, false);
+        return;
+      }
+      throw e;
+    }
+
+    if (outcome.outcome === 'created') {
+      pendingConfirm = { scriptMix: false };
+      // Refresh the local version counter so a subsequent edit in the same
+      // modal session uses the correct (incremented) version.
+      currentVersion = outcome.version;
+      pushToast('success', 'Устройство сохранено');
+      onSaved(placeId);
+      return;
+    }
+    if (outcome.kind === 'script_mix') {
+      openScriptWarningPopup(outcome);
+      return;
+    }
+    // D-05: `update()` never calls `check_mismatch` at all — if this ever
+    // fires, it's a server bug. Defensive per this plan's own <action> text:
+    // generic toast, never `NumberMismatchPopup` (no `contextLabel`/mask
+    // makes sense for an edit session).
+    pushToast('error', 'Не удалось сохранить');
+  }
+
   async function handleSubmit() {
     // GAP-8 defense-in-depth: readonly instances render no submit button and
     // canSubmit is already forced false above, but this guard makes the
@@ -217,60 +605,29 @@
 
     try {
       if (isEdit && target) {
-        // Phase 40.2 Plan 08: `DevicePatch.inventory_no` (raw, unchecked
-        // string) was REPLACED by `number_input: DeviceNumberEditInput`
-        // (occupied + script-mix check, D-05) — `confirm_script_mix: false`
-        // here is a compat shim, not the real UX: if the backend ever
-        // returns `NeedsConfirmation` for a script-mixed number, this form
-        // does not yet render the confirmation popup (Plan 13's job,
-        // mirrors `ActFormBody.svelte`/`CartridgeFormBody.svelte`'s own
-        // documented Plan 06/07 gap for the same reason). The occupied
-        // check (D-01, always enforced regardless of confirm flags) already
-        // works end-to-end today.
-        const patch: DevicePatch = {
-          type_id: typeId,
-          name: name.trim() || null,
-          number_input: { value: inventoryNo.trim(), confirm_script_mix: false },
-          serial_no: serialNo.trim() || null,
-          model: model.trim() || null,
-          specs: specs.trim() || null,
-          kit: kit.trim() || null,
-          state: stateField.trim() || null,
-          place_id: placeId,
-          status_id: parseInt(statusId, 10) || null,
-        };
-        const updated = await devices.update(target.id, currentVersion, patch);
-        // Refresh the local version counter so a subsequent edit in the same
-        // modal session uses the correct (incremented) version.
-        currentVersion = updated.version;
-        pushToast('success', 'Устройство сохранено');
+        await submitEdit(target);
       } else {
-        const newDevice: DeviceNew = {
-          type_id: typeId,
-          name: name.trim(),
-          inventory_no: inventoryNo.trim() || null,
-          serial_no: serialNo.trim() || null,
-          model: model.trim() || null,
-          specs: specs.trim() || null,
-          kit: kit.trim() || null,
-          state: stateField.trim() || null,
-          place_id: placeId,
-          status_id: parseInt(statusId, 10),
-        };
-
         const qty = quantityDisabled ? 1 : Math.max(1, Math.min(100, quantity || 1));
-        await devices.bulkCreate(newDevice, qty);
-
         if (qty === 1) {
-          pushToast(
-            'success',
-            typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано',
-          );
+          await submitSingleCreate();
         } else {
+          const newDevice: DeviceNew = {
+            type_id: typeId,
+            name: name.trim(),
+            inventory_no: inventoryNo.trim() || null,
+            serial_no: serialNo.trim() || null,
+            model: model.trim() || null,
+            specs: specs.trim() || null,
+            kit: kit.trim() || null,
+            state: stateField.trim() || null,
+            place_id: placeId,
+            status_id: parseInt(statusId, 10),
+          };
+          await devices.bulkCreate(newDevice, qty);
           pushToast('success', `Создано ${qty} устройств`);
+          onSaved(placeId);
         }
       }
-      onSaved(placeId);
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
         const err = e as { code?: string; message?: string; details?: { field?: string } };
@@ -328,15 +685,29 @@
        Количество ВСЕГДА отображается, но disabled когда inv/serial заполнен или это edit-режим.
        Это исключает «дёрганье» макета при вводе номеров. -->
   <div class="field-row">
-    <div class="field field-row-item">
+    <div class="field field-row-item" class:number-field-item={!isEdit}>
       <label class="label" for="f-inv">Инвентарный №</label>
-      <Input
-        id="f-inv"
-        value={inventoryNo}
-        placeholder="ИНВ-000001"
-        disabled={readonly}
-        oninput={(v) => (inventoryNo = v)}
-      />
+      {#if isEdit}
+        <Input
+          id="f-inv"
+          value={inventoryNo}
+          placeholder="ИНВ-000001"
+          disabled={readonly}
+          oninput={(v) => (inventoryNo = v)}
+        />
+      {:else}
+        <NumberTemplateField
+          bind:this={numberFieldRef}
+          context={numberContext}
+          bind:value={inventoryNo}
+          placeholder="ИНВ-000001"
+          disabled={readonly || quantity > 1}
+          invalid={!!fieldErrors['inventory_no']}
+          errorMessage={fieldErrors['inventory_no'] ?? null}
+          canManageSettings={authStore.user?.role === 'admin'}
+          onSelectedTemplateChange={(id) => (selectedTemplateId = id)}
+        />
+      {/if}
     </div>
     <div class="field field-row-item">
       <label class="label" for="f-serial">Серийный №</label>
@@ -512,6 +883,14 @@
   .field-row-item {
     flex: 1 1 0;
     min-width: 0; // prevents flex child from overflowing
+  }
+
+  // UI-SPEC Discretion #12: the Инвентарный № slot gets more room than
+  // Серийный №/Количество in CREATE mode only (the 36px «Вставка» button +
+  // ↑/↓ arrow would otherwise squeeze the Input) — edit mode's plain Input
+  // keeps the row's original equal-thirds layout untouched.
+  .number-field-item {
+    flex: 2 1 0;
   }
 
   .label {
