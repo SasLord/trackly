@@ -16,6 +16,7 @@ use tower_sessions::SessionStore;
 
 use trackly_app::dto::act::{ActCreateDto, ActDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::http::auth::SessionIdentity;
 use trackly_app::http::build_router;
 use trackly_app::server::rusqlite_session_store::RusqliteSessionStore;
@@ -87,7 +88,12 @@ async fn http_create_act_roundtrip() -> anyhow::Result<()> {
             .await?;
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: "1".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -180,7 +186,12 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "1".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -194,7 +205,8 @@ async fn http_acts_return_smoke() -> anyhow::Result<()> {
                     }],
                 },
             )
-            .await?;
+            .await?
+            .expect_created("create handover for return smoke");
 
         // 2. POST /api/v1/acts_return for that handover.
         let return_payload = ActReturnDto {

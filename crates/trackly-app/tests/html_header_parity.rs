@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::reports::{OrgPatch, ReportResponse, ReportRow};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{
@@ -213,7 +214,12 @@ async fn render_header_fragments_for_org(
     let device_id = seed_device(&writer, "Тестовый принтер").await;
 
     let act_payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: "Иванов И.И.".to_string(),
         receiver_name: "Петров П.П.".to_string(),
         place_id: None,
@@ -229,7 +235,8 @@ async fn render_header_fragments_for_org(
     let act = acts
         .create(&Identity::trusted_admin(), act_payload)
         .await
-        .expect("create handover");
+        .expect("create handover")
+        .expect_created("create handover");
 
     let handover_html = acts.render_pdf(act.id).await.expect("render_pdf");
     let acceptance_html = acts

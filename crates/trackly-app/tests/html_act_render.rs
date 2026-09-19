@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::reports::OrgPatch;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::act_service::format_ru_date;
@@ -117,7 +118,12 @@ async fn create_handover(
     receiver: &str,
 ) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
         place_id: None,
@@ -136,6 +142,7 @@ async fn create_handover(
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 async fn create_handover_with_handover_date(
@@ -146,7 +153,12 @@ async fn create_handover_with_handover_date(
     handover_date_utc: i64,
 ) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
         place_id: None,
@@ -165,6 +177,7 @@ async fn create_handover_with_handover_date(
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 async fn create_handover_with_deadline(
@@ -175,7 +188,12 @@ async fn create_handover_with_deadline(
     deadline_utc: Option<i64>,
 ) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
         place_id: None,
@@ -194,6 +212,7 @@ async fn create_handover_with_deadline(
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 /// Returns the substring of `html` strictly between the first
@@ -442,7 +461,12 @@ async fn create_handover_with_items(
     receiver: &str,
 ) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: giver.to_string(),
         receiver_name: receiver.to_string(),
         place_id: None,
@@ -454,6 +478,7 @@ async fn create_handover_with_items(
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 /// Extracts the text of the Кол-во `<td>` (the cell immediately following

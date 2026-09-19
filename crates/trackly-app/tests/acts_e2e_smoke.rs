@@ -29,6 +29,7 @@ use std::time::Duration;
 use rusqlite::params;
 use tempfile::TempDir;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
 use trackly_core::auth::Identity;
@@ -135,7 +136,12 @@ async fn full_lifecycle_then_undo() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "1".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: None,
@@ -153,7 +159,8 @@ async fn full_lifecycle_then_undo() {
                 },
             )
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
         let counts1 = p.acts.counts().await.expect("counts1");
         assert_eq!(counts1.handover_active, 1);
         assert_eq!(counts1.returns, 0);
@@ -303,7 +310,12 @@ async fn handover_pdf_render_within_e2e() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "1".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Сидоров-Петроградский Иван Александрович".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: None,
@@ -321,7 +333,8 @@ async fn handover_pdf_render_within_e2e() {
                 },
             )
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
         let html = p.acts.render_pdf(handover.id).await.expect("render");
         assert!(html.len() > 1000);
         assert!(html.to_lowercase().contains("<html"));

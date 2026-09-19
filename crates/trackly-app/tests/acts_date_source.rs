@@ -17,6 +17,7 @@ use trackly_app::dto::act::{
     ActCreateDto, ActDto, ActFilter, ActItemNewDto, ActReturnDto, ActReturnItemDto,
     Pagination as ActPagination,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -58,7 +59,13 @@ async fn create_handover_with_date(
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            // Derived from device_id — unique per call within a test's DB.
+            number_input: NumberFieldInput {
+                value: device_id.to_string(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: giver.to_string(),
             receiver_name: "Получатель Т.Т.".into(),
             place_id: None,
@@ -74,6 +81,7 @@ async fn create_handover_with_date(
     )
     .await
     .expect("create handover")
+    .expect_created("create handover")
 }
 
 /// Act A is created FIRST but with a LATER handover_date_utc than Act B,
@@ -189,7 +197,12 @@ async fn do_return_persists_own_date() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "1".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Получатель Т.Т.".into(),
                     place_id: None,
@@ -211,7 +224,8 @@ async fn do_return_persists_own_date() {
                 },
             )
             .await
-            .expect("create handover with 2 devices");
+            .expect("create handover with 2 devices")
+            .expect_created("create handover with 2 devices");
 
         let item_a = handover
             .items

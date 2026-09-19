@@ -7,10 +7,16 @@
 //!
 //! Single-writer discipline: every mutation goes through
 //! `WriterHandle::execute(closure)` with a `BEGIN IMMEDIATE` transaction.
-//! The act auto-number / "Следующий" hint is `MAX(number) + 1` among live
-//! (not soft-deleted) acts via `next_act_number_from_max` — deleting the
-//! highest-numbered act frees its number for reuse (квик-задача 260904-x7s,
-//! supersedes the `counters.act_number`-based scheme for acts numbering).
+//!
+//! Phase 40.2 Plan 06 (NUM-13/NUM-14): act numbers are free TEXT values
+//! resolved through `NumberTemplateService` — there is no more server-side
+//! auto-generate and no `counters.act_number` row. `create()`/`update()`
+//! both run the D-01 confirmation chain (occupied → mismatch [create only]
+//! → script-mix) BEFORE opening their own writer transaction, mirroring the
+//! pre-check pattern `cartridge_service.rs::model_delete` already uses for
+//! its own live-count guard — the recreated `idx_acts_number_sub_unique`
+//! (V042) remains the final DB-level backstop against the resulting small
+//! TOCTOU window (T-40.2-14).
 
 use std::sync::Arc;
 
@@ -18,6 +24,7 @@ use rusqlite::params;
 use trackly_core::auth::Identity;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
@@ -25,9 +32,7 @@ use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
-use trackly_infra::repos::acts_sqlite::{
-    next_act_number_from_max, next_sub_number_for_parent, recompute_parent_archived,
-};
+use trackly_infra::repos::acts_sqlite::{next_sub_number_for_parent, recompute_parent_archived};
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
 use trackly_infra::repos::{
     SqliteActRepository, SqliteAuditLogRepository, SqliteDeviceRepository,
@@ -36,10 +41,13 @@ use trackly_infra::repos::{
 
 use crate::dto::act::{
     act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
-    ActReturnItemDto, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
+    ActReturnItemDto, ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
+use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
+use crate::dto::printer::WsEvent;
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
+use crate::services::number_template_service::NumberTemplateService;
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
 use crate::services::place_path_display::compute_place_path_short;
@@ -75,6 +83,25 @@ pub struct ActService {
     /// остаётся подключённым для logo-пути (`safe_logo_canonical`) и
     /// `render_acceptance_pdf`, который по D-03 остаётся вне скоупа этой фазы.
     pub(crate) org_db: Option<Arc<OrgDbService>>,
+    /// Phase 40.2 Plan 06 (NUM-13): the single owner of occupied/mismatch/
+    /// script-mix checks + the 5-context "last used template" memory
+    /// (NUM-08) + `peek_next`'s template-driven preview. Constructed
+    /// internally from the SAME `writer`/`readers`/`clock` this service
+    /// already receives (identical dependency shape) — this keeps EVERY
+    /// existing `ActService::new(writer, readers, clock)` call site
+    /// compiling unchanged across the ~30 test files that construct it
+    /// directly, instead of threading a 4th constructor argument through
+    /// all of them.
+    pub(crate) number_templates: Arc<NumberTemplateService>,
+    /// D-14 invalidation broadcast (`WsEvent::NumberSpaceChanged`) — `None`
+    /// in most test fixtures (they build `ActService::new(...)` directly and
+    /// never subscribe to a WS channel); `AppCtx::build` wires the real
+    /// shared sender via `with_ws_tx` so LAN/desktop clients actually see
+    /// the invalidation. Optional builder field, mirrors `templates`/
+    /// `organization`/`pdf`/`org_db` above — broadcasting is a best-effort
+    /// UX hint, not a correctness requirement (`let _ = tx.send(...)`
+    /// pattern used everywhere else in this codebase for the same reason).
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 impl ActService {
@@ -83,6 +110,11 @@ impl ActService {
         readers: Arc<ReaderPool>,
         clock: Arc<dyn Clock + Send + Sync>,
     ) -> Self {
+        let number_templates = Arc::new(NumberTemplateService::new(
+            writer.clone(),
+            readers.clone(),
+            clock.clone(),
+        ));
         Self {
             writer,
             readers,
@@ -96,7 +128,18 @@ impl ActService {
             organization: None,
             pdf: None,
             org_db: None,
+            number_templates,
+            ws_tx: None,
         }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (D-14). Used by
+    /// `AppCtx::build` (production runtime); test fixtures that never
+    /// subscribe to a WS channel simply skip calling this (`ws_tx` stays
+    /// `None`, broadcasting is silently skipped).
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
     }
 
     /// Builder: подключить PDF pipeline deps (templates + organization + pdf + org_db).
@@ -125,6 +168,98 @@ impl ActService {
     pub fn with_org_db(mut self, org_db: Arc<OrgDbService>) -> Self {
         self.org_db = Some(org_db);
         self
+    }
+
+    // -----------------------------------------------------------------------
+    // Numbering (Phase 40.2, NUM-09/D-06)
+    // -----------------------------------------------------------------------
+
+    /// D-06: extends `NumberTemplateService::is_occupied`'s BASE case
+    /// (direct match against live HANDOVER acts' raw `number` column) with
+    /// a scan of live RETURN acts' DISPLAYED number — computed via
+    /// `format_act_number`, never stored in a column (a return's suffix
+    /// depends on its parent's `number` + its sibling count, either of
+    /// which can change after the return row itself was written, e.g. the
+    /// parent's own rename cascade in `update()`, or a sibling return being
+    /// soft-deleted). `.trim()`ed, case-insensitive comparison — mirrors
+    /// `is_occupied`'s own T-40.2-08 semantics exactly.
+    ///
+    /// Implemented as a plain SQL scan in THIS file (not by reusing
+    /// `NumberTemplateService::is_occupied` a second time internally for the
+    /// return half) because `format_act_number` — the display-rule
+    /// knowledge needed to compute what a return "looks like" — is
+    /// act-domain-specific and does not belong in the generic
+    /// `NumberTemplateService` (see that service's own module doc-comment).
+    ///
+    /// `exclude_id` skips a row from BOTH scans (editing an act's own
+    /// number, or a return sharing an excluded parent, is never a
+    /// self-conflict) — `create()` always passes `None`, `update()` passes
+    /// `Some(the_act_being_edited)`.
+    async fn is_act_number_occupied_including_returns(
+        &self,
+        candidate: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<bool, AppError> {
+        if self
+            .number_templates
+            .is_occupied(TemplateType::ActNumber, candidate, exclude_id)
+            .await?
+            .is_some()
+        {
+            return Ok(true);
+        }
+
+        let readers = self.readers.clone();
+        let needle = candidate.trim().to_lowercase();
+        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            if needle.is_empty() {
+                return Ok(false);
+            }
+            let conn = readers.acquire();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT r.id, r.number, r.sub_number, p.number AS parent_number, \
+                            (SELECT COUNT(*) FROM acts rr \
+                               WHERE rr.parent_act_id = r.parent_act_id \
+                                 AND rr.deleted_at_utc IS NULL) AS sibling_return_count \
+                       FROM acts r \
+                       LEFT JOIN acts p ON p.id = r.parent_act_id \
+                      WHERE r.act_type = 'return' AND r.deleted_at_utc IS NULL",
+                )
+                .map_err(map_rusqlite)?;
+            let rows = stmt
+                .query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let number: String = row.get(1)?;
+                    let sub_number: Option<i64> = row.get(2)?;
+                    let parent_number: Option<String> = row.get(3)?;
+                    let sibling_return_count: Option<i64> = row.get(4)?;
+                    Ok((id, number, sub_number, parent_number, sibling_return_count))
+                })
+                .map_err(map_rusqlite)?;
+            for row in rows {
+                let (id, number, sub_number, parent_number, sibling_return_count) =
+                    row.map_err(map_rusqlite)?;
+                if Some(id) == exclude_id {
+                    continue;
+                }
+                let displayed = crate::dto::act::format_act_number(
+                    ActType::Return,
+                    &number,
+                    sub_number,
+                    parent_number.as_deref(),
+                    sibling_return_count,
+                );
+                if displayed.trim().to_lowercase() == needle {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        })
+        .await
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("spawn_blocking: {e}"),
+        })?
     }
 
     // -----------------------------------------------------------------------
@@ -201,14 +336,9 @@ impl ActService {
                 }
             }
         }
-        if let Some(n) = p.number_override {
-            if n < 1 {
-                return Err(AppError::Validation {
-                    field: "number_override".into(),
-                    message: "Номер акта должен быть ≥ 1".into(),
-                });
-            }
-        }
+        // Phase 40.2 (NUM-13): `number_input.value` non-empty is validated in
+        // `create()` itself (needs `.trim()`, not just a bare truthiness
+        // check — D-08) — see the dedicated `AppError::Validation` there.
         Ok(())
     }
 
@@ -220,8 +350,74 @@ impl ActService {
         &self,
         caller: &Identity,
         payload: ActCreateDto,
-    ) -> Result<ActDto, AppError> {
+    ) -> Result<ActSaveOutcome, AppError> {
         Self::validate_create(&payload)?;
+
+        // D-08: explicit `.trim()` (NOT `normalize_str` — RESEARCH Pitfall
+        // 4). NUM-13: empty value is a hard validation error — there is no
+        // more server-side auto-generate to fall back on.
+        let trimmed = payload.number_input.value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation {
+                field: "number".into(),
+                message: "Введите номер акта или выберите шаблон.".into(),
+            });
+        }
+
+        // D-01 confirmation chain, run as async pre-checks BEFORE opening
+        // the writer transaction (module doc-comment): occupied (including
+        // live returns' DISPLAYED number, D-06) → template mismatch
+        // (create-only, NUM-11) → script-mix (NUM-12). `confirm_mismatch`/
+        // `confirm_script_mix` only skip RE-SHOWING an already-seen
+        // warning — they never skip the occupied check (T-40.2-15).
+        if self
+            .is_act_number_occupied_including_returns(&trimmed, None)
+            .await?
+        {
+            return Err(AppError::Conflict {
+                reason: format!("Акт №{trimmed} уже существует"),
+            });
+        }
+
+        if let Some(template_id) = payload.number_input.template_id {
+            if !payload.number_input.confirm_mismatch {
+                let template_dto = self.number_templates.get(template_id).await?;
+                // `preview_mask`/`peek_next`'s "synthetic transient row"
+                // precedent (`number_template_service.rs`) — `check_mismatch`
+                // only reads `.mask`, no need to fetch the full domain row.
+                let today_utc = self.clock.unix_seconds();
+                let synthetic_row = NumberTemplateRow {
+                    id: template_dto.id,
+                    template_type: TemplateType::ActNumber,
+                    mask: template_dto.mask.clone(),
+                    created_at_utc: 0,
+                    updated_at_utc: 0,
+                    version: template_dto.version,
+                };
+                if NumberTemplateService::check_mismatch(&synthetic_row, &trimmed, today_utc) {
+                    return Ok(ActSaveOutcome::NeedsConfirmation(NumberWarningDto {
+                        kind: NumberWarningKind::Mismatch,
+                        message: format!(
+                            "Номер «{trimmed}» не подходит под шаблон «{}». Сохранить как \
+                             есть? Следующее окно «Новый акт» откроется без шаблона.",
+                            template_dto.mask
+                        ),
+                        doppelganger: None,
+                    }));
+                }
+            }
+        }
+
+        if !payload.number_input.confirm_script_mix {
+            if let Some(warning) = self
+                .number_templates
+                .detect_warnings(TemplateType::ActNumber, &trimmed, None)
+                .await?
+            {
+                return Ok(ActSaveOutcome::NeedsConfirmation(warning));
+            }
+        }
+
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -274,33 +470,15 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
-                // 1. Resolve number: override (with uniqueness check) OR auto MAX(live)+1.
-                // next_auto_would_be computed BEFORE INSERT — reused both for the
-                // auto-number branch below and for the override-audit payload in
-                // step 3 (recomputing after INSERT would include the just-inserted
-                // row and skew the hint).
-                let next_auto_would_be = next_act_number_from_max(&tx)?;
-                let number = if let Some(custom) = payload.number_override {
-                    // Uniqueness among LIVE acts only — a soft-deleted act's number
-                    // is free to reuse (квик-задача 260904-x7s supersedes the
-                    // include-soft-deleted rule from D-Soft-vs-Hard-Acts-01; the
-                    // soft-delete of the act itself is unchanged).
-                    let exists: bool = tx
-                        .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 AND deleted_at_utc IS NULL LIMIT 1)",
-                            params![custom],
-                            |r| r.get(0),
-                        )
-                        .map_err(map_rusqlite)?;
-                    if exists {
-                        return Err(AppError::Conflict {
-                            reason: format!("Акт №{custom} уже существует"),
-                        });
-                    }
-                    custom
-                } else {
-                    next_auto_would_be
-                };
+                // 1. Number already resolved + fully checked (occupied,
+                // including live returns' displayed number D-06; mismatch;
+                // script-mix) by the async pre-checks above, BEFORE this
+                // transaction opened. `idx_acts_number_sub_unique` (V042)
+                // is the final DB-level backstop against the resulting
+                // small TOCTOU window (T-40.2-14) — a collision here
+                // surfaces as a raw SQLite UNIQUE violation, mapped to
+                // `AppError::Conflict` by `map_rusqlite`.
+                let number = trimmed.clone();
 
                 // 2. INSERT acts.
                 // G-2 (Phase 3.1 Plan 04): handover_date_utc — explicit
@@ -339,28 +517,6 @@ impl ActService {
                     sibling_return_count: None,
                 };
                 let act_id = acts_repo.insert_act_in_tx(&tx, &new_row)?;
-
-                // 3. If override path — audit override AFTER we know act_id.
-                if let Some(custom) = payload.number_override {
-                    let payload_json = serde_json::json!({
-                        "requested": custom,
-                        "next_auto_would_be": next_auto_would_be,
-                    })
-                    .to_string();
-                    audit_repo.insert(
-                        &tx,
-                        AuditEntry {
-                            entity_type: "act",
-                            entity_id: act_id,
-                            action: "custom:act_number_override",
-                            user_id: user_id_opt,
-                            before_json: None,
-                            after_json: None,
-                            payload_json: Some(payload_json),
-                            created_at_utc: now,
-                        },
-                    )?;
-                }
 
                 // 4. INSERT act_items + UPDATE devices + audit each device mutation.
                 //
@@ -562,11 +718,34 @@ impl ActService {
             })
             .await?;
 
+        // NUM-08: remember the template ONLY when it was actually used
+        // without a confirmed mismatch — a confirmed mismatch (or no
+        // template at all) resets the context to "no template" so the next
+        // «Новый акт» opens without one.
+        let to_remember = if payload.number_input.template_id.is_some()
+            && !payload.number_input.confirm_mismatch
+        {
+            payload.number_input.template_id
+        } else {
+            None
+        };
+        self.number_templates
+            .remember_context(TemplateContextDto::ActCreate, to_remember)
+            .await?;
+
+        // D-14: best-effort invalidation broadcast — a new act number was
+        // just written into the "act_create" numbering space.
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["act_create".to_string()],
+            });
+        }
+
         let dto = self.get(act_id).await?;
-        Ok(ActDto {
+        Ok(ActSaveOutcome::Created(Box::new(ActDto {
             changed_place_ids: dedupe_place_ids(touched_place_ids),
             ..dto
-        })
+        })))
     }
 
     // -----------------------------------------------------------------------
@@ -613,14 +792,8 @@ impl ActService {
                 });
             }
         }
-        if let Some(n) = p.number_override {
-            if n < 1 {
-                return Err(AppError::Validation {
-                    field: "number_override".into(),
-                    message: "Номер акта должен быть ≥ 1".into(),
-                });
-            }
-        }
+        // Phase 40.2 (D-05/NUM-13): `number_input.value` non-empty (when the
+        // number actually changed) is validated in `update()` itself.
         Ok(())
     }
 
@@ -640,8 +813,54 @@ impl ActService {
         &self,
         caller: &Identity,
         payload: ActUpdateDto,
-    ) -> Result<ActDto, AppError> {
+    ) -> Result<ActSaveOutcome, AppError> {
         Self::validate_update(&payload)?;
+
+        // D-05: pre-fetch the act's CURRENT raw number (read-only) to
+        // decide whether this edit actually renames it. `number_changed ==
+        // false` means the whole occupied/script-mix chain below is
+        // skipped entirely — editing giver/receiver/notes/etc. must NEVER
+        // re-open a warning about a number nobody touched.
+        let current = self.get(payload.id).await?;
+        let trimmed = payload.number_input.value.trim().to_string();
+        let number_changed = trimmed != current.number_raw;
+
+        if number_changed {
+            // D-08: explicit `.trim()`. A rename to an empty value is
+            // rejected the same way as `create()`'s NUM-13 validation.
+            if trimmed.is_empty() {
+                return Err(AppError::Validation {
+                    field: "number".into(),
+                    message: "Введите номер акта или выберите шаблон.".into(),
+                });
+            }
+            // D-06: occupied check ALSO scans live returns' displayed
+            // number — `exclude_id` skips this same act (renaming to its
+            // own current number is not reachable here since
+            // `number_changed` is already `true`, but excluding is still
+            // correct/harmless).
+            if self
+                .is_act_number_occupied_including_returns(&trimmed, Some(payload.id))
+                .await?
+            {
+                return Err(AppError::Conflict {
+                    reason: format!("Акт №{trimmed} уже существует"),
+                });
+            }
+            // D-05: mismatch is NEVER checked on edit — there is no
+            // "selected template" concept here (`ActNumberEditInput` has no
+            // `template_id` field at all, structurally enforcing this).
+            if !payload.number_input.confirm_script_mix {
+                if let Some(warning) = self
+                    .number_templates
+                    .detect_warnings(TemplateType::ActNumber, &trimmed, Some(payload.id))
+                    .await?
+                {
+                    return Ok(ActSaveOutcome::NeedsConfirmation(warning));
+                }
+            }
+        }
+
         let now = self.clock.unix_seconds();
         let acts_repo = self.acts_repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -649,6 +868,11 @@ impl ActService {
         let places_repo = self.places_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
+        let new_number = if number_changed {
+            Some(trimmed.clone())
+        } else {
+            None
+        };
 
         let (act_id, touched_place_ids) = self
             .writer
@@ -910,24 +1134,11 @@ impl ActService {
                     }
                 }
 
-                // 8b. Number uniqueness re-check (A3) — same rule as `create`,
-                // only re-run when the number actually changes.
-                if let Some(n) = payload.number_override {
-                    if n != act.number {
-                        let exists: bool = tx
-                            .query_row(
-                                "SELECT EXISTS(SELECT 1 FROM acts WHERE number=?1 AND deleted_at_utc IS NULL LIMIT 1)",
-                                params![n],
-                                |r| r.get(0),
-                            )
-                            .map_err(map_rusqlite)?;
-                        if exists {
-                            return Err(AppError::Conflict {
-                                reason: format!("Акт №{n} уже существует"),
-                            });
-                        }
-                    }
-                }
+                // 8b. Number occupied/script-mix already fully checked by
+                // the async pre-checks in `update()`, BEFORE this
+                // transaction opened (D-05/D-06/D-08) — `idx_acts_number_sub_unique`
+                // (V042) is the final DB-level backstop against the
+                // resulting small TOCTOU window (T-40.2-14).
 
                 // 8c. Removed devices: restore to the MOST RECENT prior state
                 // (Pitfall 2 — NOT the original pre-handover state) via
@@ -1022,7 +1233,7 @@ impl ActService {
                     notes: Some(payload.notes.clone()),
                     deadline_utc: Some(payload.deadline_utc),
                     handover_date_utc: payload.handover_date_utc,
-                    number: payload.number_override,
+                    number: new_number.clone(),
                     expected_version: payload.expected_version,
                 };
                 acts_repo.update_act_header_in_tx(
@@ -1061,34 +1272,32 @@ impl ActService {
                 // step-8b uniqueness check. Return rows keep a distinct
                 // `sub_number`, so the shared UNIQUE(number, COALESCE(sub_number,0))
                 // index cannot be violated by this cascade.
-                if let Some(n) = payload.number_override {
-                    if n != act.number {
-                        tx.execute(
-                            "UPDATE acts SET number = ?1, updated_at_utc = ?2 \
-                             WHERE parent_act_id = ?3 AND deleted_at_utc IS NULL",
-                            params![n, now, payload.id],
-                        )
-                        .map_err(map_rusqlite)?;
+                if let Some(n) = &new_number {
+                    tx.execute(
+                        "UPDATE acts SET number = ?1, updated_at_utc = ?2 \
+                         WHERE parent_act_id = ?3 AND deleted_at_utc IS NULL",
+                        params![n, now, payload.id],
+                    )
+                    .map_err(map_rusqlite)?;
 
-                        let override_payload_json = serde_json::json!({
-                            "requested": n,
-                            "previous": act.number,
-                        })
-                        .to_string();
-                        audit_repo.insert(
-                            &tx,
-                            AuditEntry {
-                                entity_type: "act",
-                                entity_id: payload.id,
-                                action: "custom:act_number_override",
-                                user_id: user_id_opt,
-                                before_json: None,
-                                after_json: None,
-                                payload_json: Some(override_payload_json),
-                                created_at_utc: now,
-                            },
-                        )?;
-                    }
+                    let override_payload_json = serde_json::json!({
+                        "requested": n,
+                        "previous": act.number,
+                    })
+                    .to_string();
+                    audit_repo.insert(
+                        &tx,
+                        AuditEntry {
+                            entity_type: "act",
+                            entity_id: payload.id,
+                            action: "custom:act_number_override",
+                            user_id: user_id_opt,
+                            before_json: None,
+                            after_json: None,
+                            payload_json: Some(override_payload_json),
+                            created_at_utc: now,
+                        },
+                    )?;
                 }
 
                 // 10. Final audit row for the header edit (real before/after
@@ -1141,11 +1350,23 @@ impl ActService {
             })
             .await?;
 
+        // D-14: best-effort invalidation broadcast, ONLY when the number
+        // actually changed — the "act_create" preview/occupied-check space
+        // just shifted. `update()` never calls `remember_context` (NUM-08
+        // context memory is a create-only concept, D-05).
+        if number_changed {
+            if let Some(ws_tx) = &self.ws_tx {
+                let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                    contexts: vec!["act_create".to_string()],
+                });
+            }
+        }
+
         let dto = self.get(act_id).await?;
-        Ok(ActDto {
+        Ok(ActSaveOutcome::Created(Box::new(ActDto {
             changed_place_ids: dedupe_place_ids(touched_place_ids),
             ..dto
-        })
+        })))
     }
 
     // -----------------------------------------------------------------------
@@ -2644,16 +2865,39 @@ impl ActService {
         })?
     }
 
+    /// Temporary backward-compatibility shim (Phase 40.2 Plan 06) for the
+    /// not-yet-replaced `ActNumberField.svelte` (Plan 14 removes both this
+    /// method and the `acts_peek_next_number` command entirely, switching
+    /// the UI to the Group B `number_templates_peek_next` command
+    /// directly). Same public name/return type (`Result<i64, AppError>`) as
+    /// before the migration, but the computation now goes through
+    /// `NumberTemplateService` instead of the removed
+    /// `counters`/`next_act_number_from_max` scheme.
+    ///
+    /// `get_context(ActCreate)` resolves the currently-remembered template
+    /// (NUM-08; V041 seeds a default `act_number` template for this
+    /// context, so `None` only happens if an admin explicitly deletes it).
+    /// `peek_next`'s `rendered` string is parsed back into an `i64` — this
+    /// only succeeds for a plain numeric mask like the seeded `[X]`
+    /// default; ANY templated mask with a prefix/suffix (e.g.
+    /// `"2026/[XXXX]"`) degrades to `0`, same as the no-template case. `0`
+    /// is a deliberately "clearly unavailable" sentinel the not-yet-updated
+    /// UI already renders as just one more integer, never a hard error —
+    /// this shim exists ONLY to keep the pre-Plan-14 UI compiling, not as a
+    /// long-term contract (doc-commented per the plan's explicit
+    /// instruction to record this choice).
     pub async fn peek_next_number(&self) -> Result<i64, AppError> {
-        let readers = self.readers.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = readers.acquire();
-            next_act_number_from_max(&conn)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking: {e}"),
-        })?
+        match self
+            .number_templates
+            .get_context(TemplateContextDto::ActCreate)
+            .await?
+        {
+            Some(template_id) => {
+                let next = self.number_templates.peek_next(template_id).await?;
+                Ok(next.rendered.parse::<i64>().unwrap_or(0))
+            }
+            None => Ok(0),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -2907,7 +3151,7 @@ impl ActService {
 
         // Compute suffix (часть после числа) для печатной формы — берём из
         // ActDto.number (уже отформатирован через format_act_number).
-        let suffix = compute_suffix_from_display(&act.number, act.number_raw);
+        let suffix = compute_suffix_from_display(&act.number, &act.number_raw);
 
         let items_json: Vec<serde_json::Value> = act
             .items
@@ -3260,10 +3504,12 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
 }
 
 /// Извлекает суффикс (например, «в», «в1», «в2») из отформатированного
-/// `ActDto.number` относительно raw counter value. Для handover → "".
-fn compute_suffix_from_display(display: &str, number_raw: i64) -> String {
-    let raw_str = number_raw.to_string();
-    if let Some(rest) = display.strip_prefix(&raw_str) {
+/// `ActDto.number` относительно raw stored value. Для handover → "".
+/// Phase 40.2 (NUM-14): `number_raw` is now a free TEXT value (not
+/// necessarily numeric) — the string-prefix-strip logic is unchanged, it
+/// never assumed `number_raw` parsed as an integer in the first place.
+fn compute_suffix_from_display(display: &str, number_raw: &str) -> String {
+    if let Some(rest) = display.strip_prefix(number_raw) {
         rest.to_string()
     } else {
         // Дисплей не начинается с raw (return: «42в» где raw мог быть 999).

@@ -23,6 +23,7 @@ use trackly_app::dto::act::{
     ActCreateDto, ActDto, ActItemNewDto, ActReturnDto, ActReturnItemDto, ActUpdateReturnDto,
 };
 use trackly_app::dto::device::DevicePatch;
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::{ActService, DeviceService};
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
@@ -53,6 +54,14 @@ async fn seed_manager_user(writer: &WriterHandle) -> i64 {
         })
         .await
         .expect("seed manager user")
+}
+
+/// Process-global monotonic counter for `create_handover_with_location`'s
+/// act number — see that function's doc-comment for why device_id-derived
+/// numbers don't work for this file.
+fn next_test_act_number() -> i64 {
+    static COUNTER: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+    COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
 fn make_acts_service() -> (ActService, tempfile::TempDir) {
@@ -124,7 +133,20 @@ async fn create_handover_with_location(
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            // Process-global monotonic counter (NOT derived from
+            // device_ids — two tests in this file call this helper twice
+            // reusing the SAME device_id, e.g. re-issuing a device via a
+            // brand-new act, which would collide if the number were
+            // derived from device_id). Safe across parallel tests: each
+            // test has its own isolated tempfile DB, only per-call
+            // uniqueness within a SINGLE test's DB matters, and a shared
+            // global counter trivially guarantees that.
+            number_input: NumberFieldInput {
+                value: next_test_act_number().to_string(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "Иванов И.И.".into(),
             receiver_name: "Петров П.П.".into(),
             place_id: Some(place_id),
@@ -143,6 +165,7 @@ async fn create_handover_with_location(
     )
     .await
     .expect("create handover")
+    .expect_created("create handover")
 }
 
 #[derive(Debug, PartialEq)]

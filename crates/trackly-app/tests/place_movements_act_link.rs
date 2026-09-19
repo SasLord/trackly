@@ -23,9 +23,10 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{
-    ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto, ActUpdateDto, ActUpdateItemDto,
-    ActUpdateReturnDto,
+    ActCreateDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto, ActUpdateDto,
+    ActUpdateItemDto, ActUpdateReturnDto,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -172,7 +173,12 @@ async fn place_movements_act_link() {
                 .await;
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
             giver_name: "Иванов И.И.".into(),
             receiver_name: "Петров П.П.".into(),
             place_id: Some(place_b),
@@ -192,7 +198,8 @@ async fn place_movements_act_link() {
         let handover = svc
             .create(&Identity::trusted_admin(), payload)
             .await
-            .expect("create handover with real place change");
+            .expect("create handover with real place change")
+            .expect_created("create handover with real place change");
 
         // One row per device, each linked to the act's id.
         let act_linked = count_movements_for_act(svc.readers.clone(), handover.id).await;
@@ -256,7 +263,12 @@ async fn place_movements_null_place_skip() {
 
         // Handover at the SAME place — D-04 no-op, zero movements from create.
         let handover_payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: "2".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "Сидоров С.С.".into(),
             receiver_name: "Кузнецов К.К.".into(),
             place_id: Some(place_a),
@@ -272,7 +284,8 @@ async fn place_movements_null_place_skip() {
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
             .await
-            .expect("create handover, place unchanged");
+            .expect("create handover, place unchanged")
+            .expect_created("create handover, place unchanged");
 
         let after_create = count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await;
         assert_eq!(
@@ -345,7 +358,12 @@ async fn place_movements_act_undo_deletes() {
         let device_ids = seed_devices_at_place(&svc.writer, &["Ноутбук Asus"], Some(place_a)).await;
         let dev_id = device_ids[0];
         let handover_payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+            value: "3".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
             giver_name: "Смирнов С.С.".into(),
             receiver_name: "Николаев Н.Н.".into(),
             place_id: Some(place_b),
@@ -361,7 +379,8 @@ async fn place_movements_act_undo_deletes() {
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
             .await
-            .expect("create handover H");
+            .expect("create handover H")
+            .expect_created("create handover H");
 
         // Return R nested under H: device moves place_b -> place_c, one
         // movement row linked to R.id.
@@ -392,7 +411,12 @@ async fn place_movements_act_undo_deletes() {
             seed_devices_at_place(&svc.writer, &["Монитор Acer"], Some(control_place_from)).await;
         let control_dev_id = control_device_ids[0];
         let control_payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+            value: "4".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
             giver_name: "Волков В.В.".into(),
             receiver_name: "Зайцев З.З.".into(),
             place_id: Some(control_place_to),
@@ -408,7 +432,8 @@ async fn place_movements_act_undo_deletes() {
         let control = svc
             .create(&Identity::trusted_admin(), control_payload)
             .await
-            .expect("create control handover C");
+            .expect("create control handover C")
+            .expect_created("create control handover C");
 
         // Sanity: each act has exactly one movement row of its own before
         // the delete.
@@ -474,7 +499,12 @@ async fn place_movements_act_edit_remove_records_reversion() {
         let kept_id = device_ids[1];
 
         let handover_payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: "5".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "Фёдоров Ф.Ф.".into(),
             receiver_name: "Морозов М.М.".into(),
             place_id: Some(place_b),
@@ -493,7 +523,8 @@ async fn place_movements_act_edit_remove_records_reversion() {
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
             .await
-            .expect("create handover, real place change a->b");
+            .expect("create handover, real place change a->b")
+            .expect_created("create handover, real place change a->b");
 
         // Exactly one movement row per device so far: a -> b, linked to the
         // handover.
@@ -508,7 +539,10 @@ async fn place_movements_act_edit_remove_records_reversion() {
         let update = ActUpdateDto {
             id: handover.id,
             expected_version: handover.version,
-            number_override: None,
+            number_input: ActNumberEditInput {
+                value: handover.number_raw.clone(),
+                confirm_script_mix: false,
+            },
             giver_name: handover.giver_name.clone(),
             receiver_name: handover.receiver_name.clone(),
             place_id: handover.place_id,
@@ -522,7 +556,8 @@ async fn place_movements_act_edit_remove_records_reversion() {
         };
         svc.update(&Identity::trusted_admin(), update)
             .await
-            .expect("update: remove dev_id from the act, keep kept_id");
+            .expect("update: remove dev_id from the act, keep kept_id")
+            .expect_created("update: remove dev_id from the act, keep kept_id");
 
         // CR-01: the reversion b -> a must now be recorded too, linked to
         // the SAME act (this was an edit of the handover, not a new act).
@@ -577,7 +612,12 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
 
         // Handover at the SAME place (place_a) — D-04 no-op, zero movements.
         let handover_payload = ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: "6".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "Соловьёв С.С.".into(),
             receiver_name: "Орлов О.О.".into(),
             place_id: Some(place_a),
@@ -596,7 +636,8 @@ async fn place_movements_return_edit_unreturn_records_reversion() {
         let handover = svc
             .create(&Identity::trusted_admin(), handover_payload)
             .await
-            .expect("create handover, no place change");
+            .expect("create handover, no place change")
+            .expect_created("create handover, no place change");
         assert_eq!(
             count_movements_for_entities(svc.readers.clone(), vec![dev_id]).await,
             0,

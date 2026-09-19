@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use trackly_core::domain::acts::{ActCounts, ActFilter as DomainActFilter, ActRow, ActType};
 
+use crate::dto::number_template::{NumberFieldInput, NumberWarningDto};
+
 /// Display-rule helper (D-Numbering-01).
 ///
 /// - Handover: plain decimal — `"42"`
@@ -22,13 +24,13 @@ use trackly_core::domain::acts::{ActCounts, ActFilter as DomainActFilter, ActRow
 /// (see `SqliteActRepository::SELECT_ACTS`).
 pub fn format_act_number(
     act_type: ActType,
-    number: i64,
+    number: &str,
     sub_number: Option<i64>,
-    parent_number: Option<i64>,
+    parent_number: Option<&str>,
     sibling_return_count: Option<i64>,
 ) -> String {
     match act_type {
-        ActType::Handover => number.to_string(),
+        ActType::Handover => number.to_owned(),
         ActType::Return => {
             let sub = sub_number.unwrap_or(1);
             let parent = parent_number.unwrap_or(number);
@@ -50,9 +52,9 @@ pub struct ActDto {
     pub version: i64,
     /// Formatted via `format_act_number` (D-Numbering-01).
     pub number: String,
-    /// Raw counter value (without «в» suffix) — useful for sorting / re-display.
-    #[specta(type = i32)]
-    pub number_raw: i64,
+    /// Raw stored value (without «в» suffix) — useful for sorting / re-display.
+    /// Phase 40.2 (NUM-14): now a free TEXT value, not a plain integer.
+    pub number_raw: String,
     #[specta(type = Option<i32>)]
     pub sub_number: Option<i64>,
     /// `"handover"` | `"return"` (matches V004 CHECK constraint values).
@@ -225,12 +227,13 @@ pub struct ActReturnItemDto {
 /// Payload sent by the UI when creating a handover act.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 pub struct ActCreateDto {
-    /// `None` → service uses `MAX(number) + 1` among live (not soft-deleted) acts.
-    /// `Some(n)` → service checks uniqueness among live acts only (a deleted
-    /// act's number is free to reuse — квик-задача 260904-x7s) and uses `n`
-    /// (audited as `custom:act_number_override`).
-    #[specta(type = Option<i32>)]
-    pub number_override: Option<i64>,
+    /// Phase 40.2 (NUM-13/NUM-14): no more server-side auto-generate — the
+    /// user always supplies (or a template pre-fills) `number_input.value`,
+    /// a required non-empty string. The service checks uniqueness among
+    /// live acts AND live returns' DISPLAYED numbers (D-06), and — when
+    /// `template_id` is set and `confirm_mismatch` is `false` — that the
+    /// value matches the template's mask (NUM-11).
+    pub number_input: NumberFieldInput,
     pub giver_name: String,
     pub receiver_name: String,
     /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
@@ -285,9 +288,14 @@ pub struct ActUpdateDto {
     /// rejected (`AppError::OptimisticLockMismatch`).
     #[specta(type = i32)]
     pub expected_version: i64,
-    /// `None` = no rename requested (act keeps its current `number`).
-    #[specta(type = Option<i32>)]
-    pub number_override: Option<i64>,
+    /// Phase 40.2 (D-05/NUM-14): the act's number as it should be AFTER this
+    /// edit — always supplied (not `Option`), compared server-side against
+    /// the act's CURRENT number to decide whether a rename actually
+    /// happened. Deliberately narrower than `ActCreateDto.number_input`
+    /// (`NumberFieldInput`): an edit has no "selected template" concept, so
+    /// there is no `template_id`/`confirm_mismatch` field to send at all —
+    /// mismatch is NEVER checked on edit (D-05).
+    pub number_input: ActNumberEditInput,
     pub giver_name: String,
     pub receiver_name: String,
     /// `place_id` — уже разрешённый caller'ом ID места, выбранный через
@@ -305,6 +313,59 @@ pub struct ActUpdateDto {
     pub handover_date_utc: Option<i64>,
     /// Full replacement set of items — see struct-level doc comment.
     pub items: Vec<ActUpdateItemDto>,
+}
+
+/// Number-edit input for `ActUpdateDto` (D-05, Phase 40.2 Plan 06) —
+/// deliberately NOT `NumberFieldInput`: editing an act's number never
+/// offers a template-mismatch check (there is no "selected template"
+/// concept in an edit), so this type structurally cannot carry
+/// `template_id`/`confirm_mismatch` at all. `value` is REQUIRED (not
+/// `Option`) — the caller always sends the act's number as it should be
+/// after the edit; the service compares it against the act's current
+/// stored number to decide whether a rename actually happened (unchanged
+/// value → occupied/script-mix re-check is skipped entirely, so editing
+/// unrelated fields never re-opens a warning about a number nobody touched).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+pub struct ActNumberEditInput {
+    pub value: String,
+    #[serde(default)]
+    pub confirm_script_mix: bool,
+}
+
+/// Outcome of `ActService::create`/`ActService::update` (Phase 40.2, D-01
+/// confirmation chain) — follows the `*SaveOutcome` convention fixed by
+/// `dto::number_template`'s module doc-comment: a save that needs the user
+/// to confirm a non-blocking warning (mismatch/script-mix) is a *different
+/// kind of success*, not an `AppError`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ActSaveOutcome {
+    /// `Box`ed per `clippy::large_enum_variant` — `ActDto` (392+ bytes) vs
+    /// `NumberWarningDto` (152 bytes) would otherwise force every
+    /// `ActSaveOutcome` to reserve the larger size regardless of which
+    /// variant is active. `Box<T>` is JSON-transparent (serde/specta both
+    /// serialize/type it identically to `T`) — no wire-format change.
+    Created(Box<ActDto>),
+    NeedsConfirmation(NumberWarningDto),
+}
+
+impl ActSaveOutcome {
+    /// Test-only convenience: unwrap the `Created` variant, panicking with a
+    /// descriptive message if the save instead needed confirmation. NOT
+    /// used by production code (which must always handle
+    /// `NeedsConfirmation` explicitly via a `match`) — exists purely so the
+    /// many pre-Plan-06 test files exercising `ActService::create`/`update`
+    /// for an unrelated feature (not the numbering confirmation chain
+    /// itself) don't each hand-roll the same unwrap-or-panic boilerplate.
+    #[track_caller]
+    pub fn expect_created(self, msg: &str) -> ActDto {
+        match self {
+            ActSaveOutcome::Created(dto) => *dto,
+            ActSaveOutcome::NeedsConfirmation(warning) => {
+                panic!("{msg}: expected Created, got NeedsConfirmation({warning:?})")
+            }
+        }
+    }
 }
 
 /// Single item line in `ActUpdateDto.items`.
@@ -333,7 +394,7 @@ pub struct ActUpdateItemDto {
 
 /// Payload sent by the UI when editing an existing **return** act (Phase 22,
 /// ACT-03). Mirrors `ActUpdateDto`'s shape 1:1 EXCEPT:
-/// - no `number_override` — return numbers never change (out of scope, D-10).
+/// - no `number_input` — return numbers never change (out of scope, D-10).
 /// - adds `bulk_condition`/`bulk_place_id`/`apply_to_all`, mirroring
 ///   `ActReturnDto`'s own bulk-apply fields.
 /// - `items: Vec<ActReturnItemDto>` — REUSES the existing return-item type
@@ -457,9 +518,9 @@ pub struct ActListResponse {
 pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64>) -> ActDto {
     let number = format_act_number(
         row.act_type,
-        row.number,
+        &row.number,
         row.sub_number,
-        row.parent_number,
+        row.parent_number.as_deref(),
         row.sibling_return_count,
     );
     ActDto {
@@ -495,7 +556,7 @@ mod tests {
     #[test]
     fn format_handover_is_plain_number() {
         assert_eq!(
-            format_act_number(ActType::Handover, 42, None, None, None),
+            format_act_number(ActType::Handover, "42", None, None, None),
             "42"
         );
     }
@@ -503,7 +564,7 @@ mod tests {
     #[test]
     fn format_single_return_drops_sub_suffix() {
         assert_eq!(
-            format_act_number(ActType::Return, 999, Some(1), Some(42), Some(1)),
+            format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1)),
             "42в"
         );
     }
@@ -511,11 +572,11 @@ mod tests {
     #[test]
     fn format_multiple_returns_use_sub_suffix() {
         assert_eq!(
-            format_act_number(ActType::Return, 999, Some(1), Some(42), Some(2)),
+            format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2)),
             "42в1"
         );
         assert_eq!(
-            format_act_number(ActType::Return, 1000, Some(2), Some(42), Some(2)),
+            format_act_number(ActType::Return, "1000", Some(2), Some("42"), Some(2)),
             "42в2"
         );
     }
@@ -525,16 +586,42 @@ mod tests {
         // Same row data — sub=1 — но при изменении sibling_count
         // отображение меняется с «42в» (один возврат) на «42в1» (два).
         // Это retroactive promotion из D-Numbering-01.
-        let solo = format_act_number(ActType::Return, 999, Some(1), Some(42), Some(1));
-        let with_sibling = format_act_number(ActType::Return, 999, Some(1), Some(42), Some(2));
+        let solo = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1));
+        let with_sibling = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2));
         assert_eq!(solo, "42в");
         assert_eq!(with_sibling, "42в1");
+    }
+
+    /// Phase 40.2 (NUM-14): the display rule works identically for a
+    /// non-numeric templated number — proves `format_act_number` never
+    /// assumed its input parsed as an integer.
+    #[test]
+    fn format_handles_templated_non_numeric_number() {
+        assert_eq!(
+            format_act_number(ActType::Handover, "2026/09-1", None, None, None),
+            "2026/09-1"
+        );
+        assert_eq!(
+            format_act_number(
+                ActType::Return,
+                "ignored",
+                Some(1),
+                Some("2026/09-1"),
+                Some(1)
+            ),
+            "2026/09-1в"
+        );
     }
 
     #[test]
     fn snake_case_json_invariant() {
         let dto = ActCreateDto {
-            number_override: Some(7),
+            number_input: NumberFieldInput {
+                value: "7".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -544,11 +631,8 @@ mod tests {
             items: vec![],
         };
         let s = serde_json::to_string(&dto).expect("ser");
-        assert!(
-            s.contains("number_override"),
-            "snake_case 'number_override'"
-        );
-        assert!(!s.contains("numberOverride"), "must NOT use camelCase");
+        assert!(s.contains("number_input"), "snake_case 'number_input'");
+        assert!(!s.contains("numberInput"), "must NOT use camelCase");
     }
 
     #[test]
@@ -556,7 +640,10 @@ mod tests {
         let dto = ActUpdateDto {
             id: 1,
             expected_version: 3,
-            number_override: Some(7),
+            number_input: ActNumberEditInput {
+                value: "7".into(),
+                confirm_script_mix: false,
+            },
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -574,11 +661,8 @@ mod tests {
             "snake_case 'expected_version'"
         );
         assert!(!s.contains("expectedVersion"), "must NOT use camelCase");
-        assert!(
-            s.contains("number_override"),
-            "snake_case 'number_override'"
-        );
-        assert!(!s.contains("numberOverride"), "must NOT use camelCase");
+        assert!(s.contains("number_input"), "snake_case 'number_input'");
+        assert!(!s.contains("numberInput"), "must NOT use camelCase");
         assert!(
             s.contains("handover_date_utc"),
             "snake_case 'handover_date_utc'"

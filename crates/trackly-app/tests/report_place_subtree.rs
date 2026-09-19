@@ -37,6 +37,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::report_service::ReportService;
@@ -166,7 +167,13 @@ async fn create_handover(acts: &ActService, device_id: i64, place_id: i64, giver
     acts.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            // Derived from device_id — unique per call within a test's DB.
+            number_input: NumberFieldInput {
+                value: device_id.to_string(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: giver.to_string(),
             receiver_name: "Петров П.П.".to_string(),
             place_id: Some(place_id),

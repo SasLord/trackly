@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActFilter, ActItemNewDto, Pagination};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -60,11 +61,17 @@ async fn create_handover(
     device_ids: &[i64],
     giver: &str,
     receiver: &str,
+    number: &str,
 ) -> trackly_app::dto::act::ActDto {
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: number.to_string(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: giver.to_string(),
             receiver_name: receiver.to_string(),
             place_id: None,
@@ -83,6 +90,7 @@ async fn create_handover(
     )
     .await
     .expect("create handover")
+    .expect_created("create handover")
 }
 
 fn handover_filter() -> ActFilter {
@@ -104,8 +112,8 @@ async fn search_by_act_number() {
             &["Stub-1", "Stub-2", "Stub-3", "Stub-4", "Stub-5"],
         )
         .await;
-        for &id in &device_ids {
-            create_handover(&svc, &[id], "Иванов", "Петров").await;
+        for (idx, &id) in device_ids.iter().enumerate() {
+            create_handover(&svc, &[id], "Иванов", "Петров", &format!("{}", idx + 1)).await;
         }
         // Search по «3» — должен найти акт №3 (LIKE %3% по number-as-text).
         let resp = svc
@@ -113,7 +121,7 @@ async fn search_by_act_number() {
             .await
             .expect("search");
         assert_eq!(resp.total, 1, "expected one act with number containing '3'");
-        assert_eq!(resp.items[0].number_raw, 3);
+        assert_eq!(resp.items[0].number_raw, "3");
     })
     .await
     .expect("budget");
@@ -124,9 +132,9 @@ async fn search_by_giver_name() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices_named(&svc.writer, &["D-A", "D-B", "D-C"]).await;
-        create_handover(&svc, &[device_ids[0]], "Иванов И.И.", "Петров П.П.").await;
-        create_handover(&svc, &[device_ids[1]], "Петров С.С.", "Сидоров С.С.").await;
-        create_handover(&svc, &[device_ids[2]], "Сидоров К.К.", "Иванов А.А.").await;
+        create_handover(&svc, &[device_ids[0]], "Иванов И.И.", "Петров П.П.", "1").await;
+        create_handover(&svc, &[device_ids[1]], "Петров С.С.", "Сидоров С.С.", "2").await;
+        create_handover(&svc, &[device_ids[2]], "Сидоров К.К.", "Иванов А.А.", "3").await;
 
         // «Иван» матчит и giver «Иванов И.И.», и receiver «Иванов А.А.» — итого 2.
         let resp = svc
@@ -152,8 +160,8 @@ async fn search_by_device_name() {
             ],
         )
         .await;
-        for &id in &device_ids {
-            create_handover(&svc, &[id], "Тестов", "Проверкин").await;
+        for (idx, &id) in device_ids.iter().enumerate() {
+            create_handover(&svc, &[id], "Тестов", "Проверкин", &format!("{}", idx + 1)).await;
         }
         // «Lenovo» — есть в одном устройстве → один акт.
         let resp = svc
@@ -176,9 +184,9 @@ async fn search_filters_by_tab() {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices_named(&svc.writer, &["D-1", "D-2"]).await;
         // Handover «Иванов»
-        let h1 = create_handover(&svc, &[device_ids[0]], "Иванов И.И.", "Петров П.П.").await;
+        let h1 = create_handover(&svc, &[device_ids[0]], "Иванов И.И.", "Петров П.П.", "1").await;
         // Handover «Сидоров» → return: giver/receiver наследуются от parent.
-        let h2 = create_handover(&svc, &[device_ids[1]], "Сидоров С.С.", "Орлов О.О.").await;
+        let h2 = create_handover(&svc, &[device_ids[1]], "Сидоров С.С.", "Орлов О.О.", "2").await;
         // Возврат по h2 (giver/receiver унаследует «Сидоров»/«Орлов»).
         let act_item_id: i64 = {
             let readers = svc.readers.clone();
@@ -282,8 +290,8 @@ async fn search_empty_query_falls_back_to_list() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices_named(&svc.writer, &["A", "B", "C", "D", "E"]).await;
-        for &id in &device_ids {
-            create_handover(&svc, &[id], "Тестов", "Проверкин").await;
+        for (idx, &id) in device_ids.iter().enumerate() {
+            create_handover(&svc, &[id], "Тестов", "Проверкин", &format!("{}", idx + 1)).await;
         }
         let resp = svc
             .search("".into(), handover_filter(), Pagination::default())
@@ -306,7 +314,7 @@ async fn search_handles_special_chars() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices_named(&svc.writer, &["D-1"]).await;
-        create_handover(&svc, &[device_ids[0]], "Иванов", "Петров").await;
+        create_handover(&svc, &[device_ids[0]], "Иванов", "Петров", "1").await;
 
         // Apostrophe (одинарная кавычка) — параметризованный query не должен
         // упасть; результат — пустой (никто не матчит).

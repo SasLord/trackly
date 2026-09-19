@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
 use trackly_core::auth::Identity;
@@ -180,7 +181,12 @@ async fn create_handover_at_place(
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            number_input: NumberFieldInput {
+                value: "1".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: giver.to_string(),
             receiver_name: receiver.to_string(),
             place_id,
@@ -196,6 +202,7 @@ async fn create_handover_at_place(
     )
     .await
     .expect("create handover")
+    .expect_created("create handover")
 }
 
 // ---------------------------------------------------------------------------

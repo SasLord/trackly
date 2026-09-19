@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::pdf::docspec::{DocSpec, HeaderBlock, Section};
 use trackly_app::pdf::renderer::{truncate_to_width, PdfRenderer};
 use trackly_app::services::{ActService, OrganizationService, TemplateService};
@@ -151,7 +152,12 @@ async fn device_card_long_field_wraps_instead_of_truncating() {
         .create(
             &Identity::trusted_admin(),
             ActCreateDto {
-                number_override: None,
+                number_input: NumberFieldInput {
+                    value: "1".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
                 giver_name: "Тестов Т.Т.".into(),
                 receiver_name: "Приемов П.П.".into(),
                 place_id: None,
@@ -166,7 +172,8 @@ async fn device_card_long_field_wraps_instead_of_truncating() {
             },
         )
         .await
-        .expect("create handover");
+        .expect("create handover")
+        .expect_created("create handover");
 
     let long_kit = "Блок питания, кабель питания, кабель HDMI, сумка для переноски, \
         документация на русском языке, гарантийный талон, комплект крепёжных винтов, \

@@ -31,6 +31,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
@@ -100,7 +101,12 @@ async fn seed_devices(
 
 async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "1".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
         place_id: None,
@@ -119,6 +125,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 // ---------------------------------------------------------------------------
@@ -537,72 +544,13 @@ async fn return_concurrent_two_returns_correct_sub_numbers() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 7 (W-7): return does NOT increment act_number counter
+// Test 7 ("return_does_not_increment_act_counter", W-7) was REMOVED here
+// (Phase 40.2 Plan 06, NUM-13/NUM-14): it directly queried
+// `counters.act_number`, a table `V041__number_templates.sql` (Plan 01)
+// already dropped unconditionally — the mechanism this test asserted
+// "return does not touch" no longer exists in ANY form for acts. There is
+// nothing left to increment or not increment.
 // ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn return_does_not_increment_act_counter() {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, _dir) = make_acts_service();
-        let device_ids = seed_devices(&svc.writer, 2).await;
-        let handover = create_handover(&svc, &device_ids).await;
-
-        let readers_before = svc.readers.clone();
-        let before: i64 = tokio::task::spawn_blocking(move || {
-            let conn = readers_before.acquire();
-            conn.query_row(
-                "SELECT current_value FROM counters WHERE name='act_number'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("counter before")
-        })
-        .await
-        .expect("spawn before");
-
-        svc.do_return(
-            &Identity::trusted_admin(),
-            handover.id,
-            ActReturnDto {
-                bulk_condition: Some("Хорошее".into()),
-                bulk_place_id: None,
-                apply_to_all: true,
-                giver_name: None,
-                receiver_name: None,
-                handover_date_utc: None,
-                items: vec![ActReturnItemDto {
-                    act_item_id: handover.items[0].id,
-                    device_id: handover.items[0].device_id,
-                    device_ids: vec![handover.items[0].device_id],
-                    quantity: 1,
-                    condition_override: None,
-                    place_id_override: None,
-                }],
-            },
-        )
-        .await
-        .expect("do_return");
-
-        let readers_after = svc.readers.clone();
-        let after: i64 = tokio::task::spawn_blocking(move || {
-            let conn = readers_after.acquire();
-            conn.query_row(
-                "SELECT current_value FROM counters WHERE name='act_number'",
-                [],
-                |r| r.get(0),
-            )
-            .expect("counter after")
-        })
-        .await
-        .expect("spawn after");
-        assert_eq!(
-            before, after,
-            "act_number counter MUST NOT increment on return"
-        );
-    })
-    .await
-    .expect("counter budget");
-}
 
 // ---------------------------------------------------------------------------
 // Test 8 (W-8): apply_to_all=false с full per-row override → succeeds

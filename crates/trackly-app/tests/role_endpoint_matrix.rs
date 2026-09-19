@@ -414,7 +414,12 @@ async fn role_endpoint_matrix_test() {
 
         let act_payload = json!({
             "payload": {
-                "number_override": null,
+                "number_input": {
+                    "value": "1",
+                    "templateId": null,
+                    "confirmMismatch": false,
+                    "confirmScriptMix": false
+                },
                 "giver_name": "Тест Тестов",
                 "receiver_name": "Тест2 Тестов",
                 "place_id": null,
@@ -431,7 +436,10 @@ async fn role_endpoint_matrix_test() {
             "payload": {
                 "id": 1,
                 "expected_version": 1,
-                "number_override": null,
+                "number_input": {
+                    "value": "1",
+                    "confirm_script_mix": false
+                },
                 "giver_name": "Тест Тестов",
                 "receiver_name": "Тест2 Тестов",
                 "place_id": null,

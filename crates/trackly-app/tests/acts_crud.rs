@@ -1,7 +1,15 @@
 //! Acts CRUD integration tests — Plan 02 vertical slice.
 //!
-//! Covers: create handover happy path, override numbering audit, conflict on
-//! reuse, rollback on invalid device, switch-bar counts, quantity persistence.
+//! Covers: create handover happy path, explicit numbering conflict, reuse of
+//! a deleted act's number, rollback on invalid device, switch-bar counts,
+//! quantity persistence.
+//!
+//! Phase 40.2 Plan 06 (NUM-13/NUM-14): server-side auto-generate and the
+//! `counters` table are both gone — every create supplies an explicit
+//! `number_input.value`. Two tests that exercised the removed mechanism
+//! outright (`custom:act_number_override` audit-on-create, and the exact
+//! `counters`-table row) were deleted rather than adapted — see their
+//! removal notes below.
 //!
 //! Each test wrapped in `tokio::time::timeout(30s)` per S-6.
 
@@ -10,6 +18,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActFilter, ActItemNewDto, Pagination};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
@@ -24,6 +33,15 @@ fn make_acts_service() -> (ActService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = ActService::new(writer, readers, clock);
     (svc, dir)
+}
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
 }
 
 /// Сеет реальную строку `users` (FK-цель для `audit_log.user_id`) и возвращает
@@ -89,7 +107,7 @@ async fn create_handover_happy() {
         let device_ids = seed_devices(&svc.writer, 3).await;
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "Иванов И.И.".into(),
             receiver_name: "Петров П.П.".into(),
             place_id: None,
@@ -108,9 +126,10 @@ async fn create_handover_happy() {
         let dto = svc
             .create(&Identity::trusted_admin(), payload)
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
         assert_eq!(dto.number, "1");
-        assert_eq!(dto.number_raw, 1);
+        assert_eq!(dto.number_raw, "1");
         assert_eq!(dto.act_type, "handover");
         assert_eq!(dto.items.len(), 3);
 
@@ -173,99 +192,27 @@ async fn create_handover_happy() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: override increments only audit, NOT counter
+// Test 2 ("create_with_override_audits_and_increments_only_audit") was
+// REMOVED here (Phase 40.2 Plan 06): it asserted (a) `counters.act_number`
+// stays at 0 and (b) a `custom:act_number_override` audit row is written on
+// CREATE with a `next_auto_would_be` payload field. Both no longer apply —
+// `counters` does not exist (V041), and `create()` no longer distinguishes
+// "auto" vs "override": every number is an explicit user/template value,
+// so there is nothing left to audit as an "override" versus a baseline.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Test 3: explicit number that already exists (live) → Conflict
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn create_with_override_audits_and_increments_only_audit() {
-    tokio::time::timeout(Duration::from_secs(30), async {
-        let (svc, _dir) = make_acts_service();
-        let ids = seed_devices(&svc.writer, 1).await;
-
-        let payload = ActCreateDto {
-            number_override: Some(99),
-            giver_name: "А".into(),
-            receiver_name: "Б".into(),
-            place_id: None,
-            notes: None,
-            deadline_utc: None,
-            handover_date_utc: None,
-            items: vec![ActItemNewDto {
-                device_id: ids[0],
-                device_ids: Vec::new(),
-                quantity: 1,
-            }],
-        };
-        let dto = svc
-            .create(&Identity::trusted_admin(), payload)
-            .await
-            .expect("create override");
-        assert_eq!(dto.number_raw, 99);
-        assert_eq!(dto.number, "99");
-
-        // counter NOT incremented (still 0)
-        let readers = svc.readers.clone();
-        let act_id = dto.id;
-        let (counter, override_count, payload_json): (i64, i64, String) =
-            tokio::task::spawn_blocking(move || {
-                let conn = readers.acquire();
-                let counter: i64 = conn
-                    .query_row(
-                        "SELECT current_value FROM counters WHERE name='act_number'",
-                        [],
-                        |r| r.get(0),
-                    )
-                    .expect("counter");
-                let oc: i64 = conn
-                    .query_row(
-                        "SELECT COUNT(*) FROM audit_log \
-                         WHERE entity_type='act' AND entity_id=?1 \
-                           AND action='custom:act_number_override'",
-                        params![act_id],
-                        |r| r.get(0),
-                    )
-                    .expect("override count");
-                let pj: String = conn
-                    .query_row(
-                        "SELECT payload_json FROM audit_log \
-                         WHERE entity_type='act' AND entity_id=?1 \
-                           AND action='custom:act_number_override'",
-                        params![act_id],
-                        |r| r.get(0),
-                    )
-                    .expect("override payload");
-                (counter, oc, pj)
-            })
-            .await
-            .expect("spawn_blocking");
-        assert_eq!(counter, 0, "counter must NOT increment on override");
-        assert_eq!(override_count, 1);
-        assert!(
-            payload_json.contains("\"requested\":99"),
-            "override payload should record requested number, got: {payload_json}"
-        );
-        assert!(
-            payload_json.contains("\"next_auto_would_be\":1"),
-            "override payload should record next auto, got: {payload_json}"
-        );
-    })
-    .await
-    .expect("override budget");
-}
-
-// ---------------------------------------------------------------------------
-// Test 3: override number that already exists → Conflict
-// ---------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn override_number_already_exists_returns_conflict() {
+async fn create_with_number_already_taken_returns_conflict() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 2).await;
 
-        // First create with auto numbering → number=1.
         let p1 = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "A".into(),
             receiver_name: "B".into(),
             place_id: None,
@@ -280,10 +227,11 @@ async fn override_number_already_exists_returns_conflict() {
         };
         svc.create(&Identity::trusted_admin(), p1)
             .await
-            .expect("first");
+            .expect("first")
+            .expect_created("first");
 
         let p2 = ActCreateDto {
-            number_override: Some(1),
+            number_input: number_input("1"),
             giver_name: "C".into(),
             receiver_name: "D".into(),
             place_id: None,
@@ -315,18 +263,17 @@ async fn override_number_already_exists_returns_conflict() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3b: deleted act's number is free to reuse via number_override
-// (260904-x7s)
+// Test 3b: deleted act's number is free to reuse (260904-x7s)
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn override_number_reuses_deleted_act_number() {
+async fn number_of_deleted_act_is_free_to_reuse() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 2).await;
 
         let p1 = ActCreateDto {
-            number_override: Some(20),
+            number_input: number_input("20"),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -342,14 +289,15 @@ async fn override_number_reuses_deleted_act_number() {
         let act1 = svc
             .create(&Identity::trusted_admin(), p1)
             .await
-            .expect("create act #20");
+            .expect("create act #20")
+            .expect_created("create act #20");
 
         svc.delete_soft(act1.id, act1.version)
             .await
             .expect("soft-delete act #20");
 
         let p2 = ActCreateDto {
-            number_override: Some(20),
+            number_input: number_input("20"),
             giver_name: "В".into(),
             receiver_name: "Г".into(),
             place_id: None,
@@ -365,16 +313,26 @@ async fn override_number_reuses_deleted_act_number() {
         let act2 = svc
             .create(&Identity::trusted_admin(), p2)
             .await
-            .expect("reuse freed number 20");
-        assert_eq!(act2.number_raw, 20);
+            .expect("reuse freed number 20")
+            .expect_created("reuse freed number 20");
+        assert_eq!(act2.number_raw, "20");
     })
     .await
     .expect("reuse-number budget");
 }
 
 // ---------------------------------------------------------------------------
-// Test 3c: peek_next_number frees the number of the last-deleted act
-// (260904-x7s)
+// Test 3c: peek_next_number (Phase 40.2 Plan 06 shim over NumberTemplateService)
+//
+// `act_service.rs::peek_next_number`'s doc-comment explains this is a
+// temporary compat shim resolving the CURRENTLY-REMEMBERED template for the
+// `act_create` context (NUM-08) — NOT a plain `MAX(number)+1` scan
+// independent of any template choice. Explicitly passing `template_id` on
+// every create (mirroring a UI user who keeps the same template selected)
+// keeps the context wired to it throughout — a create WITHOUT a
+// `template_id` would reset the context to "no template" (NUM-08), which
+// this test deliberately avoids so it can still assert the
+// gap-fill/free-on-delete behaviour end-to-end.
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -385,13 +343,35 @@ async fn peek_next_number_frees_on_delete_of_last_act() {
         assert_eq!(
             svc.peek_next_number().await.expect("peek empty"),
             1,
-            "empty table → next number is 1"
+            "empty table → next number is 1 (V041-seeded '[X]' act_number template)"
         );
+
+        // `ActService::number_templates` is `pub(crate)` — this test is an
+        // external integration crate, so it stands up its own
+        // `NumberTemplateService` against the SAME writer/readers (`svc`'s
+        // public fields) to fetch the V041-seeded `act_number` template id.
+        let number_templates = trackly_app::services::NumberTemplateService::new(
+            svc.writer.clone(),
+            svc.readers.clone(),
+            Arc::new(SystemClock),
+        );
+        let seeded = number_templates
+            .list(Some(
+                trackly_app::dto::number_template::TemplateTypeDto::ActNumber,
+            ))
+            .await
+            .expect("list act_number templates");
+        let template_id = seeded
+            .first()
+            .expect("V041 seeds one act_number template")
+            .id;
 
         let ids = seed_devices(&svc.writer, 2).await;
 
+        let mut with_template = number_input("1");
+        with_template.template_id = Some(template_id);
         let p1 = ActCreateDto {
-            number_override: None,
+            number_input: with_template,
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -407,11 +387,14 @@ async fn peek_next_number_frees_on_delete_of_last_act() {
         let act1 = svc
             .create(&Identity::trusted_admin(), p1)
             .await
-            .expect("create act 1");
-        assert_eq!(act1.number_raw, 1);
+            .expect("create act 1")
+            .expect_created("create act 1");
+        assert_eq!(act1.number_raw, "1");
 
+        let mut with_template2 = number_input("2");
+        with_template2.template_id = Some(template_id);
         let p2 = ActCreateDto {
-            number_override: None,
+            number_input: with_template2,
             giver_name: "В".into(),
             receiver_name: "Г".into(),
             place_id: None,
@@ -427,8 +410,9 @@ async fn peek_next_number_frees_on_delete_of_last_act() {
         let act2 = svc
             .create(&Identity::trusted_admin(), p2)
             .await
-            .expect("create act 2");
-        assert_eq!(act2.number_raw, 2);
+            .expect("create act 2")
+            .expect_created("create act 2");
+        assert_eq!(act2.number_raw, "2");
 
         assert_eq!(
             svc.peek_next_number().await.expect("peek after two"),
@@ -451,7 +435,7 @@ async fn peek_next_number_frees_on_delete_of_last_act() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: rollback on invalid device id (counter stays put, no orphans)
+// Test 4: rollback on invalid device id (no orphaned acts/items/audit rows)
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -460,7 +444,7 @@ async fn rollback_on_invalid_device_id() {
         let (svc, _dir) = make_acts_service();
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("5"),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -486,16 +470,9 @@ async fn rollback_on_invalid_device_id() {
         }
 
         let readers = svc.readers.clone();
-        let (counter, acts_total, items_total, audits_total): (i64, i64, i64, i64) =
+        let (acts_total, items_total, audits_total): (i64, i64, i64) =
             tokio::task::spawn_blocking(move || {
                 let conn = readers.acquire();
-                let counter: i64 = conn
-                    .query_row(
-                        "SELECT current_value FROM counters WHERE name='act_number'",
-                        [],
-                        |r| r.get(0),
-                    )
-                    .expect("counter");
                 let a: i64 = conn
                     .query_row("SELECT COUNT(*) FROM acts", [], |r| r.get(0))
                     .expect("acts");
@@ -505,11 +482,10 @@ async fn rollback_on_invalid_device_id() {
                 let au: i64 = conn
                     .query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
                     .expect("audit_log");
-                (counter, a, i, au)
+                (a, i, au)
             })
             .await
             .expect("spawn_blocking");
-        assert_eq!(counter, 0, "counter must roll back");
         assert_eq!(acts_total, 0, "no act rows after rollback");
         assert_eq!(items_total, 0, "no act_items after rollback");
         assert_eq!(audits_total, 0, "no audit_log rows after rollback");
@@ -527,9 +503,9 @@ async fn counts_match_switch_bar() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 3).await;
-        for &id in &ids {
+        for (idx, &id) in ids.iter().enumerate() {
             let p = ActCreateDto {
-                number_override: None,
+                number_input: number_input(&format!("{}", 300 + idx)),
                 giver_name: "A".into(),
                 receiver_name: "B".into(),
                 place_id: None,
@@ -544,7 +520,8 @@ async fn counts_match_switch_bar() {
             };
             svc.create(&Identity::trusted_admin(), p)
                 .await
-                .expect("create");
+                .expect("create")
+                .expect_created("create");
         }
         let counts = svc.counts().await.expect("counts");
         assert_eq!(counts.handover_active, 3);
@@ -569,7 +546,7 @@ async fn handover_with_quantity_persists() {
         let ids = seed_devices(&svc.writer, 1).await;
         let source_id = ids[0];
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -582,7 +559,11 @@ async fn handover_with_quantity_persists() {
                 quantity: 3,
             }],
         };
-        let dto = svc.create(&Identity::trusted_admin(), payload).await.expect("create");
+        let dto = svc
+            .create(&Identity::trusted_admin(), payload)
+            .await
+            .expect("create")
+            .expect_created("create");
         // G-12: 3 act_items (1 original + 2 clones), все с quantity=1.
         assert_eq!(dto.items.len(), 3);
         for it in &dto.items {
@@ -633,9 +614,9 @@ async fn create_validates_required_fields() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 1).await;
 
-        // Empty giver_name
+        // Empty giver_name — validated before the number is ever looked at.
         let p1 = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "".into(),
             receiver_name: "B".into(),
             place_id: None,
@@ -659,7 +640,7 @@ async fn create_validates_required_fields() {
 
         // Empty items list
         let p2 = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "A".into(),
             receiver_name: "B".into(),
             place_id: None,
@@ -691,7 +672,7 @@ async fn list_returns_handover_with_items() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 2).await;
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "A".into(),
             receiver_name: "B".into(),
             place_id: None,
@@ -709,7 +690,8 @@ async fn list_returns_handover_with_items() {
         };
         svc.create(&Identity::trusted_admin(), payload)
             .await
-            .expect("create");
+            .expect("create")
+            .expect_created("create");
 
         let filter = ActFilter {
             act_type: Some("handover".into()),
@@ -747,7 +729,7 @@ async fn create_stores_real_caller_user_id_in_audit_log() {
         };
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "Иванов И.И.".into(),
             receiver_name: "Петров П.П.".into(),
             place_id: None,
@@ -766,7 +748,8 @@ async fn create_stores_real_caller_user_id_in_audit_log() {
         let dto = svc
             .create(&manager, payload)
             .await
-            .expect("create with manager caller");
+            .expect("create with manager caller")
+            .expect_created("create with manager caller");
 
         let readers = svc.readers.clone();
         let act_id = dto.id;
@@ -822,7 +805,7 @@ async fn create_with_trusted_admin_caller_stores_null_user_id() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 1).await;
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: None,
@@ -838,7 +821,8 @@ async fn create_with_trusted_admin_caller_stores_null_user_id() {
         let dto = svc
             .create(&Identity::trusted_admin(), payload)
             .await
-            .expect("create with trusted_admin caller");
+            .expect("create with trusted_admin caller")
+            .expect_created("create with trusted_admin caller");
 
         let readers = svc.readers.clone();
         let act_id = dto.id;

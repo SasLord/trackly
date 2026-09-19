@@ -79,7 +79,31 @@
     }));
   }
 
-  let numberOverride = $state<number | null>(isEditPrefill ? initialAct!.number_raw : null);
+  // Phase 40.2 (NUM-13/NUM-14): `ActDto.number_raw` is now a free TEXT value
+  // (backend), but `ActNumberField` (Plan 14 will replace it with the real
+  // template/confirmation UX) still speaks `number | null`. Parsing a
+  // non-numeric templated value here degrades to `null` (auto/no-override)
+  // rather than crashing — acceptable only as a temporary compat shim.
+  let numberOverride = $state<number | null>(
+    isEditPrefill ? Number(initialAct!.number_raw) || null : null,
+  );
+  // Fallback auto-predicted number, mirroring `ActNumberField`'s own
+  // `peekNextNumber()` call — needed because the backend (Plan 06) no
+  // longer auto-generates a number server-side: `number_input.value` is
+  // now a REQUIRED non-empty string on every save, so "auto mode"
+  // (`numberOverride === null`) must still submit SOME valid value, the
+  // same one `ActNumberField` is already showing the user.
+  let predictedNumber = $state<number | null>(null);
+  onMount(async () => {
+    try {
+      predictedNumber = await acts.peekNextNumber();
+    } catch {
+      // Soft-degrade — `ActNumberField` surfaces its own toast for this;
+      // this fallback simply stays `null` (numberOverride must then be
+      // set explicitly by the user, else submit fails validation, same as
+      // the field showing no usable prediction).
+    }
+  });
   let giverName = $state(isEditPrefill ? initialAct!.giver_name : '');
   let receiverName = $state(isEditPrefill ? initialAct!.receiver_name : '');
   let placeId = $state<number | null>(isEditPrefill ? (initialAct!.place_id ?? null) : null);
@@ -121,6 +145,18 @@
     if (!iso) return null;
     const t = Date.parse(iso + 'T00:00:00Z');
     return Number.isFinite(t) ? Math.floor(t / 1000) : null;
+  }
+
+  // Phase 40.2 (NUM-13): `number_input.value` is REQUIRED — falls back to
+  // the auto-predicted number (see `predictedNumber` above) when the user
+  // hasn't typed an explicit override. Plan 11/14 replace this whole field
+  // with the real template-picker + confirmation-popup chain (occupied /
+  // mismatch / script-mix) — this is a compile/functionality compat shim
+  // only, not the final NUM-13 UX.
+  function numberInputValue(): string {
+    if (numberOverride !== null) return String(numberOverride);
+    if (predictedNumber !== null) return String(predictedNumber);
+    return '';
   }
 
   // ----------------------------------------------------------------------------
@@ -170,7 +206,7 @@
         const updatePayload: ActUpdateDto = {
           id: initialAct!.id,
           expected_version: initialAct!.version,
-          number_override: numberOverride,
+          number_input: { value: numberInputValue(), confirm_script_mix: false },
           giver_name: giverName.trim(),
           receiver_name: receiverName.trim(),
           place_id: placeId,
@@ -200,7 +236,12 @@
           });
 
         const payload: ActCreateDto = {
-          number_override: numberOverride,
+          number_input: {
+            value: numberInputValue(),
+            templateId: null,
+            confirmMismatch: false,
+            confirmScriptMix: false,
+          },
           giver_name: giverName.trim(),
           receiver_name: receiverName.trim(),
           place_id: placeId,

@@ -29,10 +29,20 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{
-    ActCreateDto, ActDto, ActItemNewDto, ActReturnDto, ActReturnItemDto, ActUpdateDto,
-    ActUpdateItemDto,
+    ActCreateDto, ActDto, ActItemNewDto, ActNumberEditInput, ActReturnDto, ActReturnItemDto,
+    ActUpdateDto, ActUpdateItemDto,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -133,7 +143,7 @@ async fn create_handover_with_location(
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: Some(place_id),
@@ -152,6 +162,7 @@ async fn create_handover_with_location(
     )
     .await
     .expect("create handover")
+    .expect_created("create handover")
 }
 
 #[derive(Debug, PartialEq)]
@@ -188,7 +199,10 @@ fn update_dto_from(act: &ActDto, device_ids: &[i64]) -> ActUpdateDto {
     ActUpdateDto {
         id: act.id,
         expected_version: act.version,
-        number_override: None,
+        number_input: ActNumberEditInput {
+            value: act.number_raw.clone(),
+            confirm_script_mix: false,
+        },
         giver_name: act.giver_name.clone(),
         receiver_name: act.receiver_name.clone(),
         place_id: act.place_id,
@@ -229,7 +243,8 @@ async fn header_only_edit_does_not_touch_devices() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("update header only");
+            .expect("update header only")
+            .expect_created("update header only");
         assert_eq!(updated.giver_name, "Новый сдающий");
         assert_eq!(updated.version, handover.version + 1, "version incremented");
 
@@ -272,7 +287,8 @@ async fn add_position_transitions_device() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("update add position");
+            .expect("update add position")
+            .expect_created("update add position");
         assert_eq!(updated.items.len(), 2, "act now has 2 items");
         assert!(updated.items.iter().any(|it| it.device_id == extra_id));
 
@@ -341,7 +357,8 @@ async fn add_multiple_positions_transitions_all_devices() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("update add multiple positions");
+            .expect("update add multiple positions")
+            .expect_created("update add multiple positions");
         assert_eq!(
             updated.items.len(),
             4,
@@ -503,7 +520,8 @@ async fn remove_position_restores_prior_state() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("update remove position");
+            .expect("update remove position")
+            .expect_created("update remove position");
         assert_eq!(updated.items.len(), 1, "act now has 1 item");
         assert!(!updated.items.iter().any(|it| it.device_id == removed_id));
 
@@ -584,7 +602,8 @@ async fn double_edit_restores_most_recent_snapshot() {
         let after1 = svc
             .update(&Identity::trusted_admin(), update1)
             .await
-            .expect("edit #1: add X");
+            .expect("edit #1: add X")
+            .expect_created("edit #1: add X");
 
         // Edit #2: remove device X (restores to на_складе/loc_a — its state
         // immediately before edit #1).
@@ -592,7 +611,8 @@ async fn double_edit_restores_most_recent_snapshot() {
         let after2 = svc
             .update(&Identity::trusted_admin(), update2)
             .await
-            .expect("edit #2: remove X");
+            .expect("edit #2: remove X")
+            .expect_created("edit #2: remove X");
         let post_edit2 = read_device_snap(&svc, device_x).await;
         assert_eq!(post_edit2.status_id, 1, "edit #2: X back on warehouse");
         assert_eq!(post_edit2.place_id, Some(loc_a));
@@ -604,7 +624,8 @@ async fn double_edit_restores_most_recent_snapshot() {
         let after3 = svc
             .update(&Identity::trusted_admin(), update3)
             .await
-            .expect("edit #3: re-add X at loc_c");
+            .expect("edit #3: re-add X at loc_c")
+            .expect_created("edit #3: re-add X at loc_c");
         let post_edit3 = read_device_snap(&svc, device_x).await;
         assert_eq!(post_edit3.status_id, 2, "edit #3: X в_работе");
         assert_eq!(post_edit3.place_id, Some(loc_c));
@@ -766,7 +787,8 @@ async fn header_edit_free_even_with_existing_return() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("header edit should succeed despite existing return");
+            .expect("header edit should succeed despite existing return")
+            .expect_created("header edit should succeed despite existing return");
         assert_eq!(updated.giver_name, "Другой сдающий");
     })
     .await
@@ -789,7 +811,7 @@ async fn number_change_rejects_duplicate() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: Some(9001),
+                    number_input: number_input("9001"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: Some(loc_a),
@@ -804,12 +826,13 @@ async fn number_change_rejects_duplicate() {
                 },
             )
             .await
-            .expect("create act A");
+            .expect("create act A")
+            .expect_created("create act A");
         let act_b = svc
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: Some(9002),
+                    number_input: number_input("9002"),
                     giver_name: "В".into(),
                     receiver_name: "Г".into(),
                     place_id: Some(loc_a),
@@ -824,17 +847,18 @@ async fn number_change_rejects_duplicate() {
                 },
             )
             .await
-            .expect("create act B");
+            .expect("create act B")
+            .expect_created("create act B");
 
         let mut update = update_dto_from(&act_a, &device_ids_a);
-        update.number_override = Some(act_b.number_raw);
+        update.number_input.value = act_b.number_raw.clone();
         let err = svc
             .update(&Identity::trusted_admin(), update)
             .await
             .expect_err("should reject duplicate number");
         match err {
             AppError::Conflict { reason } => {
-                assert!(reason.contains(&act_b.number_raw.to_string()));
+                assert!(reason.contains(&act_b.number_raw));
             }
             other => panic!("expected Conflict, got {other:?}"),
         }
@@ -860,7 +884,7 @@ async fn update_number_reuses_deleted_act_number() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: Some(9010),
+                    number_input: number_input("9010"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: Some(loc_a),
@@ -875,7 +899,8 @@ async fn update_number_reuses_deleted_act_number() {
                 },
             )
             .await
-            .expect("create act A #9010");
+            .expect("create act A #9010")
+            .expect_created("create act A #9010");
 
         svc.delete_soft(act_a.id, act_a.version)
             .await
@@ -885,7 +910,7 @@ async fn update_number_reuses_deleted_act_number() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: Some(9011),
+                    number_input: number_input("9011"),
                     giver_name: "В".into(),
                     receiver_name: "Г".into(),
                     place_id: Some(loc_a),
@@ -900,15 +925,17 @@ async fn update_number_reuses_deleted_act_number() {
                 },
             )
             .await
-            .expect("create act B #9011");
+            .expect("create act B #9011")
+            .expect_created("create act B #9011");
 
         let mut update = update_dto_from(&act_b, &device_ids_b);
-        update.number_override = Some(9010);
+        update.number_input.value = "9010".to_string();
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("rename to freed number 9010");
-        assert_eq!(updated.number_raw, 9010);
+            .expect("rename to freed number 9010")
+            .expect_created("rename to freed number 9010");
+        assert_eq!(updated.number_raw, "9010");
     })
     .await
     .expect("update_number_reuses_deleted_act_number budget");
@@ -974,7 +1001,8 @@ async fn remove_last_outstanding_archives_act() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("remove last outstanding device");
+            .expect("remove last outstanding device")
+            .expect_created("remove last outstanding device");
 
         assert!(
             updated.archived,
@@ -1045,7 +1073,8 @@ async fn add_device_to_archived_unarchives() {
         let updated = svc
             .update(&Identity::trusted_admin(), update)
             .await
-            .expect("add device to archived act");
+            .expect("add device to archived act")
+            .expect_created("add device to archived act");
 
         assert!(
             !updated.archived,
@@ -1082,7 +1111,7 @@ async fn rename_with_return_frees_old_number() {
         let loc_a = seed_location(&svc.writer, "Склад-A").await;
         let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
         let handover = create_handover_with_location(&svc, &device_ids, loc_a).await;
-        let old_number = handover.number_raw;
+        let old_number = handover.number_raw.clone();
 
         // Return the single device — creates a return act copying `old_number`.
         let returned_item = handover
@@ -1117,10 +1146,11 @@ async fn rename_with_return_frees_old_number() {
 
         // Rename the handover to a fresh, unrelated number.
         let mut update = update_dto_from(&handover_after_return, &device_ids);
-        update.number_override = Some(90000);
+        update.number_input.value = "90000".to_string();
         svc.update(&Identity::trusted_admin(), update)
             .await
-            .expect("rename handover to a free number");
+            .expect("rename handover to a free number")
+            .expect_created("rename handover to a free number");
 
         // The OLD number must now be reusable — create a brand-new handover
         // that explicitly requests it.
@@ -1129,7 +1159,7 @@ async fn rename_with_return_frees_old_number() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: Some(old_number),
+                    number_input: number_input(&old_number),
                     giver_name: "Д".into(),
                     receiver_name: "Е".into(),
                     place_id: Some(loc_a),
@@ -1144,7 +1174,8 @@ async fn rename_with_return_frees_old_number() {
                 },
             )
             .await
-            .expect("old number must be reusable after the rename cascade freed it");
+            .expect("old number must be reusable after the rename cascade freed it")
+            .expect_created("old number must be reusable after the rename cascade freed it");
         assert_eq!(act_c.number_raw, old_number);
     })
     .await
@@ -1171,7 +1202,8 @@ async fn complectation_edit_writes_audit() {
         update.items[0].complectation_at_time = Some("Кабель, коробка".into());
         svc.update(&Identity::trusted_admin(), update)
             .await
-            .expect("complectation edit on retained item should succeed");
+            .expect("complectation edit on retained item should succeed")
+            .expect_created("complectation edit on retained item should succeed");
 
         let readers = svc.readers.clone();
         let (count, before_json, after_json): (i64, Option<String>, Option<String>) = {

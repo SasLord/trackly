@@ -13,7 +13,7 @@ use tower_sessions::Session;
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActSaveOutcome, ActUpdateDto,
     ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
@@ -152,7 +152,7 @@ pub async fn handler_create(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<CreatePayload>,
-) -> Result<Json<ActDto>, AppErrorResponse> {
+) -> Result<Json<ActSaveOutcome>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;
@@ -197,7 +197,7 @@ pub async fn handler_update(
     State(ctx): State<AppCtx>,
     session: Session,
     Json(p): Json<UpdatePayload>,
-) -> Result<Json<ActDto>, AppErrorResponse> {
+) -> Result<Json<ActSaveOutcome>, AppErrorResponse> {
     let identity = session_identity(&session)
         .await
         .map_err(AppErrorResponse::from)?;

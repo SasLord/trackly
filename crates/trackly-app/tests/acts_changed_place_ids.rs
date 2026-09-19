@@ -20,9 +20,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::params;
+use trackly_app::dto::act::ActNumberEditInput;
 use trackly_app::dto::act::{
     ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto, ActUpdateDto, ActUpdateItemDto,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
@@ -109,7 +111,12 @@ async fn create_populates_changed_place_ids() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "9001".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(place_a),
@@ -124,7 +131,8 @@ async fn create_populates_changed_place_ids() {
                 },
             )
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
 
         // Device started with no place (`seed_device` leaves place_id NULL),
         // so only the new place (place_a) is Some — the null "before" is
@@ -160,7 +168,12 @@ async fn update_add_device_surfaces_old_and_new_place() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "9002".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(place_a),
@@ -175,7 +188,8 @@ async fn update_add_device_surfaces_old_and_new_place() {
                 },
             )
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
 
         let updated = svc
             .update(
@@ -183,7 +197,10 @@ async fn update_add_device_surfaces_old_and_new_place() {
                 ActUpdateDto {
                     id: act.id,
                     expected_version: act.version,
-                    number_override: None,
+                    number_input: ActNumberEditInput {
+                        value: act.number_raw.clone(),
+                        confirm_script_mix: false,
+                    },
                     giver_name: act.giver_name.clone(),
                     receiver_name: act.receiver_name.clone(),
                     place_id: Some(place_a),
@@ -203,7 +220,8 @@ async fn update_add_device_surfaces_old_and_new_place() {
                 },
             )
             .await
-            .expect("update add device2");
+            .expect("update add device2")
+            .expect_created("update add device2");
 
         let mut got = updated.changed_place_ids.clone();
         got.sort_unstable();
@@ -235,7 +253,12 @@ async fn update_remove_device_surfaces_reverted_place() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "9003".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(place_a),
@@ -257,7 +280,8 @@ async fn update_remove_device_surfaces_reverted_place() {
                 },
             )
             .await
-            .expect("create handover with 2 devices");
+            .expect("create handover with 2 devices")
+            .expect_created("create handover with 2 devices");
 
         // Drop device2 from the item set — it must revert to its
         // pre-handover place (NULL, since seed_device leaves it unset).
@@ -267,7 +291,10 @@ async fn update_remove_device_surfaces_reverted_place() {
                 ActUpdateDto {
                     id: act.id,
                     expected_version: act.version,
-                    number_override: None,
+                    number_input: ActNumberEditInput {
+                        value: act.number_raw.clone(),
+                        confirm_script_mix: false,
+                    },
                     giver_name: act.giver_name.clone(),
                     receiver_name: act.receiver_name.clone(),
                     place_id: Some(place_a),
@@ -281,7 +308,8 @@ async fn update_remove_device_surfaces_reverted_place() {
                 },
             )
             .await
-            .expect("update remove device2");
+            .expect("update remove device2")
+            .expect_created("update remove device2");
 
         assert_eq!(
             updated.changed_place_ids,
@@ -311,7 +339,12 @@ async fn do_return_surfaces_handover_and_return_place() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "9004".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(place_a),
@@ -326,7 +359,8 @@ async fn do_return_surfaces_handover_and_return_place() {
                 },
             )
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
 
         let act_item_id = act.items.first().expect("one item").id;
 
@@ -383,7 +417,12 @@ async fn delete_soft_surfaces_undone_place() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "9005".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(place_a),
@@ -398,7 +437,8 @@ async fn delete_soft_surfaces_undone_place() {
                 },
             )
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
 
         let changed = svc
             .delete_soft(act.id, act.version)

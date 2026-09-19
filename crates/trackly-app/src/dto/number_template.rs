@@ -245,7 +245,7 @@ pub struct NumberWarningDto {
 /// and their `*PatchDto` siblings embed this as `number_input:
 /// NumberFieldInput`, replacing the current ad hoc `number_override`/
 /// `code_override: Option<String>` fields).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct NumberFieldInput {
     pub value: String,

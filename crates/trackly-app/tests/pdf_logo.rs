@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::pdf::docspec::{DocSpec, HeaderBlock, Section};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::{ActService, OrgDbService, OrganizationService, TemplateService};
@@ -246,7 +247,12 @@ async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
         .create(
             &Identity::trusted_admin(),
             ActCreateDto {
-                number_override: None,
+                number_input: NumberFieldInput {
+                    value: "1".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
                 giver_name: "Логотестов Л.Л.".into(),
                 receiver_name: "Приемов П.П.".into(),
                 place_id: None,
@@ -261,7 +267,8 @@ async fn blob_logo_via_full_pipeline_renders_in_act_pdf() {
             },
         )
         .await
-        .expect("create handover");
+        .expect("create handover")
+        .expect_created("create handover");
 
     let html = acts.render_pdf(act.id).await.expect("render_pdf");
     assert!(

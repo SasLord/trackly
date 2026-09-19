@@ -25,6 +25,7 @@
 use std::sync::Arc;
 
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::reports::{PeriodDto, ReportFilter};
 use trackly_app::pdf::PdfRenderer;
 use trackly_app::services::report_service::ReportService;
@@ -80,7 +81,12 @@ async fn returns_report_loads_when_sub_number_is_set() {
         .create(
             &Identity::trusted_admin(),
             ActCreateDto {
-                number_override: None,
+                number_input: NumberFieldInput {
+                    value: "1".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
                 giver_name: "Иванов И.И.".into(),
                 receiver_name: "Петров П.П.".into(),
                 place_id: None,
@@ -98,7 +104,8 @@ async fn returns_report_loads_when_sub_number_is_set() {
             },
         )
         .await
-        .expect("create handover");
+        .expect("create handover")
+        .expect_created("create handover");
 
     let first_item = &handover.items[0];
     let return_payload = ActReturnDto {

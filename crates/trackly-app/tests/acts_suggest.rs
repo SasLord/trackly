@@ -13,6 +13,7 @@ use trackly_app::dto::act::{ActCreateDto, ActItemNewDto};
 use trackly_app::dto::cartridge::{
     CartridgeCreateDto, CartridgeModelCreateDto, CartridgeTransitionPayload,
 };
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::dto::suggest::SuggestPersonField;
 use trackly_app::services::{ActService, CartridgeService};
 use trackly_core::auth::Identity;
@@ -62,7 +63,16 @@ async fn make_handover_with_giver_receiver(
     svc.create(
         &Identity::trusted_admin(),
         ActCreateDto {
-            number_override: None,
+            // Number derived from `device_id` (unique per call within a
+            // test's DB) — this helper is called many times per test purely
+            // to seed giver/receiver frequency data, so the specific number
+            // does not matter, only that it never collides.
+            number_input: NumberFieldInput {
+                value: device_id.to_string(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: giver.into(),
             receiver_name: receiver.into(),
             place_id: None,
@@ -241,7 +251,12 @@ async fn suggest_person_excludes_soft_deleted_acts() {
         svc.create(
             &Identity::trusted_admin(),
             ActCreateDto {
-                number_override: None,
+                number_input: NumberFieldInput {
+                    value: "1".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
                 giver_name: "Soft Иванов".into(),
                 receiver_name: "X".into(),
                 place_id: None,
@@ -256,12 +271,18 @@ async fn suggest_person_excludes_soft_deleted_acts() {
             },
         )
         .await
-        .expect("create 1");
+        .expect("create 1")
+        .expect_created("create 1");
         let act2 = svc
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: NumberFieldInput {
+                        value: "2".into(),
+                        template_id: None,
+                        confirm_mismatch: false,
+                        confirm_script_mix: false,
+                    },
                     giver_name: "Soft Иванов".into(),
                     receiver_name: "X".into(),
                     place_id: None,
@@ -276,7 +297,8 @@ async fn suggest_person_excludes_soft_deleted_acts() {
                 },
             )
             .await
-            .expect("create 2");
+            .expect("create 2")
+            .expect_created("create 2");
 
         // Pre-delete: должно вернуть имя.
         let pre = svc

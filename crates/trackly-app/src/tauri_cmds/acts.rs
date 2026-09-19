@@ -13,7 +13,7 @@
 
 use crate::context::AppCtx;
 use crate::dto::act::{
-    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActUpdateDto,
+    ActCreateDto, ActDto, ActFilter, ActListResponse, ActReturnDto, ActSaveOutcome, ActUpdateDto,
     ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::suggest::SuggestPersonField;
@@ -56,7 +56,7 @@ pub async fn build_acts_create(
     ctx: &AppCtx,
     caller: &Identity,
     payload: ActCreateDto,
-) -> Result<ActDto, AppError> {
+) -> Result<ActSaveOutcome, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.create(caller, payload).await
 }
@@ -94,7 +94,7 @@ pub async fn build_acts_update(
     ctx: &AppCtx,
     caller: &Identity,
     payload: ActUpdateDto,
-) -> Result<ActDto, AppError> {
+) -> Result<ActSaveOutcome, AppError> {
     authorize(caller, &Action::MutateActs)?;
     ctx.acts.update(caller, payload).await
 }
@@ -203,7 +203,7 @@ pub async fn acts_get(state: tauri::State<'_, AppCtx>, id: i32) -> Result<ActDto
 pub async fn acts_create(
     state: tauri::State<'_, AppCtx>,
     payload: ActCreateDto,
-) -> Result<ActDto, AppError> {
+) -> Result<ActSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_create(state.inner(), &caller, payload).await
 }
@@ -237,7 +237,7 @@ pub async fn acts_delete(
 pub async fn acts_update(
     state: tauri::State<'_, AppCtx>,
     payload: ActUpdateDto,
-) -> Result<ActDto, AppError> {
+) -> Result<ActSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_acts_update(state.inner(), &caller, payload).await
 }

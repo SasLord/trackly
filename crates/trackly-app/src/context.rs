@@ -281,14 +281,27 @@ impl AppCtx {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
+        // Moved here (was originally created right before AuthService below)
+        // so `ActService` (Phase 40.2 Plan 06, D-14) can be wired with it via
+        // `.with_ws_tx(...)` — nothing between here and its original spot
+        // depends on it, this is purely a hoist.
+        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
+        let ws_broadcast = Arc::new(ws_tx);
+
         // ActService с подключённым PDF pipeline.
         // D-05 (Phase 14 plan 03): org_db прокинут отдельным builder-методом
         // (`with_org_db`) — источник org-реквизитов act-рендера (org_settings),
         // единый с тем, что пишет Settings UI. org_db уже создан выше (до acts).
+        // Phase 40.2 Plan 06 (D-14): `with_ws_tx` wires the SAME shared
+        // broadcast sender every other service below uses, so
+        // `WsEvent::NumberSpaceChanged` actually reaches subscribed WS
+        // clients (LAN browsers + the desktop bridge in `main.rs`).
         let acts = Arc::new(
             ActService::new(writer.clone(), readers.clone(), clock.clone())
                 .with_pdf_pipeline(templates.clone(), organization.clone(), pdf.clone())
-                .with_org_db(org_db.clone()),
+                .with_org_db(org_db.clone())
+                .with_ws_tx(ws_broadcast.clone()),
         );
 
         // Phase 4 Plan 03: cartridge service.
@@ -348,12 +361,9 @@ impl AppCtx {
                 Arc::new(RealAdDirectory::new(config.ad.clone()))
             };
 
-        // Phase 6 Plan 03: WS broadcast channel (capacity 128 — D-Notify-01).
-        // Created before AuthService (Phase 9 Plan 03) so on_ad_bind_success's
-        // ad_register write paths can broadcast WsEvent::NewRequest too (REQ-04 reuse).
-        let (ws_tx, _) = tokio::sync::broadcast::channel::<WsEvent>(128);
-        let ws_broadcast = Arc::new(ws_tx);
-
+        // Phase 6 Plan 03: WS broadcast channel — created earlier now (see
+        // above, right before `acts`), still available here unchanged for
+        // AuthService's ad_register NewRequest broadcast (REQ-04 reuse).
         // Phase 5 Plan 02: auth service + server_ctl.
         // Phase 9 Plan 02: + ad_client (local→AD login fallback, USR-08).
         // Phase 9 Plan 03: + ws_tx (ad_register NewRequest broadcast).

@@ -14,12 +14,22 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::clock_impl::SystemClock;
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::test_support::{test_db, test_writer_and_readers};
+
+fn number_input(value: &str) -> NumberFieldInput {
+    NumberFieldInput {
+        value: value.to_string(),
+        template_id: None,
+        confirm_mismatch: false,
+        confirm_script_mix: false,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,7 +131,7 @@ async fn recompute_parent_archived_count_based() {
         let d3 = seed_device(&svc.writer, "RP-3").await;
 
         let payload = ActCreateDto {
-            number_override: None,
+            number_input: number_input("1"),
             giver_name: "Иванов И.И.".into(),
             receiver_name: "Петров П.П.".into(),
             place_id: None,
@@ -149,7 +159,8 @@ async fn recompute_parent_archived_count_based() {
         let handover = svc
             .create(&Identity::trusted_admin(), payload)
             .await
-            .expect("create handover");
+            .expect("create handover")
+            .expect_created("create handover");
         assert_eq!(handover.items.len(), 3);
         assert!(!handover.archived, "fresh handover must not be archived");
 
@@ -270,7 +281,7 @@ async fn clone_3_devices_on_handover_qty_3() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("2"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -285,7 +296,8 @@ async fn clone_3_devices_on_handover_qty_3() {
                 },
             )
             .await
-            .expect("create handover qty=3");
+            .expect("create handover qty=3")
+            .expect_created("create handover qty=3");
 
         assert_eq!(handover.items.len(), 3, "3 act_items per G-12 clone");
         let mut dids: Vec<i64> = handover.items.iter().map(|i| i.device_id).collect();
@@ -327,7 +339,7 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("3"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -342,7 +354,8 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
                 },
             )
             .await
-            .expect("create handover qty=3");
+            .expect("create handover qty=3")
+            .expect_created("create handover qty=3");
 
         let it0 = handover.items[0].clone();
         let it1 = handover.items[1].clone();
@@ -406,7 +419,7 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("4"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -421,7 +434,8 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
                 },
             )
             .await
-            .expect("create handover qty=3");
+            .expect("create handover qty=3")
+            .expect_created("create handover qty=3");
 
         // First return — 2 of 3.
         let it0 = handover.items[0].clone();
@@ -522,7 +536,7 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("5"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -537,7 +551,8 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
                 },
             )
             .await
-            .expect("create handover qty=3");
+            .expect("create handover qty=3")
+            .expect_created("create handover qty=3");
 
         let items: Vec<ActReturnItemDto> = handover
             .items
@@ -599,7 +614,7 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("6"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -614,7 +629,8 @@ async fn outstanding_device_ids_correctness_after_partial_return() {
                 },
             )
             .await
-            .expect("create handover qty=3");
+            .expect("create handover qty=3")
+            .expect_created("create handover qty=3");
 
         // Fresh: outstanding = [d_i] на каждом item.
         let parent_fresh = svc.get(handover.id).await.expect("get parent fresh");
@@ -691,7 +707,7 @@ async fn cardinality_bound_rejects_extra_device_id() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("7"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -706,7 +722,8 @@ async fn cardinality_bound_rejects_extra_device_id() {
                 },
             )
             .await
-            .expect("create handover qty=1");
+            .expect("create handover qty=1")
+            .expect_created("create handover qty=1");
 
         let it0 = handover.items[0].clone();
         let err = svc
@@ -760,7 +777,7 @@ async fn max_clone_qty_validation_rejects_1001() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("8"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -806,7 +823,7 @@ async fn clones_have_null_serial_number_per_w5() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("9"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -821,7 +838,8 @@ async fn clones_have_null_serial_number_per_w5() {
                 },
             )
             .await
-            .expect("create qty=3 with serial source");
+            .expect("create qty=3 with serial source")
+            .expect_created("create qty=3 with serial source");
 
         assert_eq!(handover.items.len(), 3);
         let dids: Vec<i64> = handover.items.iter().map(|i| i.device_id).collect();
@@ -888,7 +906,7 @@ async fn undo_return_restores_archived_to_false() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("10"),
                     giver_name: "А".into(),
                     receiver_name: "Б".into(),
                     place_id: None,
@@ -903,7 +921,8 @@ async fn undo_return_restores_archived_to_false() {
                 },
             )
             .await
-            .expect("create qty=3");
+            .expect("create qty=3")
+            .expect_created("create qty=3");
 
         // Return all 3 → archived=1.
         let items: Vec<ActReturnItemDto> = handover
@@ -1018,7 +1037,7 @@ async fn handover_via_resolved_place_sets_device_place_id() {
             .create(
                 &Identity::trusted_admin(),
                 ActCreateDto {
-                    number_override: None,
+                    number_input: number_input("11"),
                     giver_name: "Иванов И.И.".into(),
                     receiver_name: "Петров П.П.".into(),
                     place_id: Some(handover_place_id),
@@ -1033,7 +1052,8 @@ async fn handover_via_resolved_place_sets_device_place_id() {
                 },
             )
             .await
-            .expect("create handover via place_id");
+            .expect("create handover via place_id")
+            .expect_created("create handover via place_id");
 
         // Assert: devices.place_id = handover place (DEF-3 core assertion).
         let readers = svc.readers.clone();

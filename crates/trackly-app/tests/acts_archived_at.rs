@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use trackly_app::dto::act::{ActCreateDto, ActItemNewDto, ActReturnDto, ActReturnItemDto};
+use trackly_app::dto::number_template::NumberFieldInput;
 use trackly_app::services::ActService;
 use trackly_core::auth::Identity;
 use trackly_core::primitives::clock::Clock;
@@ -57,7 +58,12 @@ async fn seed_devices(
 
 async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::dto::act::ActDto {
     let payload = ActCreateDto {
-        number_override: None,
+        number_input: NumberFieldInput {
+            value: "9001".into(),
+            template_id: None,
+            confirm_mismatch: false,
+            confirm_script_mix: false,
+        },
         giver_name: "Иванов И.И.".into(),
         receiver_name: "Петров П.П.".into(),
         place_id: None,
@@ -76,6 +82,7 @@ async fn create_handover(svc: &ActService, device_ids: &[i64]) -> trackly_app::d
     svc.create(&Identity::trusted_admin(), payload)
         .await
         .expect("create handover")
+        .expect_created("create handover")
 }
 
 // ---------------------------------------------------------------------------
