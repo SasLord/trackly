@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-19T13:32:54.643Z"
-last_activity: 2026-09-19
+last_updated: "2026-09-21T23:54:23.609Z"
+last_activity: 2026-09-21
 progress:
   total_phases: 11
   completed_phases: 5
   total_plans: 91
-  completed_plans: 89
+  completed_plans: 90
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.2 (inventory-number-templates) — EXECUTING
-Plan: 13 of 15
+Plan: 14 of 15
 Status: Ready to execute
 Последнее действие: 40.2-08-PLAN.md (устройства/принтеры на NumberTemplateService) завершён —
 V044 миграция (дедуп + Cyrillic-aware partial unique index), occupied+script-mix цепочка в
@@ -41,7 +41,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-19
+Last activity: 2026-09-21
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -407,6 +407,7 @@ Last activity: 2026-09-19
 | Phase 40.2 P10 | 65min | 2 tasks | 4 files |
 | Phase 40.2 P12 | 90min | 2 tasks | 1 files |
 | Phase 40.2 P13 | 1h | 3 tasks | 4 files |
+| Phase 40.2 P14 | ~2h | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -1003,6 +1004,7 @@ Recent decisions affecting current work:
 - [Phase ?]: Delete-template confirmation aggregates 5 number_template_contexts_get calls client-side (D-12) before opening the confirm dialog, no new backend endpoint
 - [Phase 40.2]: Plan 12: Task1+Task2 объединены в один коммит; showingAlt — derived, не отдельный $state; occupiedLineText для акта использует title вместо отсутствующей в DTO даты
 - [Phase 40.2]: Plan 13: popup ownership split — *FormBody owns D-01 orchestration state, *FormModal renders Modal siblings (avoids backdrop-filter containing-block trap; RDJ-05 precedent)
+- [Phase 40.2]: Acts on NumberTemplateField + D-01/D-05 popup chain (Plan 14) — ActFormBody.svelte create mode uses NumberTemplateField + full occupied/mismatch/script-mix chain; edit mode keeps plain Input with occupied+script-mix only (D-05, no mismatch since ActNumberEditInput has no template_id). Final NUM-13 cleanup for acts: ActNumberField.svelte and acts_peek_next_number/build_acts_peek_next_number removed end-to-end (tauri_cmds, http, specta_export, export_bindings, act_service.rs shim).
 
 ### Pending Todos
 
@@ -1194,8 +1196,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-19T13:32:46.826Z
-Stopped at: Completed 40.2-12-PLAN.md
+Last session: 2026-09-21T23:54:23.600Z
+Stopped at: Completed 40.2-14-PLAN.md
 Resume file: None
 
 None
