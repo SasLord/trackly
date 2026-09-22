@@ -95,6 +95,7 @@
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
@@ -203,10 +204,10 @@
   // Fix 40.2-13 (NUM-11): 'mismatch' added — create-mode ONLY (D-05 excludes
   // it from edit; `submitEdit()` never sets `activePopup = 'mismatch'`).
   let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
-  let pendingConfirm = $state<{ mismatch: boolean; scriptMix: boolean }>({
-    mismatch: false,
-    scriptMix: false,
-  });
+  // FE-CR-01: a confirmation belongs to ONE number (see saveChain.ts) —
+  // reset by every «Поправлю»/«Закрыть»/«Взять следующий свободный» and
+  // ignored as soon as the number differs from the confirmed one.
+  let pendingConfirm = $state<PendingConfirm>(null);
   // NUM-08: which template NumberTemplateField currently has selected — only
   // ever set by the create branch's NumberTemplateField instance (edit mode
   // renders a plain Input, never calls this).
@@ -469,6 +470,7 @@
 
   function closeTakenPopup() {
     activePopup = null;
+    pendingConfirm = null;
     fieldErrors = { ...fieldErrors, inventory_no: 'Номер уже занят.' };
     focusNumberField();
   }
@@ -485,6 +487,7 @@
       });
       inventoryNo = dto.rendered;
       activePopup = null;
+      pendingConfirm = null;
       focusNumberField();
     } catch {
       pushToast(
@@ -513,11 +516,12 @@
 
   function closeMismatchPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueMismatch() {
-    pendingConfirm = { ...pendingConfirm, mismatch: true };
+    pendingConfirm = withConfirm(pendingConfirm, inventoryNo, 'mismatch');
     activePopup = null;
     void handleSubmit();
   }
@@ -541,11 +545,12 @@
 
   function closeScriptWarningPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueScriptWarning() {
-    pendingConfirm = { ...pendingConfirm, scriptMix: true };
+    pendingConfirm = withConfirm(pendingConfirm, inventoryNo, 'scriptMix');
     activePopup = null;
     void handleSubmit();
   }
@@ -555,6 +560,7 @@
   // ---------------------------------------------------------------------------
 
   async function submitSingleCreate() {
+    const confirms = confirmsFor(pendingConfirm, inventoryNo);
     const newDevice: DeviceNew = {
       type_id: typeId,
       name: name.trim(),
@@ -576,8 +582,8 @@
       // `device_service.rs`'s corrected doc-comment) — `confirmMismatch` now
       // actually carries the D-01 chain's mismatch confirmation, same as
       // `confirmScriptMix` below.
-      confirmMismatch: pendingConfirm.mismatch,
-      confirmScriptMix: pendingConfirm.scriptMix,
+      confirmMismatch: confirms.mismatch,
+      confirmScriptMix: confirms.scriptMix,
     };
 
     let outcome: DeviceSaveOutcome;
@@ -592,7 +598,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { mismatch: false, scriptMix: false };
+      pendingConfirm = null;
       pushToast('success', typeId === PRINTER_TYPE_ID ? 'Принтер создан' : 'Устройство создано');
       onSaved(placeId);
       return;
@@ -612,7 +618,10 @@
     const patch: DevicePatch = {
       type_id: typeId,
       name: name.trim() || null,
-      number_input: { value: inventoryNo.trim(), confirm_script_mix: pendingConfirm.scriptMix },
+      number_input: {
+        value: inventoryNo.trim(),
+        confirm_script_mix: confirmsFor(pendingConfirm, inventoryNo).scriptMix,
+      },
       serial_no: serialNo.trim() || null,
       model: model.trim() || null,
       specs: specs.trim() || null,
@@ -634,7 +643,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { mismatch: false, scriptMix: false };
+      pendingConfirm = null;
       // Refresh the local version counter so a subsequent edit in the same
       // modal session uses the correct (incremented) version.
       currentVersion = outcome.version;

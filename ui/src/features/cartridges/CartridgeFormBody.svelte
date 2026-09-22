@@ -89,6 +89,7 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { cartridges } from './api';
@@ -191,10 +192,10 @@
   // Plan 14 state machine.
   // ---------------------------------------------------------------------------
   let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
-  let pendingConfirm = $state<{ mismatch: boolean; scriptMix: boolean }>({
-    mismatch: false,
-    scriptMix: false,
-  });
+  // FE-CR-01: a confirmation belongs to ONE number (see saveChain.ts) —
+  // reset by every «Поправлю»/«Закрыть»/«Взять следующий свободный» and
+  // ignored as soon as the number differs from the confirmed one.
+  let pendingConfirm = $state<PendingConfirm>(null);
   // NUM-08: which template NumberTemplateField currently has selected — only
   // ever set by the create branch's NumberTemplateField instance (edit mode
   // renders a plain Input, never calls this).
@@ -424,6 +425,7 @@
 
   function closeTakenPopup() {
     activePopup = null;
+    pendingConfirm = null;
     codeError = 'Номер уже занят.';
     focusNumberField();
   }
@@ -441,6 +443,7 @@
       });
       code = dto.rendered;
       activePopup = null;
+      pendingConfirm = null;
       focusNumberField();
     } catch {
       pushToast(
@@ -468,11 +471,12 @@
 
   function closeMismatchPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueMismatch() {
-    pendingConfirm = { ...pendingConfirm, mismatch: true };
+    pendingConfirm = withConfirm(pendingConfirm, code, 'mismatch');
     activePopup = null;
     void handleSubmit();
   }
@@ -496,11 +500,12 @@
 
   function closeScriptWarningPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueScriptWarning() {
-    pendingConfirm = { ...pendingConfirm, scriptMix: true };
+    pendingConfirm = withConfirm(pendingConfirm, code, 'scriptMix');
     activePopup = null;
     void handleSubmit();
   }
@@ -510,6 +515,7 @@
   // ---------------------------------------------------------------------------
 
   async function submitCreate() {
+    const confirms = confirmsFor(pendingConfirm, code);
     // Phase 40.2 Plan 07 (NUM-13): `code_override` -> `number_input`.
     // `NumberFieldInput` (dto::number_template) has its OWN
     // `#[serde(rename_all = "camelCase")]` — camelCase here is intentional,
@@ -519,8 +525,8 @@
       number_input: {
         value: code.trim(),
         templateId: selectedTemplateId,
-        confirmMismatch: pendingConfirm.mismatch,
-        confirmScriptMix: pendingConfirm.scriptMix,
+        confirmMismatch: confirms.mismatch,
+        confirmScriptMix: confirms.scriptMix,
       },
       state_id: stateId,
       place_id: placeId,
@@ -539,7 +545,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { mismatch: false, scriptMix: false };
+      pendingConfirm = null;
       onSuccess(outcome);
       onClose();
       pushToast('success', `Картридж «${outcome.code}» добавлен.`);

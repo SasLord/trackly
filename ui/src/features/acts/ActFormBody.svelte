@@ -72,6 +72,7 @@
   import DatePicker from '$lib/components/DatePicker.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { acts } from './api';
@@ -192,10 +193,10 @@
   // cartridges), per that plan's own "recommended for future plans" note.
   // ---------------------------------------------------------------------------
   let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
-  let pendingConfirm = $state<{ mismatch: boolean; scriptMix: boolean }>({
-    mismatch: false,
-    scriptMix: false,
-  });
+  // FE-CR-01: a confirmation belongs to ONE number (see saveChain.ts) —
+  // reset by every «Поправлю»/«Закрыть»/«Взять следующий свободный» and
+  // ignored as soon as the number differs from the confirmed one.
+  let pendingConfirm = $state<PendingConfirm>(null);
   // NUM-08: which template NumberTemplateField currently has selected — only
   // ever set by the create branch's NumberTemplateField instance (edit mode
   // renders a plain Input, never calls this).
@@ -356,6 +357,7 @@
 
   function closeTakenPopup() {
     activePopup = null;
+    pendingConfirm = null;
     fieldErrors = { ...fieldErrors, number: 'Номер уже занят.' };
     focusNumberField();
   }
@@ -372,6 +374,7 @@
       });
       numberValue = dto.rendered;
       activePopup = null;
+      pendingConfirm = null;
       focusNumberField();
     } catch {
       pushToast(
@@ -395,11 +398,12 @@
 
   function closeMismatchPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueMismatch() {
-    pendingConfirm = { ...pendingConfirm, mismatch: true };
+    pendingConfirm = withConfirm(pendingConfirm, numberValue, 'mismatch');
     activePopup = null;
     void handleSubmit();
   }
@@ -423,11 +427,12 @@
 
   function closeScriptWarningPopup() {
     activePopup = null;
+    pendingConfirm = null;
     focusNumberField();
   }
 
   function continueScriptWarning() {
-    pendingConfirm = { ...pendingConfirm, scriptMix: true };
+    pendingConfirm = withConfirm(pendingConfirm, numberValue, 'scriptMix');
     activePopup = null;
     void handleSubmit();
   }
@@ -437,6 +442,7 @@
   // ----------------------------------------------------------------------------
 
   async function submitCreate() {
+    const confirms = confirmsFor(pendingConfirm, numberValue);
     // Build payload — drop any incomplete item rows.
     // UAT Fix #3/#4: device_ids[] = первые `quantity` штук из group_ids
     // (если выбрана группа) — backend использует именно эти devices без
@@ -457,8 +463,8 @@
       number_input: {
         value: numberValue.trim(),
         templateId: selectedTemplateId,
-        confirmMismatch: pendingConfirm.mismatch,
-        confirmScriptMix: pendingConfirm.scriptMix,
+        confirmMismatch: confirms.mismatch,
+        confirmScriptMix: confirms.scriptMix,
       },
       giver_name: giverName.trim(),
       receiver_name: receiverName.trim(),
@@ -481,7 +487,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { mismatch: false, scriptMix: false };
+      pendingConfirm = null;
       pushToast('success', `Создан акт №${outcome.number}`);
       onSaved(outcome);
       return;
@@ -532,7 +538,10 @@
     const updatePayload: ActUpdateDto = {
       id: target.id,
       expected_version: target.version,
-      number_input: { value: numberValue.trim(), confirm_script_mix: pendingConfirm.scriptMix },
+      number_input: {
+        value: numberValue.trim(),
+        confirm_script_mix: confirmsFor(pendingConfirm, numberValue).scriptMix,
+      },
       giver_name: giverName.trim(),
       receiver_name: receiverName.trim(),
       place_id: placeId,
@@ -554,7 +563,7 @@
     }
 
     if (outcome.outcome === 'created') {
-      pendingConfirm = { mismatch: false, scriptMix: false };
+      pendingConfirm = null;
       pushToast('success', `Акт №${outcome.number} обновлён`);
       onSaved(outcome);
       return;
