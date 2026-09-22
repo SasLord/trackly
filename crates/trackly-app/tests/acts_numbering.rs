@@ -380,3 +380,154 @@ async fn create_rejects_overlong_or_control_char_number() {
     .await
     .expect("budget");
 }
+
+// ---------------------------------------------------------------------------
+// BE-WR-03: D-06 in both directions — displayed numbers of returns.
+// ---------------------------------------------------------------------------
+
+fn create_payload_multi(number: &str, device_ids: &[i64]) -> ActCreateDto {
+    let mut p = create_payload(number, device_ids[0]);
+    p.items = device_ids
+        .iter()
+        .map(|&device_id| ActItemNewDto {
+            device_id,
+            device_ids: Vec::new(),
+            quantity: 1,
+        })
+        .collect();
+    p
+}
+
+async fn return_item(
+    svc: &ActService,
+    handover: &trackly_app::dto::act::ActDto,
+    idx: usize,
+) -> Result<trackly_app::dto::act::ActDto, AppError> {
+    let item = &handover.items[idx];
+    svc.do_return(
+        &Identity::trusted_admin(),
+        handover.id,
+        ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+            items: vec![ActReturnItemDto {
+                act_item_id: item.id,
+                device_id: item.device_id,
+                device_ids: vec![item.device_id],
+                quantity: 1,
+                condition_override: None,
+                place_id_override: None,
+            }],
+        },
+    )
+    .await
+}
+
+async fn rename(
+    svc: &ActService,
+    act_id: i64,
+    value: &str,
+) -> Result<trackly_app::dto::act::ActSaveOutcome, AppError> {
+    let act = svc.get(act_id).await.expect("get act");
+    svc.update(
+        &Identity::trusted_admin(),
+        ActUpdateDto {
+            id: act.id,
+            expected_version: act.version,
+            number_input: ActNumberEditInput {
+                value: value.to_string(),
+                confirm_script_mix: true,
+            },
+            giver_name: act.giver_name.clone(),
+            receiver_name: act.receiver_name.clone(),
+            place_id: act.place_id,
+            notes: act.notes.clone(),
+            deadline_utc: act.deadline_utc,
+            handover_date_utc: None,
+            items: act
+                .items
+                .iter()
+                .map(|i| ActUpdateItemDto {
+                    device_id: i.device_id,
+                    complectation_at_time: None,
+                })
+                .collect(),
+        },
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn display_number_space_covers_returns_in_both_directions() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 5).await;
+
+        // #42 with two devices, one returned -> the return displays "42в".
+        let a42 = svc
+            .create(
+                &Identity::trusted_admin(),
+                create_payload_multi("42", &ids[0..2]),
+            )
+            .await
+            .expect("create #42")
+            .expect_created("create #42");
+        return_item(&svc, &a42, 0).await.expect("first return");
+
+        // The shared occupied endpoint (live hint / D-01 pre-check) sees it.
+        let nts = trackly_app::services::NumberTemplateService::new(
+            svc.writer.clone(),
+            svc.readers.clone(),
+            Arc::new(SystemClock),
+        );
+        let hit = nts
+            .is_occupied(
+                trackly_core::domain::number_templates::TemplateType::ActNumber,
+                "42В",
+                None,
+            )
+            .await
+            .expect("is_occupied")
+            .expect("the return's displayed number is occupied");
+        assert_eq!(hit.title, "Акт возврата");
+        assert_eq!(hit.number, "42в");
+
+        // Renaming #42 to "42в" is NOT a self-conflict with its own return
+        // (which would then display "42вв").
+        rename(&svc, a42.id, "42в")
+            .await
+            .expect("rename to own return's display must be allowed");
+        rename(&svc, a42.id, "42").await.expect("rename back");
+
+        // A handover "42в1" exists: a SECOND return of #42 would renumber the
+        // family to "42в1"/"42в2" -> collision -> Conflict.
+        svc.create(&Identity::trusted_admin(), create_payload("42в1", ids[2]))
+            .await
+            .expect("create #42в1")
+            .expect_created("create #42в1");
+        let a42 = svc.get(a42.id).await.expect("reload #42");
+        let err = return_item(&svc, &a42, 1).await;
+        assert!(
+            matches!(err, Err(AppError::Conflict { .. })),
+            "second return would display 42в1 twice, got {err:?}"
+        );
+
+        // Rename cascade: a handover "43в" exists; renaming #42 -> #43 would
+        // make its return display "43в" too -> Conflict.
+        svc.create(&Identity::trusted_admin(), create_payload("43в", ids[3]))
+            .await
+            .expect("create #43в")
+            .expect_created("create #43в");
+        let err = rename(&svc, a42.id, "43").await;
+        assert!(
+            matches!(err, Err(AppError::Conflict { .. })),
+            "cascade would display 43в twice, got {err:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}

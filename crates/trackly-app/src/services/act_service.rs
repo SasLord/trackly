@@ -47,7 +47,9 @@ use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateC
 use crate::dto::printer::WsEvent;
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
-use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
+use crate::services::number_template_service::{
+    ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, NumberTemplateService,
+};
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
 use crate::services::place_path_display::compute_place_path_short;
@@ -174,92 +176,23 @@ impl ActService {
     // Numbering (Phase 40.2, NUM-09/D-06)
     // -----------------------------------------------------------------------
 
-    /// D-06: extends `NumberTemplateService::is_occupied`'s BASE case
-    /// (direct match against live HANDOVER acts' raw `number` column) with
-    /// a scan of live RETURN acts' DISPLAYED number — computed via
-    /// `format_act_number`, never stored in a column (a return's suffix
-    /// depends on its parent's `number` + its sibling count, either of
-    /// which can change after the return row itself was written, e.g. the
-    /// parent's own rename cascade in `update()`, or a sibling return being
-    /// soft-deleted). `.trim()`ed, case-insensitive comparison — mirrors
-    /// `is_occupied`'s own T-40.2-08 semantics exactly.
-    ///
-    /// Implemented as a plain SQL scan in THIS file (not by reusing
-    /// `NumberTemplateService::is_occupied` a second time internally for the
-    /// return half) because `format_act_number` — the display-rule
-    /// knowledge needed to compute what a return "looks like" — is
-    /// act-domain-specific and does not belong in the generic
-    /// `NumberTemplateService` (see that service's own module doc-comment).
-    ///
-    /// `exclude_id` skips a row from BOTH scans (editing an act's own
-    /// number, or a return sharing an excluded parent, is never a
-    /// self-conflict) — `create()` always passes `None`, `update()` passes
-    /// `Some(the_act_being_edited)`.
+    /// D-06: is `candidate` already the DISPLAYED number of a live act —
+    /// a handover's raw number or a return's `42в`/`42в1`? Since BE-WR-03
+    /// the generic `NumberTemplateService::is_occupied` for `ActNumber`
+    /// already scans displayed numbers (so the live hint/D-01 pre-check
+    /// endpoint `number_templates_is_occupied` sees returns too). With
+    /// `exclude_id` the act AND its own returns are skipped — their displayed
+    /// numbers change together with the parent's rename.
     async fn is_act_number_occupied_including_returns(
         &self,
         candidate: &str,
         exclude_id: Option<i64>,
     ) -> Result<bool, AppError> {
-        if self
+        Ok(self
             .number_templates
             .is_occupied(TemplateType::ActNumber, candidate, exclude_id)
             .await?
-            .is_some()
-        {
-            return Ok(true);
-        }
-
-        let readers = self.readers.clone();
-        let needle = candidate.trim().to_lowercase();
-        tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
-            if needle.is_empty() {
-                return Ok(false);
-            }
-            let conn = readers.acquire();
-            let mut stmt = conn
-                .prepare(
-                    "SELECT r.id, r.number, r.sub_number, p.number AS parent_number, \
-                            (SELECT COUNT(*) FROM acts rr \
-                               WHERE rr.parent_act_id = r.parent_act_id \
-                                 AND rr.deleted_at_utc IS NULL) AS sibling_return_count \
-                       FROM acts r \
-                       LEFT JOIN acts p ON p.id = r.parent_act_id \
-                      WHERE r.act_type = 'return' AND r.deleted_at_utc IS NULL",
-                )
-                .map_err(map_rusqlite)?;
-            let rows = stmt
-                .query_map([], |row| {
-                    let id: i64 = row.get(0)?;
-                    let number: String = row.get(1)?;
-                    let sub_number: Option<i64> = row.get(2)?;
-                    let parent_number: Option<String> = row.get(3)?;
-                    let sibling_return_count: Option<i64> = row.get(4)?;
-                    Ok((id, number, sub_number, parent_number, sibling_return_count))
-                })
-                .map_err(map_rusqlite)?;
-            for row in rows {
-                let (id, number, sub_number, parent_number, sibling_return_count) =
-                    row.map_err(map_rusqlite)?;
-                if Some(id) == exclude_id {
-                    continue;
-                }
-                let displayed = crate::dto::act::format_act_number(
-                    ActType::Return,
-                    &number,
-                    sub_number,
-                    parent_number.as_deref(),
-                    sibling_return_count,
-                );
-                if displayed.trim().to_lowercase() == needle {
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
-        .await
-        .map_err(|e| AppError::Internal {
-            source_chain: format!("spawn_blocking: {e}"),
-        })?
+            .is_some())
     }
 
     // -----------------------------------------------------------------------
@@ -1301,6 +1234,9 @@ impl ActService {
                         params![n, now, payload.id],
                     )
                     .map_err(map_rusqlite)?;
+                    // BE-WR-03: the cascade gives the returns new displayed
+                    // numbers (`43в`) — they must not collide either.
+                    ensure_act_family_display_free_in_tx(&tx, payload.id)?;
 
                     let override_payload_json = serde_json::json!({
                         "requested": n,
@@ -1631,6 +1567,9 @@ impl ActService {
                     sibling_return_count: None,
                 };
                 let return_act_id = acts_repo.insert_act_in_tx(&tx, &return_row)?;
+                // BE-WR-03: a new return renumbers the family's displayed
+                // numbers (`42в` -> `42в1` + `42в2`) — none may collide.
+                ensure_act_family_display_free_in_tx(&tx, act_id)?;
 
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
                 //
@@ -3018,6 +2957,9 @@ impl ActService {
                         // to its own act_id.
                         place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
                         if let Some(parent_id) = act.parent_act_id {
+                            // BE-WR-03: remaining siblings may display
+                            // differently now (`42в1` -> `42в`).
+                            ensure_act_family_display_free_in_tx(&tx, parent_id)?;
                             recompute_parent_archived(&tx, parent_id, now)?;
                         }
                         audit_repo.insert(
@@ -3462,6 +3404,37 @@ fn escape_like(s: &str) -> String {
         out.push(ch);
     }
     out
+}
+
+/// BE-WR-03 (D-06): after a write that changes the displayed numbers of the
+/// act family rooted at `family` (the handover + its returns: rename
+/// cascade, a new return turning `42в` into `42в1`/`42в2`, deleting a
+/// return turning `42в1` back into `42в`), no displayed number of that
+/// family may equal the displayed number of any OTHER live act. Runs on the
+/// writer transaction, before commit.
+fn ensure_act_family_display_free_in_tx(
+    conn: &rusqlite::Connection,
+    family: i64,
+) -> Result<(), AppError> {
+    let rows = fetch_candidate_rows(conn, TemplateType::ActNumber)?;
+    let (own, others): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.family == family);
+    let taken: std::collections::HashSet<String> = others
+        .iter()
+        .map(|r| normalize_number_key(&r.raw_value))
+        .collect();
+    if let Some(hit) = own
+        .iter()
+        .find(|r| taken.contains(&normalize_number_key(&r.raw_value)))
+    {
+        return Err(AppError::Conflict {
+            reason: format!(
+                "Акт №{} уже существует — после этого изменения два акта отображались бы \
+                 с одинаковым номером.",
+                hit.raw_value.trim()
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub fn format_ru_date(unix_seconds: i64) -> String {

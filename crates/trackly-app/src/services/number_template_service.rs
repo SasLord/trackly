@@ -628,10 +628,23 @@ fn normalize_mask_input(mask_str: &str) -> String {
 /// Row shape shared by `find_occupying_record`/`find_doppelganger`: the raw
 /// text value being compared plus everything needed to build an
 /// [`OccupyingRecordDto`] if it turns out to be the match.
-struct CandidateRow {
-    id: i64,
-    raw_value: String,
-    record: OccupyingRecordDto,
+pub(crate) struct CandidateRow {
+    pub(crate) id: i64,
+    /// Display family for exclusion (BE-WR-03): the act itself for a
+    /// handover, the PARENT for a return (its displayed number `42в` is
+    /// derived from the parent's). Equals `id` for devices/cartridges.
+    pub(crate) family: i64,
+    pub(crate) raw_value: String,
+    pub(crate) record: OccupyingRecordDto,
+}
+
+impl CandidateRow {
+    /// Is this row excluded by `exclude_id`? For acts this also skips the
+    /// excluded act's own returns: renaming `42` -> `42в` must not collide
+    /// with its own return, which will then display `42вв`.
+    fn excluded_by(&self, exclude_id: Option<i64>) -> bool {
+        exclude_id.is_some_and(|x| self.id == x || self.family == x)
+    }
 }
 
 /// Fetch every LIVE record in `pool`'s physical space, with the raw text
@@ -639,7 +652,7 @@ struct CandidateRow {
 /// pre-built [`OccupyingRecordDto`] card. One query per `TemplateType`,
 /// joining only the lookup tables needed for that space's card fields (see
 /// `OccupyingRecordDto`'s doc-comment for the exact field mapping).
-fn fetch_candidate_rows(
+pub(crate) fn fetch_candidate_rows(
     conn: &Connection,
     pool: TemplateType,
 ) -> Result<Vec<CandidateRow>, AppError> {
@@ -668,6 +681,7 @@ fn fetch_candidate_rows(
                     let shown_number = raw_value.trim().to_string();
                     Ok(CandidateRow {
                         id,
+                        family: id,
                         raw_value,
                         record: OccupyingRecordDto {
                             kind: if type_id == 2 { "printer" } else { "device" }.to_string(),
@@ -685,31 +699,59 @@ fn fetch_candidate_rows(
             }
         }
         TemplateType::ActNumber => {
+            // BE-WR-03 (D-06): the act number space is the DISPLAYED number
+            // of every live act — handovers show their raw `number`, returns
+            // show `format_act_number` (`42в` / `42в1`), which depends on the
+            // parent's number and the live sibling count, so it is computed
+            // here rather than stored.
             let mut stmt = conn
                 .prepare(
-                    "SELECT id, number, act_type, giver_name, receiver_name \
-                       FROM acts \
-                      WHERE deleted_at_utc IS NULL AND act_type = 'handover'",
+                    "SELECT a.id, a.number, a.act_type, a.giver_name, a.receiver_name, \
+                            a.sub_number, a.parent_act_id, p.number, \
+                            (SELECT COUNT(*) FROM acts rr \
+                              WHERE rr.parent_act_id = a.parent_act_id \
+                                AND rr.deleted_at_utc IS NULL) \
+                       FROM acts a \
+                       LEFT JOIN acts p ON p.id = a.parent_act_id \
+                      WHERE a.deleted_at_utc IS NULL",
                 )
                 .map_err(map_rusqlite)?;
             let rows = stmt
                 .query_map([], |r| {
                     let id: i64 = r.get(0)?;
-                    // Phase 40.2 Plan 06 (NUM-14): `acts.number` is TEXT
-                    // (V042) — read directly as String, no `.to_string()`
-                    // conversion needed.
                     let number: String = r.get(1)?;
                     let act_type: String = r.get(2)?;
                     let giver_name: String = r.get(3)?;
                     let receiver_name: String = r.get(4)?;
-                    let shown_number = number.trim().to_string();
+                    let sub_number: Option<i64> = r.get(5)?;
+                    let parent_act_id: Option<i64> = r.get(6)?;
+                    let parent_number: Option<String> = r.get(7)?;
+                    let sibling_return_count: i64 = r.get(8)?;
+                    let is_return = act_type == "return";
+                    let displayed = if is_return {
+                        crate::dto::act::format_act_number(
+                            trackly_core::domain::acts::ActType::Return,
+                            &number,
+                            sub_number,
+                            parent_number.as_deref(),
+                            Some(sibling_return_count),
+                        )
+                    } else {
+                        number
+                    };
+                    let shown_number = displayed.trim().to_string();
                     Ok(CandidateRow {
                         id,
-                        raw_value: number,
+                        family: if is_return {
+                            parent_act_id.unwrap_or(id)
+                        } else {
+                            id
+                        },
+                        raw_value: displayed,
                         record: OccupyingRecordDto {
                             kind: "act".to_string(),
                             number: shown_number,
-                            title: if act_type == "return" {
+                            title: if is_return {
                                 "Акт возврата".to_string()
                             } else {
                                 "Акт передачи".to_string()
@@ -751,6 +793,7 @@ fn fetch_candidate_rows(
                     let shown_number = raw_value.trim().to_string();
                     Ok(CandidateRow {
                         id,
+                        family: id,
                         raw_value,
                         record: OccupyingRecordDto {
                             kind: if kind_id == 2 { "drum" } else { "cartridge" }.to_string(),
@@ -788,7 +831,7 @@ pub(crate) fn find_occupying_record(
     let rows = fetch_candidate_rows(conn, pool)?;
     Ok(rows
         .into_iter()
-        .find(|row| Some(row.id) != exclude_id && normalize_number_key(&row.raw_value) == needle)
+        .find(|row| !row.excluded_by(exclude_id) && normalize_number_key(&row.raw_value) == needle)
         .map(|row| row.record))
 }
 
@@ -805,7 +848,7 @@ fn find_doppelganger(
 ) -> Result<Option<CandidateRow>, AppError> {
     let rows = fetch_candidate_rows(conn, pool)?;
     Ok(rows.into_iter().find(|row| {
-        Some(row.id) != exclude_id
+        !row.excluded_by(exclude_id)
             && homoglyphs::to_latin_skeleton(row.raw_value.trim()) == candidate_skeleton
             && normalize_number_key(&row.raw_value) != candidate_key
     }))
