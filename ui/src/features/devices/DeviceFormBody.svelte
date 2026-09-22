@@ -51,6 +51,10 @@
     | {
         kind: 'scriptWarning';
         number: string;
+        /** FE-IN-01: the server's `NumberWarningDto.message`, rendered
+         *  verbatim — it already matches the case (script mix and/or a
+         *  doppelganger without a script mix). */
+        message: string;
         doppelganger: DeviceScriptWarningDoppelganger | null;
         onFix: () => void;
         onContinue: () => void;
@@ -235,6 +239,7 @@
   let mismatchContextLabel = $state('');
 
   let scriptWarningNumber = $state('');
+  let scriptWarningMessage = $state('');
   let scriptWarningDoppelganger = $state<DeviceScriptWarningDoppelganger | null>(null);
 
   // D-11.3: storage-place status suggestion. `storagePlaceIds` is fetched once
@@ -347,6 +352,7 @@
       onPopupChange({
         kind: 'scriptWarning',
         number: scriptWarningNumber,
+        message: scriptWarningMessage,
         doppelganger: scriptWarningDoppelganger,
         onFix: closeScriptWarningPopup,
         onContinue: continueScriptWarning,
@@ -499,15 +505,12 @@
 
   function openScriptWarningPopup(warning: NumberWarningDto) {
     scriptWarningNumber = inventoryNo;
-    // Homoglyph doppelganger: the double LOOKS identical to the candidate
-    // (that's the definition of a script-mix collision) — the server's
-    // `NumberWarningDto.doppelganger` (`OccupyingRecordDto`) intentionally
-    // carries no separate "number" field of its own (see
-    // `dto/number_template.rs`'s doc-comment), so the displayed
-    // "номер-двойник" text is the SAME candidate string the user typed.
+    scriptWarningMessage = warning.message;
+    // FE-IN-01: `OccupyingRecordDto.number` is the EXISTING record's own
+    // number (BE-WR-09) — never the string the user typed.
     scriptWarningDoppelganger = warning.doppelganger
       ? {
-          number: inventoryNo,
+          number: warning.doppelganger.number,
           record: { kind: warning.doppelganger.kind, title: warning.doppelganger.title },
         }
       : null;

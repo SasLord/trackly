@@ -617,7 +617,7 @@ impl NumberTemplateService {
                  «{}»), но записан другими буквами — русские и латинские буквы внешне \
                  совпадают.",
                 row.raw_value.trim(),
-                row.record.kind,
+                kind_label_ru(&row.record.kind),
                 row.record.title
             );
             if message.is_empty() {
@@ -709,6 +709,20 @@ fn mask_taken_in_tx(
 /// would render `"ОРГ-001 "`, store `"ОРГ-001"`, and then never recognise its
 /// own numbers (`extract_digits` compares the untrimmed suffix) — first-free
 /// stuck at 1 and a false "не по шаблону" on the server's own suggestion.
+/// Russian lowercase label of an `OccupyingRecordDto.kind` code for the
+/// user-facing doppelganger message (the UI renders `message` verbatim —
+/// FE-IN-01). Unknown codes fall through unchanged.
+fn kind_label_ru(kind: &str) -> &str {
+    match kind {
+        "device" => "устройство",
+        "printer" => "принтер",
+        "cartridge" => "картридж",
+        "drum" => "фотобарабан",
+        "act" => "акт",
+        other => other,
+    }
+}
+
 fn normalize_mask_input(mask_str: &str) -> String {
     mask_str.trim().to_string()
 }

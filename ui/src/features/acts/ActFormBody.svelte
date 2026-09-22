@@ -45,6 +45,10 @@
     | {
         kind: 'scriptWarning';
         number: string;
+        /** FE-IN-01: the server's `NumberWarningDto.message`, rendered
+         *  verbatim — it already matches the case (script mix and/or a
+         *  doppelganger without a script mix). */
+        message: string;
         doppelganger: ActScriptWarningDoppelganger | null;
         onFix: () => void;
         onContinue: () => void;
@@ -218,6 +222,7 @@
   const MISMATCH_CONTEXT_LABEL = 'Новый акт';
 
   let scriptWarningNumber = $state('');
+  let scriptWarningMessage = $state('');
   let scriptWarningDoppelganger = $state<ActScriptWarningDoppelganger | null>(null);
 
   const validItemCount = $derived(
@@ -273,6 +278,7 @@
       onPopupChange({
         kind: 'scriptWarning',
         number: scriptWarningNumber,
+        message: scriptWarningMessage,
         doppelganger: scriptWarningDoppelganger,
         onFix: closeScriptWarningPopup,
         onContinue: continueScriptWarning,
@@ -406,15 +412,12 @@
 
   function openScriptWarningPopup(warning: NumberWarningDto) {
     scriptWarningNumber = numberValue;
-    // Homoglyph doppelganger: the double LOOKS identical to the candidate
-    // (that's the definition of a script-mix collision) — the server's
-    // `NumberWarningDto.doppelganger` intentionally carries no separate
-    // "number" field of its own, so the displayed "номер-двойник" text is
-    // the SAME candidate string the user typed (same adaptation as
-    // DeviceFormBody.svelte, Plan 13).
+    scriptWarningMessage = warning.message;
+    // FE-IN-01: `OccupyingRecordDto.number` is the EXISTING record's own
+    // number (BE-WR-09) — never the string the user typed.
     scriptWarningDoppelganger = warning.doppelganger
       ? {
-          number: numberValue,
+          number: warning.doppelganger.number,
           record: { kind: warning.doppelganger.kind, title: warning.doppelganger.title },
         }
       : null;

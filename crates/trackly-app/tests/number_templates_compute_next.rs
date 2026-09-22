@@ -379,6 +379,11 @@ async fn detect_warnings_doppelganger_without_script_mix() {
         warning.message
     );
     assert!(!warning.message.contains("смешаны"));
+    assert!(
+        warning.message.contains("(картридж «"),
+        "FE-IN-01: the kind in the message is the Russian label, got: {}",
+        warning.message
+    );
 
     // An exact (case-insensitive) match is an occupied number, not a
     // doppelganger — detect_warnings stays silent for it.

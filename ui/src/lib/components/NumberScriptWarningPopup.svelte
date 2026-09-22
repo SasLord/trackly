@@ -7,17 +7,6 @@
   import Modal from './Modal.svelte';
   import Button from './Button.svelte';
 
-  // UI-SPEC Copywriting Contract: "Виды строчными: устройство, принтер,
-  // картридж, фотобарабан, акт" — тот же список видов, что и в живой
-  // подсказке "Занят: …" у NumberTemplateField.
-  const KIND_LABEL_LOWER: Record<string, string> = {
-    device: 'устройство',
-    printer: 'принтер',
-    cartridge: 'картридж',
-    drum: 'фотобарабан',
-    act: 'акт',
-  };
-
   interface DoppelgangerRecord {
     kind: string;
     title: string;
@@ -30,7 +19,13 @@
 
   interface Props {
     number: string;
-    /** null — сервер не нашёл визуального двойника, второй абзац не рендерится. */
+    /** FE-IN-01: серверный `NumberWarningDto.message` — выводится дословно.
+     *  Сервер формулирует его под конкретный случай: смешение алфавитов,
+     *  двойник без смешения (BE-CR-03) или оба сразу; номер-двойник в нём —
+     *  номер существующей записи (BE-WR-09). */
+    message: string;
+    /** null — сервер не нашёл визуального двойника. Номер двойника нужен
+     *  только для моноширинного выделения в тексте сообщения. */
     doppelganger: Doppelganger | null;
     /** «Поправлю» — вернуться в форму без сохранения. */
     onFix: () => void;
@@ -38,11 +33,22 @@
     onContinue: () => void;
   }
 
-  const { number, doppelganger, onFix, onContinue }: Props = $props();
+  const { number, message, doppelganger, onFix, onContinue }: Props = $props();
 
-  function kindLabel(kind: string): string {
-    return KIND_LABEL_LOWER[kind] ?? kind;
+  function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
+
+  // UI-SPEC §6: номер и номер-двойник в тексте — `.tr-mono`. Сообщение
+  // остаётся дословным: только «…»-цитаты, совпадающие с одним из двух
+  // номеров, рендерятся моноширинным (нечётные элементы split — номера).
+  const segments = $derived.by(() => {
+    const numbers = [number.trim(), doppelganger?.number.trim() ?? '']
+      .filter((n) => n !== '')
+      .map(escapeRegExp);
+    if (numbers.length === 0) return [message];
+    return message.split(new RegExp(`«(${numbers.join('|')})»`, 'g'));
+  });
 </script>
 
 <!-- FE-WR-10 (а): UI-SPEC §6 — фокус по умолчанию на «Поправлю» (вторичная кнопка
@@ -55,16 +61,9 @@
   onClose={onFix}
 >
   <p class="body-text">
-    В номере «<span class="tr-mono">{number}</span>» смешаны русские и латинские буквы. Внешне
-    одинаковые буквы, например «О» и «O», считаются разными — такой номер легко перепутать.
+    {#each segments as part, i (i)}{#if i % 2 === 1}«<span class="tr-mono">{part}</span
+        >»{:else}{part}{/if}{/each}
   </p>
-  {#if doppelganger !== null}
-    <p class="body-text body-text-second">
-      Он выглядит так же, как существующий номер «<span class="tr-mono">{doppelganger.number}</span
-      >» ({kindLabel(doppelganger.record.kind)} «{doppelganger.record.title}»), но записан другими
-      буквами.
-    </p>
-  {/if}
 
   {#snippet footer()}
     <Button variant="secondary" onclick={onFix}>Поправлю</Button>
@@ -77,9 +76,5 @@
     margin: 0;
     font-size: var(--tr-font-size-body);
     color: var(--tr-text-primary);
-  }
-
-  .body-text-second {
-    margin-top: var(--tr-space-md);
   }
 </style>

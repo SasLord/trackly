@@ -106,6 +106,7 @@
 {:else if numberPopup?.kind === 'scriptWarning'}
   <NumberScriptWarningPopup
     number={numberPopup.number}
+    message={numberPopup.message}
     doppelganger={numberPopup.doppelganger}
     onFix={numberPopup.onFix}
     onContinue={numberPopup.onContinue}
