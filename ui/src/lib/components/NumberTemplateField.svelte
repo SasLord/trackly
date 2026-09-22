@@ -180,6 +180,10 @@
       // покажет «переполнен» (приоритет 2, UI-SPEC §2).
       lastSuggested = null;
       altSuggested = null;
+      // FE-WR-02 (б): в режиме «заменять всегда» (картридж ↔ фотобарабан,
+      // явный выбор) значение старого контекста/шаблона оставлять нельзя —
+      // например, `C-00NN` в «Новом фотобарабане».
+      if (!opts.preserveManualEdits) setValueProgrammatically('');
       return;
     }
     const shouldReplace = !opts.preserveManualEdits || isValueUnedited();
@@ -212,8 +216,11 @@
       });
     } catch {
       if (!isCurrent(gen, ctx)) return;
-      // Best-effort: контекст без запомненного шаблона — поле остаётся
-      // пустым/как есть, строки под полем не будет (D-13).
+      // FE-WR-02 (а): сбой чтения запомненного шаблона — сбрасываем выбор
+      // ПРЕДЫДУЩЕГО контекста, иначе родитель продолжил бы отправлять чужой
+      // templateId. Значение — по правилам текущего режима (D-14 / «заменять
+      // всегда»). Строки под полем не будет (D-13).
+      clearSelection({ preserveManualEdits });
       return;
     }
     if (!isCurrent(gen, ctx)) return;
