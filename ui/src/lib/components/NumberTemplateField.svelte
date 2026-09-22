@@ -187,9 +187,23 @@
       return;
     }
     const shouldReplace = !opts.preserveManualEdits || isValueUnedited();
+    // FE-WR-03: пользователь стрелкой выбрал «после максимального» (max+1) —
+    // тихая замена D-14 сохраняет этот выбор и подставляет новое max+1, а не
+    // возвращает первый свободный. Явный выбор в меню (preserveManualEdits =
+    // false) по-прежнему начинает с первого свободного.
+    const norm = normalize(value);
+    const wasShowingAlt =
+      altSuggested !== null &&
+      norm === normalize(altSuggested) &&
+      !(lastSuggested !== null && norm === normalize(lastSuggested));
     lastSuggested = dto.rendered;
     altSuggested = dto.altRendered;
-    if (shouldReplace) setValueProgrammatically(dto.rendered);
+    if (shouldReplace) {
+      const keepAlt = opts.preserveManualEdits && wasShowingAlt && dto.altRendered !== null;
+      setValueProgrammatically(
+        keepAlt && dto.altRendered !== null ? dto.altRendered : dto.rendered,
+      );
+    }
   }
 
   function clearSelection(opts: { preserveManualEdits: boolean }) {
