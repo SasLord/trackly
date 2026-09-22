@@ -24,7 +24,7 @@ use rusqlite::params;
 use trackly_core::auth::Identity;
 use trackly_core::domain::acts::{ActItemRow, ActPatch, ActRow, ActType};
 use trackly_core::domain::devices::DeviceRow;
-use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::acts::ActRepository;
@@ -429,6 +429,20 @@ impl ActService {
         let places_repo = self.places_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = caller.user_id;
+        // NUM-08: remember the template ONLY when it was actually used
+        // without a confirmed mismatch — a confirmed mismatch (or no
+        // template at all) resets the context to "no template" so the next
+        // «Новый акт» opens without one. BE-WR-02: written in the SAME
+        // writer transaction as the act (CONTEXT), never as a follow-up
+        // write that could fail after the act was already committed.
+        let to_remember = if payload.number_input.template_id.is_some()
+            && !payload.number_input.confirm_mismatch
+        {
+            payload.number_input.template_id
+        } else {
+            None
+        };
+        let nt_repo = self.number_templates.repo.clone();
 
         // 40.1 exhaustive sweep (INV-7 completeness, `changed_place_ids`):
         // accumulates every device's before/after place_id touched by this
@@ -721,24 +735,16 @@ impl ActService {
                     },
                 )?;
 
+                nt_repo.remember_context_in_tx(
+                    &tx,
+                    TemplateContext::ActCreate,
+                    to_remember,
+                    now,
+                )?;
+
                 tx.commit().map_err(map_rusqlite)?;
                 Ok((act_id, touched_place_ids))
             })
-            .await?;
-
-        // NUM-08: remember the template ONLY when it was actually used
-        // without a confirmed mismatch — a confirmed mismatch (or no
-        // template at all) resets the context to "no template" so the next
-        // «Новый акт» opens without one.
-        let to_remember = if payload.number_input.template_id.is_some()
-            && !payload.number_input.confirm_mismatch
-        {
-            payload.number_input.template_id
-        } else {
-            None
-        };
-        self.number_templates
-            .remember_context(TemplateContextDto::ActCreate, to_remember)
             .await?;
 
         // D-14: best-effort invalidation broadcast — a new act number was

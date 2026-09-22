@@ -17,7 +17,7 @@ use std::sync::Arc;
 use rusqlite::{params, OptionalExtension};
 use trackly_core::auth::Identity;
 use trackly_core::domain::cartridges::CartridgeModelNew;
-use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::error::AppError;
 use trackly_core::ports::cartridges::CartridgeRepository;
@@ -257,6 +257,19 @@ impl CartridgeService {
         let cart_repo = self.cart_repo.clone();
         let audit_repo = self.audit_repo.clone();
         let code = trimmed.clone();
+        // NUM-08: remember the template ONLY when it was actually used
+        // without a confirmed mismatch — a confirmed mismatch (or no
+        // template at all) resets the context to "no template". BE-WR-02:
+        // written in the SAME writer transaction as the cartridge.
+        let to_remember = if payload.number_input.template_id.is_some()
+            && !payload.number_input.confirm_mismatch
+        {
+            payload.number_input.template_id
+        } else {
+            None
+        };
+        let remember_ctx: TemplateContext = template_context.into();
+        let nt_repo = self.number_templates.repo.clone();
 
         let cart_id = self
             .writer
@@ -307,23 +320,11 @@ impl CartridgeService {
                     },
                 )?;
 
+                nt_repo.remember_context_in_tx(&tx, remember_ctx, to_remember, now)?;
+
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(cart_id)
             })
-            .await?;
-
-        // NUM-08: remember the template ONLY when it was actually used
-        // without a confirmed mismatch — a confirmed mismatch (or no
-        // template at all) resets the context to "no template".
-        let to_remember = if payload.number_input.template_id.is_some()
-            && !payload.number_input.confirm_mismatch
-        {
-            payload.number_input.template_id
-        } else {
-            None
-        };
-        self.number_templates
-            .remember_context(template_context, to_remember)
             .await?;
 
         // D-14: best-effort invalidation broadcast — a new code was just

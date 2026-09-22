@@ -25,7 +25,7 @@ fn csv_safe(value: &str) -> String {
         value.to_string()
     }
 }
-use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateType};
+use trackly_core::domain::number_templates::{NumberTemplateRow, TemplateContext, TemplateType};
 use trackly_core::domain::place_movements::{MovementEntityKind, MovementSource};
 use trackly_core::domain::printers::PrinterNew;
 use trackly_core::ports::devices::DeviceRepository;
@@ -271,7 +271,14 @@ impl DeviceService {
     /// `new.inventory_no` is expected to be ALREADY resolved (trimmed,
     /// empty converted to `None`) by the caller — this method does no
     /// number validation of its own.
-    async fn insert_new_and_get(&self, new: DeviceNew) -> Result<DeviceDto, AppError> {
+    /// `remember`: NUM-08 context memory written in the SAME transaction as
+    /// the device (BE-WR-02) — `None` for paths without a number field.
+    async fn insert_new_and_get(
+        &self,
+        new: DeviceNew,
+        remember: Option<(TemplateContext, Option<i64>)>,
+    ) -> Result<DeviceDto, AppError> {
+        let nt_repo = self.number_templates.repo.clone();
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let printer_repo = self.printer_repo.clone();
@@ -304,6 +311,10 @@ impl DeviceService {
                     rusqlite::params![id, user_id_opt, after_json, now],
                 )
                 .map_err(map_rusqlite)?;
+
+                if let Some((ctx, template_id)) = remember {
+                    nt_repo.remember_context_in_tx(&tx, ctx, template_id, now)?;
+                }
 
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(id)
@@ -340,7 +351,7 @@ impl DeviceService {
         new.inventory_no = trimmed.filter(|s| !s.is_empty());
         let number_set = new.inventory_no.is_some();
 
-        let dto = self.insert_new_and_get(new).await?;
+        let dto = self.insert_new_and_get(new, None).await?;
         if number_set {
             self.broadcast_number_space_changed();
         }
@@ -438,20 +449,19 @@ impl DeviceService {
         let mut new = new;
         new.inventory_no = trimmed_opt;
 
-        let dto = self.insert_new_and_get(new).await?;
-
         // NUM-08: remember the template used for this context ONLY when it
         // was actually used without a confirmed mismatch — a confirmed
         // mismatch (or no template at all) resets the context to "no
         // template" so the next popup for this context opens empty
         // (mirrors `ActService::create()`/`CartridgeService::create()`).
+        // BE-WR-02: written in the SAME writer transaction as the device.
         let to_remember = if number_input.template_id.is_some() && !number_input.confirm_mismatch {
             number_input.template_id
         } else {
             None
         };
-        self.number_templates
-            .remember_context(context, to_remember)
+        let dto = self
+            .insert_new_and_get(new, Some((context.into(), to_remember)))
             .await?;
         self.broadcast_number_space_changed();
 

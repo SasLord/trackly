@@ -296,3 +296,59 @@ fn cartridge_and_drum_templates_see_isolated_sequences_despite_shared_column() {
         "only D-0001 taken -> next drum code is D-0002, unaffected by the 3 cartridge rows"
     );
 }
+
+/// BE-WR-01/BE-WR-02: strict `set_context_in_tx` rejects missing/foreign
+/// templates; lenient `remember_context_in_tx` (used inside the entity's own
+/// transaction) degrades a vanished/foreign template to "no template"
+/// instead of failing the already-validated create.
+#[test]
+fn context_setters_strict_and_lenient() {
+    use trackly_core::domain::number_templates::TemplateContext;
+    let dir = TempDir::new().expect("tempdir");
+    let mut conn = fresh_migrated_db(&dir, "context-setters.db");
+    let repo = SqliteNumberTemplateRepository;
+
+    let tx = conn.transaction().expect("tx");
+    let device_tpl = repo
+        .insert_in_tx(&tx, TemplateType::DeviceInventory, "ИНВ-[XXX]", 1)
+        .expect("insert device template");
+    let strict_foreign =
+        repo.set_context_in_tx(&tx, TemplateContext::ActCreate, Some(device_tpl), 2);
+    assert!(
+        matches!(
+            strict_foreign,
+            Err(trackly_core::error::AppError::Validation { .. })
+        ),
+        "got {strict_foreign:?}"
+    );
+    let strict_missing = repo.set_context_in_tx(&tx, TemplateContext::DeviceCreate, Some(9999), 2);
+    assert!(
+        matches!(
+            strict_missing,
+            Err(trackly_core::error::AppError::NotFound { .. })
+        ),
+        "got {strict_missing:?}"
+    );
+
+    repo.remember_context_in_tx(&tx, TemplateContext::DeviceCreate, Some(device_tpl), 3)
+        .expect("lenient, valid");
+    assert_eq!(
+        repo.get_context_template_id(&tx, TemplateContext::DeviceCreate)
+            .expect("get"),
+        Some(device_tpl)
+    );
+    repo.remember_context_in_tx(&tx, TemplateContext::DeviceCreate, Some(9999), 4)
+        .expect("lenient never fails on a vanished template");
+    assert_eq!(
+        repo.get_context_template_id(&tx, TemplateContext::DeviceCreate)
+            .expect("get"),
+        None
+    );
+    repo.remember_context_in_tx(&tx, TemplateContext::ActCreate, Some(device_tpl), 5)
+        .expect("lenient never fails on a foreign template");
+    assert_eq!(
+        repo.get_context_template_id(&tx, TemplateContext::ActCreate)
+            .expect("get"),
+        None
+    );
+}
