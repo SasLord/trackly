@@ -34,9 +34,13 @@
      *  стороне родителя (OrgSettings.svelte, Task 2) — модалка сама не
      *  показывает success-тост. */
     onSaved: () => void;
+    /** FE-WR-15: шаблон изменён в другой сессии (OPTIMISTIC_LOCK_MISMATCH) —
+     *  родитель перезагружает список (без success-тоста, в отличие от
+     *  `onSaved`). */
+    onStale?: () => void;
   }
 
-  const { mode, template = null, onClose, onSaved }: Props = $props();
+  const { mode, template = null, onClose, onSaved, onStale }: Props = $props();
 
   // Ровно 4 значения — закрытый список (dto::number_template::TemplateTypeDto),
   // копия display_name_ru() из trackly-core, сверенная 1:1 (см. SUMMARY).
@@ -164,6 +168,14 @@
       const err = e as Partial<AppError> | undefined;
       if (err?.code === 'CONFLICT') {
         saveError = extractDetail(e, 'reason') ?? err.message ?? 'Такой шаблон уже есть.';
+      } else if (err?.code === 'OPTIMISTIC_LOCK_MISMATCH') {
+        // FE-WR-15: версия устарела — правка поверх чужой невозможна.
+        pushToast(
+          'error',
+          'Шаблон изменён другим пользователем. Список обновлён — откройте шаблон и повторите правку.',
+        );
+        onStale?.();
+        onClose();
       } else {
         pushToast('error', 'Не удалось сохранить шаблон. Попробуйте ещё раз.');
       }
@@ -209,7 +221,12 @@
             getMemberId={(o) => o.id}
             getMemberName={(o) => o.label}
             onSearch={() => {}}
-            onPickGroup={(o) => (templateType = o.id)}
+            onPickGroup={(o) => {
+              templateType = o.id;
+              // FE-WR-15: «такой шаблон уже есть» относится к паре тип+маска —
+              // новый тип снимает ошибку (иначе кнопка остаётся заблокированной).
+              saveError = null;
+            }}
             onPickMember={() => {}}
           />
         </label>

@@ -866,6 +866,7 @@
     template={editingTemplate}
     onClose={closeTemplateModal}
     onSaved={handleTemplateSaved}
+    onStale={() => void loadTemplates()}
   />
 {/if}
 
