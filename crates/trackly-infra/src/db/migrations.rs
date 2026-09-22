@@ -414,6 +414,96 @@ mod tests {
         assert_eq!(second.schema_version, expected);
     }
 
+    /// Regression test for N-4 (`.planning/v1.4-MILESTONE-AUDIT.md`): before
+    /// this fix, `run_to`'s `else` branch (taken whenever `pending` is
+    /// `false`, i.e. every start after the migration that introduced the
+    /// violation) never called `fk_violations()` at all — so a new FK
+    /// violation blocked exactly the run that created it and NONE of the
+    /// runs after that. This test seeds a violation post-migration, then
+    /// asserts `run()` fails on the SECOND start (no pending migrations)
+    /// AND again identically on a THIRD start (the persisted baseline must
+    /// not silently swallow the violation after the first failure).
+    #[test]
+    fn run_blocks_every_subsequent_start_after_new_fk_violation_not_only_first() {
+        let (mut conn, _guard) = fresh_conn();
+        run(&mut conn).expect("initial clean run applies all migrations");
+
+        // Corrupt referential integrity AFTER all migrations have run: an
+        // orphan `devices.place_id` pointing at a place that does not
+        // exist. FKs must be toggled OFF to even insert this row.
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable foreign_keys for the orphan insert");
+        conn.execute(
+            "INSERT INTO devices \
+             (type_id, name, status_id, place_id, created_at_utc, updated_at_utc) \
+             VALUES (1, 'Тестовое устройство', 1, 999999, 0, 0)",
+            [],
+        )
+        .expect("insert orphan device row (place_id has no matching places row)");
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .expect("re-enable foreign_keys");
+
+        // Second start: `pending` is false (no new migrations queued) —
+        // this is exactly the N-4 regression path.
+        let second = run(&mut conn);
+        assert!(
+            second.is_err(),
+            "run() must fail on the second start: a new FK violation exists \
+             and pending=false must no longer skip the integrity check (N-4)"
+        );
+
+        // Third start, still uncorrected: must fail AGAIN, identically —
+        // proves the persisted baseline did NOT advance on a blocking Err,
+        // so every later start keeps failing, not just the one right after
+        // the violation was introduced.
+        let third = run(&mut conn);
+        assert!(
+            third.is_err(),
+            "run() must keep failing on every later start until the data is \
+             actually fixed, not just once (N-4: 'not only the first run')"
+        );
+    }
+
+    /// Self-heal regression test: once a previously-blocking FK violation is
+    /// fixed (data corrected), the NEXT start must succeed again — the
+    /// persisted baseline pulls back down to "clean" rather than staying
+    /// stuck on a stale dirty snapshot forever.
+    #[test]
+    fn run_self_heals_baseline_after_violation_is_fixed() {
+        let (mut conn, _guard) = fresh_conn();
+        run(&mut conn).expect("initial clean run applies all migrations (persists empty baseline)");
+
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable foreign_keys for the orphan insert");
+        conn.execute(
+            "INSERT INTO devices \
+             (type_id, name, status_id, place_id, created_at_utc, updated_at_utc) \
+             VALUES (1, 'Тестовое устройство', 1, 999999, 0, 0)",
+            [],
+        )
+        .expect("insert orphan device row (place_id has no matching places row)");
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .expect("re-enable foreign_keys");
+
+        assert!(
+            run(&mut conn).is_err(),
+            "run() must fail while the orphan row exists"
+        );
+
+        // Fix the data by deleting the orphan row.
+        conn.execute("DELETE FROM devices WHERE place_id = 999999", [])
+            .expect("delete orphan device row");
+
+        // Next start must succeed again: self-heal pulls the persisted
+        // baseline back down once integrity is restored.
+        let healed = run(&mut conn);
+        assert!(
+            healed.is_ok(),
+            "run() must succeed again once the FK violation is fixed (self-heal): {:?}",
+            healed.err()
+        );
+    }
+
     /// The actual V032 migration SQL, embedded at compile time so this test
     /// exercises the shipped file rather than a hand-copied duplicate.
     const V032_SQL: &str =
