@@ -66,7 +66,11 @@ fn v041_seeds_expected_templates_and_contexts() {
     assert_eq!(
         ctx_rows,
         vec![
-            ("act_create".to_string(), Some("act_number".to_string()), Some("[X]".to_string())),
+            (
+                "act_create".to_string(),
+                Some("act_number".to_string()),
+                Some("[X]".to_string())
+            ),
             (
                 "cartridge_create".to_string(),
                 Some("cartridge_code".to_string()),
@@ -120,11 +124,8 @@ fn v041_context_template_id_set_null_on_delete() {
         "act_create must have a template assigned before the delete"
     );
 
-    conn.execute(
-        "DELETE FROM number_templates WHERE type = 'act_number'",
-        [],
-    )
-    .expect("delete act_number template");
+    conn.execute("DELETE FROM number_templates WHERE type = 'act_number'", [])
+        .expect("delete act_number template");
 
     let after: Option<i64> = conn
         .query_row(

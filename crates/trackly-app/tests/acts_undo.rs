@@ -91,11 +91,11 @@ async fn create_handover_with_location(
         &Identity::trusted_admin(),
         ActCreateDto {
             number_input: NumberFieldInput {
-            value: "1".into(),
-            template_id: None,
-            confirm_mismatch: false,
-            confirm_script_mix: false,
-        },
+                value: "1".into(),
+                template_id: None,
+                confirm_mismatch: false,
+                confirm_script_mix: false,
+            },
             giver_name: "А".into(),
             receiver_name: "Б".into(),
             place_id: Some(place_id),
