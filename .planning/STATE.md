@@ -3,14 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-stopped_at: Completed 40.3-02-PLAN.md
-last_updated: "2026-09-22T19:13:38.508Z"
+last_updated: "2026-09-22T19:23:53.784Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 96
-  completed_plans: 93
+  completed_plans: 94
   percent: 50
 ---
 
@@ -26,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
@@ -418,6 +417,7 @@ Last activity: 2026-09-22
 | Phase 40.2 P15 | 60min | 2 tasks | 3 files |
 | Phase 40.3 P01 | 31min | 3 tasks | 5 files |
 | Phase 40.3-audit-debt P02 | 50min | 2 tasks | 1 files |
+| Phase 40.3-audit-debt P03 | 12min | 2/3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1021,6 +1021,8 @@ Recent decisions affecting current work:
 - [Phase 40.2]: Phase 40.2 closed: NUM-06/07/08/10/11/14 marked complete by Plan 15's closing pass (incl. NUM-14, not in Plan 15's own frontmatter, since it only names acts and had no cartridge surface left) — all 16 NUM-* requirements now Complete
 - [Phase ?]: 40.3-01: double-Option (Option<Option<String>>) для serial_no/model/specs/kit/state в devices.rs + serde_with::double_option на serde-границе — устраняет молчаливую невозможность очистки этих полей — Тот же паттерн уже применён для inventory_no/place_id (Фаза 40.2 Plan 08); плоский Option<String> + COALESCE не различает 'не передано' от 'передано явно как null'
 - [Phase 40.3-audit-debt]: FK-бейзлайн персистится в app_settings guarded single-key upsert (D-07 discretion), а не через новую миграцию/таблицу
+- [Phase 40.3-03]: Гейт check-act-number-no-regex-split.mjs ловит семантический маркер (regex ^\\d внутри .replace) вместо привязки к конкретной строке — переживёт рефакторинг ReturnModal.svelte, соответствует D-05
+- [Phase 40.3-03]: Чекпоинт живой UAT-проверки тоста возврата закрыт авто-approve (AUTO_MODE), без фактического наблюдения человеком — статус зафиксирован как UNVERIFIED (deferred to human UAT) в SUMMARY, а не как пройденный
 
 ### Pending Todos
 
@@ -1043,6 +1045,7 @@ Spike-зоны, требующие внимания во время планир
 - Phase 36: real-print, LAN-транспорт end-to-end, print-DOM isolation (SC#4), N=1 один лист (SC#1) — явно отложено пользователем 2026-08-13, НЕ пройдено. Нужна отдельная UAT-сессия перед закрытием фазы.
 - 39-11: cargo test -p trackly-app --lib fails to compile (missing 'places' field in AppCtx test fixtures in http/health.rs:126 and tauri_cmds/health.rs:142, introduced by Plan 39-05, never backfilled) — blocks unit tests, unrelated to 39-22's integration-test scope
 - 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
+- 40.3-03: живая UAT-проверка тоста возврата (шаблон номеров, cargo tauri dev) не выполнена — статус UNVERIFIED, шаги воспроизведения в 40.3-03-SUMMARY.md
 
 ### Явные решения по приватности
 
@@ -1212,8 +1215,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T19:13:38.499Z
-Stopped at: Completed 40.3-02-PLAN.md
+Last session: 2026-09-22T19:23:45.854Z
+Stopped at: Completed 40.3-03-PLAN.md (checkpoint UNVERIFIED — см. SUMMARY)
 Resume file: None
 
 None
