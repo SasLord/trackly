@@ -62,7 +62,9 @@ pub async fn build_number_templates_create(
     mask: String,
 ) -> Result<NumberTemplateDto, AppError> {
     authorize(caller, &Action::ManageSettings)?;
-    ctx.number_templates.create(template_type, mask).await
+    ctx.number_templates
+        .create_by(template_type, mask, caller.user_id)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `ManageSettings` (Admin only).
@@ -74,7 +76,9 @@ pub async fn build_number_templates_update_mask(
     version: i64,
 ) -> Result<NumberTemplateDto, AppError> {
     authorize(caller, &Action::ManageSettings)?;
-    ctx.number_templates.update_mask(id, mask, version).await
+    ctx.number_templates
+        .update_mask_by(id, mask, version, caller.user_id)
+        .await
 }
 
 /// Мутация: требует `caller` с правом `ManageSettings` (Admin only).
@@ -84,7 +88,7 @@ pub async fn build_number_templates_delete(
     id: i64,
 ) -> Result<(), AppError> {
     authorize(caller, &Action::ManageSettings)?;
-    ctx.number_templates.delete(id).await
+    ctx.number_templates.delete_by(id, caller.user_id).await
 }
 
 /// Требует `caller` с правом `ManageSettings` (Admin only) — список для

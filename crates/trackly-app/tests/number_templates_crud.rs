@@ -263,3 +263,66 @@ async fn create_rejects_overlong_mask_and_too_wide_ordinal() {
         );
     }
 }
+
+/// BE-WR-08: template CRUD is audited as the acting administrator's action
+/// (not a system row), and edits/deletes keep the previous mask.
+#[tokio::test]
+async fn crud_audit_rows_carry_user_and_previous_mask() {
+    use trackly_infra::error_conversions::map_rusqlite;
+    let (svc, _dir) = make_service();
+    let user_id: i64 = svc
+        .writer
+        .execute(|conn| {
+            conn.execute(
+                "INSERT INTO users (login, full_name, role, created_at_utc, updated_at_utc) \
+                 VALUES ('ivanov', 'Иванов И.И.', 'admin', 1, 1)",
+                [],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed user");
+
+    let t = svc
+        .create_by(
+            TemplateTypeDto::ActNumber,
+            "А-[X]".to_string(),
+            Some(user_id),
+        )
+        .await
+        .expect("create");
+    let t = svc
+        .update_mask_by(t.id, "Б-[X]".to_string(), t.version, Some(user_id))
+        .await
+        .expect("update");
+    svc.delete_by(t.id, Some(user_id)).await.expect("delete");
+
+    let readers = svc.readers.clone();
+    let tid = t.id;
+    let rows: Vec<(String, Option<i64>, Option<String>)> = tokio::task::spawn_blocking(move || {
+        let conn = readers.acquire();
+        let mut stmt = conn
+            .prepare(
+                "SELECT action, user_id, before_json FROM audit_log \
+                 WHERE entity_type = 'number_template' AND entity_id = ?1 ORDER BY id",
+            )
+            .expect("prepare");
+        stmt.query_map([tid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .expect("query")
+            .map(|r| r.expect("row"))
+            .collect()
+    })
+    .await
+    .expect("join");
+    assert_eq!(rows.len(), 3);
+    assert!(rows.iter().all(|(_, u, _)| *u == Some(user_id)), "{rows:?}");
+    assert!(
+        rows[1].2.as_deref().unwrap_or("").contains("А-[X]"),
+        "{rows:?}"
+    );
+    assert!(
+        rows[2].2.as_deref().unwrap_or("").contains("Б-[X]"),
+        "{rows:?}"
+    );
+}

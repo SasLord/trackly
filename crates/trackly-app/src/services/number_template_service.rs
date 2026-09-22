@@ -126,10 +126,22 @@ impl NumberTemplateService {
     // CRUD
     // -----------------------------------------------------------------------
 
+    /// System/test entry point — audit row with `user_id = NULL`. Transports
+    /// call [`Self::create_by`] with the caller's id (BE-WR-08).
     pub async fn create(
         &self,
         template_type: TemplateTypeDto,
         mask_str: String,
+    ) -> Result<NumberTemplateDto, AppError> {
+        self.create_by(template_type, mask_str, None).await
+    }
+
+    /// Create a template, auditing it as an action of `user_id`.
+    pub async fn create_by(
+        &self,
+        template_type: TemplateTypeDto,
+        mask_str: String,
+        user_id: Option<i64>,
     ) -> Result<NumberTemplateDto, AppError> {
         let mask_str = normalize_mask_input(&mask_str);
         mask::validate_mask(&mask_str)?;
@@ -170,7 +182,7 @@ impl NumberTemplateService {
                         entity_type: "number_template",
                         entity_id: id,
                         action: "create",
-                        user_id: None,
+                        user_id,
                         before_json: None,
                         after_json: None,
                         payload_json: Some(
@@ -198,6 +210,19 @@ impl NumberTemplateService {
         mask_str: String,
         version: i64,
     ) -> Result<NumberTemplateDto, AppError> {
+        self.update_mask_by(id, mask_str, version, None).await
+    }
+
+    /// `update_mask` audited as an action of `user_id`; the audit row keeps
+    /// the previous mask in `before_json` so the change can be undone
+    /// (BE-WR-08).
+    pub async fn update_mask_by(
+        &self,
+        id: i64,
+        mask_str: String,
+        version: i64,
+        user_id: Option<i64>,
+    ) -> Result<NumberTemplateDto, AppError> {
         let mask_str = normalize_mask_input(&mask_str);
         mask::validate_mask(&mask_str)?;
         let now = self.clock.unix_seconds();
@@ -208,11 +233,11 @@ impl NumberTemplateService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
-                let type_str: String = tx
+                let (type_str, old_mask): (String, String) = tx
                     .query_row(
-                        "SELECT type FROM number_templates WHERE id = ?1",
+                        "SELECT type, mask FROM number_templates WHERE id = ?1",
                         params![id],
-                        |r| r.get(0),
+                        |r| Ok((r.get(0)?, r.get(1)?)),
                     )
                     .optional()
                     .map_err(map_rusqlite)?
@@ -248,9 +273,9 @@ impl NumberTemplateService {
                         entity_type: "number_template",
                         entity_id: id,
                         action: "update",
-                        user_id: None,
-                        before_json: None,
-                        after_json: None,
+                        user_id,
+                        before_json: Some(serde_json::json!({"mask": old_mask}).to_string()),
+                        after_json: Some(serde_json::json!({"mask": mask_str}).to_string()),
                         payload_json: Some(serde_json::json!({"mask": mask_str}).to_string()),
                         created_at_utc: now,
                     },
@@ -266,6 +291,12 @@ impl NumberTemplateService {
     /// Physically DELETE the template (D-12). `ON DELETE SET NULL` (V041)
     /// clears any context's memory automatically — no extra step here.
     pub async fn delete(&self, id: i64) -> Result<(), AppError> {
+        self.delete_by(id, None).await
+    }
+
+    /// `delete` audited as an action of `user_id`, keeping the deleted
+    /// type/mask in `before_json` (BE-WR-08).
+    pub async fn delete_by(&self, id: i64, user_id: Option<i64>) -> Result<(), AppError> {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let audit_repo = self.audit_repo.clone();
@@ -273,6 +304,7 @@ impl NumberTemplateService {
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+                let before = repo.get(&tx, id)?;
                 repo.delete_in_tx(&tx, id)?;
                 audit_repo.insert(
                     &tx,
@@ -280,8 +312,14 @@ impl NumberTemplateService {
                         entity_type: "number_template",
                         entity_id: id,
                         action: "delete",
-                        user_id: None,
-                        before_json: None,
+                        user_id,
+                        before_json: Some(
+                            serde_json::json!({
+                                "type": before.template_type.as_str(),
+                                "mask": before.mask,
+                            })
+                            .to_string(),
+                        ),
                         after_json: None,
                         payload_json: None,
                         created_at_utc: now,
