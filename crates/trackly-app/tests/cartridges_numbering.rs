@@ -399,3 +399,47 @@ async fn concurrent_creates_same_code_exactly_one_succeeds() {
     .await
     .expect("concurrent_creates_same_code_exactly_one_succeeds budget")
 }
+
+/// BE-WR-04: the case-preserving idx_cartridges_code_live cannot stop a
+/// concurrent `race-NN` next to `RACE-NN`; the final occupied check now runs
+/// on the single writer, so the race can never leave two live look-alikes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_case_variant_creates_never_both_succeed() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let (svc, _dir) = make_cartridge_service();
+        let model_id = seed_model(&svc, 1).await;
+        let svc = Arc::new(svc);
+
+        for i in 0..10 {
+            let upper = format!("RACE-{i:02}");
+            let lower = upper.to_lowercase();
+            let (a, b) = (svc.clone(), svc.clone());
+            let h1 = tokio::spawn(async move {
+                a.create(CartridgeCreateDto {
+                    model_id,
+                    number_input: number_input(&upper),
+                    state_id: None,
+                    place_id: None,
+                    notes: None,
+                })
+                .await
+            });
+            let h2 = tokio::spawn(async move {
+                b.create(CartridgeCreateDto {
+                    model_id,
+                    number_input: number_input(&lower),
+                    state_id: None,
+                    place_id: None,
+                    notes: None,
+                })
+                .await
+            });
+            let r1 = h1.await.expect("join1");
+            let r2 = h2.await.expect("join2");
+            let ok = [&r1, &r2].iter().filter(|r| r.is_ok()).count();
+            assert_eq!(ok, 1, "iteration {i}: r1={r1:?} r2={r2:?}");
+        }
+    })
+    .await
+    .expect("budget")
+}

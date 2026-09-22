@@ -47,7 +47,7 @@ use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateC
 use crate::dto::printer::WsEvent;
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
-use crate::services::number_template_service::NumberTemplateService;
+use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
 use crate::services::place_path_display::compute_place_path_short;
@@ -483,6 +483,10 @@ impl ActService {
                 // surfaces as a raw SQLite UNIQUE violation, mapped to
                 // `AppError::Conflict` by `map_rusqlite`.
                 let number = trimmed.clone();
+                // BE-WR-04: final occupied check on the single writer.
+                ensure_number_free_in_tx(&tx, TemplateType::ActNumber, &number, None, || {
+                    format!("Акт №{number} уже существует")
+                })?;
 
                 // 2. INSERT acts.
                 // G-2 (Phase 3.1 Plan 04): handover_date_utc — explicit
@@ -1139,11 +1143,18 @@ impl ActService {
                     }
                 }
 
-                // 8b. Number occupied/script-mix already fully checked by
-                // the async pre-checks in `update()`, BEFORE this
-                // transaction opened (D-05/D-06/D-08) — `idx_acts_number_sub_unique`
-                // (V042) is the final DB-level backstop against the
-                // resulting small TOCTOU window (T-40.2-14).
+                // 8b. BE-WR-04: final occupied check on the single writer
+                // (the async pre-check in `update()` only drives the early
+                // UX); `idx_acts_number_sub_unique` stays as the DB backstop.
+                if let Some(n) = &new_number {
+                    ensure_number_free_in_tx(
+                        &tx,
+                        TemplateType::ActNumber,
+                        n,
+                        Some(payload.id),
+                        || format!("Акт №{n} уже существует"),
+                    )?;
+                }
 
                 // 8c. Removed devices: restore to the MOST RECENT prior state
                 // (Pitfall 2 — NOT the original pre-handover state) via

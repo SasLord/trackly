@@ -50,7 +50,7 @@ use crate::dto::number_template::{
     NumberFieldInput, NumberWarningDto, NumberWarningKind, TemplateContextDto,
 };
 use crate::dto::printer::WsEvent;
-use crate::services::number_template_service::NumberTemplateService;
+use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
 /// Application service for device management.
 ///
@@ -283,6 +283,11 @@ impl DeviceService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
+                if let Some(n) = domain_new.inventory_no.as_deref() {
+                    ensure_number_free_in_tx(&tx, TemplateType::DeviceInventory, n, None, || {
+                        format!("номер уже занят — {n}")
+                    })?;
+                }
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
                 let after = repo.get_in_tx(&tx, id)?;
@@ -584,6 +589,16 @@ impl DeviceService {
             .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
+
+                if let Some(Some(n)) = domain_patch.inventory_no.as_ref() {
+                    ensure_number_free_in_tx(
+                        &tx,
+                        TemplateType::DeviceInventory,
+                        n,
+                        Some(id),
+                        || format!("номер уже занят — {n}"),
+                    )?;
+                }
 
                 // before_json для audit_log
                 let before = repo.get_in_tx(&tx, id).ok();
@@ -1482,6 +1497,11 @@ impl DeviceService {
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
 
+                if let Some(n) = domain_new.inventory_no.as_deref() {
+                    ensure_number_free_in_tx(&tx, TemplateType::DeviceInventory, n, None, || {
+                        format!("номер уже занят — {n}")
+                    })?;
+                }
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     let id = repo.create_in_tx(&tx, &domain_new, now)?;

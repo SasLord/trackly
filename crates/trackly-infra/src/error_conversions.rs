@@ -27,6 +27,27 @@ use rusqlite::ErrorCode;
 use tokio::sync::{mpsc, oneshot};
 use trackly_core::error::AppError;
 
+/// BE-WR-04: the numbering unique indexes are the DB-level backstop behind
+/// the in-transaction occupied checks. If one of them ever fires, the user
+/// gets a Russian reason instead of `UNIQUE constraint failed: index '…'`.
+fn humanize_number_unique_violation(raw: &str) -> Option<String> {
+    if !raw.contains("UNIQUE") {
+        return None;
+    }
+    if raw.contains("idx_devices_inventory_number_live") {
+        Some("Инвентарный номер уже занят другим устройством — обновите данные и повторите.".into())
+    } else if raw.contains("idx_cartridges_code_live") || raw.contains("cartridges.code") {
+        Some(
+            "Код уже занят другим картриджем или фотобарабаном — обновите данные и повторите."
+                .into(),
+        )
+    } else if raw.contains("idx_acts_number_sub_unique") || raw.contains("acts.number") {
+        Some("Акт с таким номером уже существует — обновите данные и повторите.".into())
+    } else {
+        None
+    }
+}
+
 /// Маппинг [`rusqlite::Error`] → [`AppError`].
 pub fn map_rusqlite(err: rusqlite::Error) -> AppError {
     if let rusqlite::Error::SqliteFailure(code, msg) = &err {
@@ -35,7 +56,9 @@ pub fn map_rusqlite(err: rusqlite::Error) -> AppError {
             .unwrap_or_else(|| format!("sqlite error code {code:?}"));
         return match code.code {
             ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => AppError::WriteQueueBusy,
-            ErrorCode::ConstraintViolation => AppError::Conflict { reason },
+            ErrorCode::ConstraintViolation => AppError::Conflict {
+                reason: humanize_number_unique_violation(&reason).unwrap_or(reason),
+            },
             _ => AppError::Internal {
                 source_chain: format!("rusqlite: {err}"),
             },
@@ -77,6 +100,27 @@ pub fn map_oneshot_recv(_err: oneshot::error::RecvError) -> AppError {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn numbering_unique_index_violation_gets_russian_reason() {
+        let err = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: ErrorCode::ConstraintViolation,
+                extended_code: 2067,
+            },
+            Some("UNIQUE constraint failed: index 'idx_devices_inventory_number_live'".into()),
+        );
+        match map_rusqlite(err) {
+            AppError::Conflict { reason } => {
+                assert!(
+                    reason.starts_with("Инвентарный номер уже занят"),
+                    "got {reason}"
+                )
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+    }
+
     use super::*;
 
     #[test]

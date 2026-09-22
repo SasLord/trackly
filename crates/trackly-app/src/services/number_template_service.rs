@@ -583,6 +583,29 @@ impl NumberTemplateService {
     }
 }
 
+/// BE-WR-04: the FINAL occupied check, run on the writer transaction just
+/// before the INSERT/UPDATE. There is exactly one writer, so a number that
+/// is free here cannot be taken by a concurrent request before this
+/// transaction commits — the async pre-check on a reader only drives the
+/// early UX (warnings, popups). Uses the same Rust rule as `is_occupied`
+/// (trim + full Unicode lowercase), which is stricter than — and never
+/// weaker than — the SQL-level unique indexes (see the
+/// `number_key_parity_with_sql_index` test below).
+pub(crate) fn ensure_number_free_in_tx(
+    conn: &Connection,
+    pool: TemplateType,
+    candidate: &str,
+    exclude_id: Option<i64>,
+    conflict_reason: impl FnOnce() -> String,
+) -> Result<(), AppError> {
+    if find_occupying_record(conn, pool, candidate, exclude_id)?.is_some() {
+        return Err(AppError::Conflict {
+            reason: conflict_reason(),
+        });
+    }
+    Ok(())
+}
+
 /// The single comparison key for "is this the same number?" (NUM-09,
 /// T-40.2-08): `.trim()` + full Unicode lowercase.
 pub(crate) fn normalize_number_key(value: &str) -> String {
@@ -752,7 +775,7 @@ fn fetch_candidate_rows(
 /// `candidate` (T-40.2-08 — `LOWER(TRIM(...))` semantics reproduced in Rust
 /// so the same comparison rule applies whether the value came from SQL or
 /// was normalised beforehand).
-fn find_occupying_record(
+pub(crate) fn find_occupying_record(
     conn: &Connection,
     pool: TemplateType,
     candidate: &str,
@@ -786,4 +809,86 @@ fn find_doppelganger(
             && homoglyphs::to_latin_skeleton(row.raw_value.trim()) == candidate_skeleton
             && normalize_number_key(&row.raw_value) != candidate_key
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_number_key;
+    use rusqlite::Connection;
+    use trackly_infra::db::{migrations, pragmas::apply_writer_pragmas};
+
+    /// BE-WR-04: the Rust comparison key (`trim` + full Unicode lowercase)
+    /// and the SQL case-fold of `idx_devices_inventory_number_live` (V044:
+    /// `LOWER(TRIM(..))` + 33 Cyrillic REPLACEs) must AGREE on Cyrillic,
+    /// Latin and mixed input, and wherever they could differ the SQL index
+    /// must be the weaker one (SQL-equal => Rust-equal) — otherwise the index
+    /// would reject a number the service considers free (raw UNIQUE error).
+    #[test]
+    fn number_key_parity_with_sql_index() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let mut conn = Connection::open(dir.path().join("parity.db")).expect("open");
+        apply_writer_pragmas(&conn).expect("pragmas");
+        migrations::run(&mut conn).expect("migrate");
+
+        // The index expression, taken from the live schema (single source).
+        let index_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'idx_devices_inventory_number_live'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("index sql");
+        let open = index_sql.find("ON devices (").expect("ON devices (") + "ON devices (".len();
+        let close = index_sql
+            .rfind(")\n  WHERE")
+            .or_else(|| index_sql.rfind(") WHERE"))
+            .expect("end of expr");
+        let expr = index_sql[open..close]
+            .trim()
+            .replace("inventory_number", "?1");
+        let sql_key = |v: &str| -> String {
+            conn.query_row(&format!("SELECT {expr}"), [v], |r| r.get(0))
+                .expect("eval index expr")
+        };
+
+        // Cyrillic, Latin, mixed, digits/punctuation, edge spaces.
+        let agreeing = [
+            "ОРГ-00-000001",
+            "орг-00-000001",
+            " Орг-00-000001 ",
+            "ЁЛКА-Ё1",
+            "ИНВ-ЭЮЯ-000009",
+            "C-0005",
+            "c-0005",
+            "ABC-xyz-01",
+            "OPГ-00-000001",
+            "opг-00-000001",
+            "Инв/2026-SN-42",
+        ];
+        for v in agreeing {
+            assert_eq!(
+                sql_key(v),
+                normalize_number_key(v),
+                "Rust key and SQL index key must agree for {v:?}"
+            );
+        }
+
+        // Where they may differ, SQL-equal must imply Rust-equal.
+        let all: Vec<&str> = agreeing
+            .iter()
+            .copied()
+            .chain(["Ґ-1", "ґ-1", "É-1", "é-1", "І-1", "і-1", "X\t", "X"])
+            .collect();
+        for a in &all {
+            for b in &all {
+                if sql_key(a) == sql_key(b) {
+                    assert_eq!(
+                        normalize_number_key(a),
+                        normalize_number_key(b),
+                        "SQL index considers {a:?} == {b:?} but Rust does not"
+                    );
+                }
+            }
+        }
+    }
 }

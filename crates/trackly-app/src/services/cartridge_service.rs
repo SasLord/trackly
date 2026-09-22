@@ -38,7 +38,7 @@ use crate::dto::cartridge::{
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
-use crate::services::number_template_service::NumberTemplateService;
+use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
 /// Application service for cartridge lifecycle. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -270,6 +270,12 @@ impl CartridgeService {
                 // resulting small TOCTOU window (T-40.2-16) — a collision
                 // here surfaces as a raw SQLite UNIQUE violation, mapped to
                 // AppError by `map_rusqlite`/`insert_cartridge_in_tx`.
+                // BE-WR-04: final occupied check on the single writer — the
+                // case-preserving idx_cartridges_code_live alone would let
+                // a concurrent `c-0001` next to `C-0001` through.
+                ensure_number_free_in_tx(&tx, TemplateType::CartridgeCode, &code, None, || {
+                    format!("Картридж с кодом «{code}» уже существует")
+                })?;
                 let cart_id = cart_repo.insert_cartridge_in_tx(
                     &tx,
                     &code,
