@@ -8,9 +8,32 @@
   import ActiveDirectorySettings from '../features/settings/ActiveDirectorySettings.svelte';
   import SettingsSubNav from '../features/settings/SettingsSubNav.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { untrack } from 'svelte';
+  import { router } from 'svelte-spa-router';
+
+  // FE-WR-13: `#/settings?section=org` (ссылка из меню «Вставка» поля номера)
+  // открывает нужный раздел. Неизвестное/отсутствующее значение — прежнее
+  // поведение: первая вкладка.
+  const SECTION_KEYS = ['network', 'org', 'storage', 'threshold', 'templates', 'ad'];
+
+  function sectionFromQuery(qs: string | undefined): string | null {
+    const s = new URLSearchParams(qs ?? '').get('section');
+    return s !== null && SECTION_KEYS.includes(s) ? s : null;
+  }
 
   // GAP-S2: track active subsection; default to 'network' (first tab)
-  let activeSection = $state('network');
+  let activeSection = $state(sectionFromQuery(router.querystring) ?? 'network');
+
+  // Переход на `?section=…`, когда страница уже открыта (hash меняется без
+  // размонтирования). Эффект читает только querystring и пишет activeSection.
+  $effect(() => {
+    const s = sectionFromQuery(router.querystring);
+    if (s !== null) {
+      untrack(() => {
+        activeSection = s;
+      });
+    }
+  });
 </script>
 
 <div class="settings-page">

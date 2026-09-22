@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import { portal } from '$lib/utils/portal';
 
   interface Props {
@@ -31,6 +31,10 @@
      *  ("обычная и disabled версии обеих"). Не меняет 'default'/'ghost-sm'
      *  вызовы — ни один существующий не передаёт disabled. */
     disabled?: boolean;
+    /** Сообщает о каждом открытии/закрытии панели (FE-WR-13: поле номера
+     *  сбрасывает шаг подтверждения перехода в настройки при закрытии).
+     *  Необязателен — существующие вызовы не меняются. */
+    onOpenChange?: (_open: boolean) => void;
     children: Snippet;
   }
 
@@ -41,6 +45,7 @@
     panelMinWidth,
     portal: usePortal = false,
     disabled = false,
+    onOpenChange,
     children,
   }: Props = $props();
 
@@ -57,6 +62,11 @@
     open = false;
     if (returnFocus) triggerEl?.focus();
   }
+
+  $effect(() => {
+    const isOpen = open;
+    untrack(() => onOpenChange?.(isOpen));
+  });
 
   // Move focus to the first menu item whenever the panel opens.
   $effect(() => {

@@ -11,7 +11,7 @@
   // list_by_context); клиент делает только ЧИСТОЕ строковое сравнение
   // (trim + toLowerCase) для видимости стрелки ↑/↓ и для решения «правили
   // ли значение вручную» (D-14/D-19/NUM-07).
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import Input from './Input.svelte';
   import ActionMenu from './ActionMenu.svelte';
   import IconInsertTemplate from './icons/IconInsertTemplate.svelte';
@@ -473,12 +473,22 @@
     void Promise.resolve().then(focusInputAtEnd);
   }
 
-  function goToSettings() {
-    // Discretion #6 (UI-SPEC): переход на блок шаблонов в «Настройки /
-    // Организация». Закрытие текущего попапа создания и разбор `section` из
-    // hash в SettingsPage — ответственность вызывающей формы/маршрутизации
-    // (планы 13-15) и вне файловой области этого плана (files_modified —
-    // только NumberTemplateField.svelte); здесь — только сама навигация.
+  // FE-WR-13: смена hash размонтирует страницу вместе с открытой формой
+  // создания — поэтому переход в «Настройки / Организация» (Discretion #6)
+  // двухшаговый: первый клик показывает предупреждение прямо в меню, второй
+  // переходит. Закрытие меню отменяет шаг. Раздел `section=org` разбирает
+  // SettingsPage.
+  let confirmLeave = $state(false);
+
+  function goToSettings(e: MouseEvent) {
+    if (!confirmLeave) {
+      // Не закрывать меню (панель ActionMenu закрывается по любому клику).
+      e.stopPropagation();
+      confirmLeave = true;
+      void tick().then(() => document.getElementById(`${inputId}-leave`)?.focus());
+      return;
+    }
+    confirmLeave = false;
     window.location.hash = '#/settings?section=org';
   }
 
@@ -660,6 +670,9 @@
       panelMinWidth="280px"
       label="Вставить номер по шаблону"
       {disabled}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) confirmLeave = false;
+      }}
     >
       {#snippet icon()}
         <IconInsertTemplate size={20} />
@@ -670,7 +683,18 @@
         <div class="ntf-menu-empty">{templatesError}</div>
       {:else if sortedTemplates.length === 0}
         <div class="ntf-menu-empty">
-          {#if canManageSettings}
+          {#if canManageSettings && confirmLeave}
+            Форма закроется, введённые данные не сохранятся.
+            <button
+              id={`${inputId}-leave`}
+              type="button"
+              role="menuitem"
+              class="ntf-menu-link"
+              onclick={goToSettings}
+            >
+              Перейти в Настройки / Организация
+            </button>
+          {:else if canManageSettings}
             Шаблонов нет — создайте в
             <button type="button" role="menuitem" class="ntf-menu-link" onclick={goToSettings}>
               Настройки / Организация
