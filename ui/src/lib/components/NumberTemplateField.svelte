@@ -89,7 +89,10 @@
   // меню «Вставка» показало бы шаблоны чужого вида.
   let templatesSeq = 0;
 
-  async function loadTemplates(ctx: TemplateContextDto) {
+  async function loadTemplates(
+    ctx: TemplateContextDto,
+    opts: { dropMissingSelection?: boolean } = {},
+  ) {
     const seq = ++templatesSeq;
     templatesLoading = true;
     templatesError = null;
@@ -99,6 +102,17 @@
       });
       if (seq !== templatesSeq) return;
       templates = list;
+      // FE-WR-06: выбранный шаблон удалён в другой сессии — не отправлять
+      // несуществующий templateId при сохранении. Как «Без шаблона»:
+      // непоправленное предложение уходит, ручной ввод остаётся.
+      if (
+        opts.dropMissingSelection &&
+        selectedTemplateId !== null &&
+        !list.some((t) => t.id === selectedTemplateId)
+      ) {
+        nextGeneration();
+        clearSelection({ preserveManualEdits: true });
+      }
     } catch {
       if (seq !== templatesSeq) return;
       templatesError = 'Не удалось загрузить шаблоны. Закройте меню и попробуйте ещё раз.';
@@ -333,6 +347,10 @@
     if (event.type === 'number_space_changed' && event.contexts.includes(context)) {
       void refreshCurrentSuggestion();
       occupiedRecheck += 1;
+      // FE-WR-06: «→ следующий номер», флаги «переполнен» и сам список
+      // шаблонов в меню «Вставка» тоже устаревают (сервер шлёт это событие
+      // и на CRUD шаблонов, BE-CR-04).
+      void loadTemplates(context, { dropMissingSelection: true });
     }
   }
 
