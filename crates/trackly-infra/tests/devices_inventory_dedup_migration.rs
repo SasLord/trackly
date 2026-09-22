@@ -245,3 +245,84 @@ fn user_version_is_44_after_migration() {
         .expect("read user_version");
     assert_eq!(version, 44);
 }
+
+/// BE-WR-05: blank / whitespace-only numbers on several live devices must
+/// not break the unique index creation — they are normalised to NULL, and
+/// the index ignores blanks written afterwards.
+#[test]
+fn blank_numbers_become_null_and_do_not_block_the_index() {
+    let (conn, _guard) = fresh_conn();
+    create_pre_v044_schema(&conn);
+
+    let now = 1_700_000_000_i64;
+    insert_device(&conn, 1, Some(""), now);
+    insert_device(&conn, 2, Some("   "), now + 1);
+    insert_device(&conn, 3, Some("ИНВ-000001"), now + 2);
+
+    conn.execute_batch(V044_SQL)
+        .expect("V044 must apply with several blank numbers present");
+
+    let blanks: Vec<Option<String>> = conn
+        .prepare("SELECT inventory_number FROM devices WHERE id IN (1, 2) ORDER BY id")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    assert_eq!(blanks, vec![None, None], "blank numbers must become NULL");
+
+    for n in 0..2 {
+        conn.execute(
+            "INSERT INTO devices (inventory_number, created_at_utc, updated_at_utc, version) \
+             VALUES ('', ?1, ?1, 1)",
+            [now + 10 + n],
+        )
+        .expect("a stray blank number must not collide in the unique index");
+    }
+}
+
+/// V044 through the REAL runner on a genuine V043 database (FK-off window,
+/// one transaction per file) with a duplicate pair and blanks present.
+#[test]
+fn real_runner_upgrade_from_v043_dedups_and_indexes() {
+    use trackly_infra::db::migrations;
+
+    let dir = TempDir::new().expect("tempdir");
+    let mut conn = Connection::open(dir.path().join("v044-real-runner.db")).expect("open");
+    apply_writer_pragmas(&conn).expect("writer pragmas");
+    migrations::run_up_to(&mut conn, 43).expect("run up to V043");
+
+    let now = 1_700_000_000_i64;
+    for (id, number) in [
+        (1, Some("ОРГ-00-000007")),
+        (2, Some(" орг-00-000007 ")),
+        (3, Some("")),
+        (4, Some("  ")),
+    ] {
+        conn.execute(
+            "INSERT INTO devices (id, type_id, name, inventory_number, status_id, \
+             created_at_utc, updated_at_utc) VALUES (?1, 1, 'Ноутбук', ?2, 1, ?3, ?3)",
+            rusqlite::params![id, number, now],
+        )
+        .expect("seed device");
+    }
+
+    migrations::run(&mut conn).expect("upgrade V043 -> latest");
+
+    let numbers: Vec<Option<String>> = conn
+        .prepare("SELECT inventory_number FROM devices ORDER BY id")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .map(|r| r.expect("row"))
+        .collect();
+    assert_eq!(
+        numbers,
+        vec![
+            Some("ОРГ-00-000007".to_string()),
+            Some("ДУБЛЬ-000001 (орг-00-000007)".to_string()),
+            None,
+            None,
+        ]
+    );
+}

@@ -131,6 +131,16 @@ JOIN devices d ON d.id = r.id;
 
 DROP TABLE _v044_dedup_renames;
 
+-- BE-WR-05: blank numbers mean "no number". The dedup above skips them
+-- (`TRIM(...) <> ''`), so two live devices holding '' or '  ' (possible via
+-- the old `COALESCE(?3, inventory_number)` update path with an empty string
+-- from an HTTP client) would make the UNIQUE INDEX below fail and the app
+-- refuse to start. Normalise them to NULL first; the index also excludes
+-- blanks explicitly so a stray '' written later can never collide either.
+UPDATE devices
+   SET inventory_number = NULL
+ WHERE inventory_number IS NOT NULL AND TRIM(inventory_number) = '';
+
 -- Case-insensitive (Cyrillic-aware, see above), trimmed, live-only partial
 -- UNIQUE INDEX — the actual NUM-09 enforcement. Expression-based (unlike
 -- `cartridges.code`'s case-preserving `idx_cartridges_code_live`, D-08
@@ -147,6 +157,7 @@ CREATE UNIQUE INDEX idx_devices_inventory_number_live
       'Ш', 'ш'), 'Щ', 'щ'), 'Ъ', 'ъ'), 'Ы', 'ы'), 'Ь', 'ь'), 'Э', 'э'), 'Ю', 'ю'), 'Я', 'я'),
       'Ё', 'ё')
   )
-  WHERE deleted_at_utc IS NULL AND inventory_number IS NOT NULL;
+  WHERE deleted_at_utc IS NULL AND inventory_number IS NOT NULL
+    AND TRIM(inventory_number) <> '';
 
 PRAGMA user_version = 44;
