@@ -230,6 +230,8 @@ async fn is_occupied_printer_kind_and_cartridge_kind() {
         .expect("must find seeded cartridge");
     assert_eq!(cartridge_hit.kind, "cartridge");
     assert_eq!(cartridge_hit.title, "Pantum TL-5120X");
+    // BE-WR-09: the card carries the record's OWN stored number.
+    assert_eq!(cartridge_hit.number, "C-000017");
 
     seed_cartridge(&svc.writer, 2, "Kyocera", "DK-1150", "D-000003").await;
     let drum_hit = svc
@@ -367,6 +369,10 @@ async fn detect_warnings_doppelganger_without_script_mix() {
     assert_eq!(warning.kind, NumberWarningKind::ScriptMix);
     let doppelganger = warning.doppelganger.expect("doppelganger card");
     assert_eq!(doppelganger.kind, "cartridge");
+    assert_eq!(
+        doppelganger.number, "C-0005",
+        "BE-WR-09: the card must carry the existing number, not the input"
+    );
     assert!(
         warning.message.contains("«C-0005»"),
         "the message must quote the EXISTING number, got: {}",

@@ -198,10 +198,17 @@ pub struct NextNumberDto {
 ///   `subtitle` the plan calls for). The card's "Дата" column has no slot in
 ///   this flat shape and is intentionally dropped — acts are identified
 ///   unambiguously by number + type for this warning card without it.
+///
+/// `number` (BE-WR-09) is the record's OWN number as stored/displayed
+/// (`inventory_number`, `cartridges.code`, or an act's DISPLAYED number —
+/// `42в1` for a return), trimmed. For the doppelganger paragraph it differs
+/// from the user's candidate by look-alike letters, so the client must show
+/// THIS value, not echo the input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct OccupyingRecordDto {
     pub kind: String,
+    pub number: String,
     pub title: String,
     pub subtitle: Option<String>,
     pub place: Option<String>,
@@ -362,6 +369,7 @@ mod tests {
     fn serde_round_trip_occupying_record_dto() {
         let dto = OccupyingRecordDto {
             kind: "printer".to_string(),
+            number: "ИНВ-000012".to_string(),
             title: "Принтер бухгалтерии".to_string(),
             subtitle: Some("HP LaserJet Pro".to_string()),
             place: Some("Здание А / Кабинет 12".to_string()),
@@ -379,6 +387,7 @@ mod tests {
             message: "В номере «OPГ-00-000001» смешаны русские и латинские буквы.".to_string(),
             doppelganger: Some(OccupyingRecordDto {
                 kind: "device".to_string(),
+                number: "ОРГ-00-000001".to_string(),
                 title: "Ноутбук Иванова И.И.".to_string(),
                 subtitle: None,
                 place: None,

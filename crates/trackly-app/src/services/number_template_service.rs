@@ -607,11 +607,13 @@ fn fetch_candidate_rows(
                     let model: Option<String> = r.get(4)?;
                     let place: Option<String> = r.get(5)?;
                     let status: Option<String> = r.get(6)?;
+                    let shown_number = raw_value.trim().to_string();
                     Ok(CandidateRow {
                         id,
                         raw_value,
                         record: OccupyingRecordDto {
                             kind: if type_id == 2 { "printer" } else { "device" }.to_string(),
+                            number: shown_number,
                             title: name,
                             subtitle: model,
                             place,
@@ -642,11 +644,13 @@ fn fetch_candidate_rows(
                     let act_type: String = r.get(2)?;
                     let giver_name: String = r.get(3)?;
                     let receiver_name: String = r.get(4)?;
+                    let shown_number = number.trim().to_string();
                     Ok(CandidateRow {
                         id,
                         raw_value: number,
                         record: OccupyingRecordDto {
                             kind: "act".to_string(),
+                            number: shown_number,
                             title: if act_type == "return" {
                                 "Акт возврата".to_string()
                             } else {
@@ -686,11 +690,13 @@ fn fetch_candidate_rows(
                     let model: String = r.get(4)?;
                     let place: Option<String> = r.get(5)?;
                     let status: Option<String> = r.get(6)?;
+                    let shown_number = raw_value.trim().to_string();
                     Ok(CandidateRow {
                         id,
                         raw_value,
                         record: OccupyingRecordDto {
                             kind: if kind_id == 2 { "drum" } else { "cartridge" }.to_string(),
+                            number: shown_number,
                             title: format!("{brand} {model}"),
                             subtitle: None,
                             place,
