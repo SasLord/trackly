@@ -332,6 +332,7 @@
   function handleWsEvent(event: WsEvent) {
     if (event.type === 'number_space_changed' && event.contexts.includes(context)) {
       void refreshCurrentSuggestion();
+      occupiedRecheck += 1;
     }
   }
 
@@ -453,8 +454,16 @@
   // Живая подсказка «занят» (D-02/D-03) — 400 мс debounce, устаревшие ответы
   // отбрасываются по номеру запроса.
   // ---------------------------------------------------------------------
-  let occupiedRecord = $state<OccupyingRecordDto | null>(null);
+  // FE-WR-05: результат проверки хранится вместе с проверенным значением —
+  // подсказка видна, только пока поле всё ещё содержит именно его (после
+  // очистки или правки строка о прежнем значении сразу пропадает).
+  let occupied = $state<{ candidate: string; record: OccupyingRecordDto } | null>(null);
+  const occupiedRecord = $derived(
+    occupied !== null && occupied.candidate === value.trim() ? occupied.record : null,
+  );
   let occupiedRequestId = 0;
+  // FE-WR-05: WS-инвалидация (D-14) перепроверяет «занят» для того же значения.
+  let occupiedRecheck = $state(0);
 
   const KIND_LABEL_LOWER: Record<string, string> = {
     device: 'устройство',
@@ -480,24 +489,26 @@
 
   $effect(() => {
     const candidate = value.trim();
-    if (candidate === '') {
-      occupiedRecord = null;
-      return;
-    }
+    const ctx = context;
+    const exclude = excludeId ?? null;
+    void occupiedRecheck;
+    // Любое изменение (включая очистку поля) делает недействительным уже
+    // отправленный запрос — его ответ не запишется.
     const requestId = ++occupiedRequestId;
+    if (candidate === '') return;
     const timer = setTimeout(() => {
       apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
-        context,
+        context: ctx,
         candidate,
-        excludeId: excludeId ?? null,
+        excludeId: exclude,
       })
         .then((rec) => {
           if (requestId !== occupiedRequestId) return; // устаревший ответ
-          occupiedRecord = rec;
+          occupied = rec ? { candidate, record: rec } : null;
         })
         .catch(() => {
           if (requestId !== occupiedRequestId) return;
-          occupiedRecord = null;
+          occupied = null;
         });
     }, 400);
     return () => clearTimeout(timer);
