@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-09-22T13:59:17.203Z
+status: planning
+last_updated: "2026-09-22T15:21:17.919Z"
 last_activity: 2026-09-22
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 6
   total_plans: 91
-  completed_plans: 354
-  percent: 55
-stopped_at: Phase 40.2 complete (15/15) — ready to discuss Phase 41
+  completed_plans: 91
+  percent: 50
 ---
 
 # Project State
@@ -21,14 +20,19 @@ stopped_at: Phase 40.2 complete (15/15) — ready to discuss Phase 41
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41 — арм
+**Current focus:** Phase 40.3 — долг аудита v1.4 (WR-03, N-1, N-2, N-4), затем Фаза 41 АРМ
 
 ## Current Position
 
-Phase: 41
+Phase: 40.3
 Plan: Not started
-Status: Ready to plan
-Последнее действие: 40.2-08-PLAN.md (устройства/принтеры на NumberTemplateService) завершён —
+Status: Planned (5 планов, 2 волны) — готово к /gsd-execute-phase 40.3
+Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
+(approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
+Open Questions помечены RESOLVED, фронтматтер VALIDATION approved, координация cargo в волне 1
+прописана в планах 01/02/04 и в ROADMAP). Решения D-01..D-07 зафиксированы в must_haves.truths;
+ключевое продуктовое: блок IP/SNMP виден только для типа «Принтер» и пишется в той же транзакции.
+Последнее действие (до планирования 40.3): 40.2-08-PLAN.md (устройства/принтеры на NumberTemplateService) завершён —
 V044 миграция (дедуп + Cyrillic-aware partial unique index), occupied+script-mix цепочка в
 create/bulk_create/update, create_single_with_number_check (новый интерактивный create),
 CSV-импорт различает «занят в БД» vs «повтор строки» (NUM-16). NUM-09/NUM-15/NUM-16 закрыты
@@ -452,6 +456,7 @@ Last activity: 2026-09-22
 - Phase 39.2 inserted after Phase 39.1: Долг фазы 39.1: 6 Warning + 4 Info из 39.1-REVIEW.md (единый владелец дефолтов пути, транзакция на записи, робастность на битых данных, UI/a11y экрана Настроек) (URGENT)
 - Phase 40.1 inserted after Phase 40: Закрыть пробелы аудита v1.4: BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite) и BLOCKER-2 (фильтр по типу устройства в отчёте «Перемещения» недостижим из UI) (URGENT)
 - Phase 40.2 inserted after Phase 40.1: Шаблоны инвентарных номеров (срочно, до Фазы 41 АРМ) (URGENT)
+- Phase 40.3 inserted after Phase 40.2: Долг аудита v1.4: WR-03, N-1, N-2, N-4 (аудит 2026-09-22) (URGENT)
 
 ### Decisions
 

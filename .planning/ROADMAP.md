@@ -585,6 +585,11 @@ Plans:
      прежнему не блокируют старт.
 **Plans:** 5 plans
 
+**Waves:** 1 — 40.3-01, 40.3-02, 40.3-03, 40.3-04 (независимы); 2 — 40.3-05 (depends_on 40.3-04).
+**Координация внутри волны 1:** `cargo build`/`cargo test` планов 40.3-01/02/04 запускать строго
+последовательно (лок `target/`); `trackly-app` — с `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1` и
+`--skip login_remember_persistent_cookie`.
+
 Plans:
 - [ ] 40.3-01-PLAN.md — WR-03: double-Option для serial_no/model/specs/kit/state (domain+DTO+SQL) + JSON-boundary regression-тест
 - [ ] 40.3-02-PLAN.md — N-4: безусловная персистентная FK-проверка после миграций на каждом старте
