@@ -901,8 +901,9 @@
   </div>
 
   <!-- 9b. Optional, create+Принтер ONLY (D-03): IP/SNMP block — DOM absent
-       otherwise, not merely hidden. Mirrors the removed PrinterCreateModal's
-       own SNMP section (Phase 40.3 Plan 05, NUM-06/NUM-08). -->
+       otherwise, not merely hidden. Mirrors the SNMP section of the
+       now-removed two-step printer-create modal (Phase 40.3 Plan 05,
+       NUM-06/NUM-08, D-02). -->
   {#if typeId === PRINTER_TYPE_ID && !isEdit}
     <div class="snmp-section">
       <p class="section-hint">
@@ -1018,7 +1019,7 @@
   }
 
   // Phase 40.3 Plan 05 (NUM-06/NUM-08): IP/SNMP block, create+Принтер only
-  // — ported verbatim from the removed PrinterCreateModal.svelte.
+  // — ported verbatim from the now-removed two-step printer-create modal.
   .snmp-section {
     display: flex;
     flex-direction: column;

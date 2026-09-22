@@ -15,7 +15,8 @@
   import PrintersList from './PrintersList.svelte';
   import PrinterDetail from './PrinterDetail.svelte';
   import DiscoveryModal from './DiscoveryModal.svelte';
-  import PrinterCreateModal from './PrinterCreateModal.svelte';
+  import DeviceFormModal from '../devices/DeviceFormModal.svelte';
+  import { notifyPlaceContentChanged } from '$lib/stores/placeContentEvents.svelte';
   import { printers } from './api';
   import type { PrinterDto, PrinterFilter } from '../../bindings-phase6';
   import type { WsEvent } from '../../bindings-phase6';
@@ -244,11 +245,15 @@
   }}
 />
 
-<PrinterCreateModal
+<DeviceFormModal
   open={createOpen}
+  target={null}
+  initialTypeId={2}
   onClose={() => (createOpen = false)}
-  onSuccess={() => {
+  onSaved={(result) => {
     createOpen = false;
+    const newPlaceId = result?.placeId ?? null;
+    if (newPlaceId !== null) notifyPlaceContentChanged([newPlaceId]);
     void refresh();
   }}
 />

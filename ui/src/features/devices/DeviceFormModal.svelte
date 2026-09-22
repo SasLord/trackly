@@ -62,9 +62,14 @@
      * handlers stay valid without changes.
      */
     onSaved: (result?: { typeId: number; placeId: number | null }) => void;
+    /** Phase 40.3 Plan 05 (D-02): предзаданный тип для create-режима —
+     *  например, «Завести принтер» на экране «Принтеры» открывает этот
+     *  модал с `initialTypeId={2}`. Игнорируется, когда `target !== null`
+     *  (правка всегда использует `target.type_id`, см. $effect ниже). */
+    initialTypeId?: number;
   }
 
-  const { open, target, onClose, onSaved }: Props = $props();
+  const { open, target, onClose, onSaved, initialTypeId }: Props = $props();
 
   const DEVICE_TYPE_ID = 1;
   const PRINTER_TYPE_ID = 2;
@@ -97,7 +102,7 @@
     const isOpen = open;
     if (isOpen && !_wasOpen) {
       openInstanceCounter += 1;
-      typeId = target?.type_id ?? DEVICE_TYPE_ID;
+      typeId = target?.type_id ?? initialTypeId ?? DEVICE_TYPE_ID;
       confirmOpen = false;
     }
     _wasOpen = isOpen;
