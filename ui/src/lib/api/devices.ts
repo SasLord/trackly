@@ -11,6 +11,7 @@ import type {
   DeviceSaveOutcome,
   NumberFieldInput,
   Pagination,
+  PrinterCreateBlockDto,
   StatusCount,
   TemplateContextDto,
 } from '../../bindings';
@@ -45,15 +46,23 @@ export const devices = {
   // -> NUM-08 remember_context chain (fix 40.2-13: mismatch checking was
   // added post-Plan-13, see device_service.rs). Replaces `bulkCreate(new, 1)`
   // for qty===1 in DeviceFormBody.svelte's create branch.
+  //
+  // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): optional 4th `printer`
+  // argument — mirrors the backend's `create_single_with_number_check_with_printer`
+  // (40.3-04). `DeviceFormBody.svelte` passes a non-null block only when
+  // creating a printer (`typeId === PRINTER_TYPE_ID`) with a non-empty IP;
+  // every other caller/path is unaffected by the default.
   createSingleWithNumberCheck: (
     newDevice: DeviceNew,
     numberInput: NumberFieldInput,
     context: TemplateContextDto,
+    printer: PrinterCreateBlockDto | null = null,
   ) =>
     apiCall<DeviceSaveOutcome>('devices_create_single_with_number_check', {
       device: newDevice,
       numberInput,
       context,
+      printer,
     }),
 
   delete: (id: number, version: number) => apiCall<null>('devices_delete', { id, version }),

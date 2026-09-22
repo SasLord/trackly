@@ -117,6 +117,7 @@
     NumberFieldInput,
     NumberWarningDto,
     OccupyingRecordDto,
+    PrinterCreateBlockDto,
     TemplateContextDto,
   } from '../../bindings';
 
@@ -195,6 +196,13 @@
   let specs = $state(target?.specs ?? '');
   let kit = $state(target?.kit ?? '');
   let stateField = $state(target?.state ?? '');
+  // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): IP/SNMP block for the printer
+  // create-mode-only fields below (D-03 — never shown/used in edit mode or
+  // for typeId === DEVICE_TYPE_ID). No reset-effect needed — see the
+  // file-header comment: this component is fully remounted via
+  // {#key openInstanceCounter} in DeviceFormModal on every open.
+  let ipAddress = $state('');
+  let community = $state('public');
   let quantity = $state(1);
   let loading = $state(false);
   let submitting = $state(false);
@@ -560,9 +568,22 @@
       confirmScriptMix: confirms.scriptMix,
     };
 
+    // Phase 40.3 Plan 05 (NUM-06/NUM-08/PLC-06): only Принтер-create with a
+    // non-empty IP builds a printer block — «Устройство» and «Принтер без
+    // IP» keep sending `null`, identical to pre-Plan-05 server defaults.
+    const printerBlock: PrinterCreateBlockDto | null =
+      typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''
+        ? { ipAddress: ipAddress.trim(), community: community.trim() || null }
+        : null;
+
     let outcome: DeviceSaveOutcome;
     try {
-      outcome = await devices.createSingleWithNumberCheck(newDevice, numberInput, numberContext);
+      outcome = await devices.createSingleWithNumberCheck(
+        newDevice,
+        numberInput,
+        numberContext,
+        printerBlock,
+      );
     } catch (e) {
       // FE-CR-02: rethrows anything that is not «number really occupied».
       const record = await occupyingRecordOrRethrow(e, numberContext, inventoryNo, null);
@@ -879,6 +900,40 @@
     {/if}
   </div>
 
+  <!-- 9b. Optional, create+Принтер ONLY (D-03): IP/SNMP block — DOM absent
+       otherwise, not merely hidden. Mirrors the removed PrinterCreateModal's
+       own SNMP section (Phase 40.3 Plan 05, NUM-06/NUM-08). -->
+  {#if typeId === PRINTER_TYPE_ID && !isEdit}
+    <div class="snmp-section">
+      <p class="section-hint">
+        SNMP / Сеть — заполните, если принтер подключён по сети (IP). Оставьте пустым для
+        USB/локального принтера.
+      </p>
+      <div class="field">
+        <label class="label" for="f-printer-ip">IP-адрес</label>
+        <Input
+          id="f-printer-ip"
+          value={ipAddress}
+          placeholder="192.168.1.100 (необязательно)"
+          disabled={readonly}
+          oninput={(v) => (ipAddress = v)}
+        />
+      </div>
+      {#if ipAddress.trim()}
+        <div class="field">
+          <label class="label" for="f-printer-community">SNMP community</label>
+          <Input
+            id="f-printer-community"
+            value={community}
+            placeholder="public"
+            disabled={readonly}
+            oninput={(v) => (community = v)}
+          />
+        </div>
+      {/if}
+    </div>
+  {/if}
+
   <!-- 10. Optional: Состояние + state-hints chips (with autocomplete) — ПОСЛЕДНЕЕ -->
   <div class="field">
     <label class="label" for="f-state">Состояние</label>
@@ -960,6 +1015,22 @@
     margin: 0;
     font-size: var(--tr-font-size-label);
     color: var(--tr-danger);
+  }
+
+  // Phase 40.3 Plan 05 (NUM-06/NUM-08): IP/SNMP block, create+Принтер only
+  // — ported verbatim from the removed PrinterCreateModal.svelte.
+  .snmp-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tr-space-md);
+    border-top: 1px solid var(--tr-border);
+    padding-top: var(--tr-space-md);
+  }
+
+  .section-hint {
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-tertiary);
+    margin: 0;
   }
 
   .input {
