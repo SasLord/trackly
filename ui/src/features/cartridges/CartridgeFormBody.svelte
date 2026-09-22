@@ -89,7 +89,12 @@
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
+  import {
+    confirmsFor,
+    occupyingRecordOrRethrow,
+    withConfirm,
+    type PendingConfirm,
+  } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { cartridges } from './api';
@@ -361,38 +366,17 @@
   // shape (Plan 07).
   // ---------------------------------------------------------------------------
 
-  // `AppError.code()` serialises as SCREAMING_SNAKE_CASE (see
-  // `crates/trackly-core/src/error.rs::code()`) — 'CONFLICT', not 'Conflict'.
-  function isConflictError(e: unknown): boolean {
-    return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
-  }
-
-  // cartridges/drums share ONE physical code space (NUM-09 "в") — a record
-  // occupying it can only ever be a cartridge or a drum, never another
-  // entity family.
-  function toTakenRecordSummary(
-    record: OccupyingRecordDto | null,
-    fallbackKindId: number,
-  ): NumberTakenRecordSummary {
-    if (record) {
-      return {
-        kind: record.kind as NumberTakenRecordSummary['kind'],
-        title: record.title,
-        subtitle: record.subtitle,
-        place: record.place,
-        status: record.status,
-      };
-    }
-    // Best-effort fallback (race where the occupying record is deleted
-    // between the failed save and this follow-up `is_occupied` call) — the
-    // fallback kind is inferred from the CURRENT form's own kindId, same
-    // adaptation as DeviceFormBody.svelte's `fallbackTypeId`.
+  // FE-CR-02: only called with a record that `occupyingRecordOrRethrow`
+  // (saveChain.ts) confirmed as really occupying the number — a CONFLICT
+  // without an occupying record is some other conflict and goes to the
+  // generic error handler with the server's own message.
+  function toTakenRecordSummary(record: OccupyingRecordDto): NumberTakenRecordSummary {
     return {
-      kind: fallbackKindId === 2 ? 'drum' : 'cartridge',
-      title: '—',
-      subtitle: null,
-      place: null,
-      status: null,
+      kind: record.kind as NumberTakenRecordSummary['kind'],
+      title: record.title,
+      subtitle: record.subtitle,
+      place: record.place,
+      status: record.status,
     };
   }
 
@@ -404,20 +388,9 @@
     }
   }
 
-  async function openTakenPopup(excludeId: number | null, canTakeNextFlag: boolean) {
-    const candidate = code.trim();
-    let record: OccupyingRecordDto | null;
-    try {
-      record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
-        context: numberContext,
-        candidate,
-        excludeId,
-      });
-    } catch {
-      record = null;
-    }
+  function showTakenPopup(record: OccupyingRecordDto, canTakeNextFlag: boolean) {
     takenNumber = code;
-    takenRecord = toTakenRecordSummary(record, kindId);
+    takenRecord = toTakenRecordSummary(record);
     takenCanTakeNext = canTakeNextFlag;
     takeNextLoading = false;
     activePopup = 'taken';
@@ -537,11 +510,10 @@
     try {
       outcome = await cartridges.create(payload);
     } catch (e) {
-      if (isConflictError(e)) {
-        await openTakenPopup(null, selectedTemplateId !== null);
-        return;
-      }
-      throw e;
+      // FE-CR-02: rethrows anything that is not «number really occupied».
+      const record = await occupyingRecordOrRethrow(e, numberContext, code, null);
+      showTakenPopup(record, selectedTemplateId !== null);
+      return;
     }
 
     if (outcome.outcome === 'created') {

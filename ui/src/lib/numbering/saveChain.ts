@@ -9,6 +9,9 @@
 // itself out of the three forms is a bigger refactor whose runtime behaviour
 // static gates (svelte-check / build) cannot verify.
 
+import { apiCall } from '$lib/api/client';
+import type { OccupyingRecordDto, TemplateContextDto } from '../../bindings';
+
 /** D-01/D-04: a «Продолжить» confirmation is given for ONE concrete number —
  *  never for the whole form session (FE-CR-01). `null` — nothing confirmed. */
 export type PendingConfirm = {
@@ -43,4 +46,32 @@ export function withConfirm(
 ): PendingConfirm {
   const current = confirmsFor(pending, value);
   return { value: key(value), ...current, [kind]: true };
+}
+
+/** `AppError.code()` is SCREAMING_SNAKE_CASE (crates/trackly-core/src/error.rs). */
+export function isConflictError(e: unknown): boolean {
+  return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
+}
+
+/** FE-CR-02: a CONFLICT from a save means «Номер занят» ONLY when the number
+ *  really is occupied. The backend also returns CONFLICT for unrelated causes
+ *  (e.g. an act position that is no longer on the warehouse), so the bare code
+ *  is not a signal. The structured signal is the `number_templates_is_occupied`
+ *  lookup: returns the occupying record when the number is taken, otherwise
+ *  rethrows the original error so the form's generic handler shows the server's
+ *  own (Russian) message. */
+export async function occupyingRecordOrRethrow(
+  e: unknown,
+  context: TemplateContextDto,
+  candidate: string,
+  excludeId: number | null,
+): Promise<OccupyingRecordDto> {
+  if (!isConflictError(e)) throw e;
+  const record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
+    context,
+    candidate: candidate.trim(),
+    excludeId,
+  }).catch(() => null);
+  if (record === null) throw e;
+  return record;
 }

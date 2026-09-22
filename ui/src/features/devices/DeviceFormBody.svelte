@@ -95,7 +95,12 @@
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
+  import {
+    confirmsFor,
+    occupyingRecordOrRethrow,
+    withConfirm,
+    type PendingConfirm,
+  } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
@@ -398,46 +403,17 @@
   // Phase 40.2 Plan 13 (D-01/D-05) — save-chain popup helpers.
   // ---------------------------------------------------------------------------
 
-  // `AppError.code()` serialises as SCREAMING_SNAKE_CASE (see
-  // `crates/trackly-core/src/error.rs::code()`), so the occupied-conflict
-  // check below uses the correct 'CONFLICT' — unlike the pre-existing
-  // 'Validation'/'OptimisticLockMismatch' checks further down this file,
-  // which predate this plan and never actually match ('VALIDATION'/
-  // 'OPTIMISTIC_LOCK_MISMATCH' are the real values). That mismatch is a
-  // pre-existing bug outside this plan's scope (not caused by these
-  // changes) — left as-is per explicit coordinator instruction, noted in
-  // SUMMARY.md as a found issue.
-  function isConflictError(e: unknown): boolean {
-    return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
-  }
-
-  function toTakenRecordSummary(
-    record: OccupyingRecordDto | null,
-    fallbackTypeId: number,
-  ): NumberTakenRecordSummary {
-    if (record) {
-      return {
-        kind: record.kind as NumberTakenRecordSummary['kind'],
-        title: record.title,
-        subtitle: record.subtitle,
-        place: record.place,
-        status: record.status,
-      };
-    }
-    // Best-effort fallback (RESEARCH Security Domain note in the plan's own
-    // <action>: the create/update error itself doesn't have to carry the
-    // card — a race where the occupying record is deleted between the
-    // failed save and this follow-up `is_occupied` call is the only way
-    // `record` is null here). devices.inventory_number is its own number
-    // space (TemplateType::DeviceInventory) — only device/printer rows can
-    // occupy it, so the fallback kind is inferred from the CURRENT form's
-    // own type as the closest reasonable guess.
+  // FE-CR-02: only called with a record that `occupyingRecordOrRethrow`
+  // (saveChain.ts) confirmed as really occupying the number — a CONFLICT
+  // without an occupying record is some other conflict and goes to the
+  // generic error handler with the server's own message.
+  function toTakenRecordSummary(record: OccupyingRecordDto): NumberTakenRecordSummary {
     return {
-      kind: fallbackTypeId === PRINTER_TYPE_ID ? 'printer' : 'device',
-      title: '—',
-      subtitle: null,
-      place: null,
-      status: null,
+      kind: record.kind as NumberTakenRecordSummary['kind'],
+      title: record.title,
+      subtitle: record.subtitle,
+      place: record.place,
+      status: record.status,
     };
   }
 
@@ -449,20 +425,9 @@
     }
   }
 
-  async function openTakenPopup(excludeId: number | null, canTakeNextFlag: boolean) {
-    const candidate = inventoryNo.trim();
-    let record: OccupyingRecordDto | null;
-    try {
-      record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
-        context: numberContext,
-        candidate,
-        excludeId,
-      });
-    } catch {
-      record = null;
-    }
+  function showTakenPopup(record: OccupyingRecordDto, canTakeNextFlag: boolean) {
     takenNumber = inventoryNo;
-    takenRecord = toTakenRecordSummary(record, typeId);
+    takenRecord = toTakenRecordSummary(record);
     takenCanTakeNext = canTakeNextFlag;
     takeNextLoading = false;
     activePopup = 'taken';
@@ -590,11 +555,10 @@
     try {
       outcome = await devices.createSingleWithNumberCheck(newDevice, numberInput, numberContext);
     } catch (e) {
-      if (isConflictError(e)) {
-        await openTakenPopup(null, selectedTemplateId !== null);
-        return;
-      }
-      throw e;
+      // FE-CR-02: rethrows anything that is not «number really occupied».
+      const record = await occupyingRecordOrRethrow(e, numberContext, inventoryNo, null);
+      showTakenPopup(record, selectedTemplateId !== null);
+      return;
     }
 
     if (outcome.outcome === 'created') {
@@ -635,11 +599,14 @@
     try {
       outcome = await devices.update(currentTarget.id, currentVersion, patch);
     } catch (e) {
-      if (isConflictError(e)) {
-        await openTakenPopup(currentTarget.id, false);
-        return;
-      }
-      throw e;
+      const record = await occupyingRecordOrRethrow(
+        e,
+        numberContext,
+        inventoryNo,
+        currentTarget.id,
+      );
+      showTakenPopup(record, false);
+      return;
     }
 
     if (outcome.outcome === 'created') {

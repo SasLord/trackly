@@ -72,7 +72,12 @@
   import DatePicker from '$lib/components/DatePicker.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
-  import { confirmsFor, withConfirm, type PendingConfirm } from '$lib/numbering/saveChain';
+  import {
+    confirmsFor,
+    occupyingRecordOrRethrow,
+    withConfirm,
+    type PendingConfirm,
+  } from '$lib/numbering/saveChain';
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { acts } from './api';
@@ -304,28 +309,18 @@
   // Mirrors DeviceFormBody.svelte's Plan 13 helpers 1:1.
   // ---------------------------------------------------------------------------
 
-  // `AppError.code()` serialises as SCREAMING_SNAKE_CASE (see
-  // `crates/trackly-core/src/error.rs::code()`) — 'CONFLICT', not 'Conflict'.
-  function isConflictError(e: unknown): boolean {
-    return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
-  }
-
-  // acts.number_input's number space (TemplateType::ActNumber) is occupied
-  // ONLY by acts — unlike devices/printers sharing one space, no fallback
-  // kind ambiguity here.
-  function toTakenRecordSummary(record: OccupyingRecordDto | null): NumberTakenRecordSummary {
-    if (record) {
-      return {
-        kind: record.kind as NumberTakenRecordSummary['kind'],
-        title: record.title,
-        subtitle: record.subtitle,
-        place: record.place,
-        status: record.status,
-      };
-    }
-    // Best-effort fallback (race where the occupying record is deleted
-    // between the failed save and this follow-up `is_occupied` call).
-    return { kind: 'act', title: '—', subtitle: null, place: null, status: null };
+  // FE-CR-02: only called with a record that `occupyingRecordOrRethrow`
+  // (saveChain.ts) confirmed as really occupying the number — a CONFLICT
+  // without an occupying record is some other conflict and goes to the
+  // generic error handler with the server's own message.
+  function toTakenRecordSummary(record: OccupyingRecordDto): NumberTakenRecordSummary {
+    return {
+      kind: record.kind as NumberTakenRecordSummary['kind'],
+      title: record.title,
+      subtitle: record.subtitle,
+      place: record.place,
+      status: record.status,
+    };
   }
 
   function focusNumberField() {
@@ -336,18 +331,7 @@
     }
   }
 
-  async function openTakenPopup(excludeId: number | null, canTakeNextFlag: boolean) {
-    const candidate = numberValue.trim();
-    let record: OccupyingRecordDto | null;
-    try {
-      record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
-        context: numberContext,
-        candidate,
-        excludeId,
-      });
-    } catch {
-      record = null;
-    }
+  function showTakenPopup(record: OccupyingRecordDto, canTakeNextFlag: boolean) {
     takenNumber = numberValue;
     takenRecord = toTakenRecordSummary(record);
     takenCanTakeNext = canTakeNextFlag;
@@ -479,11 +463,10 @@
     try {
       outcome = await acts.create(payload);
     } catch (e) {
-      if (isConflictError(e)) {
-        await openTakenPopup(null, selectedTemplateId !== null);
-        return;
-      }
-      throw e;
+      // FE-CR-02: rethrows anything that is not «number really occupied».
+      const record = await occupyingRecordOrRethrow(e, numberContext, numberValue, null);
+      showTakenPopup(record, selectedTemplateId !== null);
+      return;
     }
 
     if (outcome.outcome === 'created') {
@@ -555,11 +538,9 @@
     try {
       outcome = await acts.update(updatePayload);
     } catch (e) {
-      if (isConflictError(e)) {
-        await openTakenPopup(target.id, false);
-        return;
-      }
-      throw e;
+      const record = await occupyingRecordOrRethrow(e, numberContext, numberValue, target.id);
+      showTakenPopup(record, false);
+      return;
     }
 
     if (outcome.outcome === 'created') {
