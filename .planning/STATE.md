@@ -3,13 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-22T17:27:50.201Z"
+stopped_at: Completed 40.3-02-PLAN.md
+last_updated: "2026-09-22T19:13:38.508Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 96
-  completed_plans: 92
+  completed_plans: 93
   percent: 50
 ---
 
@@ -25,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
@@ -416,6 +417,7 @@ Last activity: 2026-09-22
 | Phase 40.2 P14 | ~2h | 2 tasks | 10 files |
 | Phase 40.2 P15 | 60min | 2 tasks | 3 files |
 | Phase 40.3 P01 | 31min | 3 tasks | 5 files |
+| Phase 40.3-audit-debt P02 | 50min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1018,6 +1020,7 @@ Recent decisions affecting current work:
 - [Phase 40.2]: Plan 15: CartridgeFormModal.svelte edited beyond declared files_modified to render D-01 popups as top-level Modal siblings (backdrop-filter containing-block trap, same precedent as Plans 13/14)
 - [Phase 40.2]: Phase 40.2 closed: NUM-06/07/08/10/11/14 marked complete by Plan 15's closing pass (incl. NUM-14, not in Plan 15's own frontmatter, since it only names acts and had no cartridge surface left) — all 16 NUM-* requirements now Complete
 - [Phase ?]: 40.3-01: double-Option (Option<Option<String>>) для serial_no/model/specs/kit/state в devices.rs + serde_with::double_option на serde-границе — устраняет молчаливую невозможность очистки этих полей — Тот же паттерн уже применён для inventory_no/place_id (Фаза 40.2 Plan 08); плоский Option<String> + COALESCE не различает 'не передано' от 'передано явно как null'
+- [Phase 40.3-audit-debt]: FK-бейзлайн персистится в app_settings guarded single-key upsert (D-07 discretion), а не через новую миграцию/таблицу
 
 ### Pending Todos
 
@@ -1209,8 +1212,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T17:27:50.191Z
-Stopped at: Завершён 40.3-01-PLAN.md (WR-03: double-Option для serial_no/model/specs/kit/state)
+Last session: 2026-09-22T19:13:38.499Z
+Stopped at: Completed 40.3-02-PLAN.md
 Resume file: None
 
 None
