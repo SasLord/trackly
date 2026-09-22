@@ -45,7 +45,15 @@
   }
 </script>
 
-<Modal open={true} size="md" title="Проверьте буквы в номере" onClose={onFix}>
+<!-- FE-WR-10 (а): UI-SPEC §6 — фокус по умолчанию на «Поправлю» (вторичная кнопка
+     подвала), а не на «×»; destructive «Продолжить» не ближайшая к фокусу. -->
+<Modal
+  open={true}
+  size="md"
+  initialFocus=".modal-footer .btn-secondary"
+  title="Проверьте буквы в номере"
+  onClose={onFix}
+>
   <p class="body-text">
     В номере «<span class="tr-mono">{number}</span>» смешаны русские и латинские буквы. Внешне
     одинаковые буквы, например «О» и «O», считаются разными — такой номер легко перепутать.

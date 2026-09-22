@@ -461,7 +461,10 @@
   function selectNoTemplate() {
     nextGeneration();
     clearSelection({ preserveManualEdits: true });
-    focusInputAtEnd();
+    // FE-WR-10 (в): клик по пункту всплывает до панели ActionMenu, чей
+    // onclick закрывает меню и возвращает фокус на кнопку-триггер — поэтому
+    // фокус в поле ставится ПОСЛЕ этого (UI-SPEC п. 13).
+    void Promise.resolve().then(focusInputAtEnd);
   }
 
   function goToSettings() {

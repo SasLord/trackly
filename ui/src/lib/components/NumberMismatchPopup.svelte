@@ -21,7 +21,15 @@
   const { number, mask, contextLabel, onFix, onContinue }: Props = $props();
 </script>
 
-<Modal open={true} size="md" title="Номер не соответствует шаблону" onClose={onFix}>
+<!-- FE-WR-10 (а): UI-SPEC §6 — фокус по умолчанию на «Поправлю» (вторичная кнопка
+     подвала), а не на «×»; destructive «Продолжить» не ближайшая к фокусу. -->
+<Modal
+  open={true}
+  size="md"
+  initialFocus=".modal-footer .btn-secondary"
+  title="Номер не соответствует шаблону"
+  onClose={onFix}
+>
   <p class="body-text">
     Номер «<span class="tr-mono">{number}</span>» не подходит под шаблон «<span class="tr-mono"
       >{mask}</span

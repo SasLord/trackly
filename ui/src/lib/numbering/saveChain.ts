@@ -9,6 +9,7 @@
 // itself out of the three forms is a bigger refactor whose runtime behaviour
 // static gates (svelte-check / build) cannot verify.
 
+import { tick } from 'svelte';
 import { apiCall } from '$lib/api/client';
 import type { OccupyingRecordDto, TemplateContextDto } from '../../bindings';
 
@@ -74,4 +75,11 @@ export async function occupyingRecordOrRethrow(
   }).catch(() => null);
   if (record === null) throw e;
   return record;
+}
+
+/** FE-WR-10 (б): run `fn` after the closing D-01 popup has been unmounted.
+ *  The popup's `Modal` restores its own `prevFocus` in an effect teardown;
+ *  focusing the number field synchronously would be undone by it. */
+export function afterPopupClosed(fn: () => void): void {
+  void tick().then(fn);
 }

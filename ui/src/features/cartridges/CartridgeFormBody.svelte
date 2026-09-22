@@ -90,6 +90,7 @@
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import {
+    afterPopupClosed,
     confirmsFor,
     occupyingRecordOrRethrow,
     withConfirm,
@@ -379,11 +380,14 @@
   }
 
   function focusNumberField() {
-    if (isEdit) {
-      document.getElementById('cart-code')?.focus();
-    } else {
-      numberFieldRef?.focus();
-    }
+    // FE-WR-10 (б): after the popup's Modal has restored its own focus.
+    afterPopupClosed(() => {
+      if (isEdit) {
+        document.getElementById('cart-code')?.focus();
+      } else {
+        numberFieldRef?.focus();
+      }
+    });
   }
 
   function showTakenPopup(record: OccupyingRecordDto, canTakeNextFlag: boolean) {

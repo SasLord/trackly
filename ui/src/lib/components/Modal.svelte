@@ -23,9 +23,23 @@
     children?: Snippet;
     footer?: Snippet;
     titleExtra?: Snippet;
+    /** FE-WR-10 (а): CSS selector (inside the dialog) of the element that gets
+     *  the initial focus instead of the first focusable one (which is the «×»
+     *  close button). Used by the D-01 soft-warning popups to land on the safe
+     *  «Поправлю» (UI-SPEC §6). Falls back to the default when nothing matches. */
+    initialFocus?: string;
   }
 
-  const { open, title, size = 'md', onClose, children, footer, titleExtra }: Props = $props();
+  const {
+    open,
+    title,
+    size = 'md',
+    onClose,
+    children,
+    footer,
+    titleExtra,
+    initialFocus,
+  }: Props = $props();
 
   const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
 
@@ -113,7 +127,10 @@
     if (!open) return;
 
     prevFocus = document.activeElement as HTMLElement | null;
-    const first = scopedFocusable()[0];
+    const preferred = initialFocus
+      ? (dialogEl?.querySelector<HTMLElement>(initialFocus) ?? null)
+      : null;
+    const first = preferred ?? scopedFocusable()[0];
     if (first) {
       first.focus();
     } else {
