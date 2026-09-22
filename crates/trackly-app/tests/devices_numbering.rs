@@ -850,3 +850,44 @@ async fn create_rejects_overlong_or_control_char_inventory_number() {
     .await
     .expect("budget");
 }
+
+/// BE-WR-01: the device create path must not write another section's
+/// context memory, nor accept a template of another type.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_single_rejects_foreign_context_and_foreign_template() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let err = svc
+            .create_single_with_number_check(
+                minimal_new("Устройство", Some("ИНВ-1")),
+                number_input("ИНВ-1"),
+                TemplateContextDto::ActCreate,
+            )
+            .await;
+        assert!(
+            matches!(&err, Err(trackly_core::error::AppError::Validation { field, .. }) if field == "context"),
+            "got {err:?}"
+        );
+
+        let nts = number_templates_for(&svc);
+        let drum_tpl = nts
+            .create(TemplateTypeDto::DrumCode, "ФБ-[XXX]".to_string())
+            .await
+            .expect("drum template");
+        let mut input = number_input("ФБ-001");
+        input.template_id = Some(drum_tpl.id);
+        let err = svc
+            .create_single_with_number_check(
+                minimal_new("Устройство", None),
+                input,
+                TemplateContextDto::DeviceCreate,
+            )
+            .await;
+        assert!(
+            matches!(&err, Err(trackly_core::error::AppError::Validation { field, .. }) if field == "template_id"),
+            "got {err:?}"
+        );
+    })
+    .await
+    .expect("budget");
+}

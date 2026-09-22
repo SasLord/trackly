@@ -57,6 +57,28 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<NumberTemplateRow> {
     })
 }
 
+/// BE-WR-01: a template may only be used/remembered by a context that
+/// numbers the same space (`device_inventory` for device/printer create,
+/// `act_number` for «Новый акт», …).
+pub fn ensure_template_fits_context(
+    row: &NumberTemplateRow,
+    context: &trackly_core::domain::number_templates::TemplateContext,
+) -> Result<(), AppError> {
+    let expected = context.template_type();
+    if row.template_type != expected {
+        return Err(AppError::Validation {
+            field: "template_id".to_string(),
+            message: format!(
+                "Шаблон «{}» относится к разделу «{}» и не подходит для раздела «{}».",
+                row.mask,
+                row.template_type.display_name_ru(),
+                expected.display_name_ru()
+            ),
+        });
+    }
+    Ok(())
+}
+
 const SELECT_NUMBER_TEMPLATES: &str =
     "SELECT id, type, mask, created_at_utc, updated_at_utc, version FROM number_templates";
 
@@ -269,6 +291,11 @@ impl SqliteNumberTemplateRepository {
     /// UPDATE `number_template_contexts.template_id` for `context` inside a
     /// transaction. The row for every context already exists (seeded by
     /// V041) — this is always an `UPDATE`, never an `INSERT`.
+    ///
+    /// BE-WR-01: the template must exist AND be of the type this context
+    /// numbers (`TemplateContext::template_type`) — otherwise a device
+    /// template could be remembered as the shared default of «Новый акт».
+    /// Missing template → `NotFound`, wrong type → `Validation`.
     pub fn set_context_in_tx(
         &self,
         tx: &Transaction<'_>,
@@ -276,10 +303,42 @@ impl SqliteNumberTemplateRepository {
         template_id: Option<i64>,
         now_utc: i64,
     ) -> Result<(), AppError> {
+        if let Some(id) = template_id {
+            let row = self.get(tx, id)?;
+            ensure_template_fits_context(&row, &context)?;
+        }
         tx.execute(
             "UPDATE number_template_contexts SET template_id=?1, updated_at_utc=?2 \
              WHERE context=?3",
             params![template_id, now_utc, context.as_str()],
+        )
+        .map_err(map_rusqlite)?;
+        Ok(())
+    }
+
+    /// Lenient variant used INSIDE an entity-creating writer transaction
+    /// (BE-WR-02): the template was already validated for this context by
+    /// the caller's pre-check, so the only way it can be missing/foreign now
+    /// is a concurrent delete — then "no template" is remembered instead of
+    /// rolling back the record the user just created.
+    pub fn remember_context_in_tx(
+        &self,
+        tx: &Transaction<'_>,
+        context: trackly_core::domain::number_templates::TemplateContext,
+        template_id: Option<i64>,
+        now_utc: i64,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "UPDATE number_template_contexts \
+                SET template_id = (SELECT id FROM number_templates WHERE id = ?1 AND type = ?4), \
+                    updated_at_utc = ?2 \
+              WHERE context = ?3",
+            params![
+                template_id,
+                now_utc,
+                context.as_str(),
+                context.template_type().as_str()
+            ],
         )
         .map_err(map_rusqlite)?;
         Ok(())

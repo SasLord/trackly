@@ -211,7 +211,10 @@ impl CartridgeService {
 
         if let Some(template_id) = payload.number_input.template_id {
             if !payload.number_input.confirm_mismatch {
-                let template_dto = self.number_templates.get(template_id).await?;
+                let template_dto = self
+                    .number_templates
+                    .get_for_context(template_id, template_context)
+                    .await?;
                 let today_utc = self.clock.unix_seconds();
                 let synthetic_row = NumberTemplateRow {
                     id: template_dto.id,

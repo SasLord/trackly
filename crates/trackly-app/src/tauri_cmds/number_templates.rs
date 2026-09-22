@@ -132,8 +132,8 @@ pub async fn build_number_templates_list_by_context(
     ctx.number_templates.list(Some(template_type)).await
 }
 
-/// `context` здесь только ради гейта прав — не участвует в вычислении
-/// следующего номера.
+/// `context` задаёт гейт прав и проверяется на соответствие типу шаблона
+/// (BE-WR-01); в вычислении следующего номера не участвует.
 pub async fn build_number_templates_peek_next(
     ctx: &AppCtx,
     caller: &Identity,
@@ -142,7 +142,9 @@ pub async fn build_number_templates_peek_next(
 ) -> Result<NextNumberDto, AppError> {
     let core_context: TemplateContext = context.into();
     authorize(caller, &action_for_context(core_context))?;
-    ctx.number_templates.peek_next(template_id).await
+    ctx.number_templates
+        .peek_next_for_context(template_id, context)
+        .await
 }
 
 /// При открытии попапа: какой шаблон запомнен для `context`.

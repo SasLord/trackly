@@ -382,7 +382,10 @@ impl ActService {
 
         if let Some(template_id) = payload.number_input.template_id {
             if !payload.number_input.confirm_mismatch {
-                let template_dto = self.number_templates.get(template_id).await?;
+                let template_dto = self
+                    .number_templates
+                    .get_for_context(template_id, TemplateContextDto::ActCreate)
+                    .await?;
                 // `preview_mask`/`peek_next`'s "synthetic transient row"
                 // precedent (`number_template_service.rs`) — `check_mismatch`
                 // only reads `.mask`, no need to fetch the full domain row.

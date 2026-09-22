@@ -44,6 +44,7 @@ use trackly_core::text::mask::{self, ParsedMask};
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::audit_log_sqlite::AuditEntry;
+use trackly_infra::repos::number_templates_sqlite::ensure_template_fits_context;
 use trackly_infra::repos::{SqliteAuditLogRepository, SqliteNumberTemplateRepository};
 
 use crate::dto::number_template::{
@@ -331,6 +332,40 @@ impl NumberTemplateService {
     // -----------------------------------------------------------------------
     // Preview
     // -----------------------------------------------------------------------
+
+    /// BE-WR-01: fetch a template for use in `context`, rejecting a template
+    /// of another type (`Validation`) — a client must not be able to number
+    /// a drum with a cartridge template, or remember a device template as
+    /// the default of «Новый акт».
+    pub async fn get_for_context(
+        &self,
+        template_id: i64,
+        context: TemplateContextDto,
+    ) -> Result<NumberTemplateDto, AppError> {
+        let dto = self.get(template_id).await?;
+        let core_context: TemplateContext = context.into();
+        let row = NumberTemplateRow {
+            id: dto.id,
+            template_type: dto.template_type.into(),
+            mask: dto.mask.clone(),
+            created_at_utc: 0,
+            updated_at_utc: 0,
+            version: dto.version,
+        };
+        ensure_template_fits_context(&row, &core_context)?;
+        Ok(dto)
+    }
+
+    /// `peek_next` for a usage context (BE-WR-01): the template must belong
+    /// to the context's type.
+    pub async fn peek_next_for_context(
+        &self,
+        template_id: i64,
+        context: TemplateContextDto,
+    ) -> Result<NextNumberDto, AppError> {
+        self.get_for_context(template_id, context).await?;
+        self.peek_next(template_id).await
+    }
 
     /// Next number for an ALREADY SAVED template (drives the "Вставка" menu
     /// and the template list's preview column).

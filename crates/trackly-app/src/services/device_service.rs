@@ -363,6 +363,17 @@ impl DeviceService {
         number_input: NumberFieldInput,
         context: TemplateContextDto,
     ) -> Result<DeviceSaveOutcome, AppError> {
+        // BE-WR-01: this path is gated on `MutateDevices`; it may only touch
+        // the device/printer context memory, never «Новый акт»/картриджи.
+        if !matches!(
+            context,
+            TemplateContextDto::DeviceCreate | TemplateContextDto::PrinterCreate
+        ) {
+            return Err(AppError::Validation {
+                field: "context".into(),
+                message: "Недопустимый контекст для создания устройства.".into(),
+            });
+        }
         Self::validate_new(&new)?;
 
         let trimmed = number_input.value.trim().to_string();
@@ -380,7 +391,10 @@ impl DeviceService {
 
             if let Some(template_id) = number_input.template_id {
                 if !number_input.confirm_mismatch {
-                    let template_dto = self.number_templates.get(template_id).await?;
+                    let template_dto = self
+                        .number_templates
+                        .get_for_context(template_id, context)
+                        .await?;
                     let today_utc = self.clock.unix_seconds();
                     let synthetic_row = NumberTemplateRow {
                         id: template_dto.id,

@@ -388,3 +388,44 @@ async fn detect_warnings_doppelganger_without_script_mix() {
         .expect("detect_warnings");
     assert_eq!(exact, None);
 }
+
+/// BE-WR-01: a template of another type is rejected by the context memory
+/// and by the usage-context peek; the context keeps its previous value.
+#[tokio::test]
+async fn context_memory_and_peek_reject_template_of_another_type() {
+    let (svc, _dir) = make_service();
+    let device_tpl = svc
+        .create(TemplateTypeDto::DeviceInventory, "ИНВ-[XXXXXX]".to_string())
+        .await
+        .expect("create device template");
+
+    let before = svc
+        .get_context(TemplateContextDto::ActCreate)
+        .await
+        .expect("get act context");
+    let err = svc
+        .remember_context(TemplateContextDto::ActCreate, Some(device_tpl.id))
+        .await;
+    assert!(
+        matches!(&err, Err(trackly_core::error::AppError::Validation { field, .. }) if field == "template_id"),
+        "got {err:?}"
+    );
+    assert_eq!(
+        svc.get_context(TemplateContextDto::ActCreate)
+            .await
+            .expect("get act context"),
+        before,
+        "a rejected write must not change the remembered template"
+    );
+
+    let peek = svc
+        .peek_next_for_context(device_tpl.id, TemplateContextDto::DrumCreate)
+        .await;
+    assert!(
+        matches!(peek, Err(trackly_core::error::AppError::Validation { .. })),
+        "got {peek:?}"
+    );
+    svc.peek_next_for_context(device_tpl.id, TemplateContextDto::PrinterCreate)
+        .await
+        .expect("same-type context is fine");
+}
