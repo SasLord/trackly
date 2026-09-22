@@ -511,7 +511,14 @@ impl CartridgeService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
             })
-            .await
+            .await?;
+        // BE-CR-04 (D-14): the deleted cartridge's code is free again.
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["cartridge_create".to_string(), "drum_create".to_string()],
+            });
+        }
+        Ok(())
     }
 
     // -----------------------------------------------------------------------

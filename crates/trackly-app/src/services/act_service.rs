@@ -1792,6 +1792,10 @@ impl ActService {
             })
             .await?;
 
+        // BE-CR-04 (D-14): a new return changes the family's displayed
+        // numbers (`42в` -> `42в1`/`42в2`) — the act number space shifted.
+        self.broadcast_act_number_space_changed();
+
         let dto = self.get(return_act_id).await?;
         Ok(ActDto {
             changed_place_ids: dedupe_place_ids(touched_place_ids),
@@ -2850,7 +2854,8 @@ impl ActService {
         let place_movements_repo = self.place_movements_repo.clone();
         let user_id_opt: Option<i64> = None;
 
-        self.writer
+        let touched = self
+            .writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
                 let mut touched_place_ids: Vec<Option<i64>> = Vec::new();
@@ -2981,7 +2986,11 @@ impl ActService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(dedupe_place_ids(touched_place_ids))
             })
-            .await
+            .await?;
+        // BE-CR-04 (D-14): deleting an act frees its number; deleting a
+        // return changes its siblings' displayed numbers.
+        self.broadcast_act_number_space_changed();
+        Ok(touched)
     }
 
     // -----------------------------------------------------------------------
@@ -3354,6 +3363,15 @@ impl ActService {
     /// "PDF pipeline подключён",
     /// поэтому проверка `(Some, Some, Some)` сохранена без изменений; сами
     /// значения в `PdfPipelineRefs` больше не прокидываются (были dead code).
+    /// D-14 best-effort broadcast for the act number space (BE-CR-04).
+    fn broadcast_act_number_space_changed(&self) {
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged {
+                contexts: vec!["act_create".to_string()],
+            });
+        }
+    }
+
     fn pdf_pipeline(&self) -> Result<PdfPipelineRefs<'_>, AppError> {
         match (&self.templates, &self.organization, &self.pdf) {
             (Some(_), Some(o), Some(_)) => Ok(PdfPipelineRefs {

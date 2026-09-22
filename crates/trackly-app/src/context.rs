@@ -334,11 +334,11 @@ impl AppCtx {
         // Phase 40.2 Plan 05: numbering-template service (built in Plan 04,
         // wired into the composition root here). No cross-entity dependencies,
         // same ordering-independence as PlaceService/PlaceMovementService.
-        let number_templates = Arc::new(NumberTemplateService::new(
-            writer.clone(),
-            readers.clone(),
-            clock.clone(),
-        ));
+        // BE-CR-04: template CRUD / context memory broadcast D-14 too.
+        let number_templates = Arc::new(
+            NumberTemplateService::new(writer.clone(), readers.clone(), clock.clone())
+                .with_ws_tx(ws_broadcast.clone()),
+        );
 
         // Runtime AD mock switch (D-Mock-01, Phase 9 Plan 02):
         // config.ad.use_mock || TRACKLY_AD_MOCK env var → MockAdClient;

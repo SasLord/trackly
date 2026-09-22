@@ -51,6 +51,7 @@ use crate::dto::number_template::{
     NextNumberDto, NumberTemplateDto, NumberWarningDto, NumberWarningKind, OccupyingRecordDto,
     TemplateContextDto, TemplateTypeDto,
 };
+use crate::dto::printer::WsEvent;
 
 /// Application service for numbering templates. `Arc`-fields keep `Clone` O(1).
 #[derive(Clone)]
@@ -60,6 +61,9 @@ pub struct NumberTemplateService {
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
     pub(crate) repo: Arc<SqliteNumberTemplateRepository>,
     pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
+    /// D-14 invalidation broadcast (BE-CR-04) — `None` in test fixtures;
+    /// `AppCtx::build` wires the shared sender via `with_ws_tx`.
+    pub(crate) ws_tx: Option<Arc<tokio::sync::broadcast::Sender<WsEvent>>>,
 }
 
 impl NumberTemplateService {
@@ -74,7 +78,37 @@ impl NumberTemplateService {
             clock,
             repo: Arc::new(SqliteNumberTemplateRepository),
             audit_repo: Arc::new(SqliteAuditLogRepository),
+            ws_tx: None,
         }
+    }
+
+    /// Builder: wire the shared WS broadcast sender (D-14, BE-CR-04).
+    pub fn with_ws_tx(mut self, ws_tx: Arc<tokio::sync::broadcast::Sender<WsEvent>>) -> Self {
+        self.ws_tx = Some(ws_tx);
+        self
+    }
+
+    /// Best-effort `NumberSpaceChanged` for the given contexts.
+    fn broadcast(&self, contexts: Vec<String>) {
+        if let Some(ws_tx) = &self.ws_tx {
+            let _ = ws_tx.send(WsEvent::NumberSpaceChanged { contexts });
+        }
+    }
+
+    /// The «Вставка» contexts that list templates of `t` (BE-CR-04: template
+    /// CRUD changes their menus/previews).
+    fn contexts_for_type(t: &TemplateType) -> Vec<String> {
+        [
+            TemplateContext::DeviceCreate,
+            TemplateContext::PrinterCreate,
+            TemplateContext::ActCreate,
+            TemplateContext::CartridgeCreate,
+            TemplateContext::DrumCreate,
+        ]
+        .into_iter()
+        .filter(|c| &c.template_type() == t)
+        .map(|c| c.as_str().to_string())
+        .collect()
     }
 
     // -----------------------------------------------------------------------
@@ -149,6 +183,7 @@ impl NumberTemplateService {
         let repo = self.repo.clone();
         let audit_repo = self.audit_repo.clone();
         let core_type: TemplateType = template_type.into();
+        let core_type_for_ws = core_type.clone();
 
         let id = self
             .writer
@@ -197,6 +232,7 @@ impl NumberTemplateService {
             })
             .await?;
 
+        self.broadcast(Self::contexts_for_type(&core_type_for_ws));
         self.get(id).await
     }
 
@@ -281,9 +317,10 @@ impl NumberTemplateService {
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(template_type)
             })
-            .await?;
+            .await
+            .map(|t| self.broadcast(Self::contexts_for_type(&t)))?;
 
         self.get(id).await
     }
@@ -326,9 +363,10 @@ impl NumberTemplateService {
                     },
                 )?;
                 tx.commit().map_err(map_rusqlite)?;
-                Ok(())
+                Ok(before.template_type)
             })
             .await
+            .map(|t| self.broadcast(Self::contexts_for_type(&t)))
     }
 
     pub async fn list(
@@ -481,6 +519,7 @@ impl NumberTemplateService {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
         let core_context: TemplateContext = context.into();
+        let ws_context = core_context.clone();
         self.writer
             .execute(move |conn| {
                 let tx = conn.transaction().map_err(map_rusqlite)?;
@@ -488,7 +527,9 @@ impl NumberTemplateService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
             })
-            .await
+            .await?;
+        self.broadcast(vec![ws_context.as_str().to_string()]);
+        Ok(())
     }
 
     pub async fn get_context(&self, context: TemplateContextDto) -> Result<Option<i64>, AppError> {

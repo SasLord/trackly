@@ -741,7 +741,10 @@ impl DeviceService {
                 tx.commit().map_err(map_rusqlite)?;
                 Ok(())
             })
-            .await
+            .await?;
+        // BE-CR-04 (D-14): the deleted device's number is free again.
+        self.broadcast_number_space_changed();
+        Ok(())
     }
 
     /// Возвращает список state-hints (DEV-10).
