@@ -33,21 +33,29 @@ pub fn compute_next(taken: &[u64], digit_width: Option<u32>) -> NextNumberResult
     let mut first_free: u64 = 1;
     for &n in &sorted {
         if n == first_free {
-            first_free += 1;
+            first_free = first_free.saturating_add(1);
         } else if n > first_free {
             break;
         }
     }
 
-    let max_plus_one = sorted.last().copied().unwrap_or(0) + 1;
+    // BE-WR-07: a hand-typed `18446744073709551615` for an unbounded `[X]`
+    // mask parses to `u64::MAX` — `+ 1` must not panic (debug) or wrap to
+    // `0` (release). The saturated value is flagged as not fitting below.
+    let max = sorted.last().copied();
+    let max_plus_one = max.map_or(1, |m| m.saturating_add(1));
+    let max_saturated = max == Some(u64::MAX);
     let has_gap = first_free != max_plus_one;
 
     let (overflowed, max_plus_one_fits_width) = match digit_width {
         Some(width) => {
             let upper_bound = 10_u64.saturating_pow(width) - 1;
-            (first_free > upper_bound, max_plus_one <= upper_bound)
+            (
+                first_free > upper_bound,
+                !max_saturated && max_plus_one <= upper_bound,
+            )
         }
-        None => (false, true),
+        None => (false, !max_saturated),
     };
 
     NextNumberResult {
@@ -130,6 +138,20 @@ mod tests {
         assert!(r.max_plus_one_fits_width);
         assert_eq!(r.first_free, 1_001);
         assert_eq!(r.max_plus_one, 1_001);
+    }
+
+    #[test]
+    fn u64_max_manual_number_does_not_overflow_unbounded_mask() {
+        // BE-WR-07: previously panicked in debug / wrapped to 0 in release.
+        let r = compute_next(&[1, 2, u64::MAX], None);
+        assert_eq!(r.first_free, 3);
+        assert_eq!(r.max_plus_one, u64::MAX);
+        assert!(r.has_gap);
+        assert!(!r.overflowed, "a free number (3) still exists");
+        assert!(
+            !r.max_plus_one_fits_width,
+            "max+1 past u64::MAX must never be offered as an alternative"
+        );
     }
 
     #[test]
