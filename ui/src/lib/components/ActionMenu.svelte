@@ -14,7 +14,7 @@
     /** Заменяет «три точки» произвольной иконкой (например
      *  IconInsertTemplate) — используется вместе с 'ghost-md'. */
     icon?: Snippet;
-    /** Inline min-width панели поверх дефолтных 280px (`.action-menu-panel`). */
+    /** Inline min-width панели поверх дефолтных 180px (`.action-menu-panel`). */
     panelMinWidth?: string;
     /** Рендерит панель в `<body>` через `use:portal` и переключает её на
      *  `position: fixed`, чтобы `overflow-y: auto` тела `Modal` её не
@@ -68,9 +68,15 @@
     untrack(() => onOpenChange?.(isOpen));
   });
 
-  // Move focus to the first menu item whenever the panel opens.
+  // Move focus into the menu whenever the panel opens — onto the active item
+  // if the consumer marked one with `data-menu-selected="true"` (UI-SPEC §3:
+  // «Фокус при открытии — на активном пункте, если он есть, иначе на
+  // первом», FE-IN-02), otherwise onto the first item.
   $effect(() => {
-    if (open && panelEl) menuItems()[0]?.focus();
+    if (open && panelEl) {
+      const items = menuItems();
+      (items.find((el) => el.dataset.menuSelected === 'true') ?? items[0])?.focus();
+    }
   });
 
   $effect(() => {

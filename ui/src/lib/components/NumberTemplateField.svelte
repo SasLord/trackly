@@ -711,6 +711,7 @@
             class="ntf-menu-item"
             class:overflowed={t.overflowed}
             aria-disabled={t.overflowed || undefined}
+            data-menu-selected={t.id === selectedTemplateId || undefined}
             aria-label={`${t.mask}, следующий номер ${t.overflowed ? 'переполнен' : t.nextFirstFree}${
               t.id === selectedTemplateId ? ', выбран' : ''
             }`}
@@ -738,6 +739,7 @@
         role="menuitem"
         class="ntf-menu-item"
         aria-label={selectedTemplateId === null ? 'Без шаблона, выбран' : 'Без шаблона'}
+        data-menu-selected={selectedTemplateId === null || undefined}
         onclick={selectNoTemplate}
       >
         <span class="ntf-check" aria-hidden="true">{selectedTemplateId === null ? '✓' : ''}</span>
