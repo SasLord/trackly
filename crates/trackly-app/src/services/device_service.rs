@@ -1061,10 +1061,10 @@ impl DeviceService {
         // the DB one row at a time, so by the time a same-file duplicate's
         // SECOND row is processed, the first row is already committed and
         // the DB check alone would report "занят в БД" instead of the more
-        // useful "повтор строки N". Populated BEFORE `self.create(...)` is
-        // ever called for a row (independent of whether that row's `create`
-        // call itself succeeds) so a later duplicate always points at the
-        // correct earliest row.
+        // useful "повтор строки N". BE-IN-03: populated only AFTER the row's
+        // `create` succeeded — a row that failed for another reason (bad
+        // place, validation) never imported its number, so a later row with
+        // the same number must not be reported as its "повтор".
         let mut seen_numbers: HashMap<String, u64> = HashMap::new();
 
         // Process each row individually (per-row error accumulation, D-CSV-01).
@@ -1088,6 +1088,7 @@ impl DeviceService {
             // NUM-16: in-file duplicate check — SEPARATE from, and checked
             // BEFORE, the DB-level occupied check `self.create(...)` will
             // run later for this same row.
+            let mut pending_number_key: Option<String> = None;
             if let Some(raw_number) = new_device.inventory_no.as_deref() {
                 let trimmed_number = raw_number.trim().to_string();
                 if !trimmed_number.is_empty() {
@@ -1102,7 +1103,7 @@ impl DeviceService {
                         });
                         continue;
                     }
-                    seen_numbers.insert(key, row_index);
+                    pending_number_key = Some(key);
                 }
             }
 
@@ -1148,6 +1149,9 @@ impl DeviceService {
             match self.create(new_device).await {
                 Ok(DeviceSaveOutcome::Created(_)) => {
                     report.inserted += 1;
+                    if let Some(key) = pending_number_key {
+                        seen_numbers.insert(key, row_index);
+                    }
                 }
                 Ok(DeviceSaveOutcome::NeedsConfirmation(warning)) => {
                     // `create()` never triggers this today (it never calls
