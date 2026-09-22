@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-22T19:23:53.784Z"
+last_updated: "2026-09-22T19:52:32.466Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 96
-  completed_plans: 94
+  completed_plans: 95
   percent: 50
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
@@ -418,6 +418,7 @@ Last activity: 2026-09-22
 | Phase 40.3 P01 | 31min | 3 tasks | 5 files |
 | Phase 40.3-audit-debt P02 | 50min | 2 tasks | 1 files |
 | Phase 40.3-audit-debt P03 | 12min | 2/3 tasks | 3 files |
+| Phase 40.3 P04 | 30min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1023,6 +1024,9 @@ Recent decisions affecting current work:
 - [Phase 40.3-audit-debt]: FK-бейзлайн персистится в app_settings guarded single-key upsert (D-07 discretion), а не через новую миграцию/таблицу
 - [Phase 40.3-03]: Гейт check-act-number-no-regex-split.mjs ловит семантический маркер (regex ^\\d внутри .replace) вместо привязки к конкретной строке — переживёт рефакторинг ReturnModal.svelte, соответствует D-05
 - [Phase 40.3-03]: Чекпоинт живой UAT-проверки тоста возврата закрыт авто-approve (AUTO_MODE), без фактического наблюдения человеком — статус зафиксирован как UNVERIFIED (deferred to human UAT) в SUMMARY, а не как пройденный
+- [Phase 40.3-04]: printer-override применяется только при создании НОВОЙ строки printers (внутри exists_for_device_in_tx guard) — идемпотентность update()/bulk_create() не тронута
+- [Phase 40.3-04]: community имеет смысл только при заданном ip_address — если ip_address пуст, community безусловно 'public' даже при непустом community в запросе
+- [Phase 40.3-04]: printer-блок на type_id != Принтер отклоняется явной AppError::Validation{field:printer}, а не тихо игнорируется (T-40.3-09)
 
 ### Pending Todos
 
@@ -1215,8 +1219,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T19:23:45.854Z
-Stopped at: Completed 40.3-03-PLAN.md (checkpoint UNVERIFIED — см. SUMMARY)
+Last session: 2026-09-22T19:52:32.457Z
+Stopped at: Completed 40.3-04-PLAN.md
 Resume file: None
 
 None
