@@ -114,11 +114,23 @@
     return s.trim().toLowerCase();
   }
 
-  /** Значение НЕ правили вручную — совпадает с пустым или с одним из двух
-   *  последних серверных предложений (чистое string-equality, NUM-07). */
+  /** FE-CR-04: пользователь сам стёр значение (последний ввод дал пустую
+   *  строку). Стёртое поле — это ПРАВКА (D-14): ни WS-инвалидация, ни смена
+   *  контекста в режиме D-14 не заполняют его заново. Любая программная
+   *  подстановка/очистка сбрасывает флаг. */
+  let clearedByUser = false;
+
+  function setValueProgrammatically(next: string) {
+    clearedByUser = false;
+    value = next;
+  }
+
+  /** Значение НЕ правили вручную — пустое (и не стёртое пользователем) или
+   *  совпадает с одним из двух последних серверных предложений (чистое
+   *  string-equality, NUM-07). */
   function isValueUnedited(): boolean {
     const norm = normalize(value);
-    if (norm === '') return true;
+    if (norm === '') return !clearedByUser;
     if (lastSuggested !== null && norm === normalize(lastSuggested)) return true;
     if (altSuggested !== null && norm === normalize(altSuggested)) return true;
     return false;
@@ -145,7 +157,7 @@
     const shouldReplace = !opts.preserveManualEdits || isValueUnedited();
     lastSuggested = dto.rendered;
     altSuggested = dto.altRendered;
-    if (shouldReplace) value = dto.rendered;
+    if (shouldReplace) setValueProgrammatically(dto.rendered);
   }
 
   function clearSelection(opts: { preserveManualEdits: boolean }) {
@@ -155,7 +167,7 @@
     onSelectedTemplateChange?.(null, null);
     lastSuggested = null;
     altSuggested = null;
-    if (shouldClear) value = '';
+    if (shouldClear) setValueProgrammatically('');
   }
 
   /** Читает запомненный контексту шаблон и подставляет его первое
@@ -197,6 +209,10 @@
    *  число. Полностью тихо: без toast, без анимации. */
   async function refreshCurrentSuggestion() {
     if (selectedTemplateId === null) return;
+    // FE-CR-04: заблокированное поле (например, «Количество» > 1 в «Новом
+    // устройстве») никогда не меняется тихо — иначе номер появился бы в
+    // поле, которое пользователь не может даже отредактировать.
+    if (disabled) return;
     try {
       const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
         templateId: selectedTemplateId,
@@ -342,9 +358,9 @@
   function toggleSuggested() {
     if (!arrowVisible) return;
     if (showingAlt) {
-      if (lastSuggested !== null) value = lastSuggested;
+      if (lastSuggested !== null) setValueProgrammatically(lastSuggested);
     } else {
-      if (altSuggested !== null) value = altSuggested;
+      if (altSuggested !== null) setValueProgrammatically(altSuggested);
     }
   }
 
@@ -448,6 +464,7 @@
         {invalid}
         aria-describedby={statusLine ? describedById : undefined}
         oninput={(v) => {
+          clearedByUser = v.trim() === '';
           value = v;
         }}
       />
