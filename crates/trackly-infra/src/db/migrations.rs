@@ -74,6 +74,100 @@ fn fk_violations(conn: &Connection) -> Result<std::collections::BTreeSet<FkViola
     Ok(out)
 }
 
+/// `app_settings` key under which the persistent FK-violation baseline is
+/// stored (guarded single-key pattern, same shape as
+/// `place_path_settings.rs` / `low_stock_threshold` in
+/// `tauri_cmds/settings_org.rs` — an internal setting key, not a new
+/// table/migration; D-07 discretion).
+const FK_BASELINE_SETTING_KEY: &str = "migration_fk_baseline";
+
+/// Serializes an `FkViolation` baseline into the `app_settings.value` TEXT
+/// column: one violation per line, fields separated by `\t` (table/parent
+/// names and rowids never contain tabs), `rowid = None` encoded as an empty
+/// field. Symmetric with [`parse_fk_baseline`].
+fn format_fk_baseline(violations: &std::collections::BTreeSet<FkViolation>) -> String {
+    violations
+        .iter()
+        .map(|(table, rowid, parent, fkid)| {
+            format!(
+                "{table}\t{}\t{parent}\t{fkid}",
+                rowid.map(|v| v.to_string()).unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Parses the serialized form produced by [`format_fk_baseline`]. Any
+/// malformed line is dropped rather than panicking — a corrupted persisted
+/// baseline degrades to "fewer known-old violations" (stricter, not a
+/// crash), never blocks startup on its own.
+fn parse_fk_baseline(raw: &str) -> std::collections::BTreeSet<FkViolation> {
+    raw.lines()
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let mut parts = line.split('\t');
+            let table = parts.next()?.to_string();
+            let rowid = match parts.next()? {
+                "" => None,
+                s => s.parse::<i64>().ok(),
+            };
+            let parent = parts.next()?.to_string();
+            let fkid = parts.next()?.parse::<i64>().ok()?;
+            Some((table, rowid, parent, fkid))
+        })
+        .collect()
+}
+
+/// Guarded-read of the persisted FK-violation baseline from `app_settings`
+/// (pattern: `place_path_settings.rs::read_setting`). Returns `None` on ANY
+/// read failure — missing row, missing `app_settings` table entirely (the
+/// very first run, before migrations have created it), or any other error —
+/// never a panic. `None` means "no persisted baseline yet", handled by the
+/// caller as "fall back to a fresh `fk_violations()` snapshot".
+fn read_persisted_fk_baseline(
+    conn: &Connection,
+) -> Option<std::collections::BTreeSet<FkViolation>> {
+    let raw: String = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            [FK_BASELINE_SETTING_KEY],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()?;
+    Some(parse_fk_baseline(&raw))
+}
+
+/// Upsert the FK-violation baseline into `app_settings`
+/// (`ON CONFLICT` pattern from `tauri_cmds/settings_org.rs` /
+/// `services/backup_service.rs`). Called only when the current run found NO
+/// new violations relative to the previous baseline — this is the self-heal
+/// step: once integrity is clean again, the baseline is pulled back down.
+fn persist_fk_baseline(
+    conn: &Connection,
+    violations: &std::collections::BTreeSet<FkViolation>,
+) -> Result<(), AppError> {
+    let value = format_fk_baseline(violations);
+    // `migrations.rs` operates on a raw `&Connection`/`&mut Connection`
+    // below the `Clock` boundary (trackly-core doesn't own this module) —
+    // wall-clock seconds via `SystemTime` is fine here, this timestamp only
+    // records "a baseline row exists", it carries no user-facing value.
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    conn.execute(
+        "INSERT INTO app_settings (key, value, created_at_utc, updated_at_utc) \
+         VALUES (?1, ?2, ?3, ?3) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at_utc = excluded.updated_at_utc",
+        rusqlite::params![FK_BASELINE_SETTING_KEY, value, now],
+    )
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("persist fk baseline failed: {e}"),
+    })?;
+    Ok(())
+}
+
 /// Highest migration version already recorded in refinery's history table,
 /// or `None` on a fresh DB (history table not created yet).
 fn last_applied_version(conn: &Connection) -> Result<Option<i64>, AppError> {
@@ -182,14 +276,24 @@ fn run_to(conn: &mut Connection, target: Option<u32>) -> Result<MigrationReport,
         Some(v) => v < goal,
     };
 
-    let report = if pending {
+    // Read the FK-violation baseline UNCONDITIONALLY (not only when
+    // `pending`) — this is the N-4 fix. A persisted baseline from a
+    // previous run wins; if none exists yet (very first ever run, before
+    // `app_settings` may even exist), fall back to a fresh snapshot taken
+    // BEFORE this run's migrations touch anything, i.e. today's
+    // "pre-existing violations don't block startup" behaviour.
+    let baseline = match read_persisted_fk_baseline(conn) {
+        Some(b) => b,
+        None => fk_violations(conn)?,
+    };
+
+    let (report, after) = if pending {
         let fk_was_on: bool = conn
             .pragma_query_value(None, "foreign_keys", |r| r.get::<_, i64>(0))
             .map_err(|e| AppError::Internal {
                 source_chain: format!("read PRAGMA foreign_keys failed: {e}"),
             })?
             == 1;
-        let baseline = fk_violations(conn)?;
         set_foreign_keys(conn, false)?;
 
         let result = build_runner(target)?.run(conn);
@@ -205,31 +309,44 @@ fn run_to(conn: &mut Connection, target: Option<u32>) -> Result<MigrationReport,
         let after = after?;
         restore?;
 
-        let new_violations: Vec<&FkViolation> = after.difference(&baseline).collect();
-        if !new_violations.is_empty() {
-            let sample: Vec<String> = new_violations
-                .iter()
-                .take(10)
-                .map(|(table, rowid, parent, _)| {
-                    format!("{table}(rowid={}) -> {parent}", rowid.unwrap_or(-1))
-                })
-                .collect();
-            return Err(AppError::Internal {
-                source_chain: format!(
-                    "migrations left {} new foreign key violation(s): {}",
-                    new_violations.len(),
-                    sample.join(", ")
-                ),
-            });
-        }
-        report
+        (report, after)
     } else {
-        build_runner(target)?
+        // No pending migrations this run — but still check integrity
+        // UNCONDITIONALLY against the persisted baseline (N-4 fix): a
+        // violation introduced by a PRIOR run's migrations must keep
+        // blocking every subsequent start, not just the run that created
+        // it.
+        let report = build_runner(target)?
             .run(conn)
             .map_err(|e| AppError::Internal {
                 source_chain: format!("refinery migration failed: {e}"),
-            })?
+            })?;
+        let after = fk_violations(conn)?;
+        (report, after)
     };
+
+    let new_violations: Vec<&FkViolation> = after.difference(&baseline).collect();
+    if !new_violations.is_empty() {
+        let sample: Vec<String> = new_violations
+            .iter()
+            .take(10)
+            .map(|(table, rowid, parent, _)| {
+                format!("{table}(rowid={}) -> {parent}", rowid.unwrap_or(-1))
+            })
+            .collect();
+        return Err(AppError::Internal {
+            source_chain: format!(
+                "migrations left {} new foreign key violation(s): {}",
+                new_violations.len(),
+                sample.join(", ")
+            ),
+        });
+    }
+    // Self-heal: no new violations relative to the previous baseline, so
+    // persist `after` as the new baseline. If an admin manually cleaned up
+    // legacy data, the next clean start pulls the baseline back down
+    // instead of leaving it stuck on a stale "dirty" snapshot forever.
+    persist_fk_baseline(conn, &after)?;
 
     let schema_version: u32 = conn
         .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
