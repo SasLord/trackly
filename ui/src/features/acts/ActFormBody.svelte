@@ -225,8 +225,15 @@
     items.filter((it) => it.device_id !== null && it.quantity >= 1).length,
   );
 
+  // FE-WR-01: «№» is required (the server rejects an empty act number with
+  // VALIDATION) — without a remembered template, or when it overflowed / the
+  // lookup failed, the field stays empty and the user has to type it.
   const canSubmit = $derived(
-    giverName.trim() !== '' && receiverName.trim() !== '' && validItemCount >= 1 && !submitting,
+    numberValue.trim() !== '' &&
+      giverName.trim() !== '' &&
+      receiverName.trim() !== '' &&
+      validItemCount >= 1 &&
+      !submitting,
   );
 
   $effect(() => {
@@ -579,10 +586,10 @@
           message?: string;
           details?: { field?: string; reason?: string };
         };
-        if (err.code === 'Validation' && err.details?.field) {
+        if (err.code === 'VALIDATION' && err.details?.field) {
           fieldErrors = { ...fieldErrors, [err.details.field]: err.message ?? 'Ошибка' };
           pushToast('error', err.message ?? 'Проверьте поля формы');
-        } else if (err.code === 'OptimisticLockMismatch') {
+        } else if (err.code === 'OPTIMISTIC_LOCK_MISMATCH') {
           pushToast(
             'error',
             'Акт был изменён другим пользователем — обновите страницу и попробуйте снова.',

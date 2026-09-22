@@ -670,10 +670,10 @@
     } catch (e: unknown) {
       if (e && typeof e === 'object') {
         const err = e as { code?: string; message?: string; details?: { field?: string } };
-        if (err.code === 'Validation' && err.details?.field) {
+        if (err.code === 'VALIDATION' && err.details?.field) {
           fieldErrors = { ...fieldErrors, [err.details.field]: err.message ?? 'Ошибка' };
           pushToast('error', err.message ?? 'Ошибка валидации');
-        } else if (err.code === 'OptimisticLockMismatch') {
+        } else if (err.code === 'OPTIMISTIC_LOCK_MISMATCH') {
           pushToast(
             'error',
             'Данные были изменены другим пользователем. Обновите страницу и попробуйте снова.',
