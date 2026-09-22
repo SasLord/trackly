@@ -119,11 +119,19 @@ export async function connectWs(): Promise<() => void> {
     // First consumer: establish the real connection.
     if (isTauri) {
       // Tauri path: native events, no WebSocket needed.
-      const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen<WsEvent>('trackly-event', (e) => {
-        dispatch(e.payload);
-      });
-      activeCleanup = unlisten;
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const unlisten = await listen<WsEvent>('trackly-event', (e) => {
+          dispatch(e.payload);
+        });
+        activeCleanup = unlisten;
+      } catch (e) {
+        // FE-WR-09: a rejected connect hands the caller no release function,
+        // so the count taken above must be given back here — otherwise it
+        // stays > 0 forever and a later first consumer never reconnects.
+        refCount = Math.max(0, refCount - 1);
+        throw e;
+      }
     } else {
       // Browser path.
       connectBrowser();

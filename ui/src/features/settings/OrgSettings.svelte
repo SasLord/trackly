@@ -415,10 +415,13 @@
     loadPathDefaults();
     loadTemplates();
 
+    // FE-WR-09: release, пришедший после размонтирования, вызывается сразу.
+    let disposed = false;
     let wsRelease: (() => void) | null = null;
     connectWs()
       .then((release) => {
-        wsRelease = release;
+        if (disposed) release();
+        else wsRelease = release;
       })
       .catch(() => {
         // WS-соединение необязательно — таблица шаблонов всё равно
@@ -427,6 +430,7 @@
     const unsubscribeWs = onWsEvent(handleTemplatesWsEvent);
 
     return () => {
+      disposed = true;
       unsubscribeWs();
       wsRelease?.();
     };

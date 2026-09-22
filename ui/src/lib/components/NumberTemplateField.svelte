@@ -355,10 +355,16 @@
   }
 
   onMount(() => {
+    // FE-WR-09: connectWs() увеличивает refcount сразу, а release приходит
+    // асинхронно — если поле размонтировано раньше (быстро закрыли попап
+    // создания), release вызывается сразу по приходу, иначе соединение
+    // осталось бы открытым навсегда.
+    let disposed = false;
     let wsRelease: (() => void) | null = null;
     connectWs()
       .then((release) => {
-        wsRelease = release;
+        if (disposed) release();
+        else wsRelease = release;
       })
       .catch(() => {
         // WS необязателен — без него просто не будет тихой замены (D-14).
@@ -366,6 +372,7 @@
     const unsubscribeWs = onWsEvent(handleWsEvent);
 
     return () => {
+      disposed = true;
       unsubscribeWs();
       wsRelease?.();
     };
