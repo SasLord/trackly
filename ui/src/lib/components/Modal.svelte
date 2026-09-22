@@ -159,6 +159,10 @@
     // underneath.
     if (!isTop) return;
     if (e.key === 'Escape') {
+      // FE-CR-03: an Escape already consumed by a nested control (ActionMenu
+      // panel, Dropdown, autocomplete — they all `preventDefault()`) closes
+      // only that control, never the whole dialog with its unsaved form.
+      if (e.defaultPrevented) return;
       onClose();
       return;
     }

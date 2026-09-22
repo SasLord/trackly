@@ -75,7 +75,18 @@
       if (open && !insideRoot && !insidePanel) open = false;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') close(true);
+      // FE-WR-11: react only while THIS menu is open — otherwise every
+      // Escape anywhere in the document (a Dropdown, a D-01 popup) would
+      // yank focus onto the trigger of whichever ActionMenu handled it last.
+      // FE-CR-03: an Escape that closes the menu is consumed here — the
+      // enclosing Modal (e.g. «Новое устройство» around the «Вставка» menu)
+      // must not close too. `preventDefault()` is the signal Modal honours
+      // (`defaultPrevented`), `stopPropagation()` keeps it off window-level
+      // listeners regardless of listener order.
+      if (e.key !== 'Escape' || !open) return;
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
     }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -109,7 +120,9 @@
       e.preventDefault();
       its[its.length - 1]?.focus();
     } else if (e.key === 'Escape') {
+      // FE-CR-03: see onKey above — Escape closes only the menu.
       e.preventDefault();
+      e.stopPropagation();
       close(true);
     }
   }
