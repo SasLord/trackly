@@ -101,7 +101,7 @@ body {
 
 // ── Ghost icon button (единственный источник стиля «GHOST 36×36, только
 // иконка», UI-SPEC §10 вариант б) ───────────────────────────────────────────
-// Используется и `Button.svelte` (.btn-ghost.btn-md.btn-icon-only), и
+// Используется и `Button.svelte` (ghost + iconOnly: .btn-md.btn-icon-only БЕЗ .btn-ghost, FE-WR-14), и
 // `ActionMenu.svelte` (.action-menu-trigger--ghost-md) — совпадение
 // гарантировано конструкцией (общий класс), а не проверкой на глаз.
 

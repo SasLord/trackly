@@ -33,14 +33,25 @@
   }: Props = $props();
 
   const isDisabled = $derived(disabled || loading);
+  // FE-WR-14 (UI-SPEC §10 вариант б): ghost-кнопка-иконка берёт геометрию,
+  // цвет и состояния ТОЛЬКО из общего `.tr-btn-ghost-icon` (global.scss), как
+  // `ActionMenu variant="ghost-md"`. Scoped `.btn-ghost.svelte-x` специфичнее
+  // глобального класса и перебивал бы рамку/кольцо фокуса/цвет disabled,
+  // поэтому для этой комбинации `btn-ghost` не ставится.
+  const ghostIcon = $derived(variant === 'ghost' && iconOnly);
 </script>
 
 <button
   {type}
-  class="btn btn-{variant} btn-{size}"
+  class="btn btn-{size}"
+  class:btn-primary={variant === 'primary'}
+  class:btn-secondary={variant === 'secondary'}
+  class:btn-destructive={variant === 'destructive'}
+  class:btn-ghost={variant === 'ghost' && !ghostIcon}
+  class:btn-link={variant === 'link'}
   class:loading
   class:btn-icon-only={iconOnly}
-  class:tr-btn-ghost-icon={variant === 'ghost' && iconOnly}
+  class:tr-btn-ghost-icon={ghostIcon}
   disabled={isDisabled}
   aria-label={ariaLabel}
   {title}
@@ -106,6 +117,12 @@
   }
   .btn-sm.btn-icon-only {
     width: 28px;
+  }
+  // FE-WR-14: у `.btn` своя `border: 1px solid transparent` (scoped, выше по
+  // специфичности, чем глобальный класс) — снимаем, как у ActionMenu ghost-md
+  // (`border: none`), остальное приходит из `.tr-btn-ghost-icon`.
+  .btn.tr-btn-ghost-icon {
+    border: none;
   }
 
   // Variants
