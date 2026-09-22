@@ -149,6 +149,18 @@ pub struct PrinterCreateDto {
     pub usb_host_device_id: Option<i32>,
 }
 
+/// Optional printer block (IP + SNMP community) carried by the interactive
+/// single-device/printer create path (`create_single_with_number_check_with_printer`,
+/// Phase 40.3 Plan 04, NUM-06/NUM-08). `None` preserves today's defaults
+/// (`ip_address = None`, `community = "public"`) written by
+/// `sync_printer_row_in_tx`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterCreateBlockDto {
+    pub ip_address: Option<String>,
+    pub community: Option<String>,
+}
+
 /// A printer found during SNMP discovery scan (D-Discovery-01).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

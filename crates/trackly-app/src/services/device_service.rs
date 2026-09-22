@@ -49,7 +49,7 @@ use crate::dto::device::{
 use crate::dto::number_template::{
     NumberFieldInput, NumberWarningDto, NumberWarningKind, TemplateContextDto,
 };
-use crate::dto::printer::WsEvent;
+use crate::dto::printer::{PrinterCreateBlockDto, WsEvent};
 use crate::services::number_template_service::{ensure_number_free_in_tx, NumberTemplateService};
 
 /// Application service for device management.
@@ -230,16 +230,40 @@ impl DeviceService {
         device_id: i64,
         type_id: i64,
         now_utc: i64,
+        printer_override: Option<&PrinterCreateBlockDto>,
     ) -> Result<(), AppError> {
         match type_id {
             Self::PRINTER_TYPE_ID => {
                 if !printer_repo.exists_for_device_in_tx(tx, device_id)? {
+                    let (ip_address, community_raw) = match printer_override {
+                        Some(block) => {
+                            let ip_address = block
+                                .ip_address
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string);
+                            let community_raw = if ip_address.is_some() {
+                                block
+                                    .community
+                                    .as_deref()
+                                    .map(str::trim)
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or("public")
+                                    .to_string()
+                            } else {
+                                "public".to_string()
+                            };
+                            (ip_address, community_raw)
+                        }
+                        None => (None, "public".to_string()),
+                    };
                     printer_repo.create_in_tx(
                         tx,
                         &PrinterNew {
                             device_id,
-                            ip_address: None,
-                            community_raw: "public".to_string(),
+                            ip_address,
+                            community_raw,
                             snmp_version: "v2c".to_string(),
                             oid_profile_id: None,
                             usb_host_device_id: None,
@@ -273,10 +297,14 @@ impl DeviceService {
     /// number validation of its own.
     /// `remember`: NUM-08 context memory written in the SAME transaction as
     /// the device (BE-WR-02) — `None` for paths without a number field.
+    /// `printer`: optional IP/SNMP community override (Phase 40.3 Plan 04,
+    /// NUM-06/NUM-08) written into the SAME transaction as the device via
+    /// `sync_printer_row_in_tx` — `None` preserves today's defaults.
     async fn insert_new_and_get(
         &self,
         new: DeviceNew,
         remember: Option<(TemplateContext, Option<i64>)>,
+        printer: Option<PrinterCreateBlockDto>,
     ) -> Result<DeviceDto, AppError> {
         let nt_repo = self.number_templates.repo.clone();
         let now = self.clock.unix_seconds();
@@ -296,7 +324,14 @@ impl DeviceService {
                     })?;
                 }
                 let id = repo.create_in_tx(&tx, &domain_new, now)?;
-                Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
+                Self::sync_printer_row_in_tx(
+                    &printer_repo,
+                    &tx,
+                    id,
+                    domain_new.type_id,
+                    now,
+                    printer.as_ref(),
+                )?;
                 let after = repo.get_in_tx(&tx, id)?;
                 let after_dto = DeviceDto::from(after);
                 let after_json =
@@ -351,7 +386,7 @@ impl DeviceService {
         new.inventory_no = trimmed.filter(|s| !s.is_empty());
         let number_set = new.inventory_no.is_some();
 
-        let dto = self.insert_new_and_get(new, None).await?;
+        let dto = self.insert_new_and_get(new, None, None).await?;
         if number_set {
             self.broadcast_number_space_changed();
         }
@@ -373,11 +408,21 @@ impl DeviceService {
     /// happens here, never in `create()`/`bulk_create()` — those two have no
     /// `NumberFieldInput` at all (`DeviceNew` carries no `template_id`), so
     /// there is nothing to remember on those paths.
-    pub async fn create_single_with_number_check(
+    ///
+    /// Phase 40.3 Plan 04 (NUM-06/NUM-08): renamed from
+    /// `create_single_with_number_check` and given a 4th `printer` parameter
+    /// so `PrinterCreateModal.svelte` (40.3-05) can create the `printers`
+    /// row atomically in the SAME writer transaction as the device, instead
+    /// of a second follow-up `printers.create` call. The old 3-arg method
+    /// name is preserved below as a thin backward-compatible wrapper
+    /// (`printer = None`) so existing Rust test call sites
+    /// (`devices_numbering.rs`, `role_endpoint_matrix.rs`) compile unchanged.
+    pub async fn create_single_with_number_check_with_printer(
         &self,
         new: DeviceNew,
         number_input: NumberFieldInput,
         context: TemplateContextDto,
+        printer: Option<PrinterCreateBlockDto>,
     ) -> Result<DeviceSaveOutcome, AppError> {
         // BE-WR-01: this path is gated on `MutateDevices`; it may only touch
         // the device/printer context memory, never «Новый акт»/картриджи.
@@ -391,6 +436,16 @@ impl DeviceService {
             });
         }
         Self::validate_new(&new)?;
+
+        // T-40.3-09: reject (not silently ignore) an IP/SNMP printer block
+        // attached to a non-printer create — prevents a desynced client
+        // from creating a `printers` row for a plain device.
+        if printer.is_some() && new.type_id != Self::PRINTER_TYPE_ID {
+            return Err(AppError::Validation {
+                field: "printer".to_string(),
+                message: "IP/SNMP можно указать только при создании принтера.".to_string(),
+            });
+        }
 
         let trimmed = number_input.value.trim().to_string();
         let trimmed_opt = if trimmed.is_empty() {
@@ -461,11 +516,27 @@ impl DeviceService {
             None
         };
         let dto = self
-            .insert_new_and_get(new, Some((context.into(), to_remember)))
+            .insert_new_and_get(new, Some((context.into(), to_remember)), printer)
             .await?;
         self.broadcast_number_space_changed();
 
         Ok(DeviceSaveOutcome::Created(Box::new(dto)))
+    }
+
+    /// Thin backward-compatible wrapper over
+    /// `create_single_with_number_check_with_printer` (Phase 40.3 Plan 04)
+    /// — keeps the public 3-argument signature existing Rust tests call
+    /// (`devices_numbering.rs`, `role_endpoint_matrix.rs`) unchanged.
+    /// `printer = None` — no IP/SNMP block, identical to pre-Plan-04
+    /// behavior.
+    pub async fn create_single_with_number_check(
+        &self,
+        new: DeviceNew,
+        number_input: NumberFieldInput,
+        context: TemplateContextDto,
+    ) -> Result<DeviceSaveOutcome, AppError> {
+        self.create_single_with_number_check_with_printer(new, number_input, context, None)
+            .await
     }
 
     /// Получить устройство по ID.
@@ -622,7 +693,7 @@ impl DeviceService {
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
-                Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now)?;
+                Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
                 let after_json =
                     serde_json::to_string(&DeviceDto::from(after.clone())).map_err(|e| {
                         AppError::Internal {
@@ -1522,7 +1593,7 @@ impl DeviceService {
                 let mut created_ids = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     let id = repo.create_in_tx(&tx, &domain_new, now)?;
-                    Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now)?;
+                    Self::sync_printer_row_in_tx(&printer_repo, &tx, id, domain_new.type_id, now, None)?;
 
                     // audit_log row for each inserted device.
                     let after = repo.get_in_tx(&tx, id)?;
