@@ -42,11 +42,35 @@ pub struct DevicePatch {
     /// UNIQUE INDEX (V044) две записи, обе очищенные до `''` (а не NULL),
     /// стали бы ложно конфликтовать друг с другом.
     pub inventory_no: Option<Option<String>>,
-    pub serial_no: Option<String>,
-    pub model: Option<String>,
-    pub specs: Option<String>,
-    pub kit: Option<String>,
-    pub state: Option<String>,
+    /// Двойной `Option`: `None` — поле не передано, серийный номер не
+    /// меняется; `Some(None)` — передано явно с намерением очистить
+    /// (serial_number -> NULL); `Some(Some(v))` — передано с новым
+    /// значением. Тот же паттерн, что `inventory_no`/`place_id` в этом же
+    /// struct — плоский `Option<String>` делал "не передано" и "передано
+    /// явно как NULL" неразличимыми на уровне SQL COALESCE (WR-03,
+    /// Milestone v1.4 audit): очистка серийного номера через форму правки
+    /// устройства молча не срабатывала.
+    pub serial_no: Option<Option<String>>,
+    /// Двойной `Option`: `None` — поле не передано, модель не меняется;
+    /// `Some(None)` — передано явно с намерением очистить (model -> NULL);
+    /// `Some(Some(v))` — передано с новым значением. См. `serial_no` выше
+    /// (WR-03).
+    pub model: Option<Option<String>>,
+    /// Двойной `Option`: `None` — поле не передано, характеристики
+    /// (SQL `notes`) не меняются; `Some(None)` — передано явно с намерением
+    /// очистить; `Some(Some(v))` — передано с новым значением. См.
+    /// `serial_no` выше (WR-03).
+    pub specs: Option<Option<String>>,
+    /// Двойной `Option`: `None` — поле не передано, комплектация
+    /// (SQL `complectation`) не меняется; `Some(None)` — передано явно с
+    /// намерением очистить; `Some(Some(v))` — передано с новым значением.
+    /// См. `serial_no` выше (WR-03).
+    pub kit: Option<Option<String>>,
+    /// Двойной `Option`: `None` — поле не передано, состояние
+    /// (SQL `condition`) не меняется; `Some(None)` — передано явно с
+    /// намерением очистить; `Some(Some(v))` — передано с новым значением.
+    /// См. `serial_no` выше (WR-03).
+    pub state: Option<Option<String>>,
     /// Двойной `Option`: `None` — поле не передано, значение места не
     /// меняется; `Some(None)` — поле передано явно с намерением очистить
     /// место (place_id -> NULL); `Some(Some(id))` — поле передано с новым

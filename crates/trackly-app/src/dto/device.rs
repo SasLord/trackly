@@ -199,10 +199,15 @@ pub struct DevicePatch {
     pub type_id: Option<i64>,
     pub name: Option<String>,
     pub number_input: Option<DeviceNumberEditInput>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub serial_no: Option<Option<String>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub model: Option<Option<String>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub specs: Option<Option<String>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub kit: Option<Option<String>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub state: Option<Option<String>>,
     #[specta(type = Option<Option<i32>>)]
     pub place_id: Option<Option<i64>>,
@@ -228,20 +233,27 @@ impl From<DevicePatch> for trackly_core::domain::devices::DevicePatch {
         // is set explicitly (mirrors `ActService::update`'s pre-check
         // pattern) — setting it here from a raw, unchecked string would
         // bypass that entirely.
+        // WR-03 (Milestone v1.4 audit): сохраняем различие "поле не
+        // передано" (внешний None, ветка if не выполняется) vs "поле
+        // передано явно, значение NULL" (inner = None, p.<field> =
+        // Some(None)) — по образцу place_id ниже. Прежний код
+        // (`p.serial_no = inner`) стирал внешний Option и коллапсировал
+        // оба случая в одинарный Option, из-за чего очистка поля молча не
+        // применялась.
         if let Some(inner) = dto.serial_no {
-            p.serial_no = inner;
+            p.serial_no = Some(inner);
         }
         if let Some(inner) = dto.model {
-            p.model = inner;
+            p.model = Some(inner);
         }
         if let Some(inner) = dto.specs {
-            p.specs = inner;
+            p.specs = Some(inner);
         }
         if let Some(inner) = dto.kit {
-            p.kit = inner;
+            p.kit = Some(inner);
         }
         if let Some(inner) = dto.state {
-            p.state = inner;
+            p.state = Some(inner);
         }
         if let Some(inner) = dto.place_id {
             // Phase 40-28: сохраняем различие "поле не передано" (внешний
