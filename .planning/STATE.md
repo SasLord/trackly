@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-09-22T15:21:17.919Z"
+status: executing
+last_updated: "2026-09-22T17:27:50.201Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 12
   completed_phases: 6
-  total_plans: 91
-  completed_plans: 91
+  total_plans: 96
+  completed_plans: 92
   percent: 50
 ---
 
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.3 — долг аудита v1.4 (WR-03, N-1, N-2, N-4), затем Фаза 41 АРМ
+**Current focus:** Phase 40.3 — audit-debt
 
 ## Current Position
 
-Phase: 40.3
-Plan: Not started
-Status: Planned (5 планов, 2 волны) — готово к /gsd-execute-phase 40.3
+Phase: 40.3 (audit-debt) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
 Open Questions помечены RESOLVED, фронтматтер VALIDATION approved, координация cargo в волне 1
@@ -415,6 +415,7 @@ Last activity: 2026-09-22
 | Phase 40.2 P13 | 1h | 3 tasks | 4 files |
 | Phase 40.2 P14 | ~2h | 2 tasks | 10 files |
 | Phase 40.2 P15 | 60min | 2 tasks | 3 files |
+| Phase 40.3 P01 | 31min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1016,6 +1017,7 @@ Recent decisions affecting current work:
 - [Phase 40.2]: Plan 15: NumberTemplateField's own contextAlwaysReplaces() (Plan 12) already handles unconditional value-replace on cartridge<->drum kind switch — no new prop/{#key} needed
 - [Phase 40.2]: Plan 15: CartridgeFormModal.svelte edited beyond declared files_modified to render D-01 popups as top-level Modal siblings (backdrop-filter containing-block trap, same precedent as Plans 13/14)
 - [Phase 40.2]: Phase 40.2 closed: NUM-06/07/08/10/11/14 marked complete by Plan 15's closing pass (incl. NUM-14, not in Plan 15's own frontmatter, since it only names acts and had no cartridge surface left) — all 16 NUM-* requirements now Complete
+- [Phase ?]: 40.3-01: double-Option (Option<Option<String>>) для serial_no/model/specs/kit/state в devices.rs + serde_with::double_option на serde-границе — устраняет молчаливую невозможность очистки этих полей — Тот же паттерн уже применён для inventory_no/place_id (Фаза 40.2 Plan 08); плоский Option<String> + COALESCE не различает 'не передано' от 'передано явно как null'
 
 ### Pending Todos
 
@@ -1207,8 +1209,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T00:19:13.055Z
-Stopped at: Completed 40.2-15-PLAN.md — Phase 40.2 fully implemented (16/16 NUM requirements Complete), combined live UAT for Plans 13/14/15 still pending
+Last session: 2026-09-22T17:27:50.191Z
+Stopped at: Завершён 40.3-01-PLAN.md (WR-03: double-Option для serial_no/model/specs/kit/state)
 Resume file: None
 
 None
