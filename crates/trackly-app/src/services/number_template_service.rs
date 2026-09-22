@@ -194,14 +194,7 @@ impl NumberTemplateService {
                 // human-readable Russian conflict reason instead of the raw
                 // SQLite UNIQUE(type, mask) violation (V041) — mirrors
                 // `cartridge_service.rs::model_create`.
-                let exists: bool = tx
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM number_templates WHERE type = ?1 AND mask = ?2)",
-                        params![core_type.as_str(), mask_str],
-                        |r| r.get(0),
-                    )
-                    .map_err(map_rusqlite)?;
-                if exists {
+                if mask_taken_in_tx(&tx, core_type.as_str(), &mask_str, None)? {
                     return Err(AppError::Conflict {
                         reason: format!(
                             "Шаблон с такой маской для типа «{}» уже есть.",
@@ -285,15 +278,7 @@ impl NumberTemplateService {
 
                 // Duplicate pre-check excludes THIS row (editing a template's
                 // mask to its own current value is never a conflict).
-                let conflict: bool = tx
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM number_templates \
-                          WHERE type = ?1 AND mask = ?2 AND id != ?3)",
-                        params![type_str, mask_str, id],
-                        |r| r.get(0),
-                    )
-                    .map_err(map_rusqlite)?;
-                if conflict {
+                if mask_taken_in_tx(&tx, &type_str, &mask_str, Some(id))? {
                     return Err(AppError::Conflict {
                         reason: format!(
                             "Шаблон с такой маской для типа «{}» уже есть.",
@@ -689,6 +674,34 @@ pub(crate) fn ensure_number_free_in_tx(
 /// T-40.2-08): `.trim()` + full Unicode lowercase.
 pub(crate) fn normalize_number_key(value: &str) -> String {
     value.trim().to_lowercase()
+}
+
+/// BE-IN-01: is a mask of `type_str` equal to `mask` up to letter case
+/// already saved (other than `exclude_id`)? `ОРГ-[X]` and `орг-[X]` describe
+/// the same sequence — numbers are matched case-insensitively. Compared in
+/// Rust (SQLite `LOWER` folds ASCII only).
+fn mask_taken_in_tx(
+    conn: &Connection,
+    type_str: &str,
+    mask: &str,
+    exclude_id: Option<i64>,
+) -> Result<bool, AppError> {
+    let mut stmt = conn
+        .prepare("SELECT id, mask FROM number_templates WHERE type = ?1")
+        .map_err(map_rusqlite)?;
+    let rows = stmt
+        .query_map(params![type_str], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(map_rusqlite)?;
+    let key = mask.to_lowercase();
+    for row in rows {
+        let (id, existing) = row.map_err(map_rusqlite)?;
+        if Some(id) != exclude_id && existing.to_lowercase() == key {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// BE-CR-05: a mask is saved/previewed WITHOUT edge whitespace. Services

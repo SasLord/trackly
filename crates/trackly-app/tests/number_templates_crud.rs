@@ -326,3 +326,16 @@ async fn crud_audit_rows_carry_user_and_previous_mask() {
         "{rows:?}"
     );
 }
+
+/// BE-IN-01: masks differing only in letter case describe the same sequence.
+#[tokio::test]
+async fn create_rejects_case_variant_of_existing_mask() {
+    let (svc, _dir) = make_service();
+    svc.create(TemplateTypeDto::DeviceInventory, "ОРГ-[XXX]".to_string())
+        .await
+        .expect("create");
+    let dup = svc
+        .create(TemplateTypeDto::DeviceInventory, "орг-[XXX]".to_string())
+        .await;
+    assert!(matches!(dup, Err(AppError::Conflict { .. })), "got {dup:?}");
+}
