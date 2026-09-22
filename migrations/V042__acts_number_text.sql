@@ -27,11 +27,30 @@
 -- to `act_items`/`place_movements` themselves. This table's own
 -- self-referencing `parent_act_id` column is declared below as
 -- `REFERENCES acts(id)` (the FINAL name, not `acts_new`) for the same
--- reason — no post-rename rewrite is needed. `PRAGMA foreign_keys = OFF`
--- is set for the whole migration (refinery runs one file per transaction,
--- so this window never overlaps user traffic) precisely so that the
--- momentary self-reference to a not-yet-renamed "acts" causes no premature
--- validation error while `acts_new` and the old `acts` briefly coexist.
+-- reason — no post-rename rewrite is needed.
+--
+-- Foreign keys MUST be OFF while this file runs (BE-CR-01): with FKs ON,
+-- `DROP TABLE acts` performs an implicit `DELETE FROM acts` that cascades
+-- into `act_items` (ON DELETE CASCADE), nulls `place_movements.act_id`
+-- (ON DELETE SET NULL) and fails on any return act (`parent_act_id` ON
+-- DELETE RESTRICT). A `PRAGMA foreign_keys = OFF` line HERE is a no-op —
+-- refinery runs each file inside a transaction and SQLite ignores the
+-- pragma there — so the runner (`trackly_infra::db::migrations::run`)
+-- switches FKs off on the connection before refinery starts and runs
+-- `PRAGMA foreign_key_check` afterwards. The two pragma lines below are
+-- kept only as documentation of that requirement.
+--
+-- AUTOINCREMENT note (BE-WR-11): `DROP TABLE acts` also deletes its
+-- `sqlite_sequence` row, and `acts_new`'s own counter only reaches the
+-- highest COPIED id. If rows with higher ids were ever physically deleted,
+-- those ids would be handed out again (and `audit_log.entity_id` /
+-- `place_movements.entity_id`, which carry no FK, would silently start
+-- pointing at the new rows). The old high-water mark is carried over to
+-- `acts_new` before the drop; `ALTER TABLE ... RENAME` renames the
+-- `sqlite_sequence` row along with the table. The statements name
+-- `main.sqlite_sequence` explicitly: V015 creates a TEMP AUTOINCREMENT table,
+-- so on a connection that ran V015 an unqualified `sqlite_sequence` would
+-- resolve to `temp.sqlite_sequence`.
 --
 -- Unique index note (D-06): `idx_acts_number_sub_unique` enforces
 -- uniqueness of the RAW `number` column (plus `sub_number`) among live rows
@@ -78,6 +97,13 @@ SELECT
   deleted_at_utc, version, deadline_utc, handover_date_utc, place_id,
   bulk_place_id, place_path_snapshot
 FROM acts;
+
+INSERT INTO main.sqlite_sequence (name, seq)
+  SELECT 'acts_new', 0
+   WHERE NOT EXISTS (SELECT 1 FROM main.sqlite_sequence WHERE name = 'acts_new');
+UPDATE main.sqlite_sequence
+   SET seq = MAX(seq, COALESCE((SELECT seq FROM main.sqlite_sequence WHERE name = 'acts'), 0))
+ WHERE name = 'acts_new';
 
 DROP TABLE acts;
 

@@ -44,12 +44,19 @@
 -- `cartridges(id)`. SQLite resolves FKs by table name, not rowid/oid, so
 -- renaming `cartridges_new` -> `cartridges` restores that FK transparently.
 --
--- Foreign keys are checked immediately (not deferred) in this project's
--- connections (PRAGMA foreign_keys = ON, see pragmas.rs) — `DROP TABLE
--- cartridges` while `requests` rows still reference it via FK would be
--- blocked without disabling the check for the scope of this migration file
--- (refinery runs one file per transaction — set_grouped(false) — so this
--- window never overlaps user traffic).
+-- Foreign keys MUST be OFF while this file runs (BE-CR-02): with FKs ON,
+-- `DROP TABLE cartridges` performs an implicit `DELETE` that fails
+-- immediately on any `requests.completed_cartridge_id` reference (NO
+-- ACTION). A `PRAGMA foreign_keys = OFF` line HERE is a no-op — refinery
+-- runs each file inside a transaction and SQLite ignores the pragma there —
+-- so the runner (`trackly_infra::db::migrations::run`) switches FKs off on
+-- the connection before refinery starts and runs `PRAGMA foreign_key_check`
+-- afterwards. The two pragma lines below are kept only as documentation.
+--
+-- AUTOINCREMENT note (BE-WR-11): same as V042 — the old `sqlite_sequence`
+-- high-water mark is carried over to `cartridges_new` before the drop so
+-- ids of physically deleted rows are never reissued (`main.` qualified,
+-- see V042).
 
 PRAGMA foreign_keys = OFF;
 
@@ -79,6 +86,13 @@ SELECT
   created_at_utc, updated_at_utc, deleted_at_utc, version,
   current_printer_device_id, place_id
 FROM cartridges;
+
+INSERT INTO main.sqlite_sequence (name, seq)
+  SELECT 'cartridges_new', 0
+   WHERE NOT EXISTS (SELECT 1 FROM main.sqlite_sequence WHERE name = 'cartridges_new');
+UPDATE main.sqlite_sequence
+   SET seq = MAX(seq, COALESCE((SELECT seq FROM main.sqlite_sequence WHERE name = 'cartridges'), 0))
+ WHERE name = 'cartridges_new';
 
 DROP TABLE cartridges;
 

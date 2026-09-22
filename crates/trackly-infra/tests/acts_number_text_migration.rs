@@ -224,3 +224,33 @@ fn upgrade_without_returns_does_not_silently_cascade_act_items() {
         "no act links may be nulled"
     );
 }
+
+/// BE-WR-11: the rebuild must carry the AUTOINCREMENT high-water mark over,
+/// so an id of a physically deleted act is never handed out again.
+#[test]
+fn rebuild_keeps_autoincrement_high_water_mark() {
+    let (mut conn, _guard) = conn_at_v041();
+    seed_acts_with_children(&conn);
+    conn.execute_batch(&format!(
+        "INSERT INTO acts (id, number, act_type, giver_name, receiver_name,
+                           created_at_utc, updated_at_utc, version, handover_date_utc)
+           VALUES (10, 99, 'handover', 'Иванов И.И.', 'Петров П.П.', {NOW}, {NOW}, 1, {NOW});
+         DELETE FROM acts WHERE id = 10;"
+    ))
+    .expect("create and physically delete act #10");
+
+    migrations::run(&mut conn).expect("upgrade");
+
+    conn.execute(
+        "INSERT INTO acts (number, act_type, giver_name, receiver_name, \
+         created_at_utc, updated_at_utc, version, handover_date_utc) \
+         VALUES ('100', 'handover', 'Иванов И.И.', 'Петров П.П.', ?1, ?1, 1, ?1)",
+        params![NOW],
+    )
+    .expect("insert new act");
+    assert_eq!(
+        conn.last_insert_rowid(),
+        11,
+        "the new act must not reuse id 10 of the physically deleted act"
+    );
+}

@@ -212,3 +212,27 @@ fn fts_triggers_and_secondary_indexes_survive_the_rebuild() {
         .expect("fts query");
     assert_eq!(hits, 1);
 }
+
+/// BE-WR-11: the rebuild must carry the AUTOINCREMENT high-water mark over.
+#[test]
+fn rebuild_keeps_autoincrement_high_water_mark() {
+    let (mut conn, _guard) = conn_at_v042();
+    insert_cartridge(&conn, 1, "C-0001", None);
+    insert_cartridge(&conn, 20, "C-0020", None);
+    conn.execute("DELETE FROM cartridges WHERE id = 20", [])
+        .expect("physically delete cartridge #20");
+
+    migrations::run(&mut conn).expect("upgrade");
+
+    conn.execute(
+        "INSERT INTO cartridges (code, model_id, status_id, created_at_utc, \
+         updated_at_utc, version) VALUES ('C-0002', 1, 1, ?1, ?1, 1)",
+        params![NOW],
+    )
+    .expect("insert new cartridge");
+    assert_eq!(
+        conn.last_insert_rowid(),
+        21,
+        "the new cartridge must not reuse id 20 of the physically deleted row"
+    );
+}
