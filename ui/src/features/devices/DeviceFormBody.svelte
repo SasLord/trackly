@@ -109,7 +109,6 @@
     DeviceNew,
     DevicePatch,
     DeviceSaveOutcome,
-    NextNumberDto,
     NumberFieldInput,
     NumberWarningDto,
     OccupyingRecordDto,
@@ -443,22 +442,25 @@
   async function handleTakeNext() {
     // D-05: edit sessions always pass `canTakeNext=false`, so the button
     // (and therefore this handler) never renders/fires from an edit popup.
-    if (selectedTemplateId === null) return;
+    // FE-WR-07: the number comes from NumberTemplateField itself, so the
+    // field tracks it as its own suggestion (↑/↓ arrow, D-14 silent refresh).
+    if (selectedTemplateId === null || numberFieldRef === null) return;
     takeNextLoading = true;
     try {
-      const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
-        templateId: selectedTemplateId,
-        context: numberContext,
-      });
-      inventoryNo = dto.rendered;
+      const result = await numberFieldRef.takeNext();
+      if (result === 'error') {
+        pushToast(
+          'error',
+          'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
+        );
+        return;
+      }
+      if (result === 'unavailable') return;
+      // 'overflowed': the field is cleared and shows «Шаблон … переполнен»
+      // under itself — back to the form so the user can pick/type another.
       activePopup = null;
       pendingConfirm = null;
       focusNumberField();
-    } catch {
-      pushToast(
-        'error',
-        'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
-      );
     } finally {
       takeNextLoading = false;
     }

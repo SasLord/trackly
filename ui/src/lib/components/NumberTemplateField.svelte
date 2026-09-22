@@ -398,6 +398,32 @@
     focusInputAtEnd();
   }
 
+  /** FE-WR-07: «Взять следующий свободный» из попапа «Номер занят» формы.
+   *  Тот же путь, что явный выбор шаблона в меню, поэтому поле знает о
+   *  предложении: стрелка ↑/↓ и тихая замена D-14 продолжают работать
+   *  (раньше форма сама вызывала peek и писала значение в обход поля).
+   *  'unavailable' — нет выбранного шаблона или ответ устарел. */
+  export async function takeNext(): Promise<'ok' | 'overflowed' | 'unavailable' | 'error'> {
+    const templateId = selectedTemplateId;
+    if (templateId === null) return 'unavailable';
+    const gen = nextGeneration();
+    const ctx = context;
+    loadingNumber = true;
+    try {
+      const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
+        templateId,
+        context: ctx,
+      });
+      if (!isCurrent(gen, ctx)) return 'unavailable';
+      applyPeekResult(templateId, dto, { preserveManualEdits: false });
+      return dto.overflowed ? 'overflowed' : 'ok';
+    } catch {
+      return isCurrent(gen, ctx) ? 'error' : 'unavailable';
+    } finally {
+      if (isCurrent(gen, ctx)) loadingNumber = false;
+    }
+  }
+
   async function selectTemplate(t: NumberTemplateDto) {
     if (t.overflowed) return;
     // FE-WR-04: явный выбор делает недействительной любую ещё не пришедшую
