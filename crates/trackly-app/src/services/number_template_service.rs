@@ -130,6 +130,7 @@ impl NumberTemplateService {
         template_type: TemplateTypeDto,
         mask_str: String,
     ) -> Result<NumberTemplateDto, AppError> {
+        let mask_str = normalize_mask_input(&mask_str);
         mask::validate_mask(&mask_str)?;
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
@@ -196,6 +197,7 @@ impl NumberTemplateService {
         mask_str: String,
         version: i64,
     ) -> Result<NumberTemplateDto, AppError> {
+        let mask_str = normalize_mask_input(&mask_str);
         mask::validate_mask(&mask_str)?;
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
@@ -366,6 +368,7 @@ impl NumberTemplateService {
         mask_str: String,
         today_utc: i64,
     ) -> Result<NextNumberDto, AppError> {
+        let mask_str = normalize_mask_input(&mask_str);
         mask::validate_mask(&mask_str)?;
         let readers = self.readers.clone();
         let repo = self.repo.clone();
@@ -516,6 +519,15 @@ impl NumberTemplateService {
             Err(_) => true,
         }
     }
+}
+
+/// BE-CR-05: a mask is saved/previewed WITHOUT edge whitespace. Services
+/// `.trim()` every number before writing it, so a mask like `"ОРГ-[XXX] "`
+/// would render `"ОРГ-001 "`, store `"ОРГ-001"`, and then never recognise its
+/// own numbers (`extract_digits` compares the untrimmed suffix) — first-free
+/// stuck at 1 and a false "не по шаблону" on the server's own suggestion.
+fn normalize_mask_input(mask_str: &str) -> String {
+    mask_str.trim().to_string()
 }
 
 // ---------------------------------------------------------------------------

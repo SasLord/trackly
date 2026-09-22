@@ -211,3 +211,39 @@ async fn preview_mask_validates_without_persisting() {
         "a successful preview_mask must also never persist a row"
     );
 }
+
+/// BE-CR-05: edge whitespace in a mask (copy-paste accident) is trimmed on
+/// save, so the template recognises the numbers it itself suggests.
+#[tokio::test]
+async fn mask_edge_whitespace_is_trimmed_on_create_update_and_preview() {
+    let (svc, _dir) = make_service();
+
+    let created = svc
+        .create(TemplateTypeDto::DeviceInventory, "  ОРГ-[XXX] ".to_string())
+        .await
+        .expect("create");
+    assert_eq!(created.mask, "ОРГ-[XXX]");
+    assert_eq!(created.next_first_free, "ОРГ-001");
+
+    let updated = svc
+        .update_mask(created.id, "\tИНВ-[XXX]\n".to_string(), created.version)
+        .await
+        .expect("update_mask");
+    assert_eq!(updated.mask, "ИНВ-[XXX]");
+
+    let preview = svc
+        .preview_mask(
+            TemplateTypeDto::DeviceInventory,
+            "К-[XX] ".to_string(),
+            SystemClock.unix_seconds(),
+        )
+        .await
+        .expect("preview");
+    assert_eq!(preview.rendered, "К-01");
+
+    // A trimmed duplicate of an existing mask is still a duplicate.
+    let dup = svc
+        .create(TemplateTypeDto::DeviceInventory, "ИНВ-[XXX] ".to_string())
+        .await;
+    assert!(matches!(dup, Err(AppError::Conflict { .. })), "got {dup:?}");
+}
