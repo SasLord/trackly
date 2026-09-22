@@ -11,7 +11,7 @@
   // list_by_context); клиент делает только ЧИСТОЕ строковое сравнение
   // (trim + toLowerCase) для видимости стрелки ↑/↓ и для решения «правили
   // ли значение вручную» (D-14/D-19/NUM-07).
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import Input from './Input.svelte';
   import ActionMenu from './ActionMenu.svelte';
   import IconInsertTemplate from './icons/IconInsertTemplate.svelte';
@@ -84,18 +84,27 @@
     [...templates].sort((a, b) => a.mask.localeCompare(b.mask, 'ru')),
   );
 
+  // FE-CR-05: номер последнего запроса списка — ответ, пришедший после более
+  // нового запроса (быстрая смена контекста, LAN-HTTP), отбрасывается, иначе
+  // меню «Вставка» показало бы шаблоны чужого вида.
+  let templatesSeq = 0;
+
   async function loadTemplates(ctx: TemplateContextDto) {
+    const seq = ++templatesSeq;
     templatesLoading = true;
     templatesError = null;
     try {
-      templates = await apiCall<NumberTemplateDto[]>('number_templates_list_by_context', {
+      const list = await apiCall<NumberTemplateDto[]>('number_templates_list_by_context', {
         context: ctx,
       });
+      if (seq !== templatesSeq) return;
+      templates = list;
     } catch {
+      if (seq !== templatesSeq) return;
       templatesError = 'Не удалось загрузить шаблоны. Закройте меню и попробуйте ещё раз.';
       templates = [];
     } finally {
-      templatesLoading = false;
+      if (seq === templatesSeq) templatesLoading = false;
     }
   }
 
@@ -109,6 +118,25 @@
   let loadingNumber = $state(false);
 
   const selectedMask = $derived(templates.find((t) => t.id === selectedTemplateId)?.mask ?? null);
+
+  // FE-CR-05 / FE-WR-04: «поколение» выбора шаблона. Растёт при смене
+  // контекста и при каждом явном действии пользователя в меню «Вставка».
+  // Каждая асинхронная подстановка запоминает поколение и контекст ДО
+  // запроса и после ответа применяется, только если оба не изменились —
+  // поздний ответ старого контекста (или автоподстановки при монтировании,
+  // обогнанной явным выбором) не перезапишет ни значение, ни templateId.
+  let selectionGen = 0;
+
+  function nextGeneration(): number {
+    // Устаревшая операция больше не трогает loadingNumber — сбрасываем его
+    // здесь, новая операция выставит заново, когда начнёт свой запрос.
+    loadingNumber = false;
+    return ++selectionGen;
+  }
+
+  function isCurrent(gen: number, ctx: TemplateContextDto): boolean {
+    return gen === selectionGen && ctx === context;
+  }
 
   function normalize(s: string): string {
     return s.trim().toLowerCase();
@@ -172,17 +200,23 @@
 
   /** Читает запомненный контексту шаблон и подставляет его первое
    *  свободное число (mount + смена `context`, D-14/NUM-08). */
-  async function applyContextDefault(ctx: TemplateContextDto, preserveManualEdits: boolean) {
+  async function applyContextDefault(
+    ctx: TemplateContextDto,
+    preserveManualEdits: boolean,
+    gen: number,
+  ) {
     let templateId: number | null;
     try {
       templateId = await apiCall<number | null>('number_template_contexts_get', {
         context: ctx,
       });
     } catch {
+      if (!isCurrent(gen, ctx)) return;
       // Best-effort: контекст без запомненного шаблона — поле остаётся
       // пустым/как есть, строки под полем не будет (D-13).
       return;
     }
+    if (!isCurrent(gen, ctx)) return;
     if (templateId === null) {
       clearSelection({ preserveManualEdits });
       return;
@@ -193,32 +227,43 @@
         templateId,
         context: ctx,
       });
+      if (!isCurrent(gen, ctx)) return;
       applyPeekResult(templateId, dto, { preserveManualEdits });
     } catch {
+      if (!isCurrent(gen, ctx)) return;
       pushToast(
         'error',
         'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
       );
     } finally {
-      loadingNumber = false;
+      if (isCurrent(gen, ctx)) loadingNumber = false;
     }
   }
 
   /** Только повторный запрос по уже выбранному шаблону — используется по
    *  WS-инвалидации (D-14), где выбор шаблона не меняется, меняется только
    *  число. Полностью тихо: без toast, без анимации. */
+  // FE-CR-05: два WS-события подряд — ответ на первое не должен прийти
+  // последним и откатить значение.
+  let refreshSeq = 0;
+
   async function refreshCurrentSuggestion() {
     if (selectedTemplateId === null) return;
     // FE-CR-04: заблокированное поле (например, «Количество» > 1 в «Новом
     // устройстве») никогда не меняется тихо — иначе номер появился бы в
     // поле, которое пользователь не может даже отредактировать.
     if (disabled) return;
+    const gen = selectionGen;
+    const ctx = context;
+    const templateId = selectedTemplateId;
+    const seq = ++refreshSeq;
     try {
       const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
-        templateId: selectedTemplateId,
-        context,
+        templateId,
+        context: ctx,
       });
-      applyPeekResult(selectedTemplateId, dto, { preserveManualEdits: true });
+      if (!isCurrent(gen, ctx) || seq !== refreshSeq || templateId !== selectedTemplateId) return;
+      applyPeekResult(templateId, dto, { preserveManualEdits: true });
     } catch {
       // Тихая замена — при сбое просто оставляем текущее значение как есть.
     }
@@ -240,17 +285,23 @@
 
   $effect(() => {
     const ctx = context;
-    void loadTemplates(ctx);
+    // Единственная зависимость эффекта — `context`; всё остальное (запуск
+    // запросов, счётчики поколений, loadingNumber) — вне отслеживания.
+    untrack(() => {
+      void loadTemplates(ctx);
 
-    if (!didInit) {
-      didInit = true;
+      if (!didInit) {
+        didInit = true;
+        previousContext = ctx;
+        const gen = nextGeneration();
+        if (autofillOnMount) void applyContextDefault(ctx, /* preserveManualEdits */ true, gen);
+        return;
+      }
+      if (previousContext === ctx) return;
       previousContext = ctx;
-      if (autofillOnMount) void applyContextDefault(ctx, /* preserveManualEdits */ true);
-      return;
-    }
-    if (previousContext === ctx) return;
-    previousContext = ctx;
-    void applyContextDefault(ctx, /* preserveManualEdits */ !contextAlwaysReplaces(ctx));
+      const gen = nextGeneration();
+      void applyContextDefault(ctx, /* preserveManualEdits */ !contextAlwaysReplaces(ctx), gen);
+    });
   });
 
   // ---------------------------------------------------------------------
@@ -309,26 +360,33 @@
 
   async function selectTemplate(t: NumberTemplateDto) {
     if (t.overflowed) return;
+    // FE-WR-04: явный выбор делает недействительной любую ещё не пришедшую
+    // автоподстановку (монтирование/смена контекста/WS).
+    const gen = nextGeneration();
+    const ctx = context;
     loadingNumber = true;
     try {
       const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
         templateId: t.id,
-        context,
+        context: ctx,
       });
+      if (!isCurrent(gen, ctx)) return;
       // Явный выбор пользователя в меню — всегда подставляем (не D-14).
       applyPeekResult(t.id, dto, { preserveManualEdits: false });
     } catch {
+      if (!isCurrent(gen, ctx)) return;
       pushToast(
         'error',
         'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
       );
     } finally {
-      loadingNumber = false;
+      if (isCurrent(gen, ctx)) loadingNumber = false;
     }
-    focusInputAtEnd();
+    if (isCurrent(gen, ctx)) focusInputAtEnd();
   }
 
   function selectNoTemplate() {
+    nextGeneration();
     clearSelection({ preserveManualEdits: true });
     focusInputAtEnd();
   }
