@@ -531,3 +531,65 @@ async fn display_number_space_covers_returns_in_both_directions() {
     .await
     .expect("budget");
 }
+
+/// BE-WR-06: undoing an act (delete) restores the device's pre-act status/
+/// place from the audit snapshot, but must NOT revert its inventory number:
+/// the number was edited after the act and its old value now belongs to
+/// another device — restoring it used to hit a raw UNIQUE violation.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn act_delete_does_not_restore_inventory_number_from_snapshot() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 2).await;
+        let (d1, d2) = (ids[0], ids[1]);
+        let set_number = |id: i64, n: &'static str| {
+            let writer = svc.writer.clone();
+            async move {
+                writer
+                    .execute(move |conn| {
+                        conn.execute(
+                            "UPDATE devices SET inventory_number = ?1 WHERE id = ?2",
+                            params![n, id],
+                        )
+                        .map_err(map_rusqlite)?;
+                        Ok(())
+                    })
+                    .await
+                    .expect("set number")
+            }
+        };
+        set_number(d1, "ИНВ-000001").await;
+
+        let act = svc
+            .create(&Identity::trusted_admin(), create_payload("77", d1))
+            .await
+            .expect("create act")
+            .expect_created("create act");
+
+        // After the act: d1 renumbered, its old number reused by d2.
+        set_number(d1, "ИНВ-000002").await;
+        set_number(d2, "ИНВ-000001").await;
+
+        let act = svc.get(act.id).await.expect("reload act");
+        svc.delete_soft(act.id, act.version)
+            .await
+            .expect("deleting the act must not fail on the old inventory number");
+
+        let readers = svc.readers.clone();
+        let n: Option<String> = tokio::task::spawn_blocking(move || {
+            readers
+                .acquire()
+                .query_row(
+                    "SELECT inventory_number FROM devices WHERE id = ?1",
+                    [d1],
+                    |r| r.get(0),
+                )
+                .expect("read number")
+        })
+        .await
+        .expect("join");
+        assert_eq!(n.as_deref(), Some("ИНВ-000002"));
+    })
+    .await
+    .expect("budget");
+}

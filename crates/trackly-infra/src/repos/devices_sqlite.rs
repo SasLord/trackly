@@ -411,8 +411,9 @@ impl SqliteDeviceRepository {
     /// snapshot — это `serde_json::Value`, который содержит как минимум
     /// поля `status_id`, `place_id`, `state` (= condition), `kit`
     /// (= complectation), `version`. Дополнительные поля (`name`, `model`,
-    /// `inventory_no`, `serial_no`, `specs`, `type_id`) применяются, если
+    /// `serial_no`, `specs`, `type_id`) применяются, если
     /// присутствуют, иначе COALESCE сохраняет текущее значение в БД.
+    /// `inventory_no` из снимка НЕ восстанавливается (BE-WR-06).
     ///
     /// Semantics:
     ///   - `version` инкрементируется на 1 (новая ревизия), чтобы не
@@ -441,40 +442,34 @@ impl SqliteDeviceRepository {
         // Optional «full» fields (когда snapshot писался полностью).
         let name: Option<&str> = snapshot.get("name").and_then(|v| v.as_str());
         let model: Option<&str> = snapshot.get("model").and_then(|v| v.as_str());
-        let inventory_no: Option<&str> = snapshot.get("inventory_no").and_then(|v| v.as_str());
         let serial_no: Option<&str> = snapshot.get("serial_no").and_then(|v| v.as_str());
         let specs: Option<&str> = snapshot.get("specs").and_then(|v| v.as_str());
         let type_id: Option<i64> = snapshot.get("type_id").and_then(|v| v.as_i64());
 
         let affected = tx
             .execute(
+                // BE-WR-06: `inventory_number` is deliberately NOT restored.
+                // Act mutations never change it, so the snapshot value can
+                // only differ if the number was edited afterwards — and
+                // reverting it would bypass the occupied check (raw UNIQUE
+                // violation on idx_devices_inventory_number_live, or a
+                // silent rename behind the user's back).
                 "UPDATE devices SET \
                    type_id          = COALESCE(?1, type_id), \
                    name             = COALESCE(?2, name), \
-                   inventory_number = COALESCE(?3, inventory_number), \
-                   serial_number    = COALESCE(?4, serial_number), \
-                   model            = COALESCE(?5, model), \
-                   condition        = COALESCE(?6, condition), \
-                   complectation    = COALESCE(?7, complectation), \
-                   notes            = COALESCE(?8, notes), \
-                   status_id        = ?9, \
-                   place_id         = ?10, \
+                   serial_number    = COALESCE(?3, serial_number), \
+                   model            = COALESCE(?4, model), \
+                   condition        = COALESCE(?5, condition), \
+                   complectation    = COALESCE(?6, complectation), \
+                   notes            = COALESCE(?7, notes), \
+                   status_id        = ?8, \
+                   place_id         = ?9, \
                    version          = version + 1, \
-                   updated_at_utc   = ?11 \
-                 WHERE id = ?12 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?10 \
+                 WHERE id = ?11 AND deleted_at_utc IS NULL",
                 rusqlite::params![
-                    type_id,
-                    name,
-                    inventory_no,
-                    serial_no,
-                    model,
-                    state,
-                    kit,
-                    specs,
-                    status_id,
-                    place_id,
-                    now_utc,
-                    device_id,
+                    type_id, name, serial_no, model, state, kit, specs, status_id, place_id,
+                    now_utc, device_id,
                 ],
             )
             .map_err(map_rusqlite)?;
