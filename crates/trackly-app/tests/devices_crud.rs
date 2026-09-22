@@ -762,3 +762,109 @@ async fn state_hints_returns_six_russian_strings() {
     .await
     .expect("state_hints_returns_six_russian_strings exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// device_patch_serde_double_option_distinguishes_absent_vs_null (WR-03)
+// ---------------------------------------------------------------------------
+
+/// Тест 1 (Task 3, WR-03): чистая serde-граница, без БД.
+///
+/// `serde_json::from_str::<DevicePatch>(r#"{"serial_no": null}"#)` обязан
+/// дать `Some(None)` («поле передано явно как null» -> внешний Some,
+/// внутренний None), а `serde_json::from_str::<DevicePatch>("{}")` обязан
+/// дать `None` («ключ отсутствует в JSON»). Эти два случая ОБЯЗАНЫ
+/// различаться — если бы double-Option не нёс `#[serde(default, with =
+/// "serde_with::rust::double_option")]` (Pitfall 1, RESEARCH), оба случая
+/// молча схлопнулись бы в одно и то же значение прямо на serde-границе, и
+/// Rust-литерал `DevicePatch { serial_no: Some(None), .. }` эту ловушку не
+/// поймал бы вообще — только `serde_json::from_str` реально пересекает ту
+/// же границу, что и HTTP/Tauri транспорт формы правки устройства.
+#[test]
+fn device_patch_serde_double_option_distinguishes_absent_vs_null() {
+    let explicit_null: DevicePatch =
+        serde_json::from_str(r#"{"serial_no": null}"#).expect("valid JSON with explicit null");
+    assert_eq!(
+        explicit_null.serial_no,
+        Some(None),
+        "явный null в JSON должен дать Some(None), получили {:?}",
+        explicit_null.serial_no
+    );
+
+    let key_absent: DevicePatch =
+        serde_json::from_str("{}").expect("valid JSON with no keys at all");
+    assert_eq!(
+        key_absent.serial_no, None,
+        "отсутствующий ключ должен дать None (поле не тронуто), получили {:?}",
+        key_absent.serial_no
+    );
+
+    assert_ne!(
+        explicit_null.serial_no, key_absent.serial_no,
+        "явный null и отсутствующий ключ обязаны различаться после desсериализации"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// update_clears_serial_no_via_json_null_without_touching_model (WR-03)
+// ---------------------------------------------------------------------------
+
+/// Тест 2 (Task 3, WR-03): end-to-end через сервис — создаём устройство с
+/// `serial_no` И `model` заполненными, десериализуем `DevicePatch` из JSON
+/// `{"serial_no": null}` (без ключа `model`), вызываем `svc.update(...)`, и
+/// проверяем, что `serial_no` стал `None`, а `model` остался прежним
+/// значением (ROADMAP Phase 40.3 SC1 — «незатронутое поле по-прежнему не
+/// меняется»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_clears_serial_no_via_json_null_without_touching_model() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let new = DeviceNew {
+            type_id: 1,
+            name: "МФУ Kyocera".to_string(),
+            inventory_no: None,
+            serial_no: Some("SN-CLEAR-001".to_string()),
+            model: Some("Kyocera ECOSYS M2040dn".to_string()),
+            specs: None,
+            kit: None,
+            state: None,
+            place_id: None,
+            status_id: 1,
+        };
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device with serial_no and model")
+            .expect_created("create device with serial_no and model");
+
+        // Патч приходит через ту же serde-границу, что и HTTP/Tauri транспорт
+        // формы правки — НЕ конструируется литералом DevicePatch { .. } в Rust,
+        // чтобы реально проверить serde double-Option, а не тавтологию.
+        let patch: DevicePatch =
+            serde_json::from_str(r#"{"serial_no": null}"#).expect("valid JSON with explicit null");
+        assert_eq!(
+            patch.model, None,
+            "патч не должен нести ключ model вовсе (проверка на самом JSON)"
+        );
+
+        svc.update(&admin_caller(), dto.id, dto.version, patch)
+            .await
+            .expect("update clearing serial_no")
+            .expect_created("update clearing serial_no");
+
+        let fetched = svc.get(dto.id).await.expect("get by id after update");
+        assert_eq!(
+            fetched.serial_no, None,
+            "serial_no должен реально очиститься до None, получили {:?}",
+            fetched.serial_no
+        );
+        assert_eq!(
+            fetched.model,
+            Some("Kyocera ECOSYS M2040dn".to_string()),
+            "незатронутое поле model не должно меняться, получили {:?}",
+            fetched.model
+        );
+    })
+    .await
+    .expect("update_clears_serial_no_via_json_null_without_touching_model exceeded 30 s budget");
+}
