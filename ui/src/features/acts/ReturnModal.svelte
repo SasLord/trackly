@@ -329,10 +329,9 @@
       const wasArchivedBefore = act.archived;
       const ret = await acts.doReturn(act.id, payload);
       const n = items.reduce((sum, it) => sum + (it.device_ids?.length ?? 0), 0);
-      const suffix = ret.number.replace(/^\d+/, ''); // «в» / «в1»
       pushToast(
         'success',
-        `Создан акт возврата №${ret.number_raw}${suffix}. ${n} устр. вернулось на склад.`,
+        `Создан акт возврата №${ret.number}. ${n} устр. вернулось на склад.`,
       );
 
       // Узнать про auto-archive — повторно подтянуть parent.
