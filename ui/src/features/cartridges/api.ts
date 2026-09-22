@@ -14,6 +14,7 @@ import type {
   CartridgeModelCreateDto,
   CartridgeModelDto,
   CartridgeModelPatchDto,
+  CartridgeSaveOutcome,
   CartridgeTransitionPayload,
   LowStockItemDto,
   Pagination,
@@ -26,7 +27,13 @@ export const cartridges = {
 
   get: (id: number) => apiCall<CartridgeDto>('cartridges_get', { id }),
 
-  create: (payload: CartridgeCreateDto) => apiCall<CartridgeDto>('cartridges_create', { payload }),
+  // Phase 40.2 Plan 15 (NUM-06/07/08/10/11): `cartridges_create`'s real
+  // backend return type has been `CartridgeSaveOutcome` since Plan 07 —
+  // widened from the loosely-cast `CartridgeDto` the Plan 07 compat shim
+  // used, mirroring `devices.createSingleWithNumberCheck()`/`acts.create()`'s
+  // own `*SaveOutcome` typing (Plans 13/14).
+  create: (payload: CartridgeCreateDto) =>
+    apiCall<CartridgeSaveOutcome>('cartridges_create', { payload }),
 
   update: (id: number, version: number, placeId: number | null, notes: string | null) =>
     apiCall<CartridgeDto>('cartridges_update', { id, version, placeId, notes }),

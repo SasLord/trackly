@@ -1,3 +1,59 @@
+<script module lang="ts">
+  // Phase 40.2 Plan 15 (NUM-06/07/08/09/10/11/12): shared shape describing
+  // which of the D-01 save-chain popups CartridgeFormModal.svelte should
+  // render right now (or `null` — none). Same ownership split as Plan 13's
+  // `DeviceNumberPopupState`/Plan 14's `ActNumberPopupState` (see
+  // DeviceFormBody.svelte's own doc-comment): CartridgeFormBody OWNS the
+  // orchestration logic (when to open which popup, what each button does)
+  // but does NOT render the popups itself — nesting a `<Modal>` inside this
+  // component would put its `position: fixed` backdrop inside the OUTER
+  // create/edit Modal's own `.modal-backdrop` (which has `backdrop-filter:
+  // blur(2px)`, a containing-block trap for `position: fixed`, confirmed
+  // identical to DeviceFormModal.svelte/ActFormModal.svelte's `Modal.svelte`
+  // usage). This component reports popup state up via `onPopupChange`;
+  // CartridgeFormModal renders the real
+  // `<NumberTakenPopup>`/`<NumberMismatchPopup>`/`<NumberScriptWarningPopup>`
+  // at its own top level.
+  import type { NumberTakenRecordSummary } from '$lib/components/NumberTakenPopup.svelte';
+
+  export interface CartridgeScriptWarningDoppelganger {
+    number: string;
+    record: { kind: string; title: string };
+  }
+
+  export type CartridgeNumberPopupState =
+    | {
+        kind: 'taken';
+        number: string;
+        record: NumberTakenRecordSummary;
+        /** false — форма правки (D-05, out of scope for this plan — код не
+         *  редактируется): «Взять следующий свободный» не показывается. */
+        canTakeNext: boolean;
+        loadingTakeNext: boolean;
+        onTakeNext?: () => void;
+        onClose: () => void;
+      }
+    | {
+        // Create-mode ONLY — код при редактировании не меняется через эту
+        // форму (SPEC boundaries), поэтому mismatch не может сработать вне
+        // создания.
+        kind: 'mismatch';
+        number: string;
+        mask: string;
+        contextLabel: string;
+        onFix: () => void;
+        onContinue: () => void;
+      }
+    | {
+        kind: 'scriptWarning';
+        number: string;
+        doppelganger: CartridgeScriptWarningDoppelganger | null;
+        onFix: () => void;
+        onContinue: () => void;
+      }
+    | null;
+</script>
+
 <script lang="ts">
   // Plan 04-05: CartridgeFormBody — inner form state component for CartridgeFormModal.
   // Remounted on every {#key openInstanceCounter} — guarantees field reset.
@@ -9,6 +65,19 @@
   // DeviceFormBody.svelte's identical readonly contract: every field's own
   // `disabled` prop threaded from one flag, `canSubmit` forced false,
   // `handleSubmit` early-returns as a defense-in-depth guard.
+  //
+  // Phase 40.2 Plan 15 (NUM-06/07/08/09/10/11/12, D-01): create-mode «Код»
+  // is now `NumberTemplateField` + the full occupied→mismatch→script-mix
+  // chain (mirrors DeviceFormBody's Plan 13 / ActFormBody's Plan 14
+  // orchestration exactly, same `activePopup`/`pendingConfirm` state
+  // machine). `context` is reactive to `kindId` (Картридж→cartridge_create,
+  // Фотобарабан→drum_create) — NumberTemplateField's OWN `$effect`
+  // (`contextAlwaysReplaces()`, Plan 12) already replaces the value
+  // UNCONDITIONALLY on a cartridge_create<->drum_create context switch (no
+  // extra prop/`{#key}` needed here, see plan's own SUMMARY for the
+  // verification of this). Edit mode is UNCHANGED — code stays a disabled
+  // plain `Input`, no template concept in edit (SPEC boundaries, out of
+  // scope for this plan).
   import { onMount } from 'svelte';
   import Input from '$lib/components/Input.svelte';
   // Plan 27-G1: Select (нативный <select>) заменён на кастомный Dropdown
@@ -18,9 +87,21 @@
   import Dropdown from '$lib/components/Dropdown.svelte';
   import Textarea from '$lib/components/Textarea.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
+  import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
+  import { apiCall } from '$lib/api/client';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { cartridges } from './api';
-  import type { CartridgeDto, CartridgeModelDto } from '../../bindings';
+  import type {
+    CartridgeCreateDto,
+    CartridgeDto,
+    CartridgeModelDto,
+    CartridgeSaveOutcome,
+    NextNumberDto,
+    NumberWarningDto,
+    OccupyingRecordDto,
+    TemplateContextDto,
+  } from '../../bindings';
 
   interface Props {
     target: CartridgeDto | null;
@@ -34,6 +115,14 @@
     onLoading: (_l: boolean) => void;
     onCanSubmitChange: (_can: boolean) => void;
     onRegisterSubmit: (_fn: () => void) => void;
+    /** Phase 40.2 Plan 15 (D-01): reports which D-01 save-chain popup
+     *  CartridgeFormModal.svelte should render right now (`null` — none).
+     *  See the `<script module>` doc-comment above for why the popups
+     *  themselves are NOT rendered from inside this component. Optional
+     *  with a no-op default so PlaceEntityViewModal.svelte's `readonly` view
+     *  instance (which never submits, hence never opens a popup) doesn't
+     *  need to pass it. */
+    onPopupChange?: (_popup: CartridgeNumberPopupState) => void;
   }
 
   const {
@@ -45,6 +134,7 @@
     onLoading,
     onCanSubmitChange,
     onRegisterSubmit,
+    onPopupChange = () => {},
   }: Props = $props();
 
   const isEdit = $derived(target !== null);
@@ -69,6 +159,17 @@
   const stateLabel = $derived(kindId === 2 ? 'Состояние' : 'Состояние заряда');
   const codePlaceholder = $derived(kindId === 2 ? 'D-XXXX' : 'C-XXXX');
 
+  // Phase 40.2 Plan 15 (NUM-06/08): which of the 2 cartridge/drum create
+  // contexts NumberTemplateField/the D-01 save chain uses — reactive to
+  // `kindId` so switching «Картридж»/«Фотобарабан» immediately re-targets
+  // the field's remembered template AND unconditionally replaces the value
+  // (NumberTemplateField's own `contextAlwaysReplaces()`, Plan 12,
+  // Discretion #8 — cartridge_create<->drum_create always replaces, unlike
+  // device_create<->printer_create's conditional D-14 replace).
+  const numberContext = $derived<TemplateContextDto>(
+    kindId === 2 ? 'drum_create' : 'cartridge_create',
+  );
+
   // Form fields — initialised from target (edit) or defaults (create)
   let code = $state(target?.code ?? '');
   let modelId = $state<number | null>(target?.model_id ?? null);
@@ -80,7 +181,38 @@
   // Validation errors
   let codeError = $state('');
   let modelError = $state('');
+  let loading = $state(false);
   let submitting = $state(false);
+
+  // ---------------------------------------------------------------------------
+  // Phase 40.2 Plan 15 — D-01 save-chain popup orchestration state (create
+  // only — edit never touches the code field, SPEC boundaries). Identical
+  // structure to DeviceFormBody.svelte's Plan 13 / ActFormBody.svelte's
+  // Plan 14 state machine.
+  // ---------------------------------------------------------------------------
+  let activePopup = $state<'taken' | 'mismatch' | 'scriptWarning' | null>(null);
+  let pendingConfirm = $state<{ mismatch: boolean; scriptMix: boolean }>({
+    mismatch: false,
+    scriptMix: false,
+  });
+  // NUM-08: which template NumberTemplateField currently has selected — only
+  // ever set by the create branch's NumberTemplateField instance (edit mode
+  // renders a plain Input, never calls this).
+  let selectedTemplateId = $state<number | null>(null);
+  let selectedTemplateMask = $state<string | null>(null);
+  let numberFieldRef: NumberTemplateField | null = $state(null);
+
+  let takenNumber = $state('');
+  let takenRecord = $state<NumberTakenRecordSummary | null>(null);
+  let takenCanTakeNext = $state(false);
+  let takeNextLoading = $state(false);
+
+  let mismatchNumber = $state('');
+  let mismatchMask = $state('');
+  let mismatchContextLabel = $state('');
+
+  let scriptWarningNumber = $state('');
+  let scriptWarningDoppelganger = $state<CartridgeScriptWarningDoppelganger | null>(null);
 
   // Модели, соответствующие выбранному виду.
   const visibleModels = $derived(models.filter((m) => m.kind_id === kindId));
@@ -123,6 +255,12 @@
     // Состояние по умолчанию для нового вида.
     stateId = k === 2 ? 4 : 1;
     modelError = '';
+    // Код: НЕ трогаем здесь — `numberContext` (реактивно к `kindId`) уже
+    // передаётся в `NumberTemplateField`, чей собственный `$effect`
+    // безусловно подставляет первое свободное число нового вида
+    // (`contextAlwaysReplaces('cartridge_create'|'drum_create')` === true,
+    // Plan 12). Дублировать эту подстановку здесь было бы вторым источником
+    // истины для одного и того же значения.
   }
 
   // canSubmit: Модель обязательна
@@ -131,6 +269,65 @@
   // Sync canSubmit upward
   $effect(() => {
     onCanSubmitChange(canSubmit);
+  });
+
+  // UI-SPEC §6: while a D-01 popup is open (waiting on the user's
+  // Продолжить/Поправлю/Закрыть decision), the footer button stays in a
+  // loading-looking state — mirrors DeviceFormBody/ActFormBody's identical OR.
+  $effect(() => {
+    onLoading(loading || activePopup !== null);
+  });
+
+  // Phase 40.2 Plan 15 (D-01): propagate the current save-chain popup (or
+  // null) to the parent — see the `<script module>` doc-comment at the top
+  // of this file for why CartridgeFormModal renders the popup, not this
+  // component.
+  $effect(() => {
+    if (activePopup === 'taken' && takenRecord) {
+      onPopupChange({
+        kind: 'taken',
+        number: takenNumber,
+        record: takenRecord,
+        canTakeNext: takenCanTakeNext,
+        loadingTakeNext: takeNextLoading,
+        onTakeNext: takenCanTakeNext ? handleTakeNext : undefined,
+        onClose: closeTakenPopup,
+      });
+    } else if (activePopup === 'mismatch') {
+      onPopupChange({
+        kind: 'mismatch',
+        number: mismatchNumber,
+        mask: mismatchMask,
+        contextLabel: mismatchContextLabel,
+        onFix: closeMismatchPopup,
+        onContinue: continueMismatch,
+      });
+    } else if (activePopup === 'scriptWarning') {
+      onPopupChange({
+        kind: 'scriptWarning',
+        number: scriptWarningNumber,
+        doppelganger: scriptWarningDoppelganger,
+        onFix: closeScriptWarningPopup,
+        onContinue: continueScriptWarning,
+      });
+    } else {
+      onPopupChange(null);
+    }
+    // On teardown (modal closed / {#key} remount) make sure the parent never
+    // keeps a stale popup open for a component instance that no longer
+    // exists.
+    return () => onPopupChange(null);
+  });
+
+  // «Код уже занят.» stays under the field only «до следующей правки» —
+  // clear it the moment the value actually changes (manual edit, template
+  // pick, «Взять следующий свободный», or a kindId-driven context switch).
+  let previousCode = code;
+  $effect(() => {
+    if (code !== previousCode) {
+      previousCode = code;
+      if (codeError) codeError = '';
+    }
   });
 
   function validate(): boolean {
@@ -147,9 +344,7 @@
     // an empty code is now a hard validation error, not "auto-fill". This
     // mirrors that rule client-side (only on create — an existing
     // cartridge's code is not editable via this form) to avoid a round-trip
-    // just to learn the same thing the server already knows. The real
-    // template-picker UX (masks, "next code" preview, confirmation popups)
-    // is Plan 11/14/15's job — this is a minimal compat fix, not that UX.
+    // just to learn the same thing the server already knows.
     if (!isEdit && code.trim() === '') {
       codeError = 'Введите код или выберите шаблон.';
       valid = false;
@@ -158,76 +353,246 @@
     return valid;
   }
 
+  // ---------------------------------------------------------------------------
+  // Phase 40.2 Plan 15 (D-01) — save-chain popup helpers. Mirrors
+  // DeviceFormBody.svelte's Plan 13 / ActFormBody.svelte's Plan 14 helpers
+  // 1:1, adapted to cartridges/drums' one-shared-code-space-two-contexts
+  // shape (Plan 07).
+  // ---------------------------------------------------------------------------
+
+  // `AppError.code()` serialises as SCREAMING_SNAKE_CASE (see
+  // `crates/trackly-core/src/error.rs::code()`) — 'CONFLICT', not 'Conflict'.
+  function isConflictError(e: unknown): boolean {
+    return !!e && typeof e === 'object' && (e as { code?: string }).code === 'CONFLICT';
+  }
+
+  // cartridges/drums share ONE physical code space (NUM-09 "в") — a record
+  // occupying it can only ever be a cartridge or a drum, never another
+  // entity family.
+  function toTakenRecordSummary(
+    record: OccupyingRecordDto | null,
+    fallbackKindId: number,
+  ): NumberTakenRecordSummary {
+    if (record) {
+      return {
+        kind: record.kind as NumberTakenRecordSummary['kind'],
+        title: record.title,
+        subtitle: record.subtitle,
+        place: record.place,
+        status: record.status,
+      };
+    }
+    // Best-effort fallback (race where the occupying record is deleted
+    // between the failed save and this follow-up `is_occupied` call) — the
+    // fallback kind is inferred from the CURRENT form's own kindId, same
+    // adaptation as DeviceFormBody.svelte's `fallbackTypeId`.
+    return {
+      kind: fallbackKindId === 2 ? 'drum' : 'cartridge',
+      title: '—',
+      subtitle: null,
+      place: null,
+      status: null,
+    };
+  }
+
+  function focusNumberField() {
+    if (isEdit) {
+      document.getElementById('cart-code')?.focus();
+    } else {
+      numberFieldRef?.focus();
+    }
+  }
+
+  async function openTakenPopup(excludeId: number | null, canTakeNextFlag: boolean) {
+    const candidate = code.trim();
+    let record: OccupyingRecordDto | null;
+    try {
+      record = await apiCall<OccupyingRecordDto | null>('number_templates_is_occupied', {
+        context: numberContext,
+        candidate,
+        excludeId,
+      });
+    } catch {
+      record = null;
+    }
+    takenNumber = code;
+    takenRecord = toTakenRecordSummary(record, kindId);
+    takenCanTakeNext = canTakeNextFlag;
+    takeNextLoading = false;
+    activePopup = 'taken';
+  }
+
+  function closeTakenPopup() {
+    activePopup = null;
+    codeError = 'Номер уже занят.';
+    focusNumberField();
+  }
+
+  async function handleTakeNext() {
+    // Edit sessions always pass `canTakeNext=false` (code isn't editable),
+    // so the button (and therefore this handler) never renders/fires from
+    // an edit popup.
+    if (selectedTemplateId === null) return;
+    takeNextLoading = true;
+    try {
+      const dto = await apiCall<NextNumberDto>('number_templates_peek_next', {
+        templateId: selectedTemplateId,
+        context: numberContext,
+      });
+      code = dto.rendered;
+      activePopup = null;
+      focusNumberField();
+    } catch {
+      pushToast(
+        'error',
+        'Не удалось получить следующий номер. Введите номер вручную или попробуйте ещё раз.',
+      );
+    } finally {
+      takeNextLoading = false;
+    }
+  }
+
+  // Create-mode only (код не редактируется в правке — SPEC boundaries,
+  // out of scope for this plan). `mask` comes from `selectedTemplateMask`
+  // (the field's own reactive callback) — this component has no access to
+  // NumberTemplateField's internal template list. `contextLabel` uses the
+  // CURRENT `kindId` at the moment of the save attempt (UI-SPEC/plan's own
+  // must_haves truth), not whatever it was when the template was last
+  // selected.
+  function openMismatchPopup() {
+    mismatchNumber = code;
+    mismatchMask = selectedTemplateMask ?? '';
+    mismatchContextLabel = kindId === 2 ? 'Новый фотобарабан' : 'Новый картридж';
+    activePopup = 'mismatch';
+  }
+
+  function closeMismatchPopup() {
+    activePopup = null;
+    focusNumberField();
+  }
+
+  function continueMismatch() {
+    pendingConfirm = { ...pendingConfirm, mismatch: true };
+    activePopup = null;
+    void handleSubmit();
+  }
+
+  function openScriptWarningPopup(warning: NumberWarningDto) {
+    scriptWarningNumber = code;
+    // Homoglyph doppelganger: the double LOOKS identical to the candidate
+    // (that's the definition of a script-mix collision) — the server's
+    // `NumberWarningDto.doppelganger` intentionally carries no separate
+    // "number" field of its own, so the displayed "номер-двойник" text is
+    // the SAME candidate string the user typed (same adaptation as
+    // DeviceFormBody.svelte/ActFormBody.svelte, Plans 13/14).
+    scriptWarningDoppelganger = warning.doppelganger
+      ? {
+          number: code,
+          record: { kind: warning.doppelganger.kind, title: warning.doppelganger.title },
+        }
+      : null;
+    activePopup = 'scriptWarning';
+  }
+
+  function closeScriptWarningPopup() {
+    activePopup = null;
+    focusNumberField();
+  }
+
+  function continueScriptWarning() {
+    pendingConfirm = { ...pendingConfirm, scriptMix: true };
+    activePopup = null;
+    void handleSubmit();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
+  async function submitCreate() {
+    // Phase 40.2 Plan 07 (NUM-13): `code_override` -> `number_input`.
+    // `NumberFieldInput` (dto::number_template) has its OWN
+    // `#[serde(rename_all = "camelCase")]` — camelCase here is intentional,
+    // NOT a slip from the rest of this snake_case DTO.
+    const payload: CartridgeCreateDto = {
+      model_id: modelId!,
+      number_input: {
+        value: code.trim(),
+        templateId: selectedTemplateId,
+        confirmMismatch: pendingConfirm.mismatch,
+        confirmScriptMix: pendingConfirm.scriptMix,
+      },
+      state_id: stateId,
+      place_id: placeId,
+      notes: notes.trim() || null,
+    };
+
+    let outcome: CartridgeSaveOutcome;
+    try {
+      outcome = await cartridges.create(payload);
+    } catch (e) {
+      if (isConflictError(e)) {
+        await openTakenPopup(null, selectedTemplateId !== null);
+        return;
+      }
+      throw e;
+    }
+
+    if (outcome.outcome === 'created') {
+      pendingConfirm = { mismatch: false, scriptMix: false };
+      onSuccess(outcome);
+      onClose();
+      pushToast('success', `Картридж «${outcome.code}» добавлен.`);
+      return;
+    }
+    if (outcome.kind === 'mismatch') {
+      openMismatchPopup();
+      return;
+    }
+    if (outcome.kind === 'script_mix') {
+      openScriptWarningPopup(outcome);
+      return;
+    }
+    pushToast('error', 'Не удалось сохранить картридж. Повторите попытку.');
+  }
+
+  async function submitEdit(currentTarget: CartridgeDto) {
+    // Update: передаём place_id + notes (code не меняется через update,
+    // SPEC boundaries — out of scope for this plan).
+    const result = await cartridges.update(
+      currentTarget.id,
+      currentTarget.version,
+      placeId,
+      notes.trim() || null,
+    );
+    onSuccess(result);
+    onClose();
+    pushToast('success', `Картридж «${result.code}» обновлён.`);
+  }
+
   async function handleSubmit() {
     // GAP-8 defense-in-depth — see the readonly comment at the top of this file.
     if (readonly) return;
     if (!validate() || submitting) return;
 
     submitting = true;
-    onLoading(true);
-    codeError = '';
+    loading = true;
 
     try {
       if (isEdit && target) {
-        // Update: передаём place_id + notes (code не меняется через update)
-        const result = await cartridges.update(
-          target.id,
-          target.version,
-          placeId,
-          notes.trim() || null,
-        );
-        onSuccess(result);
-        onClose();
-        pushToast('success', `Картридж «${result.code}» обновлён.`);
+        await submitEdit(target);
       } else {
-        // Create. Phase 40.2 Plan 07 (NUM-13): `code_override` -> `number_input`
-        // — server-side auto-generation is retired, `code` is validated
-        // non-empty above. `template_id`/`confirm_*` stay at their inert
-        // defaults here (no template picker/confirmation popups yet — Plan
-        // 11/14/15's job); `cartridges.create`'s return type is still
-        // asserted as `CartridgeDto` (loosely-typed `apiCall<T>` cast, per
-        // `dto::cartridge::CartridgeSaveOutcome`'s internally-tagged JSON
-        // shape flattening `Created`'s fields to the top level) — a
-        // `NeedsConfirmation` response cannot happen while `confirm_*` are
-        // never set to `true` and no `template_id` is ever sent.
-        const result = await cartridges.create({
-          model_id: modelId!,
-          // `NumberFieldInput` (dto::number_template) has its OWN
-          // `#[serde(rename_all = "camelCase")]` — camelCase here is
-          // intentional, NOT a slip from the rest of this snake_case DTO.
-          number_input: {
-            value: code.trim(),
-            templateId: null,
-            confirmMismatch: false,
-            confirmScriptMix: false,
-          },
-          state_id: stateId,
-          place_id: placeId,
-          notes: notes.trim() || null,
-        });
-        onSuccess(result);
-        onClose();
-        pushToast('success', `Картридж «${result.code}» добавлен.`);
+        await submitCreate();
       }
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
           : '';
-
-      // Конфликт кода — UI-SPEC §Ошибочные состояния
-      if (
-        msg.toLowerCase().includes('conflict') ||
-        msg.toLowerCase().includes('уже существует') ||
-        (e && typeof e === 'object' && 'code' in e && (e as { code: unknown }).code === 'Conflict')
-      ) {
-        codeError = `Картридж с кодом «${code.trim()}» уже существует. Введите другой код.`;
-      } else {
-        pushToast('error', msg || 'Не удалось сохранить картридж. Повторите попытку.');
-      }
+      pushToast('error', msg || 'Не удалось сохранить картридж. Повторите попытку.');
     } finally {
       submitting = false;
-      onLoading(false);
+      loading = false;
     }
   }
 
@@ -269,27 +634,41 @@
   {/if}
 
   <!-- Код: обязателен при создании (NUM-13, Phase 40.2 Plan 07 — server-side
-       auto-generation retired); при редактировании не меняется через эту форму. -->
+       auto-generation retired); при редактировании не меняется через эту
+       форму (SPEC boundaries). Create mode: NumberTemplateField + full
+       occupied→mismatch→script-mix chain (Plan 15). -->
   <div class="field">
     <label class="label" for="cart-code">Код{isEdit ? '' : ' *'}</label>
-    <Input
-      value={code}
-      placeholder={codePlaceholder}
-      id="cart-code"
-      invalid={!!codeError}
-      disabled={readonly || isEdit}
-      aria-describedby={codeError ? 'cart-code-error' : 'cart-code-hint'}
-      oninput={(v) => {
-        code = v;
-        codeError = '';
-      }}
-    />
-    {#if codeError}
+    {#if isEdit}
+      <Input
+        value={code}
+        placeholder={codePlaceholder}
+        id="cart-code"
+        invalid={!!codeError}
+        disabled={readonly || isEdit}
+        aria-describedby={codeError ? 'cart-code-error' : undefined}
+        oninput={(v) => {
+          code = v;
+        }}
+      />
+    {:else}
+      <NumberTemplateField
+        bind:this={numberFieldRef}
+        context={numberContext}
+        bind:value={code}
+        placeholder={codePlaceholder}
+        disabled={readonly}
+        invalid={!!codeError}
+        errorMessage={codeError || null}
+        canManageSettings={authStore.user?.role === 'admin'}
+        onSelectedTemplateChange={(id, mask) => {
+          selectedTemplateId = id;
+          selectedTemplateMask = mask;
+        }}
+      />
+    {/if}
+    {#if codeError && isEdit}
       <span id="cart-code-error" class="field-error">{codeError}</span>
-    {:else if !isEdit}
-      <span id="cart-code-hint" class="field-hint"
-        >Введите код или штрих-код вручную (например, «C-0001»).</span
-      >
     {/if}
   </div>
 
@@ -407,11 +786,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--tr-space-2xs);
-  }
-
-  .field-hint {
-    font-size: var(--tr-font-size-label);
-    color: var(--tr-text-tertiary);
   }
 
   .field-error {

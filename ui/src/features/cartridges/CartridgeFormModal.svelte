@@ -7,9 +7,22 @@
   //
   // Архитектура: форма вынесена в отдельный компонент CartridgeFormBody.svelte
   // для совместимости с {#key openInstanceCounter} паттерном сброса состояния.
+  //
+  // Phase 40.2 Plan 15 (NUM-06/07/08/09/10/11/12, D-01): the same
+  // containing-block reasoning that made DeviceFormModal.svelte/
+  // ActFormModal.svelte render the D-01 save-chain popups
+  // («Номер занят»/«Не соответствует шаблону»/«Проверьте буквы в номере»)
+  // as top-level siblings (Plans 13/14) applies here — CartridgeFormBody
+  // OWNS their orchestration (occupied/mismatch/script-mix chain, button
+  // behaviour) but reports it up via `onPopupChange`; THIS component
+  // renders the actual popups.
   import Modal from '$lib/components/Modal.svelte';
   import Button from '$lib/components/Button.svelte';
+  import NumberTakenPopup from '$lib/components/NumberTakenPopup.svelte';
+  import NumberMismatchPopup from '$lib/components/NumberMismatchPopup.svelte';
+  import NumberScriptWarningPopup from '$lib/components/NumberScriptWarningPopup.svelte';
   import CartridgeFormBody from './CartridgeFormBody.svelte';
+  import type { CartridgeNumberPopupState } from './CartridgeFormBody.svelte';
   import type { CartridgeDto, CartridgeModelDto } from '../../bindings';
 
   interface Props {
@@ -51,6 +64,11 @@
   let formLoading = $state(false);
   let formCanSubmit = $state(false);
   let bodySubmitFn = $state<(() => void) | null>(null);
+
+  // Phase 40.2 Plan 15 (D-01): the current D-01 save-chain popup (or null)
+  // — owned/orchestrated by CartridgeFormBody, rendered here as a
+  // TOP-LEVEL sibling of the edit Modal (see this file's header comment).
+  let numberPopup = $state<CartridgeNumberPopupState>(null);
 </script>
 
 <Modal {open} title={modalTitle} size="md" {onClose}>
@@ -63,6 +81,7 @@
       onLoading={(l) => (formLoading = l)}
       onCanSubmitChange={(can) => (formCanSubmit = can)}
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
+      onPopupChange={(popup) => (numberPopup = popup)}
     />
   {/key}
 
@@ -78,3 +97,29 @@
     </Button>
   {/snippet}
 </Modal>
+
+{#if numberPopup?.kind === 'taken'}
+  <NumberTakenPopup
+    number={numberPopup.number}
+    record={numberPopup.record}
+    canTakeNext={numberPopup.canTakeNext}
+    loadingTakeNext={numberPopup.loadingTakeNext}
+    onTakeNext={numberPopup.onTakeNext}
+    onClose={numberPopup.onClose}
+  />
+{:else if numberPopup?.kind === 'mismatch'}
+  <NumberMismatchPopup
+    number={numberPopup.number}
+    mask={numberPopup.mask}
+    contextLabel={numberPopup.contextLabel}
+    onFix={numberPopup.onFix}
+    onContinue={numberPopup.onContinue}
+  />
+{:else if numberPopup?.kind === 'scriptWarning'}
+  <NumberScriptWarningPopup
+    number={numberPopup.number}
+    doppelganger={numberPopup.doppelganger}
+    onFix={numberPopup.onFix}
+    onContinue={numberPopup.onContinue}
+  />
+{/if}
