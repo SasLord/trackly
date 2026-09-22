@@ -18,6 +18,7 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
 use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
+use crate::dto::printer::PrinterCreateBlockDto;
 use trackly_core::auth::{authorize, Action, Identity};
 use trackly_core::error::AppError;
 
@@ -76,10 +77,11 @@ pub async fn build_devices_create_single_with_number_check(
     device: DeviceNew,
     number_input: NumberFieldInput,
     context: TemplateContextDto,
+    printer: Option<PrinterCreateBlockDto>,
 ) -> Result<DeviceSaveOutcome, AppError> {
     authorize(caller, &Action::MutateDevices)?;
     ctx.devices
-        .create_single_with_number_check(device, number_input, context)
+        .create_single_with_number_check_with_printer(device, number_input, context, printer)
         .await
 }
 
@@ -219,6 +221,7 @@ pub async fn devices_create_single_with_number_check(
     device: DeviceNew,
     number_input: NumberFieldInput,
     context: TemplateContextDto,
+    printer: Option<PrinterCreateBlockDto>,
 ) -> Result<DeviceSaveOutcome, AppError> {
     let caller = resolve_tauri_identity(state.inner()).await?;
     build_devices_create_single_with_number_check(
@@ -227,6 +230,7 @@ pub async fn devices_create_single_with_number_check(
         device,
         number_input,
         context,
+        printer,
     )
     .await
 }

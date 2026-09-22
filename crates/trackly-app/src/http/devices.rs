@@ -20,6 +20,7 @@ use crate::dto::device::{
     DeviceListResponse, DeviceNew, DevicePatch, DeviceSaveOutcome, Pagination, StatusCount,
 };
 use crate::dto::number_template::{NumberFieldInput, TemplateContextDto};
+use crate::dto::printer::PrinterCreateBlockDto;
 use crate::error_axum::AppErrorResponse;
 use crate::tauri_cmds::devices::{
     build_devices_autocomplete, build_devices_bulk_create, build_devices_create,
@@ -196,6 +197,12 @@ pub struct CreateSingleWithNumberCheckPayload {
     pub device: DeviceNew,
     pub number_input: NumberFieldInput,
     pub context: TemplateContextDto,
+    /// Phase 40.3 Plan 04 (NUM-06/NUM-08): optional IP/SNMP printer block.
+    /// Plain `Option<T>` (not double-Option) — serde already treats a
+    /// missing `printer` key as `None` without extra attributes, so the
+    /// existing `role_endpoint_matrix.rs` Case 74 JSON body (no `printer`
+    /// key) deserializes unchanged.
+    pub printer: Option<PrinterCreateBlockDto>,
 }
 
 pub async fn handler_create_single_with_number_check(
@@ -213,6 +220,7 @@ pub async fn handler_create_single_with_number_check(
             payload.device,
             payload.number_input,
             payload.context,
+            payload.printer,
         )
         .await
         .map_err(AppErrorResponse::from)?,
