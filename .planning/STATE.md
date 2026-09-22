@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: verifying
-last_updated: "2026-09-22T21:15:25.334Z"
+last_updated: "2026-09-22T21:18:25.349Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 12
@@ -419,6 +419,7 @@ Last activity: 2026-09-22
 | Phase 40.3-audit-debt P02 | 50min | 2 tasks | 1 files |
 | Phase 40.3-audit-debt P03 | 12min | 2/3 tasks | 3 files |
 | Phase 40.3 P04 | 30min | 3 tasks | 5 files |
+| Phase 40.3-05 P05 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1027,6 +1028,9 @@ Recent decisions affecting current work:
 - [Phase 40.3-04]: printer-override применяется только при создании НОВОЙ строки printers (внутри exists_for_device_in_tx guard) — идемпотентность update()/bulk_create() не тронута
 - [Phase 40.3-04]: community имеет смысл только при заданном ip_address — если ip_address пуст, community безусловно 'public' даже при непустом community в запросе
 - [Phase 40.3-04]: printer-блок на type_id != Принтер отклоняется явной AppError::Validation{field:printer}, а не тихо игнорируется (T-40.3-09)
+- [Phase 40.3-05]: printer IP/community блок физически отсутствует в DOM вне create+Принтер (D-03), а не скрыт CSS
+- [Phase 40.3-05]: devices.create() удалён вместе со своим единственным вызывающим вместо расширения до DeviceSaveOutcome (D-04)
+- [Phase 40.3-05]: Task 3 (живая проверка) закрыт авто-approve по AUTO_MODE — UNVERIFIED, требует отдельного human UAT перед закрытием фазы
 
 ### Pending Todos
 
@@ -1050,6 +1054,7 @@ Spike-зоны, требующие внимания во время планир
 - 39-11: cargo test -p trackly-app --lib fails to compile (missing 'places' field in AppCtx test fixtures in http/health.rs:126 and tauri_cmds/health.rs:142, introduced by Plan 39-05, never backfilled) — blocks unit tests, unrelated to 39-22's integration-test scope
 - 40.2-01 (D-15): cargo test -p trackly-infra имеет 16 красных тестов (acts_sqlite::increment_counter_returns_one_first + 15x cartridges_sqlite::*) — «no such table: counters», ожидаемо после DROP TABLE counters в V041; чинится планами 40.2-06 (акты) и 40.2-07 (картриджи/фотобарабаны)
 - 40.3-03: живая UAT-проверка тоста возврата (шаблон номеров, cargo tauri dev) не выполнена — статус UNVERIFIED, шаги воспроизведения в 40.3-03-SUMMARY.md
+- 40.3-05: живая проверка «Завести принтер» через DeviceFormModal НЕ выполнена (чекпоинт закрыт авто-approve AUTO_MODE) — требуется human UAT перед закрытием фазы 40.3-audit-debt, шаги см. 40.3-05-SUMMARY.md
 
 ### Явные решения по приватности
 
@@ -1219,8 +1224,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T19:52:32.457Z
-Stopped at: Completed 40.3-04-PLAN.md
+Last session: 2026-09-22T21:18:23.393Z
+Stopped at: Completed 40.3-05-PLAN.md
 Resume file: None
 
 None
