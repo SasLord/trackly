@@ -636,6 +636,7 @@
     {:else}
       <NumberTemplateField
         bind:this={numberFieldRef}
+        id="cart-code"
         context={numberContext}
         bind:value={code}
         placeholder={codePlaceholder}

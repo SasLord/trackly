@@ -743,6 +743,7 @@
       {:else}
         <NumberTemplateField
           bind:this={numberFieldRef}
+          id="f-inv"
           context={numberContext}
           bind:value={inventoryNo}
           placeholder="ИНВ-000001"

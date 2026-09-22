@@ -27,6 +27,10 @@
   } from '../../bindings';
 
   interface Props {
+    /** FE-WR-12: id поля ввода — форма передаёт тот же id, что у своей
+     *  `<label for>`, иначе у поля нет доступного имени и клик по подписи
+     *  не ставит фокус. По умолчанию — сгенерированный. */
+    id?: string;
     /** Какой из 5 попапов создания встраивает поле — определяет и RBAC-гейт
      *  серверных команд (`action_for_context`, план 05), и запомненный
      *  шаблон по умолчанию. */
@@ -61,6 +65,7 @@
   }
 
   let {
+    id,
     context,
     value = $bindable(''),
     placeholder,
@@ -381,7 +386,8 @@
   // ---------------------------------------------------------------------
   // Меню «Вставка» — выбор шаблона / «Без шаблона»
   // ---------------------------------------------------------------------
-  const inputId = `ntf-input-${Math.random().toString(36).slice(2)}`;
+  const generatedInputId = `ntf-input-${Math.random().toString(36).slice(2)}`;
+  const inputId = $derived(id ?? generatedInputId);
 
   function focusInputAtEnd() {
     const el = document.getElementById(inputId) as HTMLInputElement | null;
@@ -594,7 +600,7 @@
     return null;
   });
 
-  const describedById = `${inputId}-status`;
+  const describedById = $derived(`${inputId}-status`);
 </script>
 
 <div class="ntf">

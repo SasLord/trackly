@@ -640,6 +640,7 @@
       {:else}
         <NumberTemplateField
           bind:this={numberFieldRef}
+          id="act-number"
           context={numberContext}
           bind:value={numberValue}
           invalid={!!fieldErrors['number']}
