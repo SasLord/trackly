@@ -461,51 +461,78 @@ impl NumberTemplateService {
         })?
     }
 
-    /// Detect the two non-blocking warnings (NUM-12): script mix
-    /// (Cyrillic+Latin look-alikes) and, if the candidate also collapses to
-    /// the same Latin skeleton as an existing LIVE record, the doppelganger
-    /// paragraph. Returns `None` when the candidate has no script mix at
-    /// all — a same-script duplicate is `is_occupied`'s concern, not this
-    /// one's.
+    /// Detect the non-blocking NUM-12 warning. SPEC NUM-12 has TWO
+    /// independent triggers, either one is enough:
+    ///
+    /// 1. the candidate mixes Cyrillic and Latin letters (script mix), or
+    /// 2. after collapsing look-alike letters (О/O, С/C, …) it equals a LIVE
+    ///    record's number that is written with DIFFERENT letters (the
+    ///    doppelganger) — e.g. a user on a Russian layout types `С-0005`
+    ///    (Cyrillic С) next to the seeded Latin `C-0005`: no script mix at
+    ///    all, yet a visual duplicate (BE-CR-03).
+    ///
+    /// An exact (case-/trim-insensitive) match is NOT a doppelganger — that
+    /// is `is_occupied`'s blocking concern. Returns `None` when neither
+    /// trigger fires.
     pub async fn detect_warnings(
         &self,
         pool: TemplateType,
         candidate: &str,
         exclude_id: Option<i64>,
     ) -> Result<Option<NumberWarningDto>, AppError> {
-        if !homoglyphs::has_script_mix(candidate) {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
             return Ok(None);
         }
+        let mixed = homoglyphs::has_script_mix(trimmed);
         let readers = self.readers.clone();
-        let candidate_owned = candidate.to_string();
-        let skeleton = homoglyphs::to_latin_skeleton(candidate);
-        let message = format!(
-            "В номере «{candidate_owned}» смешаны русские и латинские буквы. Внешне одинаковые \
-             буквы, например «О» и «O», считаются разными — такой номер легко перепутать."
-        );
+        let candidate_owned = trimmed.to_string();
+        let skeleton = homoglyphs::to_latin_skeleton(trimmed);
+        let needle = normalize_number_key(trimmed);
         let doppelganger =
-            tokio::task::spawn_blocking(move || -> Result<Option<OccupyingRecordDto>, AppError> {
+            tokio::task::spawn_blocking(move || -> Result<Option<CandidateRow>, AppError> {
                 let conn = readers.acquire();
-                find_doppelganger(&conn, pool, &skeleton, exclude_id)
+                find_doppelganger(&conn, pool, &skeleton, &needle, exclude_id)
             })
             .await
             .map_err(|e| AppError::Internal {
                 source_chain: format!("spawn_blocking: {e}"),
             })??;
 
-        let message = match &doppelganger {
-            Some(rec) => format!(
-                "{message} Он выглядит так же, как существующий номер «{candidate_owned}» ({} \
-                 «{}»), но записан другими буквами.",
-                rec.kind, rec.title
-            ),
-            None => message,
+        if !mixed && doppelganger.is_none() {
+            return Ok(None);
+        }
+
+        let mut message = if mixed {
+            format!(
+                "В номере «{candidate_owned}» смешаны русские и латинские буквы. Внешне \
+                 одинаковые буквы, например «О» и «O», считаются разными — такой номер легко \
+                 перепутать."
+            )
+        } else {
+            String::new()
         };
+        if let Some(row) = &doppelganger {
+            let paragraph = format!(
+                "Номер «{candidate_owned}» выглядит так же, как существующий номер «{}» ({} \
+                 «{}»), но записан другими буквами — русские и латинские буквы внешне \
+                 совпадают.",
+                row.raw_value.trim(),
+                row.record.kind,
+                row.record.title
+            );
+            if message.is_empty() {
+                message = paragraph;
+            } else {
+                message.push(' ');
+                message.push_str(&paragraph);
+            }
+        }
 
         Ok(Some(NumberWarningDto {
             kind: NumberWarningKind::ScriptMix,
             message,
-            doppelganger,
+            doppelganger: doppelganger.map(|row| row.record),
         }))
     }
 
@@ -519,6 +546,12 @@ impl NumberTemplateService {
             Err(_) => true,
         }
     }
+}
+
+/// The single comparison key for "is this the same number?" (NUM-09,
+/// T-40.2-08): `.trim()` + full Unicode lowercase.
+pub(crate) fn normalize_number_key(value: &str) -> String {
+    value.trim().to_lowercase()
 }
 
 /// BE-CR-05: a mask is saved/previewed WITHOUT edge whitespace. Services
@@ -684,31 +717,32 @@ fn find_occupying_record(
     candidate: &str,
     exclude_id: Option<i64>,
 ) -> Result<Option<OccupyingRecordDto>, AppError> {
-    let needle = candidate.trim().to_lowercase();
+    let needle = normalize_number_key(candidate);
     if needle.is_empty() {
         return Ok(None);
     }
     let rows = fetch_candidate_rows(conn, pool)?;
     Ok(rows
         .into_iter()
-        .find(|row| Some(row.id) != exclude_id && row.raw_value.trim().to_lowercase() == needle)
+        .find(|row| Some(row.id) != exclude_id && normalize_number_key(&row.raw_value) == needle)
         .map(|row| row.record))
 }
 
 /// `detect_warnings`'s doppelganger worker: is there a LIVE record whose
-/// value collapses to the SAME Latin skeleton as `candidate`'s (NUM-12)?
+/// value collapses to the SAME Latin skeleton as `candidate`'s (NUM-12) but
+/// is NOT the same number (`candidate_key` = [`normalize_number_key`] of the
+/// candidate — an exact match is an occupied number, not a doppelganger)?
 fn find_doppelganger(
     conn: &Connection,
     pool: TemplateType,
     candidate_skeleton: &str,
+    candidate_key: &str,
     exclude_id: Option<i64>,
-) -> Result<Option<OccupyingRecordDto>, AppError> {
+) -> Result<Option<CandidateRow>, AppError> {
     let rows = fetch_candidate_rows(conn, pool)?;
-    Ok(rows
-        .into_iter()
-        .find(|row| {
-            Some(row.id) != exclude_id
-                && homoglyphs::to_latin_skeleton(row.raw_value.trim()) == candidate_skeleton
-        })
-        .map(|row| row.record))
+    Ok(rows.into_iter().find(|row| {
+        Some(row.id) != exclude_id
+            && homoglyphs::to_latin_skeleton(row.raw_value.trim()) == candidate_skeleton
+            && normalize_number_key(&row.raw_value) != candidate_key
+    }))
 }

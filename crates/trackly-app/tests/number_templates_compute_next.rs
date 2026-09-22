@@ -349,3 +349,36 @@ fn check_mismatch_false_when_candidate_fits_unbounded_mask() {
         today
     ));
 }
+
+/// BE-CR-03: NUM-12 has two independent triggers. A single-alphabet
+/// candidate that collapses to an existing number written with DIFFERENT
+/// letters (Cyrillic «С-0005» next to the seeded Latin «C-0005») must warn,
+/// even though there is no script mix at all.
+#[tokio::test]
+async fn detect_warnings_doppelganger_without_script_mix() {
+    let (svc, _dir) = make_service();
+    seed_cartridge(&svc.writer, 1, "Pantum", "TL-5120X", "C-0005").await;
+
+    let warning = svc
+        .detect_warnings(TemplateType::CartridgeCode, "С-0005", None)
+        .await
+        .expect("detect_warnings")
+        .expect("a pure-Cyrillic visual duplicate of a Latin code must warn");
+    assert_eq!(warning.kind, NumberWarningKind::ScriptMix);
+    let doppelganger = warning.doppelganger.expect("doppelganger card");
+    assert_eq!(doppelganger.kind, "cartridge");
+    assert!(
+        warning.message.contains("«C-0005»"),
+        "the message must quote the EXISTING number, got: {}",
+        warning.message
+    );
+    assert!(!warning.message.contains("смешаны"));
+
+    // An exact (case-insensitive) match is an occupied number, not a
+    // doppelganger — detect_warnings stays silent for it.
+    let exact = svc
+        .detect_warnings(TemplateType::CartridgeCode, "c-0005", None)
+        .await
+        .expect("detect_warnings");
+    assert_eq!(exact, None);
+}
