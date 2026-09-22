@@ -168,11 +168,10 @@ impl NumberTemplateRepository for SqliteNumberTemplateRepository {
             }
         };
 
-        // `acts.number` is stored as INTEGER, `devices.inventory_number` and
-        // `cartridges.code` as TEXT — read every value through rusqlite's
-        // `ValueRef`-based dynamic accessor and normalise to `String` here,
-        // rather than adding a per-space return type. `mask::extract_digits`
-        // only ever cares about the string form.
+        // All three columns are TEXT since V042 (`acts.number` was INTEGER
+        // before it); the `ValueRef` dynamic accessor still tolerates an
+        // integer-typed value defensively and normalises to `String` —
+        // `mask::extract_digits` only ever cares about the string form.
         let mut stmt = conn.prepare(sql).map_err(map_rusqlite)?;
         let rows = stmt
             .query_map([], |r| {
