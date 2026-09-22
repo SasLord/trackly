@@ -363,6 +363,7 @@ impl ActService {
                 message: "Введите номер акта или выберите шаблон.".into(),
             });
         }
+        trackly_core::text::number_value::validate_number_value("number", &trimmed)?;
 
         // D-01 confirmation chain, run as async pre-checks BEFORE opening
         // the writer transaction (module doc-comment): occupied (including
@@ -834,6 +835,7 @@ impl ActService {
                     message: "Введите номер акта или выберите шаблон.".into(),
                 });
             }
+            trackly_core::text::number_value::validate_number_value("number", &trimmed)?;
             // D-06: occupied check ALSO scans live returns' displayed
             // number — `exclude_id` skips this same act (renaming to its
             // own current number is not reachable here since

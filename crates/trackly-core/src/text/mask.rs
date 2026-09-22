@@ -133,6 +133,13 @@ fn scan_segments(mask: &str) -> Vec<Segment> {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Maximum mask length, in characters (BE-WR-10).
+pub const MAX_MASK_CHARS: usize = 64;
+
+/// Maximum width of a fixed `[X…]` token (BE-WR-10): 18 digits always fit
+/// in a `u64` (`10^18 - 1 < u64::MAX`).
+pub const MAX_DIGIT_WIDTH: u32 = 18;
+
 /// Syntactic validation only — does not expand date tokens. Ensures the
 /// mask contains exactly one `[X…]` ordinal token; everything else
 /// (literal text, unrecognised bracket groups) is unrestricted.
@@ -141,7 +148,37 @@ fn scan_segments(mask: &str) -> Vec<Segment> {
 /// (Plan 10) via a debounced round-trip to the server — the check lives
 /// here, once, rather than being re-implemented in JS.
 pub fn validate_mask(mask: &str) -> Result<(), AppError> {
-    let number_token_count = scan_segments(mask)
+    // BE-WR-10: bound the mask so a `[` + 10⁶×`X` + `]` cannot render a
+    // megabyte string on every list/peek call, and keep control characters
+    // out of rendered numbers.
+    if mask.chars().count() > MAX_MASK_CHARS {
+        return Err(AppError::Validation {
+            field: "mask".to_string(),
+            message: format!("Маска не должна быть длиннее {MAX_MASK_CHARS} символов."),
+        });
+    }
+    if mask.chars().any(char::is_control) {
+        return Err(AppError::Validation {
+            field: "mask".to_string(),
+            message: "Маска не должна содержать управляющих символов (перевод строки, табуляция)."
+                .to_string(),
+        });
+    }
+
+    let segments = scan_segments(mask);
+    if segments
+        .iter()
+        .any(|seg| matches!(seg, Segment::Number(width) if *width > MAX_DIGIT_WIDTH))
+    {
+        return Err(AppError::Validation {
+            field: "mask".to_string(),
+            message: format!(
+                "Порядковый номер в маске может быть не длиннее {MAX_DIGIT_WIDTH} знаков."
+            ),
+        });
+    }
+
+    let number_token_count = segments
         .iter()
         .filter(|seg| matches!(seg, Segment::Number(_)))
         .count();
@@ -298,6 +335,15 @@ pub fn extract_digits(parsed: &ParsedMask, candidate: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_mask_enforces_length_width_and_control_chars() {
+        assert!(validate_mask(&format!("[{}]", "X".repeat(18))).is_ok());
+        assert!(validate_mask(&format!("[{}]", "X".repeat(19))).is_err());
+        assert!(validate_mask(&format!("{}[X]", "A".repeat(MAX_MASK_CHARS))).is_err());
+        assert!(validate_mask("ИНВ-\n[XXX]").is_err());
+        assert!(validate_mask("ИНВ-[XXX]").is_ok());
+    }
     use time::{Date, Month};
 
     fn unix_ts(year: i32, month: Month, day: u8) -> i64 {

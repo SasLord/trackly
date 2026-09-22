@@ -107,7 +107,10 @@ async fn create_with_templated_text_number_succeeds() {
         let ids = seed_devices(&svc.writer, 1).await;
 
         let dto = svc
-            .create(&Identity::trusted_admin(), create_payload("2026/09-1", ids[0]))
+            .create(
+                &Identity::trusted_admin(),
+                create_payload("2026/09-1", ids[0]),
+            )
             .await
             .expect("create")
             .expect_created("create");
@@ -167,10 +170,7 @@ async fn create_rejects_number_matching_live_return_display() {
         // even though no live act's raw `number` column literally equals
         // "42в".
         let err = svc
-            .create(
-                &Identity::trusted_admin(),
-                create_payload("42в", ids[1]),
-            )
+            .create(&Identity::trusted_admin(), create_payload("42в", ids[1]))
             .await
             .expect_err("must be rejected as occupied");
         match err {
@@ -276,7 +276,10 @@ async fn create_with_empty_number_returns_validation() {
         // identically (D-08: explicit `.trim()`).
         for candidate in ["", "   "] {
             let err = svc
-                .create(&Identity::trusted_admin(), create_payload(candidate, ids[0]))
+                .create(
+                    &Identity::trusted_admin(),
+                    create_payload(candidate, ids[0]),
+                )
                 .await
                 .expect_err("empty number must be rejected");
             match err {
@@ -352,4 +355,28 @@ async fn concurrent_creates_same_number_exactly_one_succeeds() {
     })
     .await
     .expect("concurrent_creates_same_number_exactly_one_succeeds budget");
+}
+
+// ---------------------------------------------------------------------------
+// BE-WR-10: act number shape — bounded length, no control characters.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_rejects_overlong_or_control_char_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 1).await;
+
+        for bad in ["1".repeat(65), "42\n43".to_string()] {
+            let err = svc
+                .create(&Identity::trusted_admin(), create_payload(&bad, ids[0]))
+                .await;
+            assert!(
+                matches!(&err, Err(AppError::Validation { field, .. }) if field == "number"),
+                "number {bad:?} must be a validation error, got {err:?}"
+            );
+        }
+    })
+    .await
+    .expect("budget");
 }

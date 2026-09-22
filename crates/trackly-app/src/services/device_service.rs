@@ -125,8 +125,8 @@ impl DeviceService {
     // Numbering (Phase 40.2 Plan 08, NUM-09/D-05/D-08)
     // -----------------------------------------------------------------------
 
-    /// Is `trimmed` already taken by a LIVE device/printer other than
-    /// `exclude_id`? Empty strings are never checked (SPEC NUM-09 — the
+    /// Validate the shape of `trimmed` (BE-WR-10) and reject it if it is
+    /// already taken by a LIVE device/printer other than `exclude_id`? Empty strings are never checked (SPEC NUM-09 — the
     /// device/printer inventory number is the one number field in this
     /// entire phase that stays optional, D-16).
     async fn reject_if_occupied(
@@ -137,6 +137,10 @@ impl DeviceService {
         if trimmed.is_empty() {
             return Ok(());
         }
+        // BE-WR-10: every non-empty inventory number (create, interactive
+        // create, update, bulk_create, CSV import via create) passes through
+        // here, so the shape check lives at this single choke point.
+        trackly_core::text::number_value::validate_number_value("inventory_no", trimmed)?;
         if self
             .number_templates
             .is_occupied(TemplateType::DeviceInventory, trimmed, exclude_id)

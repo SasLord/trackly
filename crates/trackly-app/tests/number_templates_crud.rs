@@ -247,3 +247,19 @@ async fn mask_edge_whitespace_is_trimmed_on_create_update_and_preview() {
         .await;
     assert!(matches!(dup, Err(AppError::Conflict { .. })), "got {dup:?}");
 }
+
+/// BE-WR-10: mask length and ordinal width are bounded.
+#[tokio::test]
+async fn create_rejects_overlong_mask_and_too_wide_ordinal() {
+    let (svc, _dir) = make_service();
+    for bad in [
+        format!("{}[X]", "А".repeat(70)),
+        format!("[{}]", "X".repeat(19)),
+    ] {
+        let err = svc.create(TemplateTypeDto::DeviceInventory, bad).await;
+        assert!(
+            matches!(&err, Err(AppError::Validation { field, .. }) if field == "mask"),
+            "got {err:?}"
+        );
+    }
+}

@@ -826,3 +826,27 @@ async fn create_single_with_number_check_mismatch_beats_script_mix() {
     .await
     .expect("create_single_with_number_check_mismatch_beats_script_mix exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// BE-WR-10: inventory number shape — bounded length, no control characters.
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn create_rejects_overlong_or_control_char_inventory_number() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        for bad in ["Я".repeat(65), "ИНВ\t000001".to_string()] {
+            let err = svc.create(minimal_new("Устройство", Some(&bad))).await;
+            assert!(
+                matches!(
+                    &err,
+                    Err(trackly_core::error::AppError::Validation { field, .. })
+                        if field == "inventory_no"
+                ),
+                "inventory number {bad:?} must be a validation error, got {err:?}"
+            );
+        }
+    })
+    .await
+    .expect("budget");
+}

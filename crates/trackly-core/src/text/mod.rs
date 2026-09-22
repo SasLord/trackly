@@ -4,9 +4,12 @@
 //!   rendering and reverse-parsing of numbers (NUM-02).
 //! - [`homoglyphs`] — Cyrillic/Latin script-mix detection and skeleton
 //!   comparison for doppelganger warnings (NUM-12, D-04).
+//! - [`number_value`] — length / control-character validation of a stored
+//!   number value (act number, inventory number).
 //! - [`sequence`] — first-free / max+1 / overflow computation over a set of
 //!   taken numbers (NUM-04/NUM-05).
 
 pub mod homoglyphs;
 pub mod mask;
+pub mod number_value;
 pub mod sequence;
