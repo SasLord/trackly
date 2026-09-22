@@ -225,7 +225,14 @@
     !templatesShowSkeleton && templatesError === null && sortedTemplates.length === 0,
   );
 
+  // FE-WR-08: WS-события и CRUD запускают перезагрузки параллельно — ответ,
+  // пришедший после более нового запроса (например, WS-перезагрузка,
+  // начатая до удаления), отбрасывается и не возвращает в таблицу удалённый
+  // шаблон или старые «следующие номера».
+  let templatesReqId = 0;
+
   async function loadTemplates() {
+    const reqId = ++templatesReqId;
     templatesLoading = true;
     if (!templatesInitialLoad) {
       // Не первая загрузка — сбрасываем предыдущую ошибку (если была), но
@@ -236,14 +243,18 @@
       const list = await apiCall<NumberTemplateDto[]>('number_templates_list', {
         templateType: null,
       });
+      if (reqId !== templatesReqId) return;
       templates = list;
       templatesError = null;
     } catch {
+      if (reqId !== templatesReqId) return;
       templatesError =
         'Не удалось загрузить шаблоны. Нажмите «Повторить» или откройте раздел заново.';
     } finally {
-      templatesLoading = false;
-      templatesInitialLoad = false;
+      if (reqId === templatesReqId) {
+        templatesLoading = false;
+        templatesInitialLoad = false;
+      }
     }
   }
 
