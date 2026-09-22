@@ -44,17 +44,192 @@ pub struct MigrationReport {
     pub applied_count: usize,
 }
 
+/// One row of `PRAGMA foreign_key_check`: `(table, rowid, parent, fkid)`.
+type FkViolation = (String, Option<i64>, String, i64);
+
+fn fk_violations(conn: &Connection) -> Result<std::collections::BTreeSet<FkViolation>, AppError> {
+    let mut stmt = conn
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("prepare foreign_key_check failed: {e}"),
+        })?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<i64>>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("foreign_key_check failed: {e}"),
+        })?;
+    let mut out = std::collections::BTreeSet::new();
+    for row in rows {
+        out.insert(row.map_err(|e| AppError::Internal {
+            source_chain: format!("foreign_key_check row failed: {e}"),
+        })?);
+    }
+    Ok(out)
+}
+
+/// Highest migration version already recorded in refinery's history table,
+/// or `None` on a fresh DB (history table not created yet).
+fn last_applied_version(conn: &Connection) -> Result<Option<i64>, AppError> {
+    let has_history: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master \
+              WHERE type = 'table' AND name = 'refinery_schema_history')",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("probe refinery_schema_history failed: {e}"),
+        })?;
+    if !has_history {
+        return Ok(None);
+    }
+    conn.query_row(
+        "SELECT MAX(version) FROM refinery_schema_history",
+        [],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .map_err(|e| AppError::Internal {
+        source_chain: format!("read refinery_schema_history failed: {e}"),
+    })
+}
+
+fn set_foreign_keys(conn: &Connection, on: bool) -> Result<(), AppError> {
+    conn.pragma_update(None, "foreign_keys", if on { "ON" } else { "OFF" })
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("PRAGMA foreign_keys toggle failed: {e}"),
+        })?;
+    let actual: i64 = conn
+        .pragma_query_value(None, "foreign_keys", |r| r.get(0))
+        .map_err(|e| AppError::Internal {
+            source_chain: format!("read PRAGMA foreign_keys failed: {e}"),
+        })?;
+    if (actual == 1) != on {
+        // SQLite silently ignores this PRAGMA inside an open transaction —
+        // refuse to run table-rebuild migrations with the wrong FK mode.
+        return Err(AppError::Internal {
+            source_chain: format!(
+                "PRAGMA foreign_keys={} did not take effect (open transaction?)",
+                if on { "ON" } else { "OFF" }
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// Run all embedded migrations against the given writable connection.
 ///
 /// Refinery 0.9 defaults to one transaction per migration (`set_grouped(false)`),
 /// which lets `journal_mode=WAL` (set by `pragmas::apply_writer_pragmas` BEFORE
 /// this call) commit to the file header on the first migration's transaction.
+///
+/// ## Foreign keys are disabled on the connection for the whole run
+///
+/// Refinery executes every migration file inside `conn.transaction()`, and
+/// SQLite ignores `PRAGMA foreign_keys` inside a transaction — so a
+/// `PRAGMA foreign_keys = OFF;` line inside a migration file is a no-op.
+/// With FKs left ON, the 12-step table rebuild (`CREATE x_new; INSERT ...
+/// SELECT; DROP TABLE x; ALTER TABLE x_new RENAME TO x`) turns `DROP TABLE x`
+/// into an implicit `DELETE FROM x` that fires FK actions on child tables:
+/// `ON DELETE CASCADE` children are wiped (V042 would erase every
+/// `act_items` row), `SET NULL` links are cleared (`place_movements.act_id`),
+/// and `RESTRICT`/`NO ACTION` children abort the upgrade (returns'
+/// `parent_act_id`, `requests.completed_cartridge_id` for V043).
+///
+/// So when there is at least one pending migration, FKs are switched OFF on
+/// the connection (outside any transaction) BEFORE refinery starts, then
+/// `PRAGMA foreign_key_check` is compared against a pre-run baseline and FKs
+/// are switched back ON. Any violation that did not exist before the run
+/// fails the startup loudly — a rebuild that broke referential integrity is
+/// never silently accepted. Pre-existing violations (legacy data) are not
+/// this run's fault and do not block startup.
 pub fn run(conn: &mut Connection) -> Result<MigrationReport, AppError> {
-    let report = migrations::runner()
-        .run(conn)
-        .map_err(|e| AppError::Internal {
+    run_to(conn, None)
+}
+
+/// Test hook: run embedded migrations only up to (and including) `version`,
+/// through the SAME runner path as [`run`] (FK-off window + integrity
+/// check). Lets upgrade tests stand up a real pre-VNNN database, seed it,
+/// and then run the remaining migrations exactly as `AppCtx::build` would.
+#[doc(hidden)]
+pub fn run_up_to(conn: &mut Connection, version: u32) -> Result<MigrationReport, AppError> {
+    run_to(conn, Some(version))
+}
+
+fn build_runner(target: Option<u32>) -> Result<refinery::Runner, AppError> {
+    let runner = migrations::runner();
+    Ok(match target {
+        None => runner,
+        Some(v) => {
+            let v = refinery::SchemaVersion::try_from(v).map_err(|e| AppError::Internal {
+                source_chain: format!("migration target {v} out of range: {e}"),
+            })?;
+            runner.set_target(refinery::Target::Version(v))
+        }
+    })
+}
+
+fn run_to(conn: &mut Connection, target: Option<u32>) -> Result<MigrationReport, AppError> {
+    let goal = i64::from(target.unwrap_or_else(max_known_version));
+    let pending = match last_applied_version(conn)? {
+        None => true,
+        Some(v) => v < goal,
+    };
+
+    let report = if pending {
+        let fk_was_on: bool = conn
+            .pragma_query_value(None, "foreign_keys", |r| r.get::<_, i64>(0))
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("read PRAGMA foreign_keys failed: {e}"),
+            })?
+            == 1;
+        let baseline = fk_violations(conn)?;
+        set_foreign_keys(conn, false)?;
+
+        let result = build_runner(target)?.run(conn);
+
+        // Integrity check BEFORE re-enabling FKs (re-enabling does not
+        // validate existing rows either, but keep the order explicit).
+        let after = fk_violations(conn);
+        let restore = set_foreign_keys(conn, fk_was_on);
+
+        let report = result.map_err(|e| AppError::Internal {
             source_chain: format!("refinery migration failed: {e}"),
         })?;
+        let after = after?;
+        restore?;
+
+        let new_violations: Vec<&FkViolation> = after.difference(&baseline).collect();
+        if !new_violations.is_empty() {
+            let sample: Vec<String> = new_violations
+                .iter()
+                .take(10)
+                .map(|(table, rowid, parent, _)| {
+                    format!("{table}(rowid={}) -> {parent}", rowid.unwrap_or(-1))
+                })
+                .collect();
+            return Err(AppError::Internal {
+                source_chain: format!(
+                    "migrations left {} new foreign key violation(s): {}",
+                    new_violations.len(),
+                    sample.join(", ")
+                ),
+            });
+        }
+        report
+    } else {
+        build_runner(target)?
+            .run(conn)
+            .map_err(|e| AppError::Internal {
+                source_chain: format!("refinery migration failed: {e}"),
+            })?
+    };
 
     let schema_version: u32 = conn
         .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))

@@ -1,193 +1,145 @@
 //! Integration test: `V043__cartridges_code_unique_live.sql` — `cartridges.code`
 //! uniqueness rebuild, column-level `UNIQUE` -> partial `UNIQUE INDEX ...
-//! WHERE deleted_at_utc IS NULL` (Phase 40.2 Plan 07, NUM-09 space "в").
+//! WHERE deleted_at_utc IS NULL` (Phase 40.2 Plan 07, NUM-09), exercised
+//! through the REAL migration runner on a genuine pre-V043 database:
+//! `apply_writer_pragmas` -> `migrations::run_up_to(42)` -> seed ->
+//! `migrations::run`.
 //!
-//! Mirrors `acts_number_text_migration.rs`'s pattern (itself mirroring
-//! `trackly-infra`'s own `v032_data_transform_drops_empty_and_preserves_populated`):
-//! stand up a pre-V043-shaped `cartridges` table (same column set as the real
-//! cumulative V005+V025+V038 schema, minus FK REFERENCES annotations this
-//! test doesn't need enforced) plus the `cartridges_fts` virtual table and
-//! its three sync triggers (V038's exact shape — `DROP TABLE cartridges`
-//! inside V043 drops them along with the table, so V043 must recreate them;
-//! this test proves it did), apply the REAL V043 SQL via `include_str!`, and
-//! assert the NEW uniqueness rule plus data preservation.
+//! BE-CR-02 (code review 40.2): with FKs effectively ON inside refinery's
+//! per-file transaction, `DROP TABLE cartridges` failed with `FOREIGN KEY
+//! constraint failed` as soon as any request had `completed_cartridge_id`
+//! set (a completed "cartridge replace" request — a normal Phase 12 flow),
+//! and the app refused to start. The runner now disables FKs on the
+//! connection before refinery starts; these tests pin that the upgrade
+//! succeeds and the request keeps its link. Fictional names only.
 //!
-//! Continuity note (NUM-13, D-16): the actual "next code after C-0042 is
-//! C-0043" acceptance criterion is proven in `trackly-app`'s
-//! `cartridges_numbering.rs` (Task 3), where `NumberTemplateService` is
-//! available. This test only proves the narrower, purely-SQL claim that
-//! `cartridges.code` values physically survive V043 unchanged — the
-//! prerequisite fact D-16's continuity argument depends on.
+//! Continuity note (NUM-13, D-16): "next code after C-0042 is C-0043" is
+//! proven in `trackly-app`'s `cartridges_numbering.rs`; this file proves the
+//! prerequisite that codes physically survive V043 unchanged.
 
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use tempfile::TempDir;
 
+use trackly_infra::db::migrations;
 use trackly_infra::db::pragmas::apply_writer_pragmas;
 
-/// The actual V043 migration SQL, embedded at compile time so this test
-/// exercises the shipped file rather than a hand-copied duplicate.
-const V043_SQL: &str = include_str!("../../../migrations/V043__cartridges_code_unique_live.sql");
+const NOW: i64 = 1_700_000_000;
 
-fn fresh_conn() -> (Connection, TempDir) {
+fn conn_at_v042() -> (Connection, TempDir) {
     let dir = TempDir::new().expect("tempdir");
     let path = dir.path().join("cartridges-code-unique-migration.db");
-    let conn = Connection::open(&path).expect("open");
+    let mut conn = Connection::open(&path).expect("open");
     apply_writer_pragmas(&conn).expect("writer pragmas");
+    let report = migrations::run_up_to(&mut conn, 42).expect("run migrations up to V042");
+    assert_eq!(report.schema_version, 42, "fixture must be a real V042 DB");
+    conn.execute_batch(&format!(
+        "INSERT INTO users (id, login, full_name, role, created_at_utc, updated_at_utc)
+           VALUES (1, 'petrov', 'Петров П.П.', 'employee', {NOW}, {NOW});
+         INSERT INTO cartridge_models (id, brand, model, created_at_utc, updated_at_utc)
+           VALUES (1, 'Pantum', 'TL-5120X', {NOW}, {NOW});"
+    ))
+    .expect("seed lookup rows");
     (conn, dir)
 }
 
-/// Pre-V043 `cartridges` schema — the cumulative shape from V005 (base
-/// table) + V025 (`current_printer_device_id`) + V038 (`place_id`, dropped
-/// `location`), WITHOUT foreign key REFERENCES annotations (this test only
-/// needs the exact column set V043's own INSERT/SELECT column list depends
-/// on, not FK enforcement), PLUS the `cartridges_fts` virtual table and its
-/// three V038 sync triggers — V043's `DROP TABLE cartridges` drops these
-/// triggers along with the table, so the pre-migration fixture must have
-/// them present for the "V043 recreates them" assertion to mean anything.
-///
-/// Deliberately WITHOUT the real pre-V043 column-level `UNIQUE` on `code`:
-/// under the real (pre-migration) schema, a live row and a soft-deleted row
-/// sharing the same code could never coexist in the first place (the
-/// column-level constraint is global, blind to `deleted_at_utc`) — so the
-/// scenario this test needs to seed (a soft-deleted row "holding" a code a
-/// live row now wants to reuse) has no real pre-migration data shape to
-/// reproduce it from. The fixture omits the constraint specifically so the
-/// scenario can be seeded directly, then V043 is applied on top exactly as
-/// it would run against production data (it does not re-validate existing
-/// rows against the new rule — it only rebuilds the table and adds the new
-/// partial index), which is the actual thing under test.
-fn create_pre_v043_cartridges_table(conn: &Connection) {
-    conn.execute_batch(
-        "CREATE TABLE cartridges (
-            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-            code                        TEXT    NOT NULL,
-            model_id                    INTEGER NOT NULL,
-            status_id                   INTEGER NOT NULL DEFAULT 1,
-            state_id                    INTEGER NULL,
-            holder_name                 TEXT    NULL,
-            notes                       TEXT    NULL,
-            created_at_utc              INTEGER NOT NULL,
-            updated_at_utc              INTEGER NOT NULL,
-            deleted_at_utc              INTEGER NULL,
-            version                     INTEGER NOT NULL DEFAULT 1,
-            current_printer_device_id   INTEGER NULL,
-            place_id                    INTEGER NULL
-         );
-         CREATE INDEX idx_cartridges_model ON cartridges(model_id);
-         CREATE INDEX idx_cartridges_place ON cartridges(place_id)
-           WHERE deleted_at_utc IS NULL AND place_id IS NOT NULL;
-
-         CREATE VIRTUAL TABLE cartridges_fts USING fts5(
-           code, holder_name,
-           content='cartridges', content_rowid='id',
-           tokenize='unicode61 remove_diacritics 2'
-         );
-
-         CREATE TRIGGER cartridges_fts_ai
-         AFTER INSERT ON cartridges
-         WHEN NEW.deleted_at_utc IS NULL
-         BEGIN
-           INSERT INTO cartridges_fts(rowid, code, holder_name)
-           VALUES (NEW.id, NEW.code, NEW.holder_name);
-         END;
-
-         CREATE TRIGGER cartridges_fts_ad
-         AFTER DELETE ON cartridges
-         BEGIN
-           INSERT INTO cartridges_fts(cartridges_fts, rowid, code, holder_name)
-           VALUES ('delete', OLD.id, OLD.code, OLD.holder_name);
-         END;
-
-         CREATE TRIGGER cartridges_fts_au
-         AFTER UPDATE ON cartridges
-         BEGIN
-           INSERT INTO cartridges_fts(cartridges_fts, rowid, code, holder_name)
-           VALUES ('delete', OLD.id, OLD.code, OLD.holder_name);
-           INSERT INTO cartridges_fts(rowid, code, holder_name)
-           SELECT NEW.id, NEW.code, NEW.holder_name
-           WHERE NEW.deleted_at_utc IS NULL;
-         END;",
-    )
-    .expect("create pre-V043 cartridges table + fts");
-}
-
-fn insert_cartridge(conn: &Connection, id: i64, code: &str, deleted_at_utc: Option<i64>, now: i64) {
+fn insert_cartridge(conn: &Connection, id: i64, code: &str, deleted_at_utc: Option<i64>) {
     conn.execute(
         "INSERT INTO cartridges (id, code, model_id, status_id, created_at_utc, \
          updated_at_utc, deleted_at_utc, version) \
          VALUES (?1, ?2, 1, 1, ?3, ?3, ?4, 1)",
-        rusqlite::params![id, code, now, deleted_at_utc],
+        params![id, code, NOW, deleted_at_utc],
     )
     .unwrap_or_else(|e| panic!("insert cartridge id={id} code={code}: {e}"));
 }
 
 #[test]
+fn upgrade_succeeds_with_completed_request_and_keeps_its_cartridge_link() {
+    let (mut conn, _guard) = conn_at_v042();
+    insert_cartridge(&conn, 1, "C-0001", None);
+    insert_cartridge(&conn, 2, "C-0002", None);
+    conn.execute(
+        "INSERT INTO requests (id, request_type, status, requested_by_user_id, \
+         cartridge_model_id, created_at_utc, updated_at_utc, completed_cartridge_id) \
+         VALUES (1, 'cartridge_replace', 'completed', 1, 1, ?1, ?1, 2)",
+        params![NOW],
+    )
+    .expect("seed completed cartridge_replace request");
+
+    migrations::run(&mut conn)
+        .expect("upgrade V042 -> latest must succeed with requests.completed_cartridge_id set");
+
+    let link: Option<i64> = conn
+        .query_row(
+            "SELECT completed_cartridge_id FROM requests WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .expect("read request link");
+    assert_eq!(
+        link,
+        Some(2),
+        "the request must still point at cartridge #2"
+    );
+
+    let fk_on: i64 = conn
+        .pragma_query_value(None, "foreign_keys", |r| r.get(0))
+        .expect("read foreign_keys");
+    assert_eq!(fk_on, 1, "runner must re-enable foreign keys");
+    let violations: i64 = conn
+        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| {
+            r.get(0)
+        })
+        .expect("foreign_key_check");
+    assert_eq!(violations, 0);
+
+    // The FK now resolves against the REBUILT cartridges table.
+    let dangling = conn.execute(
+        "UPDATE requests SET completed_cartridge_id = 999 WHERE id = 1",
+        [],
+    );
+    assert!(
+        dangling.is_err(),
+        "requests.completed_cartridge_id must still be enforced after the rebuild"
+    );
+}
+
+#[test]
 fn soft_deleted_code_frees_up_but_live_duplicate_still_rejected() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v043_cartridges_table(&conn);
+    let (mut conn, _guard) = conn_at_v042();
+    // Created live with C-0042 and later soft-deleted: under the OLD global
+    // UNIQUE(code) the code stayed reserved forever.
+    insert_cartridge(&conn, 1, "C-0042", Some(NOW + 5));
+    migrations::run(&mut conn).expect("upgrade");
 
-    let now = 1_700_000_000_i64;
-
-    // Cartridge #1: created live with code C-0042, later soft-deleted
-    // (`deleted_at_utc` set after `created_at_utc` — a real lifecycle, not
-    // two coexisting rows). Under the OLD column-level `UNIQUE(code)` this
-    // single row's code stays reserved forever even after soft-delete —
-    // exactly the pain point NUM-09 fixes; seeded directly here (before
-    // V043 applies) so the test proves the NEW rule frees it up.
-    insert_cartridge(&conn, 1, "C-0042", Some(now + 5), now);
-
-    conn.execute_batch(V043_SQL).expect("apply V043 migration");
-
-    // The rebuilt table (per the real V043 SQL) declares REFERENCES on
-    // model_id/place_id/etc against lookup tables this minimal test schema
-    // never creates (cartridge_models, places, ...) — irrelevant to what
-    // this test is about (the code-uniqueness index), so FK enforcement is
-    // turned off for the verification inserts below, same as it implicitly
-    // was for every insert against this fixture before migration.
-    conn.execute_batch("PRAGMA foreign_keys = OFF;")
-        .expect("disable fk for verification inserts");
-
-    // (1) A NEW live cartridge reusing the soft-deleted row's code must
-    // succeed — the partial index only sees live rows.
-    let result = conn.execute(
+    let reuse = conn.execute(
         "INSERT INTO cartridges (code, model_id, status_id, created_at_utc, \
-         updated_at_utc, deleted_at_utc, version) \
-         VALUES ('C-0042', 1, 1, ?1, ?1, NULL, 1)",
-        [now + 100],
+         updated_at_utc, deleted_at_utc, version) VALUES ('C-0042', 1, 1, ?1, ?1, NULL, 1)",
+        params![NOW + 100],
     );
     assert!(
-        result.is_ok(),
-        "reusing a soft-deleted cartridge's code for a new LIVE row must succeed \
-         under the partial unique index: {result:?}"
+        reuse.is_ok(),
+        "reusing a soft-deleted code for a new LIVE row must succeed: {reuse:?}"
     );
 
-    // (2) Two LIVE cartridges with the same code must still be rejected —
-    // the index is real and enforced, not accidentally dropped.
-    let dup_result = conn.execute(
+    let dup = conn.execute(
         "INSERT INTO cartridges (code, model_id, status_id, created_at_utc, \
-         updated_at_utc, deleted_at_utc, version) \
-         VALUES ('C-0042', 1, 1, ?1, ?1, NULL, 1)",
-        [now + 200],
+         updated_at_utc, deleted_at_utc, version) VALUES ('C-0042', 1, 1, ?1, ?1, NULL, 1)",
+        params![NOW + 200],
     );
     assert!(
-        dup_result.is_err(),
-        "two LIVE cartridges with the same code must be rejected by \
-         idx_cartridges_code_live"
+        dup.is_err(),
+        "two LIVE cartridges with the same code must be rejected by idx_cartridges_code_live"
     );
 }
 
 #[test]
 fn existing_codes_survive_migration_unchanged_continuity_prerequisite() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v043_cartridges_table(&conn);
-
-    let now = 1_700_000_000_i64;
+    let (mut conn, _guard) = conn_at_v042();
     let seeded_codes: Vec<String> = (1..=42).map(|n| format!("C-{n:04}")).collect();
     for (idx, code) in seeded_codes.iter().enumerate() {
-        insert_cartridge(&conn, (idx + 1) as i64, code, None, now + idx as i64);
+        insert_cartridge(&conn, (idx + 1) as i64, code, None);
     }
-
-    conn.execute_batch(V043_SQL).expect("apply V043 migration");
+    migrations::run(&mut conn).expect("upgrade");
 
     let mut stmt = conn
         .prepare("SELECT code FROM cartridges ORDER BY id")
@@ -197,23 +149,17 @@ fn existing_codes_survive_migration_unchanged_continuity_prerequisite() {
         .expect("query_map")
         .map(|r| r.expect("row"))
         .collect();
-
     assert_eq!(
         survived, seeded_codes,
-        "C-0001..C-0042 must survive V043 byte-for-byte and in the same order — \
-         this is the prerequisite fact D-16's NUM-13 continuity argument (next \
-         proposed code after V043 is C-0043) depends on. The actual \
-         NumberTemplateService::peek_next assertion lives in trackly-app's \
-         cartridges_numbering.rs (Task 3), which alone has access to the \
-         template/mask machinery this migration-level test does not."
+        "C-0001..C-0042 must survive V043 byte-for-byte and in the same order"
     );
 }
 
 #[test]
 fn fts_triggers_and_secondary_indexes_survive_the_rebuild() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v043_cartridges_table(&conn);
-    conn.execute_batch(V043_SQL).expect("apply V043 migration");
+    let (mut conn, _guard) = conn_at_v042();
+    insert_cartridge(&conn, 1, "C-0001", None);
+    migrations::run(&mut conn).expect("upgrade");
 
     let mut stmt = conn
         .prepare(
@@ -233,8 +179,7 @@ fn fts_triggers_and_secondary_indexes_survive_the_rebuild() {
             "cartridges_fts_ai".to_string(),
             "cartridges_fts_au".to_string(),
         ],
-        "FTS sync triggers must be recreated after the rebuild (DROP TABLE \
-         cartridges drops them along with the table)"
+        "FTS sync triggers must be recreated after the rebuild"
     );
 
     let mut idx_stmt = conn
@@ -254,20 +199,16 @@ fn fts_triggers_and_secondary_indexes_survive_the_rebuild() {
             "idx_cartridges_code_live".to_string(),
             "idx_cartridges_model".to_string(),
             "idx_cartridges_place".to_string(),
-        ],
-        "idx_cartridges_model and idx_cartridges_place must survive the rebuild \
-         alongside the new idx_cartridges_code_live"
+        ]
     );
-}
 
-#[test]
-fn user_version_is_43_after_migration() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v043_cartridges_table(&conn);
-    conn.execute_batch(V043_SQL).expect("apply V043 migration");
-
-    let version: i64 = conn
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .expect("read user_version");
-    assert_eq!(version, 43);
+    // FTS still finds the pre-existing row (id preserved 1:1).
+    let hits: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cartridges_fts WHERE cartridges_fts MATCH '\"C-0001\"'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("fts query");
+    assert_eq!(hits, 1);
 }

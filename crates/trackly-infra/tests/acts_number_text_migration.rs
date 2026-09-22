@@ -1,130 +1,154 @@
 //! Integration test: `V042__acts_number_text.sql` — `acts.number` INTEGER →
-//! TEXT rebuild (Phase 40.2 Plan 06, NUM-14).
+//! TEXT rebuild (Phase 40.2 Plan 06, NUM-14), exercised through the REAL
+//! migration runner (`trackly_infra::db::migrations`), exactly as
+//! `AppCtx::build` runs it on an upgrade:
 //!
-//! Mirrors `trackly-infra`'s own `v032_data_transform_drops_empty_and_preserves_populated`
-//! test pattern (`crates/trackly-infra/src/db/migrations.rs`): stand up a
-//! pre-V042-shaped `acts` table (INTEGER `number`, same column set/order as
-//! the real cumulative V004+V014+V015+V038 schema, minus FK REFERENCES
-//! annotations this test doesn't need enforced), seed realistic rows —
-//! including a partial return with `sub_number`/`parent_act_id`, using
-//! fictional names per the project's no-real-data rule — apply the REAL
-//! V042 SQL via `include_str!`, and assert:
-//!   (a) `number` is now TEXT storage class holding the exact original
-//!       digits (no data loss across the rebuild),
-//!   (b) every row's `id` is unchanged (so FK targets like
-//!       `act_items.act_id` / `place_movements.act_id` still resolve to the
-//!       same logical row after the rename),
-//!   (c) `idx_acts_number_sub_unique` exists after the rebuild AND actually
-//!       rejects a live duplicate `(number, sub_number)` pair.
+//!   1. `apply_writer_pragmas` (`foreign_keys = ON`, WAL, ...),
+//!   2. `migrations::run_up_to(41)` — a genuine pre-V042 database,
+//!   3. seed acts + every FK child of `acts` (`act_items` CASCADE, a return
+//!      act's `parent_act_id` RESTRICT, `place_movements.act_id` SET NULL),
+//!   4. `migrations::run` — the remaining migrations (V042+) through the
+//!      same refinery pipeline, one transaction per file.
 //!
-//! `run_applies_all_known_migrations_on_fresh_db` (in `db::migrations`'s own
-//! test module) already proves V042 applies cleanly through the REAL
-//! refinery pipeline (including the `PRAGMA foreign_keys = OFF/ON` dance
-//! while `act_items`/`place_movements` reference `acts(id)`) — this test
-//! adds the data-preservation assertions that fresh-DB test cannot cover.
+//! BE-CR-01 (code review 40.2): `PRAGMA foreign_keys = OFF` inside a
+//! migration file is a no-op (refinery wraps each file in a transaction and
+//! SQLite ignores the pragma there), so with FKs left ON the rebuild's
+//! `DROP TABLE acts` cascade-deleted every `act_items` row, nulled
+//! `place_movements.act_id` and failed outright when a return existed. The
+//! runner now disables FKs on the connection before refinery starts. These
+//! tests pin zero data loss and preserved links. Fictional names only.
 
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use tempfile::TempDir;
 
+use trackly_infra::db::migrations;
 use trackly_infra::db::pragmas::apply_writer_pragmas;
 
-/// The actual V042 migration SQL, embedded at compile time so this test
-/// exercises the shipped file rather than a hand-copied duplicate.
-const V042_SQL: &str = include_str!("../../../migrations/V042__acts_number_text.sql");
+const NOW: i64 = 1_700_000_000;
 
-fn fresh_conn() -> (Connection, TempDir) {
+fn conn_at_v041() -> (Connection, TempDir) {
     let dir = TempDir::new().expect("tempdir");
     let path = dir.path().join("acts-number-text-migration.db");
-    let conn = Connection::open(&path).expect("open");
+    let mut conn = Connection::open(&path).expect("open");
     apply_writer_pragmas(&conn).expect("writer pragmas");
+    let report = migrations::run_up_to(&mut conn, 41).expect("run migrations up to V041");
+    assert_eq!(report.schema_version, 41, "fixture must be a real V041 DB");
     (conn, dir)
 }
 
-/// Pre-V042 `acts` schema — the cumulative shape from V004 (base table) +
-/// V014 (`deadline_utc`) + V015 (`handover_date_utc`) + V038 (`place_id`,
-/// `bulk_place_id`, `place_path_snapshot`), WITHOUT foreign key REFERENCES
-/// annotations (this test only needs the exact column set V042's own
-/// INSERT/SELECT column list depends on, not FK enforcement — same
-/// minimalism as the `v032_data_transform_...` precedent).
-fn create_pre_v042_acts_table(conn: &Connection) {
-    conn.execute_batch(
-        "CREATE TABLE acts (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            number              INTEGER NOT NULL,
-            sub_number          INTEGER NULL,
-            parent_act_id       INTEGER NULL,
-            act_type            TEXT    NOT NULL CHECK (act_type IN ('handover', 'return')),
-            giver_name          TEXT    NOT NULL,
-            receiver_name       TEXT    NOT NULL,
-            notes               TEXT    NULL,
-            archived            INTEGER NOT NULL DEFAULT 0,
-            created_at_utc      INTEGER NOT NULL,
-            updated_at_utc      INTEGER NOT NULL,
-            deleted_at_utc      INTEGER NULL,
-            version             INTEGER NOT NULL DEFAULT 1,
-            deadline_utc        INTEGER NULL,
-            handover_date_utc   INTEGER NOT NULL DEFAULT 0,
-            place_id            INTEGER NULL,
-            bulk_place_id       INTEGER NULL,
-            place_path_snapshot TEXT NULL
-         );
-         CREATE UNIQUE INDEX idx_acts_number_sub_unique
-           ON acts(number, COALESCE(sub_number, 0))
-           WHERE deleted_at_utc IS NULL;
-         CREATE INDEX idx_acts_parent ON acts(parent_act_id);
-         CREATE INDEX idx_acts_parent_act_id ON acts(parent_act_id) WHERE parent_act_id IS NOT NULL;",
-    )
-    .expect("create pre-V042 acts table");
+/// Seed a realistic pre-V042 data set with every FK child of `acts`
+/// populated. Returns nothing — ids are fixed so assertions can name them.
+fn seed_acts_with_children(conn: &Connection) {
+    conn.execute_batch(&format!(
+        "INSERT INTO users (id, login, full_name, role, created_at_utc, updated_at_utc)
+           VALUES (1, 'ivanov', 'Иванов И.И.', 'admin', {NOW}, {NOW});
+         INSERT INTO places (id, parent_id, kind, name, is_storage, created_at_utc, updated_at_utc)
+           VALUES (1, NULL, 'building', 'Склад А', 1, {NOW}, {NOW}),
+                  (2, NULL, 'building', 'Корпус Б', 0, {NOW}, {NOW});
+         INSERT INTO devices (id, type_id, name, inventory_number, status_id, place_id,
+                              created_at_utc, updated_at_utc)
+           VALUES (1, 1, 'Ноутбук', 'ИНВ-000001', 2, 2, {NOW}, {NOW}),
+                  (2, 1, 'Монитор', 'ИНВ-000002', 2, 2, {NOW}, {NOW});
+
+         -- Handover #42, its partial return (42в), and an unrelated handover #7.
+         INSERT INTO acts (id, number, sub_number, parent_act_id, act_type, giver_name,
+                           receiver_name, created_at_utc, updated_at_utc, version,
+                           handover_date_utc)
+           VALUES (1, 42, NULL, NULL, 'handover', 'Иванов И.И.', 'Петров П.П.', {NOW}, {NOW}, 1, {NOW}),
+                  (2, 42, 1, 1, 'return', 'Петров П.П.', 'Иванов И.И.', {NOW}, {NOW}, 1, {NOW}),
+                  (3, 7, NULL, NULL, 'handover', 'Сидоров С.С.', 'Кузнецов К.К.', {NOW}, {NOW}, 1, {NOW});
+
+         INSERT INTO act_items (id, act_id, device_id, quantity)
+           VALUES (1, 1, 1, 1),
+                  (2, 1, 2, 1),
+                  (3, 2, 1, 1),
+                  (4, 3, 2, 1);
+
+         INSERT INTO place_movements (id, entity_type, entity_id, from_place_id, from_place_path,
+                                      to_place_id, to_place_path, source, act_id, user_id,
+                                      created_at_utc)
+           VALUES (1, 'device', 1, 1, 'Склад А', 2, 'Корпус Б', 'act', 1, 1, {NOW}),
+                  (2, 'device', 1, 2, 'Корпус Б', 1, 'Склад А', 'act', 2, 1, {NOW}),
+                  (3, 'device', 2, 1, 'Склад А', 2, 'Корпус Б', 'act', 3, 1, {NOW});"
+    ))
+    .expect("seed pre-V042 acts + children");
+}
+
+fn act_items(conn: &Connection) -> Vec<(i64, i64, i64)> {
+    let mut stmt = conn
+        .prepare("SELECT id, act_id, device_id FROM act_items ORDER BY id")
+        .expect("prepare act_items");
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .expect("query act_items")
+        .map(|r| r.expect("row"))
+        .collect()
+}
+
+fn movement_links(conn: &Connection) -> Vec<(i64, Option<i64>)> {
+    let mut stmt = conn
+        .prepare("SELECT id, act_id FROM place_movements ORDER BY id")
+        .expect("prepare place_movements");
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .expect("query place_movements")
+        .map(|r| r.expect("row"))
+        .collect()
+}
+
+#[test]
+fn upgrade_through_real_runner_keeps_every_act_child_row_and_link() {
+    let (mut conn, _guard) = conn_at_v041();
+    seed_acts_with_children(&conn);
+
+    let items_before = act_items(&conn);
+    let links_before = movement_links(&conn);
+    assert_eq!(items_before.len(), 4);
+
+    let report = migrations::run(&mut conn).expect(
+        "upgrade V041 -> latest must succeed even with a return act \
+         (parent_act_id ON DELETE RESTRICT) present",
+    );
+    assert_eq!(report.schema_version, migrations::max_known_version());
+
+    // Zero data loss in the CASCADE child.
+    assert_eq!(
+        act_items(&conn),
+        items_before,
+        "act_items must survive the acts rebuild untouched (ON DELETE CASCADE must not fire)"
+    );
+    // Links preserved in the SET NULL child.
+    assert_eq!(
+        movement_links(&conn),
+        links_before,
+        "place_movements.act_id must keep pointing at the same acts (ON DELETE SET NULL must not fire)"
+    );
+
+    // FK enforcement is back ON after the run, and the DB is consistent.
+    let fk_on: i64 = conn
+        .pragma_query_value(None, "foreign_keys", |r| r.get(0))
+        .expect("read foreign_keys");
+    assert_eq!(fk_on, 1, "runner must re-enable foreign keys");
+    let violations: i64 = conn
+        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| {
+            r.get(0)
+        })
+        .expect("foreign_key_check");
+    assert_eq!(violations, 0);
+
+    // The FKs of the children now resolve against the REBUILT acts table:
+    // deleting the parent handover is still RESTRICTed by its return.
+    let restricted = conn.execute("DELETE FROM acts WHERE id = 1", []);
+    assert!(
+        restricted.is_err(),
+        "returns' parent_act_id must still RESTRICT deleting the parent after the rebuild"
+    );
 }
 
 #[test]
 fn migrates_integer_number_to_text_preserving_ids_and_unique_index() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v042_acts_table(&conn);
+    let (mut conn, _guard) = conn_at_v041();
+    seed_acts_with_children(&conn);
+    migrations::run(&mut conn).expect("upgrade");
 
-    let now = 1_700_000_000_i64;
-
-    // Row 1: handover act #42 (fictional names, no real org/person data).
-    conn.execute(
-        "INSERT INTO acts (id, number, sub_number, parent_act_id, act_type, \
-         giver_name, receiver_name, created_at_utc, updated_at_utc, version, \
-         handover_date_utc) \
-         VALUES (1, 42, NULL, NULL, 'handover', 'Иванов И.И.', 'Петров П.П.', \
-         ?1, ?1, 1, ?1)",
-        [now],
-    )
-    .expect("seed handover act #42");
-
-    // Row 2: its sole partial return (sub_number=1, parent_act_id=1) — the
-    // display rule would render this as "42в" (D-06 territory for later
-    // tasks; this migration test only cares about raw column preservation).
-    conn.execute(
-        "INSERT INTO acts (id, number, sub_number, parent_act_id, act_type, \
-         giver_name, receiver_name, created_at_utc, updated_at_utc, version, \
-         handover_date_utc) \
-         VALUES (2, 42, 1, 1, 'return', 'Петров П.П.', 'Иванов И.И.', \
-         ?1, ?1, 1, ?1)",
-        [now + 10],
-    )
-    .expect("seed return act");
-
-    // Row 3: an unrelated handover act #7 — proves the rebuilt index still
-    // distinguishes distinct numbers correctly (not just "any dup fails").
-    conn.execute(
-        "INSERT INTO acts (id, number, sub_number, parent_act_id, act_type, \
-         giver_name, receiver_name, created_at_utc, updated_at_utc, version, \
-         handover_date_utc) \
-         VALUES (3, 7, NULL, NULL, 'handover', 'Сидоров С.С.', 'Кузнецов К.К.', \
-         ?1, ?1, 1, ?1)",
-        [now + 20],
-    )
-    .expect("seed second handover act");
-
-    // Apply the REAL V042 SQL.
-    conn.execute_batch(V042_SQL).expect("apply V042 migration");
-
-    // (a) + (b): number is now TEXT storage holding the exact original
-    // digits; id / sub_number / parent_act_id survive unchanged.
     type ActNumberRow = (i64, String, String, Option<i64>, Option<i64>);
     let mut stmt = conn
         .prepare(
@@ -139,7 +163,6 @@ fn migrates_integer_number_to_text_preserving_ids_and_unique_index() {
         .expect("query_map")
         .map(|r| r.expect("row"))
         .collect();
-
     assert_eq!(
         rows,
         vec![
@@ -147,50 +170,57 @@ fn migrates_integer_number_to_text_preserving_ids_and_unique_index() {
             (2, "text".to_string(), "42".to_string(), Some(1), Some(1)),
             (3, "text".to_string(), "7".to_string(), None, None),
         ],
-        "number must become TEXT storage class holding the exact original \
-         digits; id / sub_number / parent_act_id must survive unchanged \
-         (FK targets intact)"
+        "number must become TEXT holding the exact original digits; ids / \
+         sub_number / parent_act_id unchanged"
     );
 
-    // (c) idx_acts_number_sub_unique exists after the rebuild...
-    let index_exists: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master \
-             WHERE type = 'index' AND name = 'idx_acts_number_sub_unique'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("query sqlite_master for index");
-    assert_eq!(
-        index_exists, 1,
-        "idx_acts_number_sub_unique must exist after the rebuild"
-    );
-
-    // ...and actually rejects a live duplicate: number='42', sub_number=NULL
-    // collides with row 1 (COALESCE(sub_number, 0) = 0 for both).
-    let dup_result = conn.execute(
-        "INSERT INTO acts (number, sub_number, parent_act_id, act_type, \
-         giver_name, receiver_name, created_at_utc, updated_at_utc, version, \
-         handover_date_utc) \
-         VALUES ('42', NULL, NULL, 'handover', 'Дубликат Д.Д.', 'Тестов Т.Т.', \
-         ?1, ?1, 1, ?1)",
-        [now + 30],
+    // The recreated unique index rejects a live duplicate (number, sub_number).
+    let dup = conn.execute(
+        "INSERT INTO acts (number, sub_number, parent_act_id, act_type, giver_name, \
+         receiver_name, created_at_utc, updated_at_utc, version, handover_date_utc) \
+         VALUES ('42', NULL, NULL, 'handover', 'Дубликат Д.Д.', 'Тестов Т.Т.', ?1, ?1, 1, ?1)",
+        params![NOW + 30],
     );
     assert!(
-        dup_result.is_err(),
-        "duplicate (number, sub_number) must be rejected by the recreated \
-         unique index"
+        dup.is_err(),
+        "duplicate (number, sub_number) must be rejected"
     );
 }
 
 #[test]
-fn user_version_is_42_after_migration() {
-    let (conn, _guard) = fresh_conn();
-    create_pre_v042_acts_table(&conn);
-    conn.execute_batch(V042_SQL).expect("apply V042 migration");
+fn upgrade_of_empty_v041_db_reaches_latest() {
+    let (mut conn, _guard) = conn_at_v041();
+    let report = migrations::run(&mut conn).expect("upgrade empty V041 DB");
+    assert_eq!(report.schema_version, migrations::max_known_version());
+    assert_eq!(
+        report.applied_count,
+        (migrations::max_known_version() - 41) as usize
+    );
+}
 
-    let version: i64 = conn
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .expect("read user_version");
-    assert_eq!(version, 42);
+/// Without any return act the old bug was SILENT: the upgrade "succeeded"
+/// while `DROP TABLE acts` cascade-deleted every `act_items` row. Pin that
+/// the items survive when nothing would make the migration fail loudly.
+#[test]
+fn upgrade_without_returns_does_not_silently_cascade_act_items() {
+    let (mut conn, _guard) = conn_at_v041();
+    seed_acts_with_children(&conn);
+    conn.execute_batch(
+        "DELETE FROM place_movements WHERE act_id = 2;
+         DELETE FROM act_items WHERE act_id = 2;
+         DELETE FROM acts WHERE id = 2;",
+    )
+    .expect("drop the return act from the fixture");
+    let items_before = act_items(&conn);
+    let links_before = movement_links(&conn);
+    assert_eq!(items_before.len(), 3);
+
+    migrations::run(&mut conn).expect("upgrade");
+
+    assert_eq!(act_items(&conn), items_before, "no act_items may be lost");
+    assert_eq!(
+        movement_links(&conn),
+        links_before,
+        "no act links may be nulled"
+    );
 }
