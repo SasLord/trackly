@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-23T10:57:23.939Z"
+last_updated: "2026-09-23T12:41:55.941Z"
 last_activity: 2026-09-23
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 100
-  completed_plans: 97
+  completed_plans: 98
   percent: 50
 ---
 
@@ -25,9 +25,16 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 2 of 9
+Plan: 7 of 9 (01-06, 08 завершены; 07 припаркован на живом чекпоинте — продолжает отдельный
+агент; 09 не начат; нумерация вне очереди, как и в прецеденте 40.2-08 ниже)
 Status: Ready to execute
-Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
+Последнее действие: 40.3-08-PLAN.md (структурное закрытие BLOCKER-3 верификации фазы) завершён —
+ReturnModal.svelte больше не предсказывает номер акта возврата в предпросмотре создания (WR-08);
+check-act-number-no-regex-split.mjs расширен до двух независимых правил (anchored digit-prefix
+regex-литерал где угодно в файле + number_raw вне whitelist) с встроенным --selftest на 7
+фикстурах (WR-07); чекпоинт — перенесённый из 40.3-03, где был закрыт auto-approve БЕЗ
+наблюдения (UNVERIFIED) — в этот раз подтверждён РЕАЛЬНЫМ наблюдением человека в cargo tauri dev.
+Последнее действие (до 08): планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
 Open Questions помечены RESOLVED, фронтматтер VALIDATION approved, координация cargo в волне 1
 прописана в планах 01/02/04 и в ROADMAP). Решения D-01..D-07 зафиксированы в must_haves.truths;
@@ -421,6 +428,7 @@ Last activity: 2026-09-23
 | Phase 40.3 P04 | 30min | 3 tasks | 5 files |
 | Phase 40.3-05 P05 | 25min | 2 tasks | 5 files |
 | Phase 40.3 P06 | 20m | 2 tasks | 4 files |
+| Phase 40.3 P08 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1033,6 +1041,8 @@ Recent decisions affecting current work:
 - [Phase 40.3-05]: devices.create() удалён вместе со своим единственным вызывающим вместо расширения до DeviceSaveOutcome (D-04)
 - [Phase 40.3-05]: Task 3 (живая проверка) закрыт авто-approve по AUTO_MODE — UNVERIFIED, требует отдельного human UAT перед закрытием фазы
 - [Phase 40.3]: 40.3-06: seed_place() duplicated locally per-test-binary convention rather than shared across test files (no tests/common/mod.rs in project)
+- [Phase 40.3]: Предпросмотр возврата не предсказывает номер акта — показывает нейтральный текст «Создаст акт возврата», реальный номер сообщается тостом после сохранения (WR-08)
+- [Phase 40.3]: check-act-number-no-regex-split.mjs расширен до двух независимых семантических правил (digit-prefix regex-литерал + number_raw whitelist) с встроенным --selftest на 7 фикстурах вместо одного буквального паттерна (WR-07)
 
 ### Pending Todos
 
@@ -1226,8 +1236,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-23T10:57:23.930Z
-Stopped at: Completed 40.3-06-PLAN.md
+Last session: 2026-09-23T12:41:55.932Z
+Stopped at: Completed 40.3-08-PLAN.md (checkpoint approved by live human observation)
 Resume file: None
 
 None
