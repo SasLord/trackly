@@ -75,6 +75,7 @@ pub struct UserPatch {
     /// Новая роль: "admin" | "manager" | "employee". `None` — не менять.
     pub role: Option<String>,
     /// `Some(None)` — убрать email; `Some(Some(addr))` — установить; `None` — не менять.
+    #[serde(default, with = "serde_with::rust::double_option")]
     pub email: Option<Option<String>>,
     pub is_active: Option<bool>,
     /// Новый пароль в открытом виде (WR-01). `None` или пустая строка — не

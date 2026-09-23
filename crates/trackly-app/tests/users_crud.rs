@@ -729,3 +729,96 @@ async fn last_admin_cannot_be_demoted_or_deleted() {
     .await
     .expect("test exceeded 30s budget");
 }
+
+// ---------------------------------------------------------------------------
+// user_patch_email_serde_double_option_distinguishes_absent_vs_null (WR-03, Plan 40.3-06)
+// ---------------------------------------------------------------------------
+
+/// Тест 1 (Task 2, WR-03, 40.3-06): чистая serde-граница на `email` —
+/// зеркалит `device_patch_serde_double_option_distinguishes_absent_vs_null`
+/// (devices_crud.rs), только для `UserPatch.email` (CR-01, 40.3-REVIEW.md).
+#[test]
+fn user_patch_email_serde_double_option_distinguishes_absent_vs_null() {
+    let explicit_null: UserPatch =
+        serde_json::from_str(r#"{"email": null}"#).expect("valid JSON with explicit null");
+    assert_eq!(
+        explicit_null.email,
+        Some(None),
+        "явный null в JSON должен дать Some(None), получили {:?}",
+        explicit_null.email
+    );
+
+    let key_absent: UserPatch =
+        serde_json::from_str("{}").expect("valid JSON with no keys at all");
+    assert_eq!(
+        key_absent.email, None,
+        "отсутствующий ключ должен дать None (поле не тронуто), получили {:?}",
+        key_absent.email
+    );
+
+    assert_ne!(
+        explicit_null.email, key_absent.email,
+        "явный null и отсутствующий ключ обязаны различаться после десериализации"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// update_user_clears_email_via_json_null_without_touching_full_name (WR-03, Plan 40.3-06)
+// ---------------------------------------------------------------------------
+
+/// Тест 2 (Task 2, WR-03, 40.3-06): end-to-end через сервис — создаём
+/// пользователя с `email` И `full_name` заполненными, десериализуем
+/// `UserPatch` из JSON `{"email": null}` (без остальных ключей — все
+/// остальные поля однослойные `Option<T>` и корректно дают `None` без
+/// serde-атрибута), вызываем `svc.update_user(...)`, и проверяем, что
+/// `email` стал `None`, а `full_name` остался прежним значением.
+/// Вымышленное имя — CLAUDE.md privacy gate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_user_clears_email_via_json_null_without_touching_full_name() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_auth_service();
+        let admin = Identity::trusted_admin();
+
+        let dto = svc
+            .create_user(
+                UserNew {
+                    login: "petrov".to_string(),
+                    full_name: "Петров П.П.".to_string(),
+                    password: "password123".to_string(),
+                    role: "manager".to_string(),
+                    email: Some("petrov@example.com".to_string()),
+                },
+                &admin,
+            )
+            .await
+            .expect("create user with email");
+        assert_eq!(dto.email.as_deref(), Some("petrov@example.com"));
+
+        // Патч приходит через ту же serde-границу, что и HTTP/Tauri транспорт
+        // формы правки — НЕ конструируется литералом UserPatch { .. } в Rust.
+        let patch: UserPatch =
+            serde_json::from_str(r#"{"email": null}"#).expect("valid JSON with explicit null");
+        assert_eq!(
+            patch.full_name, None,
+            "патч не должен нести ключ full_name вовсе (проверка на самом JSON)"
+        );
+
+        let updated = svc
+            .update_user(dto.id, dto.version, patch, &admin)
+            .await
+            .expect("update clearing email");
+
+        assert_eq!(
+            updated.email, None,
+            "email должен реально очиститься до None, получили {:?}",
+            updated.email
+        );
+        assert_eq!(
+            updated.full_name, "Петров П.П.",
+            "незатронутое поле full_name не должно меняться, получили {:?}",
+            updated.full_name
+        );
+    })
+    .await
+    .expect("update_user_clears_email_via_json_null_without_touching_full_name exceeded 30 s budget");
+}
