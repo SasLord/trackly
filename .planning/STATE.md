@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-23T00:17:55.790Z"
-last_activity: 2026-09-23 -- Phase 40.3 planning complete
+last_updated: "2026-09-23T10:57:23.939Z"
+last_activity: 2026-09-23
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 100
-  completed_plans: 96
+  completed_plans: 97
   percent: 50
 ---
 
@@ -24,8 +24,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40.3 (audit-debt) — GAPS FOUND
-Plan: 5 of 5
+Phase: 40.3 (audit-debt) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
@@ -46,7 +46,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-23 -- Phase 40.3 planning complete
+Last activity: 2026-09-23
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -420,6 +420,7 @@ Last activity: 2026-09-23 -- Phase 40.3 planning complete
 | Phase 40.3-audit-debt P03 | 12min | 2/3 tasks | 3 files |
 | Phase 40.3 P04 | 30min | 3 tasks | 5 files |
 | Phase 40.3-05 P05 | 25min | 2 tasks | 5 files |
+| Phase 40.3 P06 | 20m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1031,6 +1032,7 @@ Recent decisions affecting current work:
 - [Phase 40.3-05]: printer IP/community блок физически отсутствует в DOM вне create+Принтер (D-03), а не скрыт CSS
 - [Phase 40.3-05]: devices.create() удалён вместе со своим единственным вызывающим вместо расширения до DeviceSaveOutcome (D-04)
 - [Phase 40.3-05]: Task 3 (живая проверка) закрыт авто-approve по AUTO_MODE — UNVERIFIED, требует отдельного human UAT перед закрытием фазы
+- [Phase 40.3]: 40.3-06: seed_place() duplicated locally per-test-binary convention rather than shared across test files (no tests/common/mod.rs in project)
 
 ### Pending Todos
 
@@ -1224,8 +1226,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-22T21:18:23.393Z
-Stopped at: Completed 40.3-05-PLAN.md
+Last session: 2026-09-23T10:57:23.930Z
+Stopped at: Completed 40.3-06-PLAN.md
 Resume file: None
 
 None
