@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-23T15:32:21.373Z"
+status: ready_to_plan
+last_updated: 2026-09-23T15:50:23.858Z
 last_activity: 2026-09-23
 progress:
   total_phases: 12
   completed_phases: 7
   total_plans: 100
-  completed_plans: 100
+  completed_plans: 363
   percent: 58
+stopped_at: Phase 40.3 complete (9/9) — ready to discuss Phase 41
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.3 — audit-debt
+**Current focus:** Phase 41 — арм
 
 ## Current Position
 
-Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 9 of 9 (01-08 завершены; 09 не начат — единственный оставшийся план фазы)
-Status: Phase complete — ready for verification
+Phase: 41
+Plan: Not started
+Status: Ready to plan
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
 (вариант b из CR-01), bulk_create_with_printer безусловно отклоняет непустой printer-блок на
@@ -77,7 +78,7 @@ Last activity: 2026-09-23
 
 **Velocity:**
 
-- Total plans completed: 236
+- Total plans completed: 245
 - Average duration: —
 - Total execution time: —
 
@@ -117,6 +118,7 @@ Last activity: 2026-09-23
 | 39.2 | 1 | ~18 мин | ~18 мин |
 | 40.1 | 4 | - | - |
 | 40.2 | 15 | - | - |
+| 40.3 | 9 | - | - |
 
 **Recent Trend:**
 
