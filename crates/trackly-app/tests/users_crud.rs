@@ -748,8 +748,7 @@ fn user_patch_email_serde_double_option_distinguishes_absent_vs_null() {
         explicit_null.email
     );
 
-    let key_absent: UserPatch =
-        serde_json::from_str("{}").expect("valid JSON with no keys at all");
+    let key_absent: UserPatch = serde_json::from_str("{}").expect("valid JSON with no keys at all");
     assert_eq!(
         key_absent.email, None,
         "отсутствующий ключ должен дать None (поле не тронуто), получили {:?}",
@@ -820,5 +819,7 @@ async fn update_user_clears_email_via_json_null_without_touching_full_name() {
         );
     })
     .await
-    .expect("update_user_clears_email_via_json_null_without_touching_full_name exceeded 30 s budget");
+    .expect(
+        "update_user_clears_email_via_json_null_without_touching_full_name exceeded 30 s budget",
+    );
 }
