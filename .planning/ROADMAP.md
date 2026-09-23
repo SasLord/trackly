@@ -134,7 +134,7 @@
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
-| 40.3. Долг аудита v1.4 | v1.4 | 5/5 | Complete   | 2026-09-22 |
+| 40.3. Долг аудита v1.4 | v1.4 | 5/9 | In Progress | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -371,7 +371,7 @@ success criteria фазы 39.1 — фаза закрывает накоплен�
 
 **UI hint**: yes (пункты 5-6 трогают `OrgSettings.svelte` и три строки списков)
 
-**Plans:** 5/5 plans complete
+**Plans:** 5/9 plans complete (5 исполнены; 40.3-06..40.3-09 — раунд закрытия пробелов gaps_found после верификации 2026-09-22)
 
 Plans:
 
@@ -600,12 +600,17 @@ Plans:
   4. **N-4:** Новое FK-нарушение после миграций блокирует старт не только в первый раз, но и
      на каждом следующем запуске, пока не устранено; нарушения, существовавшие до миграций, по-
      прежнему не блокируют старт.
-**Plans:** 5/5 plans complete
+**Plans:** 5/9 plans complete (5 исполнены; 40.3-06..40.3-09 — раунд закрытия пробелов gaps_found после верификации 2026-09-22)
 
-**Waves:** 1 — 40.3-01, 40.3-02, 40.3-03, 40.3-04 (независимы); 2 — 40.3-05 (depends_on 40.3-04).
-**Координация внутри волны 1:** `cargo build`/`cargo test` планов 40.3-01/02/04 запускать строго
-последовательно (лок `target/`); `trackly-app` — с `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1` и
-`--skip login_remember_persistent_cookie`.
+**Waves (раунд 1, 40.3-01..05):** 1 — 40.3-01, 40.3-02, 40.3-03, 40.3-04 (независимы);
+2 — 40.3-05 (depends_on 40.3-04).
+**Waves (раунд закрытия пробелов, 40.3-06..09):** 1 — 40.3-06, 40.3-07, 40.3-08 (независимы,
+без пересечения файлов); 2 — 40.3-09 (depends_on все три предыдущих, чисто для размещения
+обязательного полного прогона пакета на границе волны — функциональной зависимости у
+миграций от 06/07/08 нет).
+**Координация внутри Rust-волн:** `cargo build`/`cargo test` планов 40.3-01/02/04 (раунд 1) и
+40.3-06/07 (раунд закрытия пробелов) запускать строго последовательно (лок `target/`);
+`trackly-app` — с `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1` и `--skip login_remember_persistent_cookie`.
 
 Plans:
 
@@ -614,6 +619,13 @@ Plans:
 - [x] 40.3-03-PLAN.md — N-1: тост возврата использует ActDto.number напрямую + постоянный структурный гейт
 - [x] 40.3-04-PLAN.md — N-2 backend: printer IP/SNMP community в той же транзакции, что и создание устройства
 - [x] 40.3-05-PLAN.md — N-2 frontend: «Завести принтер» через DeviceFormModal (шаблоны номеров, INV-7), удаление PrinterCreateModal
+
+Раунд закрытия пробелов (verification 2026-09-22: 3 BLOCKER + 2 WARNING из CR-01/CR-02/WR-07/WR-08/WR-01/WR-03):
+
+- [ ] 40.3-06-PLAN.md — BLOCKER-1 (CR-01): serde double_option на place_id (dto/device.rs) и email (dto/auth.rs) + JSON-boundary regression-тесты
+- [ ] 40.3-07-PLAN.md — BLOCKER-2 (CR-02): quantityDisabled учитывает IP для принтера + bulk_create_with_printer явно отклоняет printer-блок (defense-in-depth)
+- [ ] 40.3-08-PLAN.md — BLOCKER-3 (WR-07+WR-08): убрать клиентское предсказание номера в ReturnModal предпросмотре + расширить check-act-number-no-regex-split.mjs до семантического инварианта с self-test
+- [ ] 40.3-09-PLAN.md — WARNING-1+2 (WR-03+WR-01 в migrations.rs): guarded FK-baseline persist + rowid-стабильная сигнатура сравнения + полный прогон пакета
 
 ### Phase 41: АРМ
 
