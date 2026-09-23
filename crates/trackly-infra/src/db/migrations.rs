@@ -74,6 +74,69 @@ fn fk_violations(conn: &Connection) -> Result<std::collections::BTreeSet<FkViola
     Ok(out)
 }
 
+/// Stable signature key of an FK violation, IGNORING `rowid` (WR-01 in
+/// `40.3-REVIEW.md`): a table rebuild (`CREATE TABLE new -> INSERT SELECT ->
+/// DROP -> RENAME`, project norm — V042/V043/V044) can reassign `rowid` for
+/// existing rows, so comparing raw `(table, rowid, parent, fkid)` tuples
+/// either falsely reports an already-accepted legacy violation as "new"
+/// (rowid changed, tuple no longer matches the baseline), or masks a
+/// genuinely new violation if it lands on a reused SQLite rowid. Comparing
+/// by (table, parent, fkid) MULTISET (tracked via count, not a plain set) is
+/// robust to both cases.
+type FkSignature = (String, String, i64);
+
+/// Counts occurrences of each `FkSignature` within a violation set —
+/// multiplicity matters: two distinct rows with the same signature (e.g. two
+/// orphan `devices` rows both pointing at a missing `places` parent) must not
+/// collapse into "one violation" when comparing against the baseline.
+fn signature_counts(
+    violations: &std::collections::BTreeSet<FkViolation>,
+) -> std::collections::BTreeMap<FkSignature, usize> {
+    let mut out = std::collections::BTreeMap::new();
+    for (table, _rowid, parent, fkid) in violations {
+        *out.entry((table.clone(), parent.clone(), *fkid))
+            .or_insert(0) += 1;
+    }
+    out
+}
+
+/// Rowid-stable replacement for a raw set-difference of `after` against
+/// `baseline`: returns the elements of `after` whose (table, parent, fkid)
+/// signature occurs more often than in `baseline`. A table rebuild that
+/// reassigns `rowid` for an already-baselined violation leaves the signature
+/// count unchanged (not reported); a genuinely new violation — even one that
+/// happens to land on a reused rowid — grows the signature count and is
+/// still reported.
+fn violations_with_grown_signature<'a>(
+    after: &'a std::collections::BTreeSet<FkViolation>,
+    baseline: &std::collections::BTreeSet<FkViolation>,
+) -> Vec<&'a FkViolation> {
+    let after_counts = signature_counts(after);
+    let baseline_counts = signature_counts(baseline);
+    let mut remaining: std::collections::BTreeMap<FkSignature, usize> =
+        std::collections::BTreeMap::new();
+    for (sig, count) in &after_counts {
+        let base = baseline_counts.get(sig).copied().unwrap_or(0);
+        if *count > base {
+            remaining.insert(sig.clone(), count - base);
+        }
+    }
+    if remaining.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for v @ (table, _rowid, parent, fkid) in after {
+        let sig = (table.clone(), parent.clone(), *fkid);
+        if let Some(left) = remaining.get_mut(&sig) {
+            if *left > 0 {
+                out.push(v);
+                *left -= 1;
+            }
+        }
+    }
+    out
+}
+
 /// `app_settings` key under which the persistent FK-violation baseline is
 /// stored (guarded single-key pattern, same shape as
 /// `place_path_settings.rs` / `low_stock_threshold` in
@@ -325,7 +388,7 @@ fn run_to(conn: &mut Connection, target: Option<u32>) -> Result<MigrationReport,
         (report, after)
     };
 
-    let new_violations: Vec<&FkViolation> = after.difference(&baseline).collect();
+    let new_violations: Vec<&FkViolation> = violations_with_grown_signature(&after, &baseline);
     if !new_violations.is_empty() {
         let sample: Vec<String> = new_violations
             .iter()
@@ -533,6 +596,164 @@ mod tests {
             result.is_ok(),
             "run_up_to(conn, 15) must succeed even though app_settings (created by \
              V016) does not exist yet and the baseline persist has nowhere to write: {:?}",
+            result.err()
+        );
+    }
+
+    /// Unit-test half 1 of WARNING-2 (WR-01 in `40.3-REVIEW.md`): a
+    /// previously-baselined violation whose `rowid` changed (a table rebuild
+    /// reassigned it) must NOT be reported as new by
+    /// `violations_with_grown_signature`, even though the raw tuple no
+    /// longer matches the baseline.
+    #[test]
+    fn fk_signature_ignores_rowid_for_grandfathered_violation() {
+        let baseline_set: std::collections::BTreeSet<FkViolation> =
+            [("devices".to_string(), Some(17), "places".to_string(), 0)]
+                .into_iter()
+                .collect();
+        let after_set: std::collections::BTreeSet<FkViolation> =
+            [("devices".to_string(), Some(5), "places".to_string(), 0)]
+                .into_iter()
+                .collect();
+
+        // Sanity check: the test data really does differ by raw rowid —
+        // otherwise this test would prove nothing.
+        assert!(
+            !after_set
+                .difference(&baseline_set)
+                .collect::<Vec<_>>()
+                .is_empty(),
+            "test fixture must differ by rowid for this test to be meaningful"
+        );
+
+        let new_violations = violations_with_grown_signature(&after_set, &baseline_set);
+        assert!(
+            new_violations.is_empty(),
+            "same (table, parent, fkid) signature with a different rowid must not be \
+             reported as a new violation (WR-01 false-positive half): {new_violations:?}"
+        );
+    }
+
+    /// Unit-test half 2 of WARNING-2 (WR-01): a genuinely new violation that
+    /// happens to reuse a previously-baselined `rowid` (different
+    /// (table, parent, fkid) signature, same rowid) must still be reported —
+    /// signature comparison must not mask it.
+    #[test]
+    fn fk_signature_still_catches_new_violation_on_reused_rowid() {
+        let baseline_set: std::collections::BTreeSet<FkViolation> =
+            [("devices".to_string(), Some(17), "places".to_string(), 0)]
+                .into_iter()
+                .collect();
+        let after_set: std::collections::BTreeSet<FkViolation> =
+            [("devices".to_string(), Some(17), "places".to_string(), 1)]
+                .into_iter()
+                .collect();
+
+        let new_violations = violations_with_grown_signature(&after_set, &baseline_set);
+        assert_eq!(
+            new_violations.len(),
+            1,
+            "a new (table, parent, fkid) signature on a reused rowid must still be \
+             reported as a new violation (WR-01 masking half): {new_violations:?}"
+        );
+    }
+
+    /// Integration test for WARNING-2 (WR-01): a real table rebuild
+    /// (schema-preserving `CREATE TABLE` copy -> `INSERT ... SELECT` without
+    /// the `id` column -> `DROP` -> `RENAME`, the project's established
+    /// migration shape — V042/V043/V044, Phases 41/43 plan more) reassigns
+    /// SQLite's physical rowid for existing rows. An already-baselined
+    /// (accepted) violation must not falsely re-block startup after such a
+    /// rebuild.
+    ///
+    /// The rebuilt table's `CREATE TABLE` DDL is copied verbatim from
+    /// `sqlite_master` (not a hand-written `CREATE ... AS SELECT *`, which
+    /// drops the `INTEGER PRIMARY KEY` constraint entirely and would break
+    /// `PRAGMA foreign_key_check` for every OTHER table that references
+    /// `devices(id)` — that is a schema-corruption bug in the test harness,
+    /// not the rowid-reassignment scenario WR-01 targets). Omitting the
+    /// `id` column from the `INSERT ... SELECT` column list lets SQLite's
+    /// own `AUTOINCREMENT` counter (fresh for the new table name) assign a
+    /// new physical rowid — modelling the worst case where a rebuild does
+    /// NOT preserve id values, without corrupting the schema.
+    #[test]
+    fn table_rebuild_reassigning_rowid_does_not_falsely_block_grandfathered_violation() {
+        let (mut conn, _guard) = fresh_conn();
+        run(&mut conn).expect("initial clean run applies all migrations");
+
+        // Orphan devices row with an EXPLICIT id — `devices.id` is an
+        // `INTEGER PRIMARY KEY AUTOINCREMENT` rowid-alias (V003), so this
+        // forces the physical rowid to 500.
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable foreign_keys for the orphan insert");
+        conn.execute(
+            "INSERT INTO devices \
+             (id, type_id, name, status_id, place_id, created_at_utc, updated_at_utc) \
+             VALUES (500, 1, 'Тестовое устройство', 1, 999999, 0, 0)",
+            [],
+        )
+        .expect("insert orphan device row with explicit rowid=500");
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .expect("re-enable foreign_keys");
+
+        // Seed the baseline directly (bypassing run()'s own first-appearance
+        // acceptance path, which would otherwise fail before the rebuild
+        // even runs) so this test isolates the rebuild's effect on an
+        // ALREADY-accepted violation.
+        let before_rebuild = fk_violations(&conn).expect("snapshot before rebuild");
+        persist_fk_baseline(&conn, &before_rebuild).expect("seed baseline directly");
+
+        // Real table rebuild that PRESERVES the schema (PK/FK-target shape)
+        // but does NOT preserve rowid values.
+        let create_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'devices'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("read devices table DDL from sqlite_master");
+        let rebuilt_sql = create_sql.replacen("devices", "devices_rebuilt", 1);
+        let non_id_columns: Vec<String> = {
+            let mut stmt = conn
+                .prepare("PRAGMA table_info(devices)")
+                .expect("prepare table_info(devices)");
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(1))
+                .expect("query table_info(devices)");
+            rows.map(|r| r.expect("column name"))
+                .filter(|c| c != "id")
+                .collect()
+        };
+        let cols_csv = non_id_columns.join(", ");
+
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable foreign_keys for the rebuild");
+        conn.execute(&rebuilt_sql, [])
+            .expect("create devices_rebuilt with identical schema (incl. PRIMARY KEY)");
+        conn.execute(
+            &format!("INSERT INTO devices_rebuilt ({cols_csv}) SELECT {cols_csv} FROM devices"),
+            [],
+        )
+        .expect("copy rows into devices_rebuilt WITHOUT preserving id/rowid");
+        conn.execute("DROP TABLE devices", [])
+            .expect("drop old devices table");
+        conn.execute("ALTER TABLE devices_rebuilt RENAME TO devices", [])
+            .expect("rename rebuilt table back to devices");
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .expect("re-enable foreign_keys");
+
+        let after_rebuild = fk_violations(&conn).expect("snapshot after rebuild");
+        assert_ne!(
+            after_rebuild, before_rebuild,
+            "sanity check: the rebuild must actually have changed the raw rowid, \
+             otherwise this test proves nothing"
+        );
+
+        let result = run(&mut conn);
+        assert!(
+            result.is_ok(),
+            "run() must not falsely block startup on an already-baselined violation \
+             whose rowid changed due to a table rebuild (WR-01): {:?}",
             result.err()
         );
     }
