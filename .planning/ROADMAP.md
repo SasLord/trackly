@@ -611,13 +611,16 @@ Plans:
 **Координация внутри Rust-волн:** `cargo build`/`cargo test` планов 40.3-01/02/04 (раунд 1) и
 40.3-06/07 (раунд закрытия пробелов) запускать строго последовательно (лок `target/`);
 `trackly-app` — с `TRACKLY_AD_MOCK=1 TRACKLY_SNMP_MOCK=1` и `--skip login_remember_persistent_cookie`.
-
 Plans:
+**Wave 1**
 
 - [x] 40.3-01-PLAN.md — WR-03: double-Option для serial_no/model/specs/kit/state (domain+DTO+SQL) + JSON-boundary regression-тест
 - [x] 40.3-02-PLAN.md — N-4: безусловная персистентная FK-проверка после миграций на каждом старте
 - [x] 40.3-03-PLAN.md — N-1: тост возврата использует ActDto.number напрямую + постоянный структурный гейт
 - [x] 40.3-04-PLAN.md — N-2 backend: printer IP/SNMP community в той же транзакции, что и создание устройства
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 40.3-05-PLAN.md — N-2 frontend: «Завести принтер» через DeviceFormModal (шаблоны номеров, INV-7), удаление PrinterCreateModal
 
 Раунд закрытия пробелов (verification 2026-09-22: 3 BLOCKER + 2 WARNING из CR-01/CR-02/WR-07/WR-08/WR-01/WR-03):

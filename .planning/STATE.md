@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-22T21:18:25.349Z"
-last_activity: 2026-09-22
+status: executing
+last_updated: "2026-09-23T00:17:55.790Z"
+last_activity: 2026-09-23 -- Phase 40.3 planning complete
 progress:
   total_phases: 12
   completed_phases: 6
-  total_plans: 96
+  total_plans: 100
   completed_plans: 96
   percent: 50
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.3 (audit-debt) — GAPS FOUND
 Plan: 5 of 5
-Status: Все 5 планов выполнены, но верификация вернула gaps_found (3 гэпа) — фаза НЕ завершена
+Status: Ready to execute
 Последнее действие: планирование фазы 40.3 (2026-09-22) — RESEARCH + PATTERNS + VALIDATION
 (approved) + 5 PLAN.md; plan-checker: PASSED, 0 блокеров, 4 предупреждения (все закрыты:
 Open Questions помечены RESOLVED, фронтматтер VALIDATION approved, координация cargo в волне 1
@@ -46,7 +46,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-22
+Last activity: 2026-09-23 -- Phase 40.3 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
