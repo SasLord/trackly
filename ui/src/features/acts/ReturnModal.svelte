@@ -217,11 +217,6 @@
     }
   });
 
-  // Number predict «42в{N+1}» — sub_number следующего возврата = текущий count + 1
-  // (create mode only).
-  const predictedSubNumber = $derived((act?.return_ids.length ?? 0) + 1);
-  const parentNumber = $derived(act?.number_raw ?? 0);
-
   const displayNumber = $derived(mode === 'edit' ? editTarget?.number : act?.number);
   const modalReady = $derived(
     mode === 'edit' ? editTarget !== null && parentAct !== null : act !== null,
@@ -368,9 +363,7 @@
       {#if mode === 'edit'}
         <p class="subheading">Редактирование акта возврата №{editTarget?.number}</p>
       {:else}
-        <p class="subheading">
-          Создаст акт возврата №{parentNumber}в{predictedSubNumber}
-        </p>
+        <p class="subheading">Создаст акт возврата</p>
       {/if}
 
       <section class="persons-section">
