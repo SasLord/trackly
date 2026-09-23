@@ -346,7 +346,19 @@ fn run_to(conn: &mut Connection, target: Option<u32>) -> Result<MigrationReport,
     // persist `after` as the new baseline. If an admin manually cleaned up
     // legacy data, the next clean start pulls the baseline back down
     // instead of leaving it stuck on a stale "dirty" snapshot forever.
-    persist_fk_baseline(conn, &after)?;
+    //
+    // Guarded / best-effort, symmetric with `read_persisted_fk_baseline`'s
+    // `.ok()`: `app_settings` does not exist yet before V016 runs, so
+    // `run_up_to(conn, v)` with `v < 16` (the `#[doc(hidden)]` test hook)
+    // would otherwise fail this whole function with "no such table:
+    // app_settings" even though the migration itself succeeded and no new
+    // FK violations exist (WARNING-1 / WR-03 in 40.3-REVIEW.md).
+    if let Err(e) = persist_fk_baseline(conn, &after) {
+        tracing::warn!(
+            "FK baseline persist failed (non-fatal — e.g. app_settings not yet \
+             created by run_up_to(<16), or DB opened read-only): {e:?}"
+        );
+    }
 
     let schema_version: u32 = conn
         .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
@@ -501,6 +513,27 @@ mod tests {
             healed.is_ok(),
             "run() must succeed again once the FK violation is fixed (self-heal): {:?}",
             healed.err()
+        );
+    }
+
+    /// Regression test for WARNING-1 (WR-03 in `40.3-REVIEW.md`): before this
+    /// fix, `persist_fk_baseline(conn, &after)?` propagated ANY write error
+    /// (including "no such table: app_settings") through `run_to` via `?`,
+    /// failing the whole function. `app_settings` is created by V016
+    /// (`migrations/V016__cartridges_kind_color_settings.sql`), so stopping
+    /// short of it via the `#[doc(hidden)]` `run_up_to` test hook must still
+    /// succeed — the migrations themselves applied fine and there are no new
+    /// FK violations, only the best-effort baseline write has nothing to
+    /// write into yet.
+    #[test]
+    fn run_up_to_below_app_settings_creation_does_not_fail_on_baseline_persist() {
+        let (mut conn, _guard) = fresh_conn();
+        let result = run_up_to(&mut conn, 15);
+        assert!(
+            result.is_ok(),
+            "run_up_to(conn, 15) must succeed even though app_settings (created by \
+             V016) does not exist yet and the baseline persist has nowhere to write: {:?}",
+            result.err()
         );
     }
 
