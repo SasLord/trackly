@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trackly_app::dto::device::{DeviceFilter, DeviceNew, Pagination};
+use trackly_app::dto::printer::PrinterCreateBlockDto;
 use trackly_app::services::DeviceService;
 use trackly_core::error::AppError;
 use trackly_core::primitives::clock::Clock;
@@ -425,4 +426,68 @@ async fn bulk_create_single_call_count_eq_1_persists_serial() {
     })
     .await
     .expect("bulk_create_single_call_count_eq_1_persists_serial exceeded 30s");
+}
+
+// ---------------------------------------------------------------------------
+// bulk_create_with_printer_rejects_non_empty_printer_block
+// ---------------------------------------------------------------------------
+//
+// Phase 40.3 Plan 07 (VERIFICATION.md BLOCKER-2 / CR-02, T-40.3-15):
+// `bulk_create_with_printer` must explicitly reject a non-empty printer
+// block rather than silently dropping it — defense-in-depth for any future
+// caller that threads a `PrinterCreateBlockDto` through the bulk path. The
+// validation runs before the writer transaction opens, so nothing should be
+// persisted.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn bulk_create_with_printer_rejects_non_empty_printer_block() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let new = DeviceNew {
+            type_id: 2,
+            name: "Принтер сетевой".to_string(),
+            inventory_no: None,
+            serial_no: None,
+            model: Some("Model Y".to_string()),
+            specs: None,
+            kit: None,
+            state: None,
+            place_id: None,
+            status_id: 1,
+        };
+        let printer = PrinterCreateBlockDto {
+            ip_address: Some("192.0.2.10".to_string()),
+            community: Some("public".to_string()),
+        };
+
+        let err = svc
+            .bulk_create_with_printer(new, 3, Some(printer))
+            .await
+            .expect_err("непустой printer-блок должен быть отклонён в bulk-пути");
+
+        match err {
+            AppError::Validation { field, .. } => {
+                assert_eq!(field, "printer");
+            }
+            other => panic!("ожидали Validation{{field: \"printer\"}}, получили {other:?}"),
+        }
+
+        let list = svc
+            .list(
+                DeviceFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 50,
+                },
+            )
+            .await
+            .expect("list");
+        assert_eq!(
+            list.total, 0,
+            "валидация printer-блока должна срабатывать ДО открытия writer-транзакции — ни одна строка не должна быть создана"
+        );
+    })
+    .await
+    .expect("bulk_create_with_printer_rejects_non_empty_printer_block exceeded 30s");
 }
