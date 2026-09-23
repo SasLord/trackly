@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-23T12:41:55.941Z"
+last_updated: "2026-09-23T13:37:58.844Z"
 last_activity: 2026-09-23
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 100
-  completed_plans: 98
+  completed_plans: 99
   percent: 50
 ---
 
@@ -25,10 +25,20 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.3 (audit-debt) — EXECUTING
-Plan: 7 of 9 (01-06, 08 завершены; 07 припаркован на живом чекпоинте — продолжает отдельный
-агент; 09 не начат; нумерация вне очереди, как и в прецеденте 40.2-08 ниже)
+Plan: 9 of 9 (01-08 завершены; 09 не начат — единственный оставшийся план фазы)
 Status: Ready to execute
-Последнее действие: 40.3-08-PLAN.md (структурное закрытие BLOCKER-3 верификации фазы) завершён —
+Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
+«Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
+(вариант b из CR-01), bulk_create_with_printer безусловно отклоняет непустой printer-блок на
+сервере (defense-in-depth, T-40.3-15, RED→GREEN TDD-цикл + мутационная проверка). Чекпоинт
+прошёл ДВА раунда живого наблюдения человека в cargo tauri dev: раунд 1 нашёл UAT-дефект
+(в edit-режиме Инвентарный № не имел кнопки «Вставка» вообще — не в must_haves плана), раунд 2
+(после фикса NumberTemplateField.templateActionsDisabled) — APPROVED по всем трём блокам,
+включая перенесённый из 40.3-05 сценарий «Завести принтер» (закрывает его прежний
+UNVERIFIED-статус). IP/SNMP редактирование в edit-режиме — сознательно ОТЛОЖЕНО пользователем
+в отдельную фазу после 40.3 (backend не имеет пути обновления сетевых параметров принтера),
+зафиксировано в .planning/todos/pending/2026-09-23-printer-network-params-editable.md.
+Последнее действие (до 07): 40.3-08-PLAN.md (структурное закрытие BLOCKER-3 верификации фазы) завершён —
 ReturnModal.svelte больше не предсказывает номер акта возврата в предпросмотре создания (WR-08);
 check-act-number-no-regex-split.mjs расширен до двух независимых правил (anchored digit-prefix
 regex-литерал где угодно в файле + number_raw вне whitelist) с встроенным --selftest на 7
@@ -429,6 +439,7 @@ Last activity: 2026-09-23
 | Phase 40.3-05 P05 | 25min | 2 tasks | 5 files |
 | Phase 40.3 P06 | 20m | 2 tasks | 4 files |
 | Phase 40.3 P08 | 20min | 2 tasks | 2 files |
+| Phase 40.3 P07 | ~11min+checkpoint~1h38m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -1043,16 +1054,23 @@ Recent decisions affecting current work:
 - [Phase 40.3]: 40.3-06: seed_place() duplicated locally per-test-binary convention rather than shared across test files (no tests/common/mod.rs in project)
 - [Phase 40.3]: Предпросмотр возврата не предсказывает номер акта — показывает нейтральный текст «Создаст акт возврата», реальный номер сообщается тостом после сохранения (WR-08)
 - [Phase 40.3]: check-act-number-no-regex-split.mjs расширен до двух независимых семантических правил (digit-prefix regex-литерал + number_raw whitelist) с встроенным --selftest на 7 фикстурах вместо одного буквального паттерна (WR-07)
+- [Phase 40.3-07]: quantityDisabled блокирует Количество при заполненном IP для Принтера (вариант b из CR-01); bulk_create_with_printer безусловно отклоняет непустой printer-блок (defense-in-depth, bulk-путь не имеет атомарного single-device IP концепта)
+- [Phase 40.3-07]: UAT-дефект (edit-mode «Вставка» отсутствовала для Инвентарный №) исправлен расширением NumberTemplateField (templateActionsDisabled) на edit-режим; IP/SNMP редактирование в edit-режиме сознательно отложено пользователем в отдельную фазу после 40.3 — backend не имеет пути обновления сетевых параметров принтера (pending-todo зафиксирован)
 
 ### Pending Todos
 
-1 pending — `/gsd-capture --list` для просмотра.
+2 pending — `/gsd-capture --list` для просмотра.
 
 - **2026-08-08 — Rework act templates: единая шапка + переработка тела акта приёма-передачи**
   (`.planning/todos/pending/2026-08-08-rework-act-templates-shared-header-handover-body-redesign.md`).
   ⚠️ Доработанная пользователем шапка лежит только в `target/debug/templates/` (gitignored,
   умрёт от `cargo clean`) — переносить в `crates/trackly-app/templates/` первым делом.
   Размер задачи — фаза, не quick.
+- **2026-09-23 — Редактирование сетевых параметров принтера (IP / SNMP community)**
+  (`.planning/todos/pending/2026-09-23-printer-network-params-editable.md`). Сквозная фича на
+  6 слоёв — `PrinterRepo` вообще не имеет метода обновления сетевых параметров; найдено во время
+  живого чекпоинта 40.3-07. Пользователь явно выбрал отдельную фазу после закрытия 40.3, не
+  заплатку внутри 40.3-07. Размер задачи — фаза (`/gsd-spec-phase`), не quick.
 
 ### Blockers/Concerns
 
@@ -1236,8 +1254,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-23T12:41:55.932Z
-Stopped at: Completed 40.3-08-PLAN.md (checkpoint approved by live human observation)
+Last session: 2026-09-23T13:37:58.834Z
+Stopped at: Completed 40.3-07-PLAN.md (checkpoint approved by live human observation)
 Resume file: None
 
 None
