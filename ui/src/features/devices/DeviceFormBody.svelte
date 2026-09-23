@@ -279,7 +279,17 @@
     typeId === PRINTER_TYPE_ID ? 'printer_create' : 'device_create',
   );
 
-  const quantityDisabled = $derived(isEdit || inventoryNo.trim() !== '' || serialNo.trim() !== '');
+  // CR-02 (40.3-07, VERIFICATION.md BLOCKER-2): a filled printer IP must
+  // force Количество back to 1 just like inventoryNo/serialNo already do —
+  // otherwise handleSubmit's qty>1 branch routes through devices.bulkCreate(),
+  // which cannot carry printerBlock at all, silently dropping the IP/SNMP
+  // block the user just typed.
+  const quantityDisabled = $derived(
+    isEdit ||
+      inventoryNo.trim() !== '' ||
+      serialNo.trim() !== '' ||
+      (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''),
+  );
 
   // canSubmit: all required fields filled AND no in-flight request.
   // submitting guards against double-submit even before loading propagates.
