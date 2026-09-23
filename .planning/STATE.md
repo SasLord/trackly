@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-09-23T15:50:23.858Z
+status: planning
+last_updated: "2026-09-23T23:21:09.579Z"
 last_activity: 2026-09-23
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 7
   total_plans: 100
-  completed_plans: 363
-  percent: 58
-stopped_at: Phase 40.3 complete (9/9) — ready to discuss Phase 41
+  completed_plans: 100
+  percent: 54
 ---
 
 # Project State
@@ -21,11 +20,11 @@ stopped_at: Phase 40.3 complete (9/9) — ready to discuss Phase 41
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41 — арм
+**Current focus:** Phase 40.4 — долг аудита v1.4, раунд 2
 
 ## Current Position
 
-Phase: 41
+Phase: 40.4
 Plan: Not started
 Status: Ready to plan
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
@@ -485,6 +484,7 @@ Last activity: 2026-09-23
 - Phase 40.1 inserted after Phase 40: Закрыть пробелы аудита v1.4: BLOCKER-1 (удаление места с историей перемещений падает сырой ошибкой SQLite) и BLOCKER-2 (фильтр по типу устройства в отчёте «Перемещения» недостижим из UI) (URGENT)
 - Phase 40.2 inserted after Phase 40.1: Шаблоны инвентарных номеров (срочно, до Фазы 41 АРМ) (URGENT)
 - Phase 40.3 inserted after Phase 40.2: Долг аудита v1.4: WR-03, N-1, N-2, N-4 (аудит 2026-09-22) (URGENT)
+- Phase 40.4 inserted after Phase 40.3: Долг аудита v1.4, раунд 2: NEW-1, N-3, NEW-3, NEW-2 (аудит 2026-09-23) (URGENT)
 
 ### Decisions
 
