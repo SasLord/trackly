@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-23T13:37:58.844Z"
+status: verifying
+last_updated: "2026-09-23T15:32:21.373Z"
 last_activity: 2026-09-23
 progress:
   total_phases: 12
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 100
-  completed_plans: 99
-  percent: 50
+  completed_plans: 100
+  percent: 58
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.3 (audit-debt) — EXECUTING
 Plan: 9 of 9 (01-08 завершены; 09 не начат — единственный оставшийся план фазы)
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
 (вариант b из CR-01), bulk_create_with_printer безусловно отклоняет непустой printer-блок на
@@ -440,6 +440,7 @@ Last activity: 2026-09-23
 | Phase 40.3 P06 | 20m | 2 tasks | 4 files |
 | Phase 40.3 P08 | 20min | 2 tasks | 2 files |
 | Phase 40.3 P07 | ~11min+checkpoint~1h38m | 2 tasks | 5 files |
+| Phase 40.3 P09 | ~2h | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1056,6 +1057,8 @@ Recent decisions affecting current work:
 - [Phase 40.3]: check-act-number-no-regex-split.mjs расширен до двух независимых семантических правил (digit-prefix regex-литерал + number_raw whitelist) с встроенным --selftest на 7 фикстурах вместо одного буквального паттерна (WR-07)
 - [Phase 40.3-07]: quantityDisabled блокирует Количество при заполненном IP для Принтера (вариант b из CR-01); bulk_create_with_printer безусловно отклоняет непустой printer-блок (defense-in-depth, bulk-путь не имеет атомарного single-device IP концепта)
 - [Phase 40.3-07]: UAT-дефект (edit-mode «Вставка» отсутствовала для Инвентарный №) исправлен расширением NumberTemplateField (templateActionsDisabled) на edit-режим; IP/SNMP редактирование в edit-режиме сознательно отложено пользователем в отдельную фазу после 40.3 — backend не имеет пути обновления сетевых параметров принтера (pending-todo зафиксирован)
+- [Phase 40.3-09]: Guarded (best-effort) persist_fk_baseline write, symmetric with read_persisted_fk_baseline .ok(): run_up_to(<16) no longer fails when app_settings doesn't exist yet (WARNING-1/WR-03)
+- [Phase 40.3-09]: FK-baseline comparison keyed by rowid-independent signature (table, parent, fkid) with multiplicity, not raw tuple — table rebuilds (V042/V043/V044 pattern, Phases 41/43 planned) no longer falsely block or mask FK violations (WARNING-2/WR-01)
 
 ### Pending Todos
 
@@ -1066,6 +1069,7 @@ Recent decisions affecting current work:
   ⚠️ Доработанная пользователем шапка лежит только в `target/debug/templates/` (gitignored,
   умрёт от `cargo clean`) — переносить в `crates/trackly-app/templates/` первым делом.
   Размер задачи — фаза, не quick.
+
 - **2026-09-23 — Редактирование сетевых параметров принтера (IP / SNMP community)**
   (`.planning/todos/pending/2026-09-23-printer-network-params-editable.md`). Сквозная фича на
   6 слоёв — `PrinterRepo` вообще не имеет метода обновления сетевых параметров; найдено во время
@@ -1254,8 +1258,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-23T13:37:58.834Z
-Stopped at: Completed 40.3-07-PLAN.md (checkpoint approved by live human observation)
+Last session: 2026-09-23T15:32:21.363Z
+Stopped at: Completed 40.3-09-PLAN.md — WARNING-1/WR-03 + WARNING-2/WR-01 closed, phase 40.3 all 9 plans done, ready for /gsd-validate-phase 40.3
 Resume file: None
 
 None

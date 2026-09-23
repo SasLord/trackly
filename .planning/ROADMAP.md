@@ -134,7 +134,7 @@
 | 40. История перемещений | v1.4 | 35/35 | Complete    | 2026-09-04 |
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
-| 40.3. Долг аудита v1.4 | v1.4 | 8/9 | In Progress|  |
+| 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete   | 2026-09-23 |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -600,7 +600,7 @@ Plans:
   4. **N-4:** Новое FK-нарушение после миграций блокирует старт не только в первый раз, но и
      на каждом следующем запуске, пока не устранено; нарушения, существовавшие до миграций, по-
      прежнему не блокируют старт.
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 **Waves (раунд 1, 40.3-01..05):** 1 — 40.3-01, 40.3-02, 40.3-03, 40.3-04 (независимы);
 2 — 40.3-05 (depends_on 40.3-04).
@@ -628,7 +628,7 @@ Plans:
 - [x] 40.3-06-PLAN.md — BLOCKER-1 (CR-01): serde double_option на place_id (dto/device.rs) и email (dto/auth.rs) + JSON-boundary regression-тесты
 - [x] 40.3-07-PLAN.md — BLOCKER-2 (CR-02): quantityDisabled учитывает IP для принтера + bulk_create_with_printer явно отклоняет printer-блок (defense-in-depth)
 - [x] 40.3-08-PLAN.md — BLOCKER-3 (WR-07+WR-08): убрать клиентское предсказание номера в ReturnModal предпросмотре + расширить check-act-number-no-regex-split.mjs до семантического инварианта с self-test
-- [ ] 40.3-09-PLAN.md — WARNING-1+2 (WR-03+WR-01 в migrations.rs): guarded FK-baseline persist + rowid-стабильная сигнатура сравнения + полный прогон пакета
+- [x] 40.3-09-PLAN.md — WARNING-1+2 (WR-03+WR-01 в migrations.rs): guarded FK-baseline persist + rowid-стабильная сигнатура сравнения + полный прогон пакета
 
 ### Phase 41: АРМ
 
