@@ -868,3 +868,120 @@ async fn update_clears_serial_no_via_json_null_without_touching_model() {
     .await
     .expect("update_clears_serial_no_via_json_null_without_touching_model exceeded 30 s budget");
 }
+
+// ---------------------------------------------------------------------------
+// device_patch_place_id_serde_double_option_distinguishes_absent_vs_null (WR-03, Plan 40.3-06)
+// ---------------------------------------------------------------------------
+
+/// Сеет строку `places` напрямую (дублирует
+/// `place_movements_write_sites_devices.rs::seed_place` — Rust integration-тесты
+/// компилируются в отдельные бинарники, кросс-файловый импорт между `tests/*.rs`
+/// без `tests/common/mod.rs` невозможен; дублирование — существующая конвенция
+/// проекта).
+async fn seed_place(writer: &WriterHandle, name: &str) -> i64 {
+    let name = name.to_string();
+    writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO places (kind, name, is_storage, created_at_utc, updated_at_utc, version) \
+                 VALUES ('room', ?1, 0, ?2, ?2, 1)",
+                rusqlite::params![name, 1_700_000_000_i64],
+            )
+            .map_err(|e| AppError::Internal { source_chain: format!("{e}") })?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+        .expect("seed place")
+}
+
+/// Тест 1 (Task 1, WR-03, 40.3-06): чистая serde-граница на `place_id` —
+/// зеркалит `device_patch_serde_double_option_distinguishes_absent_vs_null`
+/// буква-в-букву, только для `place_id` (BLOCKER-1 / CR-01, 40.3-VERIFICATION.md).
+#[test]
+fn device_patch_place_id_serde_double_option_distinguishes_absent_vs_null() {
+    let explicit_null: DevicePatch =
+        serde_json::from_str(r#"{"place_id": null}"#).expect("valid JSON with explicit null");
+    assert_eq!(
+        explicit_null.place_id,
+        Some(None),
+        "явный null в JSON должен дать Some(None), получили {:?}",
+        explicit_null.place_id
+    );
+
+    let key_absent: DevicePatch =
+        serde_json::from_str("{}").expect("valid JSON with no keys at all");
+    assert_eq!(
+        key_absent.place_id, None,
+        "отсутствующий ключ должен дать None (поле не тронуто), получили {:?}",
+        key_absent.place_id
+    );
+
+    assert_ne!(
+        explicit_null.place_id, key_absent.place_id,
+        "явный null и отсутствующий ключ обязаны различаться после десериализации"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// update_clears_place_id_via_json_null_without_touching_name (WR-03, Plan 40.3-06)
+// ---------------------------------------------------------------------------
+
+/// Тест 2 (Task 1, WR-03, 40.3-06): end-to-end через сервис — создаём
+/// устройство с `place_id` И `name` заполненными, десериализуем `DevicePatch`
+/// из JSON `{"place_id": null}` (без ключа `name`), вызываем `svc.update(...)`,
+/// и проверяем, что `place_id` стал `None`, а `name` остался прежним значением.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn update_clears_place_id_via_json_null_without_touching_name() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+
+        let place_id = seed_place(&svc.writer, "Комната 101").await;
+
+        let new = DeviceNew {
+            type_id: 1,
+            name: "МФУ Pantum".to_string(),
+            inventory_no: None,
+            serial_no: None,
+            model: None,
+            specs: None,
+            kit: None,
+            state: None,
+            place_id: Some(place_id),
+            status_id: 1,
+        };
+        let dto = svc
+            .create(new)
+            .await
+            .expect("create device with place_id")
+            .expect_created("create device with place_id");
+        assert_eq!(dto.place_id, Some(place_id));
+
+        // Патч приходит через ту же serde-границу, что и HTTP/Tauri транспорт
+        // формы правки — НЕ конструируется литералом DevicePatch { .. } в Rust.
+        let patch: DevicePatch =
+            serde_json::from_str(r#"{"place_id": null}"#).expect("valid JSON with explicit null");
+        assert_eq!(
+            patch.name, None,
+            "патч не должен нести ключ name вовсе (проверка на самом JSON)"
+        );
+
+        svc.update(&admin_caller(), dto.id, dto.version, patch)
+            .await
+            .expect("update clearing place_id")
+            .expect_created("update clearing place_id");
+
+        let fetched = svc.get(dto.id).await.expect("get by id after update");
+        assert_eq!(
+            fetched.place_id, None,
+            "place_id должен реально очиститься до None, получили {:?}",
+            fetched.place_id
+        );
+        assert_eq!(
+            fetched.name, "МФУ Pantum",
+            "незатронутое поле name не должно меняться, получили {:?}",
+            fetched.name
+        );
+    })
+    .await
+    .expect("update_clears_place_id_via_json_null_without_touching_name exceeded 30 s budget");
+}

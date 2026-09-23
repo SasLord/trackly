@@ -209,6 +209,7 @@ pub struct DevicePatch {
     pub kit: Option<Option<String>>,
     #[serde(default, with = "serde_with::rust::double_option")]
     pub state: Option<Option<String>>,
+    #[serde(default, with = "serde_with::rust::double_option")]
     #[specta(type = Option<Option<i32>>)]
     pub place_id: Option<Option<i64>>,
     #[specta(type = Option<i32>)]
