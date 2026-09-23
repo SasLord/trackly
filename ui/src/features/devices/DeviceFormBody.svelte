@@ -191,6 +191,16 @@
   let placeId = $state<number | null>(target?.place_id ?? null);
   let statusId = $state(target ? String(target.status_id) : '');
   let inventoryNo = $state(target?.inventory_no ?? '');
+  // Phase 40.3 Plan 07 (UAT-defect fix): captured ONCE from `target` at
+  // mount, never recomputed from the live `inventoryNo` $state — comparing
+  // the live value against this snapshot tells us whether the field still
+  // holds the record's ORIGINAL saved number (template actions stay
+  // inactive — applying a template would silently overwrite it) or has
+  // since been cleared/edited by the user (template actions become
+  // active). Safe as a plain `const`: this component is fully remounted via
+  // {#key openInstanceCounter} in DeviceFormModal on every open, so there is
+  // no stale-closure risk across re-opens.
+  const savedInventoryNo = (target?.inventory_no ?? '').trim();
   let serialNo = $state(target?.serial_no ?? '');
   let model = $state(target?.model ?? '');
   let specs = $state(target?.specs ?? '');
@@ -289,6 +299,19 @@
       inventoryNo.trim() !== '' ||
       serialNo.trim() !== '' ||
       (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''),
+  );
+
+  // Phase 40.3 Plan 07 (UAT-defect fix): edit mode's «Вставка» + ↑/↓ stay
+  // greyed out ONLY while the field still holds exactly the record's
+  // original saved number — applying a template there would silently
+  // overwrite it. An originally-EMPTY number (device never had one) means
+  // the actions are active from the very first render — that is the UAT's
+  // primary scenario («если со временем решили указать инвентарный
+  // номер»). As soon as the user clears/edits the saved number, this flips
+  // to `false` and the actions light up. Irrelevant in create mode (its own
+  // NumberTemplateField instance never receives this prop).
+  const inventoryTemplateActionsDisabled = $derived(
+    savedInventoryNo !== '' && inventoryNo.trim() === savedInventoryNo,
   );
 
   // canSubmit: all required fields filled AND no in-flight request.
@@ -764,15 +787,42 @@
        Количество ВСЕГДА отображается, но disabled когда inv/serial заполнен или это edit-режим.
        Это исключает «дёрганье» макета при вводе номеров. -->
   <div class="field-row">
-    <div class="field field-row-item" class:number-field-item={!isEdit}>
+    <div class="field field-row-item number-field-item">
       <label class="label" for="f-inv">Инвентарный №</label>
       {#if isEdit}
-        <Input
+        <!-- Phase 40.3 Plan 07 (UAT-defect fix): edit mode now uses the
+             same NumberTemplateField as create — the field itself stays
+             fully editable (`disabled` only reflects `readonly`), but the
+             «Вставка» button + ↑/↓ arrow are greyed out via
+             `templateActionsDisabled` while the value still matches the
+             record's originally-saved number (would silently overwrite it
+             otherwise). `autofillOnMount={false}` — this is an existing
+             record with a value already in hand, never a fresh
+             autosuggestion. `excludeId={target?.id}` — the live «номер
+             занят» hint must not match the record being edited against
+             itself. D-05 note (unchanged): the mismatch POPUP check itself
+             stays create-only — `submitEdit()`'s `update()` call never
+             returns a `mismatch` outcome kind, so wiring
+             `onSelectedTemplateChange` here only keeps
+             `selectedTemplateId`/`selectedTemplateMask` in sync for
+             consistency (and for a future edit-mode `takeNext()` flow) —
+             it does not by itself enable an edit-mode mismatch popup. -->
+        <NumberTemplateField
           id="f-inv"
-          value={inventoryNo}
+          context={numberContext}
+          bind:value={inventoryNo}
           placeholder="ИНВ-000001"
           disabled={readonly}
-          oninput={(v) => (inventoryNo = v)}
+          templateActionsDisabled={inventoryTemplateActionsDisabled}
+          invalid={!!fieldErrors['inventory_no']}
+          errorMessage={fieldErrors['inventory_no'] ?? null}
+          canManageSettings={authStore.user?.role === 'admin'}
+          autofillOnMount={false}
+          excludeId={target?.id ?? null}
+          onSelectedTemplateChange={(id, mask) => {
+            selectedTemplateId = id;
+            selectedTemplateMask = mask;
+          }}
         />
       {:else}
         <NumberTemplateField
@@ -1004,9 +1054,12 @@
   }
 
   // UI-SPEC Discretion #12: the Инвентарный № slot gets more room than
-  // Серийный №/Количество in CREATE mode only (the 36px «Вставка» button +
-  // ↑/↓ arrow would otherwise squeeze the Input) — edit mode's plain Input
-  // keeps the row's original equal-thirds layout untouched.
+  // Серийный №/Количество (the 36px «Вставка» button + ↑/↓ arrow would
+  // otherwise squeeze the Input). Phase 40.3 Plan 07 (UAT-defect fix):
+  // edit mode now ALSO renders NumberTemplateField (button greyed out via
+  // `templateActionsDisabled` while the saved number is unchanged, but
+  // still occupying its 36px of row width) — this rule is no longer
+  // create-mode-only.
   .number-field-item {
     flex: 2 1 0;
   }

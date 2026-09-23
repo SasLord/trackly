@@ -40,6 +40,16 @@
     invalid?: boolean;
     errorMessage?: string | null;
     disabled?: boolean;
+    /** Phase 40.3 Plan 07 (UAT-defect fix): узкая версия `disabled` — гасит
+     *  ТОЛЬКО кнопку «Вставка» и стрелку ↑/↓ (действия, применяющие
+     *  шаблонный номер), оставляя сам `<Input>` полностью редактируемым.
+     *  Нужна форме правки: пока в поле лежит уже сохранённый номер, шаблон
+     *  подставлять некуда (перезапись существующего номера — не то, что
+     *  просит UI), но само поле должно остаться редактируемым, чтобы
+     *  пользователь мог очистить/изменить номер вручную. Не путать с
+     *  `disabled` (гасит и Input, и действия целиком — «Количество» > 1 в
+     *  режиме создания). Оба флага комбинируются через OR на действиях. */
+    templateActionsDisabled?: boolean;
     /** Форма правки может передать id редактируемой записи, чтобы живая
      *  подсказка «занят» не находила саму себя (план 12 SPEC-заметка при
      *  Task 2 — используется только формами правки, план 12 сам поле не
@@ -72,6 +82,7 @@
     invalid = false,
     errorMessage = null,
     disabled = false,
+    templateActionsDisabled = false,
     excludeId = null,
     canManageSettings = false,
     autofillOnMount = true,
@@ -611,6 +622,13 @@
   });
 
   const describedById = $derived(`${inputId}-status`);
+
+  // Phase 40.3 Plan 07 (UAT-defect fix): combined disabled state for the
+  // template-applying ACTIONS only (arrow toggle + «Вставка» menu) — the
+  // `<Input>` below intentionally uses the bare `disabled` prop, never this
+  // one, so a host that sets `templateActionsDisabled` alone keeps the text
+  // field editable.
+  const actionsDisabled = $derived(disabled || templateActionsDisabled);
 </script>
 
 <div class="ntf">
@@ -632,7 +650,7 @@
         <button
           type="button"
           class="ntf-arrow"
-          {disabled}
+          disabled={actionsDisabled}
           aria-label={arrowTitle}
           title={arrowTitle}
           onclick={toggleSuggested}
@@ -669,7 +687,7 @@
       portal
       panelMinWidth="280px"
       label="Вставить номер по шаблону"
-      {disabled}
+      disabled={actionsDisabled}
       onOpenChange={(isOpen) => {
         if (!isOpen) confirmLeave = false;
       }}
