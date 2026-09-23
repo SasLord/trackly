@@ -1517,16 +1517,45 @@ impl DeviceService {
     ///   (нельзя создавать дубликаты с уникальными номерами).
     /// - При `count == 1` поведение идентично `create()` — внутри обычный цикл.
     /// - Все строки создаются в одной транзакции с одним снапшотом `created_at_utc`.
-    pub async fn bulk_create(
+    ///
+    /// Phase 40.3 Plan 07 (NUM-06/NUM-08): renamed from `bulk_create` and
+    /// given a 3rd `printer` parameter, mirroring the
+    /// `create_single_with_number_check` ->
+    /// `create_single_with_number_check_with_printer` precedent from Plan
+    /// 04. A non-empty `printer` is ALWAYS rejected here (see the guard
+    /// below) — the bulk path has no atomic single-device IP/SNMP concept.
+    /// The old 2-arg method name is preserved below as a thin
+    /// backward-compatible wrapper (`printer = None`) so every existing
+    /// call site (`devices_bulk_create.rs`, `devices_type_conversion.rs`,
+    /// `devices_numbering.rs`, Tauri/HTTP transports, CSV import) compiles
+    /// unchanged.
+    pub async fn bulk_create_with_printer(
         &self,
         new: DeviceNew,
         count: u32,
+        printer: Option<PrinterCreateBlockDto>,
     ) -> Result<Vec<DeviceDto>, AppError> {
         // Validate count range.
         if count == 0 || count > 100 {
             return Err(AppError::Validation {
                 field: "count".to_string(),
                 message: "Количество должно быть от 1 до 100".to_string(),
+            });
+        }
+
+        // Phase 40.3 Plan 07 (VERIFICATION.md BLOCKER-2 / CR-02): the bulk
+        // path never carried an IP/SNMP block structurally before this plan
+        // (`DeviceNew` has no IP fields) — this guard is defense-in-depth
+        // against any FUTURE caller (transport layer, CSV import, frontend
+        // refactor) that tries to thread a printer block through here. Loud
+        // rejection, not silent drop — same style as T-40.3-09's guard in
+        // `create_single_with_number_check_with_printer`.
+        if printer.is_some() {
+            return Err(AppError::Validation {
+                field: "printer".to_string(),
+                message:
+                    "IP/SNMP не поддерживается при массовом создании — создайте принтер отдельно."
+                        .to_string(),
             });
         }
 
@@ -1624,5 +1653,17 @@ impl DeviceService {
         }
 
         self.list_by_ids(ids).await
+    }
+
+    /// Thin backward-compatible wrapper over `bulk_create_with_printer`
+    /// (Phase 40.3 Plan 07) — keeps the public 2-argument signature every
+    /// existing call site uses. `printer = None` — identical to pre-Plan-07
+    /// behavior.
+    pub async fn bulk_create(
+        &self,
+        new: DeviceNew,
+        count: u32,
+    ) -> Result<Vec<DeviceDto>, AppError> {
+        self.bulk_create_with_printer(new, count, None).await
     }
 }
