@@ -93,6 +93,13 @@ pub const KNOWN_LEGACY_DEFAULTS: &[(&str, &[&str])] = &[
             // pre-Phase-39.1 body would be misclassified as user-customized
             // and never receive the shortened-path upgrade.
             include_str!("../../templates/_legacy_defaults/v27/act_handover.html"),
+            // Phase 40.4 Plan 05 (NEW-2): pre-change snapshot captured
+            // immediately before adding act.number_display and replacing the
+            // {{ act.number }}{{ act.suffix }} concatenation sites — without
+            // this entry, any install that materialized the pre-Phase-40.4
+            // body would be misclassified as user-customized and never
+            // receive the fix.
+            include_str!("../../templates/_legacy_defaults/v29/act_handover.html"),
         ],
     ),
     (
