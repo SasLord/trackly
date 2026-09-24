@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-24T15:30:38.797Z"
+last_updated: "2026-09-24T16:13:28.686Z"
 last_activity: 2026-09-24
 progress:
   total_phases: 13
   completed_phases: 7
   total_plans: 105
-  completed_plans: 103
+  completed_plans: 104
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.4 (audit-debt-round-2) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
@@ -461,6 +461,7 @@ Last activity: 2026-09-24
 | Phase 40.4 P01 | 95min | 2 tasks | 2 files |
 | Phase 40.4 P02 | 20m | 2 tasks | 3 files |
 | Phase 40.4 P04 | 6min | 2 tasks | 3 files |
+| Phase 40.4 P05 | 39min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -1086,6 +1087,8 @@ Recent decisions affecting current work:
 - [Phase 40.4-02]: CsvImportReport gains affected_place_ids: Vec<i64> (deduplicated place_id of successfully inserted rows) so the client (Plan 40.4-03) can invalidate just the affected place-tree nodes without a full refresh.
 - [Phase 40.4-04]: Bulk-create payload unconditionally nulls inventory_no for qty>1 rather than inventoryNo.trim() || null — server cannot assign N distinct numbers in one call; bulk_create_with_printer hard-rejects count>1 with non-empty inventory_no
 - [Phase 40.4-04]: onEditedByHandChange reuses NumberTemplateField's existing isValueUnedited() directly inside a new $effect — avoids duplicating the NUM-07 string-equality comparator with a parallel diff/timestamp heuristic
+- [Phase 40.4-05]: act.number_display added as additive print-context key sourced from ActDto.number — no removal of number/number_raw/suffix for D-05 file-template backward-compat
+- [Phase 40.4-05]: compute_suffix_from_display kept unused-by-template but still computes act.suffix for the print context — needed for user-customized templates, out of scope to remove
 
 ### Pending Todos
 
@@ -1285,8 +1288,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-24T15:30:38.788Z
-Stopped at: Completed 40.4-04-PLAN.md
+Last session: 2026-09-24T16:13:28.677Z
+Stopped at: Completed 40.4-05-PLAN.md (NEW-2: act.number_display canonical print number); Task 4 checkpoint auto-approved per session policy, NOT observed live — recommend spot-check per SUMMARY
 Resume file: None
 
 None
