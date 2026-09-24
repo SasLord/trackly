@@ -1139,6 +1139,13 @@ impl DeviceService {
         // the same number must not be reported as its "повтор".
         let mut seen_numbers: HashMap<String, u64> = HashMap::new();
 
+        // N-3 (Phase 40.4 Plan 02): dedup collector for place_id of every
+        // successfully inserted row — flushed into report.affected_place_ids
+        // after the loop, so the client can invalidate just the affected
+        // place-tree nodes instead of a full refresh.
+        let mut affected_place_ids: std::collections::HashSet<i64> =
+            std::collections::HashSet::new();
+
         // Process each row individually (per-row error accumulation, D-CSV-01).
         for (row_offset, row) in session.all_rows.iter().enumerate() {
             let row_index = (row_offset + 1) as u64; // 1-based for user display
@@ -1217,12 +1224,19 @@ impl DeviceService {
                 continue;
             }
 
+            // place_id already resolved above; captured BEFORE new_device is
+            // moved into self.create() below.
+            let row_place_id = new_device.place_id;
+
             // Insert via service.create (audit_log; place_id already resolved above).
             match self.create(new_device).await {
                 Ok(DeviceSaveOutcome::Created(_)) => {
                     report.inserted += 1;
                     if let Some(key) = pending_number_key {
                         seen_numbers.insert(key, row_index);
+                    }
+                    if let Some(pid) = row_place_id {
+                        affected_place_ids.insert(pid);
                     }
                 }
                 Ok(DeviceSaveOutcome::NeedsConfirmation(warning)) => {
@@ -1260,6 +1274,8 @@ impl DeviceService {
                 }
             }
         }
+
+        report.affected_place_ids = affected_place_ids.into_iter().collect();
 
         Ok(report)
     }
