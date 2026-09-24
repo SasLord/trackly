@@ -72,6 +72,14 @@
      *  (mask+contextLabel), не имея собственного доступа к списку шаблонов
      *  этого поля. */
     onSelectedTemplateChange?: (_templateId: number | null, _mask: string | null) => void;
+    /** Phase 40.4 Plan 04 (NEW-3): сигнал форме-хосту «значение поля правили
+     *  вручную» (обратное `isValueUnedited()` — NUM-07 компаратор,
+     *  string-equality с последними серверными предложениями). Вызывается
+     *  реактивно при каждом изменении этого результата в любую сторону, не
+     *  только один раз при первом ручном вводе — форма-хост использует это,
+     *  чтобы решить, применимо ли массовое создание (автоподставленный,
+     *  нетронутый номер не должен блокировать «Количество»). */
+    onEditedByHandChange?: (editedByHand: boolean) => void;
   }
 
   let {
@@ -87,6 +95,7 @@
     canManageSettings = false,
     autofillOnMount = true,
     onSelectedTemplateChange,
+    onEditedByHandChange,
   }: Props = $props();
 
   // ---------------------------------------------------------------------
@@ -193,6 +202,14 @@
     if (altSuggested !== null && norm === normalize(altSuggested)) return true;
     return false;
   }
+
+  // Phase 40.4 Plan 04 (NEW-3): реактивно прокидывает наружу «правили ли
+  // вручную» — читает те же $state (value/lastSuggested/altSuggested), что
+  // isValueUnedited(), поэтому Svelte 5 отслеживает зависимости через сам
+  // вызов функции внутри эффекта, не дублируя её логику отдельным $derived.
+  $effect(() => {
+    onEditedByHandChange?.(!isValueUnedited());
+  });
 
   function applyPeekResult(
     templateId: number,
