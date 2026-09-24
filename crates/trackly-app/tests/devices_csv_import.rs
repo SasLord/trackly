@@ -24,6 +24,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::sync::broadcast;
+use trackly_app::dto::printer::WsEvent;
 use trackly_app::services::DeviceService;
 use trackly_core::domain::places::{PlaceKind, PlaceNew};
 use trackly_core::ports::places::PlaceRepository;
@@ -37,6 +39,20 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let svc = DeviceService::new(writer, readers, clock);
     (svc, dir)
+}
+
+/// N-3 (Phase 40.4 Plan 02) — broadcast-fixture variant of `make_service()`,
+/// role-matched from `tests/number_space_broadcast_gate.rs::fixture()`.
+/// Wires the service to a `broadcast::channel` so tests can assert HOW MANY
+/// `WsEvent::NumberSpaceChanged` an `import_csv_commit` call sends — the
+/// storm-mitigation regression needs a live receiver, `make_service()` alone
+/// has no `ws_tx` and silently no-ops every broadcast call.
+fn make_service_with_ws_tx() -> (DeviceService, broadcast::Receiver<WsEvent>, tempfile::TempDir) {
+    let (writer, readers, dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let (tx, rx) = broadcast::channel::<WsEvent>(256);
+    let svc = DeviceService::new(writer, readers, clock).with_ws_tx(Arc::new(tx));
+    (svc, rx, dir)
 }
 
 fn fixture_bytes(name: &str) -> Vec<u8> {
@@ -568,6 +584,55 @@ async fn import_commit_failed_row_place_not_in_affected_place_ids() {
             report.affected_place_ids,
             vec![place_a],
             "failed row's place must not appear in affected_place_ids"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// N-3 (Phase 40.4 Plan 02, T-40.4-03): a 5-row CSV import where every row
+/// carries an inventory number must send `WsEvent::NumberSpaceChanged`
+/// EXACTLY ONCE (batched after the per-row insert loop), not once per row —
+/// the LAN broadcast channel has fixed capacity (128) and a per-row storm
+/// risks `RecvError::Lagged`, dropping unrelated events like
+/// `NewRequest`/`PrinterAlert` for connected clients.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_sends_single_broadcast_not_per_row() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, mut rx, _dir) = make_service_with_ws_tx();
+
+        let csv = "Наименование,Инвентарный №\n\
+                    Устройство 1,ОРГ-00-000001\n\
+                    Устройство 2,ОРГ-00-000002\n\
+                    Устройство 3,ОРГ-00-000003\n\
+                    Устройство 4,ОРГ-00-000004\n\
+                    Устройство 5,ОРГ-00-000005\n";
+        let bytes = csv.as_bytes().to_vec();
+
+        while rx.try_recv().is_ok() {}
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should succeed");
+
+        assert_eq!(
+            report.inserted, 5,
+            "all 5 rows should insert: {:?}",
+            report.failed
+        );
+
+        let mut count = 0;
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, WsEvent::NumberSpaceChanged { .. }) {
+                count += 1;
+            }
+        }
+        assert_eq!(
+            count, 1,
+            "expected exactly 1 NumberSpaceChanged broadcast for a 5-row import with numbers, got {count}"
         );
     })
     .await
