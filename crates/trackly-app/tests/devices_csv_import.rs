@@ -47,7 +47,11 @@ fn make_service() -> (DeviceService, tempfile::TempDir) {
 /// `WsEvent::NumberSpaceChanged` an `import_csv_commit` call sends — the
 /// storm-mitigation regression needs a live receiver, `make_service()` alone
 /// has no `ws_tx` and silently no-ops every broadcast call.
-fn make_service_with_ws_tx() -> (DeviceService, broadcast::Receiver<WsEvent>, tempfile::TempDir) {
+fn make_service_with_ws_tx() -> (
+    DeviceService,
+    broadcast::Receiver<WsEvent>,
+    tempfile::TempDir,
+) {
     let (writer, readers, dir) = test_writer_and_readers();
     let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
     let (tx, rx) = broadcast::channel::<WsEvent>(256);
@@ -579,7 +583,11 @@ async fn import_commit_failed_row_place_not_in_affected_place_ids() {
             .expect("commit should not fail entirely");
 
         assert_eq!(report.inserted, 1, "only row 1 should insert");
-        assert_eq!(report.failed.len(), 1, "row 2 should fail (unresolved place)");
+        assert_eq!(
+            report.failed.len(),
+            1,
+            "row 2 should fail (unresolved place)"
+        );
         assert_eq!(
             report.affected_place_ids,
             vec![place_a],

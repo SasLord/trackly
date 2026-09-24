@@ -376,6 +376,28 @@ impl DeviceService {
     /// `create_single_with_number_check` for the interactive equivalent
     /// Plan 13 will wire the real single-device create FORM to.
     pub async fn create(&self, new: DeviceNew) -> Result<DeviceSaveOutcome, AppError> {
+        let outcome = self.create_without_broadcast(new).await?;
+        if let DeviceSaveOutcome::Created(ref dto) = outcome {
+            if dto.inventory_no.is_some() {
+                self.broadcast_number_space_changed();
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// N-3 (Phase 40.4 Plan 02, T-40.4-03): identical body to `create()`
+    /// EXCEPT it never broadcasts — the caller decides when/how often to
+    /// call `broadcast_number_space_changed()`. `create()` itself is now a
+    /// thin wrapper around this (single-row broadcast-after-insert);
+    /// `import_csv_commit`'s per-row loop calls this directly and batches
+    /// ONE broadcast after the whole loop (mirrors
+    /// `bulk_create_with_printer`'s single-broadcast-after-loop pattern) —
+    /// prevents a large CSV import from flooding the fixed-capacity LAN
+    /// `broadcast::channel` with one event per row.
+    async fn create_without_broadcast(
+        &self,
+        new: DeviceNew,
+    ) -> Result<DeviceSaveOutcome, AppError> {
         Self::validate_new(&new)?;
 
         let trimmed = new.inventory_no.as_deref().map(|v| v.trim().to_string());
@@ -384,12 +406,8 @@ impl DeviceService {
         }
         let mut new = new;
         new.inventory_no = trimmed.filter(|s| !s.is_empty());
-        let number_set = new.inventory_no.is_some();
 
         let dto = self.insert_new_and_get(new, None, None).await?;
-        if number_set {
-            self.broadcast_number_space_changed();
-        }
         Ok(DeviceSaveOutcome::Created(Box::new(dto)))
     }
 
@@ -1129,7 +1147,7 @@ impl DeviceService {
         // Phase 40.2 Plan 08 (NUM-16, RESEARCH Pitfall 5): tracks inventory
         // numbers already seen EARLIER in THIS SAME file (key = trimmed +
         // lowercased, value = the 1-based row_index of the FIRST row that
-        // used it) — `self.create(...)`'s own occupied check runs against
+        // used it) — `self.create_without_broadcast(...)`'s own occupied check runs against
         // the DB one row at a time, so by the time a same-file duplicate's
         // SECOND row is processed, the first row is already committed and
         // the DB check alone would report "занят в БД" instead of the more
@@ -1145,6 +1163,12 @@ impl DeviceService {
         // place-tree nodes instead of a full refresh.
         let mut affected_place_ids: std::collections::HashSet<i64> =
             std::collections::HashSet::new();
+
+        // N-3 (Phase 40.4 Plan 02, T-40.4-03): tracks whether ANY row in
+        // this import set an inventory number — drives a single
+        // broadcast_number_space_changed() call after the loop instead of
+        // one per row (create_without_broadcast never broadcasts itself).
+        let mut any_number_set = false;
 
         // Process each row individually (per-row error accumulation, D-CSV-01).
         for (row_offset, row) in session.all_rows.iter().enumerate() {
@@ -1165,8 +1189,9 @@ impl DeviceService {
             };
 
             // NUM-16: in-file duplicate check — SEPARATE from, and checked
-            // BEFORE, the DB-level occupied check `self.create(...)` will
-            // run later for this same row.
+            // BEFORE, the DB-level occupied check
+            // `self.create_without_broadcast(...)` will run later for this
+            // same row.
             let mut pending_number_key: Option<String> = None;
             if let Some(raw_number) = new_device.inventory_no.as_deref() {
                 let trimmed_number = raw_number.trim().to_string();
@@ -1225,18 +1250,23 @@ impl DeviceService {
             }
 
             // place_id already resolved above; captured BEFORE new_device is
-            // moved into self.create() below.
+            // moved into self.create_without_broadcast() below.
             let row_place_id = new_device.place_id;
 
-            // Insert via service.create (audit_log; place_id already resolved above).
-            match self.create(new_device).await {
-                Ok(DeviceSaveOutcome::Created(_)) => {
+            // Insert via service.create_without_broadcast (audit_log;
+            // place_id already resolved above) — broadcast is batched ONCE
+            // after the loop (T-40.4-03), not per row.
+            match self.create_without_broadcast(new_device).await {
+                Ok(DeviceSaveOutcome::Created(dto)) => {
                     report.inserted += 1;
                     if let Some(key) = pending_number_key {
                         seen_numbers.insert(key, row_index);
                     }
                     if let Some(pid) = row_place_id {
                         affected_place_ids.insert(pid);
+                    }
+                    if dto.inventory_no.is_some() {
+                        any_number_set = true;
                     }
                 }
                 Ok(DeviceSaveOutcome::NeedsConfirmation(warning)) => {
@@ -1276,6 +1306,10 @@ impl DeviceService {
         }
 
         report.affected_place_ids = affected_place_ids.into_iter().collect();
+
+        if any_number_set {
+            self.broadcast_number_space_changed();
+        }
 
         Ok(report)
     }
