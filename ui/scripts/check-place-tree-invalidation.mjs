@@ -709,6 +709,7 @@ const MUTATING_COMPONENTS = [
   { component: 'DeviceFormModal', props: ['onSaved'] },
   { component: 'ActFormModal', props: ['onSaved'] },
   { component: 'ReturnModal', props: ['onSuccess'] },
+  { component: 'DeviceImportCsvModal', props: ['onImported'] },
 ];
 
 /** Компоненты, форвардящие результат мутации через СВОЙ проп вместо

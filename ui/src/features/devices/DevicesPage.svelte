@@ -324,7 +324,8 @@
 <DeviceImportCsvModal
   open={csvModalOpen}
   onClose={() => (csvModalOpen = false)}
-  onImported={() => {
+  onImported={(placeIds: number[]) => {
+    if (placeIds.length > 0) notifyPlaceContentChanged(placeIds);
     csvModalOpen = false;
     refresh();
     refreshCounts();

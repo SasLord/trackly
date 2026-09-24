@@ -14,7 +14,7 @@
   interface Props {
     open: boolean;
     onClose: () => void;
-    onImported: () => void;
+    onImported: (placeIds: number[]) => void;
   }
 
   const { open, onClose, onImported }: Props = $props();
@@ -165,7 +165,7 @@
   // Finish
   // ---------------------------------------------------------------------------
   function handleDone() {
-    onImported();
+    onImported(report?.affected_place_ids ?? []);
     resetState();
   }
 
