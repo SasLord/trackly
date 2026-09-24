@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-24T16:13:28.686Z"
+status: verifying
+last_updated: "2026-09-24T16:25:52.651Z"
 last_activity: 2026-09-24
 progress:
   total_phases: 13
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 105
-  completed_plans: 104
-  percent: 54
+  completed_plans: 105
+  percent: 62
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.4 (audit-debt-round-2) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
@@ -462,6 +462,7 @@ Last activity: 2026-09-24
 | Phase 40.4 P02 | 20m | 2 tasks | 3 files |
 | Phase 40.4 P04 | 6min | 2 tasks | 3 files |
 | Phase 40.4 P05 | 39min | 3 tasks | 6 files |
+| Phase 40.4-audit-debt-round-2 P03 | 15min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1288,8 +1289,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-24T16:13:28.677Z
-Stopped at: Completed 40.4-05-PLAN.md (NEW-2: act.number_display canonical print number); Task 4 checkpoint auto-approved per session policy, NOT observed live — recommend spot-check per SUMMARY
+Last session: 2026-09-24T16:25:52.642Z
+Stopped at: Completed 40.4-03-PLAN.md
 Resume file: None
 
 None
