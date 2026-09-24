@@ -393,6 +393,11 @@ pub struct CsvImportReport {
     pub inserted: u64,
     /// Per-row errors (rows that were skipped due to validation failures).
     pub failed: Vec<RowError>,
+    /// N-3 (Phase 40.4 Plan 02): deduplicated `place_id` list of every
+    /// successfully inserted row — lets the client invalidate just the
+    /// affected place-tree nodes (`notifyPlaceContentChanged`) without a
+    /// full screen refresh. Never includes a row that failed validation.
+    pub affected_place_ids: Vec<i64>,
 }
 
 /// A per-row import error.

@@ -498,6 +498,82 @@ async fn import_cyrillic_round_trip() {
     .expect("timeout");
 }
 
+/// N-3 (Phase 40.4 Plan 02): `report.affected_place_ids` carries the
+/// deduplicated `place_id` list of every successfully inserted row —
+/// consumed by the client for `notifyPlaceContentChanged` without a full
+/// screen refresh (client half wired separately by Plan 40.4-03).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_collects_affected_place_ids() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let place_a = seed_place(&svc, "Кабинет А").await;
+        let place_b = seed_place(&svc, "Кабинет Б").await;
+
+        let csv = "Наименование,Расположение\n\
+                    Устройство 1,Кабинет А\n\
+                    Устройство 2,Кабинет Б\n\
+                    Устройство 3,\n";
+        let bytes = csv.as_bytes().to_vec();
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should succeed");
+
+        assert_eq!(
+            report.inserted, 3,
+            "all 3 rows should insert: {:?}",
+            report.failed
+        );
+
+        let mut ids = report.affected_place_ids.clone();
+        ids.sort();
+        let mut expected = vec![place_a, place_b];
+        expected.sort();
+        assert_eq!(
+            ids, expected,
+            "affected_place_ids should contain exactly the 2 seeded places, deduplicated"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
+/// Regression: a row that fails to insert (place text unresolved against the
+/// place tree) must NOT contribute its place_id to `affected_place_ids` —
+/// only successfully inserted rows count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_failed_row_place_not_in_affected_place_ids() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_service();
+        let place_a = seed_place(&svc, "Кабинет А").await;
+
+        let csv = "Наименование,Расположение\n\
+                    Устройство 1,Кабинет А\n\
+                    Устройство 2,Несуществующее место\n";
+        let bytes = csv.as_bytes().to_vec();
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should not fail entirely");
+
+        assert_eq!(report.inserted, 1, "only row 1 should insert");
+        assert_eq!(report.failed.len(), 1, "row 2 should fail (unresolved place)");
+        assert_eq!(
+            report.affected_place_ids,
+            vec![place_a],
+            "failed row's place must not appear in affected_place_ids"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn import_commit_records_audit_log() {
     tokio::time::timeout(Duration::from_secs(30), async {

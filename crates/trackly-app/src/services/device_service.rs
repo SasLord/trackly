@@ -1123,6 +1123,7 @@ impl DeviceService {
         let mut report = CsvImportReport {
             inserted: 0,
             failed: Vec::new(),
+            affected_place_ids: Vec::new(),
         };
 
         // Phase 40.2 Plan 08 (NUM-16, RESEARCH Pitfall 5): tracks inventory
