@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-24T15:21:17.187Z"
+last_updated: "2026-09-24T15:30:38.797Z"
 last_activity: 2026-09-24
 progress:
   total_phases: 13
   completed_phases: 7
   total_plans: 105
-  completed_plans: 102
+  completed_plans: 103
   percent: 54
 ---
 
@@ -25,9 +25,25 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.4 (audit-debt-round-2) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
-Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
+Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
+завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
+готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
+эвристики); DeviceFormBody's `quantityDisabled` различает автоподставленный-нетронутый номер
+(не блокирует «Количество») от введённого/изменённого вручную (регресс CR-02/40.3-07
+сохранён); `handleSubmit`'s qty>1-ветка теперь безусловно шлёт `inventory_no: null` в bulk-payload
+— без этого фикса пользователь бы ловил серверную ошибку валидации `bulk_create_with_printer`
+guard на каждой попытке массового создания. Деviation (Rule 3): по пути обнаружена и исправлена
+блокирующая пробел в specta-аннотации `CsvImportReport.affected_place_ids` (внесена планом
+40.4-02 этой же волны) — без `#[specta(type = Vec<i32>)]` `cargo test --test export_bindings`
+падал с `BigIntForbidden`, что ломало `ui`'s `prebuild` и, соответственно, `pnpm build` этого
+плана; исправлено отдельным коммитом по образцу существующих `Vec<i64>`-полей в `act.rs`.
+Чекпоинт Task 3 (живая UAT массового создания) — auto-approved под `workflow.auto_advance: true`
+по явной инструкции сессии, БЕЗ живого наблюдения человека в `cargo tauri dev` — помечено в
+SUMMARY как рекомендация на спот-чек при следующем запуске (тот же класс риска, что породил
+BLOCKER-3 в 40.3-03).
+Последнее действие (до 04): 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
 (вариант b из CR-01), bulk_create_with_printer безусловно отклоняет непустой printer-блок на
 сервере (defense-in-depth, T-40.3-15, RED→GREEN TDD-цикл + мутационная проверка). Чекпоинт
@@ -444,6 +460,7 @@ Last activity: 2026-09-24
 | Phase 40.3 P09 | ~2h | 3 tasks | 1 files |
 | Phase 40.4 P01 | 95min | 2 tasks | 2 files |
 | Phase 40.4 P02 | 20m | 2 tasks | 3 files |
+| Phase 40.4 P04 | 6min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1067,6 +1084,8 @@ Recent decisions affecting current work:
 - [Phase ?]: Сценарий 2 NEW-1 (undo восстанавливает историческое значение через независимую правку) вне объёма — решение D-01, см. deferred-items.md
 - [Phase 40.4-02]: create() refactored to a thin wrapper over new create_without_broadcast(); import_csv_commit calls create_without_broadcast and batches ONE NumberSpaceChanged broadcast after its per-row loop instead of one per row.
 - [Phase 40.4-02]: CsvImportReport gains affected_place_ids: Vec<i64> (deduplicated place_id of successfully inserted rows) so the client (Plan 40.4-03) can invalidate just the affected place-tree nodes without a full refresh.
+- [Phase 40.4-04]: Bulk-create payload unconditionally nulls inventory_no for qty>1 rather than inventoryNo.trim() || null — server cannot assign N distinct numbers in one call; bulk_create_with_printer hard-rejects count>1 with non-empty inventory_no
+- [Phase 40.4-04]: onEditedByHandChange reuses NumberTemplateField's existing isValueUnedited() directly inside a new $effect — avoids duplicating the NUM-07 string-equality comparator with a parallel diff/timestamp heuristic
 
 ### Pending Todos
 
@@ -1266,8 +1285,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-24T15:21:17.177Z
-Stopped at: Completed 40.4-02-PLAN.md
+Last session: 2026-09-24T15:30:38.788Z
+Stopped at: Completed 40.4-04-PLAN.md
 Resume file: None
 
 None
