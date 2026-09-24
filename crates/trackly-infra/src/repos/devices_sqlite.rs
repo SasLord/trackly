@@ -442,12 +442,23 @@ impl SqliteDeviceRepository {
                 source_chain: format!("undo: snapshot for device {device_id} lacks status_id"),
             })?;
         let place_id: Option<i64> = snapshot.get("place_id").and_then(|v| v.as_i64());
+        // NEW-1 (Phase 40.4 Plan 01): presence-флаг обязан читаться НАПРЯМУЮ
+        // из snapshot.get(key), ДО .and_then(|v| v.as_str()) — иначе «ключ
+        // отсутствует» и «ключ есть, значение null» схлопываются в один и
+        // тот же Rust None (COALESCE(NULL, current) молча сохраняет текущее
+        // значение вместо возврата к пустому). Presence-based CASE WHEN по
+        // образцу update_in_tx (Фаза 40.3), адаптировано под serde_json::Value.
+        let state_present = snapshot.get("state").is_some() as i64;
         let state: Option<&str> = snapshot.get("state").and_then(|v| v.as_str());
+        let kit_present = snapshot.get("kit").is_some() as i64;
         let kit: Option<&str> = snapshot.get("kit").and_then(|v| v.as_str());
         // Optional «full» fields (когда snapshot писался полностью).
         let name: Option<&str> = snapshot.get("name").and_then(|v| v.as_str());
+        let model_present = snapshot.get("model").is_some() as i64;
         let model: Option<&str> = snapshot.get("model").and_then(|v| v.as_str());
+        let serial_no_present = snapshot.get("serial_no").is_some() as i64;
         let serial_no: Option<&str> = snapshot.get("serial_no").and_then(|v| v.as_str());
+        let specs_present = snapshot.get("specs").is_some() as i64;
         let specs: Option<&str> = snapshot.get("specs").and_then(|v| v.as_str());
         let type_id: Option<i64> = snapshot.get("type_id").and_then(|v| v.as_i64());
 
@@ -462,19 +473,33 @@ impl SqliteDeviceRepository {
                 "UPDATE devices SET \
                    type_id          = COALESCE(?1, type_id), \
                    name             = COALESCE(?2, name), \
-                   serial_number    = COALESCE(?3, serial_number), \
-                   model            = COALESCE(?4, model), \
-                   condition        = COALESCE(?5, condition), \
-                   complectation    = COALESCE(?6, complectation), \
-                   notes            = COALESCE(?7, notes), \
-                   status_id        = ?8, \
-                   place_id         = ?9, \
+                   serial_number    = CASE WHEN ?3 = 1 THEN ?4 ELSE serial_number END, \
+                   model            = CASE WHEN ?5 = 1 THEN ?6 ELSE model END, \
+                   condition        = CASE WHEN ?7 = 1 THEN ?8 ELSE condition END, \
+                   complectation    = CASE WHEN ?9 = 1 THEN ?10 ELSE complectation END, \
+                   notes            = CASE WHEN ?11 = 1 THEN ?12 ELSE notes END, \
+                   status_id        = ?13, \
+                   place_id         = ?14, \
                    version          = version + 1, \
-                   updated_at_utc   = ?10 \
-                 WHERE id = ?11 AND deleted_at_utc IS NULL",
+                   updated_at_utc   = ?15 \
+                 WHERE id = ?16 AND deleted_at_utc IS NULL",
                 rusqlite::params![
-                    type_id, name, serial_no, model, state, kit, specs, status_id, place_id,
-                    now_utc, device_id,
+                    type_id,
+                    name,
+                    serial_no_present,
+                    serial_no,
+                    model_present,
+                    model,
+                    state_present,
+                    state,
+                    kit_present,
+                    kit,
+                    specs_present,
+                    specs,
+                    status_id,
+                    place_id,
+                    now_utc,
+                    device_id,
                 ],
             )
             .map_err(map_rusqlite)?;

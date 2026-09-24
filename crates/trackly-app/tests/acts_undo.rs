@@ -118,6 +118,9 @@ async fn create_handover_with_location(
 }
 
 #[derive(Debug)]
+#[allow(dead_code)] // model/notes are read for Debug-formatting parity; not all fields
+// are asserted by every test case in this file — this struct mirrors the
+// full set of clearable fields restore_from_snapshot_in_tx handles.
 struct DeviceSnap {
     status_id: i64,
     place_id: Option<i64>,
