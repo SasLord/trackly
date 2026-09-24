@@ -122,6 +122,10 @@ struct DeviceSnap {
     status_id: i64,
     place_id: Option<i64>,
     condition: Option<String>,
+    serial_number: Option<String>,
+    model: Option<String>,
+    complectation: Option<String>,
+    notes: Option<String>,
 }
 
 async fn read_device_snap(svc: &ActService, device_id: i64) -> DeviceSnap {
@@ -129,13 +133,19 @@ async fn read_device_snap(svc: &ActService, device_id: i64) -> DeviceSnap {
     tokio::task::spawn_blocking(move || {
         let conn = readers.acquire();
         conn.query_row(
-            "SELECT status_id, place_id, condition FROM devices WHERE id = ?1",
+            "SELECT status_id, place_id, condition, serial_number, model, \
+                    complectation, notes \
+             FROM devices WHERE id = ?1",
             params![device_id],
             |r| {
                 Ok(DeviceSnap {
                     status_id: r.get(0)?,
                     place_id: r.get(1)?,
                     condition: r.get(2)?,
+                    serial_number: r.get(3)?,
+                    model: r.get(4)?,
+                    complectation: r.get(5)?,
+                    notes: r.get(6)?,
                 })
             },
         )
@@ -416,4 +426,69 @@ async fn delete_act_audits_undo_entries() {
     })
     .await
     .expect("audits budget");
+}
+
+// ---------------------------------------------------------------------------
+// Test 6 (Phase 40.4 Plan 01, NEW-1 scenario 1): undo не должен воскрешать
+// serial_number/complectation, если snapshot акта нёс null (поле было пустым
+// на момент создания акта), а пользователь заполнил его ПОСЛЕ акта — undo
+// должен вернуть поле к пустому, а не сохранить значение, добавленное после
+// акта (независимая правка устройства, никак не связанная с самим актом).
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn undo_restores_serial_number_and_complectation_cleared_after_handover() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let loc_a = seed_location(&svc.writer, "Склад-A").await;
+        let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
+        // Seed device БЕЗ serial_number/complectation — столбцы остаются NULL
+        // по умолчанию схемы (seed_devices_with_state не задаёт их в INSERT).
+        let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
+        let device_id = device_ids[0];
+
+        let pre = read_device_snap(&svc, device_id).await;
+        assert_eq!(pre.serial_number, None, "pre: serial_number empty");
+        assert_eq!(pre.complectation, None, "pre: complectation empty");
+
+        // Create handover — snapshot акта captures serial_no: null, kit: null
+        // (поле было пустым на момент создания акта).
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        // Независимая от акта правка: пользователь заполняет поля ПОСЛЕ акта,
+        // напрямую (не через act-мутацию).
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET serial_number = ?1, complectation = ?2 WHERE id = ?3",
+                    params!["SN-LATER", "Комплект-LATER", device_id],
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("independent post-act edit");
+
+        let after_edit = read_device_snap(&svc, device_id).await;
+        assert_eq!(after_edit.serial_number.as_deref(), Some("SN-LATER"));
+        assert_eq!(after_edit.complectation.as_deref(), Some("Комплект-LATER"));
+
+        // Delete handover → undo device mutations for this act. Snapshot нёс
+        // null для этих полей — undo обязан вернуть их к NULL, не сохранить
+        // значение, добавленное независимой правкой после акта.
+        svc.delete_soft(handover.id, handover.version)
+            .await
+            .expect("delete handover (undo)");
+
+        let after_undo = read_device_snap(&svc, device_id).await;
+        assert_eq!(
+            after_undo.serial_number, None,
+            "undo: serial_number must return to empty (snapshot carried null)"
+        );
+        assert_eq!(
+            after_undo.complectation, None,
+            "undo: complectation must return to empty (snapshot carried null)"
+        );
+    })
+    .await
+    .expect("undo scenario-1 budget");
 }
