@@ -3155,6 +3155,13 @@ impl ActService {
             },
             "act": {
                 "number": act.number_raw,
+                // NEW-2 (Phase 40.4 Plan 05): ready-to-print display number —
+                // same canonical value already used by the timeline and the
+                // "Перемещения" report (`resolve_movement_act_number`), not
+                // a reconstruction from `number_raw` + `suffix`. Additive —
+                // `number`/`suffix`/`number_raw` stay for backward-compat
+                // with user-customized file templates (D-05).
+                "number_display": act.number.clone(),
                 "suffix": suffix,
                 "date": format_iso_date(act.handover_date_utc),
                 "date_human": format_ru_date(act.handover_date_utc),

@@ -91,8 +91,12 @@
   const VARIABLES_BY_KIND: Record<string, VariableEntry[]> = {
     act_handover: [
       ...ORG_VARIABLES,
-      { code: 'act.number', desc: 'номер акта' },
+      { code: 'act.number', desc: 'номер акта (сырое значение, без суффикса)' },
       { code: 'act.suffix', desc: 'суффикс номера' },
+      {
+        code: 'act.number_display',
+        desc: 'готовый номер акта для печати (включает суффикс возврата)',
+      },
       { code: 'act.date_human', desc: 'дата акта (человекочитаемая)' },
       { code: 'act.receiver_name', desc: 'кто принял' },
       { code: 'act.deadline_human', desc: 'срок до (человекочитаемый)' },

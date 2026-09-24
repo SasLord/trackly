@@ -512,6 +512,12 @@ fn demo_context_for_kind(kind: &str) -> serde_json::Value {
             "org": org,
             "act": {
                 "number": "42",
+                // NEW-2 (Phase 40.4 Plan 05): act_handover.html renders under
+                // strict-undefined (build_safe_html_env) and now reads
+                // act.number_display — omitting it here would break the
+                // live template-editor preview and
+                // `validate_preview_act_handover_returns_html_with_title_marker`.
+                "number_display": "42",
                 "suffix": null,
                 "date": "2026-06-17",
                 "date_human": "17 июня 2026",

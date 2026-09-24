@@ -49,7 +49,7 @@
   signature block per Phase 35 D-06):
     org.name, org.full_name, org.inn, org.kpp, org.address, org.address_line2,
     org.logo_data_uri, org.phone, org.fax, org.email, org.okpo, org.ogrn
-    act.number, act.suffix, act.date, act.date_human,
+    act.number, act.number_display, act.suffix, act.date, act.date_human,
     act.receiver_name, act.giver_name, act.deadline, act.deadline_human,
     act.place_path, act.place_path_short, act.items[], act.items_grouped[], act.parent
     act.items[].name, act.items[].inventory_no, act.items[].serial_no,
@@ -92,7 +92,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Акт приема-передачи{% if act.number %} №{{ act.number }}{{ act.suffix | default('') }}{% endif %}</title>
+<title>Акт приема-передачи{% if act.number %} №{{ act.number_display }}{% endif %}</title>
 <style>
   @page {
     size: A4 portrait;
@@ -216,7 +216,7 @@
   {% include "_header.html" %}
 
   <div class="title">Акт приема-передачи</div>
-  <div class="subtitle">№{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+  <div class="subtitle">№{{ act.number_display }} от {{ act.date_human | default(act.date) }}</div>
 
   <div class="intro field-row">Настоящим актом утверждаю, что мною: {{ act.receiver_name }}</div>
 
@@ -285,7 +285,7 @@
 
   {%- if act.items | length > 1 %}
   <div class="appendix">
-    <div class="appendix-mark">Приложение №1<br>к акту приема-передачи №{{ act.number }}{{ act.suffix | default('') }} от {{ act.date_human | default(act.date) }}</div>
+    <div class="appendix-mark">Приложение №1<br>к акту приема-передачи №{{ act.number_display }} от {{ act.date_human | default(act.date) }}</div>
     <div class="appendix-title">Опись передаваемых устройств</div>
     <table class="appendix-table">
       <thead>
