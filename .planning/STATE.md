@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-24T00:36:58.560Z"
-last_activity: 2026-09-24 -- Phase 40.4 planning complete
+last_updated: "2026-09-24T14:58:13.826Z"
+last_activity: 2026-09-24
 progress:
   total_phases: 13
   completed_phases: 7
   total_plans: 105
-  completed_plans: 100
+  completed_plans: 101
   percent: 54
 ---
 
@@ -20,12 +20,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.4 — долг аудита v1.4, раунд 2
+**Current focus:** Phase 40.4 — audit-debt-round-2
 
 ## Current Position
 
-Phase: 40.4
-Plan: Not started
+Phase: 40.4 (audit-debt-round-2) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
@@ -63,7 +63,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-24 -- Phase 40.4 planning complete
+Last activity: 2026-09-24
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -442,6 +442,7 @@ Last activity: 2026-09-24 -- Phase 40.4 planning complete
 | Phase 40.3 P08 | 20min | 2 tasks | 2 files |
 | Phase 40.3 P07 | ~11min+checkpoint~1h38m | 2 tasks | 5 files |
 | Phase 40.3 P09 | ~2h | 3 tasks | 1 files |
+| Phase 40.4 P01 | 95min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1061,6 +1062,8 @@ Recent decisions affecting current work:
 - [Phase 40.3-07]: UAT-дефект (edit-mode «Вставка» отсутствовала для Инвентарный №) исправлен расширением NumberTemplateField (templateActionsDisabled) на edit-режим; IP/SNMP редактирование в edit-режиме сознательно отложено пользователем в отдельную фазу после 40.3 — backend не имеет пути обновления сетевых параметров принтера (pending-todo зафиксирован)
 - [Phase 40.3-09]: Guarded (best-effort) persist_fk_baseline write, symmetric with read_persisted_fk_baseline .ok(): run_up_to(<16) no longer fails when app_settings doesn't exist yet (WARNING-1/WR-03)
 - [Phase 40.3-09]: FK-baseline comparison keyed by rowid-independent signature (table, parent, fkid) with multiplicity, not raw tuple — table rebuilds (V042/V043/V044 pattern, Phases 41/43 planned) no longer falsely block or mask FK violations (WARNING-2/WR-01)
+- [Phase ?]: Минимальный фикс NEW-1 (5 полей CASE WHEN); type_id/name остаются на COALESCE
+- [Phase ?]: Сценарий 2 NEW-1 (undo восстанавливает историческое значение через независимую правку) вне объёма — решение D-01, см. deferred-items.md
 
 ### Pending Todos
 
@@ -1260,7 +1263,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-23T15:32:21.363Z
+Last session: 2026-09-24T14:58:13.816Z
 Stopped at: Completed 40.3-09-PLAN.md — WARNING-1/WR-03 + WARNING-2/WR-01 closed, phase 40.3 all 9 plans done, ready for /gsd-validate-phase 40.3
 Resume file: None
 
