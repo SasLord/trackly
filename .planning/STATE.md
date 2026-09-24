@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: planning
-last_updated: "2026-09-23T23:21:09.579Z"
-last_activity: 2026-09-23
+status: executing
+last_updated: "2026-09-24T00:36:58.560Z"
+last_activity: 2026-09-24 -- Phase 40.4 planning complete
 progress:
   total_phases: 13
   completed_phases: 7
-  total_plans: 100
+  total_plans: 105
   completed_plans: 100
   percent: 54
 ---
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.4
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
 (вариант b из CR-01), bulk_create_with_printer безусловно отклоняет непустой printer-блок на
@@ -63,7 +63,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-23
+Last activity: 2026-09-24 -- Phase 40.4 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)

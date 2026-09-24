@@ -671,13 +671,17 @@ Plans:
      что таймлайн и отчёт «Перемещения», и не собирает его из сырого номера и суффикса; шаблон,
      в котором автор написал только поле номера, не теряет суффикс возврата.
 **Plans:** 5 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 40.4-01-PLAN.md — NEW-1: undo акта восстанавливает очищенные поля устройства через presence-based CASE WHEN (сценарий 1)
 - [ ] 40.4-02-PLAN.md — N-3 backend: CsvImportReport.affected_place_ids + single-broadcast-after-loop в import_csv_commit
-- [ ] 40.4-03-PLAN.md — N-3 frontend: DevicesPage/DeviceImportCsvModal инвалидируют дерево мест после импорта, реестр INV-7 обновлён
 - [ ] 40.4-04-PLAN.md — NEW-3: автоподставленный номер не блокирует «Количество», bulk-payload безусловно обнуляет inventory_no
 - [ ] 40.4-05-PLAN.md — NEW-2: act.number_display как единый источник номера в печати + версионирование шаблона + demo-контекст
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 40.4-03-PLAN.md — N-3 frontend: DevicesPage/DeviceImportCsvModal инвалидируют дерево мест после импорта, реестр INV-7 обновлён
 
 ### Phase 41: АРМ
 
