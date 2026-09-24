@@ -397,6 +397,7 @@ pub struct CsvImportReport {
     /// successfully inserted row — lets the client invalidate just the
     /// affected place-tree nodes (`notifyPlaceContentChanged`) without a
     /// full screen refresh. Never includes a row that failed validation.
+    #[specta(type = Vec<i32>)]
     pub affected_place_ids: Vec<i64>,
 }
 
