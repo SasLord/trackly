@@ -1406,3 +1406,87 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
          HTML (it would prove the parent-block date source regressed back to created_at_utc)"
     );
 }
+
+/// NEW-2 (Phase 40.4 Plan 05): the printed return-act's title/subtitle/
+/// appendix-mark must show `act.number_display` (the SAME canonical
+/// `ActDto.number` the timeline and the "Перемещения" report already show),
+/// not a reconstruction from `number_raw` + a separately-computed suffix.
+/// Returning the whole handover in one `do_return` call (`apply_to_all:
+/// true`, mirrors `acts_archived_at.rs`) yields `sibling_return_count == 1`,
+/// so `return_act.number` carries the «в» suffix (e.g. "1в") — asserting the
+/// rendered HTML contains this exact string proves the suffix survives
+/// printing even though the active template no longer concatenates
+/// `act.number` + `act.suffix` at any of its 3 sites.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_return_act_prints_number_display_with_suffix_not_lost() {
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 2).await;
+        let handover = create_handover(&p.acts, &device_ids, "Сдалов С.С.", "Принялов П.П.").await;
+
+        let return_payload = ActReturnDto {
+            bulk_condition: Some("Хорошее".into()),
+            bulk_place_id: None,
+            apply_to_all: true,
+            items: handover
+                .items
+                .iter()
+                .map(|it| ActReturnItemDto {
+                    act_item_id: it.id,
+                    device_id: it.device_id,
+                    device_ids: vec![it.device_id],
+                    quantity: 1,
+                    condition_override: None,
+                    place_id_override: None,
+                })
+                .collect(),
+            giver_name: None,
+            receiver_name: None,
+            handover_date_utc: None,
+        };
+        let return_act = p
+            .acts
+            .do_return(&Identity::trusted_admin(), handover.id, return_payload)
+            .await
+            .expect("do_return full");
+
+        assert!(
+            return_act.number.contains('в'),
+            "fixture invariant broken: single full return must carry the «в» suffix, got {:?}",
+            return_act.number
+        );
+
+        let html = p
+            .acts
+            .render_pdf(return_act.id)
+            .await
+            .expect("render_pdf return act");
+
+        assert!(
+            html.contains(&return_act.number),
+            "rendered return-act HTML must contain the canonical display number {:?} \
+             (act.number_display) — suffix must not be lost. Head: {:?}",
+            return_act.number,
+            html.chars().take(500).collect::<String>()
+        );
+    })
+    .await
+    .expect("return_act_prints_number_display budget");
+}
+
+/// NEW-2 (Phase 40.4 Plan 05) permanent regression gate: the ACTIVE
+/// `act_handover.html` must never again reconstruct the printed number by
+/// concatenating `{{ act.number }}{{ act.suffix }}` — that reconstruction is
+/// exactly the fragile parsing this plan replaced with the single canonical
+/// `act.number_display` key. Mutation-validated against the pre-Phase-40.4
+/// snapshot (`_legacy_defaults/v29/act_handover.html`, Task 1 of this plan),
+/// which carries this substring 3 times — this test would fail on that
+/// snapshot and passes only because Task 2 replaced all 3 sites.
+#[test]
+fn active_act_handover_template_does_not_reconstruct_number_from_raw_plus_suffix() {
+    assert!(
+        !ACT_HANDOVER_HTML.contains("{{ act.number }}{{ act.suffix"),
+        "act_handover.html must not concatenate act.number + act.suffix — use \
+         act.number_display (the same canonical value the timeline/report already show) instead"
+    );
+}
