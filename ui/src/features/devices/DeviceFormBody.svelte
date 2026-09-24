@@ -246,6 +246,13 @@
   // extended two-argument signature, Fix 40.2-13).
   let selectedTemplateMask = $state<string | null>(null);
   let numberFieldRef: NumberTemplateField | null = $state(null);
+  // Phase 40.4 Plan 04 (NEW-3): mirrors NumberTemplateField's own
+  // `onEditedByHandChange` callback (create-mode instance only, below) — an
+  // autofilled-but-untouched inventory number must NOT block «Количество»,
+  // only a number the user actually typed/edited should. Starts `false`
+  // because autofillOnMount defaults to `true` on the create-mode instance:
+  // any autofilled value is by definition not yet "edited by hand".
+  let inventoryNoEditedByHand = $state(false);
 
   let takenNumber = $state('');
   let takenRecord = $state<NumberTakenRecordSummary | null>(null);
@@ -294,9 +301,14 @@
   // otherwise handleSubmit's qty>1 branch routes through devices.bulkCreate(),
   // which cannot carry printerBlock at all, silently dropping the IP/SNMP
   // block the user just typed.
+  // NEW-3 (40.4 Plan 04): an autofilled-but-untouched inventory number
+  // (autofillOnMount default `true`, NUM-08) must not block «Количество» —
+  // only a number the user actually edited by hand should. `serialNo`/
+  // `ipAddress` are plain fields with no autofill, their conditions stay
+  // as-is.
   const quantityDisabled = $derived(
     isEdit ||
-      inventoryNo.trim() !== '' ||
+      (inventoryNo.trim() !== '' && inventoryNoEditedByHand) ||
       serialNo.trim() !== '' ||
       (typeId === PRINTER_TYPE_ID && ipAddress.trim() !== ''),
   );
@@ -716,7 +728,19 @@
           const newDevice: DeviceNew = {
             type_id: typeId,
             name: name.trim(),
-            inventory_no: inventoryNo.trim() || null,
+            // NEW-3 (40.4 Plan 04): unconditionally null, never
+            // `inventoryNo.trim() || null` — this branch is only reachable
+            // with a non-empty inventoryNo when it is autofilled-but-
+            // untouched (quantityDisabled above already blocks qty>1 for a
+            // hand-edited number). Bulk-creating N copies of ONE number has
+            // no meaningful semantics — the server can't assign N different
+            // numbers in one call — and `bulk_create_with_printer` HARD
+            // REJECTS count>1 with a non-empty inventory_no
+            // (bulk_create_rejects_when_inventory_no_set regression test),
+            // so leaving this conditional would surface that server
+            // validation error to the user on every attempt instead of a
+            // working bulk create.
+            inventory_no: null,
             serial_no: serialNo.trim() || null,
             model: model.trim() || null,
             specs: specs.trim() || null,
@@ -839,6 +863,7 @@
             selectedTemplateId = id;
             selectedTemplateMask = mask;
           }}
+          onEditedByHandChange={(v) => (inventoryNoEditedByHand = v)}
         />
       {/if}
     </div>
