@@ -140,7 +140,7 @@
 | 40.1. Пробелы аудита v1.4 | v1.4 | 4/4 | Complete    | 2026-09-18 |
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
 | 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete    | 2026-09-23 |
-| 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 1/5 | In Progress|  |
+| 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 2/5 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -670,12 +670,12 @@ Plans:
   5. **NEW-2:** Печатная форма акта получает готовый отображаемый номер из того же источника,
      что таймлайн и отчёт «Перемещения», и не собирает его из сырого номера и суффикса; шаблон,
      в котором автор написал только поле номера, не теряет суффикс возврата.
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 Plans:
 **Wave 1**
 
 - [x] 40.4-01-PLAN.md — NEW-1: undo акта восстанавливает очищенные поля устройства через presence-based CASE WHEN (сценарий 1)
-- [ ] 40.4-02-PLAN.md — N-3 backend: CsvImportReport.affected_place_ids + single-broadcast-after-loop в import_csv_commit
+- [x] 40.4-02-PLAN.md — N-3 backend: CsvImportReport.affected_place_ids + single-broadcast-after-loop в import_csv_commit
 - [ ] 40.4-04-PLAN.md — NEW-3: автоподставленный номер не блокирует «Количество», bulk-payload безусловно обнуляет inventory_no
 - [ ] 40.4-05-PLAN.md — NEW-2: act.number_display как единый источник номера в печати + версионирование шаблона + demo-контекст
 

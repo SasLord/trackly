@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-24T14:58:13.826Z"
+last_updated: "2026-09-24T15:21:17.187Z"
 last_activity: 2026-09-24
 progress:
   total_phases: 13
   completed_phases: 7
   total_plans: 105
-  completed_plans: 101
+  completed_plans: 102
   percent: 54
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.4 (audit-debt-round-2) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Последнее действие: 40.3-07-PLAN.md (CR-02: IP теряется в bulk-пути + UAT-дефект edit-mode
 «Вставка») завершён — quantityDisabled блокирует «Количество» при заполненном IP для Принтера
@@ -443,6 +443,7 @@ Last activity: 2026-09-24
 | Phase 40.3 P07 | ~11min+checkpoint~1h38m | 2 tasks | 5 files |
 | Phase 40.3 P09 | ~2h | 3 tasks | 1 files |
 | Phase 40.4 P01 | 95min | 2 tasks | 2 files |
+| Phase 40.4 P02 | 20m | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1064,6 +1065,8 @@ Recent decisions affecting current work:
 - [Phase 40.3-09]: FK-baseline comparison keyed by rowid-independent signature (table, parent, fkid) with multiplicity, not raw tuple — table rebuilds (V042/V043/V044 pattern, Phases 41/43 planned) no longer falsely block or mask FK violations (WARNING-2/WR-01)
 - [Phase ?]: Минимальный фикс NEW-1 (5 полей CASE WHEN); type_id/name остаются на COALESCE
 - [Phase ?]: Сценарий 2 NEW-1 (undo восстанавливает историческое значение через независимую правку) вне объёма — решение D-01, см. deferred-items.md
+- [Phase 40.4-02]: create() refactored to a thin wrapper over new create_without_broadcast(); import_csv_commit calls create_without_broadcast and batches ONE NumberSpaceChanged broadcast after its per-row loop instead of one per row.
+- [Phase 40.4-02]: CsvImportReport gains affected_place_ids: Vec<i64> (deduplicated place_id of successfully inserted rows) so the client (Plan 40.4-03) can invalidate just the affected place-tree nodes without a full refresh.
 
 ### Pending Todos
 
@@ -1263,8 +1266,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-24T14:58:13.816Z
-Stopped at: Completed 40.3-09-PLAN.md — WARNING-1/WR-03 + WARNING-2/WR-01 closed, phase 40.3 all 9 plans done, ready for /gsd-validate-phase 40.3
+Last session: 2026-09-24T15:21:17.177Z
+Stopped at: Completed 40.4-02-PLAN.md
 Resume file: None
 
 None
