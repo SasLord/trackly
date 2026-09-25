@@ -56,6 +56,16 @@
 //           write-site (12 на момент этого коммита, локализация на каждое
 //           ИСПОЛЬЗОВАНИЕ отдельно — не на файл) и явные blind spot'ы этого
 //           подхода — в доккомментарии над `checkCompleteness`.
+//   INV-8 (CR-02, ревью 40.4) — компонент, который КОММИТИТ серверную мутацию
+//           РАНЬШЕ, чем пользователь закрывает попап (шаг «результат»
+//           CSV-импорта), не даёт закрыть себя в обход инвалидирующего пропа:
+//           обработчик, который этот попап передаёт в `onClose` своего
+//           `<Modal>`, обязан звать инвалидирующий проп (`onImported`). INV-7
+//           этого класса дыр НЕ ВИДИТ — он проверяет только ПОТРЕБИТЕЛЯ
+//           (`onImported={...}` в `DevicesPage`), а Escape/подложка/«×»
+//           ходили мимо потребителя вовсе, и гейт выдавал «PASS — 0
+//           нарушений» с открытой дырой. Реестр —
+//           `COMMIT_BEFORE_DISMISS_COMPONENTS`.
 //
 // Гейт СТРУКТУРНЫЙ (как check-place-path-short.mjs / check-print-idempotency.mjs):
 // читает исходники и разбирает их скобочным балансом, НЕ выполняет код и НЕ
@@ -813,6 +823,131 @@ function checkCompleteness(files, violations) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-8 (CR-02, ревью 40.4) — «коммит раньше закрытия»
+// ---------------------------------------------------------------------------
+
+/**
+ * Реестр попапов, которые коммитят серверную мутацию НЕ последним действием:
+ * коммит происходит на промежуточном шаге, после него попап ещё живёт (экран
+ * результата), и пользователь может закрыть его Escape / кликом по подложке /
+ * «×» — минуя основную кнопку. Для таких попапов «успешный коммит» и
+ * «закрытие» — РАЗНЫЕ события, поэтому инвалидация обязана висеть на
+ * ЗАКРЫТИИ, а не на одной кнопке.
+ *
+ * Почему это отдельный инвариант, а не расширение INV-7: INV-7 смотрит на
+ * ПОТРЕБИТЕЛЯ (`<DeviceImportCsvModal onImported={...}>` в `DevicesPage`) и
+ * доказывает, что обработчик этого пропа инвалидирует дерево. Он ничего не
+ * знает о том, ВСЕГДА ли попап до этого пропа доходит. В 40.4 `handleDone()`
+ * (кнопка «Готово») звал `onImported`, а `handleClose()` (Escape/подложка/«×»,
+ * живые на шаге 4 — то есть ПОСЛЕ `import_csv_commit`) звал только `onClose` —
+ * и гейт выдавал «PASS — 0 нарушений» при устаревших счётчиках дерева,
+ * устаревшем списке устройств и без тоста.
+ *
+ * Поля записи:
+ *   `file`             — исходник самого попапа (не потребителя).
+ *   `commitMarker`     — вызов, который коммитит мутацию. Если он исчез или
+ *                        переименован, запись реестра устарела — падаем
+ *                        громко, а не «проверяем» несуществующий путь.
+ *   `commitStateVar`   — `$state`, по которому попап отличает «коммит
+ *                        состоялся» от «ещё нет». Обработчик закрытия обязан
+ *                        его читать: безусловный вызов инвалидирующего пропа
+ *                        стрелял бы и при отмене на первом шаге.
+ *   `invalidatingProp` — проп, ведущий к `notifyPlaceContentChanged` у
+ *                        потребителя (его и проверяет INV-7).
+ *   `dismissProp`      — проп `<Modal>`, через который приходят Escape,
+ *                        подложка и «×» (см. `Modal.svelte`).
+ *
+ * Blind spot: гейт текстовый, как и весь остальной файл. Он доказывает, что
+ * путь закрытия ВЕДЁТ к инвалидирующему пропу и что он смотрит на признак
+ * коммита — не то, что условие расставлено верно. Живая проверка всех четырёх
+ * способов закрытия по-прежнему обязательна.
+ */
+const COMMIT_BEFORE_DISMISS_COMPONENTS = [
+  {
+    file: 'src/features/devices/DeviceImportCsvModal.svelte',
+    label: 'CSV-импорт устройств (N-3/40.4)',
+    commitMarker: 'importCsvCommit(',
+    commitStateVar: 'report',
+    invalidatingProp: 'onImported',
+    dismissProp: 'onClose',
+  },
+];
+
+/** Вызов `name(...)` либо `name?.(...)` в тексте — проп-колбэки в этой
+ * кодовой базе встречаются в обеих формах (ср. `callsSelfForward` выше). */
+function callsCallback(body, name) {
+  return new RegExp(`\\b${name}\\s*(?:\\?\\.)?\\s*\\(`).test(body);
+}
+
+function checkCommitBeforeDismiss(read, violations) {
+  for (const entry of COMMIT_BEFORE_DISMISS_COMPONENTS) {
+    const { file, label, commitMarker, commitStateVar, invalidatingProp, dismissProp } = entry;
+    const code = stripComments(read(file));
+
+    if (!code.includes(commitMarker)) {
+      violations.push({
+        file,
+        inv: 'INV-8',
+        message: `не найден коммит-вызов \`${commitMarker}\` — запись реестра COMMIT_BEFORE_DISMISS_COMPONENTS устарела`,
+        hint: `Реестр INV-8 привязан к конкретному коммит-вызову (${label}). Если он переехал или переименован — обнови запись осознанно; молча «проверять» несуществующий путь гейт не должен.`,
+      });
+      continue;
+    }
+
+    const tags = allTagBlocks(code, 'Modal');
+    if (tags.length === 0) {
+      violations.push({
+        file,
+        inv: 'INV-8',
+        message: 'не найдено ни одного `<Modal ...>` — не через что проверять путь закрытия',
+        hint: 'Попап перестал рендерить <Modal> (или тег переименован) — пересмотри запись реестра INV-8 вместе с рефакторингом, не удаляй проверку.',
+      });
+      continue;
+    }
+
+    for (const tag of tags) {
+      const value = attrValue(tag, dismissProp);
+      if (value === null) {
+        violations.push({
+          file,
+          inv: 'INV-8',
+          message: `<Modal ...> не подключает \`${dismissProp}\` — Escape/подложка/«×» уходят в никуда`,
+          hint: 'Modal.svelte зовёт этот проп на Escape, mousedown+mouseup по подложке и кнопке «×» — без него закрытие попапа не обрабатывается вовсе.',
+        });
+        continue;
+      }
+      const resolved = resolveCallbackBody(code, value);
+      if (resolved === null) {
+        violations.push({
+          file,
+          inv: 'INV-8',
+          message: `<Modal ${dismissProp}={${value}}> — не удалось резолвить тело обработчика закрытия`,
+          hint: 'Тот же blind spot #2, что и у INV-7: cross-file/bound/member-expression обработчики не резолвятся. Сделай обработчик inline или объяви его функцией в этом же файле.',
+        });
+        continue;
+      }
+      if (!callsCallback(resolved.body, invalidatingProp)) {
+        violations.push({
+          file,
+          inv: 'INV-8',
+          message: `<Modal ${dismissProp}={${value}}> — обработчик закрытия не зовёт \`${invalidatingProp}(\`: закрытие ПОСЛЕ коммита проходит мимо инвалидации дерева мест`,
+          hint: `Это ровно дефект CR-02 (ревью 40.4): \`${commitMarker}\` уже записал строки в БД, а Escape/подложка/«×» закрывают попап без обновления списка и без notifyPlaceContentChanged. Закрытие обязано вести к \`${invalidatingProp}\`, когда коммит состоялся — см. handleClose в ${file}.`,
+        });
+        continue;
+      }
+      if (!new RegExp(`\\b${commitStateVar}\\b`).test(resolved.body)) {
+        violations.push({
+          file,
+          inv: 'INV-8',
+          message: `<Modal ${dismissProp}={${value}}> — обработчик закрытия зовёт \`${invalidatingProp}(\`, не глядя на \`${commitStateVar}\``,
+          hint: `\`${commitStateVar}\` — признак состоявшегося коммита. Безусловный вызов ${invalidatingProp} стрелял бы и при отмене на первом шаге (ложный тост «Импорт завершён» и лишний refresh), поэтому ветка обязана быть условной.`,
+        });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 function main() {
   const argSrc = process.argv.slice(2).find((a) => a.startsWith('--src='));
@@ -852,6 +987,7 @@ function main() {
     process.exit(1);
   }
   checkCompleteness(files, violations);
+  checkCommitBeforeDismiss(read, violations);
 
   for (const v of violations) {
     console.error(`${TAG} ${v.file} — ${v.inv}: ${v.message}`);
