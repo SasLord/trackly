@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-24T16:25:52.651Z"
+status: ready_to_plan
+last_updated: 2026-09-25T18:52:27.178Z
 last_activity: 2026-09-24
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 105
-  completed_plans: 105
+  completed_plans: 368
   percent: 62
+stopped_at: Phase 40.4 complete (5/5) — ready to discuss Phase 41
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.4 — audit-debt-round-2
+**Current focus:** Phase 41 — арм
 
 ## Current Position
 
-Phase: 40.4 (audit-debt-round-2) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
+Phase: 41
+Plan: Not started
+Status: Ready to plan
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
@@ -79,7 +80,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-24
+Last activity: 2026-09-25
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -93,7 +94,7 @@ Last activity: 2026-09-24
 
 **Velocity:**
 
-- Total plans completed: 245
+- Total plans completed: 250
 - Average duration: —
 - Total execution time: —
 
@@ -134,6 +135,7 @@ Last activity: 2026-09-24
 | 40.1 | 4 | - | - |
 | 40.2 | 15 | - | - |
 | 40.3 | 9 | - | - |
+| 40.4 | 5 | - | - |
 
 **Recent Trend:**
 
