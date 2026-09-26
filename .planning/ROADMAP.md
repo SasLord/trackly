@@ -147,6 +147,7 @@
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
 | 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete    | 2026-09-23 |
 | 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 5/5 | Complete    | 2026-09-25 |
+| 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 0/7 | Not started | - |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -703,7 +704,7 @@ Plans:
 **Depends on:** Phase 40.4
 **Источник:** живая UAT Фазы 40.4 (пункт 3), находки пользователя 2026-09-26. Решения по обеим
 развилкам зафиксированы в `.planning/todos/pending/2026-09-26-return-act-suffix-numbering-rework.md`
-**Plans:** 0 plans
+**Plans:** 7 plans in 4 waves
 
 **Success Criteria** (what must be TRUE):
 
@@ -736,7 +737,24 @@ Plans:
      handover «42в» больше не конфликтует с возвратом, «42в1» — конфликтует.
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 40.5 to break down)
+**Wave 1**
+
+- [ ] 40.5-01-PLAN.md — формула отображения: format_act_number теряет sibling_return_count (D-01), compute_suffix_from_display снимает риск F7 (D-08)
+- [ ] 40.5-02-PLAN.md — next_sub_number_for_parent: наименьший свободный вместо MAX+1 (D-04/D-07)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 40.5-03-PLAN.md — D-16: SELECT_ACTS/from_row без коррелированного подзапроса, позиционные индексы сверены по значениям; sibling_return_count удалён из ActRow/ports/act_service.rs (D-03)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 40.5-04-PLAN.md — анти-вакуумный якорь: Wave 0 тесты плотной нумерации (Success Criterion 2/3) + инверсия готовых якорей в acts_returns.rs/acts_clone_handover.rs (D-14)
+- [ ] 40.5-05-PLAN.md — acts_numbering.rs: пересмотр уникальности по смыслу, не заменой строк (D-09/NUM-09)
+- [ ] 40.5-06-PLAN.md — place_movements_timeline.rs/report_movements.rs: канонический «Nв1» вместо безцифрового «Nв»
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 40.5-07-PLAN.md — grep-гейты (D-03/D-08), фронтендовый регресс (D-11), фоновый полный `cargo test --workspace` (D-13), передача 40.5-HUMAN-UAT.md пользователю (D-12)
 
 ### Phase 41: АРМ
 
