@@ -31,6 +31,12 @@ const LOGO_SVG_WITH_SCRIPT: &[u8] = include_bytes!("fixtures/logo_test_with_scri
 /// `html_page_parity.rs`'s existing `include_str!` pattern.
 const ACT_HANDOVER_HTML: &str = include_str!("../templates/act_handover.html");
 
+/// WR-11 (ревью 40.4): ДО-фиксовый снимок того же шаблона (Task 1 фазы 40.4),
+/// читается только гейтом ниже — чтобы гейт доказывал свою живость на реальном
+/// артефакте с дефектом, а не на слове автора. Тоже read-only `include_str!`.
+const LEGACY_V29_ACT_HANDOVER_HTML: &str =
+    include_str!("../templates/_legacy_defaults/v29/act_handover.html");
+
 struct Pipeline {
     acts: ActService,
     writer: Arc<WriterHandle>,
@@ -1407,16 +1413,19 @@ async fn html_render_pdf_parent_block_date_uses_handover_date_not_created_at() {
     );
 }
 
-/// NEW-2 (Phase 40.4 Plan 05): the printed return-act's title/subtitle/
-/// appendix-mark must show `act.number_display` (the SAME canonical
-/// `ActDto.number` the timeline and the "Перемещения" report already show),
-/// not a reconstruction from `number_raw` + a separately-computed suffix.
-/// Returning the whole handover in one `do_return` call (`apply_to_all:
-/// true`, mirrors `acts_archived_at.rs`) yields `sibling_return_count == 1`,
-/// so `return_act.number` carries the «в» suffix (e.g. "1в") — asserting the
-/// rendered HTML contains this exact string proves the suffix survives
-/// printing even though the active template no longer concatenates
-/// `act.number` + `act.suffix` at any of its 3 sites.
+/// NEW-2 (Phase 40.4 Plan 05) — SMOKE-кейс: печатная форма возврата содержит
+/// канонический `ActDto.number` (тот же, что показывают таймлайн и отчёт
+/// «Перемещения»), суффикс «в» не теряется.
+///
+/// WR-01 (ревью 40.4) — ЧЕГО ЭТОТ ТЕСТ НЕ ДОКАЗЫВАЕТ: он НЕ является
+/// регрессом на дефект NEW-2. `do_return` пишет возврату `number =
+/// parent.number`, поэтому в этой фикстуре `number_raw == parent_number ==
+/// "1"`, `compute_suffix_from_display("1в", "1") == "в"`, и ДО-фиксовая
+/// склейка `{{ act.number }}{{ act.suffix }}` давала ровно тот же "1в" —
+/// тест зелёный и на `_legacy_defaults/v29/act_handover.html`. Сценарий, в
+/// котором две величины РАСХОДЯТСЯ (переименование родителя после возврата),
+/// закрыт отдельным тестом ниже:
+/// `html_return_act_after_parent_renumbered_prints_canonical_display_number`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn html_return_act_prints_number_display_with_suffix_not_lost() {
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
@@ -1474,19 +1483,241 @@ async fn html_return_act_prints_number_display_with_suffix_not_lost() {
     .expect("return_act_prints_number_display budget");
 }
 
+/// NEW-2 (Phase 40.4 Plan 05, объём усилен по WR-01): регресс на РЕАЛЬНОЕ
+/// расхождение канонического `ActDto.number` и склейки `number_raw` +
+/// суффикса — сценарий, в котором smoke-кейс выше физически не мог упасть.
+///
+/// Как расхождение возникает: строка возврата хранит КОПИЮ номера родителя
+/// (`do_return`: «number = parent.number»), а отображаемый номер собирается
+/// из joined `parent_number` (`format_act_number`). Сервисный `update`
+/// каскадит переименование родителя на детей (act_service.rs, «cascade the
+/// new number to any child return acts»), поэтому через публичный API две
+/// величины держатся синхронно — расхождение живёт в ДАННЫХ: строки,
+/// переименованные до появления каскада (legacy-БД), и любая правка номера
+/// родителя в обход сервиса. Фикстура воспроизводит ровно это: номер
+/// РОДИТЕЛЯ меняется прямым UPDATE'ом (минуя каскад), у возврата остаётся
+/// прежний `number_raw`.
+///
+/// Тест самодоказательный: один и тот же акт рендерится ДВАЖДЫ — активным
+/// шаблоном (обязан напечатать канонический `act.number_display`) и
+/// замороженным ДО-фиксовым снимком `_legacy_defaults/v29/act_handover.html`,
+/// положенным на диск (обязан напечатать устаревшую склейку). Вторая половина
+/// — постоянное доказательство того, что фикстура РАЗЛИЧАЕТ до-фикс и
+/// после-фикс, то есть тест не вакуумный (WR-01).
+///
+/// Ожидаемый номер НИГДЕ не захардкожен: и канонический, и «устаревший»
+/// варианты вычисляются из значений, ПРОЧИТАННЫХ обратно из сервиса
+/// (`acts.get`) — фаза 40.5 переработает нумерацию суффиксов возврата
+/// (плотные в1..вN), и этот тест обязан выжить по построению.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn html_return_act_with_stale_stored_number_prints_canonical_display_number() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let p = make_full_pipeline().await;
+        let device_ids = seed_devices(&p.writer, 2).await;
+        let handover = create_handover(&p.acts, &device_ids, "Сдалов С.С.", "Принялов П.П.").await;
+
+        // Частичный возврат (одна позиция из двух): родитель остаётся
+        // активным, `sibling_return_count == 1`.
+        let first_item = handover.items.first().expect("at least one item").clone();
+        let return_act = p
+            .acts
+            .do_return(
+                &Identity::trusted_admin(),
+                handover.id,
+                ActReturnDto {
+                    bulk_condition: Some("Хорошее".into()),
+                    bulk_place_id: None,
+                    apply_to_all: true,
+                    giver_name: None,
+                    receiver_name: None,
+                    handover_date_utc: None,
+                    items: vec![ActReturnItemDto {
+                        act_item_id: first_item.id,
+                        device_id: first_item.device_id,
+                        device_ids: vec![first_item.device_id],
+                        quantity: 1,
+                        condition_override: None,
+                        place_id_override: None,
+                    }],
+                },
+            )
+            .await
+            .expect("do_return partial");
+
+        // Переименование РОДИТЕЛЯ в обход сервиса — каскад на детей не
+        // выполняется, ровно как в данных, созданных до его появления.
+        let parent_id = handover.id;
+        p.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE acts SET number = '77' WHERE id = ?1",
+                    params![parent_id],
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("legacy-style parent rename without cascade");
+
+        // Канонические значения — ТОЛЬКО прочитанные обратно из сервиса.
+        let parent_after = p.acts.get(parent_id).await.expect("reload parent");
+        let reread = p.acts.get(return_act.id).await.expect("reload return act");
+        let suffix = reread
+            .number
+            .strip_prefix(&parent_after.number)
+            .unwrap_or_else(|| {
+                panic!(
+                    "fixture invariant broken: display номер возврата {:?} обязан начинаться \
+                     с номера родителя {:?}",
+                    reread.number, parent_after.number
+                )
+            });
+        assert!(
+            !suffix.is_empty(),
+            "fixture invariant broken: возврат обязан нести непустой суффикс, got {:?}",
+            reread.number
+        );
+        // Как выглядела бы ДО-фиксовая склейка: сырое (устаревшее) значение
+        // строки возврата + тот же суффикс.
+        let stale_reconstruction = format!("{}{}", reread.number_raw, suffix);
+        assert_ne!(
+            stale_reconstruction, reread.number,
+            "fixture invariant broken: сценарий обязан РАСХОДИТЬСЯ — иначе тест вакуумный \
+             ровно как smoke-кейс выше (WR-01)"
+        );
+
+        // --- половина 1: активный шаблон -----------------------------------
+        let html = p
+            .acts
+            .render_pdf(return_act.id)
+            .await
+            .expect("render_pdf return act (active template)");
+        assert!(
+            html.contains(&reread.number),
+            "печатная форма обязана содержать канонический номер {:?} (act.number_display). \
+             Head: {:?}",
+            reread.number,
+            html.chars().take(500).collect::<String>()
+        );
+        assert!(
+            !html.contains(&stale_reconstruction),
+            "печатная форма не должна содержать склейку number_raw + суффикс ({:?}) — \
+             это ровно тот дефект, который NEW-2 закрыл",
+            stale_reconstruction
+        );
+
+        // --- половина 2: ДО-фиксовый снимок как файл-шаблон ----------------
+        // Доказательство, что фикстура РАЗЛИЧАЕТ до-фикс и после-фикс:
+        // тот же акт, тот же ctx, но шаблон v29 печатает устаревшую склейку.
+        // Механика подмены — как в `html_uses_file_when_present_and_edit_changes_output`.
+        let paths = Paths::resolve_for_exe_dir(p._dir.path().to_path_buf()).expect("paths");
+        let templates_dir = paths.templates_dir();
+        std::fs::create_dir_all(templates_dir).expect("create templates dir");
+        std::fs::write(
+            templates_dir.join("act_handover.html"),
+            LEGACY_V29_ACT_HANDOVER_HTML,
+        )
+        .expect("write pre-fix v29 template");
+
+        let legacy_html = p
+            .acts
+            .render_pdf(return_act.id)
+            .await
+            .expect("render_pdf return act (pre-fix v29 template)");
+        assert!(
+            legacy_html.contains(&stale_reconstruction),
+            "до-фиксовый шаблон обязан напечатать устаревшую склейку {:?} — иначе фикстура \
+             не различает до-фикс и после-фикс, и половина 1 ничего не доказывает",
+            stale_reconstruction
+        );
+        assert!(
+            !legacy_html.contains(&reread.number),
+            "до-фиксовый шаблон не мог напечатать канонический {:?} — если печатает, значит \
+             фикстура снова вырождена (WR-01)",
+            reread.number
+        );
+    })
+    .await
+    .expect("return_act_stale_stored_number budget");
+}
+
+/// Убирает ВСЕ пробельные символы — нормализация перед поиском шаблонной
+/// склейки, чтобы гейт ниже не зависел от расстановки пробелов внутри `{{ }}`
+/// (WR-11).
+fn squash_whitespace(src: &str) -> String {
+    src.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// Обе известные формы реконструкции печатного номера из сырого значения:
+/// конкатенация двух выражений и minijinja-оператор склейки `~`.
+const NUMBER_RECONSTRUCTION_FORMS: [&str; 2] =
+    ["{{act.number}}{{act.suffix", "act.number~act.suffix"];
+
+/// Ищет любую из форм реконструкции в НОРМАЛИЗОВАННОМ (без пробелов) шаблоне.
+fn reconstructs_number_from_raw_plus_suffix(template_src: &str) -> bool {
+    let squashed = squash_whitespace(template_src);
+    NUMBER_RECONSTRUCTION_FORMS
+        .iter()
+        .any(|form| squashed.contains(form))
+}
+
 /// NEW-2 (Phase 40.4 Plan 05) permanent regression gate: the ACTIVE
 /// `act_handover.html` must never again reconstruct the printed number by
-/// concatenating `{{ act.number }}{{ act.suffix }}` — that reconstruction is
-/// exactly the fragile parsing this plan replaced with the single canonical
-/// `act.number_display` key. Mutation-validated against the pre-Phase-40.4
-/// snapshot (`_legacy_defaults/v29/act_handover.html`, Task 1 of this plan),
-/// which carries this substring 3 times — this test would fail on that
-/// snapshot and passes only because Task 2 replaced all 3 sites.
+/// concatenating `act.number` + `act.suffix` — that reconstruction is exactly
+/// the fragile parsing this plan replaced with the single canonical
+/// `act.number_display` key.
+///
+/// WR-11 (ревью 40.4): проверка больше НЕ чувствительна к пробелам и знает
+/// две формы склейки. До усиления гейт матчил одно буквальное написание
+/// `"{{ act.number }}{{ act.suffix"`, поэтому `{{act.number}}{{act.suffix}}`,
+/// `{{ act.number }}{{  act.suffix }}` и `{{ act.number ~ act.suffix }}`
+/// проходили его, восстанавливая дефект.
 #[test]
 fn active_act_handover_template_does_not_reconstruct_number_from_raw_plus_suffix() {
     assert!(
-        !ACT_HANDOVER_HTML.contains("{{ act.number }}{{ act.suffix"),
-        "act_handover.html must not concatenate act.number + act.suffix — use \
-         act.number_display (the same canonical value the timeline/report already show) instead"
+        !reconstructs_number_from_raw_plus_suffix(ACT_HANDOVER_HTML),
+        "act_handover.html must not concatenate act.number + act.suffix (ни через два \
+         выражения подряд, ни через оператор `~`) — use act.number_display (the same \
+         canonical value the timeline/report already show) instead"
+    );
+}
+
+/// Доказательство ЖИВОСТИ гейта выше (WR-11): та же функция обязана
+/// СРАБАТЫВАТЬ на реальном ДО-фиксовом артефакте (`_legacy_defaults/v29/
+/// act_handover.html`, где склейка встречается 3 раза) и на каждой из
+/// пробельных/операторных вариаций, которыми узкий гейт обходился. Без этого
+/// теста «зелёный гейт» не отличим от «гейт ничего не ищет».
+#[test]
+fn number_reconstruction_gate_fails_on_prefix_snapshot_and_all_whitespace_variants() {
+    assert!(
+        reconstructs_number_from_raw_plus_suffix(LEGACY_V29_ACT_HANDOVER_HTML),
+        "гейт обязан срабатывать на до-фиксовом снимке v29 — иначе он вакуумный"
+    );
+    let squashed_legacy = squash_whitespace(LEGACY_V29_ACT_HANDOVER_HTML);
+    assert_eq!(
+        squashed_legacy
+            .matches(NUMBER_RECONSTRUCTION_FORMS[0])
+            .count(),
+        3,
+        "в снимке v29 склейка встречается на всех 3 сайтах (title/subtitle/appendix-mark)"
+    );
+
+    for variant in [
+        "№{{act.number}}{{act.suffix}}",
+        "№{{ act.number }}{{ act.suffix }}",
+        "№{{ act.number }}{{  act.suffix }}",
+        "№{{ act.number }}{{ act.suffix | default('') }}",
+        "№{{ act.number ~ act.suffix }}",
+        "№{{act.number~act.suffix}}",
+    ] {
+        assert!(
+            reconstructs_number_from_raw_plus_suffix(variant),
+            "гейт обязан ловить вариацию {variant:?} (WR-11: узкий матч её пропускал)"
+        );
+    }
+
+    // Негативная фикстура: канонический вариант гейт не трогает.
+    assert!(
+        !reconstructs_number_from_raw_plus_suffix("№{{ act.number_display }} от {{ act.date }}"),
+        "канонический act.number_display не должен считаться нарушением"
     );
 }

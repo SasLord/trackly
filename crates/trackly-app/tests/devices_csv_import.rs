@@ -252,7 +252,7 @@ async fn import_commit_inserts_devices() {
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
 
         // Auto-mapping: map CSV headers to device fields
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         // Step 2: commit
         let report = svc
@@ -279,7 +279,7 @@ async fn import_commit_per_row_errors() {
         let bytes = fixture_bytes("malformed_mixed_rows.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         let report = svc
             .import_csv_commit(preview.token, mapping)
@@ -320,7 +320,7 @@ async fn import_commit_unresolved_place_reports_row_error_with_exact_copy() {
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         let report = svc
             .import_csv_commit(preview.token, mapping)
@@ -368,7 +368,7 @@ async fn import_commit_double_take_fails() {
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
         let token = preview.token.clone();
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         // First commit: should succeed
         let _report = svc
@@ -485,7 +485,7 @@ async fn import_cyrillic_round_trip() {
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         let report = svc
             .import_csv_commit(preview.token, mapping)
@@ -529,7 +529,7 @@ async fn import_commit_collects_affected_place_ids() {
         let place_a = seed_place(&svc, "Кабинет А").await;
         let place_b = seed_place(&svc, "Кабинет Б").await;
 
-        let csv = "Наименование,Расположение\n\
+        let csv = "Наименование,Место\n\
                     Устройство 1,Кабинет А\n\
                     Устройство 2,Кабинет Б\n\
                     Устройство 3,\n";
@@ -570,7 +570,7 @@ async fn import_commit_failed_row_place_not_in_affected_place_ids() {
         let (svc, _dir) = make_service();
         let place_a = seed_place(&svc, "Кабинет А").await;
 
-        let csv = "Наименование,Расположение\n\
+        let csv = "Наименование,Место\n\
                     Устройство 1,Кабинет А\n\
                     Устройство 2,Несуществующее место\n";
         let bytes = csv.as_bytes().to_vec();
@@ -647,6 +647,57 @@ async fn import_commit_sends_single_broadcast_not_per_row() {
     .expect("timeout");
 }
 
+/// WR-07 (ревью 40.4) — отрицательная половина того же контракта: импорт, в
+/// котором НИ ОДНА строка не несёт инвентарный номер, не должен рассылать
+/// `WsEvent::NumberSpaceChanged` ВООБЩЕ. Без этого кейса `any_number_set`
+/// можно было инициализировать `true` (или снять сам `if any_number_set`) — и
+/// сюита осталась бы зелёной, хотя «шторм» вернулся бы на каждый импорт без
+/// номеров. Парный тест — `import_commit_sends_single_broadcast_not_per_row`
+/// (ровно один broadcast, когда номера есть).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn import_commit_with_no_numbered_row_sends_no_broadcast() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, mut rx, _dir) = make_service_with_ws_tx();
+
+        // Колонка с номером в файле ОТСУТСТВУЕТ вовсе — ни одна вставленная
+        // строка не занимает номер, значит пространство номеров не менялось.
+        let csv = "Наименование\n\
+                    Устройство 1\n\
+                    Устройство 2\n\
+                    Устройство 3\n";
+        let bytes = csv.as_bytes().to_vec();
+
+        while rx.try_recv().is_ok() {}
+
+        let preview = svc.import_csv_preview(bytes).await.expect("preview");
+        let mapping = auto_map(&preview.headers);
+        let report = svc
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("commit should succeed");
+
+        assert_eq!(
+            report.inserted, 3,
+            "all 3 rows should insert: {:?}",
+            report.failed
+        );
+
+        let mut count = 0;
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, WsEvent::NumberSpaceChanged { .. }) {
+                count += 1;
+            }
+        }
+        assert_eq!(
+            count, 0,
+            "import without a single inventory number must not broadcast \
+             NumberSpaceChanged at all, got {count}"
+        );
+    })
+    .await
+    .expect("timeout");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn import_commit_records_audit_log() {
     tokio::time::timeout(Duration::from_secs(30), async {
@@ -655,7 +706,7 @@ async fn import_commit_records_audit_log() {
         let bytes = fixture_bytes("utf8.csv");
 
         let preview = svc.import_csv_preview(bytes).await.expect("preview");
-        let mapping = auto_map(&preview.headers);
+        let mapping = auto_map_with_manual_place(&preview.headers);
 
         let report = svc
             .import_csv_commit(preview.token, mapping)
@@ -676,8 +727,18 @@ async fn import_commit_records_audit_log() {
 // Helper: auto-map CSV headers to device field names
 // ---------------------------------------------------------------------------
 
-/// Creates a mapping from CSV column headers to device DTO field names.
-/// Uses exact-match + fuzzy match for Russian headers.
+/// Зеркало АВТО-маппинга заголовков в модалке импорта
+/// (`ui/src/features/devices/DeviceImportCsvModal.svelte::autoMapHeaders`) —
+/// ровно тот же набор алиасов, ни одного лишнего.
+///
+/// WR-14 (ревью 40.4): раньше этот helper был ШИРЕ продукта — принимал
+/// «Расположение» / «Местоположение» / `location` / `inv_no` / `serial_no` /
+/// `specs` / `kit` / `state` / `status`, которых в модалке нет, и не принимал
+/// `место` / `Place`, которые в ней есть. Тест, прогоняющий маппинг, который
+/// продукт никогда не производит, проверяет не продукт. Набор ниже сверен
+/// строка-в-строку со `switch (h)` модалки; при правке одной таблицы обязана
+/// правиться и вторая (заголовки, которые модалка НЕ узнаёт, пользователь
+/// выбирает руками — см. `auto_map_with_manual_place`).
 fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
 
@@ -688,20 +749,18 @@ fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
             "Наименование" | "наименование" | "Имя" | "имя" => {
                 Some("name")
             }
-            "Инвентарный №" | "Инв.№" | "Инвентарный" | "inv_no" | "inventory_no" => {
+            "Инвентарный №" | "Инв.№" | "Инвентарный" => {
                 Some("inventory_no")
             }
-            "Серийный №" | "Серийный" | "serial_no" => Some("serial_no"),
+            "Серийный №" | "Серийный" => Some("serial_no"),
             "Модель" | "модель" => Some("model"),
-            "Технические характеристики" | "Тех.характеристики" | "specs" => {
+            "Технические характеристики" | "Тех.характеристики" => {
                 Some("specs")
             }
-            "Комплектация" | "kit" => Some("kit"),
-            "Состояние" | "state" => Some("state"),
-            "Расположение" | "Местоположение" | "Место" | "location" | "place" => {
-                Some("place")
-            }
-            "Статус" | "status" => Some("status"),
+            "Комплектация" => Some("kit"),
+            "Состояние" => Some("state"),
+            "Место" | "место" | "Place" | "place" => Some("place"),
+            "Статус" => Some("status"),
             _ => None,
         };
         if let Some(f) = field {
@@ -710,4 +769,77 @@ fn auto_map(headers: &[String]) -> std::collections::HashMap<String, String> {
     }
 
     map
+}
+
+/// Авто-маппинг + РУЧНОЙ выбор поля «Место» для заголовка «Расположение».
+///
+/// WR-14: заголовок «Расположение» в `tests/fixtures/devices/*.csv` модалка
+/// авто-НЕ распознаёт (в её таблице его нет) — на шаге 2 пользователь
+/// выбирает для этой колонки поле «Место» в dropdown'е руками. Этот helper
+/// воспроизводит ровно тот ручной выбор, поэтому fixture-тесты остаются
+/// сценарием, который продукт реально производит, а `auto_map` выше не
+/// приходится расширять алиасами, которых в продукте нет.
+fn auto_map_with_manual_place(headers: &[String]) -> std::collections::HashMap<String, String> {
+    let mut map = auto_map(headers);
+    for header in headers {
+        if header.trim() == "Расположение" {
+            map.insert(header.clone(), "place".to_string());
+        }
+    }
+    map
+}
+
+/// WR-14: сторож против повторного расхождения `auto_map` с авто-маппингом
+/// модалки. Проверяет обе стороны: алиасы «Место» / «место» / `Place` /
+/// `place`, которые модалка узнаёт, распознаются; заголовки, которых в её
+/// `switch (h)` НЕТ («Расположение», «Местоположение», `location`, `inv_no`),
+/// остаются НЕраспознанными — то есть helper не шире продукта. «Расположение»
+/// становится `place` только через явный ручной выбор
+/// (`auto_map_with_manual_place`), как это и происходит в модалке.
+#[test]
+fn auto_map_mirrors_modal_aliases_and_stays_no_broader() {
+    let headers: Vec<String> = [
+        "Наименование",
+        "Место",
+        "место",
+        "Place",
+        "place",
+        "Расположение",
+        "Местоположение",
+        "location",
+        "inv_no",
+        "status",
+    ]
+    .iter()
+    .map(|h| (*h).to_string())
+    .collect();
+
+    let map = auto_map(&headers);
+    for known in ["Место", "место", "Place", "place"] {
+        assert_eq!(
+            map.get(known).map(String::as_str),
+            Some("place"),
+            "{known:?} есть в autoMapHeaders модалки — helper обязан его распознавать"
+        );
+    }
+    for unknown in [
+        "Расположение",
+        "Местоположение",
+        "location",
+        "inv_no",
+        "status",
+    ] {
+        assert!(
+            !map.contains_key(unknown),
+            "{unknown:?} в autoMapHeaders модалки НЕТ — helper не должен быть шире продукта"
+        );
+    }
+
+    assert_eq!(
+        auto_map_with_manual_place(&headers)
+            .get("Расположение")
+            .map(String::as_str),
+        Some("place"),
+        "«Расположение» маппится только ручным выбором поля «Место» на шаге 2"
+    );
 }

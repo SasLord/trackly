@@ -7,6 +7,12 @@
 //! When adding a new method that writes `devices.inventory_number`,
 //! `acts.number` (or changes a return's displayed number), `cartridges.code`,
 //! `number_templates*`, add a case here. Fictional data only.
+//!
+//! WR-06 (ревью 40.4): «новый метод» включает и НЕ рассылающие по отдельности
+//! write-сайты — `DeviceService::create_without_broadcast` + batched рассылка
+//! после цикла (`import_csv_commit`). Отсутствие кейса в этом файле — дрейф
+//! реестра, тот же класс ошибки, что уже зафиксирован для инвалидации дерева
+//! мест (`ui/scripts/check-place-tree-invalidation.mjs`, INV-7).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -140,6 +146,46 @@ async fn every_number_space_mutation_broadcasts() {
             .await
             .expect("device delete");
         assert_broadcast(&mut f.rx, "device_create", "device delete_soft");
+
+        // --- CSV import commit (Phase 40.4, WR-06) --------------------------
+        // `import_csv_commit` пишет `devices.inventory_number` через
+        // `create_without_broadcast` (per-row broadcast намеренно снят —
+        // «шторм» N-3) и рассылает ОДИН batched `NumberSpaceChanged` после
+        // цикла вставок. Реестр обязан содержать этот write-site: без
+        // кейса здесь batched-рассылку можно было снять целиком, и файл,
+        // задокументированный как единственный реестр broadcast-сайтов
+        // пространства номеров, этого бы не заметил. Ассерт «ровно один
+        // broadcast на N строк» живёт отдельно, в
+        // `devices_csv_import.rs::import_commit_sends_single_broadcast_not_per_row`
+        // (здесь проверяется только сам факт рассылки).
+        let csv = "Наименование,Инвентарный №\n\
+                    Устройство 1,ИНВ-900001\n";
+        let preview = f
+            .devices
+            .import_csv_preview(csv.as_bytes().to_vec())
+            .await
+            .expect("csv preview");
+        let mapping: std::collections::HashMap<String, String> = preview
+            .headers
+            .iter()
+            .filter_map(|h| match h.trim() {
+                "Наименование" => Some((h.clone(), "name".to_string())),
+                "Инвентарный №" => Some((h.clone(), "inventory_no".to_string())),
+                _ => None,
+            })
+            .collect();
+        drain(&mut f.rx);
+        let report = f
+            .devices
+            .import_csv_commit(preview.token, mapping)
+            .await
+            .expect("csv commit");
+        assert_eq!(
+            report.inserted, 1,
+            "fixture invariant: numbered row must insert, got {:?}",
+            report.failed
+        );
+        assert_broadcast(&mut f.rx, "device_create", "import_csv_commit");
 
         // --- cartridge delete -----------------------------------------------
         let model = f

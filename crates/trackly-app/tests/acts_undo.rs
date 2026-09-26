@@ -117,10 +117,14 @@ async fn create_handover_with_location(
     .expect_created("create handover")
 }
 
+// WR-04 (ревью 40.4): НИКАКОГО `#[allow(dead_code)]` здесь быть не должно.
+// Каждое поле структуры обязано реально ассертиться хотя бы одним кейсом
+// файла — иначе «расширили snapshot, но не проверили» остаётся невидимым
+// (именно так `model`/`notes` и незакрытый clearing-путь `condition`
+// пролежали незамеченными). Unused-field warning + `-D warnings` в ci-fast
+// теперь и есть тот самый сигнал; тест 6 ниже ассертит все пять
+// presence-gated столбцов (serial_number/model/condition/complectation/notes).
 #[derive(Debug)]
-#[allow(dead_code)] // model/notes are read for Debug-formatting parity; not all fields
-// are asserted by every test case in this file — this struct mirrors the
-// full set of clearable fields restore_from_snapshot_in_tx handles.
 struct DeviceSnap {
     status_id: i64,
     place_id: Option<i64>,
@@ -432,11 +436,19 @@ async fn delete_act_audits_undo_entries() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6 (Phase 40.4 Plan 01, NEW-1 scenario 1): undo не должен воскрешать
-// serial_number/complectation, если snapshot акта нёс null (поле было пустым
-// на момент создания акта), а пользователь заполнил его ПОСЛЕ акта — undo
-// должен вернуть поле к пустому, а не сохранить значение, добавленное после
-// акта (независимая правка устройства, никак не связанная с самим актом).
+// Test 6 (Phase 40.4 Plan 01, NEW-1 scenario 1; объём расширен по WR-04):
+// undo не должен воскрешать НИ ОДНО из пяти presence-gated полей
+// (serial_number / model / condition / complectation / notes), если snapshot
+// акта нёс для них null (поля были пустыми на момент создания акта), а
+// пользователь заполнил их ПОСЛЕ акта независимой правкой устройства. undo
+// обязан вернуть все пять к пустому, а не сохранить значения, добавленные
+// после акта.
+//
+// Пять — это ровно те столбцы, которые `restore_from_snapshot_in_tx`
+// (crates/trackly-infra/src/repos/devices_sqlite.rs) пишет через
+// `CASE WHEN ?present = 1 THEN ?value ELSE <col> END`; ключи snapshot'а —
+// `serial_no` / `model` / `state` / `kit` / `specs` (последний ложится в
+// столбец `devices.notes`). До WR-04 тест доказывал только два из пяти.
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -445,26 +457,52 @@ async fn undo_restores_serial_number_and_complectation_cleared_after_handover() 
         let (svc, _dir) = make_acts_service();
         let loc_a = seed_location(&svc.writer, "Склад-A").await;
         let loc_b = seed_location(&svc.writer, "Кабинет-B").await;
-        // Seed device БЕЗ serial_number/complectation — столбцы остаются NULL
-        // по умолчанию схемы (seed_devices_with_state не задаёт их в INSERT).
+        // Seed device БЕЗ serial_number/model/complectation/notes — столбцы
+        // остаются NULL по умолчанию схемы (seed_devices_with_state не задаёт
+        // их в INSERT). `condition` seed'ится непустым, поэтому гасим его
+        // отдельным UPDATE'ом ДО акта: clearing-путь `condition` проверяется
+        // только если snapshot нёс для него null (WR-04 — на restore-путь
+        // условия уже есть тесты 1/2 выше).
         let device_ids = seed_devices_with_state(&svc.writer, 1, loc_a, "Новое").await;
         let device_id = device_ids[0];
-
-        let pre = read_device_snap(&svc, device_id).await;
-        assert_eq!(pre.serial_number, None, "pre: serial_number empty");
-        assert_eq!(pre.complectation, None, "pre: complectation empty");
-
-        // Create handover — snapshot акта captures serial_no: null, kit: null
-        // (поле было пустым на момент создания акта).
-        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
-
-        // Независимая от акта правка: пользователь заполняет поля ПОСЛЕ акта,
-        // напрямую (не через act-мутацию).
         svc.writer
             .execute(move |conn| {
                 conn.execute(
-                    "UPDATE devices SET serial_number = ?1, complectation = ?2 WHERE id = ?3",
-                    params!["SN-LATER", "Комплект-LATER", device_id],
+                    "UPDATE devices SET condition = NULL WHERE id = ?1",
+                    params![device_id],
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("pre-act: clear condition");
+
+        let pre = read_device_snap(&svc, device_id).await;
+        assert_eq!(pre.serial_number, None, "pre: serial_number empty");
+        assert_eq!(pre.model, None, "pre: model empty");
+        assert_eq!(pre.condition, None, "pre: condition empty");
+        assert_eq!(pre.complectation, None, "pre: complectation empty");
+        assert_eq!(pre.notes, None, "pre: notes (specs) empty");
+
+        // Create handover — snapshot акта captures serial_no/model/state/kit/
+        // specs = null (все поля были пустыми на момент создания акта).
+        let handover = create_handover_with_location(&svc, &device_ids, loc_b).await;
+
+        // Независимая от акта правка: пользователь заполняет ВСЕ пять полей
+        // ПОСЛЕ акта, напрямую (не через act-мутацию).
+        svc.writer
+            .execute(move |conn| {
+                conn.execute(
+                    "UPDATE devices SET serial_number = ?1, model = ?2, condition = ?3, \
+                                        complectation = ?4, notes = ?5 \
+                     WHERE id = ?6",
+                    params![
+                        "SN-LATER",
+                        "Модель-LATER",
+                        "Б/У-LATER",
+                        "Комплект-LATER",
+                        "Характеристики-LATER",
+                        device_id
+                    ],
                 )
                 .map_err(map_rusqlite)
             })
@@ -473,11 +511,14 @@ async fn undo_restores_serial_number_and_complectation_cleared_after_handover() 
 
         let after_edit = read_device_snap(&svc, device_id).await;
         assert_eq!(after_edit.serial_number.as_deref(), Some("SN-LATER"));
+        assert_eq!(after_edit.model.as_deref(), Some("Модель-LATER"));
+        assert_eq!(after_edit.condition.as_deref(), Some("Б/У-LATER"));
         assert_eq!(after_edit.complectation.as_deref(), Some("Комплект-LATER"));
+        assert_eq!(after_edit.notes.as_deref(), Some("Характеристики-LATER"));
 
         // Delete handover → undo device mutations for this act. Snapshot нёс
-        // null для этих полей — undo обязан вернуть их к NULL, не сохранить
-        // значение, добавленное независимой правкой после акта.
+        // null для всех пяти полей — undo обязан вернуть их к NULL, не
+        // сохранить значения, добавленные независимой правкой после акта.
         svc.delete_soft(handover.id, handover.version)
             .await
             .expect("delete handover (undo)");
@@ -488,8 +529,20 @@ async fn undo_restores_serial_number_and_complectation_cleared_after_handover() 
             "undo: serial_number must return to empty (snapshot carried null)"
         );
         assert_eq!(
+            after_undo.model, None,
+            "undo: model must return to empty (snapshot carried null)"
+        );
+        assert_eq!(
+            after_undo.condition, None,
+            "undo: condition must return to empty (snapshot carried null)"
+        );
+        assert_eq!(
             after_undo.complectation, None,
             "undo: complectation must return to empty (snapshot carried null)"
+        );
+        assert_eq!(
+            after_undo.notes, None,
+            "undo: notes (snapshot key `specs`) must return to empty (snapshot carried null)"
         );
     })
     .await
