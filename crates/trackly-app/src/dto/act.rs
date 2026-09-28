@@ -4,9 +4,9 @@
 //! TypeScript bindings see `number` rather than `bigint` — see `dto/device.rs`
 //! module-doc for the rationale (S-3).
 //!
-//! `ActDto.number` is a `String` because the display rule «42» / «42в» /
-//! «42в1» is applied at read time by the service layer
-//! (`format_act_number`) — D-Numbering-01.
+//! `ActDto.number` is a `String` because the display rule «42» / «42в1» /
+//! «42в2» is applied at read time by the service layer
+//! (`format_act_number`) — Phase 40.5 (D-01).
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -14,31 +14,28 @@ use trackly_core::domain::acts::{ActCounts, ActFilter as DomainActFilter, ActRow
 
 use crate::dto::number_template::{NumberFieldInput, NumberWarningDto};
 
-/// Display-rule helper (D-Numbering-01).
+/// Display-rule helper (Phase 40.5, D-01).
 ///
 /// - Handover: plain decimal — `"42"`
-/// - Single return for a parent: drops the sub-number — `"42в"`
-/// - Multiple returns for a parent: keeps it — `"42в1"`, `"42в2"`
+/// - Return: always `{parent}в{sub}` — `"42в1"`, `"42в2"` — independent of
+///   how many sibling returns exist for the parent (D-01 removes the branch
+///   that used to drop the sub-number when a return was the only one for
+///   its parent).
 ///
-/// `parent_number` and `sibling_return_count` come from the `ActRow` join
-/// (see `SqliteActRepository::SELECT_ACTS`).
+/// `parent_number` comes from the `ActRow` join (see
+/// `SqliteActRepository::SELECT_ACTS`).
 pub fn format_act_number(
     act_type: ActType,
     number: &str,
     sub_number: Option<i64>,
     parent_number: Option<&str>,
-    sibling_return_count: Option<i64>,
 ) -> String {
     match act_type {
         ActType::Handover => number.to_owned(),
         ActType::Return => {
             let sub = sub_number.unwrap_or(1);
             let parent = parent_number.unwrap_or(number);
-            if sibling_return_count == Some(1) {
-                format!("{parent}в")
-            } else {
-                format!("{parent}в{sub}")
-            }
+            format!("{parent}в{sub}")
         }
     }
 }
@@ -50,7 +47,7 @@ pub struct ActDto {
     pub id: i64,
     #[specta(type = i32)]
     pub version: i64,
-    /// Formatted via `format_act_number` (D-Numbering-01).
+    /// Formatted via `format_act_number` (Phase 40.5, D-01).
     pub number: String,
     /// Raw stored value (without «в» suffix) — useful for sorting / re-display.
     /// Phase 40.2 (NUM-14): now a free TEXT value, not a plain integer.
@@ -521,7 +518,6 @@ pub fn act_dto_from_row(row: ActRow, items: Vec<ActItemDto>, return_ids: Vec<i64
         &row.number,
         row.sub_number,
         row.parent_number.as_deref(),
-        row.sibling_return_count,
     );
     ActDto {
         id: row.id,
@@ -556,40 +552,42 @@ mod tests {
     #[test]
     fn format_handover_is_plain_number() {
         assert_eq!(
-            format_act_number(ActType::Handover, "42", None, None, None),
+            format_act_number(ActType::Handover, "42", None, None),
             "42"
         );
     }
 
     #[test]
-    fn format_single_return_drops_sub_suffix() {
+    fn format_single_return_uses_sub_suffix() {
         assert_eq!(
-            format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1)),
-            "42в"
+            format_act_number(ActType::Return, "999", Some(1), Some("42")),
+            "42в1"
         );
     }
 
     #[test]
     fn format_multiple_returns_use_sub_suffix() {
         assert_eq!(
-            format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2)),
+            format_act_number(ActType::Return, "999", Some(1), Some("42")),
             "42в1"
         );
         assert_eq!(
-            format_act_number(ActType::Return, "1000", Some(2), Some("42"), Some(2)),
+            format_act_number(ActType::Return, "1000", Some(2), Some("42")),
             "42в2"
         );
     }
 
     #[test]
-    fn format_retroactive_promotion() {
-        // Same row data — sub=1 — но при изменении sibling_count
-        // отображение меняется с «42в» (один возврат) на «42в1» (два).
-        // Это retroactive promotion из D-Numbering-01.
-        let solo = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1));
-        let with_sibling = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2));
-        assert_eq!(solo, "42в");
-        assert_eq!(with_sibling, "42в1");
+    fn format_is_stable_regardless_of_siblings() {
+        // Phase 40.5 (D-01/D-05): та же row data — sub=1 — раньше меняла
+        // отображение в зависимости от числа живых соседей у родителя
+        // (отменённое правило D-Numbering-01). Теперь отображение НЕ
+        // зависит от изменчивого состояния соседей — только от
+        // sub_number самого акта.
+        let a = format_act_number(ActType::Return, "999", Some(1), Some("42"));
+        let b = format_act_number(ActType::Return, "999", Some(1), Some("42"));
+        assert_eq!(a, "42в1");
+        assert_eq!(a, b, "формула не должна зависеть от количества соседей");
     }
 
     /// Phase 40.2 (NUM-14): the display rule works identically for a
@@ -598,19 +596,24 @@ mod tests {
     #[test]
     fn format_handles_templated_non_numeric_number() {
         assert_eq!(
-            format_act_number(ActType::Handover, "2026/09-1", None, None, None),
+            format_act_number(ActType::Handover, "2026/09-1", None, None),
             "2026/09-1"
         );
         assert_eq!(
-            format_act_number(
-                ActType::Return,
-                "ignored",
-                Some(1),
-                Some("2026/09-1"),
-                Some(1)
-            ),
-            "2026/09-1в"
+            format_act_number(ActType::Return, "ignored", Some(1), Some("2026/09-1")),
+            "2026/09-1в1"
         );
+    }
+
+    /// NUM-14 / F7: literal «в» inside a TEMPLATED parent number (e.g. a
+    /// custom number-template mask like "АКТв-2026/09-1") must not be
+    /// confused with the return suffix — the suffix is ALWAYS appended
+    /// after the whole parent_number, never parsed out of it.
+    #[test]
+    fn format_return_of_parent_with_literal_v_in_template_mask() {
+        let parent = "АКТв-2026/09-1";
+        let display = format_act_number(ActType::Return, "ignored", Some(1), Some(parent));
+        assert_eq!(display, format!("{parent}в1"));
     }
 
     #[test]

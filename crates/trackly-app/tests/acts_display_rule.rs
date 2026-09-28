@@ -1,4 +1,4 @@
-//! Display-rule pure-Rust tests for `format_act_number` (D-Numbering-01).
+//! Display-rule pure-Rust tests for `format_act_number` (Phase 40.5, D-01).
 //!
 //! Эти тесты — копия unit-test'ов из `dto/act.rs::tests` в виде integration-
 //! ranged set, поэтому их можно отдельно запускать через `cargo test --test
@@ -14,41 +14,42 @@ use trackly_core::domain::acts::ActType;
 #[test]
 fn format_handover() {
     assert_eq!(
-        format_act_number(ActType::Handover, "42", None, None, None),
+        format_act_number(ActType::Handover, "42", None, None),
         "42"
     );
 }
 
 #[test]
-fn format_single_return() {
-    // sibling_count = 1 → suffix без числа: «42в».
+fn format_single_return_uses_v1() {
     assert_eq!(
-        format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1)),
-        "42в"
+        format_act_number(ActType::Return, "999", Some(1), Some("42")),
+        "42в1"
     );
 }
 
 #[test]
 fn format_multi_returns() {
     assert_eq!(
-        format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2)),
+        format_act_number(ActType::Return, "999", Some(1), Some("42")),
         "42в1"
     );
     assert_eq!(
-        format_act_number(ActType::Return, "1000", Some(2), Some("42"), Some(2)),
+        format_act_number(ActType::Return, "1000", Some(2), Some("42")),
         "42в2"
     );
 }
 
 #[test]
-fn format_retroactive_promotion() {
-    // Один и тот же sub_number=1 рендерится по-разному в зависимости от
-    // sibling_count: «42в» (один возврат) → «42в1» (после появления второго).
-    let one = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(1));
-    let two = format_act_number(ActType::Return, "999", Some(1), Some("42"), Some(2));
-    assert_eq!(one, "42в");
-    assert_eq!(two, "42в1");
-    assert_ne!(one, two, "promotion must change rendering");
+fn format_is_stable_regardless_of_siblings() {
+    // Phase 40.5 (D-01/D-05): один и тот же sub_number=1 раньше рендерился
+    // по-разному в зависимости от числа живых соседей: «42в» (один
+    // возврат) → «42в1» (после появления второго) — отменённое правило
+    // D-Numbering-01. Теперь отображение НЕ зависит от изменчивого
+    // состояния соседей.
+    let a = format_act_number(ActType::Return, "999", Some(1), Some("42"));
+    let b = format_act_number(ActType::Return, "999", Some(1), Some("42"));
+    assert_eq!(a, "42в1");
+    assert_eq!(a, b, "формула не должна зависеть от количества соседей");
 }
 
 #[test]
@@ -56,17 +57,11 @@ fn format_templated_non_numeric_number() {
     // NUM-14: a templated act number is not guaranteed to parse as an
     // integer (e.g. "2026/09-1") — the display rule must work identically.
     assert_eq!(
-        format_act_number(ActType::Handover, "2026/09-1", None, None, None),
+        format_act_number(ActType::Handover, "2026/09-1", None, None),
         "2026/09-1"
     );
     assert_eq!(
-        format_act_number(
-            ActType::Return,
-            "ignored",
-            Some(1),
-            Some("2026/09-1"),
-            Some(1)
-        ),
-        "2026/09-1в"
+        format_act_number(ActType::Return, "ignored", Some(1), Some("2026/09-1")),
+        "2026/09-1в1"
     );
 }
