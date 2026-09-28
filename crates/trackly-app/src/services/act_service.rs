@@ -3087,9 +3087,10 @@ impl ActService {
             None
         };
 
-        // Compute suffix (часть после числа) для печатной формы — берём из
-        // ActDto.number (уже отформатирован через format_act_number).
-        let suffix = compute_suffix_from_display(&act.number, &act.number_raw);
+        // Compute suffix (часть после числа) для печатной формы — Phase 40.5
+        // (D-08): вычисляется напрямую из типизированных act_type/sub_number,
+        // не парсит ActDto.number/number_raw как строку.
+        let suffix = compute_return_suffix(act.act_type == "return", act.sub_number);
 
         let items_json: Vec<serde_json::Value> = act
             .items
@@ -3488,22 +3489,50 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
     )
 }
 
-/// Извлекает суффикс (например, «в», «в1», «в2») из отформатированного
-/// `ActDto.number` относительно raw stored value. Для handover → "".
-/// Phase 40.2 (NUM-14): `number_raw` is now a free TEXT value (not
-/// necessarily numeric) — the string-prefix-strip logic is unchanged, it
-/// never assumed `number_raw` parsed as an integer in the first place.
-fn compute_suffix_from_display(display: &str, number_raw: &str) -> String {
-    if let Some(rest) = display.strip_prefix(number_raw) {
-        rest.to_string()
+/// Извлекает суффикс (например, «в1», «в2») печатной формы акта. Для
+/// handover → `""`. Phase 40.5 (D-08): больше НЕ ищет литеральный символ
+/// «в» в отображаемой строке (риск F7 — ложно совпадал с литеральной «в»
+/// внутри шаблонной маски родительского номера) — суффикс вычисляется
+/// напрямую из типизированных полей акта (`act_type` + `sub_number`),
+/// минуя `display`/`number_raw` вообще.
+fn compute_return_suffix(is_return: bool, sub_number: Option<i64>) -> String {
+    if is_return {
+        format!("в{}", sub_number.unwrap_or(1))
     } else {
-        // Дисплей не начинается с raw (return: «42в» где raw мог быть 999).
-        // В этом случае весь display — это {parent_number}{suffix}; ищем 'в'.
-        if let Some(idx) = display.find('в') {
-            display[idx..].to_string()
-        } else {
-            String::new()
-        }
+        String::new()
+    }
+}
+
+#[cfg(test)]
+mod compute_return_suffix_tests {
+    use super::compute_return_suffix;
+
+    #[test]
+    fn handover_has_no_suffix() {
+        assert_eq!(compute_return_suffix(false, None), "");
+    }
+
+    #[test]
+    fn return_suffix_uses_sub_number() {
+        assert_eq!(compute_return_suffix(true, Some(1)), "в1");
+        assert_eq!(compute_return_suffix(true, Some(2)), "в2");
+    }
+
+    #[test]
+    fn return_suffix_defaults_to_1_when_sub_number_missing() {
+        assert_eq!(compute_return_suffix(true, None), "в1");
+    }
+
+    /// NUM-14 / F7 — mirrors
+    /// `dto::act::tests::format_return_of_parent_with_literal_v_in_template_mask`:
+    /// a literal «в» inside a templated parent number mask must not affect
+    /// suffix extraction, because this function never looks at the parent
+    /// number or the display string at all.
+    #[test]
+    fn return_suffix_is_unaffected_by_literal_v_in_parent_mask() {
+        // Parent number "АКТв-2026/09-1" would confuse a literal-'в'-search
+        // approach into finding the mask's «в», not the real suffix.
+        assert_eq!(compute_return_suffix(true, Some(1)), "в1");
     }
 }
 
