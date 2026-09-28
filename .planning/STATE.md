@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-26T08:14:41.485Z"
-last_activity: 2026-09-26 -- Phase 40.5 planning complete
+last_updated: "2026-09-28T15:58:42.713Z"
+last_activity: 2026-09-28 -- Phase 40.5 execution started
 progress:
   total_phases: 14
   completed_phases: 8
@@ -20,13 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.5 — нумерация возвратов
+**Current focus:** Phase 40.5 — return-suffix-numbering
 
 ## Current Position
 
-Phase: 40.5
-Plan: Not started
-Status: Ready to execute
+Phase: 40.5 (return-suffix-numbering) — EXECUTING
+Plan: 1 of 7 complete
+Status: Executing Phase 40.5 (план 40.5-01 закрыт)
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
@@ -79,7 +79,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-26 -- Phase 40.5 planning complete
+Last activity: 2026-09-28 -- Phase 40.5 execution started
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)

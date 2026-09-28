@@ -147,7 +147,7 @@
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
 | 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete    | 2026-09-23 |
 | 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 5/5 | Complete    | 2026-09-25 |
-| 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 0/7 | Not started | - |
+| 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 1/7 | In Progress|  |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -704,7 +704,7 @@ Plans:
 **Depends on:** Phase 40.4
 **Источник:** живая UAT Фазы 40.4 (пункт 3), находки пользователя 2026-09-26. Решения по обеим
 развилкам зафиксированы в `.planning/todos/pending/2026-09-26-return-act-suffix-numbering-rework.md`
-**Plans:** 7 plans in 4 waves
+**Plans:** 1/7 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -739,7 +739,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 40.5-01-PLAN.md — формула отображения: format_act_number теряет sibling_return_count (D-01), compute_suffix_from_display снимает риск F7 (D-08)
+- [x] 40.5-01-PLAN.md — формула отображения: format_act_number теряет sibling_return_count (D-01), compute_suffix_from_display снимает риск F7 (D-08)
 - [ ] 40.5-02-PLAN.md — next_sub_number_for_parent: наименьший свободный вместо MAX+1 (D-04/D-07)
 
 **Wave 2** *(blocked on Wave 1)*
