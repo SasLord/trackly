@@ -807,16 +807,14 @@ pub(crate) fn fetch_candidate_rows(
         TemplateType::ActNumber => {
             // BE-WR-03 (D-06): the act number space is the DISPLAYED number
             // of every live act — handovers show their raw `number`, returns
-            // show `format_act_number` (`42в` / `42в1`), which depends on the
-            // parent's number and the live sibling count, so it is computed
-            // here rather than stored.
+            // show `format_act_number` (`42в1` / `42в2`), which depends on
+            // the parent's number and the act's own `sub_number` — computed
+            // here rather than stored. Phase 40.5: no longer depends on the
+            // live sibling count (D-01/D-03).
             let mut stmt = conn
                 .prepare(
                     "SELECT a.id, a.number, a.act_type, a.giver_name, a.receiver_name, \
-                            a.sub_number, a.parent_act_id, p.number, \
-                            (SELECT COUNT(*) FROM acts rr \
-                              WHERE rr.parent_act_id = a.parent_act_id \
-                                AND rr.deleted_at_utc IS NULL) \
+                            a.sub_number, a.parent_act_id, p.number \
                        FROM acts a \
                        LEFT JOIN acts p ON p.id = a.parent_act_id \
                       WHERE a.deleted_at_utc IS NULL",
@@ -832,7 +830,6 @@ pub(crate) fn fetch_candidate_rows(
                     let sub_number: Option<i64> = r.get(5)?;
                     let parent_act_id: Option<i64> = r.get(6)?;
                     let parent_number: Option<String> = r.get(7)?;
-                    let sibling_return_count: i64 = r.get(8)?;
                     let is_return = act_type == "return";
                     let displayed = if is_return {
                         crate::dto::act::format_act_number(
@@ -840,7 +837,6 @@ pub(crate) fn fetch_candidate_rows(
                             &number,
                             sub_number,
                             parent_number.as_deref(),
-                            Some(sibling_return_count),
                         )
                     } else {
                         number

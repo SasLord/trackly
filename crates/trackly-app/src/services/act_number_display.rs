@@ -28,19 +28,16 @@ use crate::dto::act::format_act_number;
 ///
 /// Routes the raw columns through the SAME query shape as
 /// `SqliteActRepository::SELECT_ACTS` (acts_sqlite.rs) — `act_type`,
-/// `sub_number`, the parent's `number` via a self-join, and a correlated
-/// `sibling_return_count` subquery — then hands them to `format_act_number`,
-/// the single owner of the display rule (D-Numbering-01).
+/// `sub_number`, the parent's `number` via a self-join — then hands them to
+/// `format_act_number`, the single owner of the display rule. Phase 40.5:
+/// the suffix no longer depends on the count of live siblings (D-01/D-03).
 pub fn resolve_movement_act_number(
     conn: &rusqlite::Connection,
     act_id: Option<i64>,
 ) -> Option<String> {
     act_id.and_then(|act_id| {
         conn.query_row(
-            "SELECT a.number, a.sub_number, a.act_type, p.number AS parent_number, \
-                    (SELECT COUNT(*) FROM acts r \
-                        WHERE r.parent_act_id = COALESCE(a.parent_act_id, a.id) \
-                          AND r.deleted_at_utc IS NULL) AS sibling_return_count \
+            "SELECT a.number, a.sub_number, a.act_type, p.number AS parent_number \
                FROM acts a \
                LEFT JOIN acts p ON p.id = a.parent_act_id \
               WHERE a.id = ?1",
@@ -50,7 +47,6 @@ pub fn resolve_movement_act_number(
                 let sub_number: Option<i64> = r.get(1)?;
                 let act_type_sql: String = r.get(2)?;
                 let parent_number: Option<String> = r.get(3)?;
-                let sibling_return_count: Option<i64> = r.get(4)?;
                 // Same soft-degrade contract as `acts_sqlite.rs::from_row`:
                 // an unexpected value is an `Err` here, absorbed into `None`
                 // by `.optional().ok()` below — never `?`/`.expect()`.
@@ -70,7 +66,6 @@ pub fn resolve_movement_act_number(
                     &number,
                     sub_number,
                     parent_number.as_deref(),
-                    sibling_return_count,
                 ))
             },
         )
