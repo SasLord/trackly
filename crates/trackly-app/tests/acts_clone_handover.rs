@@ -393,21 +393,25 @@ async fn return_2_of_3_keeps_handover_active_and_uses_v1_suffix() {
             .await
             .expect("partial return 2/3");
 
-        // Suffix «в1» — единственный return, sibling_return_count=1 → «в».
-        // Уточнение: формат "в" без цифры применяется ТОЛЬКО когда единственный return
-        // покрыл все devices (sibling_return_count = 1 AND complete). Тут partial,
-        // но sibling_return_count = 1, поэтому реально получим «в». G-7 семантика
-        // переключения «в»→«в1» происходит когда появляется СЛЕДУЮЩИЙ return (см. Test 5).
+        // Phase 40.5 (D-01): единственный (пока) возврат сразу показывает «в1» —
+        // имя теста теперь буквально совпадает с поведением.
         let parent = svc.get(handover.id).await.expect("get parent");
         assert!(!parent.archived, "after partial 2/3 archived=0");
         assert_eq!(ret.sub_number, Some(1));
+        let ret_full = svc.get(ret.id).await.expect("get ret");
+        assert!(
+            ret_full.number.ends_with("в1"),
+            "first return must use «в1» suffix, got: {}",
+            ret_full.number
+        );
     })
     .await
     .expect("return_2_of_3_keeps_handover_active_and_uses_v1_suffix budget");
 }
 
 // ---------------------------------------------------------------------------
-// Test 5 (G-7): второй return (1 device) → archived=1, suffix retroactive promotion.
+// Test 5 (G-7): второй return → archived=1; ret1 уже показывал «в1» ДО этого
+// return'а (стабильность, а не смена номера).
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -504,7 +508,6 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
         assert!(parent.archived, "after all 3 returned archived=1");
         assert_eq!(ret1.sub_number, Some(1));
         assert_eq!(ret2.sub_number, Some(2));
-        // sibling_return_count теперь 2 → display suffix «в1», «в2».
         // Numbers parsed: ret1.number = "{parent}в1", ret2.number = "{parent}в2"
         let ret1_full = svc.get(ret1.id).await.expect("get ret1");
         let ret2_full = svc.get(ret2.id).await.expect("get ret2");
@@ -524,11 +527,12 @@ async fn return_remaining_1_archives_handover_uses_v2_suffix() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6 (G-7): single return covering all 3 → «в» suffix (без цифры).
+// Test 6 (G-7): single return covering all 3 → «в1» suffix (цифра присутствует
+// всегда, Phase 40.5 D-01).
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn return_all_3_in_single_return_uses_v_suffix() {
+async fn return_all_3_in_single_return_uses_v1_suffix() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let source = seed_device(&svc.writer, "AllInOne").await;
@@ -587,18 +591,16 @@ async fn return_all_3_in_single_return_uses_v_suffix() {
         let parent = svc.get(handover.id).await.expect("get parent");
         assert!(parent.archived);
         assert_eq!(ret.sub_number, Some(1));
-        // Single return: sibling_return_count = 1 → suffix «в».
+        // Single return: цифра присутствует всегда → suffix «в1».
         let ret_full = svc.get(ret.id).await.expect("get ret");
         assert!(
-            ret_full.number.ends_with('в')
-                && !ret_full.number.ends_with("в1")
-                && !ret_full.number.ends_with("в2"),
-            "single return must use «в» (no number), got: {}",
+            ret_full.number.ends_with("в1"),
+            "single return must use «в1» (digit always present), got: {}",
             ret_full.number
         );
     })
     .await
-    .expect("return_all_3_in_single_return_uses_v_suffix budget");
+    .expect("return_all_3_in_single_return_uses_v1_suffix budget");
 }
 
 // ---------------------------------------------------------------------------
