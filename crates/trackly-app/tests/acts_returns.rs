@@ -1266,6 +1266,27 @@ async fn do_return_with_trusted_admin_caller_stores_null_user_id() {
     .expect("do_return_with_trusted_admin_caller_stores_null_user_id budget");
 }
 
+/// Сырая вставка постороннего живого handover с заданным номером в обход
+/// сервиса — строит «уже-конфликтную» БД (legacy-состояние, которое сервис
+/// создать не даст). Вымышленные ФИО — privacy gate (CLAUDE.md).
+async fn insert_foreign_handover_raw(svc: &ActService, number: &str) {
+    let number = number.to_string();
+    svc.writer
+        .execute(move |conn| {
+            conn.execute(
+                "INSERT INTO acts (number, sub_number, parent_act_id, act_type, \
+                 giver_name, receiver_name, created_at_utc, updated_at_utc) \
+                 VALUES (?1, NULL, NULL, 'handover', 'Сидоров С.С.', 'Кузнецов К.К.', \
+                 1700000000, 1700000000)",
+                params![number],
+            )
+            .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("insert colliding foreign act");
+}
+
 /// WR-01 (D-20): при soft-delete возврата множество отображаемых номеров семьи
 /// только сокращается, новая коллизия появиться не может. В уже-конфликтной БД
 /// (legacy-строка, вставленная в обход сервиса) удаление ДРУГОГО возврата этой
@@ -1292,20 +1313,7 @@ async fn deleting_a_return_succeeds_even_when_family_number_already_collides() {
 
         // Посторонний живой handover «1в2» в обход сервиса — воспроизводит
         // legacy-состояние, которое сервис создать не даст.
-        svc.writer
-            .execute(|conn| {
-                conn.execute(
-                    "INSERT INTO acts (number, sub_number, parent_act_id, act_type, \
-                     giver_name, receiver_name, created_at_utc, updated_at_utc) \
-                     VALUES ('1в2', NULL, NULL, 'handover', 'Сидоров С.С.', 'Кузнецов К.К.', \
-                     1700000000, 1700000000)",
-                    [],
-                )
-                .map_err(map_rusqlite)?;
-                Ok(())
-            })
-            .await
-            .expect("insert colliding foreign act");
+        insert_foreign_handover_raw(&svc, "1в2").await;
 
         svc.delete_soft(ret1.id, ret1.version)
             .await
@@ -1314,6 +1322,73 @@ async fn deleting_a_return_succeeds_even_when_family_number_already_collides() {
         let parent = svc.get(handover.id).await.expect("get parent");
         assert_eq!(parent.return_ids, vec![ret2.id], "остался только второй возврат");
         assert_eq!(parent.number, "1");
+    })
+    .await
+    .expect("budget");
+}
+
+/// WR-01 (D-20, остаточный GAP 1): в БД, где возврат «1в1» УЖЕ сталкивается с
+/// посторонним живым актом «1в1» (например БД до Фазы 40.5), следующие возвраты
+/// по той же семье обязаны проходить и получать наименьший свободный номер.
+/// Раньше пост-проверка семьи в `do_return` отказывала каждой попытке и делала
+/// акт невозвратимым навсегда.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_succeeds_in_db_where_existing_return_already_collides() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 3).await;
+        let handover = create_handover(&svc, &device_ids[0..3]).await;
+        let admin = Identity::trusted_admin();
+
+        let ret1 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[0]))
+            .await
+            .expect("return 1");
+        assert_eq!(ret1.number, "1в1");
+
+        // Посторонний живой handover «1в1» — БД теперь в конфликтном состоянии.
+        insert_foreign_handover_raw(&svc, "1в1").await;
+
+        let ret2 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[1]))
+            .await
+            .expect("возврат в БД с существующей коллизией должен проходить (WR-01)");
+        assert_eq!(ret2.sub_number, Some(2));
+        assert_eq!(ret2.number, "1в2");
+
+        let ret3 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[2]))
+            .await
+            .expect("третий возврат в конфликтной БД должен проходить (WR-01)");
+        assert_eq!(ret3.sub_number, Some(3));
+        assert_eq!(ret3.number, "1в3");
+
+        // D-01/D-05: существующий возврат не перенумерован.
+        let ret1_again = svc.get(ret1.id).await.expect("get ret1");
+        assert_eq!(ret1_again.number, "1в1");
+        assert_eq!(ret1_again.sub_number, Some(1));
+
+        let parent = svc.get(handover.id).await.expect("get parent");
+        let got: std::collections::HashSet<i64> = parent.return_ids.iter().copied().collect();
+        let want: std::collections::HashSet<i64> = [ret1.id, ret2.id, ret3.id].into_iter().collect();
+        assert_eq!(parent.return_ids.len(), 3);
+        assert_eq!(got, want);
+
+        // Посторонний акт жив и не тронут.
+        let alive: i64 = svc
+            .writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM acts WHERE number = '1в1' \
+                     AND act_type = 'handover' AND deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("count foreign act");
+        assert_eq!(alive, 1);
     })
     .await
     .expect("budget");
