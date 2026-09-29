@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T00:38:30.589Z"
+last_updated: "2026-09-29T00:38:34.130Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
@@ -466,6 +466,7 @@ Last activity: 2026-09-29
 | Phase 40.4-audit-debt-round-2 P03 | 15min | 1 tasks | 3 files |
 | Phase 40.5 P02 | 40min | 2 tasks | 1 files |
 | Phase 40.5 P03 | 35min | 2 tasks | 4 files |
+| Phase 40.5 P04 | 45min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1096,6 +1097,7 @@ Recent decisions affecting current work:
 - [Phase 40.4-05]: compute_suffix_from_display kept unused-by-template but still computes act.suffix for the print context — needed for user-customized templates, out of scope to remove
 - [Phase 40.5-02]: next_sub_number_for_parent = smallest_free по живым возвратам родителя (D-04), без новых блокировок и миграций (D-07/D-02)
 - [Phase ?]: 40.5-03: sibling_return_count удалён полностью (D-03); индексы from_row 17/18 подтверждены тестом на значения (D-16); ensure_act_family_display_free_in_tx сохранена для нового номера возврата
+- [Phase 40.5]: 40.5-04: якоря D-14 инвертированы; расхождение до/после подтверждено на базе c7f5726e и мутацией smallest_free->MAX+1
 
 ### Pending Todos
 
