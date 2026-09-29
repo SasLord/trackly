@@ -9,8 +9,10 @@
 //!   1. Create with an explicit, non-numeric templated text number.
 //!   2. Occupied check extends to a LIVE RETURN's DISPLAYED number (D-06) —
 //!      both on `create()` and on `update()` (the literal review scenario:
-//!      create #42, return it — displays "42в" — then a DIFFERENT act
-//!      cannot be created OR renamed to "42в").
+//!      create #42, return it — displays "42в1" (D-01: a return ALWAYS
+//!      shows "в{sub_number}", even a solo one) — then a DIFFERENT act
+//!      cannot be created OR renamed to "42в1"; "42в" is NOT a display any
+//!      more, so it cannot conflict).
 //!   3. Empty number (no template) is a hard validation error (NUM-13).
 //!   4. T-40.2-14 (Tampering — race on one act number): two concurrent
 //!      `create()` calls for the SAME number — the recreated
@@ -133,9 +135,8 @@ async fn create_rejects_number_matching_live_return_display() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 2).await;
 
-        // Create act #42, then fully return it — a solo return displays
-        // "42в" (D-Numbering-01: sibling_return_count == 1 drops the
-        // sub_number suffix).
+        // Create act #42, then fully return it — even a solo return displays
+        // "42в1" (D-01: the suffix always carries the sub_number digit).
         let handover = svc
             .create(&Identity::trusted_admin(), create_payload("42", ids[0]))
             .await
@@ -165,12 +166,12 @@ async fn create_rejects_number_matching_live_return_display() {
         .await
         .expect("do_return #42");
 
-        // A brand-new act attempting to use "42в" (the return's DISPLAYED
+        // A brand-new act attempting to use "42в1" (the return's DISPLAYED
         // number — never stored in a column) must be rejected as occupied,
         // even though no live act's raw `number` column literally equals
-        // "42в".
+        // "42в1".
         let err = svc
-            .create(&Identity::trusted_admin(), create_payload("42в", ids[1]))
+            .create(&Identity::trusted_admin(), create_payload("42в1", ids[1]))
             .await
             .expect_err("must be rejected as occupied");
         match err {
@@ -193,7 +194,7 @@ async fn update_rejects_rename_to_number_matching_live_return_display() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 3).await;
 
-        // Act #42, fully returned → its solo return displays "42в".
+        // Act #42, fully returned → its solo return displays "42в1".
         let handover = svc
             .create(&Identity::trusted_admin(), create_payload("42", ids[0]))
             .await
@@ -223,7 +224,7 @@ async fn update_rejects_rename_to_number_matching_live_return_display() {
         .await
         .expect("do_return #42");
 
-        // A SEPARATE act (#99) attempts to rename itself to "42в".
+        // A SEPARATE act (#99) attempts to rename itself to "42в1".
         let other = svc
             .create(&Identity::trusted_admin(), create_payload("99", ids[1]))
             .await
@@ -234,7 +235,7 @@ async fn update_rejects_rename_to_number_matching_live_return_display() {
             id: other.id,
             expected_version: other.version,
             number_input: ActNumberEditInput {
-                value: "42в".to_string(),
+                value: "42в1".to_string(),
                 confirm_script_mix: false,
             },
             giver_name: other.giver_name.clone(),
@@ -467,7 +468,10 @@ async fn display_number_space_covers_returns_in_both_directions() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 5).await;
 
-        // #42 with two devices, one returned -> the return displays "42в".
+        // --- Part A: a handover "42в1" blocks the FIRST (solo) return of #42.
+        // D-01: any return of #42 displays "в{sub_number}", so the first one
+        // already claims "42в1". Before the rule change the collision could
+        // only appear on the SECOND return; now it is immediate.
         let a42 = svc
             .create(
                 &Identity::trusted_admin(),
@@ -476,9 +480,30 @@ async fn display_number_space_covers_returns_in_both_directions() {
             .await
             .expect("create #42")
             .expect_created("create #42");
-        return_item(&svc, &a42, 0).await.expect("first return");
+        svc.create(&Identity::trusted_admin(), create_payload("42в1", ids[2]))
+            .await
+            .expect("create handover 42в1 next to a live, not-yet-returned #42")
+            .expect_created("create handover 42в1");
+        let err = return_item(&svc, &a42, 0).await;
+        assert!(
+            matches!(err, Err(AppError::Conflict { .. })),
+            "solo return would immediately collide with existing handover \"42в1\", got {err:?}"
+        );
+        // The rejected return left no trace: #42 is still fully un-returned.
+        let a42_after = svc.get(a42.id).await.expect("reload #42");
+        assert_eq!(a42_after.number, "42");
 
-        // The shared occupied endpoint (live hint / D-01 pre-check) sees it.
+        // --- Part B: the display space of a REAL solo return (#44, a
+        // separate family with no conflicting neighbour).
+        let a44 = svc
+            .create(&Identity::trusted_admin(), create_payload("44", ids[3]))
+            .await
+            .expect("create #44")
+            .expect_created("create #44");
+        return_item(&svc, &a44, 0).await.expect("solo return of #44");
+
+        // The shared occupied endpoint (live hint / D-01 pre-check) sees the
+        // return under its canonical display "44в1" (case-insensitive).
         let nts = trackly_app::services::NumberTemplateService::new(
             svc.writer.clone(),
             svc.readers.clone(),
@@ -487,45 +512,45 @@ async fn display_number_space_covers_returns_in_both_directions() {
         let hit = nts
             .is_occupied(
                 trackly_core::domain::number_templates::TemplateType::ActNumber,
-                "42В",
+                "44В1",
                 None,
             )
             .await
             .expect("is_occupied")
             .expect("the return's displayed number is occupied");
         assert_eq!(hit.title, "Акт возврата");
-        assert_eq!(hit.number, "42в");
+        assert_eq!(hit.number, "44в1");
 
-        // Renaming #42 to "42в" is NOT a self-conflict with its own return
-        // (which would then display "42вв").
-        rename(&svc, a42.id, "42в")
-            .await
-            .expect("rename to own return's display must be allowed");
-        rename(&svc, a42.id, "42").await.expect("rename back");
-
-        // A handover "42в1" exists: a SECOND return of #42 would renumber the
-        // family to "42в1"/"42в2" -> collision -> Conflict.
-        svc.create(&Identity::trusted_admin(), create_payload("42в1", ids[2]))
-            .await
-            .expect("create #42в1")
-            .expect_created("create #42в1");
-        let a42 = svc.get(a42.id).await.expect("reload #42");
-        let err = return_item(&svc, &a42, 1).await;
+        // "44в" (no digit) is NOT a display of anything any more, so it is free.
         assert!(
-            matches!(err, Err(AppError::Conflict { .. })),
-            "second return would display 42в1 twice, got {err:?}"
+            nts.is_occupied(
+                trackly_core::domain::number_templates::TemplateType::ActNumber,
+                "44в",
+                None,
+            )
+            .await
+            .expect("is_occupied")
+            .is_none(),
+            "\"44в\" must not be occupied: a return never displays a bare suffix"
         );
 
-        // Rename cascade: a handover "43в" exists; renaming #42 -> #43 would
-        // make its return display "43в" too -> Conflict.
-        svc.create(&Identity::trusted_admin(), create_payload("43в", ids[3]))
+        // Renaming #44 to "44в1" is NOT a self-conflict with its own return
+        // (which would then display "44в1в1"); rename back afterwards.
+        rename(&svc, a44.id, "44в1")
             .await
-            .expect("create #43в")
-            .expect_created("create #43в");
-        let err = rename(&svc, a42.id, "43").await;
+            .expect("rename to own return's display must be allowed");
+        rename(&svc, a44.id, "44").await.expect("rename back");
+
+        // --- Part C: rename cascade. A handover "45в1" exists; renaming #44
+        // to "45" would make its live return display "45в1" too -> Conflict.
+        svc.create(&Identity::trusted_admin(), create_payload("45в1", ids[4]))
+            .await
+            .expect("create #45в1")
+            .expect_created("create #45в1");
+        let err = rename(&svc, a44.id, "45").await;
         assert!(
             matches!(err, Err(AppError::Conflict { .. })),
-            "cascade would display 43в twice, got {err:?}"
+            "cascade would display 45в1 twice, got {err:?}"
         );
     })
     .await
