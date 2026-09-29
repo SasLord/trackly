@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T15:29:55.545Z"
-last_activity: 2026-09-29 -- Phase 40.5 planning complete
+last_updated: "2026-09-29T15:46:12.104Z"
+last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 117
-  completed_plans: 112
+  completed_plans: 113
   percent: 57
 ---
 
@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40.5 (return-suffix-numbering) — НЕ ЗАКРЫТА (gaps_found), раунд закрытия пробелов
-Plan: 7 of 12 complete (01-07 исполнены; 08-12 спланированы 2026-09-29)
-Status: Ready to execute — планы закрытия пробелов готовы
+Phase: 40.5 (return-suffix-numbering) — EXECUTING
+Plan: 2 of 12
+Status: Ready to execute
 Верификация дала gaps_found (4/6 must-haves); пользователь признал блокирующими два пробела:
 GAP 1 (WR-02) — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
 (аллокатор не перешагивает занятую позицию, повтора нет);
@@ -89,7 +89,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-29 -- Phase 40.5 planning complete
+Last activity: 2026-09-29
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -479,6 +479,7 @@ Last activity: 2026-09-29 -- Phase 40.5 planning complete
 | Phase 40.5 P04 | 45min | 3 tasks | 2 files |
 | Phase 40.5 P05 | 20min | 3 tasks | 1 files |
 | Phase 40.5 P06 | 15min | 2 tasks | 2 files |
+| Phase 40.5 P08 | 40min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1111,6 +1112,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 40.5-03: sibling_return_count удалён полностью (D-03); индексы from_row 17/18 подтверждены тестом на значения (D-16); ensure_act_family_display_free_in_tx сохранена для нового номера возврата
 - [Phase 40.5]: 40.5-04: якоря D-14 инвертированы; расхождение до/после подтверждено на базе c7f5726e и мутацией smallest_free->MAX+1
 - [Phase 40.5-05]: D-09: тесты уникальности пересобраны по смыслу: «42в» не отображение, «42в1» конфликтует с первого соло-возврата
+- [Phase 40.5]: 40.5-08: D-17 — аллокатор sub_number принимает предикат занятости, а не диапазон; пропуск чужих отображаемых номеров без верхней границы
 
 ### Pending Todos
 
@@ -1310,7 +1312,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T00:47:02.563Z
+Last session: 2026-09-29T15:46:09.013Z
 Stopped at: Completed 40.4-03-PLAN.md
 Resume file: None
 
