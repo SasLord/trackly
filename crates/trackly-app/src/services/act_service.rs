@@ -3546,6 +3546,9 @@ pub fn format_iso_date(unix_seconds: i64) -> String {
 /// внутри шаблонной маски родительского номера) — суффикс вычисляется
 /// напрямую из типизированных полей акта (`act_type` + `sub_number`),
 /// минуя `display`/`number_raw` вообще.
+///
+/// F7-покрытие (литеральная «в» в маске родителя) живёт в `dto/act.rs::tests` и в
+/// `tests/acts_display_rule.rs`, где `parent_number` действительно существует.
 fn compute_return_suffix(is_return: bool, sub_number: Option<i64>) -> String {
     if is_return {
         format!("в{}", sub_number.unwrap_or(1))
@@ -3572,18 +3575,6 @@ mod compute_return_suffix_tests {
     #[test]
     fn return_suffix_defaults_to_1_when_sub_number_missing() {
         assert_eq!(compute_return_suffix(true, None), "в1");
-    }
-
-    /// NUM-14 / F7 — mirrors
-    /// `dto::act::tests::format_return_of_parent_with_literal_v_in_template_mask`:
-    /// a literal «в» inside a templated parent number mask must not affect
-    /// suffix extraction, because this function never looks at the parent
-    /// number or the display string at all.
-    #[test]
-    fn return_suffix_is_unaffected_by_literal_v_in_parent_mask() {
-        // Parent number "АКТв-2026/09-1" would confuse a literal-'в'-search
-        // approach into finding the mask's «в», not the real suffix.
-        assert_eq!(compute_return_suffix(true, Some(1)), "в1");
     }
 }
 
