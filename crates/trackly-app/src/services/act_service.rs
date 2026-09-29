@@ -40,8 +40,9 @@ use trackly_infra::repos::{
 };
 
 use crate::dto::act::{
-    act_dto_from_row, ActCreateDto, ActDto, ActFilter, ActItemDto, ActListResponse, ActReturnDto,
-    ActReturnItemDto, ActSaveOutcome, ActUpdateDto, ActUpdateReturnDto, ActsCountsDto, Pagination,
+    act_dto_from_row, format_act_number, ActCreateDto, ActDto, ActFilter, ActItemDto,
+    ActListResponse, ActReturnDto, ActReturnItemDto, ActSaveOutcome, ActUpdateDto,
+    ActUpdateReturnDto, ActsCountsDto, Pagination,
 };
 use crate::dto::number_template::{NumberWarningDto, NumberWarningKind, TemplateContextDto};
 use crate::dto::printer::WsEvent;
@@ -1509,8 +1510,27 @@ impl ActService {
                 // (PlacePicker), без name-based резолва.
                 let resolved_bulk_place_id: Option<i64> = payload.bulk_place_id;
 
-                // 4. Next sub_number (atomic MAX+1 в той же tx).
-                let sub_number = next_sub_number_for_parent(&tx, act_id)?;
+                // 4. Next sub_number (Phase 40.5, D-04/D-05/D-17): наименьший
+                //    свободный среди живых возвратов родителя, пропускающий
+                //    позиции, чей отображаемый номер занят ЧУЖИМ живым актом.
+                //    Номера генерируются формулой и сравниваются целиком —
+                //    отображаемая строка нигде не разбирается (D-08).
+                let foreign_taken: std::collections::HashSet<String> =
+                    fetch_candidate_rows(&tx, TemplateType::ActNumber)?
+                        .into_iter()
+                        .filter(|r| r.family != act_id)
+                        .map(|r| normalize_number_key(&r.raw_value))
+                        .collect();
+                let parent_number = parent.number.clone();
+                let is_blocked = |k: i64| {
+                    foreign_taken.contains(&normalize_number_key(&format_act_number(
+                        ActType::Return,
+                        &parent_number,
+                        Some(k),
+                        Some(&parent_number),
+                    )))
+                };
+                let sub_number = next_sub_number_for_parent(&tx, act_id, &is_blocked)?;
 
                 // D-16: capture the print-fidelity snapshot server-side from
                 // the validated place_id via PlaceRepository::full_path,

@@ -440,12 +440,32 @@ impl SqliteActRepository {
 /// Наименьший свободный положительный `sub_number` среди живых возвратов
 /// родителя (Phase 40.5, D-04/D-05): удаление возврата освобождает его номер
 /// для СЛЕДУЮЩЕГО созданного возврата; при нескольких «дырках» занимается
-/// меньшая. Single-writer + `BEGIN IMMEDIATE` — единственная защита от гонки,
-/// плюс `idx_acts_number_sub_unique` как структурный backstop; новых механизмов
-/// (блокировок, retry) не вводить (D-07).
+/// меньшая.
+///
+/// `is_blocked(k)` (D-17) — предикат слоя сервиса: «отображаемый номер
+/// `{родитель}в{k}` занят ЧУЖИМ живым актом». Такие позиции перешагиваются, чтобы
+/// акт с посторонним «42в1» не становился невозвратимым навсегда. Формула
+/// отображения (`format_act_number`) живёт в слое сервиса, а разбирать
+/// отображаемую строку запрещено (D-08) — поэтому сюда приходит предикат.
+/// Именно предикат, а не заранее посчитанное множество в диапазоне: заблокированных
+/// позиций не больше, чем чужих живых актов, но их ЗНАЧЕНИЯ числом чужих актов не
+/// ограничены (возвраты в1, в2 и единственный посторонний «42в3» блокируют
+/// позицию 3), поэтому поиск не имеет искусственной верхней границы.
+///
+/// Гарантии от гонок: единственная защита — single-writer worker
+/// (`db::writer_worker`: один `Connection`, джобы сериализуются через mpsc).
+/// Транзакции открываются через `conn.transaction()`, то есть DEFERRED;
+/// режим IMMEDIATE (немедленная блокировка записи) в коде не используется. `idx_acts_number_sub_unique` —
+/// это `UNIQUE(number, COALESCE(sub_number,0)) WHERE deleted_at_utc IS NULL`,
+/// индекс по `number`, а не по `parent_act_id`: он закрывает уникальность
+/// `sub_number` внутри родителя лишь пока каждый живой возврат хранит копию
+/// номера родителя (инвариант каскада переименования в `act_service.rs`) и НЕ
+/// является независимым backstop'ом. Новых механизмов (блокировок, retry) не
+/// вводить (D-07).
 pub fn next_sub_number_for_parent(
     tx: &Transaction<'_>,
     parent_act_id: i64,
+    is_blocked: &dyn Fn(i64) -> bool,
 ) -> Result<i64, AppError> {
     let mut stmt = tx
         .prepare(
@@ -459,21 +479,21 @@ pub fn next_sub_number_for_parent(
         .map_err(map_rusqlite)?
         .collect::<rusqlite::Result<Vec<i64>>>()
         .map_err(map_rusqlite)?;
-    Ok(smallest_free(live))
+    Ok(smallest_free(live, is_blocked))
 }
 
-/// Наименьшее положительное целое, отсутствующее в `live`.
-fn smallest_free(mut live: Vec<i64>) -> i64 {
-    live.sort_unstable();
+/// Наименьшее положительное целое, отсутствующее в `live` и не заблокированное
+/// предикатом `is_blocked`. Верхней границы цикла нет: множества `live` и
+/// заблокированных позиций конечны, поэтому свободный кандидат существует.
+fn smallest_free(live: Vec<i64>, is_blocked: &dyn Fn(i64) -> bool) -> i64 {
+    let used: std::collections::BTreeSet<i64> = live.into_iter().filter(|n| *n > 0).collect();
     let mut candidate = 1;
-    for n in live {
-        if n == candidate {
-            candidate += 1;
-        } else if n > candidate {
-            break;
+    loop {
+        if !used.contains(&candidate) && !is_blocked(candidate) {
+            return candidate;
         }
+        candidate += 1;
     }
-    candidate
 }
 
 /// Пересчитывает поле `archived` родительского handover-акта на основе
@@ -766,27 +786,48 @@ mod tests {
 
     #[test]
     fn smallest_free_empty_is_one() {
-        assert_eq!(smallest_free(vec![]), 1);
+        assert_eq!(smallest_free(vec![], &|_| false), 1);
     }
 
     #[test]
     fn smallest_free_dense_run_is_next() {
-        assert_eq!(smallest_free(vec![1, 2, 3]), 4);
+        assert_eq!(smallest_free(vec![1, 2, 3], &|_| false), 4);
     }
 
     #[test]
     fn smallest_free_single_hole_at_start() {
-        assert_eq!(smallest_free(vec![2, 3]), 1);
+        assert_eq!(smallest_free(vec![2, 3], &|_| false), 1);
     }
 
     #[test]
     fn smallest_free_hole_in_middle() {
-        assert_eq!(smallest_free(vec![1, 3]), 2);
+        assert_eq!(smallest_free(vec![1, 3], &|_| false), 2);
     }
 
     #[test]
     fn smallest_free_two_holes_picks_smaller() {
-        assert_eq!(smallest_free(vec![2, 4]), 1);
+        assert_eq!(smallest_free(vec![2, 4], &|_| false), 1);
+    }
+
+    #[test]
+    fn smallest_free_skips_blocked_first_position() {
+        assert_eq!(smallest_free(vec![], &|k| k == 1), 2);
+    }
+
+    #[test]
+    fn smallest_free_skips_blocked_and_used() {
+        assert_eq!(smallest_free(vec![2], &|k| k == 1), 3);
+    }
+
+    #[test]
+    fn smallest_free_block_above_answer_does_not_shift_result() {
+        assert_eq!(smallest_free(vec![1], &|k| k == 3), 2);
+    }
+
+    #[test]
+    fn smallest_free_blocked_position_above_used_run() {
+        // B-1: заблокированная позиция выше числа чужих актов (один чужой акт, k = 3).
+        assert_eq!(smallest_free(vec![1, 2], &|k| k == 3), 4);
     }
 
     fn insert_raw(
@@ -828,16 +869,25 @@ mod tests {
         let tx = conn.transaction().expect("tx");
         insert_raw(&tx, "1", None, "handover", None).expect("handover");
         let parent = tx.last_insert_rowid();
-        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 1);
+        assert_eq!(
+            next_sub_number_for_parent(&tx, parent, &|_| false).unwrap(),
+            1
+        );
         for sub in [1, 2, 3] {
             insert_raw(&tx, "1", Some(sub), "return", Some(parent)).expect("return");
         }
-        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 4);
+        assert_eq!(
+            next_sub_number_for_parent(&tx, parent, &|_| false).unwrap(),
+            4
+        );
         tx.execute(
             "UPDATE acts SET deleted_at_utc = 2 WHERE parent_act_id = ?1 AND sub_number IN (1, 3)",
             params![parent],
         )
         .unwrap();
-        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 1);
+        assert_eq!(
+            next_sub_number_for_parent(&tx, parent, &|_| false).unwrap(),
+            1
+        );
     }
 }
