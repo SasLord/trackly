@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T16:16:44.025Z"
+last_updated: "2026-09-29T16:37:48.371Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 117
-  completed_plans: 115
+  completed_plans: 116
   percent: 57
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 Status: Ready to execute
 Верификация дала gaps_found (4/6 must-haves); пользователь признал блокирующими два пробела:
 GAP 1 (WR-02) — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
@@ -482,6 +482,7 @@ Last activity: 2026-09-29
 | Phase 40.5 P08 | 40min | 2 tasks | 3 files |
 | Phase 40.5 P09 | 25min | 3 tasks | 3 files |
 | Phase 40.5 P10 | 15min | 3 tasks | 3 files |
+| Phase 40.5 P11 | 20min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1116,6 +1117,7 @@ Recent decisions affecting current work:
 - [Phase 40.5-05]: D-09: тесты уникальности пересобраны по смыслу: «42в» не отображение, «42в1» конфликтует с первого соло-возврата
 - [Phase 40.5]: 40.5-08: D-17 — аллокатор sub_number принимает предикат занятости, а не диапазон; пропуск чужих отображаемых номеров без верхней границы
 - [Phase 40.5]: D-19: отображаемый номер отчёта считается в Rust через format_act_number; колонка «Суб-номер» в «Возвратах» убрана
+- [Phase 40.5]: 40.5-11: D-18 — сообщение о коллизии берёт карточку из блокирующей строки others; WR-01 — пост-проверка семьи только на do_return и каскаде переименования
 
 ### Pending Todos
 
@@ -1315,7 +1317,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T16:16:30.443Z
+Last session: 2026-09-29T16:37:45.042Z
 Stopped at: Completed 40.5-09-PLAN.md
 Resume file: None
 
