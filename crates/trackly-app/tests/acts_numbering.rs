@@ -468,10 +468,11 @@ async fn display_number_space_covers_returns_in_both_directions() {
         let (svc, _dir) = make_acts_service();
         let ids = seed_devices(&svc.writer, 5).await;
 
-        // --- Part A: a handover "42в1" blocks the FIRST (solo) return of #42.
-        // D-01: any return of #42 displays "в{sub_number}", so the first one
-        // already claims "42в1". Before the rule change the collision could
-        // only appear on the SECOND return; now it is immediate.
+        // --- Part A (D-17): a foreign handover "42в1" occupies position 1 of
+        // the display space, but it must NOT make #42 un-returnable forever.
+        // The allocator steps over the occupied position: the first return
+        // gets sub_number 2 ("42в2"), the second gets 3 (1 is taken by the
+        // foreign act, 2 by the first return).
         let a42 = svc
             .create(
                 &Identity::trusted_admin(),
@@ -484,14 +485,19 @@ async fn display_number_space_covers_returns_in_both_directions() {
             .await
             .expect("create handover 42в1 next to a live, not-yet-returned #42")
             .expect_created("create handover 42в1");
-        let err = return_item(&svc, &a42, 0).await;
-        assert!(
-            matches!(err, Err(AppError::Conflict { .. })),
-            "solo return would immediately collide with existing handover \"42в1\", got {err:?}"
-        );
-        // The rejected return left no trace: #42 is still fully un-returned.
+        let ret1 = return_item(&svc, &a42, 0)
+            .await
+            .expect("возврат #42 возможен, несмотря на посторонний «42в1» (D-17)");
+        assert_eq!(ret1.sub_number, Some(2));
+        assert_eq!(ret1.number, "42в2");
+        let ret2 = return_item(&svc, &a42, 1)
+            .await
+            .expect("второй возврат #42 тоже возможен (D-17)");
+        assert_eq!(ret2.sub_number, Some(3));
+        assert_eq!(ret2.number, "42в3");
         let a42_after = svc.get(a42.id).await.expect("reload #42");
         assert_eq!(a42_after.number, "42");
+        assert_eq!(a42_after.return_ids.len(), 2);
 
         // --- Part B: the display space of a REAL solo return (#44, a
         // separate family with no conflicting neighbour).
@@ -552,6 +558,77 @@ async fn display_number_space_covers_returns_in_both_directions() {
             matches!(err, Err(AppError::Conflict { .. })),
             "cascade would display 45в1 twice, got {err:?}"
         );
+    })
+    .await
+    .expect("budget");
+}
+
+/// D-17, регрессия на неверную верхнюю границу поиска: у «42» живут возвраты
+/// «42в1» и «42в2», а посторонний handover — «42в3». Чужой акт ровно ОДИН, а
+/// заблокированная позиция равна 3 — поэтому любая реализация, ограничивающая
+/// поиск диапазоном «число чужих актов + 1», снова упрётся в Conflict. Верный
+/// ответ — «42в4».
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn blocked_position_above_foreign_act_count_is_skipped() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 5).await;
+        let a42 = svc
+            .create(
+                &Identity::trusted_admin(),
+                create_payload_multi("42", &ids[0..4]),
+            )
+            .await
+            .expect("create #42")
+            .expect_created("create #42");
+        let r1 = return_item(&svc, &a42, 0).await.expect("return 1");
+        assert_eq!(r1.number, "42в1");
+        let r2 = return_item(&svc, &a42, 1).await.expect("return 2");
+        assert_eq!(r2.number, "42в2");
+        // Позиция 3 на этот момент свободна — пред-проверка занятости пропускает.
+        svc.create(&Identity::trusted_admin(), create_payload("42в3", ids[4]))
+            .await
+            .expect("create foreign 42в3")
+            .expect_created("create foreign 42в3");
+        let r3 = return_item(&svc, &a42, 2)
+            .await
+            .expect("третий возврат обязан перешагнуть занятую позицию 3 (D-17)");
+        assert_eq!(r3.sub_number, Some(4));
+        assert_eq!(r3.number, "42в4");
+    })
+    .await
+    .expect("budget");
+}
+
+/// D-05/D-06: пропуск происходит только при реальной занятости. После
+/// удаления блокирующего постороннего акта позиция 1 снова свободна и
+/// достаётся следующему СОЗДАННОМУ возврату.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_reclaims_position_one_after_blocking_act_is_deleted() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 4).await;
+        let a42 = svc
+            .create(
+                &Identity::trusted_admin(),
+                create_payload_multi("42", &ids[0..2]),
+            )
+            .await
+            .expect("create #42")
+            .expect_created("create #42");
+        let foreign = svc
+            .create(&Identity::trusted_admin(), create_payload("42в1", ids[2]))
+            .await
+            .expect("create foreign 42в1")
+            .expect_created("create foreign 42в1");
+        let r1 = return_item(&svc, &a42, 0).await.expect("first return");
+        assert_eq!(r1.sub_number, Some(2));
+        svc.delete_soft(foreign.id, foreign.version)
+            .await
+            .expect("delete blocking act");
+        let r2 = return_item(&svc, &a42, 1).await.expect("second return");
+        assert_eq!(r2.sub_number, Some(1));
+        assert_eq!(r2.number, "42в1");
     })
     .await
     .expect("budget");
