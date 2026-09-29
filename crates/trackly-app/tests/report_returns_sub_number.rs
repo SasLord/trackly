@@ -21,6 +21,12 @@
 //! This test seeds a partial-return act (guaranteed non-NULL integer
 //! `sub_number`) and calls `list_device_returns`, asserting it returns
 //! `Ok(..)` with the row's `sub_number` round-tripped as `"1"`.
+//!
+//! Phase 40.5 (D-19): колонка «Номер» этого отчёта теперь канонический
+//! отображаемый номер (`format_act_number`: возврат = «{родитель}в{N}»), а не
+//! сырой `acts.number` родителя. `sub_number` остаётся сырым вспомогательным
+//! полем DTO (на нём держится регрессия 28-15) и в таблице «Возвраты» больше не
+//! выводится отдельной колонкой.
 
 use std::sync::Arc;
 
@@ -173,5 +179,79 @@ async fn returns_report_loads_when_sub_number_is_set() {
         response.rows[0].sub_number,
         Some("1".to_string()),
         "sub_number must round-trip as \"1\" once properly cast to TEXT"
+    );
+    // Phase 40.5 (D-01/D-19): колонка «Номер» отчёта обязана совпадать с
+    // отображаемым номером акта — возврат виден как «1в1», а не как номер
+    // родителя «1».
+    assert_eq!(
+        response.rows[0].number,
+        Some("1в1".to_string()),
+        "колонка «Номер» отчёта «Возвраты» должна быть каноническим «1в1» (D-01/D-19)"
+    );
+}
+
+/// Контроль от регрессии (Phase 40.5, D-19): номер handover-акта в отчёте «Акты»
+/// не меняется. На HEAD до правки этот тест тоже зелёный — анти-вакуумный якорь
+/// в `returns_report_loads_when_sub_number_is_set` (ассерт «1в1»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn acts_report_number_is_unchanged_for_handover() {
+    let (writer, readers, _dir) = test_writer_and_readers();
+    let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+    let act_svc = ActService::new(writer.clone(), readers.clone(), clock.clone());
+
+    let device_ids = seed_devices(&writer, 1).await;
+
+    act_svc
+        .create(
+            &Identity::trusted_admin(),
+            ActCreateDto {
+                number_input: NumberFieldInput {
+                    value: "1".into(),
+                    template_id: None,
+                    confirm_mismatch: false,
+                    confirm_script_mix: false,
+                },
+                giver_name: "Иванов И.И.".into(),
+                receiver_name: "Петров П.П.".into(),
+                place_id: None,
+                notes: None,
+                deadline_utc: None,
+                handover_date_utc: None,
+                items: device_ids
+                    .iter()
+                    .map(|&id| ActItemNewDto {
+                        device_id: id,
+                        device_ids: Vec::new(),
+                        quantity: 1,
+                    })
+                    .collect(),
+            },
+        )
+        .await
+        .expect("create handover")
+        .expect_created("create handover");
+
+    let config = Arc::new(AppConfig::default());
+    let pdf = Arc::new(PdfRenderer::new());
+    let report_svc = ReportService::new(writer, readers, clock, config, pdf);
+
+    let period = PeriodDto {
+        mode: "range".to_string(),
+        year: None,
+        month: None,
+        date_from: Some("2000-01-01".to_string()),
+        date_to: Some("2100-01-01".to_string()),
+    };
+
+    let response = report_svc
+        .list_device_acts(ReportFilter::default(), period)
+        .await
+        .expect("list_device_acts");
+
+    assert_eq!(response.rows.len(), 1, "ожидается ровно одна строка handover");
+    assert_eq!(
+        response.rows[0].number,
+        Some("1".to_string()),
+        "номер handover в отчёте «Акты» остаётся сырым «1»"
     );
 }
