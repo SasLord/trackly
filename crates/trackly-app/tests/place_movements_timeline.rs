@@ -460,7 +460,8 @@ async fn place_movements_act_number_resolves_return_act() {
     );
 
     // Case 2: a second return sibling exists — sub_number == 2 — it shows
-    // "777в2"; the first return's number is unaffected (stable, no promotion).
+    // "777в2", AND the first return's entry is re-read from the timeline and
+    // still shows "777в1" (stable, no promotion/renumbering — D-01).
     let return2_id = seed_return_act(&writer, handover_id, 777, 2).await;
     seed_movement_row_with_act(
         &writer,
@@ -489,6 +490,15 @@ async fn place_movements_act_number_resolves_return_act() {
         return2_entry.act_number,
         Some("777в2".to_string()),
         "second sibling return must keep its sub-number suffix"
+    );
+    let return1_entry = timeline
+        .iter()
+        .find(|e| e.act_id == Some(return1_id))
+        .expect("запись первого возврата по-прежнему в таймлайне");
+    assert_eq!(
+        return1_entry.act_number,
+        Some("777в1".to_string()),
+        "первый возврат не меняет номер при появлении соседа (D-01)"
     );
 }
 
