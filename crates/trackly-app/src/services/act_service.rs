@@ -49,7 +49,8 @@ use crate::dto::printer::WsEvent;
 use crate::dto::suggest::SuggestPersonField;
 use crate::pdf::PdfRenderer;
 use crate::services::number_template_service::{
-    ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, NumberTemplateService,
+    ensure_number_free_in_tx, fetch_candidate_rows, normalize_number_key, CandidateRow,
+    NumberTemplateService,
 };
 use crate::services::org_db_service::OrgDbService;
 use crate::services::organization_service::OrganizationService;
@@ -3468,25 +3469,43 @@ fn escape_like(s: &str) -> String {
 /// post-check is the only place the collision is detected, and the
 /// transaction rolls back with a clear error. Rename cascades still change
 /// the displayed numbers of the whole family and are covered as before.
+///
+/// D-18: the error names the BLOCKING act, not only the caller's own number —
+/// `hit` (from `own`) supplies just the displayed number, while the type and
+/// the «Передал / Принял» card come from the matching `others` row
+/// (`CandidateRow.record.title` / `.subtitle`), so the user knows exactly
+/// which act to rename.
 fn ensure_act_family_display_free_in_tx(
     conn: &rusqlite::Connection,
     family: i64,
 ) -> Result<(), AppError> {
     let rows = fetch_candidate_rows(conn, TemplateType::ActNumber)?;
     let (own, others): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.family == family);
-    let taken: std::collections::HashSet<String> = others
-        .iter()
-        .map(|r| normalize_number_key(&r.raw_value))
-        .collect();
-    if let Some(hit) = own
-        .iter()
-        .find(|r| taken.contains(&normalize_number_key(&r.raw_value)))
-    {
+    // Нормализованный ключ -> БЛОКИРУЮЩАЯ строка из `others` (при дублях — первая).
+    let mut blockers: std::collections::HashMap<String, &CandidateRow> =
+        std::collections::HashMap::new();
+    for r in &others {
+        blockers
+            .entry(normalize_number_key(&r.raw_value))
+            .or_insert(r);
+    }
+    if let Some((hit, blocker)) = own.iter().find_map(|r| {
+        blockers
+            .get(&normalize_number_key(&r.raw_value))
+            .map(|b| (r, *b))
+    }) {
+        let card = match blocker.record.subtitle.as_deref() {
+            Some(sub) if !sub.trim().is_empty() => {
+                format!("{}, {}", blocker.record.title, sub)
+            }
+            _ => blocker.record.title.clone(),
+        };
         return Err(AppError::Conflict {
             reason: format!(
-                "Акт №{} уже существует — после этого изменения два акта отображались бы \
-                 с одинаковым номером.",
-                hit.raw_value.trim()
+                "Номер «{}» уже занят: {} — после этого изменения два акта отображались бы \
+                 с одинаковым номером. Переименуйте один из них.",
+                hit.raw_value.trim(),
+                card
             ),
         });
     }

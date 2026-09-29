@@ -695,3 +695,40 @@ async fn act_delete_does_not_restore_inventory_number_from_snapshot() {
     .await
     .expect("budget");
 }
+
+/// D-18: когда перешагнуть некуда и каскад переименования родителя упирается
+/// в посторонний акт, сообщение называет БЛОКИРУЮЩИЙ акт (тип и «Передал /
+/// Принял»), а не только собственный номер — чтобы было понятно, что именно
+/// переименовать. Живёт посторонний handover «42в1»; семья «43» с возвратом
+/// «43в1» переименовывается в «42» — возврат стал бы «42в1».
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn family_conflict_message_names_the_blocking_act() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let ids = seed_devices(&svc.writer, 3).await;
+        svc.create(&Identity::trusted_admin(), create_payload("42в1", ids[0]))
+            .await
+            .expect("create foreign 42в1")
+            .expect_created("create foreign 42в1");
+        let a43 = svc
+            .create(
+                &Identity::trusted_admin(),
+                create_payload_multi("43", &ids[1..3]),
+            )
+            .await
+            .expect("create #43")
+            .expect_created("create #43");
+        let r1 = return_item(&svc, &a43, 0).await.expect("return of 43");
+        assert_eq!(r1.number, "43в1");
+
+        let err = rename(&svc, a43.id, "42").await;
+        let AppError::Conflict { reason } = err.expect_err("rename must collide") else {
+            panic!("ожидался AppError::Conflict");
+        };
+        assert!(reason.contains("42в1"), "нет номера: {reason}");
+        assert!(reason.contains("Акт передачи"), "нет типа акта: {reason}");
+        assert!(reason.contains("Передал:"), "нет карточки акта: {reason}");
+    })
+    .await
+    .expect("budget");
+}
