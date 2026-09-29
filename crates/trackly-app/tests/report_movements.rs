@@ -864,7 +864,8 @@ async fn report_movements_get_report_counts_respects_place_filter() {
 // ---------------------------------------------------------------------------
 
 /// WR-10 gap closure: a movement caused by a RETURN act must show the same
-/// canonical number the timeline already shows ("20в" for a solo return),
+/// canonical number the timeline already shows ("20в1" — a return always
+/// carries its sub_number, Phase 40.5),
 /// not the bare parent handover number ("20", indistinguishable from the
 /// handover itself). Before this plan, `query_movements_inner` selected
 /// `a.number AS act_number` directly off `acts` and never ran it through
@@ -884,8 +885,8 @@ async fn report_movements_return_act_shows_canonical_number() {
     let device = seed_device(&ctx, "Ноутбук возврат-тест").await;
 
     let handover_id = seed_act(&ctx, 20).await;
-    // Solo return (sibling_return_count == 1) — canonical display drops the
-    // sub-number suffix, "20в".
+    // Solo return (sub_number == 1) — canonical display always carries the
+    // digit, "20в1" (Phase 40.5, D-01).
     let return_id = seed_return_act(&ctx, handover_id, 20, 1).await;
 
     seed_movement_with_act(
@@ -912,9 +913,12 @@ async fn report_movements_return_act_shows_canonical_number() {
         .reason
         .as_deref()
         .expect("reason must be present for an act-caused movement");
-    assert!(
-        reason.contains("№20в"),
-        "WR-10: report must show the canonical return number \"20в\", got reason: {reason:?}"
+    // Exact match (not `contains`): `movement_reason` yields "актом №{number}",
+    // and a substring check on the bare suffix would also pass for the stale
+    // digit-less form or for a longer number such as "20в10" (Phase 40.5, T-40.5-08).
+    assert_eq!(
+        reason, "актом №20в1",
+        "WR-10: report must show the canonical return number \"20в1\""
     );
     assert!(
         !reason.contains("№20 ") && !reason.ends_with("№20"),
