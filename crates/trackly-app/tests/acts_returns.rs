@@ -3,7 +3,9 @@
 //! Covers (per VALIDATION + plan behavior list):
 //!   - partial_return_keeps_handover_active
 //!   - full_return_archives_handover
-//!   - second_partial_return_assigns_sub_number_2_and_promotes_suffix
+//!   - second_partial_return_assigns_sub_number_2_ret1_number_stable
+//!   - two_holes_smallest_free_fills_in_order (Phase 40.5)
+//!   - deleting_non_last_return_does_not_renumber_remaining (Phase 40.5)
 //!   - bulk_apply_with_per_row_override
 //!   - return_when_apply_to_all_false_requires_per_row_values
 //!   - return_concurrent_two_returns_correct_sub_numbers
@@ -166,10 +168,10 @@ async fn partial_return_keeps_handover_active() {
         assert_eq!(ret.act_type, "return");
         assert_eq!(ret.sub_number, Some(1));
         assert_eq!(ret.parent_act_id, Some(handover.id));
-        // Display rule: «42в» — единственный возврат.
+        // Display rule (Phase 40.5, D-01): единственный возврат сразу «42в1».
         assert!(
-            ret.number.ends_with('в'),
-            "single-return display must drop sub-suffix, got: {}",
+            ret.number.ends_with("в1"),
+            "single return must show «в1» (digit always present), got: {}",
             ret.number
         );
 
@@ -235,11 +237,11 @@ async fn full_return_archives_handover() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: second partial return → sub_number=2 + retroactive suffix promotion
+// Test 3: second partial return → sub_number=2; номер ret1 стабилен
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
+async fn second_partial_return_assigns_sub_number_2_ret1_number_stable() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let (svc, _dir) = make_acts_service();
         let device_ids = seed_devices(&svc.writer, 3).await;
@@ -272,6 +274,15 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
             .expect("ret 1");
         assert_eq!(ret1.sub_number, Some(1));
 
+        // Phase 40.5 (D-01): единственный (пока) возврат ДОЛЖЕН показывать «в1»
+        // сразу, до появления соседа. На старой формуле здесь было бы «...в».
+        let ret1_before_sibling = svc.get(ret1.id).await.expect("get ret1 before sibling");
+        assert!(
+            ret1_before_sibling.number.ends_with("в1"),
+            "ret1 must show «в1» immediately, before any sibling exists, got: {}",
+            ret1_before_sibling.number
+        );
+
         // Return №2 — две оставшиеся позиции.
         let ret2 = svc
             .do_return(
@@ -301,18 +312,17 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
             .expect("ret 2");
         assert_eq!(ret2.sub_number, Some(2));
 
-        // После второго возврата: sibling_count=2 → display «42в1»/«42в2».
-        let ret1_refreshed = svc.get(ret1.id).await.expect("get ret1");
-        let ret2_refreshed = svc.get(ret2.id).await.expect("get ret2");
-        assert!(
-            ret1_refreshed.number.ends_with("в1"),
-            "ret1 promotes to '...в1', got: {}",
-            ret1_refreshed.number
+        // После второго возврата номер ret1 НЕ меняется (стабильность), ret2 = «в2».
+        let ret1_after_sibling = svc.get(ret1.id).await.expect("get ret1 after sibling");
+        let ret2_full = svc.get(ret2.id).await.expect("get ret2");
+        assert_eq!(
+            ret1_before_sibling.number, ret1_after_sibling.number,
+            "ret1 number must not change when a sibling return appears"
         );
         assert!(
-            ret2_refreshed.number.ends_with("в2"),
+            ret2_full.number.ends_with("в2"),
             "ret2 should be '...в2', got: {}",
-            ret2_refreshed.number
+            ret2_full.number
         );
 
         // Полный возврат → handover archived.
@@ -321,6 +331,134 @@ async fn second_partial_return_assigns_sub_number_2_and_promotes_suffix() {
     })
     .await
     .expect("second_partial budget");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 40.5 (NUM-14, D-04/D-06): несколько «дырок» — занимается меньшая
+// ---------------------------------------------------------------------------
+
+/// Одна позиция handover'а -> `ActReturnDto` на один `do_return`.
+fn single_item_return(it: &trackly_app::dto::act::ActItemDto) -> ActReturnDto {
+    ActReturnDto {
+        bulk_condition: Some("Хорошее".into()),
+        bulk_place_id: None,
+        apply_to_all: true,
+        giver_name: None,
+        receiver_name: None,
+        handover_date_utc: None,
+        items: vec![ActReturnItemDto {
+            act_item_id: it.id,
+            device_id: it.device_id,
+            device_ids: vec![it.device_id],
+            quantity: 1,
+            condition_override: None,
+            place_id_override: None,
+        }],
+    }
+}
+
+/// Пользовательский сценарий: {в1, в2, в3} -> удалить в1 и в3 -> два новых
+/// возврата получают 1 и 3 (наименьший свободный), а НЕ 4 и 5 (старое MAX+1).
+/// Повторное использование номера удалённого возврата принято осознанно (D-06).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_holes_smallest_free_fills_in_order() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 3).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let admin = Identity::trusted_admin();
+
+        let mut rets = Vec::new();
+        for it in &handover.items {
+            rets.push(
+                svc.do_return(&admin, handover.id, single_item_return(it))
+                    .await
+                    .expect("initial return"),
+            );
+        }
+        assert_eq!(rets[0].sub_number, Some(1));
+        assert_eq!(rets[1].sub_number, Some(2));
+        assert_eq!(rets[2].sub_number, Some(3));
+
+        // Удаляем в1 и в3 (восстанавливает соответствующие устройства в «в_работе»).
+        svc.delete_soft(rets[0].id, rets[0].version)
+            .await
+            .expect("delete return 1");
+        svc.delete_soft(rets[2].id, rets[2].version)
+            .await
+            .expect("delete return 3");
+
+        // Два новых возврата на восстановленные позиции 0 и 2.
+        let new_a = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[0]))
+            .await
+            .expect("new return A");
+        let new_b = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[2]))
+            .await
+            .expect("new return B");
+
+        assert_eq!(
+            new_a.sub_number,
+            Some(1),
+            "first new return must fill the smallest hole (1), not MAX+1"
+        );
+        assert_eq!(
+            new_b.sub_number,
+            Some(3),
+            "second new return must fill the remaining hole (3), not MAX+1=4"
+        );
+
+        // Уцелевший в2 не тронут.
+        let ret2 = svc.get(rets[1].id).await.expect("get ret2");
+        assert_eq!(ret2.sub_number, Some(2));
+        assert!(ret2.number.ends_with("в2"), "got: {}", ret2.number);
+        let a_full = svc.get(new_a.id).await.expect("get new A");
+        let b_full = svc.get(new_b.id).await.expect("get new B");
+        assert!(a_full.number.ends_with("в1"), "got: {}", a_full.number);
+        assert!(b_full.number.ends_with("в3"), "got: {}", b_full.number);
+    })
+    .await
+    .expect("two_holes budget");
+}
+
+/// D-05: удаление возврата не перенумеровывает оставшиеся. Номер ret2 до и
+/// после удаления ret1 идентичен и остаётся «в2» (никакого сдвига в «в1»).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn deleting_non_last_return_does_not_renumber_remaining() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 2).await;
+        let handover = create_handover(&svc, &device_ids).await;
+        let admin = Identity::trusted_admin();
+
+        let ret1 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[0]))
+            .await
+            .expect("ret 1");
+        let ret2 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[1]))
+            .await
+            .expect("ret 2");
+        assert_eq!(ret1.sub_number, Some(1));
+        assert_eq!(ret2.sub_number, Some(2));
+
+        let ret2_before = svc.get(ret2.id).await.expect("get ret2 before");
+
+        svc.delete_soft(ret1.id, ret1.version)
+            .await
+            .expect("delete ret1");
+
+        let ret2_after = svc.get(ret2.id).await.expect("get ret2 after");
+        assert_eq!(
+            ret2_before.number, ret2_after.number,
+            "deleting a sibling return must not change the remaining act number"
+        );
+        assert_eq!(ret2_after.sub_number, Some(2));
+        assert!(ret2_after.number.ends_with("в2"), "got: {}", ret2_after.number);
+    })
+    .await
+    .expect("deleting_non_last budget");
 }
 
 // ---------------------------------------------------------------------------
