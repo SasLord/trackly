@@ -2982,12 +2982,14 @@ impl ActService {
                         // to its own act_id.
                         place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
                         if let Some(parent_id) = act.parent_act_id {
-                            // BE-WR-03 / Phase 40.5 (D-05/D-06): the post-check
-                            // guards the family against a collision with an
-                            // unrelated act; the display of the remaining live
-                            // returns does NOT change (D-01), and the freed
-                            // number becomes available for a future return.
-                            ensure_act_family_display_free_in_tx(&tx, parent_id)?;
+                            // Phase 40.5 (D-01/D-05/WR-01): the displays of the
+                            // remaining live returns do NOT change, and `others`
+                            // is untouched, so deleting a return cannot CREATE a
+                            // display collision — a family post-check has nothing
+                            // to catch here. In an already-conflicting DB
+                            // (legacy rows) it would only block cleaning up.
+                            // The check stays where new numbers appear:
+                            // `do_return` and the rename cascade (NUM-09).
                             recompute_parent_archived(&tx, parent_id, now)?;
                         }
                         audit_repo.insert(

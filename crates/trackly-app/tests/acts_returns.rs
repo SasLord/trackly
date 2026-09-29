@@ -1265,3 +1265,56 @@ async fn do_return_with_trusted_admin_caller_stores_null_user_id() {
     .await
     .expect("do_return_with_trusted_admin_caller_stores_null_user_id budget");
 }
+
+/// WR-01 (D-20): при soft-delete возврата множество отображаемых номеров семьи
+/// только сокращается, новая коллизия появиться не может. В уже-конфликтной БД
+/// (legacy-строка, вставленная в обход сервиса) удаление ДРУГОГО возврата этой
+/// же семьи обязано проходить: оставшийся «1в2» по-прежнему сталкивается с
+/// посторонним актом, и мёртвая пост-проверка блокировала бы очистку.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn deleting_a_return_succeeds_even_when_family_number_already_collides() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 2).await;
+        let handover = create_handover(&svc, &device_ids[0..2]).await;
+        let admin = Identity::trusted_admin();
+
+        let ret1 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[0]))
+            .await
+            .expect("return 1");
+        let ret2 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[1]))
+            .await
+            .expect("return 2");
+        assert_eq!(ret1.number, "1в1");
+        assert_eq!(ret2.number, "1в2");
+
+        // Посторонний живой handover «1в2» в обход сервиса — воспроизводит
+        // legacy-состояние, которое сервис создать не даст.
+        svc.writer
+            .execute(|conn| {
+                conn.execute(
+                    "INSERT INTO acts (number, sub_number, parent_act_id, act_type, \
+                     giver_name, receiver_name, created_at_utc, updated_at_utc) \
+                     VALUES ('1в2', NULL, NULL, 'handover', 'Сидоров С.С.', 'Кузнецов К.К.', \
+                     1700000000, 1700000000)",
+                    [],
+                )
+                .map_err(map_rusqlite)?;
+                Ok(())
+            })
+            .await
+            .expect("insert colliding foreign act");
+
+        svc.delete_soft(ret1.id, ret1.version)
+            .await
+            .expect("удаление возврата в конфликтной БД должно проходить (WR-01)");
+
+        let parent = svc.get(handover.id).await.expect("get parent");
+        assert_eq!(parent.return_ids, vec![ret2.id], "остался только второй возврат");
+        assert_eq!(parent.number, "1");
+    })
+    .await
+    .expect("budget");
+}
