@@ -7,6 +7,11 @@
 //! Phase 40.2 Plan 06 (NUM-14): `number`/`parent_number` are now `&str`, not
 //! `i64` — the display rule itself is unchanged, only the input type widened
 //! from "integer" to "any free-text/templated number".
+//!
+//! Набор — сознательная копия юнит-тестов `dto/act.rs::tests` для отдельного
+//! запуска. Тавтологичный кейс «стабильность при соседях» (сравнение вызова
+//! с самим собой) снят (WR-04/D-20): инвариант доказывается сигнатурой
+//! функции и ассертом на поверхности таймлайна (`place_movements_timeline`).
 
 use trackly_app::dto::act::format_act_number;
 use trackly_core::domain::acts::ActType;
@@ -40,19 +45,6 @@ fn format_multi_returns() {
 }
 
 #[test]
-fn format_is_stable_regardless_of_siblings() {
-    // Phase 40.5 (D-01/D-05): один и тот же sub_number=1 раньше рендерился
-    // по-разному в зависимости от числа живых соседей: «42в» (один
-    // возврат) → «42в1» (после появления второго) — отменённое правило
-    // D-Numbering-01. Теперь отображение НЕ зависит от изменчивого
-    // состояния соседей.
-    let a = format_act_number(ActType::Return, "999", Some(1), Some("42"));
-    let b = format_act_number(ActType::Return, "999", Some(1), Some("42"));
-    assert_eq!(a, "42в1");
-    assert_eq!(a, b, "формула не должна зависеть от количества соседей");
-}
-
-#[test]
 fn format_templated_non_numeric_number() {
     // NUM-14: a templated act number is not guaranteed to parse as an
     // integer (e.g. "2026/09-1") — the display rule must work identically.
@@ -63,5 +55,15 @@ fn format_templated_non_numeric_number() {
     assert_eq!(
         format_act_number(ActType::Return, "ignored", Some(1), Some("2026/09-1")),
         "2026/09-1в1"
+    );
+}
+
+#[test]
+fn format_return_of_parent_with_literal_v_in_mask() {
+    // NUM-14 / F7: литеральная «в» внутри маски родителя не путается с
+    // суффиксом возврата; ожидание — литерал, а не копия формулы (WR-04/D-20).
+    assert_eq!(
+        format_act_number(ActType::Return, "ignored", Some(1), Some("АКТв-2026/09-1")),
+        "АКТв-2026/09-1в1"
     );
 }
