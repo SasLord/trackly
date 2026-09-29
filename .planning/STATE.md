@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T16:37:48.371Z"
+last_updated: "2026-09-29T18:08:15.781Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 117
-  completed_plans: 116
-  percent: 57
+  completed_plans: 117
+  percent: 64
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 5 of 12
-Status: Ready to execute
+Plan: 12 of 12 (все планы раунда выполнены; ожидается живая проверка пользователем GAP 1.1-2.3 по 40.5-HUMAN-UAT.md)
+Status: Awaiting human UAT (gap-closure round)
 Верификация дала gaps_found (4/6 must-haves); пользователь признал блокирующими два пробела:
 GAP 1 (WR-02) — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
 (аллокатор не перешагивает занятую позицию, повтора нет);
@@ -483,6 +483,7 @@ Last activity: 2026-09-29
 | Phase 40.5 P09 | 25min | 3 tasks | 3 files |
 | Phase 40.5 P10 | 15min | 3 tasks | 3 files |
 | Phase 40.5 P11 | 20min | 3 tasks | 3 files |
+| Phase 40.5 P12 | 2h | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1317,7 +1318,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T16:37:45.042Z
+Last session: 2026-09-29T18:08:12.678Z
 Stopped at: Completed 40.5-09-PLAN.md
 Resume file: None
 
