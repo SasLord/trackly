@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-28T15:58:42.713Z"
-last_activity: 2026-09-28 -- Phase 40.5 execution started
+last_updated: "2026-09-29T00:02:17.638Z"
+last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 112
-  completed_plans: 105
+  completed_plans: 107
   percent: 57
 ---
 
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 1 of 7 complete
-Status: Executing Phase 40.5 (план 40.5-01 закрыт)
+Plan: 2 of 7 complete
+Status: Ready to execute
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
@@ -79,7 +79,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-28 -- Phase 40.5 execution started
+Last activity: 2026-09-29
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -464,6 +464,7 @@ Last activity: 2026-09-28 -- Phase 40.5 execution started
 | Phase 40.4 P04 | 6min | 2 tasks | 3 files |
 | Phase 40.4 P05 | 39min | 3 tasks | 6 files |
 | Phase 40.4-audit-debt-round-2 P03 | 15min | 1 tasks | 3 files |
+| Phase 40.5 P02 | 40min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1092,6 +1093,7 @@ Recent decisions affecting current work:
 - [Phase 40.4-04]: onEditedByHandChange reuses NumberTemplateField's existing isValueUnedited() directly inside a new $effect — avoids duplicating the NUM-07 string-equality comparator with a parallel diff/timestamp heuristic
 - [Phase 40.4-05]: act.number_display added as additive print-context key sourced from ActDto.number — no removal of number/number_raw/suffix for D-05 file-template backward-compat
 - [Phase 40.4-05]: compute_suffix_from_display kept unused-by-template but still computes act.suffix for the print context — needed for user-customized templates, out of scope to remove
+- [Phase 40.5-02]: next_sub_number_for_parent = smallest_free по живым возвратам родителя (D-04), без новых блокировок и миграций (D-07/D-02)
 
 ### Pending Todos
 
@@ -1291,7 +1293,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-24T16:25:52.642Z
+Last session: 2026-09-29T00:02:14.682Z
 Stopped at: Completed 40.4-03-PLAN.md
 Resume file: None
 
