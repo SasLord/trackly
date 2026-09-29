@@ -147,7 +147,7 @@
 | 40.2. Шаблоны инвентарных номеров | v1.4 | 15/15 | Complete    | 2026-09-22 |
 | 40.3. Долг аудита v1.4 | v1.4 | 9/9 | Complete    | 2026-09-23 |
 | 40.4. Долг аудита v1.4, раунд 2 | v1.4 | 5/5 | Complete    | 2026-09-25 |
-| 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 6/7 | In Progress|  |
+| 40.5. Нумерация возвратов: плотные суффиксы в1..вN | v1.4 | 7/7 | Complete   | 2026-09-29 |
 | 41. АРМ | v1.4 | 0/TBD | Not started | - |
 | 42. Умный подбор принтера в заявке | v1.4 | 0/TBD | Not started | - |
 | 43. Карта — просмотр | v1.4 | 0/TBD | Not started | - |
@@ -704,7 +704,7 @@ Plans:
 **Depends on:** Phase 40.4
 **Источник:** живая UAT Фазы 40.4 (пункт 3), находки пользователя 2026-09-26. Решения по обеим
 развилкам зафиксированы в `.planning/todos/pending/2026-09-26-return-act-suffix-numbering-rework.md`
-**Plans:** 6/7 plans executed
+**Plans:** 7/7 plans complete
 
 **Success Criteria** (what must be TRUE):
 
@@ -754,7 +754,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 40.5-07-PLAN.md — grep-гейты (D-03/D-08), фронтендовый регресс (D-11), фоновый полный `cargo test --workspace` (D-13), передача 40.5-HUMAN-UAT.md пользователю (D-12)
+- [x] 40.5-07-PLAN.md — grep-гейты (D-03/D-08), фронтендовый регресс (D-11), фоновый полный `cargo test --workspace` (D-13), передача 40.5-HUMAN-UAT.md пользователю (D-12)
 
 ### Phase 41: АРМ
 
