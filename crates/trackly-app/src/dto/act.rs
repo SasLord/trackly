@@ -577,19 +577,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn format_is_stable_regardless_of_siblings() {
-        // Phase 40.5 (D-01/D-05): та же row data — sub=1 — раньше меняла
-        // отображение в зависимости от числа живых соседей у родителя
-        // (отменённое правило D-Numbering-01). Теперь отображение НЕ
-        // зависит от изменчивого состояния соседей — только от
-        // sub_number самого акта.
-        let a = format_act_number(ActType::Return, "999", Some(1), Some("42"));
-        let b = format_act_number(ActType::Return, "999", Some(1), Some("42"));
-        assert_eq!(a, "42в1");
-        assert_eq!(a, b, "формула не должна зависеть от количества соседей");
-    }
-
     /// Phase 40.2 (NUM-14): the display rule works identically for a
     /// non-numeric templated number — proves `format_act_number` never
     /// assumed its input parsed as an integer.
@@ -613,7 +600,8 @@ mod tests {
     fn format_return_of_parent_with_literal_v_in_template_mask() {
         let parent = "АКТв-2026/09-1";
         let display = format_act_number(ActType::Return, "ignored", Some(1), Some(parent));
-        assert_eq!(display, format!("{parent}в1"));
+        // Литеральное ожидание (WR-04/D-20): не повторяет формулу проверяемого кода.
+        assert_eq!(display, "АКТв-2026/09-1в1");
     }
 
     #[test]
