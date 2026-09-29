@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T15:46:12.104Z"
+last_updated: "2026-09-29T15:56:26.148Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 117
-  completed_plans: 113
+  completed_plans: 114
   percent: 57
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Верификация дала gaps_found (4/6 must-haves); пользователь признал блокирующими два пробела:
 GAP 1 (WR-02) — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
@@ -480,6 +480,7 @@ Last activity: 2026-09-29
 | Phase 40.5 P05 | 20min | 3 tasks | 1 files |
 | Phase 40.5 P06 | 15min | 2 tasks | 2 files |
 | Phase 40.5 P08 | 40min | 2 tasks | 3 files |
+| Phase 40.5 P09 | 25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1113,6 +1114,7 @@ Recent decisions affecting current work:
 - [Phase 40.5]: 40.5-04: якоря D-14 инвертированы; расхождение до/после подтверждено на базе c7f5726e и мутацией smallest_free->MAX+1
 - [Phase 40.5-05]: D-09: тесты уникальности пересобраны по смыслу: «42в» не отображение, «42в1» конфликтует с первого соло-возврата
 - [Phase 40.5]: 40.5-08: D-17 — аллокатор sub_number принимает предикат занятости, а не диапазон; пропуск чужих отображаемых номеров без верхней границы
+- [Phase 40.5]: D-19: отображаемый номер отчёта считается в Rust через format_act_number; колонка «Суб-номер» в «Возвратах» убрана
 
 ### Pending Todos
 
@@ -1312,8 +1314,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T15:46:09.013Z
-Stopped at: Completed 40.4-03-PLAN.md
+Last session: 2026-09-29T15:56:26.139Z
+Stopped at: Completed 40.5-09-PLAN.md
 Resume file: None
 
 None
