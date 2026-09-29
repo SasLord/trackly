@@ -416,8 +416,9 @@ async fn seed_return_act(
 }
 
 /// Plan 40-24 (gap closure): a movement linked to a RETURN act must show the
-/// canonical return number ("777в" for a solo return, "777в2" once a
-/// sibling return exists) — not the bare parent handover number ("777",
+/// canonical return number ("777в1" for the first return — a return always
+/// carries its sub_number under the dense в1..вN rule, Phase 40.5; "777в2"
+/// for the second) — not the bare parent handover number ("777",
 /// indistinguishable from the handover itself, the bug this test guards
 /// against).
 #[tokio::test]
@@ -429,8 +430,8 @@ async fn place_movements_act_number_resolves_return_act() {
     let device_id = seed_device(&writer, "Сканер инв.005", 1, to_place).await;
     let handover_id = seed_act(&writer, 777).await;
 
-    // Case 1: a single (solo) return — sibling_return_count == 1 — displays
-    // without the sub-number suffix.
+    // Case 1: a single (solo) return — sub_number == 1 — always displays with
+    // its digit ("777в1"), never the digit-less bare-suffix form (Phase 40.5, D-01).
     let return1_id = seed_return_act(&writer, handover_id, 777, 1).await;
     seed_movement_row_with_act(
         &writer,
@@ -454,12 +455,12 @@ async fn place_movements_act_number_resolves_return_act() {
     assert_eq!(timeline.len(), 1);
     assert_eq!(
         timeline[0].act_number,
-        Some("777в".to_string()),
-        "solo return must display as \"777в\", not the bare parent number"
+        Some("777в1".to_string()),
+        "solo return must display as \"777в1\", not the bare parent number"
     );
 
-    // Case 2: a second return sibling exists — sibling_return_count == 2 —
-    // both returns now keep their sub-number suffix.
+    // Case 2: a second return sibling exists — sub_number == 2 — it shows
+    // "777в2"; the first return's number is unaffected (stable, no promotion).
     let return2_id = seed_return_act(&writer, handover_id, 777, 2).await;
     seed_movement_row_with_act(
         &writer,
