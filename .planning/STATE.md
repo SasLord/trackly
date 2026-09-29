@@ -24,9 +24,14 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 6 of 7 complete
-Status: Ready to execute
+Phase: 40.5 (return-suffix-numbering) — НЕ ЗАКРЫТА (gaps_found)
+Plan: 7 of 7 complete
+Status: Все 7 планов выполнены, живая проверка пройдена (approved), но верификация дала
+gaps_found (4/6 must-haves). Code review вскрыл 2 блокирующих пробела, выбранных пользователем:
+WR-02 — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
+(аллокатор не перешагивает занятую позицию, повтора нет);
+WR-05 — отчёт «Акты» не собирает номер через format_act_number, невыполненный пункт
+CONTEXT <specifics>. Следующий шаг: /gsd-plan-phase 40.5 --gaps
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
