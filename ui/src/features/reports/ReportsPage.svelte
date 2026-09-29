@@ -169,7 +169,6 @@
     ],
     returns: [
       { key: 'number', label: 'Номер' },
-      { key: 'sub_number', label: 'Суб-номер' },
       { key: 'giver_name', label: 'Сдал' },
       { key: 'receiver_name', label: 'Принял' },
       { key: 'handover_date_utc', label: 'Дата' },
