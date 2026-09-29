@@ -441,21 +441,43 @@ impl SqliteActRepository {
     }
 }
 
-/// `SELECT COALESCE(MAX(sub_number), 0) + 1` для возврат-актов того же
-/// родителя. Используется в `do_return` per D-Numbering-01:
-/// первый возврат получает sub_number=1, второй — 2, и т.д.
-/// Single-writer + BEGIN IMMEDIATE гарантируют отсутствие race'ов.
+/// Наименьший свободный положительный `sub_number` среди живых возвратов
+/// родителя (Phase 40.5, D-04/D-05): удаление возврата освобождает его номер
+/// для СЛЕДУЮЩЕГО созданного возврата; при нескольких «дырках» занимается
+/// меньшая. Single-writer + `BEGIN IMMEDIATE` — единственная защита от гонки,
+/// плюс `idx_acts_number_sub_unique` как структурный backstop; новых механизмов
+/// (блокировок, retry) не вводить (D-07).
 pub fn next_sub_number_for_parent(
     tx: &Transaction<'_>,
     parent_act_id: i64,
 ) -> Result<i64, AppError> {
-    tx.query_row(
-        "SELECT COALESCE(MAX(sub_number), 0) + 1 FROM acts \
-         WHERE parent_act_id = ?1 AND deleted_at_utc IS NULL",
-        params![parent_act_id],
-        |r| r.get::<_, i64>(0),
-    )
-    .map_err(map_rusqlite)
+    let mut stmt = tx
+        .prepare(
+            "SELECT sub_number FROM acts \
+             WHERE parent_act_id = ?1 AND deleted_at_utc IS NULL \
+             AND sub_number IS NOT NULL",
+        )
+        .map_err(map_rusqlite)?;
+    let live = stmt
+        .query_map(params![parent_act_id], |r| r.get::<_, i64>(0))
+        .map_err(map_rusqlite)?
+        .collect::<rusqlite::Result<Vec<i64>>>()
+        .map_err(map_rusqlite)?;
+    Ok(smallest_free(live))
+}
+
+/// Наименьшее положительное целое, отсутствующее в `live`.
+fn smallest_free(mut live: Vec<i64>) -> i64 {
+    live.sort_unstable();
+    let mut candidate = 1;
+    for n in live {
+        if n == candidate {
+            candidate += 1;
+        } else if n > candidate {
+            break;
+        }
+    }
+    candidate
 }
 
 /// Пересчитывает поле `archived` родительского handover-акта на основе
@@ -739,5 +761,82 @@ mod tests {
         assert_eq!(back.notes.as_deref(), Some("test"));
         assert_eq!(back.deadline_utc, Some(now + 86_400));
         assert!(!back.archived);
+    }
+
+    #[test]
+    fn smallest_free_empty_is_one() {
+        assert_eq!(smallest_free(vec![]), 1);
+    }
+
+    #[test]
+    fn smallest_free_dense_run_is_next() {
+        assert_eq!(smallest_free(vec![1, 2, 3]), 4);
+    }
+
+    #[test]
+    fn smallest_free_single_hole_at_start() {
+        assert_eq!(smallest_free(vec![2, 3]), 1);
+    }
+
+    #[test]
+    fn smallest_free_hole_in_middle() {
+        assert_eq!(smallest_free(vec![1, 3]), 2);
+    }
+
+    #[test]
+    fn smallest_free_two_holes_picks_smaller() {
+        assert_eq!(smallest_free(vec![2, 4]), 1);
+    }
+
+    fn insert_raw(
+        tx: &Transaction<'_>,
+        number: &str,
+        sub: Option<i64>,
+        kind: &str,
+        parent: Option<i64>,
+    ) -> rusqlite::Result<usize> {
+        tx.execute(
+            "INSERT INTO acts (number, sub_number, parent_act_id, act_type, giver_name, \
+             receiver_name, created_at_utc, updated_at_utc, handover_date_utc) \
+             VALUES (?1, ?2, ?3, ?4, 'Иванов И.И.', 'Петров П.П.', 1, 1, 1)",
+            params![number, sub, parent, kind],
+        )
+    }
+
+    #[test]
+    fn unique_index_rejects_duplicate_number_sub_number_pair() {
+        let (mut conn, _g) = fresh_conn();
+        let tx = conn.transaction().expect("tx");
+        insert_raw(&tx, "1", None, "handover", None).expect("handover");
+        let parent = tx.last_insert_rowid();
+        insert_raw(&tx, "1", Some(1), "return", Some(parent)).expect("first return");
+        let err = insert_raw(&tx, "1", Some(1), "return", Some(parent)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                rusqlite::Error::SqliteFailure(ref e, _)
+                    if e.code == rusqlite::ErrorCode::ConstraintViolation
+            ),
+            "expected constraint violation, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn next_sub_number_reuses_freed_position() {
+        let (mut conn, _g) = fresh_conn();
+        let tx = conn.transaction().expect("tx");
+        insert_raw(&tx, "1", None, "handover", None).expect("handover");
+        let parent = tx.last_insert_rowid();
+        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 1);
+        for sub in [1, 2, 3] {
+            insert_raw(&tx, "1", Some(sub), "return", Some(parent)).expect("return");
+        }
+        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 4);
+        tx.execute(
+            "UPDATE acts SET deleted_at_utc = 2 WHERE parent_act_id = ?1 AND sub_number IN (1, 3)",
+            params![parent],
+        )
+        .unwrap();
+        assert_eq!(next_sub_number_for_parent(&tx, parent).unwrap(), 1);
     }
 }
