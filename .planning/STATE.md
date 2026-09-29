@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T00:26:08.707Z"
+last_updated: "2026-09-29T00:38:30.589Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 112
-  completed_plans: 108
+  completed_plans: 109
   percent: 57
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 3 of 7 complete
+Plan: 4 of 7 complete
 Status: Ready to execute
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
@@ -1295,7 +1295,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T00:26:03.452Z
+Last session: 2026-09-29T00:38:30.580Z
 Stopped at: Completed 40.4-03-PLAN.md
 Resume file: None
 
