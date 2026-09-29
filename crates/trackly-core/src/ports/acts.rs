@@ -22,7 +22,7 @@ pub trait ActRepository {
     /// The connection type provided by the adapter (e.g. `rusqlite::Connection`).
     type Conn;
 
-    /// Fetch a single act by ID, including parent_number and sibling_return_count
+    /// Fetch a single act by ID, including parent_number
     /// for the display-rule. Returns `AppError::NotFound` if absent or soft-deleted.
     fn get(&self, conn: &Self::Conn, id: i64) -> Result<ActRow, AppError>;
 

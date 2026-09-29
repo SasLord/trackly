@@ -28,9 +28,9 @@ pub struct SqliteActRepository;
 ///     [live], one for print [frozen]).
 ///   - `acts p` (self-join) for the parent act's `number` (used by display rule).
 ///
-/// `sibling_return_count` is a correlated subquery counting returns sharing
-/// the same `parent_act_id` (for handover acts it counts their own returns —
-/// see `from_row` for the rule that drops it to NULL on handover rows).
+/// Phase 40.5 (D-03/D-16): the correlated sibling-count subquery was
+/// removed — the return suffix no longer depends on siblings. Column order is
+/// positional; `handover_date_utc` = 17, `place_path_snapshot` = 18.
 const SELECT_ACTS: &str = "
     SELECT a.id, a.number, a.sub_number, a.parent_act_id, a.act_type,
            a.giver_name, a.receiver_name, a.place_id, a.notes,
@@ -38,9 +38,6 @@ const SELECT_ACTS: &str = "
            a.created_at_utc, a.updated_at_utc, a.deleted_at_utc, a.version,
            pfp.full_path AS resolved_place_path,
            p.number AS parent_number,
-           (SELECT COUNT(*) FROM acts r
-              WHERE r.parent_act_id = COALESCE(a.parent_act_id, a.id)
-                AND r.deleted_at_utc IS NULL) AS sibling_return_count,
            a.handover_date_utc,
            a.place_path_snapshot
       FROM acts a
@@ -84,9 +81,8 @@ fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActRow> {
         full_path: row.get(15)?,
         // Phase 40.2 (NUM-14): parent's `number` is also TEXT now.
         parent_number: row.get(16)?,
-        sibling_return_count: row.get(17)?,
-        handover_date_utc: row.get(18)?,
-        place_path_snapshot: row.get(19)?,
+        handover_date_utc: row.get(17)?,
+        place_path_snapshot: row.get(18)?,
     })
 }
 
@@ -736,7 +732,7 @@ mod tests {
             receiver_name: "Петров".into(),
             place_id: None,
             full_path: None,
-            place_path_snapshot: None,
+            place_path_snapshot: Some("Территория А / Склад 1".to_string()),
             notes: Some("test".into()),
             deadline_utc: Some(now + 86_400),
             archived: false,
@@ -744,9 +740,8 @@ mod tests {
             updated_at_utc: now,
             deleted_at_utc: None,
             version: 1,
-            handover_date_utc: now,
+            handover_date_utc: now - 3_600,
             parent_number: None,
-            sibling_return_count: None,
         };
         let id = {
             let tx = conn.transaction().expect("tx");
@@ -761,6 +756,12 @@ mod tests {
         assert_eq!(back.notes.as_deref(), Some("test"));
         assert_eq!(back.deadline_utc, Some(now + 86_400));
         assert!(!back.archived);
+        // D-16: positional from_row indexes 17/18 — verify VALUES, not presence.
+        assert_eq!(back.handover_date_utc, now - 3_600);
+        assert_eq!(
+            back.place_path_snapshot.as_deref(),
+            Some("Территория А / Склад 1")
+        );
     }
 
     #[test]

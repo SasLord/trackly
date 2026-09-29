@@ -3,9 +3,11 @@
 //! NO serde::Serialize/Deserialize or specta::Type derives here — those live
 //! in the DTO layer in trackly-app. Only `#[derive(Debug, Clone, PartialEq, Eq)]`.
 //!
-//! See D-Counter-Acts-01 (atomic numbering), D-Numbering-01 (display rule
-//! «в»/«в1»/«в2» — applied in DTO, not in domain), D-Archive-01 (derived
-//! archive flag from remaining "in work" items).
+//! See D-Counter-Acts-01 (atomic numbering), Phase 40.5 D-01/D-03 (the return
+//! display «{parent}в{sub}» no longer depends on the number of sibling
+//! returns; the sibling-count field was removed from the domain as the root
+//! cause of defect A), D-Archive-01 (derived archive flag from remaining
+//! "in work" items).
 
 use crate::error::AppError;
 
@@ -163,12 +165,8 @@ pub struct ActRow {
     /// На handover-актах — explicit value; на return-актах = parent.handover_date_utc.
     pub handover_date_utc: i64,
     /// Parent act's `number` joined via LEFT JOIN acts p ON p.id = a.parent_act_id.
-    /// `None` for handover. Used by display-rule «в»/«в1»/«в2».
+    /// `None` for handover. Used by the return display «{parent}в{sub}».
     pub parent_number: Option<String>,
-    /// Count of sibling return acts (same parent_act_id, not deleted).
-    /// Used by display-rule to decide whether to suppress `sub_number`
-    /// suffix («42в» vs «42в1»).
-    pub sibling_return_count: Option<i64>,
 }
 
 /// Single act item row.

@@ -469,7 +469,6 @@ impl ActService {
                     version: 1,
                     handover_date_utc: handover_date,
                     parent_number: None,
-                    sibling_return_count: None,
                 };
                 let act_id = acts_repo.insert_act_in_tx(&tx, &new_row)?;
 
@@ -1564,11 +1563,11 @@ impl ActService {
                     // historical rows).
                     handover_date_utc: payload.handover_date_utc.unwrap_or(now),
                     parent_number: None,
-                    sibling_return_count: None,
                 };
                 let return_act_id = acts_repo.insert_act_in_tx(&tx, &return_row)?;
-                // BE-WR-03: a new return renumbers the family's displayed
-                // numbers (`42в` -> `42в1` + `42в2`) — none may collide.
+                // BE-WR-03 / Phase 40.5: the new return's own number
+                // (`{parent}в{sub}`) was not pre-checked — it must not
+                // collide with an unrelated act.
                 ensure_act_family_display_free_in_tx(&tx, act_id)?;
 
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
@@ -1792,8 +1791,8 @@ impl ActService {
             })
             .await?;
 
-        // BE-CR-04 (D-14): a new return changes the family's displayed
-        // numbers (`42в` -> `42в1`/`42в2`) — the act number space shifted.
+        // BE-CR-04 (D-14): a new return occupies a new displayed number
+        // (`{parent}в{sub}`) — the act number space shifted.
         self.broadcast_act_number_space_changed();
 
         let dto = self.get(return_act_id).await?;
@@ -2962,8 +2961,11 @@ impl ActService {
                         // to its own act_id.
                         place_movements_repo.delete_by_act_id_in_tx(&tx, id)?;
                         if let Some(parent_id) = act.parent_act_id {
-                            // BE-WR-03: remaining siblings may display
-                            // differently now (`42в1` -> `42в`).
+                            // BE-WR-03 / Phase 40.5 (D-05/D-06): the post-check
+                            // guards the family against a collision with an
+                            // unrelated act; the display of the remaining live
+                            // returns does NOT change (D-01), and the freed
+                            // number becomes available for a future return.
                             ensure_act_family_display_free_in_tx(&tx, parent_id)?;
                             recompute_parent_archived(&tx, parent_id, now)?;
                         }
@@ -3432,12 +3434,20 @@ fn escape_like(s: &str) -> String {
     out
 }
 
-/// BE-WR-03 (D-06): after a write that changes the displayed numbers of the
-/// act family rooted at `family` (the handover + its returns: rename
-/// cascade, a new return turning `42в` into `42в1`/`42в2`, deleting a
-/// return turning `42в1` back into `42в`), no displayed number of that
-/// family may equal the displayed number of any OTHER live act. Runs on the
-/// writer transaction, before commit.
+/// BE-WR-03 (D-06): after a write that touches the act family rooted at
+/// `family` (the handover + its returns), no displayed number of that family
+/// may equal the displayed number of any OTHER live act. Runs on the writer
+/// transaction, before commit.
+///
+/// Phase 40.5 (D-01/D-05): the displayed number of EXISTING returns no longer
+/// changes when siblings appear or disappear. The check is still needed for a
+/// different reason: a NEW return gets its own number (`{parent}в{sub}`) that
+/// was not pre-checked via `is_act_number_occupied_including_returns`. If an
+/// unrelated act already occupies that displayed number (e.g. someone created
+/// act `42в3` by hand and the next return gets sub_number=3), this
+/// post-check is the only place the collision is detected, and the
+/// transaction rolls back with a clear error. Rename cascades still change
+/// the displayed numbers of the whole family and are covered as before.
 fn ensure_act_family_display_free_in_tx(
     conn: &rusqlite::Connection,
     family: i64,
