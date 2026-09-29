@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T00:02:17.638Z"
+last_updated: "2026-09-29T00:26:08.707Z"
 last_activity: 2026-09-29
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 112
-  completed_plans: 107
+  completed_plans: 108
   percent: 57
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 2 of 7 complete
+Plan: 3 of 7 complete
 Status: Ready to execute
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
@@ -465,6 +465,7 @@ Last activity: 2026-09-29
 | Phase 40.4 P05 | 39min | 3 tasks | 6 files |
 | Phase 40.4-audit-debt-round-2 P03 | 15min | 1 tasks | 3 files |
 | Phase 40.5 P02 | 40min | 2 tasks | 1 files |
+| Phase 40.5 P03 | 35min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1094,6 +1095,7 @@ Recent decisions affecting current work:
 - [Phase 40.4-05]: act.number_display added as additive print-context key sourced from ActDto.number — no removal of number/number_raw/suffix for D-05 file-template backward-compat
 - [Phase 40.4-05]: compute_suffix_from_display kept unused-by-template but still computes act.suffix for the print context — needed for user-customized templates, out of scope to remove
 - [Phase 40.5-02]: next_sub_number_for_parent = smallest_free по живым возвратам родителя (D-04), без новых блокировок и миграций (D-07/D-02)
+- [Phase ?]: 40.5-03: sibling_return_count удалён полностью (D-03); индексы from_row 17/18 подтверждены тестом на значения (D-16); ensure_act_family_display_free_in_tx сохранена для нового номера возврата
 
 ### Pending Todos
 
@@ -1293,7 +1295,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T00:02:14.682Z
+Last session: 2026-09-29T00:26:03.452Z
 Stopped at: Completed 40.4-03-PLAN.md
 Resume file: None
 
