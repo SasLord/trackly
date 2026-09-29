@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use rusqlite::types::ToSql;
 use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
+use trackly_core::domain::acts::ActType;
 use trackly_core::domain::place_movements::MovementSource;
 use trackly_core::domain::places::{shorten_place_path, PathDisplayVariant};
 use trackly_core::error::AppError;
@@ -23,6 +24,7 @@ use trackly_infra::repos::place_path_settings::read_path_display_separators;
 use trackly_infra::repos::requests_sqlite::ad_register_predicate;
 use trackly_infra::AppConfig;
 
+use crate::dto::act::format_act_number;
 use crate::dto::reports::{
     OrgSettingsDto, PeriodDto, ReportCountEntry, ReportCountsDto, ReportFilter, ReportResponse,
     ReportRow,
@@ -1308,12 +1310,15 @@ fn query_acts_inner(
                a.act_type, \
                GROUP_CONCAT(d.name, ', ') AS device_name, \
                SUM(ai.quantity) AS quantity, \
-               pev.effective_variant AS place_variant \
+               pev.effective_variant AS place_variant, \
+               a.sub_number AS sub_number_int, \
+               par.number AS parent_number \
          FROM acts a \
          LEFT JOIN place_full_paths pfp ON pfp.place_id = a.place_id \
          LEFT JOIN place_effective_variant pev ON pev.place_id = a.place_id \
          LEFT JOIN act_items ai ON ai.act_id = a.id \
          LEFT JOIN devices d ON d.id = ai.device_id \
+         LEFT JOIN acts par ON par.id = a.parent_act_id \
          WHERE {where_clause} \
          GROUP BY a.id \
          ORDER BY a.handover_date_utc ASC, a.id ASC \
@@ -1333,17 +1338,35 @@ fn query_acts_inner(
                 &sep_ends,
                 &sep_last_two,
             );
+            // Phase 40.5 (D-19): колонка «Номер» отчёта — канонический
+            // отображаемый номер. Собирается ТОЛЬКО формулой
+            // `format_act_number` (D-10: конкатенация `number_raw + suffix`
+            // запрещена). Новые колонки SELECT добавлены в конец (индексы
+            // 12/13), позиции 0..11 не сдвигались (урок D-16).
+            // Известное ограничение вне D-19: фильтр поиска `a.number LIKE ?`
+            // работает по СЫРОМУ номеру — поиск «1в1» возврат не находит.
+            let act_type: Option<String> = r.get(8)?;
+            let raw_number: Option<String> = r.get(2)?;
+            let sub_int: Option<i64> = r.get(12)?;
+            let parent_num: Option<String> = r.get(13)?;
+            let parent = parent_num.as_deref();
+            let display_number = match (act_type.as_deref(), raw_number) {
+                (Some("return"), Some(raw)) => {
+                    Some(format_act_number(ActType::Return, &raw, sub_int, parent))
+                }
+                (_, raw) => raw,
+            };
             Ok(ReportRow {
                 id: r.get(0)?,
                 month_key: r.get(1)?,
-                number: r.get(2)?,
+                number: display_number,
                 sub_number: r.get(3)?,
                 giver_name: r.get(4)?,
                 receiver_name: r.get(5)?,
                 handover_date_utc: r.get(6)?,
                 place_path,
                 place_path_short,
-                act_type: r.get(8)?,
+                act_type,
                 device_name: r.get(9)?,
                 quantity: r.get(10)?,
                 code: None,

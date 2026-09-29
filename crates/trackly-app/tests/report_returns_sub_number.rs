@@ -248,7 +248,11 @@ async fn acts_report_number_is_unchanged_for_handover() {
         .await
         .expect("list_device_acts");
 
-    assert_eq!(response.rows.len(), 1, "ожидается ровно одна строка handover");
+    assert_eq!(
+        response.rows.len(),
+        1,
+        "ожидается ровно одна строка handover"
+    );
     assert_eq!(
         response.rows[0].number,
         Some("1".to_string()),
