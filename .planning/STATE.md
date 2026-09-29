@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T00:47:04.815Z"
-last_activity: 2026-09-29
+last_updated: "2026-09-29T15:29:55.545Z"
+last_activity: 2026-09-29 -- Phase 40.5 planning complete
 progress:
   total_phases: 14
   completed_phases: 8
-  total_plans: 112
-  completed_plans: 111
+  total_plans: 117
+  completed_plans: 112
   percent: 57
 ---
 
@@ -24,14 +24,19 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 ## Current Position
 
-Phase: 40.5 (return-suffix-numbering) — НЕ ЗАКРЫТА (gaps_found)
-Plan: 7 of 7 complete
-Status: Все 7 планов выполнены, живая проверка пройдена (approved), но верификация дала
-gaps_found (4/6 must-haves). Code review вскрыл 2 блокирующих пробела, выбранных пользователем:
-WR-02 — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
+Phase: 40.5 (return-suffix-numbering) — НЕ ЗАКРЫТА (gaps_found), раунд закрытия пробелов
+Plan: 7 of 12 complete (01-07 исполнены; 08-12 спланированы 2026-09-29)
+Status: Ready to execute — планы закрытия пробелов готовы
+Верификация дала gaps_found (4/6 must-haves); пользователь признал блокирующими два пробела:
+GAP 1 (WR-02) — посторонний акт с номером «Nв1» делает родительский акт невозвратимым навсегда
 (аллокатор не перешагивает занятую позицию, повтора нет);
-WR-05 — отчёт «Акты» не собирает номер через format_act_number, невыполненный пункт
-CONTEXT <specifics>. Следующий шаг: /gsd-plan-phase 40.5 --gaps
+GAP 2 (WR-05) — отчёт «Акты» не собирает номер через format_act_number, невыполненный пункт
+CONTEXT <specifics>.
+Решения раунда зафиксированы в CONTEXT.md как D-17..D-20 (аллокатор осведомлён о занятых
+display-номерах через предикат; сообщение называет блокирующий акт; отчёт считает display в
+Rust; весь WR-долг 01/03/04/06 входит в объём). Планы 40.5-08..12 прошли gsd-plan-checker:
+итерация 1 — 1 блокер + 5 предупреждений, итерация 2 — 0 блокеров.
+Следующий шаг: /gsd-execute-phase 40.5
 Последнее действие: 40.4-04-PLAN.md (NEW-3: автоподстановка номера блокирует массовое создание)
 завершён — NumberTemplateField получил реактивный проп `onEditedByHandChange` (переиспользует
 готовый NUM-07 компаратор `isValueUnedited()` внутри нового `$effect`, без дублирования
@@ -84,7 +89,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-29
+Last activity: 2026-09-29 -- Phase 40.5 planning complete
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
