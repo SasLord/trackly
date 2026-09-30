@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-09-29T23:26:35.562Z"
-last_activity: 2026-09-29 -- Phase 40.5 planning complete
+last_updated: "2026-09-30T00:19:15.131Z"
+last_activity: 2026-09-30
 progress:
   total_phases: 14
   completed_phases: 8
   total_plans: 119
-  completed_plans: 117
+  completed_plans: 118
   percent: 57
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 12 of 14 (планы 40.5-13/14 — второй раунд закрытия пробелов, ещё не исполнены)
+Plan: 14 of 14 (01-12 закрыты; исполняется второй раунд закрытия пробелов 13/14)
 Status: Ready to execute
 Повторная верификация после первого раунда закрытия пробелов: gaps_found 5/6 must-haves.
 Оба прошлых пробела закрыты и подтверждены мутационно (GAP 2 / WR-05 — отчёт «Возвраты» отдаёт
@@ -101,7 +101,7 @@ end-to-end. Plan 08 выполнен вне очереди (волна 5, пар
 2026-09-18. Все 4 плана Фазы 40.1 закрыты — BLOCKER-1, BLOCKER-2, WARNING-1, WARNING-4 из аудита
 v1.4 устранены.
 Следующий шаг: /gsd-validate-phase 40.1 (или аналог), затем Фаза 41 (АРМ).
-Last activity: 2026-09-29 -- Phase 40.5 planning complete
+Last activity: 2026-09-30
 покрытие 100%). ROADMAP.md + REQUIREMENTS.md (Traceability) обновлены.
 
 ### Phase 6 gap-closure decisions (2026-06-15)
@@ -496,6 +496,7 @@ Last activity: 2026-09-29 -- Phase 40.5 planning complete
 | Phase 40.5 P10 | 15min | 3 tasks | 3 files |
 | Phase 40.5 P11 | 20min | 3 tasks | 3 files |
 | Phase 40.5 P12 | 2h | 2 tasks | 1 files |
+| Phase 40.5 P13 | 25m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -1131,6 +1132,7 @@ Recent decisions affecting current work:
 - [Phase 40.5]: 40.5-08: D-17 — аллокатор sub_number принимает предикат занятости, а не диапазон; пропуск чужих отображаемых номеров без верхней границы
 - [Phase 40.5]: D-19: отображаемый номер отчёта считается в Rust через format_act_number; колонка «Суб-номер» в «Возвратах» убрана
 - [Phase 40.5]: 40.5-11: D-18 — сообщение о коллизии берёт карточку из блокирующей строки others; WR-01 — пост-проверка семьи только на do_return и каскаде переименования
+- [Phase 40.5]: 40.5-13 D-20/WR-01: пост-проверка семьи снята из do_return; аллокатор — единственный гейт нового номера; D-18 живёт только в каскаде переименования
 
 ### Pending Todos
 
@@ -1330,7 +1332,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-29T18:08:12.678Z
+Last session: 2026-09-30T00:19:11.660Z
 Stopped at: Completed 40.5-09-PLAN.md
 Resume file: None
 
