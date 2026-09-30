@@ -1517,7 +1517,7 @@ async fn html_return_act_with_stale_stored_number_prints_canonical_display_numbe
         let handover = create_handover(&p.acts, &device_ids, "Сдалов С.С.", "Принялов П.П.").await;
 
         // Частичный возврат (одна позиция из двух): родитель остаётся
-        // активным, `sibling_return_count == 1`.
+        // активным, возврат получает `sub_number == 1` → отображение «в1».
         let first_item = handover.items.first().expect("at least one item").clone();
         let return_act = p
             .acts
