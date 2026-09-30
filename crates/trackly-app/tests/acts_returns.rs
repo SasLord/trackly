@@ -1320,7 +1320,11 @@ async fn deleting_a_return_succeeds_even_when_family_number_already_collides() {
             .expect("удаление возврата в конфликтной БД должно проходить (WR-01)");
 
         let parent = svc.get(handover.id).await.expect("get parent");
-        assert_eq!(parent.return_ids, vec![ret2.id], "остался только второй возврат");
+        assert_eq!(
+            parent.return_ids,
+            vec![ret2.id],
+            "остался только второй возврат"
+        );
         assert_eq!(parent.number, "1");
     })
     .await
@@ -1433,7 +1437,8 @@ async fn return_succeeds_in_db_where_existing_return_already_collides() {
 
         let parent = svc.get(handover.id).await.expect("get parent");
         let got: std::collections::HashSet<i64> = parent.return_ids.iter().copied().collect();
-        let want: std::collections::HashSet<i64> = [ret1.id, ret2.id, ret3.id].into_iter().collect();
+        let want: std::collections::HashSet<i64> =
+            [ret1.id, ret2.id, ret3.id].into_iter().collect();
         assert_eq!(parent.return_ids.len(), 3);
         assert_eq!(got, want);
 

@@ -423,14 +423,19 @@ impl ActService {
                         other => map_rusqlite(other),
                     })?;
 
-                // 1. Number already resolved + fully checked (occupied,
+                // 1. Number already resolved + pre-checked (occupied,
                 // including live returns' displayed number D-06; mismatch;
                 // script-mix) by the async pre-checks above, BEFORE this
-                // transaction opened. `idx_acts_number_sub_unique` (V042)
-                // is the final DB-level backstop against the resulting
-                // small TOCTOU window (T-40.2-14) — a collision here
-                // surfaces as a raw SQLite UNIQUE violation, mapped to
-                // `AppError::Conflict` by `map_rusqlite`.
+                // transaction opened. Those pre-checks are for UX only:
+                // there is a single writer, so the authoritative gate is
+                // `ensure_number_free_in_tx` below, which runs INSIDE this
+                // transaction and also sees returns' displayed numbers —
+                // it, not the index, closes the pre-check TOCTOU window.
+                // `idx_acts_number_sub_unique` (V042) is NOT an independent
+                // backstop for display collisions: a handover `42в1` and a
+                // return with sub_number=1 under parent `42` are distinct
+                // `(number, COALESCE(sub_number,0))` pairs, so the index
+                // never sees them as a conflict.
                 let number = trimmed.clone();
                 // BE-WR-04: final occupied check on the single writer.
                 ensure_number_free_in_tx(&tx, TemplateType::ActNumber, &number, None, || {
