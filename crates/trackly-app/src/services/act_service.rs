@@ -1516,6 +1516,8 @@ impl ActService {
                 //    позиции, чей отображаемый номер занят ЧУЖИМ живым актом.
                 //    Номера генерируются формулой и сравниваются целиком —
                 //    отображаемая строка нигде не разбирается (D-08).
+                //    Аллокатор — единственный гейт свободы нового номера
+                //    (см. комментарий после insert_act_in_tx).
                 let foreign_taken: std::collections::HashSet<String> =
                     fetch_candidate_rows(&tx, TemplateType::ActNumber)?
                         .into_iter()
@@ -1586,10 +1588,26 @@ impl ActService {
                     parent_number: None,
                 };
                 let return_act_id = acts_repo.insert_act_in_tx(&tx, &return_row)?;
-                // BE-WR-03 / Phase 40.5: the new return's own number
-                // (`{parent}в{sub}`) was not pre-checked — it must not
-                // collide with an unrelated act.
-                ensure_act_family_display_free_in_tx(&tx, act_id)?;
+                // Phase 40.5 (D-17/WR-01): the freedom of the new number
+                // `{parent}в{sub_number}` is guaranteed by the allocator above:
+                // `is_blocked` is built from the same `fetch_candidate_rows(
+                // ActNumber)` selection, with the same `family == act_id`
+                // split and the same `normalize_number_key`, inside the same
+                // writer transaction. A family-wide post-check here could only
+                // catch collisions that existed BEFORE this write (e.g. a DB
+                // created before Phase 40.5) and would make the family
+                // permanently un-returnable (same reasoning as `delete_soft`).
+                //
+                // Safety net: the allocator postcondition is covered by the
+                // `&|_| false` predicate mutation, which fails 3 tests in
+                // `acts_numbering`, and by the test
+                // `return_succeeds_in_db_where_existing_return_already_collides`.
+                // The `debug_assert!` is a debug-only guard — it is compiled
+                // out in release.
+                debug_assert!(
+                    !is_blocked(sub_number),
+                    "аллокатор обязан был перешагнуть занятую позицию"
+                );
 
                 // 6. For each return-item: snapshot → insert act_item → update device → audit.
                 //
@@ -2988,8 +3006,9 @@ impl ActService {
                             // display collision — a family post-check has nothing
                             // to catch here. In an already-conflicting DB
                             // (legacy rows) it would only block cleaning up.
-                            // The check stays where new numbers appear:
-                            // `do_return` and the rename cascade (NUM-09).
+                            // The family post-check lives only in the parent
+                            // rename cascade (`update`); `do_return` relies on
+                            // the allocator instead.
                             recompute_parent_archived(&tx, parent_id, now)?;
                         }
                         audit_repo.insert(
@@ -3462,15 +3481,14 @@ fn escape_like(s: &str) -> String {
 /// may equal the displayed number of any OTHER live act. Runs on the writer
 /// transaction, before commit.
 ///
-/// Phase 40.5 (D-01/D-05): the displayed number of EXISTING returns no longer
-/// changes when siblings appear or disappear. The check is still needed for a
-/// different reason: a NEW return gets its own number (`{parent}в{sub}`) that
-/// was not pre-checked via `is_act_number_occupied_including_returns`. If an
-/// unrelated act already occupies that displayed number (e.g. someone created
-/// act `42в3` by hand and the next return gets sub_number=3), this
-/// post-check is the only place the collision is detected, and the
-/// transaction rolls back with a clear error. Rename cascades still change
-/// the displayed numbers of the whole family and are covered as before.
+/// Phase 40.5 (D-01/D-05/D-20): the displayed number of EXISTING returns no
+/// longer changes when siblings appear or disappear. The only live call is the
+/// parent rename cascade in `update`: there the number, and therefore the
+/// displayed number of the whole family, changes, so the whole family is
+/// checked. It is deliberately NOT called from `do_return` (the allocator
+/// `next_sub_number_for_parent` checks the new number) nor from `delete_soft`
+/// (displays only shrink): a whole-family check in an already-conflicting DB
+/// would refuse operations that create no collision.
 ///
 /// D-18: the error names the BLOCKING act, not only the caller's own number —
 /// `hit` (from `own`) supplies just the displayed number, while the type and
