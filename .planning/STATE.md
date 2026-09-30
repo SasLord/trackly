@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: executing
-last_updated: "2026-09-30T00:19:15.131Z"
+status: verifying
+last_updated: "2026-09-30T01:40:14.337Z"
 last_activity: 2026-09-30
 progress:
   total_phases: 14
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 119
-  completed_plans: 118
-  percent: 57
+  completed_plans: 119
+  percent: 64
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 Phase: 40.5 (return-suffix-numbering) — EXECUTING
 Plan: 14 of 14 (01-12 закрыты; исполняется второй раунд закрытия пробелов 13/14)
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Повторная верификация после первого раунда закрытия пробелов: gaps_found 5/6 must-haves.
 Оба прошлых пробела закрыты и подтверждены мутационно (GAP 2 / WR-05 — отчёт «Возвраты» отдаёт
 номер через format_act_number, колонка «Суб-номер» убрана; GAP 1 / WR-02 — аллокатор
@@ -497,6 +497,7 @@ Last activity: 2026-09-30
 | Phase 40.5 P11 | 20min | 3 tasks | 3 files |
 | Phase 40.5 P12 | 2h | 2 tasks | 1 files |
 | Phase 40.5 P13 | 25m | 2 tasks | 2 files |
+| Phase 40.5 P14 | 95m | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -1133,6 +1134,7 @@ Recent decisions affecting current work:
 - [Phase 40.5]: D-19: отображаемый номер отчёта считается в Rust через format_act_number; колонка «Суб-номер» в «Возвратах» убрана
 - [Phase 40.5]: 40.5-11: D-18 — сообщение о коллизии берёт карточку из блокирующей строки others; WR-01 — пост-проверка семьи только на do_return и каскаде переименования
 - [Phase 40.5]: 40.5-13 D-20/WR-01: пост-проверка семьи снята из do_return; аллокатор — единственный гейт нового номера; D-18 живёт только в каскаде переименования
+- [Phase 40.5-14]: D-12: живую проверку (7 пунктов, вкл. GAP 1.4) проходит человек; исполнитель ничего не отметил
 
 ### Pending Todos
 
@@ -1332,7 +1334,7 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-09-30T00:19:11.660Z
+Last session: 2026-09-30T01:40:08.842Z
 Stopped at: Completed 40.5-09-PLAN.md
 Resume file: None
 
