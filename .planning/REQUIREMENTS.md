@@ -185,7 +185,7 @@
 | NUM-06 | Phase 40.2 | Complete |
 | NUM-07 | Phase 40.2 | Complete |
 | NUM-08 | Phase 40.2 | Complete |
-| NUM-09 | Phase 40.2 | Complete |
+| NUM-09 | Phase 40.2 + 40.5 | Complete |
 | NUM-10 | Phase 40.2 | Complete |
 | NUM-11 | Phase 40.2 | Complete |
 | NUM-12 | Phase 40.2 | Complete |

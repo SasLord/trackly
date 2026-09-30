@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: verifying
-last_updated: "2026-09-30T01:40:14.337Z"
+status: ready_to_plan
+last_updated: 2026-09-30T13:20:54.106Z
 last_activity: 2026-09-30
 progress:
   total_phases: 14
   completed_phases: 9
   total_plans: 119
-  completed_plans: 119
+  completed_plans: 382
   percent: 64
+stopped_at: Phase 40.5 complete (14/14) — ready to discuss Phase 41
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 40.5 — return-suffix-numbering
+**Current focus:** Phase 41 — арм
 
 ## Current Position
 
-Phase: 40.5 (return-suffix-numbering) — EXECUTING
-Plan: 14 of 14 (все планы исполнены, включая второй раунд закрытия пробелов)
-Status: Awaiting human UAT — 7 пунктов живой проверки открыты
+Phase: 41
+Plan: Not started
+Status: Ready to plan
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
 Остаточный GAP 1 (ревью WR-01) закрыт: пост-проверка семьи убрана из do_return, единственный гейт
@@ -127,7 +128,7 @@ Last activity: 2026-09-30
 
 **Velocity:**
 
-- Total plans completed: 250
+- Total plans completed: 264
 - Average duration: —
 - Total execution time: —
 
@@ -169,6 +170,7 @@ Last activity: 2026-09-30
 | 40.2 | 15 | - | - |
 | 40.3 | 9 | - | - |
 | 40.4 | 5 | - | - |
+| 40.5 | 14 | - | - |
 
 **Recent Trend:**
 
