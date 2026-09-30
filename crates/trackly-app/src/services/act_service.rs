@@ -1236,7 +1236,8 @@ impl ActService {
                     )
                     .map_err(map_rusqlite)?;
                     // BE-WR-03: the cascade gives the returns new displayed
-                    // numbers (`43в`) — they must not collide either.
+                    // numbers (`43в1`, `43в2`, … — Phase 40.5 dropped the
+                    // digit-less `43в` form) — they must not collide either.
                     ensure_act_family_display_free_in_tx(&tx, payload.id)?;
 
                     let override_payload_json = serde_json::json!({
@@ -1598,12 +1599,20 @@ impl ActService {
                 // created before Phase 40.5) and would make the family
                 // permanently un-returnable (same reasoning as `delete_soft`).
                 //
-                // Safety net: the allocator postcondition is covered by the
-                // `&|_| false` predicate mutation, which fails 3 tests in
-                // `acts_numbering`, and by the test
-                // `return_succeeds_in_db_where_existing_return_already_collides`.
-                // The `debug_assert!` is a debug-only guard — it is compiled
-                // out in release.
+                // Two separate facts, deliberately not conflated:
+                //  * the allocator postcondition ("the chosen position is not
+                //    blocked by a foreign act") is covered by
+                //    `blocked_position_above_foreign_act_count_is_skipped`,
+                //    `return_reclaims_position_one_after_blocking_act_is_deleted`
+                //    and `display_number_space_covers_returns_in_both_directions`
+                //    in `acts_numbering`, plus
+                //    `return_skips_position_blocked_by_foreign_act_in_conflicting_db`
+                //    in `acts_returns`;
+                //  * `return_succeeds_in_db_where_existing_return_already_collides`
+                //    guards against this family-wide post-check coming BACK
+                //    (WR-01) — it does not exercise the allocator predicate.
+                // The `debug_assert!` below is a debug-only guard, compiled out
+                // in release; it is not a substitute for either test.
                 debug_assert!(
                     !is_blocked(sub_number),
                     "аллокатор обязан был перешагнуть занятую позицию"

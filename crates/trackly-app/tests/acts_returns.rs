@@ -1327,6 +1327,69 @@ async fn deleting_a_return_succeeds_even_when_family_number_already_collides() {
     .expect("budget");
 }
 
+/// IN-03 (ревью раунда 2): главный инвариант раунда — после снятия пост-проверки
+/// семьи аллокатор остаётся ЕДИНСТВЕННЫМ гейтом свободы нового номера, и он
+/// обязан работать даже в уже-конфликтной БД. Здесь позиция 2 заблокирована
+/// посторонним актом «1в2», поэтому следующий возврат должен перешагнуть её и
+/// получить «1в3». Тест краснеет при мутации предиката на `&|_| false` (тогда
+/// возврат получил бы «1в2»), в отличие от
+/// `return_succeeds_in_db_where_existing_return_already_collides`, который
+/// страхует только от возвращения пост-проверки.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn return_skips_position_blocked_by_foreign_act_in_conflicting_db() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let (svc, _dir) = make_acts_service();
+        let device_ids = seed_devices(&svc.writer, 2).await;
+        let handover = create_handover(&svc, &device_ids[0..2]).await;
+        let admin = Identity::trusted_admin();
+
+        let ret1 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[0]))
+            .await
+            .expect("return 1");
+        assert_eq!(ret1.number, "1в1");
+
+        // Конфликт, существовавший ДО записи (legacy-БД): «1в1» столкнулся с
+        // посторонним актом. Плюс посторонний акт на СЛЕДУЮЩЕЙ позиции — «1в2».
+        insert_foreign_handover_raw(&svc, "1в1").await;
+        insert_foreign_handover_raw(&svc, "1в2").await;
+
+        let ret2 = svc
+            .do_return(&admin, handover.id, single_item_return(&handover.items[1]))
+            .await
+            .expect("возврат в конфликтной БД должен проходить, перешагнув занятую позицию");
+        assert_eq!(
+            ret2.sub_number,
+            Some(3),
+            "аллокатор обязан перешагнуть позицию 2, занятую чужим актом «1в2»"
+        );
+        assert_eq!(ret2.number, "1в3");
+
+        // Существующий возврат не перенумерован (D-01/D-05).
+        let ret1_again = svc.get(ret1.id).await.expect("get ret1");
+        assert_eq!(ret1_again.number, "1в1");
+
+        // Оба посторонних акта живы и не тронуты.
+        let alive: i64 = svc
+            .writer
+            .execute(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM acts WHERE number IN ('1в1', '1в2') \
+                     AND act_type = 'handover' AND parent_act_id IS NULL \
+                     AND deleted_at_utc IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_rusqlite)
+            })
+            .await
+            .expect("count foreign acts");
+        assert_eq!(alive, 2);
+    })
+    .await
+    .expect("budget");
+}
+
 /// WR-01 (D-20, остаточный GAP 1): в БД, где возврат «1в1» УЖЕ сталкивается с
 /// посторонним живым актом «1в1» (например БД до Фазы 40.5), следующие возвраты
 /// по той же семье обязаны проходить и получать наименьший свободный номер.
