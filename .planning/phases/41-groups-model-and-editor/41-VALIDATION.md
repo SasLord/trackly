@@ -121,18 +121,18 @@ created: 2026-10-04
 
 | Req | Layer | Target | File |
 |-----|-------|--------|------|
-| 1 — `code`/`behavior` неизменяемы | infra (триггер БД) + app + dual-transport | `groups_repo`, `groups_types_service` | ❌ Wave 0 |
+| 1 — `code`/`behavior` неизменяемы | infra (триггер БД) + app + dual-transport | `group_types_repo` (триггер), `groups_types_service`, `role_endpoint_matrix group_types` | ❌ Wave 0 |
 | 2 — идемпотентный засев | app service | `groups_types_service seed_` | ❌ Wave 0 |
 | 3 — свойства 6 типов, порядок, `show_on_map` | app service + DTO round-trip | `groups_types_service properties_` | ❌ Wave 0 |
 | 4 — защита заполненных свойств (3 отдельных теста) | app service + прямой `SELECT` значений | `groups_types_service protect_` | ❌ Wave 0 |
-| 5 — валидация значений на сервере | core таблица-тест + оба транспорта | `trackly-core group_values`, `groups_service values_` | ❌ Wave 0 |
+| 5 — валидация значений на сервере | core таблица-тест + оба транспорта | `trackly-core group_values`, `groups_values_card values_`, `role_endpoint_matrix groups_` (HTTP 400) | ❌ Wave 0 |
 | 6 — раздел и права видимости | UI-гейт + серверный 403 | `check-groups-section.mjs` | ❌ Wave 0 |
-| 7 — `seq` и нумерация (+ гонка) | app service + `UNIQUE(type_id,seq)` | `groups_service numbering_` | ❌ Wave 0 |
-| 8 — членство, циклы, `teardown` | infra (PK, CTE) + app (сообщения) | `groups_repo`, `groups_service membership_` | ❌ Wave 0 |
-| 9 — протаскивание места **атомарно** | infra+app, фикстура сбоя на 4-м устройстве | `groups_service move_` | ❌ Wave 0 |
-| 10 — журнал пакета, отчёт, таймлайн, `ALTER` | app + infra-миграция `run_up_to(44)` | `group_movements_journal`, `groups_migration` | ❌ Wave 0 |
+| 7 — `seq` и нумерация (+ гонка) | app service + `UNIQUE(type_id,seq)` | `groups_service numbering_` (план 08) | ❌ Wave 0 |
+| 8 — членство, циклы, `teardown` | infra (PK, CTE) + app (сообщения) | `groups_repo`, `groups_membership` | ❌ Wave 0 |
+| 9 — протаскивание места **атомарно** | infra+app, фикстура сбоя на 4-м устройстве | `groups_move` (move_, move_atomic_), `places_move_groups` | ❌ Wave 0 |
+| 10 — журнал пакета, отчёт, таймлайн, `ALTER` | app + infra-миграция `run_up_to(44)` | `group_movements_journal`, `place_movements_batch_repo`, `place_movements_group_fields`, `group_report_batch`, `groups_migration` | ❌ Wave 0 |
 | 11 — запрет индивидуального перемещения | app таблица-драйвер S1–S9 + счётный гейт исходника | `group_write_sites` | ❌ Wave 0 |
-| 12 — карточка группы, дедупликация принтеров | app service | `groups_service card_` | ❌ Wave 0 |
+| 12 — карточка группы, дедупликация принтеров | app service | `groups_values_card` (card_, user_options_) | ❌ Wave 0 |
 | 13 — матрица 3 роли × (тип, группа) × 2 транспорта | HTTP-сессии + `build_*` + тест полноты маршрутов | `role_endpoint_matrix` Cases 76+ | ❌ Wave 0 (расширение) |
 | 14 — переименование свёртки | UI-гейт словаря с `--selftest` | `check-group-vocabulary.mjs` | ❌ Wave 0 |
 | — `Action`-матрица | core unit | `trackly-core auth` | ✅ дописать |
@@ -146,9 +146,15 @@ created: 2026-10-04
 
 - [ ] `crates/trackly-core/src/domain/group_values.rs` — таблицы-тесты ip/mac/number/text (Req 5)
 - [ ] `crates/trackly-infra/tests/groups_migration.rs` — V045/V046, `run_up_to(44)` без потери данных (Req 10)
-- [ ] `crates/trackly-infra/tests/groups_repo.rs` — триггер, PK членства, CTE цикла/состава, атомарность `move_group_in_tx` (Req 1, 8, 9)
+- [ ] `crates/trackly-infra/tests/group_types_repo.rs` — триггер code/behavior, засев, свойства (Req 1–4)
+- [ ] `crates/trackly-infra/tests/groups_repo.rs` — PK членства, CTE цикла/состава, seq, значения, принтеры (Req 7, 8, 12); атомарность переноса доказана на уровне сервиса в `groups_move` (Req 9)
+- [ ] `crates/trackly-infra/tests/place_movements_batch_repo.rs` — batch_id, entity_label, group_id (Req 10)
 - [ ] `crates/trackly-app/tests/groups_types_service.rs` — Req 1–4 + засев
-- [ ] `crates/trackly-app/tests/groups_service.rs` — Req 5, 7–9, 12
+- [ ] `crates/trackly-app/tests/groups_service.rs` — Req 7 (нумерация), чтения, CRUD (Req 12 частично)
+- [ ] `crates/trackly-app/tests/groups_membership.rs` — Req 8 (членство, вложенность, инвариант места)
+- [ ] `crates/trackly-app/tests/groups_move.rs` — Req 9 (перенос, атомарность)
+- [ ] `crates/trackly-app/tests/groups_values_card.rs` — Req 5, 12 (значения, карточка, принтеры)
+- [ ] `crates/trackly-app/tests/places_move_groups.rs`, `group_report_batch.rs`, `place_movements_group_fields.rs` — D-23, отчёт, DTO таймлайна (Req 9, 10)
 - [ ] `crates/trackly-app/tests/group_write_sites.rs` — Req 11, сценарии S1–S9, счётный гейт `act_service.rs`
 - [ ] `crates/trackly-app/tests/group_movements_journal.rs` — Req 10 (журнал, отчёт, таймлайн)
 - [ ] `crates/trackly-app/tests/role_endpoint_matrix.rs` — Cases 76+ (Req 13) + тест полноты маршрутов
