@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
-status: ready_to_plan
-last_updated: 2026-09-30T13:20:54.106Z
+status: planning
+last_updated: "2026-10-03T20:30:31.839Z"
 last_activity: 2026-09-30
 progress:
-  total_phases: 14
+  total_phases: 20
   completed_phases: 9
   total_plans: 119
-  completed_plans: 382
-  percent: 64
-stopped_at: Phase 40.5 complete (14/14) — ready to discuss Phase 41
+  completed_plans: 119
+  percent: 45
 ---
 
 # Project State
@@ -21,7 +20,7 @@ stopped_at: Phase 40.5 complete (14/14) — ready to discuss Phase 41
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 
 **Core value:** Учёт устройств и картриджей с актами приёма-передачи и историей перемещений должен работать надёжно и быстро в режиме «одной кнопкой» — без обращения к Excel-таблицам, ручного присвоения номеров актов или потери истории при возврате на склад.
-**Current focus:** Phase 41 — арм
+**Current focus:** Phase 41 — Группы: модель и редактор
 
 ## Current Position
 
@@ -556,6 +555,13 @@ Last activity: 2026-09-30
 - Phase 40.3 inserted after Phase 40.2: Долг аудита v1.4: WR-03, N-1, N-2, N-4 (аудит 2026-09-22) (URGENT)
 - Phase 40.4 inserted after Phase 40.3: Долг аудита v1.4, раунд 2: NEW-1, N-3, NEW-3, NEW-2 (аудит 2026-09-23) (URGENT)
 - Phase 40.5 inserted after Phase 40.4: Нумерация возвратов: плотные суффиксы в1..вN — находки живой UAT фазы 40.4 (URGENT)
+- Phase 41 edited: АРМ переформулирована в «Группы: модель и редактор» — универсальные типы групп с поведением container/substitute/teardown и свойствами; WKS-01..07 сняты, введены GRP/GRD/GAM/ATT/REP/MSG/EMP
+- Phase 41.1 inserted after Phase 41: Группы × Устройства
+- Phase 41.2 inserted after Phase 41: Группы × Акты и Места
+- Phase 41.3 inserted after Phase 41: Вложения
+- Phase 41.4 inserted after Phase 41: Заявки: Ремонт
+- Phase 41.5 inserted after Phase 41: Переписка в заявке
+- Phase 41.6 inserted after Phase 41: Раздел «Устройства» для сотрудника
 
 ### Decisions
 
