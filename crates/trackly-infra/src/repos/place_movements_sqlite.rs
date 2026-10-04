@@ -47,6 +47,12 @@ pub struct NewMovement<'a> {
     pub act_id: Option<i64>,
     pub user_id: Option<i64>,
     pub actor_name_snapshot: Option<String>,
+    /// UUID пакета группового переноса (V046); `None` у одиночных записей.
+    pub batch_id: Option<&'a str>,
+    /// Снимок имени группы (V046, D-26); `None` у не-групповых записей.
+    pub entity_label: Option<&'a str>,
+    /// Id группы без FK (V046, D-28); пишется в каждую строку групповой записи.
+    pub group_id: Option<i64>,
     pub created_at_utc: i64,
 }
 
@@ -65,6 +71,9 @@ pub struct MovementRow {
     pub act_id: Option<i64>,
     pub user_id: Option<i64>,
     pub actor_name_snapshot: Option<String>,
+    pub batch_id: Option<String>,
+    pub entity_label: Option<String>,
+    pub group_id: Option<i64>,
     pub created_at_utc: i64,
 }
 
@@ -81,8 +90,9 @@ impl SqlitePlaceMovementsRepository {
         tx.execute(
             "INSERT INTO place_movements \
              (entity_type, entity_id, from_place_id, from_place_path, to_place_id, to_place_path, \
-              source, note, act_id, user_id, actor_name_snapshot, created_at_utc) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              source, note, act_id, user_id, actor_name_snapshot, \
+              batch_id, entity_label, group_id, created_at_utc) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 movement.entity_type,
                 movement.entity_id,
@@ -95,6 +105,9 @@ impl SqlitePlaceMovementsRepository {
                 movement.act_id,
                 movement.user_id,
                 movement.actor_name_snapshot,
+                movement.batch_id,
+                movement.entity_label,
+                movement.group_id,
                 movement.created_at_utc,
             ],
         )
@@ -129,6 +142,88 @@ impl SqlitePlaceMovementsRepository {
         act_id: Option<i64>,
         user_id: Option<i64>,
         now_utc: i64,
+    ) -> Result<(), AppError> {
+        self.record_inner(
+            tx,
+            places_repo,
+            entity_type,
+            entity_id,
+            before_place_id,
+            after_place_id,
+            source,
+            note,
+            act_id,
+            user_id,
+            now_utc,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// Соседний метод записи для группового пути (Phase 41, GRP-06): те же правила,
+    /// что у [`Self::record_movement_if_applicable`] (одно правило
+    /// `is_reportable_place_change`, один код снимков путей и ФИО-актора), плюс
+    /// корреляция пакета. Сигнатуру `record_movement_if_applicable` и семь её
+    /// существующих write-site'ов это не затрагивает.
+    ///
+    /// `batch_id` связывает строки одного переноса, `entity_label` — снимок имени
+    /// группы (D-26), `group_id` — id группы (D-28), пишется в КАЖДУЮ строку
+    /// групповой записи (включая add_devices и первое размещение, где `batch_id`
+    /// или строки самой группы может не быть).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_batch_movement_if_applicable(
+        &self,
+        tx: &Transaction<'_>,
+        places_repo: &dyn PlaceRepository<Conn = Connection>,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+        before_place_id: Option<i64>,
+        after_place_id: Option<i64>,
+        source: MovementSource,
+        note: Option<&str>,
+        act_id: Option<i64>,
+        user_id: Option<i64>,
+        now_utc: i64,
+        batch_id: Option<&str>,
+        entity_label: Option<&str>,
+        group_id: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.record_inner(
+            tx,
+            places_repo,
+            entity_type,
+            entity_id,
+            before_place_id,
+            after_place_id,
+            source,
+            note,
+            act_id,
+            user_id,
+            now_utc,
+            batch_id,
+            entity_label,
+            group_id,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_inner(
+        &self,
+        tx: &Transaction<'_>,
+        places_repo: &dyn PlaceRepository<Conn = Connection>,
+        entity_type: MovementEntityKind,
+        entity_id: i64,
+        before_place_id: Option<i64>,
+        after_place_id: Option<i64>,
+        source: MovementSource,
+        note: Option<&str>,
+        act_id: Option<i64>,
+        user_id: Option<i64>,
+        now_utc: i64,
+        batch_id: Option<&str>,
+        entity_label: Option<&str>,
+        group_id: Option<i64>,
     ) -> Result<(), AppError> {
         if !is_reportable_place_change(before_place_id, after_place_id) {
             return Ok(());
@@ -166,6 +261,9 @@ impl SqlitePlaceMovementsRepository {
                 act_id,
                 user_id,
                 actor_name_snapshot,
+                batch_id,
+                entity_label,
+                group_id,
                 created_at_utc: now_utc,
             },
         )
@@ -201,7 +299,8 @@ impl SqlitePlaceMovementsRepository {
         let mut stmt = conn
             .prepare(
                 "SELECT id, entity_type, entity_id, from_place_id, from_place_path, to_place_id, \
-                        to_place_path, source, note, act_id, user_id, actor_name_snapshot, created_at_utc \
+                        to_place_path, source, note, act_id, user_id, actor_name_snapshot, \
+                        batch_id, entity_label, group_id, created_at_utc \
                    FROM place_movements \
                   WHERE entity_type = ?1 AND entity_id = ?2 \
                   ORDER BY created_at_utc DESC, id DESC",
@@ -223,7 +322,10 @@ impl SqlitePlaceMovementsRepository {
                     act_id: r.get(9)?,
                     user_id: r.get(10)?,
                     actor_name_snapshot: r.get(11)?,
-                    created_at_utc: r.get(12)?,
+                    batch_id: r.get(12)?,
+                    entity_label: r.get(13)?,
+                    group_id: r.get(14)?,
+                    created_at_utc: r.get(15)?,
                 })
             })
             .map_err(map_rusqlite)?;
