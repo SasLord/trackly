@@ -16,19 +16,24 @@ use std::sync::Arc;
 
 use rusqlite::Connection;
 use trackly_core::auth::{authorize, Action, Identity};
-use trackly_core::domain::groups::{GroupRow, GroupTypeRow, MAX_DEVICES_PER_BATCH};
+use trackly_core::domain::groups::{
+    validate_name, GroupNew, GroupRow, GroupTypeRow, MAX_DEVICES_PER_BATCH,
+};
 use trackly_core::error::AppError;
 use trackly_core::ports::group_types::GroupTypeRepository;
 use trackly_core::ports::groups::GroupRepository;
+use trackly_core::ports::places::PlaceRepository;
 use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
-use trackly_infra::repos::audit_log_sqlite::SqliteAuditLogRepository;
+use trackly_infra::error_conversions::map_rusqlite;
+use trackly_infra::repos::audit_log_sqlite::{AuditEntry, SqliteAuditLogRepository};
 use trackly_infra::repos::{
     SqliteGroupRepository, SqliteGroupTypeRepository, SqlitePlaceRepository,
 };
 
 use crate::dto::groups::{
-    DeviceMembershipDto, GroupCompositionDto, GroupDto, GroupMemberDeviceDto, GroupSearchHitDto,
+    DeviceMembershipDto, GroupCompositionDto, GroupCreateDto, GroupDeleteResultDto, GroupDto,
+    GroupMemberDeviceDto, GroupSearchHitDto,
 };
 use crate::services::place_path_display::compute_place_path_short_with_conn;
 
@@ -38,8 +43,6 @@ const SEARCH_QUERY_MAX_CHARS: usize = 100;
 const SEARCH_RESULT_LIMIT: usize = 50;
 
 /// Сервис групп. `Arc`-поля делают `Clone` дешёвым.
-// TEMP-T1: clock/places_repo/audit_repo используются мутациями (задача 2).
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct GroupService {
     pub writer: Arc<WriterHandle>,
@@ -153,6 +156,12 @@ fn group_dto_on(
         })?
         .clone();
     snap.dto(&row)
+}
+
+fn to_json<T: serde::Serialize>(v: &T) -> Result<String, AppError> {
+    serde_json::to_string(v).map_err(|e| AppError::Internal {
+        source_chain: format!("audit_log json: {e}"),
+    })
 }
 
 fn join_err(e: tokio::task::JoinError) -> AppError {
@@ -358,5 +367,177 @@ impl GroupService {
         })
         .await
         .map_err(join_err)?
+    }
+}
+
+// ---- мутации -------------------------------------------------------------
+
+impl GroupService {
+    /// Создать группу. Без имени — «{имя типа} #{seq}», где `seq = MAX(seq)+1` по
+    /// колонке типа (GRP-04); явное имя проходит `validate_name`. Место необязательно
+    /// (D-21). Строк `place_movements` создание не пишет.
+    pub async fn create_group(
+        &self,
+        caller: &Identity,
+        dto: GroupCreateDto,
+    ) -> Result<GroupDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let explicit_name = dto
+            .name
+            .as_deref()
+            .map(|n| validate_name(n, "name"))
+            .transpose()?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        let places_repo = self.places_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+        let type_id = dto.type_id;
+        let place_id = dto.place_id.map(i64::from);
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let gtype = type_repo.get_type(&tx, type_id)?;
+                if let Some(pid) = place_id {
+                    let place = match places_repo.get(&tx, pid) {
+                        Ok(p) => p,
+                        Err(AppError::NotFound { .. }) => {
+                            return Err(place_error("Место не найдено."))
+                        }
+                        Err(e) => return Err(e),
+                    };
+                    if place.archived_at_utc.is_some() {
+                        return Err(place_error("Место в архиве: выберите другое."));
+                    }
+                }
+                let seq = repo.next_seq_in_tx(&tx, type_id)?;
+                let name = explicit_name.unwrap_or_else(|| format!("{} #{}", gtype.name, seq));
+                let id = repo.insert_group_in_tx(
+                    &tx,
+                    &GroupNew {
+                        type_id,
+                        name,
+                        seq,
+                        place_id,
+                    },
+                    now,
+                )?;
+                let out = group_dto_on(&tx, &repo, &type_repo, id)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: id,
+                        action: "create",
+                        user_id,
+                        before_json: None,
+                        after_json: Some(to_json(&out)?),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(out)
+            })
+            .await
+    }
+
+    /// Переименовать группу (CAS по `version`). Счётчик `seq` не меняется.
+    pub async fn update_group(
+        &self,
+        caller: &Identity,
+        id: i64,
+        version: i64,
+        name: String,
+    ) -> Result<GroupDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+        let name = validate_name(&name, "name")?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let before = to_json(&group_dto_on(&tx, &repo, &type_repo, id)?)?;
+                repo.rename_group_in_tx(&tx, id, version, &name, now)?;
+                let out = group_dto_on(&tx, &repo, &type_repo, id)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: id,
+                        action: "update",
+                        user_id,
+                        before_json: Some(before),
+                        after_json: Some(to_json(&out)?),
+                        payload_json: None,
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(out)
+            })
+            .await
+    }
+
+    /// Удалить группу (GRP-10). Прямые устройства освобождаются (членство исчезает),
+    /// `devices.place_id` не трогается; вложенные группы становятся корневыми с тем же
+    /// местом. Ответ несёт число освобождённых устройств для подтверждения в UI.
+    pub async fn delete_group(
+        &self,
+        caller: &Identity,
+        id: i64,
+    ) -> Result<GroupDeleteResultDto, AppError> {
+        authorize(caller, &Action::MutateGroups)?;
+
+        let now = self.clock.unix_seconds();
+        let user_id = caller.user_id;
+        let repo = self.repo.clone();
+        let type_repo = self.type_repo.clone();
+        let audit_repo = self.audit_repo.clone();
+
+        self.writer
+            .execute(move |conn| {
+                let tx = conn.transaction().map_err(map_rusqlite)?;
+                let before = group_dto_on(&tx, &repo, &type_repo, id)?;
+                let released = before.direct_device_count;
+                let nested = before.nested_group_count;
+                repo.delete_group_in_tx(&tx, id)?;
+                audit_repo.insert(
+                    &tx,
+                    AuditEntry {
+                        entity_type: "group",
+                        entity_id: id,
+                        action: "delete",
+                        user_id,
+                        before_json: Some(to_json(&before)?),
+                        after_json: None,
+                        payload_json: Some(to_json(&serde_json::json!({
+                            "released_devices": released,
+                            "nested_groups": nested,
+                        }))?),
+                        created_at_utc: now,
+                    },
+                )?;
+                tx.commit().map_err(map_rusqlite)?;
+                Ok(GroupDeleteResultDto {
+                    released_devices: released as i32,
+                })
+            })
+            .await
+    }
+}
+
+fn place_error(message: &str) -> AppError {
+    AppError::Validation {
+        field: "place_id".to_string(),
+        message: message.to_string(),
     }
 }

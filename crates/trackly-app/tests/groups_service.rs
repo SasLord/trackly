@@ -9,6 +9,7 @@ use rusqlite::params;
 
 use trackly_app::context::AppCtx;
 use trackly_app::dto::auth::UserNew;
+use trackly_app::dto::groups::GroupCreateDto;
 use trackly_core::auth::{Identity, Role};
 use trackly_core::error::AppError;
 use trackly_infra::error_conversions::map_rusqlite;
@@ -459,5 +460,501 @@ async fn rights_read_employee_forbidden_manager_allowed() {
 
     assert_eq!(ctx.groups.list_groups(&manager).await.unwrap().len(), 1);
     assert!(ctx.groups.get_group(&manager, g).await.is_ok());
-    let _ = (opt_i64, scalar_i64); // используются тестами записи
+}
+
+// ---------------------------------------------------------------------------
+// helpers для записи
+// ---------------------------------------------------------------------------
+
+fn create_dto(type_id: i64, name: Option<&str>, place_id: Option<i32>) -> GroupCreateDto {
+    GroupCreateDto {
+        type_id,
+        name: name.map(str::to_string),
+        place_id,
+    }
+}
+
+async fn exec(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(sql, rusqlite::params_from_iter(p))
+                .map_err(map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("exec");
+}
+
+// ---------------------------------------------------------------------------
+// numbering_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn numbering_default_names_follow_seq_and_rename_does_not_shift_counter() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let type_name = scalar_string(
+        &ctx,
+        "SELECT name FROM group_types WHERE id = ?1",
+        vec![int(arm)],
+    )
+    .await;
+
+    let first = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+    let second = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+    assert_eq!((first.seq, second.seq), (1, 2));
+    assert_eq!(first.name, format!("{type_name} #1"));
+    assert_eq!(second.name, format!("{type_name} #2"));
+
+    // Переименование первой в «АРМ #99» не сдвигает счётчик: имя не разбирается.
+    let renamed = ctx
+        .groups
+        .update_group(
+            &admin(),
+            first.id,
+            first.version,
+            format!("{type_name} #99"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.seq, 1, "переименование не трогает seq");
+
+    let third = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+    assert_eq!(third.seq, 3);
+    assert_eq!(third.name, format!("{type_name} #3"));
+    // seq второй группы остался прежним — читаем из БД.
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT seq FROM groups WHERE id = ?1",
+            vec![int(second.id)]
+        )
+        .await,
+        2
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn numbering_is_per_type_and_duplicate_names_are_allowed() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let unit = type_id_by_code(&ctx, "system_unit").await;
+
+    let a = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, Some("Кабинет 214"), None))
+        .await
+        .unwrap();
+    let b = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, Some("Кабинет 214"), None))
+        .await
+        .unwrap();
+    assert_eq!(a.name, b.name);
+    assert_ne!(a.id, b.id);
+    assert_eq!((a.seq, b.seq), (1, 2), "явное имя не отменяет выдачу seq");
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM groups WHERE name = ?1",
+            vec![rusqlite::types::Value::Text("Кабинет 214".to_string())]
+        )
+        .await,
+        2
+    );
+
+    // Счётчик у другого типа независим.
+    let u = ctx
+        .groups
+        .create_group(&admin(), create_dto(unit, None, None))
+        .await
+        .unwrap();
+    assert_eq!(u.seq, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn numbering_concurrent_creates_get_distinct_seq() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let (c1, c2) = (ctx.clone(), ctx.clone());
+    let (r1, r2) = tokio::join!(
+        async move {
+            c1.groups
+                .create_group(&admin(), create_dto(arm, None, None))
+                .await
+        },
+        async move {
+            c2.groups
+                .create_group(&admin(), create_dto(arm, None, None))
+                .await
+        },
+    );
+    let (g1, g2) = (r1.expect("create 1"), r2.expect("create 2"));
+    let mut seqs = vec![g1.seq, g2.seq];
+    seqs.sort();
+    assert_eq!(seqs, vec![1, 2]);
+    assert_ne!(g1.name, g2.name);
+}
+
+// ---------------------------------------------------------------------------
+// crud_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn crud_explicit_name_is_trimmed_and_validated() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+
+    let g = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, Some("  Кабинет 214  "), None))
+        .await
+        .unwrap();
+    assert_eq!(g.name, "Кабинет 214");
+    assert_eq!(g.seq, 1);
+
+    for bad in ["", "   "] {
+        match ctx
+            .groups
+            .create_group(&admin(), create_dto(arm, Some(bad), None))
+            .await
+        {
+            Err(AppError::Validation { message, .. }) => assert_eq!(message, "Укажите название."),
+            other => panic!("ожидали Validation, получили {other:?}"),
+        }
+    }
+    let long = "а".repeat(201);
+    assert!(matches!(
+        ctx.groups
+            .create_group(&admin(), create_dto(arm, Some(&long), None))
+            .await,
+        Err(AppError::Validation { .. })
+    ));
+    assert!(matches!(
+        ctx.groups
+            .create_group(&admin(), create_dto(arm + 1000, None, None))
+            .await,
+        Err(AppError::NotFound { .. })
+    ));
+    // Отказы не оставили следов: seq следующей группы не «сгорел».
+    let next = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+    assert_eq!(next.seq, 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn crud_place_is_optional_checked_and_writes_no_movements() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let room = seed_place(&ctx, "room", "Кабинет 12", None).await;
+    let archived = seed_place(&ctx, "room", "Кабинет в архиве", None).await;
+    exec(
+        &ctx,
+        "UPDATE places SET archived_at_utc = 1700000001 WHERE id = ?1",
+        vec![int(archived)],
+    )
+    .await;
+    let movements_before = scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await;
+
+    let placeless = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+    assert_eq!(placeless.place_id, None);
+    assert_eq!(placeless.place_path, None);
+
+    let placed = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, Some(room as i32)))
+        .await
+        .unwrap();
+    assert_eq!(placed.place_id, Some(room));
+    let want_path = scalar_string(
+        &ctx,
+        "SELECT full_path FROM place_full_paths WHERE place_id = ?1",
+        vec![int(room)],
+    )
+    .await;
+    assert_eq!(placed.place_path.as_deref(), Some(want_path.as_str()));
+
+    for bad in [room as i32 + 9999, archived as i32] {
+        assert!(
+            matches!(
+                ctx.groups.create_group(&admin(), create_dto(arm, None, Some(bad))).await,
+                Err(AppError::Validation { ref field, .. }) if field == "place_id"
+            ),
+            "место {bad} должно быть отклонено"
+        );
+    }
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM place_movements", vec![]).await,
+        movements_before,
+        "создание группы не пишет place_movements"
+    );
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM groups", vec![]).await,
+        2,
+        "отклонённые создания не оставили групп"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn crud_rename_uses_cas_and_audits() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let g = ctx
+        .groups
+        .create_group(&admin(), create_dto(arm, None, None))
+        .await
+        .unwrap();
+
+    let renamed = ctx
+        .groups
+        .update_group(
+            &admin(),
+            g.id,
+            g.version,
+            "  Рабочее место Иванова И.И.  ".to_string(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.name, "Рабочее место Иванова И.И.");
+    assert_eq!(renamed.version, g.version + 1);
+
+    // Устаревшая версия отклоняется, имя в БД не меняется.
+    match ctx
+        .groups
+        .update_group(&admin(), g.id, g.version, "Другое имя".to_string())
+        .await
+    {
+        Err(AppError::OptimisticLockMismatch {
+            expected, actual, ..
+        }) => {
+            assert_eq!(expected, g.version);
+            assert_eq!(actual, renamed.version);
+        }
+        other => panic!("ожидали OptimisticLockMismatch, получили {other:?}"),
+    }
+    assert_eq!(
+        scalar_string(
+            &ctx,
+            "SELECT name FROM groups WHERE id = ?1",
+            vec![int(g.id)]
+        )
+        .await,
+        "Рабочее место Иванова И.И."
+    );
+    assert!(matches!(
+        ctx.groups
+            .update_group(&admin(), g.id, renamed.version, "   ".to_string())
+            .await,
+        Err(AppError::Validation { .. })
+    ));
+    assert!(matches!(
+        ctx.groups
+            .update_group(&admin(), g.id + 1000, 1, "Имя".to_string())
+            .await,
+        Err(AppError::NotFound { .. })
+    ));
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'group' AND entity_id = ?1",
+            vec![int(g.id)]
+        )
+        .await,
+        2,
+        "create + update"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// delete_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delete_releases_devices_keeps_places_and_unnests_children() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let room = seed_place(&ctx, "room", "Кабинет 3", None).await;
+    let other_room = seed_place(&ctx, "room", "Кабинет 4", None).await;
+
+    let outer = seed_group(&ctx, arm, "АРМ #1", 1, Some(room), None).await;
+    let inner = seed_group(&ctx, arm, "АРМ #2", 2, Some(room), Some(outer)).await;
+    let mut direct = Vec::new();
+    for i in 0..3 {
+        direct.push(
+            seed_device(
+                &ctx,
+                &format!("Прямое {i}"),
+                &format!("INV-D{i}"),
+                &format!("SN-D{i}"),
+                Some(if i == 0 { other_room } else { room }),
+                Some(outer),
+            )
+            .await,
+        );
+    }
+    let nested_device =
+        seed_device(&ctx, "Вложенное", "INV-N", "SN-N", Some(room), Some(inner)).await;
+
+    // devices.place_id до удаления — читаем из БД.
+    let mut before = Vec::new();
+    for d in &direct {
+        before.push(
+            opt_i64(
+                &ctx,
+                "SELECT place_id FROM devices WHERE id = ?1",
+                vec![int(*d)],
+            )
+            .await,
+        );
+    }
+
+    let res = ctx.groups.delete_group(&admin(), outer).await.unwrap();
+    assert_eq!(
+        res.released_devices, 3,
+        "только прямые устройства удаляемой группы"
+    );
+
+    for (d, was) in direct.iter().zip(&before) {
+        let after = opt_i64(
+            &ctx,
+            "SELECT place_id FROM devices WHERE id = ?1",
+            vec![int(*d)],
+        )
+        .await;
+        assert_eq!(&after, was, "место устройства не меняется");
+        assert_eq!(
+            scalar_i64(
+                &ctx,
+                "SELECT COUNT(*) FROM group_devices WHERE device_id = ?1",
+                vec![int(*d)]
+            )
+            .await,
+            0,
+            "членство исчезло"
+        );
+    }
+    // Вложенная группа стала корневой с тем же местом и сохранила свой состав.
+    assert_eq!(
+        opt_i64(
+            &ctx,
+            "SELECT parent_group_id FROM groups WHERE id = ?1",
+            vec![int(inner)]
+        )
+        .await,
+        None
+    );
+    assert_eq!(
+        opt_i64(
+            &ctx,
+            "SELECT place_id FROM groups WHERE id = ?1",
+            vec![int(inner)]
+        )
+        .await,
+        Some(room)
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT group_id FROM group_devices WHERE device_id = ?1",
+            vec![int(nested_device)]
+        )
+        .await,
+        inner
+    );
+    assert_eq!(
+        scalar_i64(
+            &ctx,
+            "SELECT COUNT(*) FROM groups WHERE id = ?1",
+            vec![int(outer)]
+        )
+        .await,
+        0
+    );
+    // Аудит удаления с payload.
+    let payload = scalar_string(
+        &ctx,
+        "SELECT payload_json FROM audit_log WHERE entity_type = 'group' AND entity_id = ?1 \
+         AND action = 'delete'",
+        vec![int(outer)],
+    )
+    .await;
+    assert!(
+        payload.contains("\"released_devices\":3"),
+        "payload: {payload}"
+    );
+    assert!(
+        payload.contains("\"nested_groups\":1"),
+        "payload: {payload}"
+    );
+
+    assert!(matches!(
+        ctx.groups.delete_group(&admin(), outer).await,
+        Err(AppError::NotFound { .. })
+    ));
+}
+
+// ---------------------------------------------------------------------------
+// rights_write_
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rights_write_employee_forbidden_manager_allowed() {
+    let (ctx, _dir) = make_test_ctx().await;
+    let arm = type_id_by_code(&ctx, "workstation").await;
+    let g = seed_group(&ctx, arm, "АРМ #1", 1, None, None).await;
+    let employee = create_identity(&ctx, "emp_two", "Иванов И.И.", Role::Employee).await;
+    let manager = create_identity(&ctx, "mgr_two", "Петров П.П.", Role::Manager).await;
+
+    assert!(matches!(
+        ctx.groups
+            .create_group(&employee, create_dto(arm, None, None))
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        ctx.groups
+            .update_group(&employee, g, 1, "Имя".to_string())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        ctx.groups.delete_group(&employee, g).await,
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(
+        scalar_i64(&ctx, "SELECT COUNT(*) FROM groups", vec![]).await,
+        1,
+        "отказ по правам ничего не изменил"
+    );
+
+    let made = ctx
+        .groups
+        .create_group(&manager, create_dto(arm, None, None))
+        .await
+        .unwrap();
+    assert!(ctx
+        .groups
+        .update_group(&manager, made.id, made.version, "Имя".to_string())
+        .await
+        .is_ok());
+    assert!(ctx.groups.delete_group(&manager, made.id).await.is_ok());
 }
