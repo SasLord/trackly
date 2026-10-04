@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T14:22:14.934Z"
+last_updated: "2026-10-04T14:46:01.274Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 142
+  completed_plans: 143
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 24 of 26
+Plan: 25 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -534,6 +534,7 @@ Last activity: 2026-10-04
 | Phase 41 P21 | 75min | 3 tasks | 5 files |
 | Phase 41 P22 | 45min | 3 tasks | 3 files |
 | Phase 41 P24 | 25min | 2 tasks | 7 files |
+| Phase 41 P23 | 70min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -1204,6 +1205,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-21: оба пути добавления устройств в состав идут в один groups.addDevices; реестр INV-7 расширен от серверных мутаций (groups.move/addDevices/setParent) — гейт держит инвалидацию счётчиков мест; единый обработчик
 - [Phase 41]: 41-22: ip/mac/number/text normalization stays server-side; properties form sends raw strings and refills from the returned card
 - [Phase 41]: 41-24: блокировка места в форме устройства только подсказка; эффект неявной смены статуса отключён для заблокированного члена группы
+- [Phase 41]: 41-23: клик по устройству в составе группы ведёт в раздел по типу (devices.get: принтер -> #/printers, иначе #/devices); страница слушает hashchange для переход-фокуса при открытой странице; MovementTimeline получил необязательный showInitialPlacementNote (по умолчанию true), группа скрывает сноску про «поступление»
 
 ### Pending Todos
 
@@ -1403,8 +1405,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T14:22:14.923Z
-Stopped at: Completed 41-24-PLAN.md
+Last session: 2026-10-04T14:46:01.264Z
+Stopped at: Completed 41-23-PLAN.md
 Resume file: None
 
 None
