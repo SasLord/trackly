@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T08:06:59.809Z"
+last_updated: "2026-10-04T08:54:22.001Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 128
+  completed_plans: 129
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 10 of 26
+Plan: 11 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -520,6 +520,7 @@ Last activity: 2026-10-04
 | Phase 41 P07 | ~65min | 2 tasks | 14 files |
 | Phase 41 P08 | ~2h | 2 tasks | 14 files |
 | Phase 41 P09 | 35min | 2 tasks | 6 files |
+| Phase 41 P10 | ~75min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -1174,6 +1175,8 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-08: GRP-10 закрыт частично; запрет удаления якорного устройства переносится в 41.1 (нужен groups.anchor_device_id)
 - [Phase 41]: 41-08: имя группы по умолчанию только при name=None; пробельное явное имя -> Validation
 - [Phase 41]: 41-09: GroupTypeService exposed as 10 command/route pairs over shared build_*; gates duplicated at transport boundary; route-completeness test driven by include_str! of http/group_types.rs
+- [Phase 41]: 41-10: apply_group_place_to_device_in_tx returns DevicePlaceChange{changed,previous_place} so a NULL previous place (D-30) is distinguishable from unchanged
+- [Phase 41]: 41-10: moving a group to its current place writes nothing (no journal, no audit, version unchanged, empty changed_place_ids)
 
 ### Pending Todos
 
@@ -1373,8 +1376,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T08:06:59.799Z
-Stopped at: Completed 41-09-PLAN.md
+Last session: 2026-10-04T08:54:21.990Z
+Stopped at: Completed 41-10-PLAN.md
 Resume file: None
 
 None
