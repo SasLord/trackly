@@ -3,7 +3,7 @@
 //!
 //! Mirrors `migration_idempotency.rs`'s harness pattern (fresh tempfile DB, apply
 //! pragmas + all embedded migrations, then inspect the resulting schema) rather than
-//! its assertions — this file asserts the table, its 5 indexes, and the empty-on-fresh-DB
+//! its assertions — this file asserts the table, its 7 indexes (5 + 2 from V046), and the empty-on-fresh-DB
 //! invariant (D-02: no backfill from `audit_log`).
 
 use rusqlite::Connection;
@@ -45,8 +45,8 @@ fn place_movements_v040_creates_table_and_indexes() {
         )
         .expect("query sqlite_master for place_movements indexes");
     assert_eq!(
-        index_count, 5,
-        "place_movements must have exactly 5 indexes, got {index_count}"
+        index_count, 7,
+        "place_movements must have exactly 7 indexes (5 from V040 + 2 from V046), got {index_count}"
     );
 
     let user_version: i64 = conn
