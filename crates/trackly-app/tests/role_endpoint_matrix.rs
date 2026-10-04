@@ -3205,3 +3205,701 @@ async fn role_endpoint_matrix_test() {
     .await
     .expect("role_endpoint_matrix_test exceeded 60s budget");
 }
+
+// ===========================================================================
+// Phase 41 Plan 09 — Group types (GRP-09, SPEC 1/3/4)
+//
+// Матрица 3 роли x (мутации типа/свойства, чтения) x 2 транспорта (HTTP и
+// прямой вызов `build_group_types_*`), HTTP-проверки неизменяемости и правил
+// защиты, тест полноты маршрутов. Пользователи и данные вымышленные.
+// Эти тесты живут в отдельных функциях, а не в `role_endpoint_matrix_test`:
+// Cases 76+ не трогают существующие Cases.
+// ===========================================================================
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GateKind {
+    /// `Action::ManageGroupTypes` — только Admin.
+    TypeMut,
+    /// `Action::ReadGroups` — Admin|Manager.
+    Read,
+}
+
+/// Таблица-драйвер: (имя команды == имя маршрута, вид гейта, JSON-payload HTTP).
+/// Payload'ы корректны по форме: employee обязан получить именно 403, а не 422.
+fn group_type_cases() -> Vec<(&'static str, GateKind, serde_json::Value)> {
+    vec![
+        (
+            "group_types_list",
+            GateKind::Read,
+            json!({ "includeArchived": false }),
+        ),
+        (
+            "group_types_create",
+            GateKind::TypeMut,
+            json!({ "dto": { "name": "Проба типа", "behavior": "container" } }),
+        ),
+        (
+            "group_types_update",
+            GateKind::TypeMut,
+            json!({ "id": 1, "version": 1, "dto": {} }),
+        ),
+        (
+            "group_types_delete",
+            GateKind::TypeMut,
+            json!({ "id": 999999 }),
+        ),
+        (
+            "group_type_properties_create",
+            GateKind::TypeMut,
+            json!({ "dto": {
+                "type_id": 999999,
+                "name": "Проба свойства",
+                "data_type": "text",
+                "is_required": false,
+                "show_on_map": false
+            } }),
+        ),
+        (
+            "group_type_properties_update",
+            GateKind::TypeMut,
+            json!({ "id": 999999, "version": 1, "dto": {} }),
+        ),
+        (
+            "group_type_properties_delete",
+            GateKind::TypeMut,
+            json!({ "id": 999999 }),
+        ),
+        (
+            "group_type_properties_unarchive",
+            GateKind::TypeMut,
+            json!({ "id": 999999 }),
+        ),
+        (
+            "group_type_properties_reorder",
+            GateKind::TypeMut,
+            json!({ "typeId": 999999, "orderedIds": [] }),
+        ),
+        (
+            "group_type_properties_empty_groups",
+            GateKind::Read,
+            json!({ "propertyId": 999999 }),
+        ),
+    ]
+}
+
+/// Прямой вызов `build_group_types_*` (Tauri-путь) с фиксированными аргументами,
+/// симметричными `group_type_cases()`. Возвращает только исход гейта.
+async fn gt_call_build(ctx: &AppCtx, name: &str, caller: &Identity) -> Result<(), AppError> {
+    use trackly_app::dto::group_types::{
+        GroupTypeCreateDto, GroupTypeUpdateDto, PropertyCreateDto, PropertyUpdateDto,
+    };
+    use trackly_app::tauri_cmds::group_types as g;
+    match name {
+        "group_types_list" => g::build_group_types_list(ctx, caller, false)
+            .await
+            .map(|_| ()),
+        "group_types_create" => g::build_group_types_create(
+            ctx,
+            caller,
+            GroupTypeCreateDto {
+                name: "Проба типа Tauri".to_string(),
+                behavior: "container".to_string(),
+            },
+        )
+        .await
+        .map(|_| ()),
+        "group_types_update" => {
+            g::build_group_types_update(ctx, caller, 1, 1, GroupTypeUpdateDto::default())
+                .await
+                .map(|_| ())
+        }
+        "group_types_delete" => g::build_group_types_delete(ctx, caller, 999999).await,
+        "group_type_properties_create" => g::build_group_type_properties_create(
+            ctx,
+            caller,
+            PropertyCreateDto {
+                type_id: 999999,
+                name: "Проба свойства Tauri".to_string(),
+                data_type: "text".to_string(),
+                is_required: false,
+                show_on_map: false,
+            },
+        )
+        .await
+        .map(|_| ()),
+        "group_type_properties_update" => g::build_group_type_properties_update(
+            ctx,
+            caller,
+            999999,
+            1,
+            PropertyUpdateDto::default(),
+        )
+        .await
+        .map(|_| ()),
+        "group_type_properties_delete" => {
+            g::build_group_type_properties_delete(ctx, caller, 999999)
+                .await
+                .map(|_| ())
+        }
+        "group_type_properties_unarchive" => {
+            g::build_group_type_properties_unarchive(ctx, caller, 999999)
+                .await
+                .map(|_| ())
+        }
+        "group_type_properties_reorder" => {
+            g::build_group_type_properties_reorder(ctx, caller, 999999, vec![])
+                .await
+                .map(|_| ())
+        }
+        "group_type_properties_empty_groups" => {
+            g::build_group_type_properties_empty_groups(ctx, caller, 999999)
+                .await
+                .map(|_| ())
+        }
+        other => panic!("gt_call_build: неизвестная команда {other}"),
+    }
+}
+
+struct GtEnv {
+    ctx: AppCtx,
+    _dir: tempfile::TempDir,
+    admin: Identity,
+    manager: Identity,
+    employee: Identity,
+    admin_cookie: String,
+    manager_cookie: String,
+    employee_cookie: String,
+}
+
+async fn gt_make_user(ctx: &AppCtx, login: &str, full_name: &str, role: Role) -> (Identity, i64) {
+    let dto = ctx
+        .auth
+        .create_user(
+            UserNew {
+                login: login.to_string(),
+                full_name: full_name.to_string(),
+                password: "password123".to_string(),
+                role: role.as_str().to_string(),
+                email: None,
+            },
+            &Identity::trusted_admin(),
+        )
+        .await
+        .expect("create test user");
+    (
+        Identity {
+            user_id: Some(dto.id),
+            role,
+        },
+        dto.id,
+    )
+}
+
+async fn gt_env() -> GtEnv {
+    let (ctx, dir) = make_test_ctx().await.expect("make_test_ctx");
+    let (admin, admin_id) = gt_make_user(&ctx, "gt_admin", "Иванов И.И.", Role::Admin).await;
+    let (manager, manager_id) =
+        gt_make_user(&ctx, "gt_manager", "Петров П.П.", Role::Manager).await;
+    let (employee, employee_id) =
+        gt_make_user(&ctx, "gt_employee", "Сидоров С.С.", Role::Employee).await;
+    let store = RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone());
+    let admin_cookie = create_session_cookie(&store, admin_id, Role::Admin)
+        .await
+        .expect("admin session");
+    let manager_cookie = create_session_cookie(&store, manager_id, Role::Manager)
+        .await
+        .expect("manager session");
+    let employee_cookie = create_session_cookie(&store, employee_id, Role::Employee)
+        .await
+        .expect("employee session");
+    GtEnv {
+        ctx,
+        _dir: dir,
+        admin,
+        manager,
+        employee,
+        admin_cookie,
+        manager_cookie,
+        employee_cookie,
+    }
+}
+
+fn gt_app(ctx: &AppCtx) -> axum::Router {
+    build_router(
+        ctx,
+        RusqliteSessionStore::new(ctx.writer.clone(), ctx.readers.clone()),
+    )
+}
+
+async fn gt_post(
+    env: &GtEnv,
+    cookie: &str,
+    name: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    post_with_cookie_json(
+        gt_app(&env.ctx),
+        &format!("/api/v1/{name}"),
+        body,
+        Some(cookie),
+    )
+    .await
+}
+
+async fn gt_db_i64(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) -> i64 {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(sql, rusqlite::params_from_iter(p), |r| r.get::<_, i64>(0))
+                .map_err(trackly_infra::error_conversions::map_rusqlite)
+        })
+        .await
+        .expect("scalar i64")
+}
+
+async fn gt_db_string(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) -> String {
+    ctx.writer
+        .execute(move |conn| {
+            conn.query_row(sql, rusqlite::params_from_iter(p), |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(trackly_infra::error_conversions::map_rusqlite)
+        })
+        .await
+        .expect("scalar string")
+}
+
+async fn gt_db_exec(ctx: &AppCtx, sql: &'static str, p: Vec<rusqlite::types::Value>) {
+    ctx.writer
+        .execute(move |conn| {
+            conn.execute(sql, rusqlite::params_from_iter(p))
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+            Ok(())
+        })
+        .await
+        .expect("exec");
+}
+
+fn gt_int(v: i64) -> rusqlite::types::Value {
+    rusqlite::types::Value::Integer(v)
+}
+
+fn gt_text(v: &str) -> rusqlite::types::Value {
+    rusqlite::types::Value::Text(v.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Case 76: HTTP, 3 роли x все 10 команд
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_types_role_matrix_http() {
+    let env = gt_env().await;
+    for (name, kind, payload) in group_type_cases() {
+        // Без сессии — 401: маршрут существует и закрыт аутентификацией.
+        let status = post_with_cookie(
+            gt_app(&env.ctx),
+            &format!("/api/v1/{name}"),
+            payload.clone(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "Case 76: {name} без сессии"
+        );
+
+        // Admin: гейт пропускает, форма payload'а принята (не 401/403/415/422) —
+        // иначе проверки отказа ниже были бы вакуумными.
+        let (status, body) = gt_post(&env, &env.admin_cookie, name, payload.clone()).await;
+        assert!(
+            ![
+                StatusCode::UNAUTHORIZED,
+                StatusCode::FORBIDDEN,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                StatusCode::UNPROCESSABLE_ENTITY
+            ]
+            .contains(&status),
+            "Case 76: Admin → {name} → получил {status} ({body})"
+        );
+
+        // Manager.
+        let (status, _) = gt_post(&env, &env.manager_cookie, name, payload.clone()).await;
+        match kind {
+            GateKind::TypeMut => assert_eq!(
+                status,
+                StatusCode::FORBIDDEN,
+                "Case 76: Manager → {name} (ManageGroupTypes) → ожидали 403, получили {status}"
+            ),
+            GateKind::Read => assert!(
+                ![
+                    StatusCode::UNAUTHORIZED,
+                    StatusCode::FORBIDDEN,
+                    StatusCode::UNPROCESSABLE_ENTITY
+                ]
+                .contains(&status),
+                "Case 76: Manager → {name} (ReadGroups) → получил {status}"
+            ),
+        }
+
+        // Employee: 403 на всём (и на чтениях).
+        let (status, _) = gt_post(&env, &env.employee_cookie, name, payload.clone()).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "Case 76: Employee → {name} → ожидали 403, получили {status}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 77: Tauri-путь, прямой вызов build_* с Identity каждой роли
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_types_role_matrix_tauri_path() {
+    let env = gt_env().await;
+    for (name, kind, _) in group_type_cases() {
+        // Admin не получает Forbidden (любой другой исход — бизнес-ответ сервиса).
+        let res = gt_call_build(&env.ctx, name, &env.admin).await;
+        assert!(
+            !matches!(res, Err(AppError::Forbidden)),
+            "Case 77: Admin → build {name} → Forbidden"
+        );
+
+        let res = gt_call_build(&env.ctx, name, &env.manager).await;
+        match kind {
+            GateKind::TypeMut => assert!(
+                matches!(res, Err(AppError::Forbidden)),
+                "Case 77: Manager → build {name} → ожидали Forbidden, получили {res:?}"
+            ),
+            GateKind::Read => assert!(
+                !matches!(res, Err(AppError::Forbidden)),
+                "Case 77: Manager → build {name} (чтение) → Forbidden"
+            ),
+        }
+
+        let res = gt_call_build(&env.ctx, name, &env.employee).await;
+        assert!(
+            matches!(res, Err(AppError::Forbidden)),
+            "Case 77: Employee → build {name} → ожидали Forbidden, получили {res:?}"
+        );
+    }
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 78: неизменяемость code/behavior через HTTP — невакуумно
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_types_http_immutability_not_vacuous() {
+    let env = gt_env().await;
+    let ws = env
+        .ctx
+        .group_types
+        .list_types(&env.admin, false)
+        .await
+        .expect("list_types")
+        .into_iter()
+        .find(|t| t.code == "workstation")
+        .expect("встроенный тип workstation");
+
+    let read_row = |ctx: &AppCtx| {
+        let id = ws.id;
+        let ctx = ctx.clone();
+        async move {
+            (
+                gt_db_string(
+                    &ctx,
+                    "SELECT code FROM group_types WHERE id = ?1",
+                    vec![gt_int(id)],
+                )
+                .await,
+                gt_db_string(
+                    &ctx,
+                    "SELECT behavior FROM group_types WHERE id = ?1",
+                    vec![gt_int(id)],
+                )
+                .await,
+                gt_db_i64(
+                    &ctx,
+                    "SELECT version FROM group_types WHERE id = ?1",
+                    vec![gt_int(id)],
+                )
+                .await,
+            )
+        }
+    };
+
+    let before = read_row(&env.ctx).await;
+    assert_eq!(before.0, "workstation");
+    assert_eq!(before.1, ws.behavior);
+
+    // Другой code -> 400, строка не изменилась.
+    assert_ne!("other_code", before.0, "payload должен отличаться от БД");
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_types_update",
+        json!({ "id": ws.id, "version": ws.version, "dto": { "code": "other_code" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "смена code: {body}");
+    assert_eq!(
+        read_row(&env.ctx).await,
+        before,
+        "смена code изменила строку"
+    );
+
+    // Другой behavior -> 400, строка не изменилась.
+    let other_behavior = "teardown";
+    assert_ne!(other_behavior, before.1, "payload должен отличаться от БД");
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_types_update",
+        json!({ "id": ws.id, "version": ws.version, "dto": { "behavior": other_behavior } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "смена behavior: {body}");
+    assert_eq!(
+        read_row(&env.ctx).await,
+        before,
+        "смена behavior изменила строку"
+    );
+
+    // Только name -> 200, имя изменилось, code/behavior те же.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_types_update",
+        json!({ "id": ws.id, "version": ws.version, "dto": { "name": "Рабочее место" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "переименование: {body}");
+    assert_eq!(
+        gt_db_string(
+            &env.ctx,
+            "SELECT name FROM group_types WHERE id = ?1",
+            vec![gt_int(ws.id)]
+        )
+        .await,
+        "Рабочее место"
+    );
+    let after = read_row(&env.ctx).await;
+    assert_eq!(
+        (after.0.as_str(), after.1.as_str()),
+        ("workstation", before.1.as_str())
+    );
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 79: правила защиты (D-14, D-16, встроенный тип) через HTTP
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn group_types_http_protect_rules() {
+    let env = gt_env().await;
+
+    // Пользовательский тип и три свойства — всё через HTTP.
+    let (status, ty) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_types_create",
+        json!({ "dto": { "name": "Стойка", "behavior": "container" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "create type: {ty}");
+    let type_id = ty["id"].as_i64().expect("id типа");
+
+    let mut props = Vec::new();
+    for name in ["Заполненное", "Пустое", "Обязательное"] {
+        let (status, p) = gt_post(
+            &env,
+            &env.admin_cookie,
+            "group_type_properties_create",
+            json!({ "dto": {
+                "type_id": type_id,
+                "name": name,
+                "data_type": "text",
+                "is_required": false,
+                "show_on_map": false
+            } }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "create property {name}: {p}");
+        props.push((p["id"].as_i64().unwrap(), p["version"].as_i64().unwrap()));
+    }
+    let (filled, empty, required) = (props[0], props[1], props[2]);
+
+    // Две группы типа; «Заполненное» заполнено у обеих прямым INSERT.
+    let mut group_ids = Vec::new();
+    for (seq, name) in [(1_i64, "Стойка Альфа"), (2, "Стойка Бета")] {
+        let id = env
+            .ctx
+            .writer
+            .execute(move |conn| {
+                conn.execute(
+                    "INSERT INTO groups (type_id, name, seq, created_at_utc, updated_at_utc, version)
+                     VALUES (?1, ?2, ?3, 1700000000, 1700000000, 1)",
+                    rusqlite::params![type_id, name, seq],
+                )
+                .map_err(trackly_infra::error_conversions::map_rusqlite)?;
+                Ok(conn.last_insert_rowid())
+            })
+            .await
+            .expect("seed group");
+        group_ids.push(id);
+    }
+    for g in &group_ids {
+        gt_db_exec(
+            &env.ctx,
+            "INSERT INTO group_property_values (group_id, property_id, value_text, updated_at_utc)
+             VALUES (?1, ?2, 'v', 1700000000)",
+            vec![gt_int(*g), gt_int(filled.0)],
+        )
+        .await;
+    }
+
+    // D-16: смена data_type заполненного -> 400, БД не изменилась.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_type_properties_update",
+        json!({ "id": filled.0, "version": filled.1, "dto": { "data_type": "number" } }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "data_type заполненного: {body}"
+    );
+    assert_eq!(
+        gt_db_string(
+            &env.ctx,
+            "SELECT data_type FROM group_type_properties WHERE id = ?1",
+            vec![gt_int(filled.0)]
+        )
+        .await,
+        "text"
+    );
+
+    // Пустое свойство тип данных менять можно -> 200.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_type_properties_update",
+        json!({ "id": empty.0, "version": empty.1, "dto": { "data_type": "number" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "data_type пустого: {body}");
+    assert_eq!(
+        gt_db_string(
+            &env.ctx,
+            "SELECT data_type FROM group_type_properties WHERE id = ?1",
+            vec![gt_int(empty.0)]
+        )
+        .await,
+        "number"
+    );
+
+    // D-14: is_required при группах без значения -> 400 с именем группы.
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_type_properties_update",
+        json!({ "id": required.0, "version": required.1, "dto": { "is_required": true } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "is_required: {body}");
+    assert!(
+        body.to_string().contains("Стойка Альфа"),
+        "в ответе нет имени группы-нарушителя: {body}"
+    );
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT is_required FROM group_type_properties WHERE id = ?1",
+            vec![gt_int(required.0)]
+        )
+        .await,
+        0
+    );
+
+    // empty_groups — и Admin, и Manager видят нарушителей.
+    for cookie in [&env.admin_cookie, &env.manager_cookie] {
+        let (status, body) = gt_post(
+            &env,
+            cookie,
+            "group_type_properties_empty_groups",
+            json!({ "propertyId": required.0 }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "empty_groups: {body}");
+        let names: Vec<String> = body
+            .as_array()
+            .expect("массив")
+            .iter()
+            .map(|g| g["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(names.contains(&"Стойка Альфа".to_string()), "{names:?}");
+        assert!(names.contains(&"Стойка Бета".to_string()), "{names:?}");
+    }
+
+    // Встроенный тип удалить нельзя -> 400, строка на месте.
+    let ws_id = gt_db_i64(
+        &env.ctx,
+        "SELECT id FROM group_types WHERE code = ?1",
+        vec![gt_text("workstation")],
+    )
+    .await;
+    let (status, body) = gt_post(
+        &env,
+        &env.admin_cookie,
+        "group_types_delete",
+        json!({ "id": ws_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "delete builtin: {body}");
+    assert_eq!(
+        gt_db_i64(
+            &env.ctx,
+            "SELECT COUNT(*) FROM group_types WHERE id = ?1",
+            vec![gt_int(ws_id)]
+        )
+        .await,
+        1
+    );
+    env.ctx.shutdown.cancel();
+}
+
+// ---------------------------------------------------------------------------
+// Case 80: полнота маршрутов — множество путей в исходнике == таблица-драйвер
+// ---------------------------------------------------------------------------
+
+#[test]
+fn group_types_http_route_completeness() {
+    let src = include_str!("../src/http/group_types.rs");
+    let re = regex::Regex::new(r#""/api/v1/(\w+)""#).unwrap();
+    let in_source: std::collections::BTreeSet<String> =
+        re.captures_iter(src).map(|c| c[1].to_string()).collect();
+    let in_table: std::collections::BTreeSet<String> = group_type_cases()
+        .into_iter()
+        .map(|(n, _, _)| n.to_string())
+        .collect();
+    assert_eq!(
+        in_source.difference(&in_table).collect::<Vec<_>>(),
+        Vec::<&String>::new(),
+        "маршрут есть в http/group_types.rs, но нет в таблице group_type_cases()"
+    );
+    assert_eq!(
+        in_table.difference(&in_source).collect::<Vec<_>>(),
+        Vec::<&String>::new(),
+        "команда есть в таблице, но нет маршрута в http/group_types.rs"
+    );
+    assert_eq!(in_source.len(), 10);
+}
