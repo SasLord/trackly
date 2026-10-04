@@ -2,6 +2,7 @@ import Dashboard from './pages/Dashboard.svelte';
 import MapPage from './pages/MapPage.svelte';
 import PlacesPage from './features/places/PlacesPage.svelte';
 import DevicesPage from './features/devices/DevicesPage.svelte';
+import GroupsPage from './features/groups/GroupsPage.svelte';
 import ActsPage from './pages/ActsPage.svelte';
 import PrintersPage from './pages/PrintersPage.svelte';
 import CartridgesPage from './pages/CartridgesPage.svelte';
@@ -20,6 +21,7 @@ export const routes = {
   '/map': MapPage,
   '/places': PlacesPage,
   '/devices': DevicesPage,
+  '/groups': GroupsPage,
   '/acts': ActsPage,
   '/printers': PrintersPage,
   '/cartridges': CartridgesPage,

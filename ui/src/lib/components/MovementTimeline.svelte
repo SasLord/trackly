@@ -28,6 +28,11 @@
      *  группы «…»» — ровно как `onNavigateToAct` для «актом №…». Необязательный:
      *  без него имя группы показывается обычным текстом. */
     onNavigateToGroup?: (groupId: number) => Promise<void> | void;
+    /** Plan 41-23: сноска под списком «Первичное размещение при поступлении в
+     *  историю не попадает…» написана про устройства; панель ГРУППЫ скрывает её
+     *  (у группы нет «поступления»). По умолчанию показывается — прочие
+     *  потребители не меняются. */
+    showInitialPlacementNote?: boolean;
   }
 
   const {
@@ -37,6 +42,7 @@
     onNavigateToPlace,
     onNavigateToAct,
     onNavigateToGroup,
+    showInitialPlacementNote = true,
   }: Props = $props();
 
   // Manual DD.MM.YYYY formatting — same `padStart` approach already used by
@@ -168,10 +174,12 @@
       </li>
     {/each}
   </ul>
-  <p class="timeline-empty-body">
-    Первичное размещение при поступлении в историю не попадает — она начинается с первого
-    перемещения между двумя известными местами.
-  </p>
+  {#if showInitialPlacementNote}
+    <p class="timeline-empty-body">
+      Первичное размещение при поступлении в историю не попадает — она начинается с первого
+      перемещения между двумя известными местами.
+    </p>
+  {/if}
 {/if}
 
 <style lang="scss">

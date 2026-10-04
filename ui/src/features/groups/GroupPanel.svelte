@@ -236,6 +236,7 @@
               entries={history}
               loading={false}
               loadError={historyError}
+              showInitialPlacementNote={false}
               onNavigateToPlace={(placeId) => {
                 void push(`#/places?id=${placeId}`);
               }}
