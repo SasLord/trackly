@@ -121,6 +121,11 @@ impl PlaceMovementService {
                     note: row.note,
                     act_id: row.act_id,
                     act_number,
+                    // D-28/D-26: прямо из колонок журнала (V046), без доп. запросов
+                    // и без JOIN групп — снимок читаем после переименования/удаления.
+                    batch_id: row.batch_id,
+                    group_id: row.group_id,
+                    group_label: row.entity_label,
                     created_at_utc: row.created_at_utc,
                 });
             }

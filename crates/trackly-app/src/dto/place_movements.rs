@@ -66,6 +66,18 @@ pub struct MovementEntryDto {
     /// `None` if the act row is somehow gone — should not normally happen since acts
     /// are soft-deleted, but this field never panics on a missing row).
     pub act_number: Option<String>,
+    /// UUID пакета группового переноса (V046, GRP-06); `None` у одиночных строк и у
+    /// строк `add_devices`.
+    pub batch_id: Option<String>,
+    /// Id группы, в составе которой записана строка (D-28). Читается прямо из колонки
+    /// `place_movements.group_id`, которая пишется в КАЖДУЮ строку групповой записи
+    /// (аналог `act_id`); `None` только у строк, написанных не групповым путём.
+    /// У строки самой группы (`entity_type = "group"`) равен её id.
+    #[specta(type = Option<i32>)]
+    pub group_id: Option<i64>,
+    /// Снимок имени группы на момент записи (D-26) — строка читается «в составе группы
+    /// «АРМ #3»» и после переименования или удаления группы.
+    pub group_label: Option<String>,
     #[specta(type = i32)]
     pub created_at_utc: i64,
 }
@@ -91,6 +103,9 @@ mod tests {
             note: None,
             act_id: None,
             act_number: None,
+            batch_id: None,
+            group_id: None,
+            group_label: None,
             created_at_utc: 1_700_000_000,
         }
     }
