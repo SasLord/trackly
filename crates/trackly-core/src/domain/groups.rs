@@ -223,7 +223,7 @@ pub struct GroupValueRow {
 }
 
 /// Устройство в карточке группы: производный принтер (USB-связь) или ссылка из
-/// свойства `device_refs`. Без serde: транспортный DTO строится в trackly-app.
+/// свойства `device_refs`. Сериализации здесь нет: транспортный DTO строится в trackly-app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrinterRefRow {
     pub device_id: i64,
