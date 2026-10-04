@@ -43,6 +43,7 @@
   import DeviceFormBody from './DeviceFormBody.svelte';
   import type { DeviceNumberPopupState } from './DeviceFormBody.svelte';
   import { devices } from './api';
+  import { push } from 'svelte-spa-router';
   import type { DeviceDto } from '../../bindings';
 
   interface Props {
@@ -160,6 +161,13 @@
   // type_id (owned here, not by the dumb form body) reaches the caller.
   // placeId is forwarded straight through from DeviceFormBody — it already
   // knows the final saved value, no extra request needed (WARNING-1, D-14/D-15).
+  // Plan 41-24 (D-19): переход-фокус на группу из подписи «Место задаётся
+  // группой». Порядок как в PlaceEntityViewModal: сначала push, затем закрытие.
+  async function handleNavigateToGroup(groupId: number) {
+    await push(`#/groups?id=${groupId}`);
+    onClose();
+  }
+
   function handleBodySaved(placeId: number | null) {
     onSaved({ typeId, placeId });
   }
@@ -176,6 +184,7 @@
       onCanSubmitChange={(can) => (formCanSubmit = can)}
       onRegisterSubmit={(fn) => (bodySubmitFn = fn)}
       onPopupChange={(popup) => (numberPopup = popup)}
+      onNavigateToGroup={handleNavigateToGroup}
     />
   {/key}
 

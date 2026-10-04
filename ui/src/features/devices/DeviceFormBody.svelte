@@ -95,6 +95,7 @@
   import Input from '$lib/components/Input.svelte';
   import Select from '$lib/components/Select.svelte';
   import Checkbox from '$lib/components/Checkbox.svelte';
+  import Button from '$lib/components/Button.svelte';
   import NumberTemplateField from '$lib/components/NumberTemplateField.svelte';
   import DeviceAutocompleteField from './DeviceAutocompleteField.svelte';
   import PlacePicker from '$lib/components/PlacePicker.svelte';
@@ -109,6 +110,7 @@
   import { apiCall } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
   import { devices } from './api';
+  import { groups } from '$lib/api/groups';
   import type {
     DeviceDto,
     DeviceNew,
@@ -166,6 +168,10 @@
      *  (which never submits, hence never opens a popup) doesn't need to pass
      *  it. */
     onPopupChange?: (_popup: DeviceNumberPopupState) => void;
+    /** Plan 41-24 (D-19): переход-фокус на группу в разделе «Группы» из
+     *  подписи под заблокированным полем «Место». Необязательный: без него
+     *  имя группы показывается обычным текстом. */
+    onNavigateToGroup?: (_groupId: number) => void;
   }
 
   const {
@@ -178,6 +184,7 @@
     onCanSubmitChange,
     onRegisterSubmit,
     onPopupChange = () => {},
+    onNavigateToGroup,
   }: Props = $props();
 
   const PRINTER_TYPE_ID = 2;
@@ -285,6 +292,20 @@
 
   const isEdit = $derived(target !== null);
 
+  // Plan 41-24 (D-19/D-21): членство редактируемого устройства в группе.
+  // Один запрос groups.forDevices([id]) при открытии формы правки (форма
+  // всегда монтируется заново через {#key}, поэтому onMount достаточно);
+  // DeviceDto не расширяется. `null` — не член либо запрос не удался.
+  // Блокировка места — только подсказка: источник истины серверный отказ
+  // на реальную смену места (план 41-14), он остаётся в силе.
+  let membership = $state<{
+    group_id: number;
+    group_name: string;
+    group_has_place: boolean;
+  } | null>(null);
+  // D-21: у группы БЕЗ места запрет «спит» — поле не блокируем.
+  const lockedByGroup = $derived(membership !== null && membership.group_has_place);
+
   // Phase 40.2 Plan 13 (NUM-06/08): which of the 2 device/printer create
   // contexts NumberTemplateField/the D-01 save chain uses — reactive to
   // `typeId` so switching «Устройство»/«Принтер» via DeviceFormModal's
@@ -369,7 +390,9 @@
   // mirror the record's ACTUAL saved status, never a suggestion that would
   // never actually be applied (nothing here ever submits).
   $effect(() => {
-    if (!readonly && isStoragePlace && storageStatusSuggested) {
+    // Plan 41-24: у члена группы с местом место не меняется, чекбокс скрыт —
+    // поэтому и неявную смену статуса не применяем.
+    if (!readonly && !lockedByGroup && isStoragePlace && storageStatusSuggested) {
       statusId = String(STORAGE_STATUS_ID);
     }
   });
@@ -468,6 +491,28 @@
         // never blocks saving the device itself.
         storagePlaceIds = new Set();
       });
+    // Plan 41-24: членство в группе (только правка, не просмотр). Ошибка
+    // молча означает «не член» — форма не должна ломаться от недоступности
+    // раздела групп. Запись состояния — после await, не из эффекта.
+    if (target !== null && !readonly) {
+      groups
+        .forDevices([target.id])
+        .then((rows) => {
+          if (cancelled) return;
+          const row = rows.find((r) => r.device_id === target.id);
+          membership = row
+            ? {
+                group_id: row.group_id,
+                group_name: row.group_name,
+                group_has_place: row.group_has_place,
+              }
+            : null;
+        })
+        .catch(() => {
+          if (cancelled) return;
+          membership = null;
+        });
+    }
     return () => {
       cancelled = true;
     };
@@ -988,12 +1033,22 @@
       onChange={(id) => (placeId = id)}
       id="f-place"
       invalid={!!fieldErrors['place_id']}
-      disabled={readonly}
+      disabled={readonly || lockedByGroup}
     />
     {#if fieldErrors['place_id']}
       <p class="field-error">{fieldErrors['place_id']}</p>
     {/if}
-    {#if isStoragePlace && !readonly}
+    {#if lockedByGroup && membership}
+      <p class="group-lock-note">
+        Место задаётся группой «{#if onNavigateToGroup}<Button
+            variant="link"
+            size="sm"
+            onclick={() => membership && onNavigateToGroup?.(membership.group_id)}
+            >{membership.group_name}</Button
+          >{:else}{membership.group_name}{/if}»
+      </p>
+    {/if}
+    {#if isStoragePlace && !readonly && !lockedByGroup}
       <Checkbox checked={storageStatusSuggested} onchange={(c) => (storageStatusSuggested = c)}>
         Перевести устройство в статус «На складе»
       </Checkbox>
@@ -1135,6 +1190,13 @@
     font-size: var(--tr-font-size-label);
     color: var(--tr-text-tertiary);
     margin: 0;
+  }
+
+  // Plan 41-24 (D-19): подпись под заблокированным полем «Место».
+  .group-lock-note {
+    margin: var(--tr-space-2xs) 0 0;
+    font-size: var(--tr-font-size-label);
+    color: var(--tr-text-secondary);
   }
 
   .input {
