@@ -641,6 +641,11 @@ impl SqliteCartridgeRepository {
                     .map_err(map_rusqlite)?
                     .flatten();
 
+                // Phase 41 (S9, GRP-07): сознательно БЕЗ guard'а группы. Запись идёт
+                // только при `place_id IS NULL`; у принтера-члена группы С МЕСТОМ
+                // место не NULL, условие не срабатывает и место группы не трогается.
+                // У группы БЕЗ места (D-21) запрет «спит» — место принтера
+                // заполняется как у обычного устройства.
                 if printer_place.is_none() {
                     tx.execute(
                         "UPDATE devices SET place_id=?1, updated_at_utc=?2, version=version+1 \

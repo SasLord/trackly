@@ -33,8 +33,9 @@ use trackly_core::primitives::clock::Clock;
 use trackly_infra::db::{pools::ReaderPool, writer_worker::WriterHandle};
 use trackly_infra::error_conversions::map_rusqlite;
 use trackly_infra::repos::{
-    SqliteCartridgeRepository, SqliteDeviceRepository, SqlitePlaceMovementsRepository,
-    SqlitePlaceRepository, SqlitePrinterRepository,
+    SqliteAuditLogRepository, SqliteCartridgeRepository, SqliteDeviceRepository,
+    SqliteGroupRepository, SqlitePlaceMovementsRepository, SqlitePlaceRepository,
+    SqlitePrinterRepository,
 };
 
 use std::collections::HashMap;
@@ -65,6 +66,10 @@ pub struct DeviceService {
     pub(crate) place_repo: Arc<SqlitePlaceRepository>,
     pub(crate) place_movements_repo: Arc<SqlitePlaceMovementsRepository>,
     pub(crate) cartridge_repo: Arc<SqliteCartridgeRepository>,
+    /// Phase 41 (GRP-07/D-21, plan 14): guard «место задаётся группой» в `update`
+    /// и освобождение членства в `delete_soft`.
+    pub(crate) groups: Arc<SqliteGroupRepository>,
+    pub(crate) audit_repo: Arc<SqliteAuditLogRepository>,
     #[allow(dead_code)]
     pub(crate) csv_sessions: Arc<ImportSessionStore>,
     /// Phase 40.2 Plan 08 (NUM-09): the single owner of occupied/script-mix
@@ -106,6 +111,8 @@ impl DeviceService {
             place_repo: Arc::new(SqlitePlaceRepository),
             place_movements_repo: Arc::new(SqlitePlaceMovementsRepository),
             cartridge_repo: Arc::new(SqliteCartridgeRepository),
+            groups: Arc::new(SqliteGroupRepository),
+            audit_repo: Arc::new(SqliteAuditLogRepository),
             csv_sessions: Arc::new(ImportSessionStore::new()),
             number_templates,
             ws_tx: None,
@@ -668,6 +675,7 @@ impl DeviceService {
         let place_repo = self.place_repo.clone();
         let place_movements_repo = self.place_movements_repo.clone();
         let cartridge_repo = self.cartridge_repo.clone();
+        let groups = self.groups.clone();
         let mut domain_patch: trackly_core::domain::devices::DevicePatch = patch.into();
         if let Some(number) = resolved_number {
             // Outer `Some` = "field touched"; inner `None`/`Some(v)` decide
@@ -709,6 +717,26 @@ impl DeviceService {
                         source_chain: format!("audit_log before-json: {e}"),
                     })?;
                 let before_place_id = before.as_ref().and_then(|b| b.place_id);
+
+                // Phase 41 (GRP-07, SPEC 11, S1): устройство в группе С МЕСТОМ нельзя
+                // переместить по одному — место задаёт группа. Сравниваем с ТЕКУЩИМ
+                // значением в этом же замыкании: форма шлёт place_id при каждом
+                // сохранении, повтор текущего места (и правка прочих полей) проходит.
+                // Группа без места не «запирает» (D-21) — запрос возвращает None.
+                // Источник истины — сервер; блокировка PlacePicker в UI (D-19) не замена.
+                if let Some(new_place) = domain_patch.place_id {
+                    if new_place != before_place_id {
+                        if let Some(g) = groups.locked_group_for_device_in_tx(&tx, id)? {
+                            return Err(AppError::Validation {
+                                field: "place_id".to_string(),
+                                message: format!(
+                                    "Место задаётся группой «{}». Выведите устройство из состава, чтобы переместить его отдельно.",
+                                    g.name
+                                ),
+                            });
+                        }
+                    }
+                }
 
                 let after = repo.update_in_tx(&tx, id, version, &domain_patch, now)?;
                 Self::sync_printer_row_in_tx(&printer_repo, &tx, id, after.type_id, now, None)?;
@@ -801,6 +829,8 @@ impl DeviceService {
     pub async fn delete_soft(&self, id: i64, version: i64) -> Result<(), AppError> {
         let now = self.clock.unix_seconds();
         let repo = self.repo.clone();
+        let groups = self.groups.clone();
+        let audit_repo = self.audit_repo.clone();
         let user_id_opt: Option<i64> = None;
 
         self.writer
@@ -818,6 +848,18 @@ impl DeviceService {
                     })?;
 
                 repo.delete_soft_in_tx(&tx, id, version, now)?;
+
+                // Phase 41 (GRP-05, S8): удалённое устройство не остаётся «мёртвым»
+                // членом группы — состав и счётчики не врут. Место не трогаем.
+                crate::services::group_membership::release_device_in_tx(
+                    &tx,
+                    &groups,
+                    &audit_repo,
+                    id,
+                    None,
+                    user_id_opt,
+                    now,
+                )?;
 
                 tx.execute(
                     "INSERT INTO audit_log \
