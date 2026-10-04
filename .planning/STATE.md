@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T14:11:01.455Z"
+last_updated: "2026-10-04T14:18:10.537Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 140
+  completed_plans: 141
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 22 of 26
+Plan: 23 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -532,6 +532,7 @@ Last activity: 2026-10-04
 | Phase 41 P19 | 50min | 2 tasks | 5 files |
 | Phase 41 P20 | 45min | 3 tasks | 3 files |
 | Phase 41 P21 | 75min | 3 tasks | 5 files |
+| Phase 41 P22 | 45min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -1200,6 +1201,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-19: GroupFormModal loads types and groups itself (seq hint is a hint only; server forms the default name)
 - [Phase 41]: 41-20: порядок свойств шлётся только по живым; hit-test строк через ручки (TableRow не пробрасывает атрибуты); мутации свойств сериализованы очередью (CAS)
 - [Phase 41]: 41-21: оба пути добавления устройств в состав идут в один groups.addDevices; реестр INV-7 расширен от серверных мутаций (groups.move/addDevices/setParent) — гейт держит инвалидацию счётчиков мест; единый обработчик
+- [Phase 41]: 41-22: ip/mac/number/text normalization stays server-side; properties form sends raw strings and refills from the returned card
 
 ### Pending Todos
 
@@ -1399,8 +1401,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T14:11:01.445Z
-Stopped at: Completed 41-21-PLAN.md
+Last session: 2026-10-04T14:18:10.527Z
+Stopped at: Completed 41-22-PLAN.md
 Resume file: None
 
 None
