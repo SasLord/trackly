@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T09:59:50.281Z"
+last_updated: "2026-10-04T10:35:26.635Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 131
+  completed_plans: 132
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 13 of 26
+Plan: 14 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -523,6 +523,7 @@ Last activity: 2026-10-04
 | Phase 41 P10 | ~75min | 3 tasks | 9 files |
 | Phase 41 P11 | ~45min | 2 tasks | 6 files |
 | Phase 41 P17 | 23min | 2 tasks | 6 files |
+| Phase 41 P12 | ~55min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -1181,6 +1182,7 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-10: moving a group to its current place writes nothing (no journal, no audit, version unchanged, empty changed_place_ids)
 - [Phase 41]: 41-11: remove_devices идемпотентен; аудит переноса остался в move_group_in_tx, ядро propagate_group_place_in_tx аудит не пишет
 - [Phase 41]: 41-17: batch_size в отчёте перемещений считает только устройства пакета подзапросом по batch_id; movement_reason для Group даёт «перенос группы» / «в составе группы «имя»»
+- [Phase 41]: 41-12: CAS по version группы проверяется до валидации значений; is_primary у device_refs отклоняется; USB и явные ссылки дедуплицируются по device_id (побеждает usb)
 
 ### Pending Todos
 
@@ -1380,8 +1382,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T09:59:50.271Z
-Stopped at: Completed 41-17-PLAN.md
+Last session: 2026-10-04T10:35:26.626Z
+Stopped at: Completed 41-12-PLAN.md
 Resume file: None
 
 None
