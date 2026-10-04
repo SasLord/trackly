@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Карта и осмысленное размещение
 status: executing
-last_updated: "2026-10-04T06:59:18.979Z"
+last_updated: "2026-10-04T07:47:45.678Z"
 last_activity: 2026-10-04
 progress:
   total_phases: 20
   completed_phases: 9
   total_plans: 145
-  completed_plans: 126
+  completed_plans: 127
   percent: 45
 ---
 
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.3.3 milestone)
 ## Current Position
 
 Phase: 41 (groups-model-and-editor) — EXECUTING
-Plan: 8 of 26
+Plan: 9 of 26
 Status: Ready to execute
 Верификация раунда 3 (после второго раунда закрытия пробелов): 6/6 must-haves, статус
 human_needed — автоматических пробелов НЕ осталось, открыты только пункты живой проверки.
@@ -518,6 +518,7 @@ Last activity: 2026-10-04
 | Phase 41 P05 | 45m | 2 tasks | 5 files |
 | Phase 41 P06 | ~50min | 2 tasks | 6 files |
 | Phase 41 P07 | ~65min | 2 tasks | 14 files |
+| Phase 41 P08 | ~2h | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -1169,6 +1170,8 @@ Recent decisions affecting current work:
 - [Phase 41]: 41-05: record_batch_movement_if_applicable рядом с неизменённым record_movement_if_applicable; group_id/group_label в DTO читаются из колонок журнала
 - [Phase 41]: 41-06: locked_group_for_device фильтрует place_id IS NOT NULL (D-21 на уровне запроса); цикл проверяется раньше teardown; замена значений свойств в SAVEPOINT
 - [Phase 41]: 41-07: свойство, созданное обязательным при существующих пустых группах, отклоняется правилом D-14; потолок 50 свойств считает скрытые; скрытое свойство не имеет нарушителей обязательности
+- [Phase 41]: 41-08: GRP-10 закрыт частично; запрет удаления якорного устройства переносится в 41.1 (нужен groups.anchor_device_id)
+- [Phase 41]: 41-08: имя группы по умолчанию только при name=None; пробельное явное имя -> Validation
 
 ### Pending Todos
 
@@ -1368,8 +1371,8 @@ Nyquist-покрытия; тройное дублирование предика
 
 ## Session Continuity
 
-Last session: 2026-10-04T06:59:18.969Z
-Stopped at: Completed 41-07-PLAN.md
+Last session: 2026-10-04T07:47:45.667Z
+Stopped at: Completed 41-08-PLAN.md
 Resume file: None
 
 None
