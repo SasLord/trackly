@@ -62,6 +62,13 @@ const ALLOWLIST = [
     file: 'src/lib/components/MovementTimeline.svelte',
     markers: ['в составе группы', 'перенос группы'],
   },
+  {
+    // 41-25 (W-10): синтезированный заголовок пакета в отчёте «Перемещения»
+    // (пакет без строки группы в видимом наборе) — тип «Группа» и причина
+    // «перенос группы». Только эти два литерала, не весь файл.
+    file: 'src/features/reports/ReportTable.svelte',
+    markers: ['Группа', 'перенос группы'],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -194,6 +201,30 @@ function runSelfTest() {
       name: 'негатив: прочее слово «группа» в MovementTimeline (маркеры узкие)',
       file: 'src/lib/components/MovementTimeline.svelte',
       src: "<span>{'перенос группы'}</span>\n<span>Удалить группу</span>",
+      expectViolations: 1,
+    },
+    {
+      name: 'позитив: литерал «Группа» в ReportTable (синтезированный заголовок пакета)',
+      file: 'src/features/reports/ReportTable.svelte',
+      src: "<td>{'Группа'}</td>",
+      expectViolations: 0,
+    },
+    {
+      name: 'позитив: литерал «перенос группы» в ReportTable',
+      file: 'src/features/reports/ReportTable.svelte',
+      src: "const reason = 'перенос группы';",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив: «Группировать» в ReportTable (маркеры узкие)',
+      file: 'src/features/reports/ReportTable.svelte',
+      src: "<td>{'Группа'}</td>\n<label>Группировать</label>",
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив: «перенос группы» в DeviceList (другой файл)',
+      file: 'src/features/devices/DeviceList.svelte',
+      src: "const reason = 'перенос группы';",
       expectViolations: 1,
     },
     {

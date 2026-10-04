@@ -10,6 +10,7 @@
   import Table from '$lib/components/Table.svelte';
   import TableRow from '$lib/components/TableRow.svelte';
   import Badge from '$lib/components/Badge.svelte';
+  import { pluralizeRu } from '$lib/utils/pluralize';
 
   interface ReportRow {
     id: number;
@@ -34,6 +35,13 @@
     reason?: string | null;
     entity_type_label?: string | null;
     is_deleted?: boolean | null;
+    // Plan 41-25 (D-25/D-26) — batch (group move) fields of the movements
+    // report (Plan 41-17). batch_label is the group-name snapshot present on
+    // EVERY row of a batch; batch_size is counted by the server over devices.
+    batch_id?: string | null;
+    batch_role?: 'header' | 'member' | null | string;
+    batch_size?: number | null;
+    batch_label?: string | null;
     [key: string]: unknown;
   }
 
@@ -49,7 +57,15 @@
 
   type SeparatorItem = { type: 'separator'; label: string };
   type RowItem = ReportRow & { type?: never };
-  type GroupedItem = SeparatorItem | RowItem;
+  // Collapsible batch of a group move: one header row (real or synthesized)
+  // plus the device rows that belong to it.
+  type BatchItem = {
+    type: 'batch';
+    batchId: string;
+    header: ReportRow;
+    members: ReportRow[];
+  };
+  type GroupedItem = SeparatorItem | BatchItem | RowItem;
 
   interface Props {
     rows: ReportRow[];
@@ -175,12 +191,110 @@
     return reportType === 'movements' && col.key === 'device_name' && row.is_deleted === true;
   }
 
+  // D-25: expanded batches (by batch_id). Empty = everything collapsed.
+  let expandedBatches = $state<Set<string>>(new Set());
+
+  function toggleBatch(batchId: string) {
+    const next = new Set(expandedBatches);
+    if (next.has(batchId)) next.delete(batchId);
+    else next.add(batchId);
+    expandedBatches = next;
+  }
+
+  // Value shared by every row of the batch, otherwise null (rendered as «—»).
+  function commonValue(members: ReportRow[], key: string): unknown {
+    const first = members[0]?.[key] ?? null;
+    if (first === null) return null;
+    return members.every((m) => m[key] === first) ? first : null;
+  }
+
+  // D-26 / 41-17 handover: a batch whose header row is not in the visible set
+  // (first placement of a placeless group writes no group row, the device-type
+  // filter, LIMIT 1000, a deleted group) still reads as ONE collapsed row.
+  // The heading is synthesized from batch_label + batch_size.
+  function synthesizeHeader(batchId: string, members: ReportRow[]): ReportRow {
+    const first = members[0];
+    return {
+      id: first.id,
+      month_key: first.month_key ?? null,
+      handover_date_utc: first.handover_date_utc ?? null,
+      device_name: first.batch_label ?? null,
+      entity_type_label: 'Группа',
+      from_place_path: commonValue(members, 'from_place_path') as string | null,
+      from_place_path_short: commonValue(members, 'from_place_path_short') as string | null,
+      place_path: commonValue(members, 'place_path') as string | null,
+      place_path_short: commonValue(members, 'place_path_short') as string | null,
+      actor_name: commonValue(members, 'actor_name') as string | null,
+      reason: 'перенос группы',
+      is_deleted: null,
+      batch_id: batchId,
+      batch_role: 'header',
+      batch_size: first.batch_size ?? null,
+      batch_label: first.batch_label ?? null,
+    };
+  }
+
+  // Movements only: fold batch rows into BatchItems, keeping the original
+  // order (a batch sits where its header, or else its first member, sits).
+  const display = $derived.by((): (BatchItem | RowItem)[] => {
+    if (reportType !== 'movements') return rows as RowItem[];
+
+    const membersById = new Map<string, ReportRow[]>();
+    const headerIds = new Set<string>();
+    for (const row of rows) {
+      if (!row.batch_id) continue;
+      if (row.batch_role === 'header') {
+        headerIds.add(row.batch_id);
+      } else if (row.batch_role === 'member') {
+        const list = membersById.get(row.batch_id) ?? [];
+        list.push(row);
+        membersById.set(row.batch_id, list);
+      }
+    }
+
+    const result: (BatchItem | RowItem)[] = [];
+    const emitted = new Set<string>();
+    for (const row of rows) {
+      const id = row.batch_id;
+      if (id && row.batch_role === 'header') {
+        result.push({
+          type: 'batch',
+          batchId: id,
+          header: row,
+          members: membersById.get(id) ?? [],
+        });
+      } else if (id && row.batch_role === 'member' && !headerIds.has(id) && row.batch_label) {
+        if (emitted.has(id)) continue;
+        emitted.add(id);
+        const members = membersById.get(id) ?? [row];
+        result.push({
+          type: 'batch',
+          batchId: id,
+          header: synthesizeHeader(id, members),
+          members,
+        });
+      } else if (id && row.batch_role === 'member' && headerIds.has(id)) {
+        continue; // rendered under its header
+      } else {
+        result.push(row as RowItem);
+      }
+    }
+    return result;
+  });
+
+  function batchCounter(header: ReportRow): string | null {
+    const n = header.batch_size;
+    if (typeof n !== 'number') return null;
+    return `(${n} ${pluralizeRu(n, ['устройство', 'устройства', 'устройств'])})`;
+  }
+
   // Build grouped rows: insert separator when month_key (temporal) or place_path (snapshot) changes
   const grouped = $derived.by((): GroupedItem[] => {
     const result: GroupedItem[] = [];
     let lastSeparatorKey = '';
 
-    for (const row of rows) {
+    for (const entry of display) {
+      const row: ReportRow = 'type' in entry && entry.type === 'batch' ? entry.header : entry;
       const separatorKey = isSnapshot ? (row.place_path ?? '') : (row.month_key ?? '');
 
       if (separatorKey !== lastSeparatorKey && separatorKey !== '') {
@@ -193,7 +307,7 @@
         lastSeparatorKey = separatorKey;
       }
 
-      result.push(row);
+      result.push(entry);
     }
 
     return result;
@@ -226,6 +340,64 @@
           <tr class="report-separator" aria-hidden="true">
             <td colspan={columns.length}>{item.label}</td>
           </tr>
+        {:else if 'type' in item && item.type === 'batch'}
+          {@const batch = item as BatchItem}
+          {@const open = expandedBatches.has(batch.batchId)}
+          {@const counter = batchCounter(batch.header)}
+          <TableRow>
+            {#each columns as col}
+              {#if col.key === 'device_name'}
+                <td title={formatCellTitle(batch.header, col)}>
+                  <button
+                    type="button"
+                    class="batch-chevron"
+                    class:expanded={open}
+                    aria-expanded={open}
+                    aria-label={open ? 'Свернуть' : 'Развернуть'}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      toggleBatch(batch.batchId);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="M6 4l4 4-4 4"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <span class="batch-name">{formatCellDisplay(batch.header, col)}</span>
+                  {#if counter}
+                    <span class="batch-count tr-mono">{counter}</span>
+                  {/if}
+                  {#if showDeletedBadge(batch.header, col)}
+                    <span class="deleted-badge"><Badge variant="default">Удалено</Badge></span>
+                  {/if}
+                </td>
+              {:else}
+                <td title={formatCellTitle(batch.header, col)}>
+                  {formatCellDisplay(batch.header, col)}
+                </td>
+              {/if}
+            {/each}
+          </TableRow>
+          {#if open}
+            {#each batch.members as member}
+              <TableRow indent>
+                {#each columns as col}
+                  <td title={formatCellTitle(member, col)}>
+                    {formatCellDisplay(member, col)}
+                    {#if showDeletedBadge(member, col)}
+                      <span class="deleted-badge"><Badge variant="default">Удалено</Badge></span>
+                    {/if}
+                  </td>
+                {/each}
+              </TableRow>
+            {/each}
+          {/if}
         {:else}
           {@const row = item as ReportRow}
           <TableRow>
@@ -274,6 +446,47 @@
   // incidental single space surviving the template.
   .deleted-badge {
     margin-left: var(--tr-space-2xs);
+  }
+
+  // D-25: chevron anatomy copied from TableRow's group-row chevron (same
+  // size, colour, 90deg rotation, .15s transition and inset focus ring) —
+  // one anatomy for the three expandable places. Screen-only layout: there is
+  // deliberately NO print rule here (D-27 — print comes from the server HTML
+  // with the full batch, never from this DOM).
+  .batch-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: var(--tr-radius-xs);
+    margin-right: var(--tr-space-2xs);
+    background: transparent;
+    border: none;
+    color: var(--tr-text-secondary);
+    cursor: pointer;
+    vertical-align: middle;
+    transform: none;
+    transition: transform 0.15s;
+
+    &.expanded {
+      transform: rotate(90deg);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset 0 0 0 2px var(--tr-focus-ring);
+    }
+  }
+
+  .batch-name {
+    font-weight: var(--tr-font-weight-semibold);
+  }
+
+  .batch-count {
+    margin-left: var(--tr-space-2xs);
+    color: var(--tr-text-secondary);
   }
 
   .report-separator td {
