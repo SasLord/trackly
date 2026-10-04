@@ -264,6 +264,10 @@
           await push(`#/acts?id=${id}`);
           onClose();
         }}
+        onNavigateToGroup={async (id) => {
+          await push(`#/groups?id=${id}`);
+          onClose();
+        }}
       />
     </DetailSection>
   {/if}

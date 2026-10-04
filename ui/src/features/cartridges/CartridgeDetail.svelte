@@ -258,6 +258,7 @@
           loadError={movementsLoadError}
           onNavigateToPlace={(id) => push(`#/places?id=${id}`)}
           onNavigateToAct={(id) => push(`#/acts?id=${id}`)}
+          onNavigateToGroup={(id) => push(`#/groups?id=${id}`)}
         />
       </DetailSection>
     {/if}

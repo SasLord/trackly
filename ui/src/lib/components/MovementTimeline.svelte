@@ -24,9 +24,20 @@
     loadError: boolean;
     onNavigateToPlace?: (placeId: number) => Promise<void> | void;
     onNavigateToAct?: (actId: number) => Promise<void> | void;
+    /** Plan 41-24 (D-28): переход-фокус на группу из основания «в составе
+     *  группы «…»» — ровно как `onNavigateToAct` для «актом №…». Необязательный:
+     *  без него имя группы показывается обычным текстом. */
+    onNavigateToGroup?: (groupId: number) => Promise<void> | void;
   }
 
-  const { entries, loading, loadError, onNavigateToPlace, onNavigateToAct }: Props = $props();
+  const {
+    entries,
+    loading,
+    loadError,
+    onNavigateToPlace,
+    onNavigateToAct,
+    onNavigateToGroup,
+  }: Props = $props();
 
   // Manual DD.MM.YYYY formatting — same `padStart` approach already used by
   // CartridgeDetail.svelte::formatDate (no `Intl`, per the project's
@@ -58,6 +69,16 @@
       // source === 'act' (Pitfall 6 — never let an unexpected shape throw).
       return entry.act_number ? `актом №${entry.act_number}` : 'актом';
     }
+    if (entry.source === 'group') {
+      // Plan 41-24 (D-28): строка самой группы (entity_type = 'group') — перенос
+      // группы целиком; строка устройства/принтера/картриджа — основание
+      // «в составе группы «имя»» (имя-ссылка рисуется в шаблоне; здесь —
+      // простой текст для случая, когда ссылки нет: нет group_id, нет
+      // обработчика или нет снимка имени).
+      if (entry.entity_type === 'group') return 'перенос группы';
+      const label = entry.group_label?.trim() ?? '';
+      return label.length > 0 ? `в составе группы «${label}»` : 'в составе группы';
+    }
     // Unrecognized/future source values (`map`, `workstation`, or any other
     // token) — safe fallback label, never a crash (T-40-30, Pitfall 6/IN-01).
     return 'причина не определена';
@@ -69,6 +90,10 @@
 
   function handleNavigateToAct(actId: number) {
     void onNavigateToAct?.(actId);
+  }
+
+  function handleNavigateToGroup(groupId: number) {
+    void onNavigateToGroup?.(groupId);
   }
 </script>
 
@@ -124,6 +149,18 @@
             >
               {entry.act_number}
             </button>
+          </span>
+        {:else if entry.source === 'group' && entry.entity_type !== 'group' && entry.group_id !== null && onNavigateToGroup && (entry.group_label?.trim() ?? '').length > 0}
+          <!-- D-28: group_id приходит в каждой групповой строке, поэтому ссылка
+               есть всегда; id — number, имя только как текст (без {@html}). -->
+          <span class="timeline-reason">
+            в составе группы «<button
+              type="button"
+              class="timeline-link"
+              onclick={() => handleNavigateToGroup(entry.group_id as number)}
+            >
+              {entry.group_label?.trim()}
+            </button>»
           </span>
         {:else}
           <span class="timeline-reason">{reasonText(entry)}</span>

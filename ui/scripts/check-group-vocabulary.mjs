@@ -58,7 +58,10 @@ const ALLOWLIST = [
   { file: 'src/lib/api/groups.ts', markers: null },
   { file: 'src/features/layout/sidebar-config.ts', markers: ['Группы'] },
   { file: 'src/features/devices/DeviceFormBody.svelte', markers: ['Место задаётся группой'] },
-  { file: 'src/lib/components/MovementTimeline.svelte', markers: ['в составе группы'] },
+  {
+    file: 'src/lib/components/MovementTimeline.svelte',
+    markers: ['в составе группы', 'перенос группы'],
+  },
 ];
 
 function allowEntryFor(relPath) {
@@ -174,6 +177,24 @@ function runSelfTest() {
       file: 'src/lib/components/MovementTimeline.svelte',
       src: "<span>{'в составе группы'}</span>",
       expectViolations: 0,
+    },
+    {
+      name: 'позитив: «перенос группы» в MovementTimeline',
+      file: 'src/lib/components/MovementTimeline.svelte',
+      src: "<span>{'перенос группы'}</span>",
+      expectViolations: 0,
+    },
+    {
+      name: 'негатив: «перенос группы» в любом другом файле',
+      file: 'src/features/places/PlaceEntityViewModal.svelte',
+      src: "<span>{'перенос группы'}</span>",
+      expectViolations: 1,
+    },
+    {
+      name: 'негатив: прочее слово «группа» в MovementTimeline (маркеры узкие)',
+      file: 'src/lib/components/MovementTimeline.svelte',
+      src: "<span>{'перенос группы'}</span>\n<span>Удалить группу</span>",
+      expectViolations: 1,
     },
     {
       name: 'позитив: «Группы» в sidebar-config',
