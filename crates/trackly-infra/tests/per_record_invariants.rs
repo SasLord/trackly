@@ -23,6 +23,9 @@ const USER_MUTABLE_TABLES: &[&str] = &[
     "cartridge_models",
     "requests",
     "document_templates",
+    "group_types",
+    "group_type_properties",
+    "groups",
 ];
 
 const SYSTEM_TABLES: &[&str] = &[
@@ -37,6 +40,8 @@ const SYSTEM_TABLES: &[&str] = &[
     // Junction tables — also hard-delete invariant.
     "act_items",
     "cartridge_model_compatibility",
+    "group_devices",
+    "group_property_values",
 ];
 
 #[derive(Debug)]
